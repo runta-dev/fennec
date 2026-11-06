@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f38d25">
+  <title>Fennec · Runta</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside>
+    <a class="brand" href="/">fennec<span>BY RUNTA</span></a>
+    <p class="nav-label">WORKSPACE</p>
+    <nav aria-label="Main navigation">
+      <button class="active" data-page="agents" aria-current="page">Agents <span>01</span></button>
+      <button data-page="environments">Environments <span>02</span></button>
+      <button data-page="sessions">Sessions <span>03</span></button>
+      <button data-page="settings">Settings <span>04</span></button>
+    </nav>
+    <footer><span class="dot"></span> Local control surface<p>v0.1 · Foundation preview</p></footer>
+  </aside>
+  <main>
+    <header><span>YOUR AGENTS. A LITTLE MORE FREEDOM.</span><button id="theme" aria-label="Switch color theme">Switch theme</button></header>
+    <div class="notice">Foundation preview — no cloud execution, connector access, or billing is enabled.</div>
+    <p id="error" role="alert" hidden></p>
+    <section id="agents" class="page">
+      <div class="heading"><div><p class="eyebrow">SAME AGENT. NEW POSSIBILITIES.</p><h1>Keep your agent.<br>Leave the laptop.</h1><p class="subtitle">Your familiar tools, a cloud-hosted loop.<br>Prepare what it needs. Reconnect when you’re ready.</p></div><div class="stamp" aria-hidden="true">f<span>↗</span></div></div>
+      <div class="section-title"><h2>Your agents</h2><button id="refresh">Refresh detection ↻</button></div>
+      <div id="agent-list" class="cards" aria-live="polite"></div>
+      <article class="handoff"><div><p class="eyebrow">BEFORE YOU CLOSE THE LID</p><h2>A handoff, not a blind upload.</h2><p>A skill prepares only what the task needs. Fennec must verify independence from your device before calling it ready.</p></div><ol><li>Discover project dependencies</li><li>Approve files and authorization</li><li>Verify with connector disabled</li><li>Continue in the cloud</li></ol></article>
+    </section>
+    <section id="environments" class="page" hidden><p class="eyebrow">WORK WHERE YOU NEED TO</p><h1>Environments</h1><div class="panel"><h2>Local connector</h2><span class="badge">Not connected</span><p>Planned: outbound, scoped access to approved project paths and tools. No local files or credentials are currently read.</p></div><div class="panel"><h2>Runta cloud</h2><span class="badge">Adapter not implemented</span><p>Persistent agent processes, isolated workspaces, and enforced budgets belong here.</p></div></section>
+    <section id="sessions" class="page" hidden><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h1>Sessions</h1><div class="empty"><h2>No cloud sessions yet.</h2><p>Cloud launch and terminal reattachment are planned. This preview does not create simulated sessions.</p></div><h2>Offline readiness contract</h2><ul id="checks" class="checks"></ul></section>
+    <section id="settings" class="page" hidden><p class="eyebrow">EXPLICIT BY DEFAULT</p><h1>Settings</h1><div class="panel"><h2>Appearance</h2><p>Use the header control to switch light and dark themes. The preference stays in this browser.</p></div><div class="panel"><h2>Credentials & permissions</h2><p>No credential discovery or transfer is enabled. Future grants must be explicit, scoped, revocable, and excluded from logs and snapshots.</p></div><div class="panel"><h2>Usage & budget</h2><p>No free credits are assumed. Cloud launch will require pricing disclosure and an enforced spending limit. This scaffold incurs no cloud usage.</p></div></section>
+    <div class="bottom-line">BUILT FOR YOUR WORKFLOW <span>Powered by Runta ↗</span></div>
+  </main>
+</body>
+</html>
