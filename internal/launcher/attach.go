@@ -24,7 +24,7 @@ func AttachArgs(runtimeID, address, sessionID, directory string) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	return []string{"ssh", "-tt", "-S", control, "-o", "ControlMaster=no", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com", remote}, nil
+	return []string{"ssh", "-tt", "-S", control, "-o", "ControlMaster=no", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com", remote}, nil
 }
 func Attach(runtimeID, address, sessionID, directory string) error {
 	_, err := AttachArgs(runtimeID, address, sessionID, directory)
@@ -65,10 +65,11 @@ func AttachWithLoading(runtimeID, address, sessionID, directory string, ready fu
 	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: sessionID}
 	defer titles.Flush()
 	command.Stdout = terminalOutput{titles, clear}
-	diagnostics := &sshDiagnostics{writer: terminalOutput{os.Stderr, clear}}
+	diagnostics := &sshDiagnostics{sessionID: sessionID, writer: terminalOutput{os.Stderr, clear}}
 	defer diagnostics.Flush()
 	command.Stderr = diagnostics
 	err = command.Run()
+	diagnostics.Finish(err)
 	if exit, ok := err.(*exec.ExitError); ok {
 		code := exit.ExitCode()
 		if code < 0 {

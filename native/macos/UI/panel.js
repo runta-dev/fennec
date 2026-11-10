@@ -77,11 +77,12 @@ document.addEventListener('click', event => {
 });
 
 let agentFoldTimer = null;
+let agentLocationTimer = null;
 const renderedLocations = new Map();
 let pendingAgentRender = false;
 window.renderAgents = agents => {
   detectedAgents = agents;
-  if (agentFoldTimer !== null) { pendingAgentRender = true; return; }
+  if (agentFoldTimer !== null || agentLocationTimer !== null) { pendingAgentRender = true; return; }
   const list = document.querySelector('#agent-list');
   list.replaceChildren();
   document.querySelector('#count').textContent = agents.length;
@@ -107,6 +108,14 @@ window.renderAgents = agents => {
     arrow.className = 'chevron';
     arrow.innerHTML = chevron;
     head.append(icon, name, state, arrow);
+    if(!agent.cloudSupported || !['claude','codex','pi'].includes(agent.id)){
+      head.disabled=true;
+      head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
+      head.classList.add('agent-coming-soon');
+      state.textContent='即将支持';arrow.remove();
+      if(expandedAgent===agent.id)expandedAgent=null;
+      article.append(head);list.append(article);continue;
+    }
     const detail = document.createElement('div');
     detail.className = 'detail';
     detail.id = `detail-${agent.id}`;
@@ -144,7 +153,16 @@ window.renderAgents = agents => {
       const enabled=takeoverAgents.has(agent.id);
       if(takeoverSelectionKnown){
        const previous=renderedLocations.get(agent.id);
-       if(previous!==undefined&&previous!==enabled)toggle.classList.add(enabled?'slide-to-cloud':'slide-to-local');
+       if(previous!==undefined&&previous!==enabled && expandedAgent===agent.id){
+        toggle.classList.add(enabled?'slide-to-cloud':'slide-to-local');
+        if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+         clearTimeout(agentLocationTimer);
+         agentLocationTimer=setTimeout(()=>{
+          agentLocationTimer=null;
+          if(pendingAgentRender){pendingAgentRender=false;window.renderAgents(detectedAgents);}
+         },280);
+        }
+       }
        renderedLocations.set(agent.id,enabled);
       }
       const choices=[...toggle.querySelectorAll('button')];
@@ -152,7 +170,7 @@ window.renderAgents = agents => {
        const cloud=button.dataset.location==='cloud';
        const selected=cloud===enabled;
        button.setAttribute('aria-checked',String(selected));button.tabIndex=selected?0:-1;
-       button.disabled=takeoverChanging || (!takeoverSelectionKnown && !enabled) || (cloud&&!enabled&&route?.status!=='configured');
+       button.disabled=takeoverChanging || (!takeoverSelectionKnown && !enabled) || (cloud&&!agent.cloudSupported);
        button.onclick=()=>{if(cloud!==enabled)send('toggle-takeover:'+agent.id);};
        button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const other=choices[1-index];if(!other.disabled){other.click();other.focus();}};
       });
@@ -337,9 +355,12 @@ window.renderRuntimes = (rows, message) => {
       };
       item.append(disclosure);
     }
-    info.append(name); item.append(status);
+    info.append(name);
     const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg"};
-    if(agentIcons[row.agent]){const icon=document.createElement("img");icon.className="agent-icon session-agent-icon";icon.src="icons/"+agentIcons[row.agent];icon.alt=row.agent;icon.title=row.agent;icon.draggable=false;item.append(icon);}
+    const identity=document.createElement('span');identity.className='session-agent-identity';
+    if(agentIcons[row.agent]){const icon=document.createElement("img");icon.className="agent-icon session-agent-icon";icon.src="icons/"+agentIcons[row.agent];icon.alt=row.agent;icon.title=row.agent;icon.draggable=false;identity.append(icon);}
+    else{identity.innerHTML='<svg class="session-agent-fallback" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="3"/><path d="m5 7 3 3-3 3m6 0h4"/></svg>';}
+    identity.append(status);item.append(identity);
     item.append(info);
     if(row.sessionID){
       const actions=document.createElement('div');actions.className='session-actions';

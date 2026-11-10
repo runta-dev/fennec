@@ -37,7 +37,7 @@ func (err RemoteExitError) ExitCode() int { return err.Code }
 type StreamLostError struct{ Receipt LaunchReceipt }
 
 func (err StreamLostError) Error() string {
-	return terminalDisconnectMessage()
+	return terminalDisconnectMessage(err.Receipt.SessionID)
 }
 
 func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func()) error {

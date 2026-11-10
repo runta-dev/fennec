@@ -13,7 +13,7 @@ func TestDetachTrailerAcrossEverySplit(t *testing.T) {
 		w.Write([]byte(input[:split]))
 		w.Write([]byte(input[split:]))
 		w.Flush()
-		want := "\x1b[0m\r\nSession detached. Run fen attach amber-cedar to reattach it.\r\nOr run fen to manage sessions.\r\n"
+		want := "\x1b[0m\r\n\r\nSession detached.\r\nRun fen attach amber-cedar to reattach, or fen to manage sessions.\r\n"
 		if out.String() != want {
 			t.Fatalf("split %d: %q", split, out.String())
 		}
@@ -35,7 +35,7 @@ func TestDetachInlineCommands(t *testing.T) {
 	w := detachOutput{output: &out, address: "t3x", id: "amber-cedar", styled: true}
 	w.Write([]byte("\r\n[detached from t3x]\r\n"))
 	w.Flush()
-	if !strings.Contains(out.String(), "\x1b[7m fen attach amber-cedar \x1b[27m") {
+	if !strings.Contains(out.String(), "\x1b[1;4mfen attach amber-cedar\x1b[22;24m") {
 		t.Fatal(out.String())
 	}
 }

@@ -101,7 +101,7 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 		}
 		remote = `"$HOME/.local/fennec/bin/fennec-terminal" start '` + base64.StdEncoding.EncodeToString(payload) + `'`
 	}
-	args := []string{"-tt", "-S", "none", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID + "@ssh.runta.com", remote}
+	args := []string{"-tt", "-S", "none", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID + "@ssh.runta.com", remote}
 	if connection != nil {
 		args[2] = connection.control
 	}
@@ -121,10 +121,11 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 	command := exec.Command("/usr/bin/ssh", args...)
 	command.Stdin = os.Stdin
 	command.Stdout = output
-	diagnostics := &sshDiagnostics{writer: terminalOutput{os.Stderr, clear}}
+	diagnostics := &sshDiagnostics{sessionID: intent.RequestID, writer: terminalOutput{os.Stderr, clear}}
 	defer diagnostics.Flush()
 	command.Stderr = diagnostics
 	err := command.Run()
+	diagnostics.Finish(err)
 	if !output.confirmed {
 		return fmt.Errorf("launch outcome unknown; inspect request %s before retrying: %v", intent.RequestID, err)
 	}
