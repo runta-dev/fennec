@@ -3,20 +3,18 @@
 </p>
 
 <h1 align="center">Fennec</h1>
-<h3 align="center">Run your agent loop in the cloud.<br />Keep working on your local computer.</h3>
-<p align="center">Your familiar coding agents, connected to the local files and tools you authorize.</p>
+<h3 align="center">Cloud agents. Local tools.</h3>
+<p align="center">Run your coding agents in the cloud, connected to your Mac.</p>
 
 <p align="center">
   <a href="#meet-fennec"><img src="https://img.shields.io/badge/macOS-menu_bar-181818?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS menu-bar app" /></a>
-  <a href="#meet-fen"><img src="https://img.shields.io/badge/terminal-fen-F38D25?style=flat-square" alt="fen terminal client" /></a>
-  <a href="#leave-and-come-back"><img src="https://img.shields.io/badge/sessions-detach_%26_reattach-57534E?style=flat-square" alt="Detach and reattach sessions" /></a>
+  <a href="#get-started"><img src="https://img.shields.io/badge/Apple_Silicon-arm64-F38D25?style=flat-square" alt="Apple Silicon arm64" /></a>
+  <a href="DEVELOP.md"><img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&amp;logo=go&amp;logoColor=white" alt="Go 1.24 or newer" /></a>
+  <a href="DEVELOP.md"><img src="https://img.shields.io/badge/Swift-AppKit-F05138?style=flat-square&amp;logo=swift&amp;logoColor=white" alt="Swift and AppKit" /></a>
   <a href="https://runta.com/"><img src="https://img.shields.io/badge/Powered_by-Runta-F38D25?style=flat-square" alt="Powered by Runta" /></a>
 </p>
 
 <p align="center"><strong><a href="#meet-fennec">Meet Fennec</a> · <a href="#get-started">Get started</a> · <a href="#meet-fen">The fen CLI</a> · <a href="https://github.com/runta-dev/fennec/issues">Feedback</a></strong></p>
-
-<p align="center"><img src="docs/images/fennec-agents.png" width="520" alt="Actual Fennec menu-bar interface showing discovered agents and their selected run locations." /></p>
-<p align="center"><sub>Fennec running on a real Mac.</sub></p>
 
 <p align="center"><img src="docs/images/cloud-agent-loop.svg" width="960" alt="Architecture diagram: the agent loop runs in a persistent cloud session; your Mac provides the terminal and approved local tools. Detach and reattach without stopping cloud work." /></p>
 
