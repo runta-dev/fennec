@@ -64,6 +64,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.runta.fennec</string>
 <key>CFBundleName</key><string>Fennec</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 <key>CFBundleExecutable</key><string>Fennec</string>
 <key>CFBundleVersion</key><string>$build_number</string>
 <key>CFBundleShortVersionString</key><string>$app_version</string>

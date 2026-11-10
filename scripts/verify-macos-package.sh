@@ -4,6 +4,7 @@ app="$1"
 version="$2"
 [[ -d "$app" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" == com.runta.fennec ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
 for binary in Fennec fennec-daemon fennec-credentials; do
   [[ -x "$app/Contents/MacOS/$binary" ]]
