@@ -3,8 +3,7 @@
 </p>
 
 <h1 align="center">Fennec</h1>
-<h3 align="center">Cloud agents. Local tools.</h3>
-<p align="center">Run your coding agents in the cloud, connected to your Mac.</p>
+<h3 align="center">Run your coding agents in the cloud, connected to your Mac.</h3>
 
 <p align="center">
   <a href="#meet-fennec"><img src="https://img.shields.io/badge/macOS-menu_bar-181818?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS menu-bar app" /></a>
