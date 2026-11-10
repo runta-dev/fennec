@@ -8,3 +8,5 @@ Reviewed on 2026-11-06:
 - https://frontierharness.org/ — existing Runta-backed evaluation entry point; future Fennec handoff should be compatible with reusable evaluation environments.
 
 Future native packaging can introduce `native/` and `build/` when there are real platform files to maintain. No marketing `site/` is scaffolded yet.
+
+Runta account logo: copied from the main Runta repository, `dashboard/src/assets/runta-logo-icon.png` (local `runta-forge/worktrees/trail`). Used unchanged in `native/macos/UI/icons/runta-logo-icon.png`.

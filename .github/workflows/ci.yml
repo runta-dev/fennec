@@ -17,4 +17,6 @@ jobs:
       - run: make check
       - run: make test
       - run: make build
-      - run: node --check internal/gui/assets/app.js
+      - run: make check-ui
+      - run: make test-connector
+        timeout-minutes: 5

@@ -6,12 +6,12 @@
 
 The first complete vertical slice is: launch a new cloud agent, access an approved local project, prepare task-specific cloud dependencies, verify without local access, disconnect, complete a real task, reattach, and retrieve its changes.
 
-Today this repository implements only the local read-only foundation. Interfaces and skill instructions are not working cloud integrations.
+The first usable local slice signs into Runta through a menu-bar popover and discovers local supported agents. This does not adopt existing agent processes or provide cloud provisioning. The Go HTTP surface remains a read-only scaffold; the macOS shell owns the popover lifecycle.
 
 ## 2. Architecture
 
 ```text
-Local CLI / future desktop shell
+Local CLI / macOS menu-bar shell
               |
        Local Fennec daemon
        |                |
@@ -55,7 +55,7 @@ created -> preparing -> verifying -> ready -> running -> completed
 active states -> failed / cancelled / budget_exhausted
 ```
 
-Connection state is separate: attached, detached, reconnecting, offline. A disconnected client does not mean a failed task. No UI action may mark a session ready merely because files were copied.
+Cloud execution can begin while the connector is online; offline readiness is a separate property, not a prerequisite for all execution. Only operations needing unavailable local resources must pause. Connection state is separate: attached, detached, reconnecting, offline. A disconnected client does not mean a failed task. No UI action may mark a session ready merely because files were copied.
 
 Required readiness evidence:
 
@@ -95,7 +95,7 @@ Cloud sessions need bounded retry policies, keepalives, idle policies, terminal 
 
 ## 8. UI direction
 
-Product clarification: Fennec is a resident menu-bar/system-tray daemon application, not a website. Its primary entry is a compact tray panel showing connection state, active agents and pending approvals, with launch/reattach actions. Settings open in a separate native window. Closing a window must not stop the connector; explicit quit must explain which local-dependent tasks will be blocked and which cloud tasks can continue. Embedded HTML is an implementation detail, not a requirement to use a browser or remember a localhost port.
+Product clarification: Fennec is a resident menu-bar/system-tray daemon application, not a website. Its primary entry is a compact tray panel showing connection state, active agents and pending approvals, with launch/reattach actions. Primary controls stay inside the popover. Closing a window must not stop the connector; explicit quit must explain which local-dependent tasks will be blocked and which cloud tasks can continue. Embedded HTML is an implementation detail, not a requirement to use a browser or remember a localhost port.
 
 The existing browser preview is temporary and its marketing hero should be removed in the desktop iteration. Prioritize the native shell and lifecycle next, ahead of expanding dashboard features. Linux development cannot validate macOS menu-bar behavior, signing, or permissions; those require a local Mac session.
 
@@ -103,15 +103,16 @@ Follow Magpie's compact local utility model: restrained sidebar, discover existi
 
 Use Runta's public brand accent `hsl(30.291 89.565% 54.902%)` (approximately `#f38d25`), with warm neutral surfaces and light/dark themes. Use dark foreground on bright orange; use darker orange text on light tinted surfaces. Keyboard focus, semantic navigation, responsive layout, and visible error states are baseline requirements.
 
-The current lettermark is provisional, not an official fox logo. No Magpie assets or source are copied.
+The current lettermark is provisional, not an official fox logo. Selected Magpie agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md.
 
 ## 9. Delivery stages and acceptance
 
 1. **Foundation (this scaffold):** read-only UI, discovery, package contracts, readiness policy, docs, automated checks.
-2. **One real cloud CLI:** explicit opt-in launch, persistent PTY supervisor, detach/reattach, budget enforcement. Acceptance: closing the client does not kill the cloud task.
-3. **Connector and handoff:** pairing, scoped transfer, approved grants, offline verifier. Acceptance: a selected real task completes with the local connector disconnected; missing dependencies block visibly.
-4. **Results and recovery:** baseline-aware diff retrieval, restart-safe metadata, output replay and unknown-outcome reconciliation.
-5. **Packaging:** tray/native shell, another CLI adapter, desktop integration only after protocol validation.
+2. **Local macOS companion:** titleless menu-bar popover, Runta device-code login and automatic supported-agent discovery. Acceptance: dismiss/reopen without quitting, complete real browser authorization, restore credentials securely and manually request cloud takeover.
+3. **One real cloud CLI:** explicit opt-in launch, persistent PTY supervisor, detach/reattach, budget enforcement. Acceptance: closing the client does not kill the cloud task.
+4. **Connector and handoff:** pairing, scoped transfer, approved grants, offline verifier. Acceptance: a selected real task completes with the local connector disconnected; missing dependencies block visibly.
+5. **Results and recovery:** baseline-aware diff retrieval, restart-safe metadata, output replay and unknown-outcome reconciliation.
+6. **Distribution and adapters:** signed/notarized packaging, another CLI adapter, desktop integration only after protocol validation.
 
 Do not launch paid sessions from this scaffold. Do not claim universal harness support or existing-process migration.
 
@@ -120,3 +121,61 @@ Do not launch paid sessions from this scaffold. Do not claim universal harness s
 `make test` covers API restrictions, static asset delivery, CLI failures, and incomplete/duplicate readiness evidence. `make check` runs Go vet and formatting checks; CI also parses frontend JavaScript. No cloud end-to-end coverage exists until a real adapter is implemented.
 
 Future integration tests must cover connector disconnect during side effects, credentials expiry, budget termination, denied path traversal, symlink escapes, project conflicts, and a complete cloud-only continuation after preparation.
+
+## 11. Revised macOS interaction contract
+
+The product entry is a transient, titleless popover anchored to the menu-bar icon, never a standalone main window. Clicking the icon toggles it; clicking outside dismisses it while the app stays resident. Match Magpie's compact utility hierarchy with Runta orange accents.
+
+The user signs in through Runta device-code authorization. Supported agents are discovered automatically on this Mac. Cloud takeover is explicitly user-initiated, after authentication and project selection; signing in or detecting an agent never enables it automatically. No SSH aliases, ports or transport diagnostics belong in onboarding.
+
+Current native implementation: an arrowless, animation-free menu-bar NSPanel with a bundled WKWebView self-rendered UI, compact toolbar and segmented tabs, expandable agent cards, local Claude Code/Codex executable discovery, login request and failure state. The UI uses original HTML/CSS and Runta orange; the native bridge exposes only fixed actions. Production does not yet register the Fennec client identity. Browser consent, polling, Keychain credentials, authenticated account state and takeover remain incomplete. The earlier SSH window was a rejected prototype and has been removed.
+
+Device authorization update: explicitly reuse Errand client_id `runta_crew` with device name `Fennec for Mac`. Implemented browser verification, bounded polling with slow_down handling, and Fennec-owned Keychain storage. Authorization endpoint acceptance verified live; user-approved token exchange and restart restoration still require end-to-end acceptance. Earlier statements about an unregistered client refer to the replaced `fennec` client_id.
+
+## Shared runtime (revised product contract)
+
+On first authenticated login, reconcile one durable runtime per user, shared by all that user's supported agents. Runtime ownership must use authenticated user ID, not email/display name; the backend must enforce atomic uniqueness across devices. Cloud Agents v2's one-agent-per-runtime model is not the provisioning primitive for this feature.
+
+Preparation stages: allocate/reuse, wait for runtime readiness, reuse each existing cloud agent binary, install the publisher's latest stable release only when that binary is missing, install pinned Magpie, configure global agent routing, verify. Local CLI versions are not synchronized, compared or used to gate new sessions. New cloud installations are staged and verified before atomically replacing the executable alias; existing sessions retain their original executable. UI progress is completed stages, never a timer-based percentage. Failed stages remain retryable; ready requires the binary, gateway health and every selected agent's routing. No local provider credentials are implicitly transferred. Missing provider authorization blocks setup. Agent execution remains explicitly user-triggered even though runtime preparation begins automatically.
+
+`internal/setup` implements the reconciliation contract and failure ordering. Production Runtime backend, exact-version discovery, daemon IPC and native UI binding remain unimplemented; this module is not yet invoked on login. Pin Magpie artifacts and verify checksums before installation. Magpie currently uses MIT (verified from upstream LICENSE), not Apache-2.0. Preserve transitive notices when packaging its binary.
+
+Connector authorization: paired SSH devices request native Popup approval by
+default for local exec, SFTP and forwarding. Allow once and Deny apply to one
+request; Never Ask persists approval for that paired key and can be reset.
+Pairing and revocation checks remain mandatory. Cloud agent full-permission
+mode does not bypass local connector approval or macOS privilege/TCC boundaries.
+Connector readiness is independent of agent installation and model readiness:
+it starts after runtime ownership and SSH execution verification.
+
+## Model credential ownership (supersedes the secret-stub proposal)
+
+Magpie owns model providers, API keys and subscription credentials. Fennec
+migrates authorized local Magpie model credential stores to the user's shared
+runtime over verified SSH. Runtime provisioning remains Runta REST; model setup
+must not query Runta model providers or bind Runta secret stubs. The prepare path
+now migrates providers.json and logins.json only, with 0600 atomic writes and
+hash baselines to refuse overwriting remote-refreshed credentials. Plugin-backed
+subscriptions need explicit adapter/dependency handling before claiming readiness.
+
+Local interception boundary: a future opt-in PATH shim must preserve original
+CLI semantics while takeover is off. `local-agent` now uses process replacement
+(exec), retaining cwd, stdio, signals and exit status; resolver excludes its own
+shim directory and symlink/hardlink aliases. No user PATH or original agent binary
+has been changed. Cloud dispatch/project handoff is still required before enabling
+a production interception switch.
+
+## Default cloud computer resources
+
+New Fennec runtimes request 2 vCPUs and 4096 MiB baseline memory, with a 4096 MiB memory limit. Do not rely on the API default machine size. Existing runtimes are reused without deletion; creation defaults alone do not resize them.
+
+## Agent enablement and session workspace scope
+
+The Agents switch selects cloud execution for all subsequent launches of that
+agent. It must not open a directory picker or bind the agent to one repository.
+Project discovery, synchronization scope and permission requests belong to each
+session and may change during its work. Enabling an agent does not authorize
+uploading Home or every local directory. Existing sessions are not relocated by
+changing this switch. The current broker's preauthorized-root requirement remains
+an implementation gap: session-scoped synchronization authorization must replace
+that requirement before claiming transparent arbitrary-directory launch support.
