@@ -38,7 +38,7 @@ go build -trimpath -o "$FENNEC_DAEMON_BINARY" .
 ./scripts/build-macos.sh
 app="$FENNEC_BUILD_DIR/Fennec.app"
 ./scripts/verify-macos-package.sh "$app" "$version"
-codesign -dv "$app" 2>&1 | grep -q '^Authority=Developer ID Application:'
+codesign -dvv "$app" 2>&1 | grep '^Authority=Developer ID Application:'
 mkdir -p release
 notarize() {
   local file="$1" report="$2"
