@@ -1,0 +1,10 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('native/macos/UI/locale.js','utf8');
+const start=source.indexOf('function needsLocalization('),end=source.indexOf('\nconst observer =',start);
+const context=vm.createContext({});vm.runInContext(source.slice(start,end),context);
+const terminal={nodeType:1,closest:()=>({})};
+const ui={nodeType:1,closest:()=>null};
+assert.equal(context.needsLocalization([{target:terminal}]),false);
+assert.equal(context.needsLocalization([{target:{nodeType:3,parentElement:terminal}}]),false);
+assert.equal(context.needsLocalization([{target:terminal},{target:ui}]),true);
+console.log('PASS terminal-only mutations do not trigger whole-page localization');

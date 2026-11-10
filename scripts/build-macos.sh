@@ -1,0 +1,89 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+app="${FENNEC_BUILD_DIR:-$PWD/build}/Fennec.app"
+identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
+# One build timestamp shared by bundle metadata and every version label.
+build_stamp=$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')
+app_version="0.2.$build_stamp"
+if [ "${FENNEC_RELEASE:-0}" = 1 ] && [ "$identity" = - ]; then
+  echo "Release builds require FENNEC_SIGN_IDENTITY (Developer ID Application)." >&2
+  exit 1
+fi
+if [ "$identity" != - ]; then
+  if ! security find-identity "$HOME/Library/Keychains/login.keychain-db" | grep -F "\"$identity\"" >/dev/null; then
+    echo "Missing stable signing identity: $identity" >&2
+    if [ "$identity" = "Fennec Local Development" ]; then
+      echo "Create it once with ./scripts/create-development-identity.sh" >&2
+    fi
+    exit 1
+  fi
+fi
+if [ "$identity" != - ]; then
+  # Resolve to one valid identity before touching an existing application.
+  identity=$(security find-identity "$HOME/Library/Keychains/login.keychain-db" | go run ./cmd/signing-identity "$identity")
+fi
+sign_artifact() {
+  artifact="$1"
+  shift
+  if [ "$identity" = - ]; then
+    codesign --force --sign - "$@" "$artifact"
+  else
+    codesign --force --options runtime --timestamp --sign "$identity" "$@" "$artifact"
+  fi
+}
+# Always build the daemon from the same source snapshot as the native shell.
+# Alternatively accept an explicit cross-built artifact from the dev machine.
+mkdir -p "$app/Contents/MacOS"
+helper_cache="$PWD/build/credential-helper-cache"
+helper_source=$(shasum -a 256 native/macos/CredentialHelper.swift | cut -d ' ' -f 1)
+helper_key=$(printf '%s' "$identity:$helper_source:$(uname -m)" | shasum -a 256 | cut -d ' ' -f 1)
+helper="$helper_cache/$helper_key/fennec-credentials"
+if [ ! -f "$helper" ]; then
+  mkdir -p "$helper_cache/$helper_key"
+  swiftc native/macos/CredentialHelper.swift -o "$helper" -framework Security
+  sign_artifact "$helper"
+fi
+codesign --verify --strict "$helper"
+cp "$helper" "$app/Contents/MacOS/fennec-credentials"
+mkdir -p "$app/Contents/Resources"
+for remote_arch in amd64 arm64; do
+  CGO_ENABLED=0 GOOS=linux GOARCH="$remote_arch" go build -trimpath -o "$app/Contents/Resources/fennec-terminal-linux-$remote_arch" ./cmd/fennec-terminal
+done
+if [ -n "${FENNEC_DAEMON_BINARY:-}" ]; then
+  test -f "$FENNEC_DAEMON_BINARY"
+  cp "$FENNEC_DAEMON_BINARY" "$app/Contents/MacOS/fennec-daemon"
+elif [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
+  echo "Set FENNEC_DAEMON_BINARY to a freshly cross-built daemon; refusing silent reuse." >&2
+  exit 1
+else
+  echo "FENNEC_DAEMON_BINARY is required to package a complete application." >&2
+  exit 1
+fi
+swiftc native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+mkdir -p "$app/Contents/Resources/UI"
+cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
+cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.runta.fennec</string>
+<key>CFBundleName</key><string>Fennec</string>
+<key>CFBundleExecutable</key><string>Fennec</string>
+<key>CFBundleVersion</key><string>$app_version</string>
+<key>CFBundleShortVersionString</key><string>$app_version</string>
+<key>LSUIElement</key><true/>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+PLIST
+mkdir -p "$app/Contents/Resources/licenses"
+cp docs/licenses/magpie-MIT.txt "$app/Contents/Resources/licenses/"
+if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
+  # Keep the stable helper byte-identical: the daemon satisfies the same
+  # certificate+identifier requirement already used for the native shell.
+  sign_artifact "$app/Contents/MacOS/fennec-daemon" --identifier com.runta.fennec
+fi
+shasum -a 256 "$app/Contents/MacOS/fennec-daemon" | cut -d ' ' -f 1 > "$app/Contents/Resources/control-build-id"
+go run ./cmd/check-control-contract "$app" native/macos/Fennec.swift native/macos/ControlClient.swift
+sign_artifact "$app"
+printf '%s\n' "$app"

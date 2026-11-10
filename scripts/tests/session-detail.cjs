@@ -1,0 +1,18 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('native/macos/UI/panel.js','utf8');
+const start=source.indexOf('window.renderSessionDetail =');
+const end=source.indexOf('\n};',start)+3;
+const nodes={'#session-input-form':{hidden:true},'#session-output':{textContent:''},'#session-detail-status':{textContent:''}};
+let navigation=0;
+const context=vm.createContext({window:{},document:{querySelector:id=>nodes[id]},tab:()=>navigation++,sessionDetailOpen:false});
+vm.runInContext(source.slice(start,end),context);
+context.window.renderSessionDetail(null);
+assert.equal(navigation,1);
+context.sessionDetailOpen=false;
+context.window.renderSessionDetail({screen:{text:'late output',complete:true}});
+assert.equal(navigation,1);assert.equal(nodes['#session-output'].textContent,'');
+context.window.renderSessionDetail(null);
+context.window.renderSessionDetail({screen:{text:'<script>untrusted</script>',complete:false}});
+assert.equal(nodes['#session-output'].textContent,'<script>untrusted</script>');
+assert.notEqual(nodes['#session-detail-status'].textContent,'');
+console.log('PASS late session read does not reopen dismissed details; output remains text');
