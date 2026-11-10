@@ -6,15 +6,21 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var identityLine = regexp.MustCompile(`\b([0-9A-Fa-f]{40})\s+"([^"]+)"`)
 
 func resolve(input, requested string) (string, error) {
 	matches := []string{}
+	seen := map[string]bool{}
 	for _, match := range identityLine.FindAllStringSubmatch(input, -1) {
 		if requested == match[1] || requested == match[2] {
-			matches = append(matches, match[1])
+			fingerprint := strings.ToUpper(match[1])
+			if !seen[fingerprint] {
+				matches = append(matches, fingerprint)
+				seen[fingerprint] = true
+			}
 		}
 	}
 	if len(matches) != 1 {
