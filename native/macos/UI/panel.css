@@ -295,3 +295,4 @@ main{min-height:0}
 @keyframes location-slide-cloud{from{transform:translateX(0)}to{transform:translateX(calc(100% + 2px))}}
 @keyframes location-slide-local{from{transform:translateX(calc(100% + 2px))}to{transform:translateX(0)}}
 @media(prefers-reduced-motion:reduce){#appearance-segments::before,.location-segments::before,.location-segments>button{transition:none;animation:none!important}}
+.session-agent-icon{width:16px;height:16px;flex:0 0 16px;object-fit:contain}

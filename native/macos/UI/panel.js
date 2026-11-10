@@ -337,7 +337,10 @@ window.renderRuntimes = (rows, message) => {
       };
       item.append(disclosure);
     }
-    info.append(name); item.append(status, info);
+    info.append(name); item.append(status);
+    const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg"};
+    if(agentIcons[row.agent]){const icon=document.createElement("img");icon.className="agent-icon session-agent-icon";icon.src="icons/"+agentIcons[row.agent];icon.alt=row.agent;icon.title=row.agent;icon.draggable=false;item.append(icon);}
+    item.append(info);
     if(row.sessionID){
       const actions=document.createElement('div');actions.className='session-actions';
       const payload=JSON.stringify({address:row.address,session_id:row.sessionID});
@@ -602,7 +605,7 @@ window.renderHerdrSessions = terminals => {
    const group=Object.hasOwn(labels,raw)?raw:'idle';
    const displayStatus=labels[group];
    const sessionID=terminal.labels?.['fennec.session'];
-   return {name:readableName(terminal.title) || readableName(terminal.name) || '未命名会话', group, status:raw || '',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
+   return {agent:terminal.labels?.["fennec.agent"] || terminal.agent,name:readableName(terminal.title) || readableName(terminal.name) || '未命名会话', group, status:raw || '',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
  });
  window.renderRuntimes(rows,'');
 };
