@@ -70,7 +70,7 @@ docs/                           Design references
 
 [DESIGN.md](DESIGN.md) describes the architecture, trust boundaries, and delivery stages. [docs/references.md](docs/references.md) records the Magpie layout reference and the Runta brand source.
 
-Fennec is an independent application. Selected Agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md. Magpie's Go entry point, `internal/` packages, embedded web surface, and familiar-agent-first experience inform the layout. The macOS development app is available; signed distribution is deferred.
+Fennec is an independent application. Selected Agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md. Magpie's Go entry point, `internal/` packages, embedded web surface, and familiar-agent-first experience inform the layout.
 
 
 ## Local SSH connector (development)
@@ -123,3 +123,42 @@ FENNEC_DAEMON_BINARY=/absolute/path/fennec-daemon-darwin-arm64 \
 
 The packager refuses to silently reuse a daemon left in an earlier app bundle.
 Build the Go artifact from the same checkout, locally on the Mac or by cross-compiling with `GOOS=darwin GOARCH=arm64 go build`. Compile the AppKit shell on the Mac.
+
+## Signed macOS releases
+
+Fennec's release packaging is implemented in `scripts/package-release-macos.sh`.
+The **Build Fennec macOS Release** workflow in `runta-dev/errand` runs it using
+Errand's existing `apple-release` environment. Apple secrets stay in that
+repository; no private key or certificate password is copied into Fennec.
+
+The workflow checks out an exact Fennec commit and verifies that it belongs to
+`main` before exposing signing credentials to the packaging step. It produces:
+
+- A Developer ID signed, notarized, and stapled `Fennec.app` inside ZIP and DMG.
+- `SHA256SUMS`, notarization results, and `provenance.json` recording the Fennec
+  source commit and the Errand Actions run.
+
+Both the original app and the app extracted from the final ZIP pass signature
+verification, staple validation, and Gatekeeper assessment. CI also builds an
+ad-hoc signed arm64 package in Fennec's regular checks; that package is validation
+only and must not be distributed as a release.
+
+To build a signed artifact, dispatch `.github/workflows/fennec-release.yml` in
+`runta-dev/errand` with `source_sha` set to the full Fennec main commit. `version`
+is optional; by default it uses `0.2.MMDDHHmm` in Asia/Singapore. `CFBundleVersion`
+uses the CI run number separately. Download the verified artifact from that run.
+This workflow does not publish a GitHub Release automatically.
+
+Required values in Errand's `apple-release` environment:
+
+| Type | Name |
+| --- | --- |
+| Secret | `APPLE_CERTIFICATE_BASE64` |
+| Secret | `APPLE_CERTIFICATE_PASSWORD` |
+| Secret | `APPLE_NOTARY_KEY_BASE64` |
+| Variable or secret | `APPLE_NOTARY_KEY_ID` |
+| Variable or secret | `APPLE_NOTARY_ISSUER_ID` |
+
+Signing uses an ephemeral CI keychain, which is deleted along with temporary
+private-key files on completion or failure. The local development helper cache
+and login keychain are not modified by this workflow.
