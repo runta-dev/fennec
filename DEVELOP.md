@@ -156,9 +156,14 @@ Required values in Errand's `apple-release` environment:
 | Secret | `APPLE_CERTIFICATE_BASE64` |
 | Secret | `APPLE_CERTIFICATE_PASSWORD` |
 | Secret | `APPLE_NOTARY_KEY_BASE64` |
+| Secret | `FENNEC_SOURCE_DEPLOY_KEY` (read-only deploy key for the private Fennec repository) |
 | Variable or secret | `APPLE_NOTARY_KEY_ID` |
 | Variable or secret | `APPLE_NOTARY_ISSUER_ID` |
 
 Signing uses an ephemeral CI keychain, which is deleted along with temporary
 private-key files on completion or failure. The local development helper cache
 and login keychain are not modified by this workflow.
+
+The source deploy key cannot push code. The workflow validates that the checked
+out SHA is on Fennec main before the Apple signing step runs. The default Errand
+`GITHUB_TOKEN` is not used to access the private Fennec repository.

@@ -11,7 +11,11 @@ func TestExactUniqueIdentity(t *testing.T) {
 			t.Fatal(got, err)
 		}
 	}
-	for _, input := range []string{"", line + line} {
+	if got, err := resolve(line+line, "Fennec Local Development"); err != nil || got != fingerprint {
+		t.Fatal("duplicate listing of same certificate rejected", got, err)
+	}
+	other := " 2) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA \"Fennec Local Development\"\n"
+	for _, input := range []string{"", line + other} {
 		if _, err := resolve(input, "Fennec Local Development"); err == nil {
 			t.Fatal("ambiguous identity accepted")
 		}
