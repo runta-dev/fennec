@@ -62,8 +62,6 @@ See **Idle**, **Working**, **Needs input**, and **Errored** sessions in the menu
 
 ## Get started
 
-Fennec is currently a **macOS development preview**. For a local installation, follow the [build instructions](DEVELOP.md#development).
-
 1. **Open Fennec** from your menu bar and sign in with your Runta account.
 2. **Choose an agent.** Select **Cloud computer** to enable cloud execution.
 3. **Open your terminal** and launch that agent as usual—for example, `codex`.
