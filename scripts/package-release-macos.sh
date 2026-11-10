@@ -9,7 +9,16 @@ umask 077
 release_work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/fennec-release.XXXXXX")
 release_keychain="$release_work/signing.keychain-db"
 release_password=$(openssl rand -hex 24)
-cleanup() { security delete-keychain "$release_keychain" >/dev/null 2>&1 || true; rm -rf "$release_work"; }
+original_keychains=()
+while IFS= read -r entry; do
+  entry="${entry#*\"}"; entry="${entry%\"*}"
+  [[ -z "$entry" ]] || original_keychains+=("$entry")
+done < <(security list-keychains -d user)
+cleanup() {
+  security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
+  security delete-keychain "$release_keychain" >/dev/null 2>&1 || true
+  rm -rf "$release_work"
+}
 trap cleanup EXIT
 printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$release_work/certificate.p12"
 printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$release_work/notary.p8"
@@ -18,6 +27,7 @@ security set-keychain-settings -lut 21600 "$release_keychain"
 security unlock-keychain -p "$release_password" "$release_keychain"
 security import "$release_work/certificate.p12" -k "$release_keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$release_password" "$release_keychain" >/dev/null
+security list-keychains -d user -s "$release_keychain" "${original_keychains[@]}"
 identity=$(security find-identity -v -p codesigning "$release_keychain" | awk '/"Developer ID Application:/{print $2;exit}')
 [[ "$identity" =~ ^[0-9A-Fa-f]{40}$ ]] || { echo 'Developer ID Application identity missing' >&2; exit 1; }
 version="${FENNEC_VERSION:-0.2.$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')}"
