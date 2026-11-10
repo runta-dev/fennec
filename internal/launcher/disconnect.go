@@ -1,31 +1,32 @@
 package launcher
 
 import (
+	"fennec/internal/terminalnotice"
 	"golang.org/x/term"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 )
 
-const DisconnectedMessage = "Disconnected. Run fen to reattach sessions."
+const DisconnectedMessage = "Session detached.\nRun fen to manage sessions."
 
 func disconnectMessage(styled bool) string {
-	if !styled {
-		return DisconnectedMessage
-	}
-	return "Disconnected. Run \x1b[7m fen \x1b[27m to reattach sessions."
+	return terminalnotice.Detached("", styled)
 }
 
-func terminalDisconnectMessage() string {
+func terminalDisconnectMessage(id string) string {
 	_, noColor := os.LookupEnv("NO_COLOR")
-	return disconnectMessage(term.IsTerminal(int(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb" && !noColor)
+	return terminalnotice.Detached(id, term.IsTerminal(int(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb" && !noColor)
 }
 
 // SSH diagnostics are separate from remote PTY output. Preserve other errors.
 type sshDiagnostics struct {
-	writer       io.Writer
-	pending      string
-	disconnected bool
+	sessionID     string
+	writer        io.Writer
+	pending       string
+	disconnected  bool
+	hadDiagnostic bool
 }
 
 func (w *sshDiagnostics) Write(data []byte) (int, error) {
@@ -46,14 +47,21 @@ func (w *sshDiagnostics) Write(data []byte) (int, error) {
 }
 func (w *sshDiagnostics) line(line string) {
 	lower := strings.ToLower(line)
-	if strings.Contains(lower, "timeout, server ") || strings.Contains(lower, "broken pipe") || strings.Contains(lower, "connection reset by peer") || strings.Contains(lower, "connection to ssh.runta.com closed") || strings.Contains(lower, "connection closed by") {
+	if strings.Contains(lower, "timeout, server ") || strings.Contains(lower, "broken pipe") || strings.Contains(lower, "connection reset by peer") || strings.Contains(lower, "connection to ssh.runta.com closed") || strings.Contains(lower, "connection closed by") || strings.Contains(lower, "connection timed out") || strings.Contains(lower, "operation timed out") || strings.Contains(lower, "connection refused") || strings.Contains(lower, "no route to host") {
 		if !w.disconnected {
-			io.WriteString(w.writer, "\n"+terminalDisconnectMessage()+"\n")
+			io.WriteString(w.writer, "\r"+strings.ReplaceAll(terminalDisconnectMessage(w.sessionID), "\n", "\r\n")+"\r\n")
 			w.disconnected = true
 		}
 		return
 	}
+	w.hadDiagnostic = true
 	io.WriteString(w.writer, line)
+}
+func (w *sshDiagnostics) Finish(err error) {
+	w.Flush()
+	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 255 && !w.disconnected && !w.hadDiagnostic {
+		w.line("Connection closed by remote host\n")
+	}
 }
 func (w *sshDiagnostics) Flush() {
 	if w.pending != "" {

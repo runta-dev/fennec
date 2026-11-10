@@ -177,3 +177,5 @@ Object.assign(translations, {
 });
 Object.assign(translations, {'近30天资源用量':['近30天資源用量','Resource usage · last 30 days','過去30日間のリソース使用量','최근 30일 리소스 사용량']});
 localize();
+Object.assign(translations, {'即将支持':['即將支援','Coming soon','近日対応予定','곧 지원 예정']});
+localize();

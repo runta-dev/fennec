@@ -10,11 +10,11 @@ import (
 // creates a replacement agent or opens an independent SSH connection.
 func reconnectResident(ctx context.Context, receipt launcher.LaunchReceipt, home string, ready func()) error {
 	if err := waitForBroker(ctx); err != nil {
-		return err
+		return launcher.StreamLostError{Receipt: receipt}
 	}
 	reply, err := fenLocalRequest(home, fenServiceRequest{Operation: "resume", SessionID: receipt.SessionID, RuntimeID: receipt.RuntimeID, Address: receipt.Address})
 	if err != nil {
-		return err
+		return launcher.StreamLostError{Receipt: receipt}
 	}
 	if reply.Plan == nil || reply.Plan.StreamPath == "" || reply.Receipt == nil || reply.Receipt.RuntimeID != receipt.RuntimeID || reply.Receipt.SessionID != receipt.SessionID {
 		return fmt.Errorf("existing session reattachment not confirmed")

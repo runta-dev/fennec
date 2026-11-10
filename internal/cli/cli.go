@@ -341,12 +341,12 @@ func Run(arguments []string, output io.Writer) error {
 			defer cancel()
 			server.Shutdown(shutdown)
 		}()
-		fmt.Fprintf(output, "Fennec control surface: http://%s\nScaffold only; no cloud resources or credentials are accessed.\n", *address)
+		fmt.Fprintf(output, "Fennec development preview: http://%s\nRead-only preview; manage cloud sessions with fen or the macOS app.\n", *address)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported command %q; run fennec help (cloud launch is not implemented)", arguments[0])
+		return fmt.Errorf("unsupported command %q; run fennec help", arguments[0])
 	}
 }

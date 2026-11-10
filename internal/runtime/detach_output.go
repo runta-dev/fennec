@@ -2,8 +2,9 @@ package runtime
 
 import (
 	"bytes"
-	"fmt"
+	"fennec/internal/terminalnotice"
 	"io"
+	"strings"
 )
 
 // Replace only Herdr's complete, address-specific detach trailer. Keep PTY
@@ -24,13 +25,11 @@ func (w *detachOutput) Write(data []byte) (int, error) {
 			if _, err := w.output.Write(w.pending[:at]); err != nil {
 				return 0, err
 			}
-			command := func(value string) string {
-				if w.styled {
-					return "\x1b[7m " + value + " \x1b[27m"
-				}
-				return value
+			message := strings.ReplaceAll(terminalnotice.Detached(w.id, w.styled), "\n", "\r\n")
+			if w.styled {
+				message = "\x1b[2K" + strings.ReplaceAll(message, "\r\n", "\r\n\x1b[2K")
 			}
-			if _, err := fmt.Fprintf(w.output, "\r\nSession detached. Run %s to reattach it.\r\nOr run %s to manage sessions.\r\n", command("fen attach "+w.id), command("fen")); err != nil {
+			if _, err := io.WriteString(w.output, "\r\n\r\n"+message+"\r\n"); err != nil {
 				return 0, err
 			}
 			w.pending = w.pending[at+len(marker):]

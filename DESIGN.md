@@ -6,7 +6,7 @@
 
 The first complete vertical slice is: launch a new cloud agent, access an approved local project, prepare task-specific cloud dependencies, verify without local access, disconnect, complete a real task, reattach, and retrieve its changes.
 
-The first usable local slice signs into Runta through a menu-bar popover and discovers local supported agents. This does not adopt existing agent processes or provide cloud provisioning. The Go HTTP surface remains a read-only scaffold; the macOS shell owns the popover lifecycle.
+The macOS menu-bar client signs into Runta and discovers supported agents. The resident Go daemon owns provisioning, account state, shared SSH transport, and session operations. The Swift shell controls presentation through local IPC. The separate HTTP surface is a read-only development preview. Existing local agent processes are not migrated.
 
 ## 2. Architecture
 
@@ -103,7 +103,7 @@ Follow Magpie's compact local utility model: restrained sidebar, discover existi
 
 Use Runta's public brand accent `hsl(30.291 89.565% 54.902%)` (approximately `#f38d25`), with warm neutral surfaces and light/dark themes. Use dark foreground on bright orange; use darker orange text on light tinted surfaces. Keyboard focus, semantic navigation, responsive layout, and visible error states are baseline requirements.
 
-The current lettermark is provisional, not an official fox logo. Selected Magpie agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md.
+The application uses the Fennec fox mark. Selected Magpie agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md.
 
 ## 9. Delivery stages and acceptance
 
@@ -114,11 +114,11 @@ The current lettermark is provisional, not an official fox logo. Selected Magpie
 5. **Results and recovery:** baseline-aware diff retrieval, restart-safe metadata, output replay and unknown-outcome reconciliation.
 6. **Distribution and adapters:** signed/notarized packaging, another CLI adapter, desktop integration only after protocol validation.
 
-Do not launch paid sessions from this scaffold. Do not claim universal harness support or existing-process migration.
+Only launch agents through the authenticated runtime and supported adapter paths. Do not claim universal harness support or existing-process migration. The acceptance criteria above do not imply every roadmap capability has shipped.
 
 ## 10. Validation
 
-`make test` covers API restrictions, static asset delivery, CLI failures, and incomplete/duplicate readiness evidence. `make check` runs Go vet and formatting checks; CI also parses frontend JavaScript. No cloud end-to-end coverage exists until a real adapter is implemented.
+`make test` covers account/control IPC, runtime and terminal operations, transport, session identity, and readiness evidence. `make check` runs Go vet and formatting checks; `make check-ui` validates frontend behavior. Operational end-to-end tests live in `internal/ope2e` and are separate from unit checks.
 
 Future integration tests must cover connector disconnect during side effects, credentials expiry, budget termination, denied path traversal, symlink escapes, project conflicts, and a complete cloud-only continuation after preparation.
 
@@ -128,7 +128,7 @@ The product entry is a transient, titleless popover anchored to the menu-bar ico
 
 The user signs in through Runta device-code authorization. Supported agents are discovered automatically on this Mac. Cloud takeover is explicitly user-initiated, after authentication and project selection; signing in or detecting an agent never enables it automatically. No SSH aliases, ports or transport diagnostics belong in onboarding.
 
-Current native implementation: an arrowless, animation-free menu-bar NSPanel with a bundled WKWebView self-rendered UI, compact toolbar and segmented tabs, expandable agent cards, local Claude Code/Codex executable discovery, login request and failure state. The UI uses original HTML/CSS and Runta orange; the native bridge exposes only fixed actions. Production does not yet register the Fennec client identity. Browser consent, polling, Keychain credentials, authenticated account state and takeover remain incomplete. The earlier SSH window was a rejected prototype and has been removed.
+Current native implementation: an arrowless menu-bar NSPanel with a bundled WKWebView UI, segmented navigation and execution-location controls, agent discovery, session management, account usage, and settings. The Go control daemon owns device authorization, Keychain access through a stable helper, account state, and cloud takeover. Swift presents state and sends typed control requests. Local animations respect reduced-motion settings.
 
 Device authorization update: explicitly reuse Errand client_id `runta_crew` with device name `Fennec for Mac`. Implemented browser verification, bounded polling with slow_down handling, and Fennec-owned Keychain storage. Authorization endpoint acceptance verified live; user-approved token exchange and restart restoration still require end-to-end acceptance. Earlier statements about an unregistered client refer to the replaced `fennec` client_id.
 
@@ -136,9 +136,9 @@ Device authorization update: explicitly reuse Errand client_id `runta_crew` with
 
 On first authenticated login, reconcile one durable runtime per user, shared by all that user's supported agents. Runtime ownership must use authenticated user ID, not email/display name; the backend must enforce atomic uniqueness across devices. Cloud Agents v2's one-agent-per-runtime model is not the provisioning primitive for this feature.
 
-Preparation stages: allocate/reuse, wait for runtime readiness, reuse each existing cloud agent binary, install the publisher's latest stable release only when that binary is missing, install pinned Magpie, configure global agent routing, verify. Local CLI versions are not synchronized, compared or used to gate new sessions. New cloud installations are staged and verified before atomically replacing the executable alias; existing sessions retain their original executable. UI progress is completed stages, never a timer-based percentage. Failed stages remain retryable; ready requires the binary, gateway health and every selected agent's routing. No local provider credentials are implicitly transferred. Missing provider authorization blocks setup. Agent execution remains explicitly user-triggered even though runtime preparation begins automatically.
+Preparation stages: allocate/reuse, wait for runtime readiness, reuse each existing cloud agent binary, install the publisher's latest stable release only when that binary is missing, install pinned Magpie, configure global agent routing, verify. Local CLI versions are not synchronized, compared or used to gate new sessions. New cloud installations are staged and verified before atomically replacing the executable alias; existing sessions retain their original executable. UI progress is completed stages, never a timer-based percentage. Failed stages remain retryable; ready requires the binary, gateway health and every selected agent's routing. Supported local provider credential stores and model preferences are synchronized through authenticated SSH, with conflict handling for remotely refreshed credentials. Missing provider authorization blocks the affected agent route. Agent execution remains explicitly user-triggered even though runtime preparation begins automatically.
 
-`internal/setup` implements the reconciliation contract and failure ordering. Production Runtime backend, exact-version discovery, daemon IPC and native UI binding remain unimplemented; this module is not yet invoked on login. Pin Magpie artifacts and verify checksums before installation. Magpie currently uses MIT (verified from upstream LICENSE), not Apache-2.0. Preserve transitive notices when packaging its binary.
+`internal/setup` implements reconciliation and is invoked by the control daemon during runtime preparation. Existing cloud agent binaries are reused; missing binaries are installed without requiring local/cloud version parity. Preparation checkpoints skip unchanged work after health checks. Pin Magpie artifacts and verify checksums before installation. Magpie uses MIT; preserve transitive notices when packaging its binary.
 
 Connector authorization: paired SSH devices request native Popup approval by
 default for local exec, SFTP and forwarding. Allow once and Deny apply to one

@@ -52,10 +52,11 @@ func attachShared(ctx context.Context, runtimeID, address, sessionID, directory,
 	command := exec.CommandContext(ctx, "/usr/bin/ssh", args[1:]...)
 	command.Stdin = os.Stdin
 	command.Stdout = terminalOutput{titles, clear}
-	diagnostics := &sshDiagnostics{writer: terminalOutput{os.Stderr, clear}}
+	diagnostics := &sshDiagnostics{sessionID: sessionID, writer: terminalOutput{os.Stderr, clear}}
 	defer diagnostics.Flush()
 	command.Stderr = diagnostics
 	err = command.Run()
+	diagnostics.Finish(err)
 	if status, ok := err.(*exec.ExitError); ok {
 		return RemoteExitError{Code: max(1, status.ExitCode())}
 	}
@@ -76,10 +77,11 @@ func AttachNative(ctx context.Context, receipt LaunchReceipt, directory string, 
 	command := exec.CommandContext(ctx, "/usr/bin/ssh", args[1:]...)
 	command.Stdin = os.Stdin
 	command.Stdout = terminalOutput{titles, clear}
-	diagnostics := &sshDiagnostics{writer: terminalOutput{os.Stderr, clear}}
+	diagnostics := &sshDiagnostics{sessionID: receipt.SessionID, writer: terminalOutput{os.Stderr, clear}}
 	defer diagnostics.Flush()
 	command.Stderr = diagnostics
 	err = command.Run()
+	diagnostics.Finish(err)
 	if exit, ok := err.(*exec.ExitError); ok {
 		return RemoteExitError{Code: max(1, exit.ExitCode())}
 	}
