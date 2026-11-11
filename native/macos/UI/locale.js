@@ -181,7 +181,7 @@ Object.assign(translations, {'即将支持':['即將支援','Coming soon','近�
 localize();
 translations['在浏览器打开']=['在瀏覽器開啟','Open in browser','ブラウザで開く','브라우저에서 열기'];
 Object.assign(translations, {
- '可选：为云端智能体切换模型。默认使用各智能体自己的登录凭据。':['可選：為雲端智慧代理切換模型。預設使用各代理自己的登入憑據。','Optional: switch models for cloud agents. Native agent credentials are used by default.','任意：クラウドエージェントのモデルを切り替えます。既定では各エージェントの認証情報を使用します。','선택 사항: 클라우드 에이전트의 모델을 전환합니다. 기본적으로 각 에이전트의 로그인 정보를 사용합니다.'],
+ '为云端智能体自由选择模型。':['為雲端智慧代理自由選擇模型。','Choose any model for your cloud agents.','クラウドエージェントのモデルを自由に選べます。','클라우드 에이전트의 모델을 자유롭게 선택하세요.'],
  '云端模型':['雲端模型','Cloud model','クラウドモデル','클라우드 모델'],
  '选择模型':['選擇模型','Choose a model','モデルを選択','모델 선택'],
  '请选择云端模型':['請選擇雲端模型','Choose a cloud model','クラウドモデルを選択してください','클라우드 모델을 선택하세요'],

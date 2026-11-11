@@ -313,3 +313,5 @@ main{min-height:0}
 #preferences .license-notices .disclosure-arrow{order:2;margin-left:auto}
 #preferences .integration-description{margin:0;padding:0 12px 12px 40px;font-size:11px;line-height:1.5;color:var(--muted);white-space:normal}
 #preferences>.card+.card{margin-top:9px}
+/* Official yetone/magpie build/icon/magpie-small.svg; bundled MIT notice applies. */
+#preferences .magpie-icon{fill:currentColor;stroke:none}
