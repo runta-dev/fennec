@@ -56,3 +56,26 @@ func EntryPath(id string) (string, error) {
 	}
 	return "", os.ErrNotExist
 }
+
+// ManagedEntryPaths includes inactive toolchain versions, not only the first
+// executable currently on PATH. Sidecars identify entries owned by Fennec.
+func ManagedEntryPaths(home string) []string {
+	seen := map[string]bool{}
+	var result []string
+	for _, dir := range searchPaths(home) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+		for _, id := range []string{"claude", "codex", "pi", "opencode"} {
+			path := filepath.Join(dir, id)
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			if _, err := os.Lstat(path + ".fennec-original.json"); err == nil {
+				result = append(result, path)
+			}
+		}
+	}
+	return result
+}
