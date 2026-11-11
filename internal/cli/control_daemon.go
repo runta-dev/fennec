@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fennec/internal/control"
+	"fennec/internal/installation"
 	"fennec/internal/launchprofile"
 	"fennec/internal/uninstall"
 	"fmt"
@@ -40,6 +41,16 @@ func ensureControl(ctx context.Context) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
+	}
+	if runtime.GOOS == "darwin" && filepath.Base(filepath.Dir(binary)) == "MacOS" {
+		location, err := installation.Inspect(binary, home)
+		if err != nil {
+			return err
+		}
+		if location.Required {
+			return fmt.Errorf("install Fennec in Applications before starting it")
+		}
+		binary = filepath.Join(location.Application, "Contents/MacOS/fen")
 	}
 	packaged := runtime.GOOS == "darwin" && (filepath.Base(binary) == "fen" || filepath.Base(binary) == "fennec-daemon") && filepath.Base(filepath.Dir(binary)) == "MacOS" && !strings.HasPrefix(binary, "/tmp/") && !strings.HasPrefix(binary, os.TempDir())
 	plist := filepath.Join(home, "Library/LaunchAgents", daemonLabel+".plist")

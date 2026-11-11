@@ -205,6 +205,7 @@ const fenControlHelp = `Fennec — one daemon, UI and CLI clients
 
 Usage: fen [attach [session-id]]
 	fen start
+	fen install [--check] [--replace] [--destination <app-path>]
 	fen uninstall --dry-run
 	fen uninstall [--yes] [--delete-cloud --confirm-runtime <id>]
   fen daemon start|stop|status

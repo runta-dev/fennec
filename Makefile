@@ -67,3 +67,9 @@ test-e2e-performance:
 test-e2e-launchd-demand:
 	test "$$(uname -s)" = Darwin
 	FENNEC_LAUNCHD_E2E=1 go test -count=1 -timeout=30s -v ./internal/cli -run '^TestLaunchAgentWaitsForExplicitDemand$$'
+
+.PHONY: test-e2e-installation
+FENNEC_ACCEPTANCE_APP ?= $(CURDIR)/build/Fennec.app
+test-e2e-installation:
+	test "$$(uname -s)" = Darwin
+	go run ./cmd/check-installation --app "$(FENNEC_ACCEPTANCE_APP)"

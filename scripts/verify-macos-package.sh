@@ -3,6 +3,7 @@ set -euo pipefail
 app="$1"
 version="$2"
 [[ -d "$app" ]]
+go run ./cmd/check-bundle-permissions "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" == com.runta.fennec ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" == 13.0 ]]
@@ -22,4 +23,5 @@ done
 [[ -s "$app/Contents/Resources/control-build-id" ]]
 codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/fennec-daemon" help >/dev/null
+"$app/Contents/MacOS/fen" install --check | jq -e '(.source | ascii_downcase | endswith(".app")) and (.application | ascii_downcase | endswith(".app")) and (.required | type == "boolean")' >/dev/null
 printf 'Verified Fennec %s (arm64)\n' "$version"

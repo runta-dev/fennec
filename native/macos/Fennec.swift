@@ -27,6 +27,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var stateTimer: Timer?
     private var stateLoading = false
 	private var controlReady = false
+	private var installationPending = true
+	private var installedApplicationPath = Bundle.main.bundlePath
 	private var controlStarting = false
 	private var sessionServiceReady = false
 	private var viewRevision = 0
@@ -79,9 +81,15 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         item.button?.action = #selector(statusItemClicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         buildPopup()
-	    connectControl()
-	    stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
-	    toggle()
+	    prepareApplicationInstallation { [weak self] application in
+	        guard let self,let application else{return}
+	        self.control.useInstalledApplication(application)
+	        self.installedApplicationPath=application
+	        self.installationPending=false
+	        self.connectControl()
+	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
+	        self.toggle()
+	    }
 	}
 
 	private func connectControl() {
@@ -125,6 +133,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+	    if installationPending{return false}
         if !popup.isVisible && popupPresentationID == nil { toggle() }
         return false
     }
@@ -139,6 +148,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     @objc private func statusItemClicked() {
+	    if installationPending{NSApp.activate(ignoringOtherApps:true);return}
         if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
             animateFoxIcon()
             popupPresentationID = nil
@@ -246,7 +256,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         // Positional arguments preserve bundle paths without shell interpolation.
-        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; /usr/bin/open \"$2\"", "fennec-restart", String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath]
+        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; /usr/bin/open -n \"$2\" --args --installed-application \"$2\"", "fennec-restart", String(ProcessInfo.processInfo.processIdentifier), installedApplicationPath]
         do { try task.run(); NSApp.terminate(nil) }
         catch { let alert = NSAlert(error: error); alert.runModal() }
     }
@@ -408,7 +418,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let outputWindow = TerminalOutputWindow()
             terminalOutputWindow = outputWindow
             terminalTransport = transport; terminalGeneration = generation
-            let executable = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("fen")
+            let executable = URL(fileURLWithPath:installedApplicationPath).appendingPathComponent("Contents/MacOS/fen")
             do {
                 try transport.start(executable: executable, arguments: ["fen","attach",sessionID], cols: UInt16(cols), rows: UInt16(rows), output: { [weak self] bytes in
                     for offset in stride(from: 0, to: bytes.count, by: 16384) {

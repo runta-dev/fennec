@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+# Application contents are public software, even when the release caller uses
+# umask 077 to protect its signing material outside the bundle.
+umask 022
 cd "$(dirname "$0")/.."
 app="${FENNEC_BUILD_DIR:-$PWD/build}/Fennec.app"
 identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
@@ -82,6 +85,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt "$app/Contents/Resources/licenses/"
+/bin/chmod -R -P a+rX,go-w "$app"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same
   # certificate+identifier requirement already used for the native shell.

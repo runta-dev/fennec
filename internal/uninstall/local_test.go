@@ -101,3 +101,37 @@ func TestUninstallIncludesRegisteredDevelopmentAppFromAnotherCopy(t *testing.T) 
 		t.Fatal("active development installation left behind")
 	}
 }
+
+func TestInstallerBackupsAreIncludedWithoutDeletingOtherApps(t *testing.T) {
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	source := fixtureApp(t, filepath.Join(home, "Applications/Fennec.app"), "com.runta.fennec")
+	backup := filepath.Join(home, "Applications/.fennec-update-fixture/Fennec.app")
+	fixtureApp(t, backup, "com.runta.fennec")
+	other := filepath.Join(home, "Applications/.fennec-update-other/Fennec.app")
+	fixtureApp(t, other, "other.application")
+	plan, err := DiscoverLocal(home, source, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, app := range plan.Apps {
+		if app == other {
+			t.Fatal("unrelated app included")
+		}
+		if app == backup {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("installer backup omitted")
+	}
+	if err := RemoveLocalApps([]string{backup}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(backup)); !os.IsNotExist(err) {
+		t.Fatal("empty installer backup directory retained")
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatal("unrelated backup removed")
+	}
+}

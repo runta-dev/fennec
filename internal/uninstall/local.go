@@ -29,7 +29,7 @@ var localData = []string{
 
 func BundleID(app string) (string, error) {
 	info, err := os.Lstat(app)
-	if err != nil || !info.IsDir() || !strings.HasSuffix(app, ".app") {
+	if err != nil || !info.IsDir() || !strings.EqualFold(filepath.Ext(app), ".app") {
 		return "", fmt.Errorf("Fennec application bundle required")
 	}
 	file, err := os.Open(filepath.Join(app, "Contents/Info.plist"))
@@ -91,6 +91,14 @@ func DiscoverLocal(home, executable string, entries []string, zdot, xdg string) 
 	candidates := []string{plan.App, filepath.Join(home, "Applications/Fennec.app"), "/Applications/Fennec.app"}
 	if registered := registeredApplication(home); registered != "" {
 		candidates = append(candidates, registered)
+	}
+	for _, candidate := range append([]string{}, candidates...) {
+		parent := filepath.Dir(candidate)
+		if strings.HasPrefix(filepath.Base(parent), ".fennec-update-") {
+			parent = filepath.Dir(parent)
+		}
+		matches, _ := filepath.Glob(filepath.Join(parent, ".fennec-update-*", "Fennec.app"))
+		candidates = append(candidates, matches...)
 	}
 	// Development archives are scoped to the current app's build directory.
 	caches := map[string]bool{}
@@ -200,6 +208,9 @@ func RemoveLocalApps(apps []string) error {
 		if err := os.RemoveAll(app); err != nil {
 			return err
 		}
+		if parent := filepath.Dir(app); strings.HasPrefix(filepath.Base(parent), ".fennec-update-") {
+			_ = os.Remove(parent)
+		} // Only remove an empty installer backup directory.
 	}
 	return nil
 }

@@ -4,14 +4,17 @@ import Darwin
 // Native transport and presentation adapter only. Business state and secrets
 // remain in the Go daemon, independently of this process's lifetime.
 final class ControlClient {
+	private var applicationURL = Bundle.main.bundleURL
+	func useInstalledApplication(_ path:String){applicationURL=URL(fileURLWithPath:path)}
     private let queue = DispatchQueue(label: "com.runta.fennec.control", attributes: .concurrent)
     private let socketPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/fennec/ipc/control.sock").path
     private func failure(_ text: String, code: String = "") -> NSError { NSError(domain: "FennecControl", code: 1, userInfo: [NSLocalizedDescriptionKey: text, "FennecCode":code]) }
 
     func start(_ completion: @escaping (Bool) -> Void) {
+	    let application = applicationURL
         queue.async {
             let process = Process()
-            process.executableURL = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("fen")
+            process.executableURL = application.appendingPathComponent("Contents/MacOS/fen")
             process.arguments = ["start"]
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = FileHandle.nullDevice

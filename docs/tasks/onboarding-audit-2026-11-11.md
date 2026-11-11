@@ -156,3 +156,40 @@ Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift t
 写入，重复请求必须立即返回同一 authorizing epoch；释放写入后只存在一次授权。
 `/tmp/fennec-keychain-coalescing-tests.log` 中 account race 测试通过；`make check`
 通过。该测试未触发真实 Keychain 弹窗。前一提交 b8cbfd2 的 CI 42968246384 已通过。
+
+## 后续：从 DMG 安装与分发权限
+
+发现两个实际缺口：
+
+- 原先可以从只读/临时 App 路径尝试注册后台，没有完整安装引导。
+- 已发布 0.2.11111055 的 ZIP 解包后，App/Contents/可执行文件为 0700，UI
+  资源为 0600：发布脚本保护签名材料的 umask 077 传播到了应用内容。
+  这不是可供其他本机用户正常读取/执行的应用包权限。
+
+本轮实现：
+
+- Go 安装检查与复制逻辑，UI 启动前检查位置；需要安装时提供安装/选择目录/
+  退出入口和进度窗口。CLI 对应 `fen install --check` 与 `fen install`。
+- 签名通过后才发布复制结果；拒绝覆盖同名的其他应用，路径不能重叠或通过
+  symlink 递归进入源 App。发布失败会尝试恢复旧版本；并发目标不被覆盖。
+- 旧 bundle 保留在安装目录旁的 `.fennec-update-*`，保护仍映射旧 executable
+  的 CLI。卸载清单包含已验证的安装备份，只移除空的备份父目录。
+- 后台、内嵌终端和重启使用经过签名/原生 executable 摘要匹配的已知安装副本。
+  UI 资源仍在自身 bundle 内。没有逆推出 Gatekeeper 的原始路径、清除 quarantine
+  或关闭系统安全检查。设计参考 [Apple App Translocation Notes](https://developer.apple.com/forums/thread/724969)。
+- 构建明确使用 public bundle 权限，并在签名/公证相关步骤检查；签名材料仍在
+  bundle 外的私有目录。发布包的目录/程序为 0755、普通资源为 0644。
+- 新增 `cmd/check-bundle-permissions`；发布流水线还会挂载最终 DMG，检查卷根目录、
+  包内权限、代码签名、staple、Gatekeeper 及 CLI 安装检查，而非只检查 staging。
+- `make test-e2e-installation FENNEC_ACCEPTANCE_APP=/path/Fennec.app` 用 Go 驱动实际
+  只读磁盘镜像、签名复制、升级备份和权限检查。子进程只使用系统 PATH。
+
+证据：`/tmp/fennec-install-final-gate-tests.log`、
+`/tmp/fennec-install-final-gate-verify.log`、
+`/tmp/fennec-install-final-gate-probe.json`。
+受限 umask 和系统 PATH 下的隔离复制测试通过，当前 LaunchAgent 注册内容未变。
+未安装到真实 Applications、未启动新 UI/后台、未访问 Keychain 或云端资源。
+
+这仍不是干净设备的最终验收。Safari 下载产生的 quarantine、真实 Gatekeeper
+首开、安装 UI 的实际点击/移交、其他 OS 用户的运行、系统登录/重启，以及最终
+公证 DMG 的完整首次使用，都仍需按 TODO 验证；本轮没有发布新的正式 DMG。

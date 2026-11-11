@@ -167,3 +167,19 @@ and login keychain are not modified by this workflow.
 The source deploy key cannot push code. The workflow validates that the checked
 out SHA is on Fennec main before the Apple signing step runs. The default Errand
 `GITHUB_TOKEN` is not used to access the private Fennec repository.
+
+## Install-location and distribution checks
+
+`fen install --check` inspects the running bundle without starting a daemon.
+`fen install [--replace] [--destination /absolute/path/Fennec.app]` copies a
+verified bundle and retains the previous bundle for still-running clients.
+The native first-launch UI uses the same Go installer. Runtime installation uses
+stock macOS tools; it does not invoke the developer Go or Swift toolchain.
+
+Run `make test-e2e-installation FENNEC_ACCEPTANCE_APP=/path/Fennec.app` on macOS
+for a disposable read-only image, signature/copy/upgrade/permissions probe with
+only system directories in child PATH. This does not replace Safari/quarantine,
+fresh-user login, Keychain, reboot, or real cloud-session acceptance.
+
+`check-bundle-permissions` gates public application/volume permissions in the
+release pipeline. Signing key material remains private outside the app bundle.
