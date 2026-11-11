@@ -688,7 +688,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func mutate(_ method: String, _ params: [String:Any] = [:], done: ((Bool,Any?) -> Void)? = nil) {
-	    guard controlReady else{return}
+	    guard controlReady else{done?(false,nil);return}
 	    viewRevision += 1
         let epoch = accountEpoch
         control.call(method, params) { [weak self] result in
@@ -740,14 +740,32 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
                     }
                 }
-                if let requestID=launchRequests[key] { if !requestID.isEmpty {start(requestID)} }
-                else {
-                    launchRequests[key]=""
-                    mutate("sessions.allocate") { [weak self] success,result in
+                let allocate: () -> Void = { [weak self] in
+                    guard let self else{return}
+                    self.launchRequests[key]=""
+                    self.mutate("sessions.allocate") { [weak self] success,result in
                         if success,let allocation=result as? [String:Any],let requestID=allocation["session_id"] as? String {start(requestID)}
                         else {self?.launchRequests.removeValue(forKey:key);self?.render("renderAgentLoginStarted",[NSNull(),agent])}
                     }
                 }
+                if let requestID=launchRequests[key] {
+                    if !requestID.isEmpty {
+                        mutate("agent.login.finish",["agent":agent,"session_id":requestID]) { [weak self] success,value in
+                            guard let self else{return}
+                            if success,let state=value as? [String:Any] {
+                                if state["signed_in"] as? Bool == true {
+                                    self.launchRequests.removeValue(forKey:key)
+                                    self.render("renderAgentLoginStarted",[NSNull(),agent])
+                                    self.render("resetNativeAccountViews")
+                                    return
+                                }
+                                if state["running"] as? Bool == false {allocate();return}
+                            }
+                            // Unknown outcomes retain the same launch identity.
+                            start(requestID)
+                        }
+                    }
+                } else {allocate()}
             case "finish-agent-login:":
                 mutate("agent.login.finish",params) { [weak self] success,value in
                     if let state=value as? [String:Any],state["signed_in"] as? Bool==true || state["running"] as? Bool==false {self?.launchRequests.removeValue(forKey:"login:"+(params["agent"] as? String ?? ""))}

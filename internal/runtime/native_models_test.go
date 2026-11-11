@@ -101,3 +101,33 @@ func TestResidentListingCarriesOnlyPublicLoginIdentities(t *testing.T) {
 		t.Fatal("completion missing from resident listing")
 	}
 }
+
+func TestNativeLoginStatusRequiresConfirmedTerminalState(t *testing.T) {
+	for _, state := range []string{"live", "finished", "", "unknown", "reconnecting"} {
+		t.Run(state, func(t *testing.T) {
+			r := LocalRuntime{Home: t.TempDir(), Run: func(context.Context, ...string) ([]byte, error) {
+				return json.Marshal(LocalTerminal{Address: "t1", State: state, Labels: map[string]string{"fennec.session": "login-fixture", "fennec.agent": "codex"}})
+			}}
+			raw, err := r.Operation(context.Background(), LocalOperation{Kind: "native_login_status", Address: "t1", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}})
+			if state != "live" && state != "finished" {
+				if err == nil {
+					t.Fatal("unknown terminal state could start another login", string(raw))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Running  bool `json:"running"`
+				SignedIn bool `json:"signed_in"`
+			}
+			if err = json.Unmarshal(raw, &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Running != (state == "live") || result.SignedIn {
+				t.Fatal(string(raw))
+			}
+		})
+	}
+}

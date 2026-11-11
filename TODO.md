@@ -90,8 +90,9 @@ Development evidence and outstanding work are in the
 ## Release gates and evidence
 
 - [ ] Maintain a clean-environment matrix: fresh users, existing native-agent logins,
-  users without agent logins, and upgrades from the previous official DMG. Default to
-  no Magpie and separately test explicit opt-in.
+  users without agent logins, and upgrades from the previous official DMG. Verify
+  Magpie is off when absent, enabled on first initialization when actually installed,
+  and never reenabled over a saved off choice. Also test explicit opt-in separately.
 - [ ] Use repeatable Go tools/tests for the real installed paths, with dedicated accounts,
   sandboxes, temporary credentials, and labeled sessions. Missing conditions must fail
   or be recorded as unverified, never skipped and reported as a pass.
@@ -112,7 +113,8 @@ Development evidence and outstanding work are in the
 Existing implementation and historical evidence:
 [native credentials](docs/native-agent-credentials.md),
 [macOS acceptance](docs/macos-acceptance.md), and
-[control plane/performance](docs/tasks/go-control-plane.md).
+[control plane/performance](docs/tasks/go-control-plane.md), and
+[model reads and switch acceptance](docs/tasks/model-read-acceptance.md).
 Historical results are not acceptance of a newer build.
 
 ## Deferred compatibility: cmux Computer Use

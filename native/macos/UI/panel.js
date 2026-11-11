@@ -238,7 +238,7 @@ window.renderAgents = agents => {
           const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label',"[[i18n:ui.refresh_account]]");refresh.title="[[i18n:ui.refresh_account]]";refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
           refresh.onclick=()=>{loadNativeAccount(agent.id,location,true);refresh.disabled=true;};accountRow.append(refresh);
-          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
+          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;window.configureAgentLoginControl?.(login,!!route);login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
           card.append(accountRow);
         }
         detail.append(card);

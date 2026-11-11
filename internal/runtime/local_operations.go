@@ -113,6 +113,9 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 			}
 			return json.Marshal(map[string]bool{"canceled": true})
 		}
+		if terminal.State != "live" && terminal.State != "finished" {
+			return nil, fmt.Errorf("login terminal state unavailable")
+		}
 		root, selected, err := setup.NativeAccountRoot(r.Home, o.Login.Agent)
 		if err != nil {
 			return nil, err
