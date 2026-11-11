@@ -1,434 +1,1960 @@
 {
-  "设置": [
-    "設定",
-    "Settings",
-    "設定",
-    "설정"
-  ],
-  "通用": [
-    "一般",
-    "General",
-    "一般",
-    "일반"
-  ],
-  "语言": [
-    "語言",
-    "Language",
-    "言語",
-    "언어"
-  ],
-  "外观": [
-    "外觀",
-    "Appearance",
-    "外観",
-    "화면"
-  ],
-  "跟随系统": [
-    "跟隨系統",
-    "System",
-    "システム",
-    "시스템"
-  ],
-  "浅色": [
-    "淺色",
-    "Light",
-    "ライト",
-    "라이트"
-  ],
-  "深色": [
-    "深色",
-    "Dark",
-    "ダーク",
-    "다크"
-  ],
-  "智能体": [
-    "智慧代理",
-    "Agents",
-    "エージェント",
-    "에이전트"
-  ],
-  "云端会话": [
-    "雲端工作階段",
-    "Cloud sessions",
-    "クラウドセッション",
-    "클라우드 세션"
-  ],
-  "账户": [
-    "帳戶",
-    "Account",
-    "アカウント",
-    "계정"
-  ],
-  "退出": [
-    "結束",
-    "Quit",
-    "終了",
-    "종료"
-  ],
-  "登录 Runta": [
-    "登入 Runta",
-    "Sign in to Runta",
-    "Runta にログイン",
-    "Runta 로그인"
-  ],
-  "登录 Runta ↗": [
-    "登入 Runta ↗",
-    "Sign in to Runta ↗",
-    "Runta にログイン ↗",
-    "Runta 로그인 ↗"
-  ],
-  "刷新智能体": [
-    "重新整理智慧代理",
-    "Refresh agents",
-    "エージェントを更新",
-    "에이전트 새로 고침"
-  ],
-  "账户设置": [
-    "帳戶設定",
-    "Account settings",
-    "アカウント設定",
-    "계정 설정"
-  ],
-  "本机": [
-    "本機",
-    "This Mac",
-    "この Mac",
-    "이 Mac"
-  ],
-  "未安装": [
-    "未安裝",
-    "Not installed",
-    "未インストール",
-    "설치되지 않음"
-  ],
-  "运行位置": [
-    "執行位置",
-    "Run location",
-    "実行場所",
-    "실행 위치"
-  ],
-  "已登录": [
-    "已登入",
-    "Signed in",
-    "ログイン済み",
-    "로그인됨"
-  ],
-  "云端接管即将开放": [
-    "雲端接管即將開放",
-    "Cloud takeover coming soon",
-    "クラウド移行は近日公開",
-    "클라우드 전환 준비 중"
-  ],
-  "登录后开启云端接管": [
-    "登入後開啟雲端接管",
-    "Sign in for cloud takeover",
-    "ログインしてクラウドへ移行",
-    "로그인 후 클라우드로 전환"
-  ],
-  "云端接管，需先登录": [
-    "雲端接管，需先登入",
-    "Cloud takeover requires sign-in",
-    "クラウド移行にはログインが必要",
-    "클라우드 전환에는 로그인 필요"
-  ],
-  "还没有云端会话": [
-    "尚無雲端工作階段",
-    "No cloud sessions yet",
-    "クラウドセッションはありません",
-    "클라우드 세션이 없습니다"
-  ],
-  "查看智能体": [
-    "查看智慧代理",
-    "View agents",
-    "エージェントを見る",
-    "에이전트 보기"
-  ],
-  "在浏览器中授权，即可登录 Runta。": [
-    "在瀏覽器中授權，即可登入 Runta。",
-    "Authorize in your browser to sign in.",
-    "ブラウザで承認してログインします。",
-    "브라우저에서 승인하여 로그인하세요."
-  ],
-  "活跃会话": [
-    "使用中的工作階段",
-    "Active sessions",
-    "アクティブなセッション",
-    "활성 세션"
-  ],
-  "暂无活跃会话": [
-    "目前無使用中的工作階段",
-    "No active sessions",
-    "アクティブなセッションはありません",
-    "활성 세션이 없습니다"
-  ],
-  "运行中": [
-    "執行中",
-    "Running",
-    "実行中",
-    "실행 중"
-  ],
-  "准备中": [
-    "準備中",
-    "Preparing",
-    "準備中",
-    "준비 중"
-  ],
-  "正在加载…": [
-    "正在載入…",
-    "Loading…",
-    "読み込み中…",
-    "불러오는 중…"
-  ],
-  "正在连接 Runta…": [
-    "正在連線 Runta…",
-    "Connecting to Runta…",
-    "Runta に接続中…",
-    "Runta 연결 중…"
-  ],
-  "加载失败，请点击刷新重试。": [
-    "載入失敗，請重新整理。",
-    "Could not load. Refresh to retry.",
-    "読み込み失敗。更新してください。",
-    "불러오지 못했습니다. 새로 고침하세요."
-  ],
-  "登录已过期，请重新登录。": [
-    "登入已過期，請重新登入。",
-    "Session expired. Sign in again.",
-    "再度ログインしてください。",
-    "세션이 만료되었습니다. 다시 로그인하세요."
-  ],
-  "无法读取登录凭证，请重新登录。": [
-    "無法讀取憑證，請重新登入。",
-    "Cannot read credentials. Sign in again.",
-    "認証情報を読み込めません。再度ログインしてください。",
-    "인증 정보를 읽을 수 없습니다. 다시 로그인하세요."
-  ],
-  "列表响应格式异常，请稍后重试。": [
-    "清單格式異常，請稍後重試。",
-    "Unexpected response. Try again later.",
-    "応答形式が不正です。後でもう一度お試しください。",
-    "응답 형식이 올바르지 않습니다. 나중에 다시 시도하세요."
-  ],
-  "无法发起登录，请稍后重试。": [
-    "無法啟動登入，請稍後重試。",
-    "Could not start sign-in. Try again.",
-    "ログインを開始できません。再試行してください。",
-    "로그인을 시작할 수 없습니다. 다시 시도하세요."
-  ],
-  "授权码已过期，请重新登录。": [
-    "授權碼已過期，請重新登入。",
-    "Code expired. Sign in again.",
-    "コードの期限切れです。再度ログインしてください。",
-    "코드가 만료되었습니다. 다시 로그인하세요."
-  ],
-  "授权已取消，可重新登录。": [
-    "授權已取消，可重新登入。",
-    "Authorization cancelled. You can sign in again.",
-    "承認がキャンセルされました。",
-    "승인이 취소되었습니다. 다시 로그인할 수 있습니다."
-  ],
-  "登录连接中断，请重试。": [
-    "登入連線中斷，請重試。",
-    "Connection interrupted. Try again.",
-    "接続が切断されました。再試行してください。",
-    "연결이 끊겼습니다. 다시 시도하세요."
-  ],
-  "授权完成，但无法保存到钥匙串，请重试。": [
-    "授權完成，但無法儲存至鑰匙圈。",
-    "Could not save credentials to Keychain. Try again.",
-    "キーチェーンへの保存に失敗しました。",
-    "키체인에 저장하지 못했습니다. 다시 시도하세요."
-  ],
-  "请在浏览器确认授权码：": [
-    "請在瀏覽器確認授權碼：",
-    "Confirm this code in your browser: ",
-    "ブラウザでコードを確認：",
-    "브라우저에서 코드 확인: "
-  ],
-  "已读取最近 250 个智能体": [
-    "已讀取最近 250 個智慧代理",
-    "Showing the latest 250 agents",
-    "最新の250件を表示",
-    "최근 에이전트 250개 표시"
-  ],
-  "会话": [
-    "工作階段",
-    "Sessions",
-    "セッション",
-    "세션"
-  ],
-  "登录后查看会话": [
-    "登入後查看工作階段",
-    "Sign in to view sessions",
-    "ログインしてセッションを表示",
-    "로그인하여 세션 보기"
-  ],
-  "正在分配云电脑": [
-    "正在配置雲端電腦",
-    "Allocating cloud computer",
-    "クラウドコンピューターを確保中",
-    "클라우드 컴퓨터 할당 중"
-  ],
-  "正在启动云电脑": [
-    "正在啟動雲端電腦",
-    "Starting cloud computer",
-    "クラウドコンピューターを起動中",
-    "클라우드 컴퓨터 시작 중"
-  ],
-  "正在连接云电脑": [
-    "正在連線雲端電腦",
-    "Connecting to cloud computer",
-    "クラウドコンピューターに接続中",
-    "클라우드 컴퓨터 연결 중"
-  ],
-  "环境已启动，等待安装智能体": [
-    "環境已啟動，等待安裝智慧代理",
-    "Environment started; agent installation pending",
-    "環境起動済み・エージェントのインストール待ち",
-    "환경 시작됨 · 에이전트 설치 대기 중"
-  ],
-  "云电脑准备失败": [
-    "雲端電腦準備失敗",
-    "Environment preparation failed",
-    "環境の準備に失敗しました",
-    "환경 준비 실패"
-  ],
-  "暂时无法完成准备，请重试。": [
-    "暫時無法完成準備，請重試。",
-    "Unable to finish setup. Please retry.",
-    "準備を完了できません。再試行してください。",
-    "준비를 완료할 수 없습니다. 다시 시도하세요."
-  ],
-  "重试": [
-    "重試",
-    "Retry",
-    "再試行",
-    "다시 시도"
-  ],
-  "请求在本机执行命令": [
-    "請求在本機執行命令",
-    "Request to run a local command",
-    "ローカルコマンドの実行リクエスト",
-    "로컬 명령 실행 요청"
-  ],
-  "以当前用户执行，可访问该用户的文件和网络。": [
-    "以目前使用者執行，可存取其檔案及網路。",
-    "Runs as you, with access to your files and network.",
-    "現在のユーザーとしてファイルとネットワークにアクセスします。",
-    "현재 사용자 권한으로 파일과 네트워크에 접근합니다."
-  ],
-  "拒绝": [
-    "拒絕",
-    "Deny",
-    "拒否",
-    "거부"
-  ],
-  "允许一次": [
-    "允許一次",
-    "Allow once",
-    "今回のみ許可",
-    "한 번 허용"
-  ],
-  "License · 开源致谢": [
-    "授權條款與致謝",
-    "Licenses & acknowledgements",
-    "ライセンスと謝辞",
-    "라이선스 및 감사의 말"
-  ],
-  "Agent 图标及界面样式参考": [
-    "智慧代理圖示及介面樣式參考",
-    "Agent icons and interface styling",
-    "エージェントアイコンと UI スタイル",
-    "에이전트 아이콘 및 UI 스타일"
-  ],
-  "面板导航": [
-    "面板導覽",
-    "Panel navigation",
-    "パネルナビゲーション",
-    "패널 탐색"
-  ],
-  "许可证": [
-    "授權條款",
-    "Licenses",
-    "ライセンス",
-    "라이선스"
-  ],
-  "正在安装大模型网关": [
-    "正在安裝大模型閘道",
-    "Installing model gateway",
-    "モデルゲートウェイをインストール中",
-    "모델 게이트웨이 설치 중"
-  ],
-  "正在启动大模型网关": [
-    "正在啟動大模型閘道",
-    "Starting model gateway",
-    "モデルゲートウェイを起動中",
-    "모델 게이트웨이 시작 중"
-  ],
-  "等待配置大模型网关": [
-    "等待設定大模型閘道",
-    "Waiting for model gateway configuration",
-    "モデルゲートウェイの設定待ち",
-    "모델 게이트웨이 설정 대기 중"
-  ],
-  "按量付费": [
-    "隨用隨付",
-    "Pay-as-you-go",
-    "従量課金",
-    "사용량 기반 과금"
-  ],
-  "剩余余额": [
-    "剩餘餘額",
-    "Available balance",
-    "残高",
-    "잔액"
-  ],
-  "近30天消费": [
-    "近30天消費",
-    "Last 30 days spend",
-    "過去30日間の料金",
-    "최근 30일 요금"
-  ],
-  "内存": [
-    "記憶體",
-    "Memory",
-    "メモリ",
-    "메모리"
-  ],
-  "磁盘": [
-    "磁碟",
-    "Disk",
-    "ディスク",
-    "디스크"
-  ],
-  "资源用量为近30天累计计费用量": [
-    "資源用量為近30天累計計費用量",
-    "Resource usage is billed usage over the last 30 days",
-    "リソース使用量は過去30日間の課金対象使用量です",
-    "리소스 사용량은 최근 30일 누적 과금 사용량입니다"
-  ],
-  "数据更新中，显示最近记录": [
-    "資料更新中，顯示最近紀錄",
-    "Updating; showing last available data",
-    "更新中：直近のデータを表示",
-    "업데이트 중: 최근 데이터 표시"
-  ],
-  "请先登录": [
-    "請先登入",
-    "Sign in first",
-    "ログインしてください",
-    "먼저 로그인하세요"
-  ],
-  "当前登录暂不支持账单查询": [
-    "目前登入暫不支援帳單查詢",
-    "Billing is unavailable for this sign-in",
-    "このログインでは請求情報を取得できません",
-    "현재 로그인으로 청구 정보를 조회할 수 없습니다"
-  ],
-  "无法读取账户用量，请重试": [
-    "無法讀取帳戶用量，請重試",
-    "Unable to load account usage. Retry.",
-    "使用量を取得できません。再試行してください",
-    "계정 사용량을 불러올 수 없습니다. 다시 시도하세요"
-  ]
+  "messages": {
+    "installation.choose_another_installation_folder": {
+      "en-US": "Choose another installation folder.",
+      "zh-CN": "请选择其他安装文件夹。"
+    },
+    "installation.choose_folder": {
+      "en-US": "Choose Folder…",
+      "zh-CN": "选择文件夹…"
+    },
+    "installation.could_not_install_fennec": {
+      "en-US": "Could not install Fennec",
+      "zh-CN": "暂时无法安装 Fennec"
+    },
+    "installation.download_a_fresh_copy_of_fennec": {
+      "en-US": "Download a fresh copy of Fennec.",
+      "zh-CN": "请重新下载安装包。"
+    },
+    "installation.download_fennec": {
+      "en-US": "Download Fennec",
+      "zh-CN": "下载 Fennec"
+    },
+    "installation.fennec_is_installed": {
+      "en-US": "Fennec is installed",
+      "zh-CN": "Fennec 已安装"
+    },
+    "installation.install_and_open": {
+      "en-US": "Install and Open",
+      "zh-CN": "安装并打开"
+    },
+    "installation.install_fennec": {
+      "en-US": "Install Fennec?",
+      "zh-CN": "安装 Fennec？"
+    },
+    "installation.install_here": {
+      "en-US": "Install Here",
+      "zh-CN": "安装到此处"
+    },
+    "installation.install_in_applications_to_get_started": {
+      "en-US": "Install in Applications to get started.",
+      "zh-CN": "安装到 Applications 后开始使用。"
+    },
+    "installation.installing_fennec": {
+      "en-US": "Installing Fennec…",
+      "zh-CN": "正在安装 Fennec…"
+    },
+    "installation.open_fennec_from_your_applications_folder": {
+      "en-US": "Open Fennec from your Applications folder.",
+      "zh-CN": "请从 Applications 文件夹打开 Fennec。"
+    },
+    "installation.quit": {
+      "en-US": "Quit",
+      "zh-CN": "退出"
+    },
+    "installation.replace_and_open": {
+      "en-US": "Replace and Open",
+      "zh-CN": "替换并打开"
+    },
+    "installation.replace_the_installed_fennec": {
+      "en-US": "Replace the installed Fennec?",
+      "zh-CN": "替换已安装的 Fennec？"
+    },
+    "installation.this_copy_could_not_be_verified_download_a_fresh_copy": {
+      "en-US": "This copy could not be verified. Download a fresh copy.",
+      "zh-CN": "无法验证这份安装包，请重新下载。"
+    },
+    "installation.this_copy_of_fennec_could_not_start": {
+      "en-US": "This copy of Fennec could not start",
+      "zh-CN": "无法打开这份 Fennec"
+    },
+    "installation.your_settings_and_cloud_sessions_will_be_kept": {
+      "en-US": "Your settings and cloud sessions will be kept.",
+      "zh-CN": "设置和云端会话会保留。"
+    },
+    "permission.allow": {
+      "en-US": "Allow once",
+      "ja": "今回のみ許可",
+      "ko": "한 번 허용",
+      "zh-CN": "允许一次",
+      "zh-TW": "允許一次"
+    },
+    "permission.always": {
+      "en-US": "Always Allow",
+      "ja": "常に許可",
+      "ko": "항상 허용",
+      "zh-CN": "始终允许",
+      "zh-TW": "一律允許"
+    },
+    "permission.deny": {
+      "en-US": "Deny",
+      "ja": "拒否",
+      "ko": "거부",
+      "zh-CN": "拒绝",
+      "zh-TW": "拒絕"
+    },
+    "permission.hookNote": {
+      "en-US": "Runs on this Mac and returns its output to your cloud agent. Always Allow applies to this hook configuration.",
+      "ja": "この Mac で実行し、出力をクラウドエージェントに返します。常に許可はこのフック設定に適用されます。",
+      "ko": "이 Mac에서 실행하고 출력을 클라우드 에이전트로 반환합니다. 항상 허용은 이 훅 설정에 적용됩니다.",
+      "zh-CN": "在此 Mac 上运行，输出会返回云端智能体。始终允许仅适用于此 Hook 配置。",
+      "zh-TW": "在此 Mac 上執行，輸出會傳回雲端智慧代理。一律允許僅適用於此 Hook 設定。"
+    },
+    "permission.hookTitle": {
+      "en-US": "Local hook request",
+      "ja": "ローカルフック実行の要求",
+      "ko": "로컬 훅 실행 요청",
+      "zh-CN": "本机 Hook 运行请求",
+      "zh-TW": "本機 Hook 執行請求"
+    },
+    "permission.note": {
+      "en-US": "Always Allow automatically approves future access from this paired device.",
+      "ja": "常に許可を選択すると、このペアリング済みデバイスからの今後のアクセスを自動で許可します。",
+      "ko": "항상 허용을 선택하면 이 페어링된 기기의 이후 접근을 자동으로 허용합니다.",
+      "zh-CN": "始终允许将自动批准此配对设备的后续访问。",
+      "zh-TW": "一律允許將自動核准此配對裝置的後續存取。"
+    },
+    "permission.project": {
+      "en-US": "Choose a Git project this agent may sync. Files sync both ways with your cloud computer.",
+      "ja": "このエージェントに同期を許可する Git プロジェクトを選択してください。ファイルはクラウドと双方向に同期されます。",
+      "ko": "이 에이전트가 동기화할 Git 프로젝트를 선택하세요. 파일은 클라우드 컴퓨터와 양방향으로 동기화됩니다。",
+      "zh-CN": "选择允许此智能体同步的 Git 项目。文件会与您的云电脑双向同步。",
+      "zh-TW": "選擇允許此智慧代理同步的 Git 專案。檔案會與您的雲電腦雙向同步。"
+    },
+    "permission.title": {
+      "en-US": "Local access request",
+      "ja": "ローカルアクセスの要求",
+      "ko": "로컬 접근 요청",
+      "zh-CN": "本机访问请求",
+      "zh-TW": "本機存取請求"
+    },
+    "ui.about_magpie": {
+      "en-US": "About Magpie",
+      "ja": "Magpie について",
+      "ko": "Magpie 소개",
+      "zh-CN": "关于 Magpie",
+      "zh-TW": "關於 Magpie"
+    },
+    "ui.account": {
+      "en-US": "Account",
+      "ja": "アカウント",
+      "ko": "계정",
+      "zh-CN": "账户",
+      "zh-TW": "帳戶"
+    },
+    "ui.account_settings": {
+      "en-US": "Account settings",
+      "ja": "アカウント設定",
+      "ko": "계정 설정",
+      "zh-CN": "账户设置",
+      "zh-TW": "帳戶設定"
+    },
+    "ui.account_unavailable": {
+      "en-US": "Account unavailable",
+      "ja": "アカウントを取得できません",
+      "ko": "계정을 불러올 수 없음",
+      "zh-CN": "读取账户失败",
+      "zh-TW": "讀取帳戶失敗"
+    },
+    "ui.active_sessions": {
+      "en-US": "Active sessions",
+      "ja": "アクティブなセッション",
+      "ko": "활성 세션",
+      "zh-CN": "活跃会话",
+      "zh-TW": "使用中的工作階段"
+    },
+    "ui.agent_icons_and_interface_styling": {
+      "en-US": "Agent icons and interface styling",
+      "ja": "エージェントアイコンと UI スタイル",
+      "ko": "에이전트 아이콘 및 UI 스타일",
+      "zh-CN": "Agent 图标及界面样式参考",
+      "zh-TW": "智慧代理圖示及介面樣式參考"
+    },
+    "ui.agent_version_installation_failed": {
+      "en-US": "Agent version installation failed",
+      "ja": "エージェントのバージョンをインストールできません",
+      "ko": "에이전트 버전 설치 실패",
+      "zh-CN": "智能体版本安装失败",
+      "zh-TW": "智慧代理版本安裝失敗"
+    },
+    "ui.agents": {
+      "en-US": "Agents",
+      "ja": "エージェント",
+      "ko": "에이전트",
+      "zh-CN": "智能体",
+      "zh-TW": "智慧代理"
+    },
+    "ui.agents_installed_magpie_setup_pending": {
+      "en-US": "Agents installed; Magpie setup pending",
+      "ja": "インストール完了・Magpie 設定待ち",
+      "ko": "에이전트 설치됨 · Magpie 설정 대기 중",
+      "zh-CN": "智能体已安装，等待配置 Magpie",
+      "zh-TW": "智慧代理已安裝，等待設定 Magpie"
+    },
+    "ui.all_sessions_files_and_data_on_this_cloud_computer_will_be_permanently_deleted": {
+      "en-US": "All sessions, files, and data on this cloud computer will be permanently deleted.",
+      "ja": "クラウドコンピューターのすべてのセッション、ファイル、データを完全に削除します。",
+      "ko": "이 클라우드 컴퓨터의 모든 세션, 파일 및 데이터가 영구 삭제됩니다.",
+      "zh-CN": "云电脑中的所有会话、文件和数据都将永久删除。",
+      "zh-TW": "雲電腦中的所有工作階段、檔案和資料都將永久刪除。"
+    },
+    "ui.allocating_cloud_computer": {
+      "en-US": "Allocating cloud computer",
+      "ja": "クラウドコンピューターを確保中",
+      "ko": "클라우드 컴퓨터 할당 중",
+      "zh-CN": "正在分配云电脑",
+      "zh-TW": "正在配置雲端電腦"
+    },
+    "ui.allow_in_system_settings": {
+      "en-US": "Allow in System Settings",
+      "ja": "システム設定で許可",
+      "ko": "시스템 설정에서 허용",
+      "zh-CN": "在系统设置中允许开机自启",
+      "zh-TW": "在系統設定中允許開機自啟"
+    },
+    "ui.allow_once": {
+      "en-US": "Allow once",
+      "ja": "今回のみ許可",
+      "ko": "한 번 허용",
+      "zh-CN": "允许一次",
+      "zh-TW": "允許一次"
+    },
+    "ui.also_delete_my_cloud_computer": {
+      "en-US": "Also delete my cloud computer",
+      "ja": "クラウドコンピューターも削除",
+      "ko": "클라우드 컴퓨터도 삭제",
+      "zh-CN": "同时删除云电脑",
+      "zh-TW": "同時刪除雲電腦"
+    },
+    "ui.appearance": {
+      "en-US": "Appearance",
+      "ja": "外観",
+      "ko": "화면",
+      "zh-CN": "外观",
+      "zh-TW": "外觀"
+    },
+    "ui.attach_command_copied": {
+      "en-US": "Attach command copied",
+      "ja": "attach コマンドをコピーしました",
+      "ko": "attach 명령을 복사했습니다",
+      "zh-CN": "已复制 attach 命令",
+      "zh-TW": "已複製 attach 指令"
+    },
+    "ui.attach_command_copied_2": {
+      "en-US": "Attach command copied",
+      "ja": "接続コマンドをコピーしました",
+      "ko": "재개 명령을 복사했습니다",
+      "zh-CN": "恢复命令已复制",
+      "zh-TW": "恢復指令已複製"
+    },
+    "ui.authorization_cancelled": {
+      "en-US": "Authorization cancelled.",
+      "ja": "認証がキャンセルされました。",
+      "ko": "인증이 취소되었습니다.",
+      "zh-CN": "授权已取消。",
+      "zh-TW": "授權已取消。"
+    },
+    "ui.authorization_cancelled_you_can_sign_in_again": {
+      "en-US": "Authorization cancelled. You can sign in again.",
+      "ja": "承認がキャンセルされました。",
+      "ko": "승인이 취소되었습니다. 다시 로그인할 수 있습니다.",
+      "zh-CN": "授权已取消，可重新登录。",
+      "zh-TW": "授權已取消，可重新登入。"
+    },
+    "ui.authorization_expired_sign_in_again": {
+      "en-US": "Authorization expired. Sign in again.",
+      "ja": "認証の有効期限が切れました。再度ログインしてください。",
+      "ko": "인증이 만료되었습니다. 다시 로그인하세요.",
+      "zh-CN": "授权已过期，请重新登录。",
+      "zh-TW": "授權已過期，請重新登入。"
+    },
+    "ui.authorize_in_your_browser_to_sign_in": {
+      "en-US": "Authorize in your browser to sign in.",
+      "ja": "ブラウザで承認してログインします。",
+      "ko": "브라우저에서 승인하여 로그인하세요.",
+      "zh-CN": "在浏览器中授权，即可登录 Runta。",
+      "zh-TW": "在瀏覽器中授權，即可登入 Runta。"
+    },
+    "ui.automatic_access_revoked": {
+      "en-US": "Automatic access revoked",
+      "ja": "自動アクセス許可を取り消しました",
+      "ko": "자동 접근 권한을 취소했습니다",
+      "zh-CN": "已撤销本机自动授权",
+      "zh-TW": "已撤銷本機自動授權"
+    },
+    "ui.automatic_access_to_this_mac": {
+      "en-US": "Automatic access to this Mac",
+      "ja": "このMacへの自動アクセス",
+      "ko": "이 Mac에 대한 자동 접근",
+      "zh-CN": "本机自动访问权限",
+      "zh-TW": "本機自動存取權限"
+    },
+    "ui.available_balance": {
+      "en-US": "Available balance",
+      "ja": "残高",
+      "ko": "잔액",
+      "zh-CN": "剩余余额",
+      "zh-TW": "剩餘餘額"
+    },
+    "ui.back_to_sessions": {
+      "en-US": "Back to sessions",
+      "ja": "セッションに戻る",
+      "ko": "세션으로 돌아가기",
+      "zh-CN": "返回会话",
+      "zh-TW": "返回工作階段"
+    },
+    "ui.billing_is_unavailable_for_this_sign_in": {
+      "en-US": "Billing is unavailable for this sign-in",
+      "ja": "このログインでは請求情報を取得できません",
+      "ko": "현재 로그인으로 청구 정보를 조회할 수 없습니다",
+      "zh-CN": "当前登录暂不支持账单查询",
+      "zh-TW": "目前登入暫不支援帳單查詢"
+    },
+    "ui.cancel_sign_in": {
+      "en-US": "Cancel sign-in",
+      "ja": "ログインをキャンセル",
+      "ko": "로그인 취소",
+      "zh-CN": "取消登录",
+      "zh-TW": "取消登入"
+    },
+    "ui.cannot_read_agent_version": {
+      "en-US": "Cannot read agent version",
+      "ja": "エージェントのバージョンを取得できません",
+      "ko": "에이전트 버전을 읽을 수 없습니다",
+      "zh-CN": "无法读取智能体版本",
+      "zh-TW": "無法讀取智慧代理版本"
+    },
+    "ui.cannot_read_credentials_sign_in_again": {
+      "en-US": "Cannot read credentials. Sign in again.",
+      "ja": "認証情報を読み込めません。再度ログインしてください。",
+      "ko": "인증 정보를 읽을 수 없습니다. 다시 로그인하세요.",
+      "zh-CN": "无法读取登录凭证，请重新登录。",
+      "zh-TW": "無法讀取憑證，請重新登入。"
+    },
+    "ui.cannot_read_local_model": {
+      "en-US": "Cannot read local model",
+      "ja": "ローカルモデルを読み込めません",
+      "ko": "로컬 모델을 읽을 수 없습니다",
+      "zh-CN": "无法读取本机模型",
+      "zh-TW": "無法讀取本機模型"
+    },
+    "ui.checking_cloud_agents": {
+      "en-US": "Checking cloud agents",
+      "ja": "クラウドエージェントを確認中",
+      "ko": "큼라우드 에이전트 확인 중",
+      "zh-CN": "正在确认云端智能体",
+      "zh-TW": "正在確認雲端智慧代理"
+    },
+    "ui.checking_latest_cloud_versions": {
+      "en-US": "Checking latest cloud versions",
+      "ja": "クラウドの最新バージョンを確認中",
+      "ko": "큼라우드 최신 버전 확인 중",
+      "zh-CN": "正在检查云端最新版本",
+      "zh-TW": "正在檢查雲端最新版本"
+    },
+    "ui.chinese_simplified": {
+      "en-US": "Chinese (Simplified)",
+      "ja": "簡体字中国語",
+      "ko": "중국어 간체",
+      "zh-CN": "简体中文",
+      "zh-TW": "簡體中文"
+    },
+    "ui.chinese_traditional": {
+      "en-US": "Chinese (Traditional)",
+      "ja": "繁体字中国語",
+      "ko": "중국어 번체",
+      "zh-CN": "繁體中文",
+      "zh-TW": "繁體中文"
+    },
+    "ui.choose_a_cloud_model": {
+      "en-US": "Choose a cloud model",
+      "ja": "クラウドモデルを選択してください",
+      "ko": "클라우드 모델을 선택하세요",
+      "zh-CN": "请选择云端模型",
+      "zh-TW": "請選擇雲端模型"
+    },
+    "ui.choose_a_model": {
+      "en-US": "Choose a model",
+      "ja": "モデルを選択",
+      "ko": "모델 선택",
+      "zh-CN": "选择模型",
+      "zh-TW": "選擇模型"
+    },
+    "ui.choose_any_model_for_your_cloud_agents": {
+      "en-US": "Choose any model for your cloud agents",
+      "ja": "クラウドエージェントのモデルを自由に選べます",
+      "ko": "클라우드 에이전트의 모델을 자유롭게 선택하세요",
+      "zh-CN": "为云端智能体自由选择模型",
+      "zh-TW": "為雲端智慧代理自由選擇模型"
+    },
+    "ui.cli_integration_needs_repair": {
+      "en-US": "CLI integration needs repair",
+      "ja": "CLI 連携の修復が必要です",
+      "ko": "CLI 연결 복구 필요",
+      "zh-CN": "命令入口需要修复",
+      "zh-TW": "命令入口需要修復"
+    },
+    "ui.cloud_adapter_pending": {
+      "en-US": "Cloud adapter pending",
+      "ja": "クラウド対応は準備中",
+      "ko": "클라우드 지원 준비 중",
+      "zh-CN": "云端适配待接入",
+      "zh-TW": "雲端支援待接入"
+    },
+    "ui.cloud_computer": {
+      "en-US": "Cloud computer",
+      "ja": "クラウドコンピューター",
+      "ko": "클라우드 컴퓨터",
+      "zh-CN": "云电脑",
+      "zh-TW": "雲端電腦"
+    },
+    "ui.cloud_computer_is_not_ready": {
+      "en-US": "Cloud computer is not ready",
+      "ja": "クラウドコンピューターは未準備です",
+      "ko": "클라우드 컴퓨터가 준비되지 않았습니다",
+      "zh-CN": "云电脑尚未就绪",
+      "zh-TW": "雲端電腦尚未就緒"
+    },
+    "ui.cloud_installation_is_not_yet_supported_for_this_version": {
+      "en-US": "Cloud installation is not yet supported for this version",
+      "ja": "このバージョンのクラウドインストールは未対応です",
+      "ko": "이 버전의 클라우드 설치는 아직 지원되지 않습니다",
+      "zh-CN": "此版本尚未支持云端安装",
+      "zh-TW": "此版本尚未支援雲端安裝"
+    },
+    "ui.cloud_model": {
+      "en-US": "Cloud model",
+      "ja": "クラウドモデル",
+      "ko": "클라우드 모델",
+      "zh-CN": "云端模型",
+      "zh-TW": "雲端模型"
+    },
+    "ui.cloud_sessions": {
+      "en-US": "Cloud sessions",
+      "ja": "クラウドセッション",
+      "ko": "클라우드 세션",
+      "zh-CN": "云端会话",
+      "zh-TW": "雲端工作階段"
+    },
+    "ui.cloud_setup_for_this_version_is_not_yet_implemented": {
+      "en-US": "Cloud setup for this version is not yet implemented",
+      "ja": "このバージョンのクラウドセットアップは未実装です",
+      "ko": "이 버전의 클라우드 설치는 아직 구현되지 않았습니다",
+      "zh-CN": "此版本的云端安装适配尚未完成",
+      "zh-TW": "此版本的雲端安裝適配尚未完成"
+    },
+    "ui.cloud_takeover": {
+      "en-US": "Cloud takeover",
+      "ja": "クラウドで実行",
+      "ko": "클라우드 실행",
+      "zh-CN": "云端接管",
+      "zh-TW": "雲端接管"
+    },
+    "ui.cloud_takeover_coming_soon": {
+      "en-US": "Cloud takeover coming soon",
+      "ja": "クラウド移行は近日公開",
+      "ko": "클라우드 전환 준비 중",
+      "zh-CN": "云端接管即将开放",
+      "zh-TW": "雲端接管即將開放"
+    },
+    "ui.cloud_takeover_is_not_available_yet": {
+      "en-US": "Cloud takeover is not available yet",
+      "ja": "クラウド移行はまだ利用できません",
+      "ko": "클라우드 전환은 아직 사용할 수 없습니다",
+      "zh-CN": "云端接管尚未开放",
+      "zh-TW": "雲端接管尚未開放"
+    },
+    "ui.cloud_takeover_requires_sign_in": {
+      "en-US": "Cloud takeover requires sign-in",
+      "ja": "クラウド移行にはログインが必要",
+      "ko": "클라우드 전환에는 로그인 필요",
+      "zh-CN": "云端接管，需先登录",
+      "zh-TW": "雲端接管，需先登入"
+    },
+    "ui.cloud_working_directory": {
+      "en-US": "Cloud working directory",
+      "ja": "クラウド作業フォルダー",
+      "ko": "클라우드 작업 디렉터리",
+      "zh-CN": "云电脑工作目录",
+      "zh-TW": "雲端電腦工作目錄"
+    },
+    "ui.code_expired_sign_in_again": {
+      "en-US": "Code expired. Sign in again.",
+      "ja": "コードの期限切れです。再度ログインしてください。",
+      "ko": "코드가 만료되었습니다. 다시 로그인하세요.",
+      "zh-CN": "授权码已过期，请重新登录。",
+      "zh-TW": "授權碼已過期，請重新登入。"
+    },
+    "ui.coming_soon": {
+      "en-US": "Coming soon",
+      "ja": "近日対応予定",
+      "ko": "곧 지원 예정",
+      "zh-CN": "即将支持",
+      "zh-TW": "即將支援"
+    },
+    "ui.command_copied_paste_it_into_your_terminal_to_connect": {
+      "en-US": "Command copied. Paste it into your terminal to connect.",
+      "ja": "接続コマンドをコピーしました。ターミナルに貼り付けて実行してください。",
+      "ko": "연결 명령을 복사했습니다. 터미널에 붙여넣어 실행하세요.",
+      "zh-CN": "连接命令已复制，请粘贴到你的终端运行。",
+      "zh-TW": "連線指令已複製，請貼到你的終端機執行。"
+    },
+    "ui.configuration_found": {
+      "en-US": "Configuration found",
+      "ja": "設定を検出",
+      "ko": "설정 발견",
+      "zh-CN": "已发现配置",
+      "zh-TW": "已發現設定"
+    },
+    "ui.configuring_agent_models": {
+      "en-US": "Configuring agent models",
+      "ja": "エージェントのモデルを設定中",
+      "ko": "에이전트 모델 설정 중",
+      "zh-CN": "正在配置智能体模型",
+      "zh-TW": "正在設定智慧代理模型"
+    },
+    "ui.configuring_model_plugins": {
+      "en-US": "Configuring model plugins",
+      "ja": "モデルプラグインを設定中",
+      "ko": "모델 플러그인 설정 중",
+      "zh-CN": "正在配置模型插件",
+      "zh-TW": "正在設定模型外掛"
+    },
+    "ui.confirm_this_code_in_your_browser": {
+      "en-US": "Confirm this code in your browser: ",
+      "ja": "ブラウザでコードを確認：",
+      "ko": "브라우저에서 코드 확인: ",
+      "zh-CN": "请在浏览器确认授权码：",
+      "zh-TW": "請在瀏覽器確認授權碼："
+    },
+    "ui.connecting": {
+      "en-US": "Connecting…",
+      "ja": "接続中…",
+      "ko": "연결 중…",
+      "zh-CN": "正在连接…",
+      "zh-TW": "正在連線…"
+    },
+    "ui.connecting_to_cloud_computer": {
+      "en-US": "Connecting to cloud computer",
+      "ja": "クラウドコンピューターに接続中",
+      "ko": "클라우드 컴퓨터 연결 중",
+      "zh-CN": "正在连接云电脑",
+      "zh-TW": "正在連線雲端電腦"
+    },
+    "ui.connecting_to_runta": {
+      "en-US": "Connecting to Runta…",
+      "ja": "Runta に接続中…",
+      "ko": "Runta 연결 중…",
+      "zh-CN": "正在连接 Runta…",
+      "zh-TW": "正在連線 Runta…"
+    },
+    "ui.connection_interrupted_try_again": {
+      "en-US": "Connection interrupted. Try again.",
+      "ja": "接続が切断されました。再試行してください。",
+      "ko": "연결이 끊겼습니다. 다시 시도하세요.",
+      "zh-CN": "登录连接中断，请重试。",
+      "zh-TW": "登入連線中斷，請重試。"
+    },
+    "ui.continue": {
+      "en-US": "Continue",
+      "ja": "続行",
+      "ko": "계속",
+      "zh-CN": "完成登录",
+      "zh-TW": "完成登入"
+    },
+    "ui.continue_in_your_terminal": {
+      "en-US": "Continue in your terminal",
+      "ja": "お使いのターミナルで続ける",
+      "ko": "내 터미널에서 계속하기",
+      "zh-CN": "在自己的终端继续",
+      "zh-TW": "在自己的終端機繼續"
+    },
+    "ui.copied": {
+      "en-US": "Copied",
+      "ja": "コピーしました",
+      "ko": "복사됨",
+      "zh-CN": "已复制",
+      "zh-TW": "已複製"
+    },
+    "ui.copied_open_your_terminal_paste_and_press_enter_to_connect": {
+      "en-US": "Copied. Open your terminal, paste, and press Enter to connect.",
+      "ja": "コピーしました。ターミナルに貼り付け、Enter で接続できます。",
+      "ko": "복사했습니다. 터미널에 붙여넣고 Enter를 눌러 연결하세요.",
+      "zh-CN": "已复制。打开终端，粘贴并按 Enter 连接。",
+      "zh-TW": "已複製。開啟終端機，貼上並按 Enter 連線。"
+    },
+    "ui.copy_a_command_to_connect_to_this_session_in_your_terminal": {
+      "en-US": "Copy a command to connect to this session in your terminal",
+      "ja": "ターミナルでこのセッションに接続するコマンドをコピー",
+      "ko": "터미널에서 이 세션에 연결할 명령 복사",
+      "zh-CN": "复制命令，在终端中连接此会话",
+      "zh-TW": "複製指令，在終端機中連線至此工作階段"
+    },
+    "ui.copy_a_session_command_paste_it_into_your_terminal_then_press_enter": {
+      "en-US": "Copy a session command, paste it into your terminal, then press Enter.",
+      "ja": "接続コマンドをコピーしてターミナルに貼り付け、Enter を押します。",
+      "ko": "연결 명령을 복사해 터미널에 붙여넣고 Enter를 누르세요.",
+      "zh-CN": "复制会话连接命令，粘贴到终端后按 Enter。",
+      "zh-TW": "複製工作階段連線指令，貼到終端機後按 Enter。"
+    },
+    "ui.copy_attach_command": {
+      "en-US": "Copy attach command",
+      "ja": "attach コマンドをコピー",
+      "ko": "attach 명령 복사",
+      "zh-CN": "复制 attach 命令",
+      "zh-TW": "複製 attach 指令"
+    },
+    "ui.copy_attach_command_2": {
+      "en-US": "Copy attach command",
+      "ja": "接続コマンドをコピー",
+      "ko": "연결 명령 복사",
+      "zh-CN": "复制连接命令",
+      "zh-TW": "複製連線指令"
+    },
+    "ui.copy_failed_try_again": {
+      "en-US": "Copy failed. Try again.",
+      "ja": "コピーに失敗しました。再試行してください",
+      "ko": "복사하지 못했습니다. 다시 시도하세요",
+      "zh-CN": "复制失败，请重试",
+      "zh-TW": "複製失敗，請重試"
+    },
+    "ui.copy_for_terminal": {
+      "en-US": "Copy for Terminal",
+      "ja": "ターミナル用にコピー",
+      "ko": "터미널용 복사",
+      "zh-CN": "复制到终端",
+      "zh-TW": "複製到終端機"
+    },
+    "ui.could_not_cancel_sign_in_try_again": {
+      "en-US": "Could not cancel sign-in. Try again.",
+      "ja": "ログインをキャンセルできません。もう一度お試しください。",
+      "ko": "로그인을 취소할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法取消登录，请重试。",
+      "zh-TW": "暫時無法取消登入，請重試。"
+    },
+    "ui.could_not_check_sign_in_try_again": {
+      "en-US": "Could not check sign-in. Try again.",
+      "ja": "ログインを確認できません。もう一度お試しください。",
+      "ko": "로그인을 확인할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法检查登录，请重试。",
+      "zh-TW": "暫時無法檢查登入，請重試。"
+    },
+    "ui.could_not_load_refresh_to_retry": {
+      "en-US": "Could not load. Refresh to retry.",
+      "ja": "読み込み失敗。更新してください。",
+      "ko": "불러오지 못했습니다. 새로 고침하세요.",
+      "zh-CN": "加载失败，请点击刷新重试。",
+      "zh-TW": "載入失敗，請重新整理。"
+    },
+    "ui.could_not_open_terminal_try_again": {
+      "en-US": "Could not open terminal. Try again.",
+      "ja": "ターミナルを開けません。再試行してください",
+      "ko": "터미널을 열 수 없습니다. 다시 시도하세요",
+      "zh-CN": "无法打开终端，请重试",
+      "zh-TW": "無法開啟終端，請重試"
+    },
+    "ui.could_not_prepare_uninstall_try_again": {
+      "en-US": "Could not prepare uninstall. Try again.",
+      "ja": "アンインストールを準備できません。再試行してください。",
+      "ko": "제거를 준비할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法准备卸载，请重试",
+      "zh-TW": "暫時無法準備解除安裝，請重試"
+    },
+    "ui.could_not_read_session_retry": {
+      "en-US": "Could not read session. Retry.",
+      "ja": "セッションを読み込めません",
+      "ko": "세션을 읽을 수 없습니다",
+      "zh-CN": "会话读取失败，请重试",
+      "zh-TW": "工作階段讀取失敗，請重試"
+    },
+    "ui.could_not_read_this_agent_s_credentials_check_access_and_retry": {
+      "en-US": "Could not read this agent’s credentials. Check access and retry.",
+      "ja": "認証情報を読み取れません。アクセス許可を確認して再試行してください。",
+      "ko": "로그인 정보를 읽을 수 없습니다. 접근 권한을 확인한 후 다시 시도하세요.",
+      "zh-CN": "无法读取此智能体的登录凭据，请检查授权后重试",
+      "zh-TW": "無法讀取此代理的登入憑據，請檢查授權後重試"
+    },
+    "ui.could_not_revoke_access_try_again": {
+      "en-US": "Could not revoke access. Try again.",
+      "ja": "取り消せませんでした。再試行してください",
+      "ko": "권한을 취소하지 못했습니다. 다시 시도하세요",
+      "zh-CN": "撤销失败，请重试",
+      "zh-TW": "撤銷失敗，請重試"
+    },
+    "ui.could_not_save_credentials_to_keychain_try_again": {
+      "en-US": "Could not save credentials to Keychain. Try again.",
+      "ja": "キーチェーンへの保存に失敗しました。",
+      "ko": "키체인에 저장하지 못했습니다. 다시 시도하세요.",
+      "zh-CN": "授权完成，但无法保存到钥匙串，请重试。",
+      "zh-TW": "授權完成，但無法儲存至鑰匙圈。"
+    },
+    "ui.could_not_save_model_selection_retry": {
+      "en-US": "Could not save model selection. Retry.",
+      "ja": "モデル選択を保存できません。再試行してください。",
+      "ko": "모델 선택을 저장하지 못했습니다. 다시 시도하세요.",
+      "zh-CN": "模型选择保存失败，请重试。",
+      "zh-TW": "模型選擇儲存失敗，請重試。"
+    },
+    "ui.could_not_sign_in_try_again": {
+      "en-US": "Could not sign in. Try again.",
+      "ja": "ログインできません。もう一度お試しください。",
+      "ko": "로그인할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法完成登录，请重试。",
+      "zh-TW": "暫時無法完成登入，請重試。"
+    },
+    "ui.could_not_sign_out_try_again": {
+      "en-US": "Could not sign out. Try again.",
+      "ja": "ログアウトできません。再試行してください。",
+      "ko": "로그아웃하지 못했습니다. 다시 시도하세요.",
+      "zh-CN": "退出登录失败，请重试。",
+      "zh-TW": "登出失敗，請重試。"
+    },
+    "ui.could_not_start_sign_in_try_again": {
+      "en-US": "Could not start sign-in. Try again.",
+      "ja": "ログインを開始できません。再試行してください。",
+      "ko": "로그인을 시작할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "无法发起登录，请稍后重试。",
+      "zh-TW": "無法啟動登入，請稍後重試。"
+    },
+    "ui.could_not_start_uninstall_try_again": {
+      "en-US": "Could not start uninstall. Try again.",
+      "ja": "アンインストールを開始できません。再試行してください。",
+      "ko": "제거를 시작할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法卸载，请重试",
+      "zh-TW": "暫時無法解除安裝，請重試"
+    },
+    "ui.could_not_update_login_item_try_again": {
+      "en-US": "Could not update login item. Try again.",
+      "ja": "設定を更新できません。再試行してください",
+      "ko": "설정을 변경하지 못했습니다. 다시 시도하세요",
+      "zh-CN": "无法更新开机自启，请重试",
+      "zh-TW": "無法更新開機自啟，請重試"
+    },
+    "ui.credentials_depend_on_a_local_command_use_an_agent_sign_in_or_api_key": {
+      "en-US": "Credentials depend on a local command. Use an agent sign-in or API key.",
+      "ja": "認証情報がローカルコマンドに依存しています。ログインまたは API キーを使用してください。",
+      "ko": "로그인 정보가 로컬 명령에 의존합니다. 에이전트 로그인 또는 API 키를 사용하세요.",
+      "zh-CN": "本机凭据依赖本地命令，请使用智能体登录或 API key",
+      "zh-TW": "本機憑據依賴本機命令，請使用代理登入或 API key"
+    },
+    "ui.current_screen_only_history_is_incomplete": {
+      "en-US": "Current screen only; history is incomplete",
+      "ja": "現在の画面のみ表示しています",
+      "ko": "현재 화면만 표시합니다. 기록은 불완전합니다",
+      "zh-CN": "显示当前屏幕，历史记录未完整加载",
+      "zh-TW": "顯示目前畫面，歷史紀錄尚未完整載入"
+    },
+    "ui.dark": {
+      "en-US": "Dark",
+      "ja": "ダーク",
+      "ko": "다크",
+      "zh-CN": "深色",
+      "zh-TW": "深色"
+    },
+    "ui.dark_mode": {
+      "en-US": "Dark mode",
+      "ja": "ダークモード",
+      "ko": "다크 모드",
+      "zh-CN": "深色模式",
+      "zh-TW": "深色模式"
+    },
+    "ui.default": {
+      "en-US": "Default",
+      "ja": "デフォルト",
+      "ko": "기본값",
+      "zh-CN": "默认",
+      "zh-TW": "預設"
+    },
+    "ui.delete_cloud_computer_uninstall": {
+      "en-US": "Delete cloud computer \u0026 uninstall",
+      "ja": "クラウドを削除してアンインストール",
+      "ko": "클라우드 삭제 및 제거",
+      "zh-CN": "删除云电脑并卸载",
+      "zh-TW": "刪除雲電腦並解除安裝"
+    },
+    "ui.deleting_cloud_computer": {
+      "en-US": "Deleting cloud computer…",
+      "ja": "クラウドコンピューターを削除中…",
+      "ko": "클라우드 컴퓨터 삭제 중…",
+      "zh-CN": "正在删除云电脑…",
+      "zh-TW": "正在刪除雲電腦…"
+    },
+    "ui.deny": {
+      "en-US": "Deny",
+      "ja": "拒否",
+      "ko": "거부",
+      "zh-CN": "拒绝",
+      "zh-TW": "拒絕"
+    },
+    "ui.detecting_agent_versions": {
+      "en-US": "Detecting agent versions",
+      "ja": "エージェントのバージョンを確認中",
+      "ko": "에이전트 버전 확인 중",
+      "zh-CN": "正在检测智能体版本",
+      "zh-TW": "正在偵測智慧代理版本"
+    },
+    "ui.discovering_available_agents": {
+      "en-US": "Discovering available agents",
+      "ja": "利用可能なエージェントを検出中",
+      "ko": "사용 가능한 에이전트 확인 중",
+      "zh-CN": "正在发现可用智能体",
+      "zh-TW": "正在發現可用智慧代理"
+    },
+    "ui.disk": {
+      "en-US": "Disk",
+      "ja": "ディスク",
+      "ko": "디스크",
+      "zh-CN": "磁盘",
+      "zh-TW": "磁碟"
+    },
+    "ui.done": {
+      "en-US": "Done",
+      "ja": "完了",
+      "ko": "완료",
+      "zh-CN": "已完成",
+      "zh-TW": "已完成"
+    },
+    "ui.enabled": {
+      "en-US": "Enabled",
+      "ja": "有効",
+      "ko": "활성화됨",
+      "zh-CN": "已开启",
+      "zh-TW": "已開啟"
+    },
+    "ui.enabled_for_new_terminals": {
+      "en-US": "Enabled for new terminals",
+      "ja": "新しいターミナルで有効",
+      "ko": "새 터미널에서 활성화됨",
+      "zh-CN": "已开启，请使用新终端",
+      "zh-TW": "已開啟，請使用新終端"
+    },
+    "ui.ended": {
+      "en-US": "Ended",
+      "ja": "終了済み",
+      "ko": "종료됨",
+      "zh-CN": "已结束",
+      "zh-TW": "已結束"
+    },
+    "ui.enter_login_to_choose_a_provider_exit_pi_after_signing_in": {
+      "en-US": "Enter /login to choose a provider. Exit Pi after signing in.",
+      "ja": "/login でプロバイダーを選び、ログイン後に Pi を終了してください。",
+      "ko": "/login으로 제공자를 선택하세요. 로그인 후 Pi를 종료하세요.",
+      "zh-CN": "输入 /login 选择服务，登录后退出 Pi。",
+      "zh-TW": "輸入 /login 選擇服務，登入後退出 Pi。"
+    },
+    "ui.environment_preparation_failed": {
+      "en-US": "Environment preparation failed",
+      "ja": "環境の準備に失敗しました",
+      "ko": "환경 준비 실패",
+      "zh-CN": "云电脑准备失败",
+      "zh-TW": "雲端電腦準備失敗"
+    },
+    "ui.environment_started_agent_installation_pending": {
+      "en-US": "Environment started; agent installation pending",
+      "ja": "環境起動済み・エージェントのインストール待ち",
+      "ko": "환경 시작됨 · 에이전트 설치 대기 중",
+      "zh-CN": "环境已启动，等待安装智能体",
+      "zh-TW": "環境已啟動，等待安裝智慧代理"
+    },
+    "ui.error": {
+      "en-US": "Error",
+      "ja": "エラー",
+      "ko": "오류",
+      "zh-CN": "出错",
+      "zh-TW": "錯誤"
+    },
+    "ui.errored": {
+      "en-US": "Errored",
+      "ja": "エラー",
+      "ko": "오류 발생",
+      "zh-CN": "会话出错",
+      "zh-TW": "工作階段出錯"
+    },
+    "ui.exited_with_error": {
+      "en-US": "Exited with error",
+      "ja": "エラーで終了",
+      "ko": "오류로 종료됨",
+      "zh-CN": "异常退出",
+      "zh-TW": "異常結束"
+    },
+    "ui.finish_signing_in_in_your_browser_then_retry": {
+      "en-US": "Finish signing in in your browser, then retry.",
+      "ja": "ブラウザでログインを完了してから再試行してください。",
+      "ko": "브라우저에서 로그인을 완료한 후 다시 시도하세요.",
+      "zh-CN": "请在浏览器完成登录，然后重试",
+      "zh-TW": "請在瀏覽器完成登入，然後重試"
+    },
+    "ui.finish_signing_in_then_continue": {
+      "en-US": "Finish signing in, then continue.",
+      "ja": "ログインを完了してから続行してください。",
+      "ko": "로그인을 완료한 후 계속하세요.",
+      "zh-CN": "请完成登录后继续。",
+      "zh-TW": "請完成登入後繼續。"
+    },
+    "ui.general": {
+      "en-US": "General",
+      "ja": "一般",
+      "ko": "일반",
+      "zh-CN": "通用",
+      "zh-TW": "一般"
+    },
+    "ui.idle": {
+      "en-US": "Idle",
+      "ja": "待機中",
+      "ko": "유휴",
+      "zh-CN": "空闲",
+      "zh-TW": "閒置"
+    },
+    "ui.in_a_new_terminal_tab_run": {
+      "en-US": "In a new terminal tab, run",
+      "ja": "新しいターミナルタブで実行：",
+      "ko": "새 터미널 탭에서 실행:",
+      "zh-CN": "在新终端标签页中运行",
+      "zh-TW": "在新終端機分頁中執行"
+    },
+    "ui.installing_claude_code": {
+      "en-US": "Installing Claude Code",
+      "ja": "Claude Code をインストール中",
+      "ko": "Claude Code 설치 중",
+      "zh-CN": "正在安装 Claude Code",
+      "zh-TW": "正在安裝 Claude Code"
+    },
+    "ui.installing_codex": {
+      "en-US": "Installing Codex",
+      "ja": "Codex をインストール中",
+      "ko": "Codex 설치 중",
+      "zh-CN": "正在安装 Codex",
+      "zh-TW": "正在安裝 Codex"
+    },
+    "ui.installing_magpie": {
+      "en-US": "Installing Magpie",
+      "ja": "Magpie をインストール中",
+      "ko": "Magpie 설치 중",
+      "zh-CN": "正在安装 Magpie",
+      "zh-TW": "正在安裝 Magpie"
+    },
+    "ui.installing_model_gateway": {
+      "en-US": "Installing model gateway",
+      "ja": "モデルゲートウェイをインストール中",
+      "ko": "모델 게이트웨이 설치 중",
+      "zh-CN": "正在安装大模型网关",
+      "zh-TW": "正在安裝大模型閘道"
+    },
+    "ui.installing_opencode": {
+      "en-US": "Installing OpenCode",
+      "ja": "OpenCode をインストール中",
+      "ko": "OpenCode 설치 중",
+      "zh-CN": "正在安装 OpenCode",
+      "zh-TW": "正在安裝 OpenCode"
+    },
+    "ui.installing_pi": {
+      "en-US": "Installing Pi",
+      "ja": "Pi をインストール中",
+      "ko": "Pi 설치 중",
+      "zh-CN": "正在安装 Pi",
+      "zh-TW": "正在安裝 Pi"
+    },
+    "ui.installing_runtime_tools": {
+      "en-US": "Installing runtime tools",
+      "ja": "実行ツールをインストール中",
+      "ko": "실행 도구 설치 중",
+      "zh-CN": "正在安装运行工具",
+      "zh-TW": "正在安裝執行工具"
+    },
+    "ui.japanese": {
+      "en-US": "Japanese",
+      "ja": "日本語",
+      "ko": "일본어",
+      "zh-CN": "日本語",
+      "zh-TW": "日文"
+    },
+    "ui.korean": {
+      "en-US": "Korean",
+      "ja": "韓国語",
+      "ko": "한국어",
+      "zh-CN": "한국어",
+      "zh-TW": "韓文"
+    },
+    "ui.language": {
+      "en-US": "Language",
+      "ja": "言語",
+      "ko": "언어",
+      "zh-CN": "语言",
+      "zh-TW": "語言"
+    },
+    "ui.last_30_days_spend": {
+      "en-US": "Last 30 days spend",
+      "ja": "過去30日間の料金",
+      "ko": "최근 30일 요금",
+      "zh-CN": "近30天消费",
+      "zh-TW": "近30天消費"
+    },
+    "ui.launch_at_login": {
+      "en-US": "Launch at login",
+      "ja": "ログイン時に起動",
+      "ko": "로그인 시 실행",
+      "zh-CN": "登录时启动 Fennec",
+      "zh-TW": "登入時啟動 Fennec"
+    },
+    "ui.licenses": {
+      "en-US": "Licenses",
+      "ja": "ライセンス",
+      "ko": "라이선스",
+      "zh-CN": "许可证",
+      "zh-TW": "授權條款"
+    },
+    "ui.licenses_acknowledgements": {
+      "en-US": "Licenses \u0026 acknowledgements",
+      "ja": "ライセンスと謝辞",
+      "ko": "라이선스 및 감사의 말",
+      "zh-CN": "License · 开源致谢",
+      "zh-TW": "授權條款與致謝"
+    },
+    "ui.light": {
+      "en-US": "Light",
+      "ja": "ライト",
+      "ko": "라이트",
+      "zh-CN": "浅色",
+      "zh-TW": "淺色"
+    },
+    "ui.loading": {
+      "en-US": "Loading…",
+      "ja": "読み込み中…",
+      "ko": "불러오는 중…",
+      "zh-CN": "正在加载…",
+      "zh-TW": "正在載入…"
+    },
+    "ui.loading_model_configuration": {
+      "en-US": "Loading model configuration",
+      "ja": "モデル設定を読み込み中",
+      "ko": "모델 설정 불러오는 중",
+      "zh-CN": "正在读取模型配置",
+      "zh-TW": "正在讀取模型設定"
+    },
+    "ui.loading_settings": {
+      "en-US": "Loading settings",
+      "ja": "設定を読み込み中",
+      "ko": "설정 불러오는 중",
+      "zh-CN": "正在读取设置",
+      "zh-TW": "正在讀取設定"
+    },
+    "ui.local_model_gateway_not_found": {
+      "en-US": "Local model gateway not found",
+      "ja": "ローカルゲートウェイが見つかりません",
+      "ko": "로컬 모델 게이트웨이를 찾을 수 없습니다",
+      "zh-CN": "未找到本机模型网关",
+      "zh-TW": "未找到本機模型閘道"
+    },
+    "ui.magpie_is_a_local_ai_gateway_for_connecting_agents_to_different_model_providers_and_switch": {
+      "en-US": "Magpie is a local AI gateway for connecting agents to different model providers and switching models for your cloud agents",
+      "ja": "Magpie はエージェントをさまざまなモデルプロバイダーに接続するローカル AI ゲートウェイです。クラウドエージェントで使うモデルを選択・切り替えできます。",
+      "ko": "Magpie는 에이전트를 여러 모델 제공업체에 연결하는 로컬 AI 게이트웨이입니다. 클라우드 에이전트에서 사용할 모델을 선택하고 전환할 수 있습니다.",
+      "zh-CN": "Magpie 是一个本地 AI 网关，可将智能体连接到不同的模型服务，并为云端智能体选择和切换模型",
+      "zh-TW": "Magpie 是一個本地 AI 閘道，可將智慧代理連接到不同的模型服務，並為雲端智慧代理選擇和切換模型"
+    },
+    "ui.memory": {
+      "en-US": "Memory",
+      "ja": "メモリ",
+      "ko": "메모리",
+      "zh-CN": "内存",
+      "zh-TW": "記憶體"
+    },
+    "ui.migrating_model_credentials": {
+      "en-US": "Migrating model credentials",
+      "ja": "モデル認証情報を移行中",
+      "ko": "모델 인증 정보 이전 중",
+      "zh-CN": "正在迁移模型凭据",
+      "zh-TW": "正在移轉模型憑證"
+    },
+    "ui.model": {
+      "en-US": "Model",
+      "ja": "モデル",
+      "ko": "모델",
+      "zh-CN": "模型",
+      "zh-TW": "模型"
+    },
+    "ui.model_access_denied_check_your_provider_s_limits": {
+      "en-US": "Model access denied. Check your provider's limits.",
+      "ja": "モデルへのアクセスが拒否されました。サービスの制限を確認してください。",
+      "ko": "모델 접근이 거부되었습니다. 제공자의 제한을 확인하세요.",
+      "zh-CN": "模型服务拒绝访问，请检查服务限制",
+      "zh-TW": "模型服務拒絕存取，請檢查服務限制"
+    },
+    "ui.model_catalog_is_not_ready_refresh_and_retry": {
+      "en-US": "Model catalog is not ready. Refresh and retry.",
+      "ja": "モデル一覧が未準備です。更新して再試行してください。",
+      "ko": "모델 목록이 준비되지 않았습니다. 새로 고침 후 다시 시도하세요.",
+      "zh-CN": "模型目录尚未就绪，请刷新后重试。",
+      "zh-TW": "模型目錄尚未就緒，請重新整理後重試。"
+    },
+    "ui.model_catalog_refresh_failed": {
+      "en-US": "Model catalog refresh failed",
+      "ja": "モデル一覧の更新に失敗",
+      "ko": "모델 목록 새로 고침 실패",
+      "zh-CN": "模型目录刷新失败",
+      "zh-TW": "模型目錄更新失敗"
+    },
+    "ui.model_configuration_failed": {
+      "en-US": "Model configuration failed",
+      "ja": "モデル設定に失敗",
+      "ko": "모델 설정 실패",
+      "zh-CN": "模型配置失败",
+      "zh-TW": "模型設定失敗"
+    },
+    "ui.model_configuration_pending": {
+      "en-US": "Model configuration pending",
+      "ja": "モデル設定待ち",
+      "ko": "모델 설정 대기 중",
+      "zh-CN": "模型配置待处理",
+      "zh-TW": "模型設定待處理"
+    },
+    "ui.model_credentials_expired_sign_in_again": {
+      "en-US": "Model credentials expired. Sign in again.",
+      "ja": "モデルの認証情報が失効しました。再度ログインしてください。",
+      "ko": "모델 인증 정보가 만료되었습니다. 다시 로그인하세요.",
+      "zh-CN": "模型凭据失效，请重新授权",
+      "zh-TW": "模型憑據失效，請重新授權"
+    },
+    "ui.model_rate_limited_retrying": {
+      "en-US": "Model rate limited. Retrying…",
+      "ja": "モデルの利用制限に達しました。再試行しています…",
+      "ko": "모델 사용 한도에 도달했습니다. 다시 시도하는 중…",
+      "zh-CN": "模型限流，正在自动重试...",
+      "zh-TW": "模型受到流量限制，正在自動重試…"
+    },
+    "ui.model_routing_configured": {
+      "en-US": "Model routing configured",
+      "ja": "モデルルート設定済み",
+      "ko": "모델 라우팅 설정됨",
+      "zh-CN": "模型路由已配置",
+      "zh-TW": "模型路由已設定"
+    },
+    "ui.model_temporarily_unavailable_retrying": {
+      "en-US": "Model temporarily unavailable. Retrying…",
+      "ja": "モデルを一時的に利用できません。再試行しています…",
+      "ko": "모델을 일시적으로 사용할 수 없습니다. 다시 시도하는 중…",
+      "zh-CN": "模型暂时不可用，正在自动重试...",
+      "zh-TW": "模型暫時無法使用，正在自動重試…"
+    },
+    "ui.model_verification_failed": {
+      "en-US": "Model verification failed",
+      "ja": "モデル検証に失敗",
+      "ko": "모델 검증 실패",
+      "zh-CN": "模型配置验证失败",
+      "zh-TW": "模型設定驗證失敗"
+    },
+    "ui.models_configured_verification_pending": {
+      "en-US": "Models configured; verification pending",
+      "ja": "モデル設定済み・検証待ち",
+      "ko": "모델 설정됨 · 검증 대기 중",
+      "zh-CN": "模型已配置，等待验证",
+      "zh-TW": "模型已設定，等待驗證"
+    },
+    "ui.move_agent_loop_to_cloud": {
+      "en-US": "Move agent loop to cloud",
+      "ja": "エージェントループをクラウドへ移動",
+      "ko": "에이전트 루프를 클라우드로 이동",
+      "zh-CN": "将智能体循环移至云端",
+      "zh-TW": "將智慧代理循環移至雲端"
+    },
+    "ui.move_agent_loop_to_cloud_sign_in_first": {
+      "en-US": "Move agent loop to cloud; sign in first",
+      "ja": "ログインしてエージェントループをクラウドへ移動",
+      "ko": "로그인 후 에이전트 루프를 클라우드로 이동",
+      "zh-CN": "将智能体循环移至云端，需先登录",
+      "zh-TW": "將智慧代理循環移至雲端，需先登入"
+    },
+    "ui.needs_attention": {
+      "en-US": "Needs attention",
+      "ja": "対応が必要",
+      "ko": "확인 필요",
+      "zh-CN": "需要处理",
+      "zh-TW": "需要處理"
+    },
+    "ui.needs_input": {
+      "en-US": "Needs input",
+      "ja": "入力待ち",
+      "ko": "입력 필요",
+      "zh-CN": "等待输入",
+      "zh-TW": "等待輸入"
+    },
+    "ui.no_active_sessions": {
+      "en-US": "No active sessions",
+      "ja": "アクティブなセッションはありません",
+      "ko": "활성 세션이 없습니다",
+      "zh-CN": "暂无活跃会话",
+      "zh-TW": "目前無使用中的工作階段"
+    },
+    "ui.no_cloud_sessions_yet": {
+      "en-US": "No cloud sessions yet",
+      "ja": "クラウドセッションはありません",
+      "ko": "클라우드 세션이 없습니다",
+      "zh-CN": "还没有云端会话",
+      "zh-TW": "尚無雲端工作階段"
+    },
+    "ui.no_compatible_model_configuration": {
+      "en-US": "No compatible model configuration",
+      "ja": "対応するモデル設定がありません",
+      "ko": "호환되는 모델 설정이 없습니다",
+      "zh-CN": "暂无兼容的模型配置",
+      "zh-TW": "暫無相容的模型設定"
+    },
+    "ui.no_local_model_credentials_configured": {
+      "en-US": "No local model credentials configured",
+      "ja": "ローカルのモデル認証情報が未設定です",
+      "ko": "로컬 모델 인증 정보가 없습니다",
+      "zh-CN": "本机尚未配置模型凭据",
+      "zh-TW": "本機尚未設定模型憑證"
+    },
+    "ui.no_model_providers_configured": {
+      "en-US": "No model providers configured",
+      "ja": "モデルサービスが未設定です",
+      "ko": "설정된 모델 서비스가 없습니다",
+      "zh-CN": "尚未配置模型服务",
+      "zh-TW": "尚未設定模型服務"
+    },
+    "ui.not_installed": {
+      "en-US": "Not installed",
+      "ja": "未インストール",
+      "ko": "설치되지 않음",
+      "zh-CN": "未安装",
+      "zh-TW": "未安裝"
+    },
+    "ui.not_signed_in": {
+      "en-US": "Not signed in",
+      "ja": "未ログイン",
+      "ko": "로그인되지 않음",
+      "zh-CN": "未登录",
+      "zh-TW": "未登入"
+    },
+    "ui.open_in_browser": {
+      "en-US": "Open in browser",
+      "ja": "ブラウザで開く",
+      "ko": "브라우저에서 열기",
+      "zh-CN": "在浏览器打开",
+      "zh-TW": "在瀏覽器開啟"
+    },
+    "ui.open_the_authorization_link_in_the_terminal_then_continue": {
+      "en-US": "Open the authorization link in the terminal, then continue.",
+      "ja": "ターミナルのリンクで認証し、続行してください。",
+      "ko": "터미널의 인증 링크를 열고 완료 후 계속하세요.",
+      "zh-CN": "在终端中的链接打开授权页面，完成后继续。",
+      "zh-TW": "開啟終端中的連結進行授權，完成後繼續。"
+    },
+    "ui.opencode_v2_cloud_setup_is_not_yet_implemented": {
+      "en-US": "OpenCode v2 cloud setup is not yet implemented",
+      "ja": "OpenCode v2 のクラウドセットアップは未実装です",
+      "ko": "OpenCode v2 클라우드 설치는 아직 구현되지 않았습니다",
+      "zh-CN": "OpenCode v2 云端安装适配中",
+      "zh-TW": "OpenCode v2 雲端安裝適配中"
+    },
+    "ui.panel_navigation": {
+      "en-US": "Panel navigation",
+      "ja": "パネルナビゲーション",
+      "ko": "패널 탐색",
+      "zh-CN": "面板导航",
+      "zh-TW": "面板導覽"
+    },
+    "ui.pay_as_you_go": {
+      "en-US": "Pay-as-you-go",
+      "ja": "従量課金",
+      "ko": "사용량 기반 과금",
+      "zh-CN": "按量付费",
+      "zh-TW": "隨用隨付"
+    },
+    "ui.preparing": {
+      "en-US": "Preparing",
+      "ja": "準備中",
+      "ko": "준비 중",
+      "zh-CN": "准备中",
+      "zh-TW": "準備中"
+    },
+    "ui.preparing_2": {
+      "en-US": "Preparing…",
+      "ja": "準備中…",
+      "ko": "준비 중…",
+      "zh-CN": "正在准备…",
+      "zh-TW": "正在準備…"
+    },
+    "ui.preparing_session_service": {
+      "en-US": "Preparing session service",
+      "ja": "セッションサービスを準備中",
+      "ko": "세션 서비스 준비 중",
+      "zh-CN": "正在准备会话服务",
+      "zh-TW": "正在準備工作階段服務"
+    },
+    "ui.quit": {
+      "en-US": "Quit",
+      "ja": "終了",
+      "ko": "종료",
+      "zh-CN": "退出",
+      "zh-TW": "結束"
+    },
+    "ui.reading_sign_in_credentials": {
+      "en-US": "Reading sign-in credentials",
+      "ja": "ログイン情報を読み込み中",
+      "ko": "로그인 정보 읽는 중",
+      "zh-CN": "正在读取登录凭证",
+      "zh-TW": "正在讀取登入憑證"
+    },
+    "ui.ready_to_enable": {
+      "en-US": "Ready to enable",
+      "ja": "有効化できます",
+      "ko": "활성화 가능",
+      "zh-CN": "可开启",
+      "zh-TW": "可開啟"
+    },
+    "ui.reasoning_effort": {
+      "en-US": "Effort",
+      "ja": "推論の強度",
+      "ko": "추론 강도",
+      "zh-CN": "推理强度",
+      "zh-TW": "推理強度"
+    },
+    "ui.refresh_account": {
+      "en-US": "Refresh account",
+      "ja": "アカウントを更新",
+      "ko": "계정 새로 고침",
+      "zh-CN": "刷新账户",
+      "zh-TW": "重新整理帳戶"
+    },
+    "ui.refresh_agents": {
+      "en-US": "Refresh agents",
+      "ja": "エージェントを更新",
+      "ko": "에이전트 새로 고침",
+      "zh-CN": "刷新智能体",
+      "zh-TW": "重新整理智慧代理"
+    },
+    "ui.remove_fennec_its_settings_and_sign_in_information_from_this_mac": {
+      "en-US": "Remove Fennec, its settings, and sign-in information from this Mac.",
+      "ja": "この Mac から Fennec、設定、ログイン情報を削除します。",
+      "ko": "이 Mac에서 Fennec, 설정 및 로그인 정보를 제거합니다.",
+      "zh-CN": "移除此 Mac 上的 Fennec、设置和登录信息。",
+      "zh-TW": "移除此 Mac 上的 Fennec、設定和登入資訊。"
+    },
+    "ui.request_to_run_a_local_command": {
+      "en-US": "Request to run a local command",
+      "ja": "ローカルコマンドの実行リクエスト",
+      "ko": "로컬 명령 실행 요청",
+      "zh-CN": "请求在本机执行命令",
+      "zh-TW": "請求在本機執行命令"
+    },
+    "ui.reset_failed_retry": {
+      "en-US": "Reset failed. Retry.",
+      "ja": "リセットに失敗しました。",
+      "ko": "초기화하지 못했습니다. 다시 시도하세요.",
+      "zh-CN": "清除失败，请重试",
+      "zh-TW": "清除失敗，請重試"
+    },
+    "ui.reset_future_access_will_ask_again": {
+      "en-US": "Reset. Future access will ask again.",
+      "ja": "リセットしました。次回は再確認します。",
+      "ko": "초기화했습니다. 다음 접근 시 다시 묻습니다.",
+      "zh-CN": "已清除，后续访问将重新询问",
+      "zh-TW": "已清除，後續存取將重新詢問"
+    },
+    "ui.reset_remembered_permissions": {
+      "en-US": "Reset remembered permissions",
+      "ja": "記憶した許可をリセット",
+      "ko": "기억된 권한 초기화",
+      "zh-CN": "清除记住的授权",
+      "zh-TW": "清除記住的授權"
+    },
+    "ui.resource_usage_is_billed_usage_over_the_last_30_days": {
+      "en-US": "Resource usage is billed usage over the last 30 days",
+      "ja": "リソース使用量は過去30日間の課金対象使用量です",
+      "ko": "리소스 사용량은 최근 30일 누적 과금 사용량입니다",
+      "zh-CN": "资源用量为近30天累计计费用量",
+      "zh-TW": "資源用量為近30天累計計費用量"
+    },
+    "ui.resource_usage_last_30_days": {
+      "en-US": "Resource usage · last 30 days",
+      "ja": "過去30日間のリソース使用量",
+      "ko": "최근 30일 리소스 사용량",
+      "zh-CN": "近30天资源用量",
+      "zh-TW": "近30天資源用量"
+    },
+    "ui.restoring_model_accounts": {
+      "en-US": "Restoring model accounts",
+      "ja": "モデルアカウントを復元中",
+      "ko": "모델 계정 복원 중",
+      "zh-CN": "正在恢复模型账户",
+      "zh-TW": "正在恢復模型帳戶"
+    },
+    "ui.retry": {
+      "en-US": "Retry",
+      "ja": "再試行",
+      "ko": "다시 시도",
+      "zh-CN": "重试",
+      "zh-TW": "重試"
+    },
+    "ui.review_apps_to_remove": {
+      "en-US": "Review apps to remove",
+      "ja": "削除するアプリを確認",
+      "ko": "제거할 앱 확인",
+      "zh-CN": "查看要移除的 App",
+      "zh-TW": "查看要移除的 App"
+    },
+    "ui.revoke_access": {
+      "en-US": "Revoke access",
+      "ja": "アクセスを取り消す",
+      "ko": "접근 권한 철회",
+      "zh-CN": "撤销授权",
+      "zh-TW": "撤銷授權"
+    },
+    "ui.revoke_automatic_access_to_this_mac": {
+      "en-US": "Revoke automatic access to this Mac",
+      "ja": "この Mac への自動アクセス許可を取り消す",
+      "ko": "이 Mac의 자동 접근 권한 취소",
+      "zh-CN": "撤销本机访问的自动授权",
+      "zh-TW": "撤銷本機存取的自動授權"
+    },
+    "ui.run_in_cloud": {
+      "en-US": "Run in cloud",
+      "ja": "クラウドで実行",
+      "ko": "클라우드에서 실행",
+      "zh-CN": "云端运行",
+      "zh-TW": "雲端執行"
+    },
+    "ui.run_location": {
+      "en-US": "Run location",
+      "ja": "実行場所",
+      "ko": "실행 위치",
+      "zh-CN": "运行位置",
+      "zh-TW": "執行位置"
+    },
+    "ui.running": {
+      "en-US": "Running",
+      "ja": "実行中",
+      "ko": "실행 중",
+      "zh-CN": "运行中",
+      "zh-TW": "執行中"
+    },
+    "ui.runs_as_you_with_access_to_your_files_and_network": {
+      "en-US": "Runs as you, with access to your files and network.",
+      "ja": "現在のユーザーとしてファイルとネットワークにアクセスします。",
+      "ko": "현재 사용자 권한으로 파일과 네트워크에 접근합니다.",
+      "zh-CN": "以当前用户执行，可访问该用户的文件和网络。",
+      "zh-TW": "以目前使用者執行，可存取其檔案及網路。"
+    },
+    "ui.saving_model_selection": {
+      "en-US": "Saving model selection…",
+      "ja": "モデル選択を保存中…",
+      "ko": "모델 선택 저장 중…",
+      "zh-CN": "正在保存模型选择…",
+      "zh-TW": "正在儲存模型選擇…"
+    },
+    "ui.select_a_local_model_first": {
+      "en-US": "Select a local model first",
+      "ja": "先にローカルのモデルを選択",
+      "ko": "먼저 로컬 모델을 선택하세요",
+      "zh-CN": "请先在本机选择模型",
+      "zh-TW": "請先在本機選擇模型"
+    },
+    "ui.selected_model_unavailable": {
+      "en-US": "Selected model unavailable",
+      "ja": "選択したモデルは利用できません",
+      "ko": "선택한 모델을 사용할 수 없습니다",
+      "zh-CN": "所选模型暂不可用",
+      "zh-TW": "所選模型暫不可用"
+    },
+    "ui.send": {
+      "en-US": "Send",
+      "ja": "送信",
+      "ko": "전송",
+      "zh-CN": "发送",
+      "zh-TW": "傳送"
+    },
+    "ui.session_action_unconfirmed_refresh_and_retry": {
+      "en-US": "Session action unconfirmed. Refresh and retry.",
+      "ja": "操作未確認です。更新して再試行してください",
+      "ko": "세션 작업 미확인. 새로 고침 후 다시 시도하세요",
+      "zh-CN": "会话操作未确认，请刷新后重试",
+      "zh-TW": "工作階段操作尚未確認，請重新整理"
+    },
+    "ui.session_actions": {
+      "en-US": "Session actions",
+      "ja": "セッション操作",
+      "ko": "세션 작업",
+      "zh-CN": "会话操作",
+      "zh-TW": "工作階段操作"
+    },
+    "ui.session_expired_sign_in_again": {
+      "en-US": "Session expired. Sign in again.",
+      "ja": "再度ログインしてください。",
+      "ko": "세션이 만료되었습니다. 다시 로그인하세요.",
+      "zh-CN": "登录已过期，请重新登录。",
+      "zh-TW": "登入已過期，請重新登入。"
+    },
+    "ui.session_input": {
+      "en-US": "Session input",
+      "ja": "セッション入力",
+      "ko": "세션 입력",
+      "zh-CN": "会话输入",
+      "zh-TW": "工作階段輸入"
+    },
+    "ui.session_started": {
+      "en-US": "Session started",
+      "ja": "セッション開始済み",
+      "ko": "세션 시작됨",
+      "zh-CN": "会话已启动",
+      "zh-TW": "工作階段已啟動"
+    },
+    "ui.session_status_unavailable_refresh_to_retry": {
+      "en-US": "Session status unavailable. Refresh to retry.",
+      "ja": "セッション状態を取得できません。更新してください",
+      "ko": "세션 상태를 가져올 수 없습니다. 새로 고침하세요",
+      "zh-CN": "会话状态暂不可用，请刷新重试",
+      "zh-TW": "工作階段狀態暫不可用，請重新整理"
+    },
+    "ui.sessions": {
+      "en-US": "Sessions",
+      "ja": "セッション",
+      "ko": "세션",
+      "zh-CN": "会话",
+      "zh-TW": "工作階段"
+    },
+    "ui.sessions_appear_when_the_cloud_computer_is_ready": {
+      "en-US": "Sessions appear when the cloud computer is ready",
+      "ja": "クラウドコンピューターの準備後に表示",
+      "ko": "클라우드 컴퓨터 준비 후 세션 표시",
+      "zh-CN": "云电脑准备后显示会话",
+      "zh-TW": "雲端電腦準備後顯示工作階段"
+    },
+    "ui.settings": {
+      "en-US": "Settings",
+      "ja": "設定",
+      "ko": "설정",
+      "zh-CN": "设置",
+      "zh-TW": "設定"
+    },
+    "ui.setup_is_running_choose_a_model_afterward": {
+      "en-US": "Setup is running. Choose a model afterward.",
+      "ja": "準備中です。完了後にモデルを選択してください。",
+      "ko": "환경 준비 중입니다. 완료 후 모델을 선택하세요.",
+      "zh-CN": "环境准备中，请稍后选择模型。",
+      "zh-TW": "環境準備中，請稍後選擇模型。"
+    },
+    "ui.setup_progress": {
+      "en-US": "Setup progress",
+      "ja": "準備状況",
+      "ko": "준비 진행 상태",
+      "zh-CN": "准备进度",
+      "zh-TW": "準備進度"
+    },
+    "ui.showing_the_latest_250_agents": {
+      "en-US": "Showing the latest 250 agents",
+      "ja": "最新の250件を表示",
+      "ko": "최근 에이전트 250개 표시",
+      "zh-CN": "已读取最近 250 个智能体",
+      "zh-TW": "已讀取最近 250 個智慧代理"
+    },
+    "ui.sign_in": {
+      "en-US": "Sign in",
+      "ja": "ログイン",
+      "ko": "로그인",
+      "zh-CN": "登录",
+      "zh-TW": "登入"
+    },
+    "ui.sign_in_2": {
+      "en-US": "Sign in",
+      "ja": "エージェントにログイン",
+      "ko": "에이전트 로그인",
+      "zh-CN": "登录智能体",
+      "zh-TW": "登入智慧代理"
+    },
+    "ui.sign_in_again": {
+      "en-US": "Sign in again",
+      "ja": "再ログイン",
+      "ko": "다시 로그인",
+      "zh-CN": "重新登录",
+      "zh-TW": "重新登入"
+    },
+    "ui.sign_in_again_to_continue_setup": {
+      "en-US": "Sign in again to continue setup",
+      "ja": "再度ログインして準備を続行",
+      "ko": "다시 로그인하여 설정 계속",
+      "zh-CN": "请重新登录以继续准备",
+      "zh-TW": "請重新登入以繼續準備"
+    },
+    "ui.sign_in_first": {
+      "en-US": "Sign in first",
+      "ja": "ログインしてください",
+      "ko": "먼저 로그인하세요",
+      "zh-CN": "请先登录",
+      "zh-TW": "請先登入"
+    },
+    "ui.sign_in_for_cloud_takeover": {
+      "en-US": "Sign in for cloud takeover",
+      "ja": "ログインしてクラウドへ移行",
+      "ko": "로그인 후 클라우드로 전환",
+      "zh-CN": "登录后开启云端接管",
+      "zh-TW": "登入後開啟雲端接管"
+    },
+    "ui.sign_in_to_delete_your_cloud_computer": {
+      "en-US": "Sign in to delete your cloud computer.",
+      "ja": "クラウドコンピューターを削除するにはログインしてください。",
+      "ko": "클라우드 컴퓨터를 삭제하려면 로그인하세요.",
+      "zh-CN": "请先登录，再删除云电脑",
+      "zh-TW": "請先登入，再刪除雲電腦"
+    },
+    "ui.sign_in_to_runta": {
+      "en-US": "Sign in to Runta",
+      "ja": "Runta にログイン",
+      "ko": "Runta 로그인",
+      "zh-CN": "登录 Runta",
+      "zh-TW": "登入 Runta"
+    },
+    "ui.sign_in_to_runta_2": {
+      "en-US": "Sign in to Runta ↗",
+      "ja": "Runta にログイン ↗",
+      "ko": "Runta 로그인 ↗",
+      "zh-CN": "登录 Runta ↗",
+      "zh-TW": "登入 Runta ↗"
+    },
+    "ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry": {
+      "en-US": "Sign in to the agents you want to use on your Mac, then retry",
+      "ja": "この Mac で使用するエージェントにログインして再試行してください",
+      "ko": "이 Mac에서 사용할 에이전트에 로그인한 후 다시 시도하세요",
+      "zh-CN": "请在本机登录要使用的智能体，然后重试",
+      "zh-TW": "請在本機登入要使用的智慧代理，然後重試"
+    },
+    "ui.sign_in_to_this_agent_on_your_mac_then_retry": {
+      "en-US": "Sign in to this agent on your Mac, then retry",
+      "ja": "この Mac でエージェントにログインして再試行してください",
+      "ko": "이 Mac에서 에이전트에 로그인한 후 다시 시도하세요",
+      "zh-CN": "请先在本机登录此智能体，然后重试",
+      "zh-TW": "請先在本機登入此智慧代理，然後重試"
+    },
+    "ui.sign_in_to_view_sessions": {
+      "en-US": "Sign in to view sessions",
+      "ja": "ログインしてセッションを表示",
+      "ko": "로그인하여 세션 보기",
+      "zh-CN": "登录后查看会话",
+      "zh-TW": "登入後查看工作階段"
+    },
+    "ui.sign_in_was_not_completed_start_again": {
+      "en-US": "Sign-in was not completed. Start again.",
+      "ja": "ログインが完了しませんでした。もう一度開始してください。",
+      "ko": "로그인이 완료되지 않았습니다. 다시 시작하세요.",
+      "zh-CN": "登录未完成，请重新开始。",
+      "zh-TW": "登入未完成，請重新開始。"
+    },
+    "ui.sign_out": {
+      "en-US": "Sign out",
+      "ja": "ログアウト",
+      "ko": "로그아웃",
+      "zh-CN": "退出登录",
+      "zh-TW": "登出"
+    },
+    "ui.signed_in": {
+      "en-US": "Signed in",
+      "ja": "ログイン済み",
+      "ko": "로그인됨",
+      "zh-CN": "已登录",
+      "zh-TW": "已登入"
+    },
+    "ui.some_agent_models_need_configuration": {
+      "en-US": "Some agent models need configuration",
+      "ja": "一部のモデルに設定が必要です",
+      "ko": "일부 에이전트 모델 설정이 필요합니다",
+      "zh-CN": "部分智能体模型需要配置",
+      "zh-TW": "部分智慧代理模型需要設定"
+    },
+    "ui.start_session": {
+      "en-US": "Start session",
+      "ja": "セッションを開始",
+      "ko": "세션 시작",
+      "zh-CN": "启动会话",
+      "zh-TW": "啟動工作階段"
+    },
+    "ui.start_unconfirmed_refresh_sessions_before_retrying": {
+      "en-US": "Start unconfirmed. Refresh sessions before retrying.",
+      "ja": "起動未確認です。一覧を更新してください",
+      "ko": "시작 미확인. 세션 새로 고침 후 다시 시도하세요",
+      "zh-CN": "启动未确认，请刷新会话后重试",
+      "zh-TW": "啟動尚未確認，請重新整理後重試"
+    },
+    "ui.starting_cloud_computer": {
+      "en-US": "Starting cloud computer",
+      "ja": "クラウドコンピューターを起動中",
+      "ko": "클라우드 컴퓨터 시작 중",
+      "zh-CN": "正在启动云电脑",
+      "zh-TW": "正在啟動雲端電腦"
+    },
+    "ui.starting_magpie": {
+      "en-US": "Starting Magpie",
+      "ja": "Magpie を起動中",
+      "ko": "Magpie 시작 중",
+      "zh-CN": "正在启动 Magpie",
+      "zh-TW": "正在啟動 Magpie"
+    },
+    "ui.starting_model_gateway": {
+      "en-US": "Starting model gateway",
+      "ja": "モデルゲートウェイを起動中",
+      "ko": "모델 게이트웨이 시작 중",
+      "zh-CN": "正在启动大模型网关",
+      "zh-TW": "正在啟動大模型閘道"
+    },
+    "ui.starting_session": {
+      "en-US": "Starting session…",
+      "ja": "セッション起動中…",
+      "ko": "세션 시작 중…",
+      "zh-CN": "正在启动会话…",
+      "zh-TW": "正在啟動工作階段…"
+    },
+    "ui.status_pending": {
+      "en-US": "Status pending",
+      "ja": "状態更新待ち",
+      "ko": "상태 갱신 대기",
+      "zh-CN": "状态待更新",
+      "zh-TW": "狀態待更新"
+    },
+    "ui.stop": {
+      "en-US": "Stop",
+      "ja": "停止",
+      "ko": "중지",
+      "zh-CN": "停止",
+      "zh-TW": "停止"
+    },
+    "ui.stop_session": {
+      "en-US": "Stop session",
+      "ja": "セッションを終了",
+      "ko": "세션 종료",
+      "zh-CN": "终止会话",
+      "zh-TW": "終止工作階段"
+    },
+    "ui.submission_unconfirmed_inspect_session_before_retrying": {
+      "en-US": "Submission unconfirmed. Inspect session before retrying.",
+      "ja": "送信未確認です。再試行前に確認してください",
+      "ko": "전송 미확인. 재시도 전 세션을 확인하세요",
+      "zh-CN": "提交未确认，请查看会话后重试",
+      "zh-TW": "提交尚未確認，請查看工作階段"
+    },
+    "ui.submitted": {
+      "en-US": "Submitted",
+      "ja": "送信済み",
+      "ko": "전송됨",
+      "zh-CN": "已提交",
+      "zh-TW": "已提交"
+    },
+    "ui.submitting": {
+      "en-US": "Submitting…",
+      "ja": "送信中…",
+      "ko": "전송 중…",
+      "zh-CN": "正在提交…",
+      "zh-TW": "正在提交…"
+    },
+    "ui.syncing_agent_versions": {
+      "en-US": "Syncing agent versions",
+      "ja": "バージョン情報を同期中",
+      "ko": "에이전트 버전 동기화 중",
+      "zh-CN": "正在同步智能体版本",
+      "zh-TW": "正在同步智慧代理版本"
+    },
+    "ui.system": {
+      "en-US": "System",
+      "ja": "システム",
+      "ko": "시스템",
+      "zh-CN": "跟随系统",
+      "zh-TW": "跟隨系統"
+    },
+    "ui.terminal_connection_closed": {
+      "en-US": "Terminal connection closed",
+      "ja": "ターミナル接続が終了しました",
+      "ko": "터미널 연결이 종료되었습니다",
+      "zh-CN": "终端连接已结束",
+      "zh-TW": "終端連線已結束"
+    },
+    "ui.this_cannot_be_undone": {
+      "en-US": "This cannot be undone",
+      "ja": "この操作は元に戻せません",
+      "ko": "이 작업은 되돌릴 수 없습니다",
+      "zh-CN": "此操作不可撤销",
+      "zh-TW": "此操作無法復原"
+    },
+    "ui.this_mac": {
+      "en-US": "This Mac",
+      "ja": "この Mac",
+      "ko": "이 Mac",
+      "zh-CN": "本机",
+      "zh-TW": "本機"
+    },
+    "ui.this_model_address_is_local_to_your_mac_use_a_cloud_accessible_address_or_enable_magpie": {
+      "en-US": "This model address is local to your Mac. Use a cloud-accessible address or enable Magpie.",
+      "ja": "モデルのアドレスはこの Mac 専用です。クラウドから接続できるアドレスを使うか、Magpie を有効にしてください。",
+      "ko": "이 모델 주소는 Mac 전용입니다. 클라우드에서 접근 가능한 주소를 사용하거나 Magpie를 켜세요.",
+      "zh-CN": "本机模型地址无法在云端使用，请配置云端可访问的地址，或启用 Magpie",
+      "zh-TW": "本機模型位址無法在雲端使用，請設定雲端可存取的位址，或啟用 Magpie"
+    },
+    "ui.type_the_cloud_computer_id_to_confirm": {
+      "en-US": "Type the cloud computer ID to confirm",
+      "ja": "確認のためクラウドコンピューター ID を入力",
+      "ko": "확인하려면 클라우드 컴퓨터 ID를 입력하세요",
+      "zh-CN": "输入云电脑 ID 以确认",
+      "zh-TW": "輸入雲電腦 ID 以確認"
+    },
+    "ui.unable_to_complete_this_action_please_try_again_later": {
+      "en-US": "Unable to complete this action. Please try again later.",
+      "ja": "操作を完了できません。後でもう一度お試しください。",
+      "ko": "작업을 완료할 수 없습니다. 잠시 후 다시 시도하세요.",
+      "zh-CN": "暂时无法完成操作，请稍后重试。",
+      "zh-TW": "暫時無法完成操作，請稍後重試。"
+    },
+    "ui.unable_to_connect_please_try_again": {
+      "en-US": "Unable to connect. Please try again.",
+      "ja": "接続できません。もう一度お試しください。",
+      "ko": "연결할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法连接，请重试",
+      "zh-TW": "暫時無法連線，請重試"
+    },
+    "ui.unable_to_finish_setup_please_retry": {
+      "en-US": "Unable to finish setup. Please retry.",
+      "ja": "準備を完了できません。再試行してください。",
+      "ko": "준비를 완료할 수 없습니다. 다시 시도하세요.",
+      "zh-CN": "暂时无法完成准备，请重试。",
+      "zh-TW": "暫時無法完成準備，請重試。"
+    },
+    "ui.unable_to_load_account_usage": {
+      "en-US": "Unable to load account usage.",
+      "ja": "使用量を取得できません。再試行してください",
+      "ko": "계정 사용량을 불러올 수 없습니다. 다시 시도하세요",
+      "zh-CN": "无法读取账户用量，请重试",
+      "zh-TW": "無法讀取帳戶用量，請重試"
+    },
+    "ui.unable_to_load_model_configuration": {
+      "en-US": "Unable to load model configuration",
+      "ja": "モデル設定を読み込めません",
+      "ko": "모델 설정을 불러올 수 없습니다",
+      "zh-CN": "无法读取模型配置",
+      "zh-TW": "無法讀取模型設定"
+    },
+    "ui.unexpected_response_try_again_later": {
+      "en-US": "Unexpected response. Try again later.",
+      "ja": "応答形式が不正です。後でもう一度お試しください。",
+      "ko": "응답 형식이 올바르지 않습니다. 나중에 다시 시도하세요.",
+      "zh-CN": "列表响应格式异常，请稍后重试。",
+      "zh-TW": "清單格式異常，請稍後重試。"
+    },
+    "ui.uninstall": {
+      "en-US": "Uninstall",
+      "ja": "アンインストール",
+      "ko": "제거",
+      "zh-CN": "卸载",
+      "zh-TW": "解除安裝"
+    },
+    "ui.uninstall_complete": {
+      "en-US": "Uninstall complete",
+      "ja": "アンインストール完了",
+      "ko": "제거 완료",
+      "zh-CN": "卸载完成",
+      "zh-TW": "解除安裝完成"
+    },
+    "ui.uninstall_did_not_finish_try_again": {
+      "en-US": "Uninstall did not finish. Try again.",
+      "ja": "アンインストールが完了しませんでした。再試行してください。",
+      "ko": "제거가 완료되지 않았습니다. 다시 시도하세요.",
+      "zh-CN": "卸载未完成，请重试",
+      "zh-TW": "解除安裝尚未完成，請重試"
+    },
+    "ui.uninstall_fennec": {
+      "en-US": "Uninstall Fennec",
+      "ja": "Fennec をアンインストール",
+      "ko": "Fennec 제거",
+      "zh-CN": "卸载 Fennec",
+      "zh-TW": "解除安裝 Fennec"
+    },
+    "ui.uninstalling": {
+      "en-US": "Uninstalling…",
+      "ja": "アンインストール中…",
+      "ko": "제거 중…",
+      "zh-CN": "正在卸载…",
+      "zh-TW": "正在解除安裝…"
+    },
+    "ui.untitled_session": {
+      "en-US": "Untitled session",
+      "ja": "無題のセッション",
+      "ko": "제목 없는 세션",
+      "zh-CN": "未命名会话",
+      "zh-TW": "未命名工作階段"
+    },
+    "ui.updating_showing_last_available_data": {
+      "en-US": "Updating; showing last available data",
+      "ja": "更新中：直近のデータを表示",
+      "ko": "업데이트 중: 최근 데이터 표시",
+      "zh-CN": "数据更新中，显示最近记录",
+      "zh-TW": "資料更新中，顯示最近紀錄"
+    },
+    "ui.updating_the_session_to_check_the_result": {
+      "en-US": "Updating the session to check the result.",
+      "ja": "結果を確認するためセッションを更新しています。",
+      "ko": "결과 확인을 위해 세션을 업데이트하고 있습니다.",
+      "zh-CN": "操作未确认，正在更新会话状态。",
+      "zh-TW": "操作尚未確認，正在更新工作階段狀態。"
+    },
+    "ui.use_a_new_terminal": {
+      "en-US": "Use a new terminal",
+      "ja": "新しいターミナルで使用してください",
+      "ko": "새 터미널에서 사용하세요",
+      "zh-CN": "请在新终端中使用",
+      "zh-TW": "請在新終端機中使用"
+    },
+    "ui.use_start_session_to_run_in_the_cloud": {
+      "en-US": "Use Start session to run in the cloud",
+      "ja": "セッションを開始してクラウドで実行",
+      "ko": "세션을 시작하여 클라우드에서 실행",
+      "zh-CN": "通过启动会话使用云电脑",
+      "zh-TW": "透過啟動工作階段使用雲端電腦"
+    },
+    "ui.verifying_cloud_computer_resources": {
+      "en-US": "Verifying cloud computer resources",
+      "ja": "クラウドコンピューターのリソースを確認中",
+      "ko": "클라우드 컴퓨터 리소스 확인 중",
+      "zh-CN": "正在确认云电脑资源",
+      "zh-TW": "正在確認雲電腦資源"
+    },
+    "ui.view": {
+      "en-US": "View",
+      "ja": "表示",
+      "ko": "보기",
+      "zh-CN": "查看",
+      "zh-TW": "查看"
+    },
+    "ui.view_agents": {
+      "en-US": "View agents",
+      "ja": "エージェントを見る",
+      "ko": "에이전트 보기",
+      "zh-CN": "查看智能体",
+      "zh-TW": "查看智慧代理"
+    },
+    "ui.waiting_for_cloud_takeover": {
+      "en-US": "Waiting for cloud takeover",
+      "ja": "クラウド実行を待機中",
+      "ko": "클라우드 실행 대기 중",
+      "zh-CN": "等待接管服务",
+      "zh-TW": "等待接管服務"
+    },
+    "ui.waiting_for_model_gateway_configuration": {
+      "en-US": "Waiting for model gateway configuration",
+      "ja": "モデルゲートウェイの設定待ち",
+      "ko": "모델 게이트웨이 설정 대기 중",
+      "zh-CN": "等待配置大模型网关",
+      "zh-TW": "等待設定大模型閘道"
+    },
+    "ui.waiting_for_model_provider_selection": {
+      "en-US": "Waiting for model provider selection",
+      "ja": "モデルサービスの選択待ち",
+      "ko": "모델 서비스 선택 대기 중",
+      "zh-CN": "等待选择模型服务",
+      "zh-TW": "等待選擇模型服務"
+    },
+    "ui.working": {
+      "en-US": "Working",
+      "ja": "作業中",
+      "ko": "작업 중",
+      "zh-CN": "正在工作",
+      "zh-TW": "正在工作"
+    }
+  },
+  "version": 1
 }

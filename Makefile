@@ -8,6 +8,7 @@ test:
 check:
 	go vet ./...
 	test -z "$$(gofmt -l .)"
+	go run ./cmd/check-english
 
 .PHONY: macos macos-run
 macos:

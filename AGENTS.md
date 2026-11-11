@@ -1,31 +1,38 @@
-# Fennec 项目约定
+# Fennec project conventions
 
-## 统一使用 Go
+## Source language and localization
 
-- 后续新增的业务逻辑、daemon、远端服务、会话与 PTY 管理、传输协议、诊断工具、性能采样、原型及测试统一使用 Go。
-- 不以“临时脚本”“快速验证”“单文件测试”为由新增 Python 实现，也不要在 Go 或 shell 中嵌入 Python 来绕过此约定。
-- 一次性工具也可用 `go run path/to/probe.go`；单文件测试可用 `go test path/to/probe_test.go`，需要同目录实现文件时显式列出，例如 `go test path/to/probe.go path/to/probe_test.go`。
-- 在当前任务涉及的路径中，将已有 Python 原型或嵌入式逻辑迁移为 Go；不要把 Python 原型继续扩展为正式实现，也不要为迁移而改动无关功能。
-- 现有 macOS 原生 UI 的 Swift/AppKit、WebView 的 HTML/CSS/JavaScript，以及必要的构建与打包 shell 保持各自用途；它们不是新增 Python 或其他脚本语言业务实现的理由。用户明确指定语言时，以用户要求为准。
+- Write implementation code, comments, developer documentation, task records, and project skills in English.
+- Keep translated UI copy in `native/macos/UI/translations.json`, addressed by stable English message IDs. Do not use Chinese sentences or mutable English copy as translation keys.
+- WebView dynamic copy uses `[[i18n:ui.message_id]]` tokens. Static HTML uses `data-i18n` and English fallback text. Native UI uses `L10n.text` with the same catalog. The build generates the WebView payload and compiled English fallback.
+- Preserve Unicode fixtures that specifically test multilingual text, paths, titles, punctuation, or byte boundaries. Keep their surrounding code and comments in English.
+- Run the source-language and localization checks before merging. Do not hide translated UI copy in Unicode escapes to bypass the checks.
 
-## 启动与连接设计
+## Use Go for new implementation
 
-- Magpie 首次初始化时检测本机实际安装情况，已安装默认开启，未安装默认关闭；保存过的开关选择优先，用户手动关闭后不得因重启或再次检测而自动开启。旧配置、缓存、模型名称不算安装证据。未开启时从各 Agent 自己的文件、环境或 Keychain 同步凭据，不安装、启动或探测网关。UI 与 CLI 使用同一 `settings.set` 控制面；开启后才允许云端跨模型切换。
-- Magpie 关闭时，模型目录与设置必须由 Go 控制面按 Agent 的原生能力校验：Codex/OpenAI、Claude Code/Claude、Pi 已配置 provider。不得复用 Magpie 模型偏好；同步时清除跨厂商遗留模型，保留云端 TUI 设置及有效原生选择，不通过推理探测判断模型可用性。
-- 原生凭据同步须覆盖没有安装 Magpie 的首次使用、各 Agent 独立失败、云端 OAuth 刷新保留、密钥链拒绝、路径与凭据隔离。不要复制整个配置目录、会话、hooks 或本机可执行命令；不要把 secret 放进 argv、日志、RPC 回复或版本库。
+- Use Go for new business logic, daemon and remote services, session and PTY management, transport protocols, diagnostics, performance measurement, prototypes, and tests.
+- Do not introduce Python as a temporary script, quick probe, or single-file test. Do not embed Python in Go or shell to bypass this rule.
+- One-off tools can use `go run path/to/probe.go`. Single-file tests can use `go test path/to/probe_test.go`; list same-directory implementation files explicitly when needed, for example `go test path/to/probe.go path/to/probe_test.go`.
+- Migrate existing Python prototypes or embedded logic in the paths being changed to Go. Do not extend them into production implementations or alter unrelated features merely to migrate them.
+- Existing Swift/AppKit native UI, WebView HTML/CSS/JavaScript, and necessary build/package shell retain their respective roles. They do not justify new Python or other scripting-language business logic. Explicit user instructions take precedence.
 
-- 每个用户使用一台共享云机器，所有 cloud agents 在该机器内运行。一个 Fennec daemon 管理一条共享 SSH 连接，各会话通过独立 channel 复用；不引入多机器连接池或调度设计。
-- 共享连接的初始化与重连合并为同一个等待结果，避免并发重复建连。继续校验身份、运行时所有权和主机密钥，保持会话隔离及未知启动结果的防重复机制。
-- 所有会话操作（launch/resume/stop/read/send/list）经同一 daemon 控制面复用常驻协议 channel；仅复用 SSH ControlMaster、每次另建 exec channel 不算完成。禁止 UI/CLI 正常操作重复鉴权与 SSH 建连。操作确认后直接更新缓存与 UI，并阻止迟到刷新覆盖新状态。实现与验收遵循 `skills/fennec-macos-development/SKILL.md` 的“会话操作必须复用常驻 channel”。
-- 不做 Agent 进程预热池；可以预热 SSH 连接及传输通道。冷连接、热连接和 Agent 自身启动分别测量，端到端计时必须到可输入的 TUI，不能把会话回执时间当作首屏时间。
-- 云端已有对应 binary 就复用，缺失时才安装；不比较或同步本地精确版本。日常同步凭据与模型配置不发送推理探测，不以模型限流或额度故障阻止 TUI 启动。
-- 正常启动只显示无文本 loading 动画，TUI 接管前清除；非交互输出保持干净，失败时保留必要错误。
-- 会话热路径使用真实端到端测试执行 500ms 硬门槛；冷 SSH 单独计量。超时、失败或超预算必须非零退出，不能拿缓存命中或回执时间替代实际操作完成和可输入首屏。
-- 产品界面不暴露 CLI 集成诊断、daemon/RPC 内部状态码或接口版本不一致。后台负责恢复与修复；未知检查结果不等于故障。详见项目 skill 的产品界面约束。
+## Startup and connections
 
-## macOS 构建验收
+- Respect saved Magpie choices. Under the latest first-run policy, enable it only when actual local installation is verified; otherwise keep it off. Old configuration/cache remnants are not installation evidence, and a saved off choice must not be reenabled. With Magpie off, synchronize each agent's own files, environment, or Keychain credentials into isolated cloud configuration directories without installing, starting, or probing Magpie. UI and CLI share `settings.set`; cross-provider model switching requires Magpie to be enabled.
+- With Magpie disabled, the Go control plane validates native model catalogs and choices: Codex/OpenAI, Claude Code/Claude, and Pi's configured providers. Do not reuse Magpie preferences. Remove incompatible inherited models during synchronization, preserve cloud TUI settings and valid native choices, and never use inference probes to determine readiness.
+- Native credential synchronization must cover fresh users without Magpie, independent agent failures, cloud OAuth refresh preservation, Keychain denial, and path/credential isolation. Do not copy whole configuration directories, sessions, hooks, or local executable commands. Never put secrets in argv, logs, RPC responses, or the repository.
+- Each user has one shared cloud machine for all cloud agents. One Fennec daemon owns a shared SSH connection with independent session channels. Do not introduce a multi-machine connection pool or scheduler.
+- Coalesce connection initialization and reconnection into one shared pending result. Continue verifying identity, runtime ownership, and host keys; preserve session isolation and duplicate prevention after uncertain launch outcomes.
+- All session operations (launch/resume/stop/read/send/list) use the same daemon control plane and resident protocol channel. SSH ControlMaster reuse followed by a fresh exec channel is insufficient. Normal UI/CLI operations must not repeat authentication and SSH establishment. Update cache/UI on confirmation and fence late refreshes. Follow “Session operations must reuse the resident channel” in `skills/fennec-macos-development/SKILL.md`.
+- Do not prewarm agent process pools. SSH connections and transport channels may be prewarmed. Measure cold connections, warm connections, and agent startup separately. End-to-end timing ends at an input-ready TUI, not a launch receipt.
+- Reuse an available cloud binary; install only when missing. Do not compare or synchronize exact local versions. Routine credential/model synchronization must not issue inference probes or gate TUI startup on model rate limits or quota.
+- Normal terminal startup shows only a text-free loading animation, cleared before TUI handoff. Noninteractive output stays clean; failures retain necessary errors.
+- Enforce a 500 ms per-sample limit for real end-to-end warm session operations. Measure cold SSH separately. Timeouts, failures, or over-budget samples must exit nonzero. Cache hits or receipts cannot substitute for completed operations and an input-ready first screen.
+- Do not expose CLI integration diagnostics, daemon/RPC internal codes, or interface mismatches in product UI. Recover and repair in the background; an unknown check is not a failure. Follow the product UI rules in the project skill.
 
-- 构建、签名与重启遵循 `skills/fennec-macos-development/SKILL.md`，复用固定开发证书及稳定的凭据 helper。
-- 先在 staging 目录构建并验证签名，再停止旧 App、安装完整 bundle 并重启；不要覆盖运行中的已签名二进制。
-- UI 与 Go artifact 必须来自同一源码快照并通过控制接口契约检查。使用 `fen start` 验证已安装版本对应的后台已就绪；不能只重启 UI 而留下旧 daemon。
-- 保留用户未提交改动、现有凭据和云端会话。完成必须有实际启动路径的证据，不能只凭编译、测试或配置状态宣称可用。
+## macOS build acceptance
+
+- Follow `skills/fennec-macos-development/SKILL.md` for builds, signing, and restarts. Reuse the fixed development certificate and stable credential helper.
+- Build and verify signatures in staging, then stop the old UI, install the complete bundle, and restart. Never overwrite running signed binaries in place.
+- Native UI and Go artifacts must come from the same source snapshot and pass control-contract checks. Use the installed `fen start` to verify that the matching backend is ready; restarting only the UI while leaving an old daemon is insufficient.
+- Preserve uncommitted changes, existing credentials, and cloud sessions. Completion requires evidence from the actual startup path; compilation, tests, or configuration state alone do not prove usability.

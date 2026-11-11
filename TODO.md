@@ -1,100 +1,136 @@
-# Fennec：最终用户无缝使用
+# Fennec: seamless end-user experience
 
-目标：普通用户从下载正式 DMG 开始，在没有源码、开发工具、开发证书、
-Magpie、旧账号状态或预先准备的云机器的 Mac 上，能够独立完成登录、
-配置和云端 Agent 使用。遇到问题时，产品提供直接可操作的恢复路径，
-不需要开发者指导、猜测内部状态、反复点重试或手工修复终端。
+Goal: a user downloads the official DMG and independently signs in, configures
+agents, and uses cloud agents on a Mac without source code, developer tools,
+development certificates, Magpie, old account state, or a prepared cloud machine.
+The product provides actionable recovery rather than requiring developer guidance,
+knowledge of internal state, repeated retries, or manual terminal repair.
 
-状态：未完成。现有 CI、开发机运行和 Linux 隔离 fixture 测试，不构成
-干净 Mac + 真实账号 + 正式 DMG 的端到端验收。未经验证不得勾选。
+Status: incomplete. Green CI, a working development machine, and isolated Linux
+fixtures are not clean-Mac acceptance with a real account and the final DMG.
+Do not check off items without verification.
 
-2026-11-11 用户补充：先完成开发，再安排干净设备验收。同时开发
-`fen uninstall` 测试清理功能，覆盖开发版和正式 DMG。默认只清理本机；
-可显式选择删除完整云端 runtime，危险确认展示所有会话/文件/数据的删除范围，
-确认绑定具体 runtime。必须先确认云端删除完成，再删除本机凭据和 App；
-失败或结果不明时保留恢复入口。开发测试不得删除当前用户的真实 runtime。
+User clarification on 2026-11-11: finish development before arranging clean-device
+acceptance. Also develop `fen uninstall` for test cleanup of development and DMG
+installations. Default to local cleanup. An explicit option may delete the entire
+cloud runtime, with a dangerous-action confirmation describing all sessions,
+files, and data affected and binding the exact target. Confirm cloud deletion
+before removing local credentials and the app; preserve recovery when deletion
+fails or its outcome is unknown. Never delete the user's real runtime during tests.
 
-后续用户要求：正式 UI 不提供 Uninstall 入口或卸载弹窗，保留 `fen uninstall`
-用于 clean macOS 测试清理。本机清理默认保留云电脑；Account 中的云电脑删除
-应独立提供危险确认流程。还需覆盖
-直接拖入废纸篓：已删除 App 不得使原本 Agent 命令失效，且不得将云端运行
-失败误当成本机执行的理由。独立云电脑删除入口尚未完成，不能算作已交付。
+Later user clarification: the production UI must not include an Uninstall entry
+or dialog. Keep `fen uninstall` for clean-macOS test cleanup. Local cleanup keeps
+the cloud computer by default. Account should independently offer cloud-computer
+deletion with dangerous-action confirmation. Also cover dragging the app to Trash:
+removing the app must not break original agent commands, and cloud failures must
+never be mistaken for permission to run locally. The independent cloud deletion
+entry is not complete and must not be reported as delivered.
 
-本轮开发证据与剩余项见 [首次使用审计](docs/tasks/onboarding-audit-2026-11-11.md)。
+Development evidence and outstanding work are in the
+[onboarding audit](docs/tasks/onboarding-audit-2026-11-11.md).
 
-## P0 开发与验收
+## P0 development and acceptance
 
-- [ ] **隐含依赖审计**：逐项梳理安装、登录、后台启动、CLI、凭据、云端准备、
-  会话、升级与卸载所依赖的路径、环境变量、系统服务和缓存；对每项记录
-  产品是否提供、缺失时的行为、修复与对应测试。运行时不得依赖源码目录、
-  Homebrew、Go、Node、Magpie、开发 shell 配置或开发者遗留的服务。
-- [ ] **正式 DMG 首次安装**：从 CI 发布链接下载，验证签名、公证、隔离属性
-  和 Gatekeeper；拖入 Applications 后可首次启动。无开发证书或 helper
-  缓存，路径包含空格、重新安装及误从 DMG 启动均有确定行为。
-- [ ] **Runta 登录**：无已有 Keychain token、浏览器登录态和旧 daemon 时完成
-  登录；取消、拒绝、超时、网络中断、重试、退出登录及账号切换可恢复；
-  重启/升级后合理复用凭据，不重复要求无必要的授权，不串用账号数据。
-- [ ] **Launch at login**：由产品注册所需后台服务；开关与真实系统状态一致。
-  实测系统注销/重新登录及重启，覆盖关闭状态、系统拒绝、迁移安装路径、
-  旧服务残留和重复进程；不能用 launchctl 配置存在代替实际验收。
-- [ ] **原生 Agent 凭据**：没有 Magpie 时，覆盖 Codex、Claude Code、Pi 等
-  对外开放的 cloud agents 的文件、支持的环境变量、Keychain 和自定义目录。
-  模型选择不丢失；权限拒绝、缺失/过期凭据、云端刷新、冲突分别可恢复；
-  单个 Agent 出问题不阻塞其他 Agent，凭据不进入日志/argv/公开回复。
-- [ ] **未登录 Agent 的新用户**：提供明确可操作的登录/配置入口；完成后
-  自动继续或一步恢复，不能只显示“缺少凭据”与无效“重试”。
-- [ ] **Magpie 默认策略**：按后续用户要求，首次初始化时本机已安装则默认开启，未安装默认关闭；保存过的选择优先，手动关闭后不因重启或检测重新启用；未开启不安装、启动或探测网关。
-  开启、配置模型、关闭均从同一 UI/CLI 控制面完成；切换不破坏已有会话。
-- [ ] **首次 cloud takeover**：真实新 Runta 账号从无云机器状态开始，自动
-  准备共享 sandbox、所需 binaries、凭据和路由；不依赖预装工具、旧 SSH
-  通道和准备缓存。用户选择 Cloud 后能到达可输入、能响应任务的真实 TUI。
-- [ ] **CLI 与 UI 一致**：普通新终端里验证 command -v 和真实调用；覆盖
-  shell/PATH、原始 Agent 命令、接管开关、fen 操作、关闭 UI 后继续使用。
-  不接管未选择的命令，不留下开发路径 shim，不把修复工作转嫁给用户。
-- [ ] **完整会话生命周期**：创建、attach/resume、输入、read/list、stop；
-  UI 及时更新，复用常驻连接/通道。断网、睡眠唤醒、重连、取消和异常退出
-  不重复创建未知结果会话，不丢现有工作，不回显鼠标/终端控制序列。
-- [ ] **升级、重装、卸载**：旧正式版到新正式版、移动/重命名 App、重装后
-  UI/helper/daemon 一致；凭据与会话保持正确；关闭接管/卸载后本机命令恢复，
-  没有失效 LaunchAgent 或 shim。仅操作专用测试用户/环境，保留开发者工作。
-- [ ] **交互与性能**：无文本终端 loading；UI 用状态和直接控件引导操作，
-  不暴露内部诊断。记录首次准备、冷连接、热会话的真实 wall time；已约定的
-  冷 TUI 5 秒/热操作 500ms 门槛单独执行，明确条件，超预算非零退出，不把
-  新机器安装时间、缓存回执或隐藏预热冒充已达标。任何未达标项保持未完成。
+- [ ] **Hidden dependency audit**: enumerate paths, environment variables, system
+  services, and caches used by installation, login, background startup, CLI,
+  credentials, cloud preparation, sessions, upgrades, and cleanup. Record what
+  the product supplies, behavior when missing, fixes, and tests. Runtime behavior
+  must not depend on a source checkout, Homebrew, Go, Node, Magpie, developer shell
+  configuration, or leftover developer services.
+- [ ] **First installation from the official DMG**: download from CI release links;
+  verify signing, notarization, quarantine, and Gatekeeper. Drag into Applications
+  and launch without developer certificates or helper caches. Cover spaces in
+  paths, reinstalls, and accidental launches from the DMG.
+- [ ] **Runta login**: complete login without existing Keychain tokens, browser
+  sessions, or an old daemon. Recover from cancellation, denial, expiry, timeouts,
+  network interruption, retries, sign-out, and account switching. Reuse credentials
+  appropriately across restarts/upgrades without unnecessary repeated prompts or
+  cross-account data reuse.
+- [ ] **Launch at login**: product-owned service registration and controls reflect
+  real system state. Actually log out/in and reboot, covering disabled startup,
+  system denial, moved installation paths, stale services, and duplicate processes.
+  A launchctl configuration entry is not sufficient acceptance evidence.
+- [ ] **Native agent credentials**: without Magpie, cover files, supported environment
+  variables, Keychain, and custom directories for publicly supported cloud agents
+  such as Codex, Claude Code, and Pi. Preserve model choices; handle denied access,
+  missing/expired credentials, cloud refreshes, and conflicts. One agent's failure
+  must not block others. Keep credentials out of logs, argv, and public responses.
+- [ ] **Users not signed in to an agent**: provide an actionable sign-in/configuration
+  entry and continue automatically or with one recovery action. Missing-credential
+  text and an ineffective Retry button are insufficient.
+- [ ] **Magpie initialization and saved choices**: follow the later product decision
+  recorded in the audit: enable on first initialization only when actual local installation
+  is verified; otherwise keep it off. Preserve saved choices across upgrades. When off,
+  do not install, start, or probe the gateway. UI and CLI share enable/model/disable
+  controls, and switching preserves existing sessions.
+- [ ] **First cloud takeover**: a new Runta account with no cloud machine can prepare
+  its shared sandbox, binaries, credentials, and routes automatically. No preinstalled
+  tools, old SSH channel, or preparation cache may be required. Selecting Cloud
+  reaches a real input-ready TUI that can respond to a task.
+- [ ] **CLI/UI consistency**: in a normal fresh terminal, verify command discovery
+  and real invocations. Cover shell/PATH, original agent commands, takeover controls,
+  fen operations, and continued use after closing the UI. Do not intercept unselected
+  commands, leave developer-path shims, or delegate repair to the user.
+- [ ] **Full session lifecycle**: create, attach/resume, input, read/list, and stop.
+  Update UI promptly and reuse resident connections/channels. Network loss, sleep,
+  wake, reconnect, cancellation, and abnormal exits must neither duplicate uncertain
+  launches nor lose existing work or echo mouse/terminal control sequences.
+- [ ] **Upgrade, reinstall, and cleanup**: upgrade the previous official DMG, move or
+  rename the app, and reinstall while preserving UI/helper/daemon consistency,
+  credentials, and sessions. Disabling takeover or uninstalling restores local
+  commands without broken LaunchAgents/shims. Use dedicated test users/environments
+  and preserve developer work.
+- [ ] **Interaction and performance**: text-free terminal loading; UI states and direct
+  controls provide guidance without internal diagnostics. Record actual wall time for
+  first preparation, cold connections, and warm sessions. Enforce the agreed 5-second
+  cold-TUI and 500 ms warm-operation gates separately, describe conditions, and fail
+  nonzero above budget. Machine installation time, cached receipts, and hidden prewarm
+  must not be substituted for the promised metric. Failed items remain incomplete.
 
-## 发布门槛与证据
+## Release gates and evidence
 
-- [ ] 维护干净环境验收矩阵：全新用户、已有原生 Agent 登录态的用户、未登录
-  Agent 的用户、从上一正式 DMG 升级的用户；默认无 Magpie，另测显式开启。
-- [ ] 用可重复的 Go 工具/测试固化安装后真实路径；测试只使用专用账号、
-  sandbox、临时凭据和有标记的会话。缺条件须明确失败/未验证，不能 skip 后通过。
-- [ ] 在干净 Mac 用户或 VM/独立设备验证最终签名 DMG；确认使用产品实际
-  默认路径和系统服务，而不是换 HOME、fixture 或开发机现有状态代替全部验收。
-- [ ] 每项证据记录：DMG 版本/SHA-256、源码 SHA、CI run、macOS/架构、
-  初始状态、操作步骤、预期/实际结果、耗时、脱敏日志/界面证据及遗留项。
-- [ ] 所有阻断正常 onboarding/使用的问题修复后，重新构建签名、公证的 DMG，
-  从下载入口开始重跑完整矩阵；不得以源码测试代替安装包验收。
-- [ ] 同事或独立测试用户无需开发者提示走完全流程，反馈与证据记录进验收报告。
-- [ ] 发布报告明确区分：代码/CI、开发机、Linux fixture、干净 Mac、真实用户。
-  所有必验项均有最终产物证据才可宣布完成，未覆盖场景与残余问题不得隐藏。
+- [ ] Maintain a clean-environment matrix: fresh users, existing native-agent logins,
+  users without agent logins, and upgrades from the previous official DMG. Default to
+  no Magpie and separately test explicit opt-in.
+- [ ] Use repeatable Go tools/tests for the real installed paths, with dedicated accounts,
+  sandboxes, temporary credentials, and labeled sessions. Missing conditions must fail
+  or be recorded as unverified, never skipped and reported as a pass.
+- [ ] Validate the final signed DMG on a clean Mac user, VM, or independent device, using
+  product defaults and real system services. Changing HOME, fixtures, or existing
+  developer-machine state does not replace this acceptance.
+- [ ] For each result record DMG version/SHA-256, source SHA, CI run, macOS/architecture,
+  initial state, steps, expected/actual results, duration, sanitized logs/screenshots,
+  and remaining issues.
+- [ ] After onboarding/use blockers are fixed, rebuild the signed/notarized DMG and rerun
+  the full matrix from the download entry. Source tests do not replace package acceptance.
+- [ ] A colleague or independent user completes the flow without developer hints; record
+  feedback and evidence in the acceptance report.
+- [ ] Distinguish source/CI, developer-machine, Linux-fixture, clean-Mac, and real-user
+  evidence. Declare completion only when every required item has direct final-artifact
+  evidence. Do not hide untested scenarios or residual issues.
 
-参考现有实现与历史证据：
-[原生凭据设计](docs/native-agent-credentials.md)、
-[macOS 验收记录](docs/macos-acceptance.md)、
-[控制面与性能](docs/tasks/go-control-plane.md)。这些历史记录不是新版本验收结论。
+Existing implementation and historical evidence:
+[native credentials](docs/native-agent-credentials.md),
+[macOS acceptance](docs/macos-acceptance.md), and
+[control plane/performance](docs/tasks/go-control-plane.md).
+Historical results are not acceptance of a newer build.
 
-## 后续兼容性：cmux Computer Use（暂缓）
+## Deferred compatibility: cmux Computer Use
 
-2026-11-11 用户确认：`cmux-cua` 不是当前优先级，暂不实现或发布。
+User decision on 2026-11-11: `cmux-cua` is not a current priority; do not implement
+or ship it yet.
 
-- [ ] **cmux-cua / Computer Use MCP**：后续再处理本机 MCP client、Unix socket
-  与云端 Agent 的适配。明确 native MCP 与 Codex 专用 profile 并非严格 parity：
-  工具 schema、截图/界面树返回格式、应用审批和签名父进程要求不同。恢复开发前
-  先确定支持契约；不得通过 unverified-client 或 embedded 模式绕过 cmux 的授权。
-  未来验收须覆盖真实截图/读取界面/输入动作、macOS 权限、取消、断线与会话隔离。
+- [ ] **cmux-cua / Computer Use MCP**: revisit the Mac MCP client, Unix socket, and cloud
+  agent integration later. Native MCP and the Codex-specific profile are not strict
+  parity: tool schemas, screenshot/accessibility-tree shapes, app approval, and
+  signed-parent requirements differ. Agree on the contract before resuming. Never
+  bypass cmux authorization through unverified-client or embedded modes. Future live
+  acceptance must cover perception/input, macOS permissions, cancellation, disconnects,
+  and session isolation.
 
-**cmux hooks 已解决**：Mac hook 路径导致云端 Codex 返回 127 的问题已修复并合入
-main；签名、公证候选包 `0.2.11111843` 完成了真实 cmux → 云端 Codex → 本机审批
-→ cmux 事件回传验收，覆盖 7 次单次授权及实际工具执行、Done 状态。
-这与尚未支持的 cmux-cua MCP 是两项独立能力；不把 CUA 暂缓误记为 hooks 未完成。
-详见 [cmux hooks 验收](docs/cmux-hooks.md#real-release-acceptance-2026-11-11)。
+**cmux hooks are fixed**: the Mac hook paths that caused cloud Codex exit 127 were
+repaired and merged into main. Signed/notarized candidate `0.2.11111843` passed real
+cmux → cloud Codex → local approval → cmux event-delivery acceptance, with seven
+one-shot authorizations, actual tool execution, and Done status. This is separate
+from the unsupported cmux-cua MCP capability; deferring CUA does not make the hook
+fix incomplete. See [live hook acceptance](docs/cmux-hooks.md#real-release-acceptance-2026-11-11).
