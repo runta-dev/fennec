@@ -149,6 +149,7 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 	if s.Env == nil {
 		s.Env = func(string) string { return "" }
 	}
+	env := map[string]string{}
 	add := func(name string, b []byte) error {
 		if !nativeFiles[name] {
 			return fmt.Errorf("unsupported native file")
@@ -158,6 +159,10 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 		}
 		if !s.Gateway {
 			var err error
+			b, err = sanitizeNativeIdentityFile(name, b, r.Files, env)
+			if err != nil {
+				return err
+			}
 			b, err = sanitizeNativeModelFile(name, b)
 			if err != nil {
 				return err
@@ -219,7 +224,6 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 		}
 		return add(name, b)
 	}
-	env := map[string]string{}
 	for _, k := range nativeEnvKeys {
 		needed := false
 		for _, id := range agents {
@@ -368,7 +372,7 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			if e := read("claude/.claude.json", profile, []string{"oauthAccount", "hasCompletedOnboarding"}); e != nil {
 				return r, e
 			}
-			if len(b) > 0 || env["ANTHROPIC_API_KEY"] != "" || env["ANTHROPIC_AUTH_TOKEN"] != "" || env["CLAUDE_CODE_OAUTH_TOKEN"] != "" {
+			if len(b) > 0 || env["ANTHROPIC_API_KEY"] != "" || env["ANTHROPIC_AUTH_TOKEN"] != "" || nativeOAuthIdentity("claude", nativeEnvelopeReader(r.Files, env)) {
 				p := map[string]any{}
 				raw, _ := base64.StdEncoding.DecodeString(r.Files["claude/.claude.json"])
 				_ = json.Unmarshal(raw, &p)
@@ -394,6 +398,17 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			}
 			if e := read("opencode/config/opencode/opencode.json", filepath.Join(s.dir("XDG_CONFIG_HOME", ".config"), "opencode/opencode.json"), []string{"model", "small_model", "provider"}); e != nil {
 				return r, e
+			}
+		}
+	}
+	if !s.Gateway {
+		for _, id := range agents {
+			if nativeOAuthIdentity(id, nativeEnvelopeReader(r.Files, env)) {
+				for key := range env {
+					if nativeOAuthOverride(id, key) {
+						delete(env, key)
+					}
+				}
 			}
 		}
 	}
@@ -468,9 +483,20 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		if e != nil && !os.IsNotExist(e) {
 			return result, e
 		}
+		data, e = sanitizeNativeIdentityFile(name, data, r.Files)
+		if e != nil {
+			return result, e
+		}
 		data, e = sanitizeNativeModelFile(name, data)
 		if e != nil {
 			return result, e
+		}
+		previousPolicy := previous
+		if exists {
+			previousPolicy, e = sanitizeNativeIdentityFile(name, previous, r.Files)
+			if e != nil {
+				return result, e
+			}
 		}
 		source := credentialHash(data)
 		old := baseline[name]
@@ -479,9 +505,9 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		}
 		if exists && !bytes.Equal(previous, data) {
 			if source == old.Source {
-				data = previous // Preserve refreshes and explicit native model choices.
-			} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previous, data) {
-				data = previous
+				data = previousPolicy // Preserve refreshes and explicit native model choices.
+			} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previousPolicy, data) {
+				data = previousPolicy
 			} else if credentialHash(previous) != old.Remote {
 				return result, fmt.Errorf("native credentials changed on both computers; cloud copy preserved")
 			}
@@ -553,7 +579,7 @@ func nativeHasCredentials(root, agent string) bool {
 		}
 		b, _ := os.ReadFile(filepath.Join(root, "claude/settings.json"))
 		_ = json.Unmarshal(b, &cfg)
-		return cfg.Env["ANTHROPIC_API_KEY"] != "" || cfg.Env["ANTHROPIC_AUTH_TOKEN"] != ""
+		return cfg.Env["ANTHROPIC_API_KEY"] != "" || cfg.Env["ANTHROPIC_AUTH_TOKEN"] != "" || cfg.Env["CLAUDE_CODE_OAUTH_TOKEN"] != ""
 	case "pi", "opencode":
 		for _, entry := range v {
 			m, _ := entry.(map[string]any)

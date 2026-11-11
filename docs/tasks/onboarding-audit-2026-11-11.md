@@ -218,3 +218,25 @@ Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift t
 证据在 `/tmp/fennec-native-tests.log`、`/tmp/fennec-model-control-tests.log`、
 `/tmp/fennec-native-codex-models.json`、`/tmp/fennec-models-restored-state.json`。
 尚未发布新 DMG；干净 Mac 首次安装与全部 onboarding 验收仍未完成。
+
+## 原生 OAuth 与遗留网关配置隔离
+
+继续审计发现，已有原生 OAuth 时，本地 localhost gateway 配置仍会导致
+`local_provider_unavailable`。新增源端导出、云端应用和执行环境三处约束：
+有原生 OAuth 身份才移除代理 endpoint/key 覆盖；没有原生 OAuth 时不会把
+代理 API key 改送官方服务。Claude 环境变量及 settings.env 内的显式 OAuth
+均覆盖；共享环境中其他 Agent 的凭据不再覆盖原生身份。
+
+回归覆盖：Codex/Claude saved OAuth、Claude 环境变量/配置内 OAuth、代理 API
+identity 带旧 OAuth 字段、旧客户端导出、云端 TUI 配置保留、跨 Agent 环境隔离。
+`/tmp/fennec-native-identity-tests.log` 为 Native setup race 测试证据。
+
+开发机只读凭据形状审计确认：当前 Claude 无 saved/environment 原生 OAuth，
+Pi 的原生 auth provider 列表为空。因此它们在关闭 Magpie 后尚不可用，不能把
+fixture 的 OAuth 成功用例当作这两个实际账号的原生登录验收。真实开发包关闭
+Magpie 时 Codex configured；恢复原先 Magpie 开启设置后三个 Agent 均 configured，
+broker ready。记录为 `/tmp/fennec-native-identity-live-off.json` 与
+`/tmp/fennec-native-identity-live-restored.json`。未运行模型推理或停止用户会话。
+
+尚需产品内原生登录入口、专用原生测试账号和最终 DMG/干净 Mac 验收；TODO
+对应项保持未完成。此次仅为开发与开发机验证，不是最终用户交付完成证据。

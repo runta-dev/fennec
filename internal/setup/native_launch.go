@@ -60,13 +60,17 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 	env := []string{}
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if !allowed[key] && key != "CODEX_HOME" && key != "CLAUDE_CONFIG_DIR" && key != "PI_CODING_AGENT_DIR" && key != "XDG_CONFIG_HOME" && key != "XDG_DATA_HOME" {
+		if !allowed[key] && !nativeInheritedModelOverride(key) && key != "CODEX_HOME" && key != "CLAUDE_CONFIG_DIR" && key != "PI_CODING_AGENT_DIR" && key != "XDG_CONFIG_HOME" && key != "XDG_DATA_HOME" {
 			env = append(env, entry)
 		}
 	}
+	oauth := nativeOAuthIdentity(agent, func(name string) []byte { data, _ := readNativeFile(filepath.Join(root, name)); return data })
 	for key, value := range values {
 		if !allowed[key] || strings.ContainsRune(value, 0) {
 			return nil, fmt.Errorf("invalid native environment key")
+		}
+		if !nativeEnvForAgent(agent, key) || (oauth && nativeOAuthOverride(agent, key)) {
+			continue
 		}
 		env = append(env, key+"="+value)
 	}

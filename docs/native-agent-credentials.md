@@ -69,3 +69,19 @@ cloud choices while still detecting unrelated credential conflicts.
 Native synchronization removes inherited cross-vendor model IDs (for example,
 `kimi-code/...` from ChatGPT-backed Codex) and lets the agent choose its default.
 It never rewrites the user's local configuration or invents a replacement model.
+
+### Native OAuth takes precedence over leftover gateway routing
+
+When native mode has a saved Codex ChatGPT login, a Claude OAuth login, or an
+explicit `CLAUDE_CODE_OAUTH_TOKEN`, export and cloud application remove the
+proxy endpoint/key overrides from that agent's isolated configuration. Claude's
+OAuth token is supported both in the source environment and in `settings.env`.
+Without a native OAuth identity, an API key is never silently redirected from a
+proxy to an official vendor endpoint.
+
+The launch environment filters credentials by agent and prevents another
+agent's shared environment entries from overriding an OAuth login. Inherited
+model override variables are removed. Source files and cloud-refreshed tokens
+retain the existing isolation/conflict rules; policy migration preserves cloud
+TUI preferences. This does not create a native login when the user only signed
+in through Magpie: the product still needs a native sign-in recovery flow.
