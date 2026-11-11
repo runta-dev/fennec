@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookplugins"
 	"fennec/internal/sessionid"
 	"fmt"
 	"os"
@@ -41,11 +41,9 @@ func runAgentOriginal(arguments []string, original string) error {
 	if err != nil {
 		return err
 	}
-	if arguments[0] == "codex" {
-		args, _, err = cmuxhooks.Rewrite(args, home, id)
-		if err != nil {
-			return err
-		}
+	args, bindings, err := hookplugins.Rewrite(home, id, arguments[0], args, hookplugins.Capture())
+	if err != nil {
+		return err
 	}
 	if original == "" {
 		original, err = launcher.ResolveOriginal(arguments[0], os.Getenv("PATH"), filepath.Join(home, ".local/share/fennec/shims"), self)
@@ -53,7 +51,7 @@ func runAgentOriginal(arguments []string, original string) error {
 	if err != nil {
 		return err
 	}
-	intent := launcher.LaunchIntent{RequestID: id, Agent: arguments[0], Directory: directory, Arguments: args, Prepare: true, Cold: os.Getenv("FENNEC_COLD_START") == "1"}
+	intent := launcher.LaunchIntent{RequestID: id, Agent: arguments[0], Directory: directory, Arguments: args, Hooks: bindings, Prepare: true, Cold: os.Getenv("FENNEC_COLD_START") == "1"}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	socket := filepath.Join(home, ".config/fennec/ipc/launch.sock")

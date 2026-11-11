@@ -110,6 +110,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	services := newDaemonServices(home, manager)
 	controller := &controlplane.Controller{Account: manager, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
+	for name, handler := range services.hookHandlers() {
+		controller.Additional[name] = handler
+	}
 	installBrowserTerminal(ctx, services, controller)
 	settings := newDesktopSettings(home)
 	controller.Settings = settings.snapshot

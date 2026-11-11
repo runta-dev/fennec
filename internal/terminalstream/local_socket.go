@@ -55,13 +55,13 @@ func OfferLocal(ctx context.Context, transport *Transport, directory string, ope
 		opening.Rows, opening.Columns = hello.Rows, hello.Columns
 		opening.Term = hello.Term
 		opening.Display = hello.Display
-		opening.Cmux = hello.Cmux
-		if opening.Cmux {
+		opening.HookBridge = hello.HookBridge
+		if opening.HookBridge {
 			if err := transport.Ready(operation); err != nil {
 				return
 			}
-			if !transport.Supports("cmux_hooks") {
-				json.NewEncoder(connection).Encode(Frame{Type: "error", ID: opening.ID, Message: "Update Fennec to use cmux cloud hooks"})
+			if !transport.Supports("hook_bridge_v1") {
+				json.NewEncoder(connection).Encode(Frame{Type: "error", ID: opening.ID, Message: "Update Fennec to use local cloud hooks"})
 				return
 			}
 		}

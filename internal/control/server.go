@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/hookbridge"
 	"fmt"
 	"io"
 	"net"
@@ -90,7 +91,8 @@ func Serve(ctx context.Context, path string, handlers map[string]Handler, ready 
 			defer closeOnStop()
 			connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 			var request Request
-			if json.NewDecoder(io.LimitReader(connection, 1<<20)).Decode(&request) != nil {
+			decoder := json.NewDecoder(io.LimitReader(connection, 1<<20))
+			if decoder.Decode(&request) != nil {
 				return
 			}
 			response := Response{Version: Version, ID: request.ID}
@@ -102,7 +104,15 @@ func Serve(ctx context.Context, path string, handlers map[string]Handler, ready 
 			case handlers[request.Method] == nil:
 				response.Error = &Fault{Code: "method_not_found", Message: "unsupported control operation"}
 			default:
-				operation, cancel := context.WithTimeout(ctx, 30*time.Second)
+				budget := 30 * time.Second
+				if request.Method == "hooks.execute" {
+					budget = hookbridge.MaxCallDuration
+				}
+				operation, cancel := context.WithTimeout(ctx, budget)
+				if request.Method == "hooks.execute" {
+					connection.SetReadDeadline(time.Time{})
+					go func() { var extra any; _ = decoder.Decode(&extra); cancel() }()
+				}
 				result, err := handlers[request.Method](operation, request.Params)
 				cancel()
 				if err != nil {

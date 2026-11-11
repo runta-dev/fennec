@@ -74,6 +74,10 @@ func TestCmuxHookPathsAreRewrittenBeforeBrokerDispatch(t *testing.T) {
 	os.WriteFile(path, body, 0700)
 	original := filepath.Join(home, "codex-original")
 	os.WriteFile(original, []byte("#!/bin/sh\nexit 99\n"), 0700)
+	t.Setenv("CMUX_CODEX_HOOK_CMUX_BIN", original)
+	t.Setenv("CMUX_CODEX_HOOKS_DISABLED", "")
+	t.Setenv("CMUX_WORKSPACE_ID", "11111111-1111-1111-1111-111111111111")
+	t.Setenv("CMUX_SURFACE_ID", "22222222-2222-2222-2222-222222222222")
 	oldRequest, oldReadiness := brokerPlanRequest, brokerReadiness
 	t.Cleanup(func() { brokerPlanRequest = oldRequest; brokerReadiness = oldReadiness })
 	brokerReadiness = func(context.Context, string) error { return nil }
@@ -81,7 +85,7 @@ func TestCmuxHookPathsAreRewrittenBeforeBrokerDispatch(t *testing.T) {
 	brokerPlanRequest = func(_ context.Context, _ string, intent launcher.LaunchIntent) (launcher.LaunchPlan, error) {
 		called = true
 		joined := strings.Join(intent.Arguments, " ")
-		if strings.Contains(joined, path) || !strings.Contains(joined, "cmux-hook "+intent.RequestID+" session-start") || !strings.Contains(joined, "model=fixture") {
+		if len(intent.Hooks) != 1 || strings.Contains(joined, path) || !strings.Contains(joined, "hook "+intent.RequestID+" "+intent.Hooks[0].ID) || !strings.Contains(joined, "model=fixture") {
 			t.Fatal("incorrect broker arguments", joined)
 		}
 		return launcher.LaunchPlan{}, errors.New("fixture: stop before remote launch")

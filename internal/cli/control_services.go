@@ -53,6 +53,8 @@ type daemonServices struct {
 	entryPending                               map[string]bool
 	entryInstaller                             func(context.Context, string) (string, error)
 	trustWait                                  chan bool
+	permissions                                *localssh.Broker
+	hookLeases                                 map[string]hookLease
 }
 
 func newDaemonServices(home string, account *account.Manager) *daemonServices {
@@ -136,6 +138,7 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.selected = map[string]bool{}
 	s.ready = map[string]bool{}
 	s.approvals = map[string]localssh.Event{}
+	s.hookLeases = map[string]hookLease{}
 	s.approvalOrder = nil
 	s.status = map[string]string{"stage": "connecting"}
 	s.coverage = map[string]string{}
@@ -357,12 +360,17 @@ func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 				}
 			}
 		}}
-		_ = localssh.RunWithApproval(ctx, filepath.Join(s.home, ".config/fennec/ssh"), input, events, true)
+		permissions := localssh.NewBroker(filepath.Join(s.home, ".config/fennec/ssh"), events)
+		s.mu.Lock()
+		s.permissions = permissions
+		s.mu.Unlock()
+		_ = localssh.RunWithApproval(ctx, filepath.Join(s.home, ".config/fennec/ssh"), input, events, true, permissions)
 		stop()
 		writer.Close()
 		input.Close()
 		s.mu.Lock()
 		s.connectorInput = nil
+		s.permissions = nil
 		s.connectorAddress = ""
 		s.approvals = map[string]localssh.Event{}
 		s.approvalOrder = nil

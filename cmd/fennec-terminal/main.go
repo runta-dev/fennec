@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -48,10 +48,16 @@ func run() (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	if len(os.Args) == 4 && os.Args[1] == "cmux-hook" {
-		response := cmuxhooks.Invoke(context.Background(), home, os.Args[2], os.Args[3], os.Stdin)
-		_, err := os.Stdout.Write(append(response.Data, '\n'))
-		return response.Code, err
+	if len(os.Args) == 4 && os.Args[1] == "hook" {
+		response := hookbridge.Invoke(context.Background(), home, os.Args[2], os.Args[3], os.Stdin)
+		binding, _ := hookbridge.Lookup(home, os.Args[2], os.Args[3])
+		if _, err := os.Stdout.Write(response.Stdout); err != nil {
+			return 2, err
+		}
+		if _, err := os.Stderr.Write(response.Stderr); err != nil {
+			return 2, err
+		}
+		return hookbridge.CodexExit(binding, response), nil
 	}
 	os.Setenv("PATH", filepath.Join(home, ".local/fennec/node/bin")+":"+filepath.Join(home, ".local/fennec/agents/bin")+":"+filepath.Join(home, ".local/bin")+":"+os.Getenv("PATH"))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"io"
 	"os"
@@ -18,8 +18,8 @@ func TestCmuxAgentChild(t *testing.T) {
 	if os.Getenv("FENNEC_CMUX_AGENT_CHILD") != "1" {
 		return
 	}
-	result := cmuxhooks.Invoke(context.Background(), os.Getenv("HOME"), "petite-neat", "session-start", bytes.NewBufferString(`{"session_id":"fixture-session","hook_event_name":"SessionStart"}`))
-	if !bytes.Contains(result.Data, []byte("DELIVERED")) {
+	result := hookbridge.Invoke(context.Background(), os.Getenv("HOME"), "petite-neat", strings.Repeat("a", 64), bytes.NewBufferString(`{"session_id":"fixture-session","hook_event_name":"SessionStart"}`))
+	if !bytes.Contains(result.Stdout, []byte("DELIVERED")) {
 		os.Exit(17)
 	}
 	os.Stdout.Write([]byte("HOOK_BRIDGE_OK"))
@@ -60,7 +60,7 @@ func TestCmuxHookTraversesResidentStreamWithoutBlockingPeer(t *testing.T) {
 	if err := decoder.Decode(&frame); err != nil || frame.Type != "ready" {
 		t.Fatal(err)
 	}
-	opening := Frame{Type: "launch", ID: "petite-neat", Cmux: true, Rows: 24, Columns: 80, Launch: &cloudruntime.LocalLaunch{ID: "petite-neat", Agent: "codex", Device: "1234abcd", LocalDirectory: "/project"}}
+	opening := Frame{Type: "launch", ID: "petite-neat", HookBridge: true, Rows: 24, Columns: 80, Launch: &cloudruntime.LocalLaunch{ID: "petite-neat", Agent: "codex", Device: "1234abcd", LocalDirectory: "/project", Hooks: []hookbridge.Binding{testBinding()}}}
 	if err := encoder.Encode(opening); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestCmuxHookTraversesResidentStreamWithoutBlockingPeer(t *testing.T) {
 		if err := decoder.Decode(&frame); err != nil {
 			t.Fatal(err)
 		}
-		if frame.Type == "cmux_hook" {
+		if frame.Type == "hook_request" {
 			hook = frame
 			break
 		}
@@ -77,7 +77,7 @@ func TestCmuxHookTraversesResidentStreamWithoutBlockingPeer(t *testing.T) {
 			t.Fatal(frame.Message)
 		}
 	}
-	peer := Frame{Type: "launch", ID: "gentle-fox", Rows: 24, Columns: 80, Launch: &cloudruntime.LocalLaunch{ID: "gentle-fox", Agent: "codex", Device: "1234abcd", LocalDirectory: "/project"}}
+	peer := Frame{Type: "launch", ID: "gentle-fox", Rows: 24, Columns: 80, Launch: &cloudruntime.LocalLaunch{ID: "gentle-fox", Agent: "codex", Device: "1234abcd", LocalDirectory: "/project", Hooks: []hookbridge.Binding{testBinding()}}}
 	if err := encoder.Encode(peer); err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +97,8 @@ func TestCmuxHookTraversesResidentStreamWithoutBlockingPeer(t *testing.T) {
 		}
 	}
 	// A reply naming a different stream must not satisfy this hook.
-	encoder.Encode(Frame{Type: "cmux_reply", ID: "gentle-fox", HookID: hook.HookID, Result: json.RawMessage(`{"wrong":"SESSION"}`)})
-	encoder.Encode(Frame{Type: "cmux_reply", ID: hook.ID, HookID: hook.HookID, Result: json.RawMessage(`{"additionalContext":"DELIVERED"}`)})
+	encoder.Encode(Frame{Type: "hook_reply", ID: "gentle-fox", HookID: hook.HookID, Result: testHookResult("WRONG")})
+	encoder.Encode(Frame{Type: "hook_reply", ID: hook.ID, HookID: hook.HookID, Result: testHookResult("DELIVERED")})
 	var visible strings.Builder
 	for {
 		if err := decoder.Decode(&frame); err != nil {
@@ -140,7 +140,10 @@ func TestCmuxConcurrentAttachmentsUseCurrentOwnerWithoutStealingPeer(t *testing.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	frames := make(chan Frame, 4)
-	relay := newCmuxRelay(ctx, func(frame Frame) error { frames <- frame; return nil })
+	relay := newHookRelay(ctx, func(frame Frame) error { frames <- frame; return nil })
+	if err := hookbridge.SaveBindings(home, "petite-neat", []hookbridge.Binding{testBinding()}); err != nil {
+		t.Fatal(err)
+	}
 	first, err := relay.bind(ctx, "calm-tiger", "petite-neat")
 	if err != nil {
 		t.Fatal(err)
@@ -152,8 +155,10 @@ func TestCmuxConcurrentAttachmentsUseCurrentOwnerWithoutStealingPeer(t *testing.
 	}
 	check := func(owner string) {
 		t.Helper()
-		done := make(chan cmuxhooks.Response, 1)
-		go func() { done <- cmuxhooks.Invoke(ctx, home, "petite-neat", "stop", bytes.NewBufferString(`{}`)) }()
+		done := make(chan hookbridge.Result, 1)
+		go func() {
+			done <- hookbridge.Invoke(ctx, home, "petite-neat", strings.Repeat("a", 64), bytes.NewBufferString(`{}`))
+		}()
 		var frame Frame
 		select {
 		case frame = <-frames:
@@ -163,18 +168,26 @@ func TestCmuxConcurrentAttachmentsUseCurrentOwnerWithoutStealingPeer(t *testing.
 		if frame.ID != owner {
 			t.Fatal("wrong attachment received hook", frame.ID)
 		}
-		relay.reply(Frame{ID: "unrelated-pane", HookID: frame.HookID, Result: json.RawMessage(`{"bad":true}`)})
+		relay.reply(Frame{ID: "unrelated-pane", HookID: frame.HookID, Result: testHookResult("bad")})
 		select {
 		case <-done:
 			t.Fatal("foreign reply accepted")
 		default:
 		}
-		relay.reply(Frame{ID: owner, HookID: frame.HookID, Result: json.RawMessage(`{"correct":true}`)})
-		if result := <-done; !bytes.Contains(result.Data, []byte("correct")) {
+		relay.reply(Frame{ID: owner, HookID: frame.HookID, Result: testHookResult("correct")})
+		if result := <-done; !bytes.Contains(result.Stdout, []byte("correct")) {
 			t.Fatal("wrong reply")
 		}
 	}
 	check("bright-bird")
 	second()
 	check("calm-tiger")
+}
+
+func testBinding() hookbridge.Binding {
+	return hookbridge.Binding{ID: strings.Repeat("a", 64), Name: "Fixture", Event: "PreToolUse", Policy: hookbridge.Required, TimeoutMS: 1000}
+}
+func testHookResult(text string) json.RawMessage {
+	raw, _ := json.Marshal(hookbridge.Result{Stdout: []byte(text), Status: "executed"})
+	return raw
 }

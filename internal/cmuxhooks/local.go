@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -18,11 +19,12 @@ const PayloadLimit = 65536
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Response struct {
-	Data json.RawMessage `json:"data"`
-	Code int             `json:"code"`
+	Unavailable bool            `json:"unavailable,omitempty"`
+	Data        json.RawMessage `json:"data"`
+	Code        int             `json:"code"`
 }
 
-func Empty() Response { return Response{Data: json.RawMessage(`{}`)} }
+func Empty() Response { return Response{Data: json.RawMessage(`{}`), Unavailable: true} }
 
 type Local struct {
 	Executable, Socket, Workspace, Surface string
@@ -88,15 +90,22 @@ func (local *Local) Run(ctx context.Context, event string, payload []byte) Respo
 	}
 	args = append(args, "hooks", "codex", event, "--workspace", local.Workspace, "--surface", local.Surface)
 	command := exec.CommandContext(step, local.Executable, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error {
+		if command.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	}
 	command.WaitDelay = 250 * time.Millisecond
 	env := []string{}
 	for _, value := range local.Env {
 		key, _, _ := strings.Cut(value, "=")
-		if key != "CMUX_AGENT_HOOK_RELAY_ORIGIN" && key != "CMUX_CODEX_PID" && key != "CMUX_CODEX_HOOK_PID" {
+		if key != "CMUX_AGENT_HOOK_RELAY_ORIGIN" && key != "CMUX_CODEX_PID" && key != "CMUX_CODEX_HOOK_PID" && key != "CMUX_WORKSPACE_ID" && key != "CMUX_SURFACE_ID" {
 			env = append(env, value)
 		}
 	}
-	command.Env = append(env, "CMUX_AGENT_HOOK_RELAY_ORIGIN=1")
+	command.Env = append(env, "CMUX_AGENT_HOOK_RELAY_ORIGIN=1", "CMUX_WORKSPACE_ID="+local.Workspace, "CMUX_SURFACE_ID="+local.Surface)
 	command.Stdin = bytes.NewReader(payload)
 	output := &boundedOutput{}
 	command.Stdout = output
@@ -110,7 +119,7 @@ func (local *Local) Run(ctx context.Context, event string, payload []byte) Respo
 		code = 2
 	}
 	data := bytes.TrimSpace(output.Bytes())
-	if len(data) == 0 {
+	if len(data) == 0 || string(data) == "OK" {
 		data = []byte(`{}`)
 	}
 	if !json.Valid(data) {

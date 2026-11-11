@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/sessionid"
 	"fmt"
@@ -19,13 +20,14 @@ import (
 // LaunchIntent contains no credentials. The broker retains login context and
 // returns only a confirmed attach receipt, never the Runta token.
 type LaunchIntent struct {
-	RequestID string   `json:"request_id"`
-	Agent     string   `json:"agent"`
-	Directory string   `json:"directory"`
-	Arguments []string `json:"arguments"`
-	Version   string   `json:"version,omitempty"`
-	Prepare   bool     `json:"prepare,omitempty"`
-	Cold      bool     `json:"cold,omitempty"`
+	Hooks     []hookbridge.Binding `json:"hooks,omitempty"`
+	RequestID string               `json:"request_id"`
+	Agent     string               `json:"agent"`
+	Directory string               `json:"directory"`
+	Arguments []string             `json:"arguments"`
+	Version   string               `json:"version,omitempty"`
+	Prepare   bool                 `json:"prepare,omitempty"`
+	Cold      bool                 `json:"cold,omitempty"`
 }
 type BrokerReply struct {
 	Receipt *LaunchReceipt `json:"receipt,omitempty"`
@@ -47,6 +49,9 @@ type LaunchPlan struct {
 }
 
 func (r LaunchIntent) Validate() error {
+	if err := hookbridge.ValidateBindings(r.Hooks); err != nil {
+		return err
+	}
 	if !sessionid.Valid(r.RequestID) || !Supported[r.Agent] || !filepath.IsAbs(r.Directory) || strings.ContainsAny(r.Directory, "\x00\r\n") {
 		return fmt.Errorf("invalid launch intent")
 	}

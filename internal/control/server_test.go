@@ -139,3 +139,31 @@ func TestClientCancellationDoesNotReplayMutation(t *testing.T) {
 		t.Fatal("mutation repeated")
 	}
 }
+
+func TestHookClientDisconnectCancelsPermissionOrExecution(t *testing.T) {
+	started, canceled := make(chan struct{}), make(chan struct{})
+	path := testServer(t, map[string]Handler{"hooks.execute": func(ctx context.Context, _ json.RawMessage) (any, error) {
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	}})
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.NewEncoder(conn).Encode(Request{Version: Version, ID: "hook-disconnect", Method: "hooks.execute"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("handler not started")
+	}
+	conn.Close()
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("disconnected hook still executing")
+	}
+}

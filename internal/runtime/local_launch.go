@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/hookbridge"
 	"fennec/internal/setup"
 	"fmt"
 	"os"
@@ -17,11 +18,12 @@ import (
 )
 
 type LocalLaunch struct {
-	ID             string   `json:"id"`
-	Agent          string   `json:"agent"`
-	LocalDirectory string   `json:"local_directory"`
-	Device         string   `json:"device"`
-	Arguments      []string `json:"arguments,omitempty"`
+	Hooks          []hookbridge.Binding `json:"hooks,omitempty"`
+	ID             string               `json:"id"`
+	Agent          string               `json:"agent"`
+	LocalDirectory string               `json:"local_directory"`
+	Device         string               `json:"device"`
+	Arguments      []string             `json:"arguments,omitempty"`
 }
 
 type LocalTerminal struct {
@@ -45,6 +47,9 @@ type LocalRuntime struct {
 }
 
 func (request LocalLaunch) Validate() error {
+	if err := hookbridge.ValidateBindings(request.Hooks); err != nil {
+		return err
+	}
 	if !sessionIDPattern.MatchString(request.ID) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(request.Device) || !filepath.IsAbs(request.LocalDirectory) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
 		return fmt.Errorf("invalid local session identity")
 	}
@@ -181,6 +186,11 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		}
 	}
 	command = append(command, request.Arguments...)
+	if len(request.Hooks) > 0 {
+		if err := hookbridge.SaveBindings(runtime.Home, request.ID, request.Hooks); err != nil {
+			return LocalTerminal{}, err
+		}
+	}
 	if setup.NativeAgentMode(runtime.Home) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" {

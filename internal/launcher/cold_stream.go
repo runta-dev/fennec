@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fennec/internal/cmuxhooks"
 	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -40,14 +39,14 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 		cols, rows = 120, 40
 	}
 	opening := terminalstream.Frame{Type: "launch", ID: intent.RequestID, Launch: plan.Launch, Rows: rows, Columns: cols, Term: os.Getenv("TERM"), Display: facts}
-	opening.Cmux = intent.Agent == "codex" && cmuxhooks.Capture() != nil
+	opening.HookBridge = len(plan.Launch.Hooks) > 0
 	payload, err := json.Marshal(opening)
 	if err != nil {
 		return err
 	}
 	// The payload contains validated launch arguments, never the daemon API token.
 	remote := `"$HOME/.local/fennec/bin/fennec-terminal" serve-initial ` + base64.StdEncoding.EncodeToString(payload)
-	if opening.Cmux {
+	if opening.HookBridge {
 		remote = fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion)
 	}
 	directory := filepath.Join(home, ".config/fennec/cloud")
@@ -56,13 +55,13 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", "-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@ssh.runta.com", remote)
 	var transport *terminalstream.Transport
 	var session *terminalstream.Session
-	if opening.Cmux {
+	if opening.HookBridge {
 		transport, err = terminalstream.Start(command)
 		if err == nil {
 			err = transport.Ready(ctx)
 		}
-		if err == nil && !transport.Supports("cmux_hooks") {
-			err = fmt.Errorf("update Fennec to use cmux cloud hooks")
+		if err == nil && !transport.Supports("hook_bridge_v1") {
+			err = fmt.Errorf("update Fennec to use local cloud hooks")
 		}
 		if err == nil {
 			session, err = transport.Launch(opening)

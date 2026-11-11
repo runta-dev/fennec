@@ -25,6 +25,7 @@ import (
 )
 
 type Event struct {
+	Kind        string `json:"kind,omitempty"`
 	Type        string `json:"type"`
 	ID          string `json:"id,omitempty"`
 	Command     string `json:"command,omitempty"`
@@ -39,11 +40,21 @@ type Decision struct {
 	NeverAsk bool   `json:"never_ask"`
 }
 type Broker struct {
-	mu        sync.Mutex
-	pending   map[string]chan Decision
-	writeMu   sync.Mutex
-	output    io.Writer
-	directory string
+	mu         sync.Mutex
+	pending    map[string]chan Decision
+	writeMu    sync.Mutex
+	output     io.Writer
+	directory  string
+	generation uint64
+	revoked    bool
+	closed     bool
+	active     map[string]context.CancelFunc
+	done       chan struct{}
+	closeOnce  sync.Once
+}
+
+func NewBroker(directory string, output io.Writer) *Broker {
+	return &Broker{pending: map[string]chan Decision{}, directory: directory, output: output, active: map[string]context.CancelFunc{}, done: make(chan struct{})}
 }
 
 func (b *Broker) emit(e Event) {
@@ -52,6 +63,24 @@ func (b *Broker) emit(e Event) {
 	json.NewEncoder(b.output).Encode(e)
 }
 func (b *Broker) approve(ctx context.Context, command, fingerprint string) bool {
+	return b.approveKind(ctx, command, fingerprint, "")
+}
+func (b *Broker) approveKind(ctx context.Context, command, fingerprint, kind string) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	select {
+	case <-b.done:
+		return false
+	default:
+	}
+	b.mu.Lock()
+	generation := b.generation
+	closed := b.closed
+	b.mu.Unlock()
+	if closed {
+		return false
+	}
 	if b.trusted(fingerprint) {
 		return true
 	}
@@ -62,21 +91,30 @@ func (b *Broker) approve(ctx context.Context, command, fingerprint string) bool 
 	id := hex.EncodeToString(raw)
 	ch := make(chan Decision, 1)
 	b.mu.Lock()
-	if len(b.pending) >= 16 {
+	if len(b.pending) >= 16 || b.closed || generation != b.generation {
 		b.mu.Unlock()
 		return false
 	}
 	b.pending[id] = ch
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); delete(b.pending, id); b.mu.Unlock(); b.emit(Event{Type: "dismiss", ID: id}) }()
-	b.emit(Event{Type: "approval", ID: id, Command: command, Fingerprint: fingerprint})
+	b.emit(Event{Type: "approval", ID: id, Command: command, Fingerprint: fingerprint, Kind: kind})
 	select {
 	case decision := <-ch:
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if generation != b.generation || ctx.Err() != nil {
+			return false
+		}
 		if decision.Allow && decision.NeverAsk {
-			b.remember(fingerprint)
+			if err := b.rememberLocked(fingerprint); err != nil {
+				return false
+			}
 		}
 		return decision.Allow
 	case <-ctx.Done():
+		return false
+	case <-b.done:
 		return false
 	}
 }
@@ -99,7 +137,12 @@ func Run(ctx context.Context, directory string, input io.Reader, output io.Write
 	return RunWithApproval(ctx, directory, input, output, true)
 }
 
-func RunWithApproval(ctx context.Context, directory string, input io.Reader, output io.Writer, requireApproval bool) error {
+func RunWithApproval(ctx context.Context, directory string, input io.Reader, output io.Writer, requireApproval bool, shared ...*Broker) error {
+	broker := NewBroker(directory, output)
+	if len(shared) > 0 && shared[0] != nil {
+		broker = shared[0]
+	}
+	defer broker.shutdown()
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
 	}
@@ -132,7 +175,6 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 	if err != nil {
 		return err
 	}
-	broker := &Broker{pending: map[string]chan Decision{}, output: output, directory: directory}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	paired := func(key ssh.PublicKey) bool { return authorizedKey(filepath.Join(directory, "authorized_keys"), key) }
@@ -270,6 +312,9 @@ func (b *Broker) trusted(fingerprint string) bool {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.revoked || b.closed {
+		return false
+	}
 	data, err := os.ReadFile(filepath.Join(b.directory, "trusted_devices.json"))
 	if err != nil {
 		return false
@@ -280,39 +325,58 @@ func (b *Broker) trusted(fingerprint string) bool {
 	}
 	return trusted[fingerprint]
 }
-func (b *Broker) remember(fingerprint string) {
-	if b.directory == "" {
-		return
-	}
+func (b *Broker) remember(fingerprint string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.rememberLocked(fingerprint)
+}
+func (b *Broker) rememberLocked(fingerprint string) error {
+	if b.directory == "" {
+		return fmt.Errorf("trust directory unavailable")
+	}
 	path := filepath.Join(b.directory, "trusted_devices.json")
 	trusted := map[string]bool{}
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil && !b.revoked {
 		if json.Unmarshal(data, &trusted) != nil {
-			return
+			return fmt.Errorf("invalid trust store")
 		}
 	}
 	trusted[fingerprint] = true
 	data, _ := json.Marshal(trusted)
 	file, err := os.CreateTemp(b.directory, "trust-*")
 	if err != nil {
-		return
+		return err
 	}
 	defer os.Remove(file.Name())
 	if _, err = file.Write(data); err != nil {
 		file.Close()
-		return
+		return err
 	}
-	if file.Close() != nil {
-		return
+	if err = file.Close(); err != nil {
+		return err
 	}
-	os.Rename(file.Name(), path)
+	if err = os.Rename(file.Name(), path); err != nil {
+		return err
+	}
+	b.revoked = false
+	return nil
 }
 
 func (b *Broker) clearTrust() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.generation++
+	b.revoked = true
+	for _, decision := range b.pending {
+		select {
+		case decision <- Decision{}:
+		default:
+		}
+	}
+	for _, cancel := range b.active {
+		cancel()
+	}
+	b.active = map[string]context.CancelFunc{}
 	if b.directory == "" {
 		return fmt.Errorf("trust directory unavailable")
 	}

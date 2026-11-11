@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fennec/internal/hookbridge"
 	"net"
 	"os"
 	"path/filepath"
@@ -71,7 +72,18 @@ func TestOfficialCmuxCLIReceivesRelayedHook(t *testing.T) {
 		}
 	}()
 	local := &Local{Executable: binary, Socket: socket, Workspace: workspace, Surface: surface, Env: []string{"HOME=" + home, "CFFIXED_USER_HOME=" + home, "PATH=/usr/bin:/bin", "CMUX_AGENT_HOOK_STATE_DIR=" + filepath.Join(home, "hook-state"), "CMUX_WORKSPACE_ID=" + workspace, "CMUX_SURFACE_ID=" + surface}}
-	result := local.Run(context.Background(), "session-start", []byte(`{"session_id":"33333333-3333-4333-8333-333333333333","hook_event_name":"SessionStart","source":"startup","cwd":"/root/.fen/petite-neat","transcript_path":"/root/private.json"}`))
+	adapters, err := Adapters(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved := false
+	result := hookbridge.Execute(context.Background(), "fixture-owner", "fixture-runtime", adapters["session-start"], []byte(`{"session_id":"33333333-3333-4333-8333-333333333333","hook_event_name":"SessionStart","source":"startup","cwd":"/root/.fen/petite-neat","transcript_path":"/root/private.json"}`), func(context.Context, string, string) (context.Context, func(), error) {
+		approved = true
+		return context.Background(), func() {}, nil
+	})
+	if !approved || result.Status != "executed" {
+		t.Fatal("official adapter did not pass authorization", result)
+	}
 	listener.Close()
 	workers.Wait()
 	mu.Lock()

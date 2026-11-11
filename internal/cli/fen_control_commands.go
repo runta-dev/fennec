@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/control"
+	"fennec/internal/hookbridge"
 	"fennec/internal/sessionid"
 	"fmt"
 	"io"
@@ -27,6 +28,31 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	method := ""
 	params := map[string]any{}
 	switch args[0] {
+	case "hooks":
+		if len(args) == 1 || len(args) == 2 && args[1] == "list" {
+			method = "hooks.config.get"
+			break
+		}
+		if len(args) == 3 && args[1] == "import" {
+			raw, err := os.ReadFile(args[2])
+			if err != nil {
+				return true, err
+			}
+			cfg, err := hookbridge.ParseConfig(raw)
+			if err != nil {
+				return true, err
+			}
+			data, _ := json.Marshal(cfg)
+			_ = json.Unmarshal(data, &params)
+			method = "hooks.config.set"
+			break
+		}
+		if len(args) == 3 && args[1] == "remove" {
+			method = "hooks.config.remove"
+			params["name"] = args[2]
+			break
+		}
+		return true, fmt.Errorf("usage: fen hooks [list|import <file>|remove <name>]")
 	case "status":
 		if len(args) != 1 {
 			return true, fmt.Errorf("usage: fen status [--json]")
@@ -210,6 +236,7 @@ Usage: fen [attach [session-id]]
   fen sessions | launch <agent> [-- <agent arguments>]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear
+  fen hooks [list|import <file>|remove <name>]
   fen control <method>  (JSON parameters on stdin)
   fen settings [theme|language <value> | magpie on|off]
   fen login-item status|on|off|settings

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
 	"io"
@@ -79,7 +80,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		return err
 	}
 	emit := func(frame Frame) error { return emitFrames(frame) }
-	hooks := newCmuxRelay(ctx, emit)
+	hooks := newHookRelay(ctx, emit)
 	var sessionsMu sync.Mutex
 	sessions := map[string]*serverSession{}
 	var workers sync.WaitGroup
@@ -93,7 +94,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"cmux_hooks"}
+	capabilities := []string{"hook_bridge_v1"}
 	if operate != nil {
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog")
 	}
@@ -148,14 +149,25 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				var terminal cloudruntime.LocalTerminal
 				var command *exec.Cmd
 				var err error
-				if frame.Cmux && (frame.Type == "launch" || frame.Type == "attach") {
+				if frame.HookBridge && (frame.Type == "launch" || frame.Type == "attach") {
 					sessionID := frame.ID
+					home, homeErr := os.UserHomeDir()
+					if homeErr != nil {
+						emit(Frame{Type: "error", ID: frame.ID, Message: "hook home unavailable"})
+						return
+					}
+					if frame.Launch != nil {
+						if err := hookbridge.SaveBindings(home, sessionID, frame.Launch.Hooks); err != nil {
+							emit(Frame{Type: "error", ID: frame.ID, Message: "hook bindings unavailable"})
+							return
+						}
+					}
 					if frame.Terminal != nil {
 						sessionID = frame.Terminal.ID
 					}
 					unbind, hookErr := hooks.subscribe(session.ctx, frame.ID, sessionID)
 					if hookErr != nil {
-						emit(Frame{Type: "error", ID: frame.ID, Message: "cmux hook relay unavailable"})
+						emit(Frame{Type: "error", ID: frame.ID, Message: "local hook relay unavailable"})
 						return
 					}
 					defer unbind()
@@ -299,7 +311,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			frame.Data = FocusReport(frame.Focused)
 		}
 		switch frame.Type {
-		case "cmux_reply":
+		case "hook_reply":
 			hooks.reply(frame)
 		case "credit":
 			if !session.window.add(frame.Bytes) {

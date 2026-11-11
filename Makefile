@@ -64,4 +64,4 @@ test-e2e-performance:
 .PHONY: test-cmux
 test-cmux:
 	test -n "$(CMUX_BINARY)" && test -x "$(CMUX_BINARY)"
-	FENNEC_CMUX_BINARY="$(CMUX_BINARY)" go test -race -count=1 -timeout=90s ./internal/cmuxhooks ./internal/terminalstream ./internal/launcher ./internal/cli ./cmd/fennec-terminal
+	FENNEC_CMUX_BINARY="$(CMUX_BINARY)" go test -race -count=1 -timeout=90s ./internal/cmuxhooks ./internal/hookbridge ./internal/hookplugins ./internal/localssh ./internal/control ./internal/terminalstream ./internal/launcher ./internal/cli ./cmd/fennec-terminal

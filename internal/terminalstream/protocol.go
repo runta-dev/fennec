@@ -8,9 +8,9 @@ import (
 )
 
 type Frame struct {
-	Cmux         bool                         `json:"cmux,omitempty"`
+	HookBridge   bool                         `json:"hook_bridge,omitempty"`
 	HookID       string                       `json:"hook_id,omitempty"`
-	HookEvent    string                       `json:"hook_event,omitempty"`
+	HookRef      string                       `json:"hook_ref,omitempty"`
 	Capabilities []string                     `json:"capabilities,omitempty"`
 	Focused      bool                         `json:"focused,omitempty"`
 	Timings      map[string]float64           `json:"timings_ms,omitempty"`

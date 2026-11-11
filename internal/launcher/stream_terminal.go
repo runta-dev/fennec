@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookbridge"
 	"fennec/internal/launchprofile"
 	"fennec/internal/terminalinput"
 	"fennec/internal/terminalstate"
@@ -113,11 +113,12 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var cmux *cmuxhooks.Local
-	if plan.Agent == "codex" {
-		cmux = cmuxhooks.Capture()
+	hooks, err := prepareLocalHooks(ctx, plan, home)
+	if err != nil {
+		return err
 	}
-	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, Cmux: cmux != nil}); err != nil {
+	defer hooks.close()
+	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, HookBridge: hooks != nil}); err != nil {
 		return err
 	}
 	inputDone := make(chan struct{})
@@ -238,21 +239,24 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			return fmt.Errorf("invalid terminal frame")
 		}
 		switch frame.Type {
-		case "cmux_hook":
-			if len(frame.HookID) != 32 || !cmuxhooks.ValidEvent(frame.HookEvent) || len(frame.Result) > cmuxhooks.PayloadLimit {
-				return fmt.Errorf("invalid cmux hook request")
+		case "hook_request":
+			var payload []byte
+			if len(frame.HookID) != 32 || len(frame.HookRef) != 64 || len(frame.Result) > 2*hookbridge.PayloadLimit || json.Unmarshal(frame.Result, &payload) != nil || len(payload) > hookbridge.PayloadLimit {
+				return fmt.Errorf("invalid local hook request")
 			}
 			select {
 			case hookSlots <- struct{}{}:
 				hookWorkers.Add(1)
-				go func(frame terminalstream.Frame) {
+				go func(frame terminalstream.Frame, payload []byte) {
 					defer hookWorkers.Done()
 					defer func() { <-hookSlots }()
-					response := cmux.Run(ctx, frame.HookEvent, frame.Result)
-					_ = send(terminalstream.Frame{Type: "cmux_reply", HookID: frame.HookID, Code: response.Code, Result: response.Data})
-				}(frame)
+					response := hooks.execute(ctx, frame.HookRef, payload)
+					raw, _ := json.Marshal(response)
+					_ = send(terminalstream.Frame{Type: "hook_reply", HookID: frame.HookID, Result: raw})
+				}(frame, payload)
 			default:
-				_ = send(terminalstream.Frame{Type: "cmux_reply", HookID: frame.HookID, Result: json.RawMessage(`{}`)})
+				raw, _ := json.Marshal(hookbridge.Unregistered())
+				_ = send(terminalstream.Frame{Type: "hook_reply", HookID: frame.HookID, Result: raw})
 			}
 		case "receipt":
 			if confirmed || frame.Terminal == nil || frame.Terminal.ID != intent.RequestID || frame.Terminal.Agent != intent.Agent {

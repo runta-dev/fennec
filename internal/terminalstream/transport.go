@@ -283,7 +283,7 @@ func (session *Session) Next(ctx context.Context) (Frame, error) {
 }
 func (session *Session) Send(frame Frame) error {
 	switch frame.Type {
-	case "input", "focus", "credit", "resize", "close", "cmux_reply":
+	case "input", "focus", "credit", "resize", "close", "hook_reply":
 	default:
 		return fmt.Errorf("invalid terminal control frame")
 	}

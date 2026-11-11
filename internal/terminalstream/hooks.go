@@ -8,35 +8,35 @@ import (
 	"errors"
 	"time"
 
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookbridge"
 	"os"
 	"sync"
 )
 
-type cmuxOwner struct {
+type hookOwner struct {
 	id  string
 	ctx context.Context
 }
-type cmuxEndpoint struct {
-	owners []cmuxOwner
+type hookEndpoint struct {
+	owners []hookOwner
 	close  func()
 }
-type cmuxWait struct {
+type hookWait struct {
 	owner  string
-	result chan cmuxhooks.Response
+	result chan hookbridge.Result
 }
-type cmuxRelay struct {
+type hookRelay struct {
 	mu        sync.Mutex
-	endpoints map[string]*cmuxEndpoint
-	pending   map[string]cmuxWait
+	endpoints map[string]*hookEndpoint
+	pending   map[string]hookWait
 	emit      func(Frame) error
 	ctx       context.Context
 }
 
-func newCmuxRelay(ctx context.Context, emit func(Frame) error) *cmuxRelay {
-	return &cmuxRelay{ctx: ctx, emit: emit, endpoints: map[string]*cmuxEndpoint{}, pending: map[string]cmuxWait{}}
+func newHookRelay(ctx context.Context, emit func(Frame) error) *hookRelay {
+	return &hookRelay{ctx: ctx, emit: emit, endpoints: map[string]*hookEndpoint{}, pending: map[string]hookWait{}}
 }
-func (relay *cmuxRelay) bind(ctx context.Context, stream, session string) (func(), error) {
+func (relay *hookRelay) bind(ctx context.Context, stream, session string) (func(), error) {
 	relay.mu.Lock()
 	defer relay.mu.Unlock()
 	endpoint := relay.endpoints[session]
@@ -45,16 +45,16 @@ func (relay *cmuxRelay) bind(ctx context.Context, stream, session string) (func(
 		if err != nil {
 			return nil, err
 		}
-		closeListener, err := cmuxhooks.Listen(relay.ctx, home, session, func(ctx context.Context, event string, payload []byte) cmuxhooks.Response {
-			return relay.request(ctx, session, event, payload)
+		closeListener, err := hookbridge.Listen(relay.ctx, home, session, func(ctx context.Context, binding hookbridge.Binding, payload []byte) hookbridge.Result {
+			return relay.request(ctx, session, binding, payload)
 		})
 		if err != nil {
 			return nil, err
 		}
-		endpoint = &cmuxEndpoint{close: closeListener}
+		endpoint = &hookEndpoint{close: closeListener}
 		relay.endpoints[session] = endpoint
 	}
-	endpoint.owners = append(endpoint.owners, cmuxOwner{id: stream, ctx: ctx})
+	endpoint.owners = append(endpoint.owners, hookOwner{id: stream, ctx: ctx})
 	return func() {
 		relay.mu.Lock()
 		defer relay.mu.Unlock()
@@ -74,39 +74,41 @@ func (relay *cmuxRelay) bind(ctx context.Context, stream, session string) (func(
 		}
 	}, nil
 }
-func (relay *cmuxRelay) request(ctx context.Context, session, event string, payload []byte) cmuxhooks.Response {
+func (relay *hookRelay) request(ctx context.Context, session string, binding hookbridge.Binding, payload []byte) hookbridge.Result {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
-		return cmuxhooks.Empty()
+		return hookbridge.Failure(binding, "is unavailable")
 	}
 	requestID := hex.EncodeToString(nonce[:])
 	relay.mu.Lock()
 	endpoint := relay.endpoints[session]
 	if endpoint == nil || len(endpoint.owners) == 0 {
 		relay.mu.Unlock()
-		return cmuxhooks.Empty()
+		return hookbridge.Failure(binding, "is unavailable")
 	}
 	owner := endpoint.owners[len(endpoint.owners)-1]
-	reply := make(chan cmuxhooks.Response, 1)
-	relay.pending[requestID] = cmuxWait{owner: owner.id, result: reply}
+	reply := make(chan hookbridge.Result, 1)
+	relay.pending[requestID] = hookWait{owner: owner.id, result: reply}
 	relay.mu.Unlock()
 	defer func() { relay.mu.Lock(); delete(relay.pending, requestID); relay.mu.Unlock() }()
-	if err := relay.emit(Frame{Type: "cmux_hook", ID: owner.id, HookID: requestID, HookEvent: event, Result: append(json.RawMessage(nil), payload...)}); err != nil {
-		return cmuxhooks.Empty()
+	input, _ := json.Marshal(payload)
+	if err := relay.emit(Frame{Type: "hook_request", ID: owner.id, HookID: requestID, HookRef: binding.ID, Result: input}); err != nil {
+		return hookbridge.Failure(binding, "is unavailable")
 	}
 	select {
 	case result := <-reply:
-		return result
+		return hookbridge.Normalize(binding, result)
 	case <-ctx.Done():
-		return cmuxhooks.Empty()
+		return hookbridge.Failure(binding, "is unavailable")
 	case <-owner.ctx.Done():
-		return cmuxhooks.Empty()
+		return hookbridge.Failure(binding, "is unavailable")
 	case <-relay.ctx.Done():
-		return cmuxhooks.Empty()
+		return hookbridge.Failure(binding, "is unavailable")
 	}
 }
-func (relay *cmuxRelay) reply(frame Frame) {
-	if len(frame.Result) > cmuxhooks.PayloadLimit || !json.Valid(frame.Result) || (frame.Code != 0 && frame.Code != 2) {
+func (relay *hookRelay) reply(frame Frame) {
+	var result hookbridge.Result
+	if len(frame.Result) > 2*hookbridge.PayloadLimit+4096 || json.Unmarshal(frame.Result, &result) != nil || !result.Valid() {
 		return
 	}
 	relay.mu.Lock()
@@ -116,19 +118,19 @@ func (relay *cmuxRelay) reply(frame Frame) {
 		return
 	}
 	select {
-	case pending.result <- cmuxhooks.Response{Data: frame.Result, Code: frame.Code}:
+	case pending.result <- result:
 	default:
 	}
 }
 
 // Another attachment process may still own the endpoint while a disconnected
 // desktop is being retired. Do not steal it or block the agent's terminal.
-func (relay *cmuxRelay) subscribe(ctx context.Context, stream, session string) (func(), error) {
+func (relay *hookRelay) subscribe(ctx context.Context, stream, session string) (func(), error) {
 	closeBinding, err := relay.bind(ctx, stream, session)
 	if err == nil {
 		return closeBinding, nil
 	}
-	if !errors.Is(err, cmuxhooks.ErrBusy) {
+	if !errors.Is(err, hookbridge.ErrBusy) {
 		return nil, err
 	}
 	wait, cancel := context.WithCancel(ctx)
@@ -147,7 +149,7 @@ func (relay *cmuxRelay) subscribe(ctx context.Context, stream, session string) (
 				closeBinding()
 				return
 			}
-			if !errors.Is(err, cmuxhooks.ErrBusy) {
+			if !errors.Is(err, hookbridge.ErrBusy) {
 				return
 			}
 		}

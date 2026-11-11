@@ -3,8 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"fennec/internal/cmuxhooks"
+	"fennec/internal/hookbridge"
 	"os"
 	"os/exec"
 	"strings"
@@ -30,7 +29,7 @@ func TestCmuxHookCommandChild(t *testing.T) {
 	if os.Getenv("FENNEC_CMUX_HOOK_COMMAND_CHILD") != "1" {
 		return
 	}
-	os.Args = []string{"fennec-terminal", "cmux-hook", "petite-neat", "inbox-stop"}
+	os.Args = []string{"fennec-terminal", "hook", "petite-neat", strings.Repeat("a", 64)}
 	code, err := run()
 	if err != nil {
 		os.Exit(99)
@@ -45,8 +44,11 @@ func TestCmuxHookCommandReturnsDecisionAndHandlesOfflineMac(t *testing.T) {
 	defer os.RemoveAll(home)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	closeListener, err := cmuxhooks.Listen(ctx, home, "petite-neat", func(context.Context, string, []byte) cmuxhooks.Response {
-		return cmuxhooks.Response{Code: 2, Data: json.RawMessage(`{"decision":"block","reason":"fixture"}`)}
+	if err := hookbridge.SaveBindings(home, "petite-neat", []hookbridge.Binding{{ID: strings.Repeat("a", 64), Name: "Fixture", Event: "Stop", Policy: hookbridge.Observer, TimeoutMS: 1000}}); err != nil {
+		t.Fatal(err)
+	}
+	closeListener, err := hookbridge.Listen(ctx, home, "petite-neat", func(context.Context, hookbridge.Binding, []byte) hookbridge.Result {
+		return hookbridge.Result{Code: 2, Stdout: []byte(`{"decision":"block","reason":"fixture"}`), Status: "executed"}
 	})
 	if err != nil {
 		t.Fatal(err)
