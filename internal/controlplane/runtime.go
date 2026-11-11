@@ -13,12 +13,14 @@ import (
 )
 
 type RuntimeState struct {
-	Epoch     uint64                       `json:"epoch"`
-	Running   bool                         `json:"running"`
-	Stage     string                       `json:"stage"`
-	RuntimeID string                       `json:"runtime_id,omitempty"`
-	Error     string                       `json:"error,omitempty"`
-	Events    map[string]map[string]string `json:"events,omitempty"`
+	Epoch      uint64                       `json:"epoch"`
+	Generation uint64                       `json:"generation"`
+	Pending    bool                         `json:"pending"`
+	Running    bool                         `json:"running"`
+	Stage      string                       `json:"stage"`
+	RuntimeID  string                       `json:"runtime_id,omitempty"`
+	Error      string                       `json:"error,omitempty"`
+	Events     map[string]map[string]string `json:"events,omitempty"`
 }
 
 func (c *Controller) runtimeSnapshot() RuntimeState {
@@ -29,6 +31,7 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 		return RuntimeState{Epoch: account.Epoch, Stage: "idle"}
 	}
 	result := c.runtime
+	result.Pending = c.runtimeAgain
 	result.Events = make(map[string]map[string]string, len(c.runtime.Events))
 	for kind, event := range c.runtime.Events {
 		copy := make(map[string]string, len(event))
@@ -56,7 +59,8 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 	if c.runtime.Epoch != epoch {
 		c.runtimeAgain = false
 	}
-	c.runtime = RuntimeState{Epoch: epoch, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
+	c.runtimeGeneration++
+	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
 	ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 	done := make(chan struct{})
 	c.runtimeCancel = cancel

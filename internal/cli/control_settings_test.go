@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestDesktopSettingsImportDoesNotOverwriteCLIPreference(t *testing.T) {
@@ -106,5 +108,99 @@ func TestInitialDefaultIsPersistedWithoutOverwritingChoice(t *testing.T) {
 	}
 	if !newDesktopSettingsWithMagpie(home, func() bool { return false }).value.Magpie {
 		t.Fatal("concurrent explicit choice replaced")
+	}
+}
+
+func TestSettingsRevisionPreventsStaleRestoration(t *testing.T) {
+	home := t.TempDir()
+	s := newDesktopSettingsWithMagpie(home, func() bool { return false })
+	apply := func(raw string) (desktopPreferences, error) {
+		v, err := s.set(false)(context.Background(), json.RawMessage(raw))
+		if err != nil {
+			return desktopPreferences{}, err
+		}
+		return v.(desktopPreferences), nil
+	}
+	first, err := apply(`{"magpie":true,"expected_revision":0}`)
+	if err != nil || first.Revision != 1 {
+		t.Fatal(first, err)
+	}
+	// A user turns the switch off and on again while a profiler is running.
+	if _, err = apply(`{"magpie":false}`); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := apply(`{"magpie":true}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = apply(`{"magpie":false,"expected_revision":1}`); err == nil {
+		t.Fatal("stale restoration overwrote user's choice")
+	}
+	restored := newDesktopSettings(home).value
+	if !restored.Magpie || restored.Revision != latest.Revision {
+		t.Fatal(restored)
+	}
+	same, err := apply(`{"magpie":true}`)
+	if err != nil || same.Revision != latest.Revision {
+		t.Fatal("no-op advanced revision", same, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err = s.set(false)(ctx, json.RawMessage(`{"magpie":false}`)); err == nil {
+		t.Fatal("canceled write persisted")
+	}
+	if s.value != same {
+		t.Fatal("canceled write changed settings")
+	}
+}
+
+func TestSettingsUpdateSerializesPersistenceAndReconciliation(t *testing.T) {
+	s := newDesktopSettingsWithMagpie(t.TempDir(), func() bool { return false })
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		_, err := s.update(ctx, json.RawMessage(`{"magpie":true}`), func() error {
+			close(entered)
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+		first <- err
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("first update did not enter")
+	}
+	secondStarted, second := make(chan struct{}), make(chan error, 1)
+	var reconciled atomic.Bool
+	go func() {
+		close(secondStarted)
+		_, err := s.update(ctx, json.RawMessage(`{"magpie":false}`), func() error { reconciled.Store(true); return nil })
+		second <- err
+	}()
+	<-secondStarted
+	// The first callback must continue to observe its own persisted choice.
+	if !s.snapshot().(desktopPreferences).Magpie {
+		t.Fatal("second update overtook first reconciliation")
+	}
+	close(release)
+	for _, done := range []chan error{first, second} {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("update did not finish")
+		}
+	}
+	if !reconciled.Load() || s.snapshot().(desktopPreferences).Magpie {
+		t.Fatal("final choice was not reconciled")
 	}
 }

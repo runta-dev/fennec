@@ -118,23 +118,18 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	controller.Settings = settings.snapshot
 	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return settings.snapshot(), nil }
 	controller.Additional["settings.set"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		before := settings.snapshot().(desktopPreferences).Magpie
-		value, err := settings.set(false)(ctx, raw)
-		if err != nil {
-			return nil, err
-		}
-		if before != value.(desktopPreferences).Magpie {
+		return settings.update(ctx, raw, func() error {
 			services.mu.Lock()
 			services.ready = map[string]bool{}
 			services.reconcileSelectionLocked()
 			services.mu.Unlock()
 			if _, _, _, ok := manager.Session(); ok {
 				if _, err := controller.Reconcile(ctx); err != nil {
-					return nil, err
+					return err
 				}
 			}
-		}
-		return value, nil
+			return nil
+		})
 	}
 	controller.Additional["settings.import"] = settings.set(true)
 	for _, operation := range []string{"status", "on", "off", "settings"} {

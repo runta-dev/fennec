@@ -26,7 +26,7 @@ func run() error {
 	samples := flag.Int("samples", 5, "number of samples")
 	budget := flag.Duration("budget", time.Second, "hard limit for each sample")
 	flag.Parse()
-	if !map[string]bool{"model.get": true, "model.local.get": true, "agent.account.get": true}[*method] || *samples < 1 || *samples > 100 || *budget <= 0 {
+	if !map[string]bool{"model.get": true, "model.local.get": true, "agent.account.get": true}[*method] || *samples < 1 || *samples > 100 || *budget <= 0 || (*location != "local" && *location != "cloud") {
 		return fmt.Errorf("invalid profiling options")
 	}
 	home, err := os.UserHomeDir()
@@ -48,6 +48,9 @@ func run() error {
 	original, err := ping()
 	if err != nil {
 		return err
+	}
+	if original.PID <= 0 || original.Build == "" {
+		return fmt.Errorf("daemon identity unavailable")
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"started_at": time.Now().UTC().Format(time.RFC3339Nano), "daemon_build": original.Build, "daemon_pid": original.PID})
 	type connection struct {
@@ -71,11 +74,7 @@ func run() error {
 	}
 	for index := 0; index < *samples; index++ {
 		ctx, cancel := context.WithTimeout(context.Background(), *budget)
-		var result struct {
-			Agent  string            `json:"agent"`
-			Models []json.RawMessage `json:"models"`
-			Status string            `json:"status"`
-		}
+		var result operationResult
 		started := time.Now()
 		err := client.Call(ctx, *method, map[string]any{"agent": *agent, "location": *location, "refresh": true}, &result)
 		elapsed := time.Since(started)
@@ -83,19 +82,28 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("sample %d failed: %w", index+1, err)
 		}
-		if result.Agent != *agent {
-			return fmt.Errorf("sample %d returned another agent", index+1)
-		}
-		if *method == "agent.account.get" {
-			if result.Status != "signed_in" && result.Status != "signed_out" {
-				return fmt.Errorf("account state unavailable")
-			}
-		} else if len(result.Models) == 0 {
-			return fmt.Errorf("model catalog unavailable")
+		if err := result.validate(*method, *agent, *location); err != nil {
+			return fmt.Errorf("sample %d: %w", index+1, err)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"method": *method, "sample": index + 1, "wall_ms": float64(elapsed.Microseconds()) / 1000, "budget_ms": float64(budget.Microseconds()) / 1000})
 		if elapsed > *budget {
 			return fmt.Errorf("sample %d exceeded wall-time budget", index+1)
+		}
+		// Validate every sample, including intermediate reconnects that could be
+		// hidden by a later successful response in the same batch.
+		currentConnection, err := check()
+		if err != nil {
+			return err
+		}
+		if remote && (!currentConnection.Ready || currentConnection.Generation != before.Generation) {
+			return fmt.Errorf("sample %d: resident channel changed during warm measurement", index+1)
+		}
+		currentDaemon, err := ping()
+		if err != nil {
+			return err
+		}
+		if currentDaemon != original {
+			return fmt.Errorf("sample %d: daemon changed during measurement", index+1)
 		}
 	}
 	after, err := check()

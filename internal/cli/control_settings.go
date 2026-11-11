@@ -13,11 +13,13 @@ import (
 )
 
 type desktopSettings struct {
-	mu    sync.Mutex
-	path  string
-	value desktopPreferences
+	changes sync.Mutex
+	mu      sync.Mutex
+	path    string
+	value   desktopPreferences
 }
 type desktopPreferences struct {
+	Revision    uint64 `json:"revision"`
 	Magpie      bool   `json:"magpie"`
 	Theme       string `json:"theme"`
 	Language    string `json:"language"`
@@ -88,18 +90,44 @@ func validDesktop(value desktopPreferences) bool {
 	return map[string]bool{"system": true, "light": true, "dark": true}[value.Theme] && map[string]bool{"zh-CN": true, "zh-TW": true, "en-US": true, "en-GB": true, "ja": true, "ko": true}[value.Language]
 }
 func (s *desktopSettings) snapshot() any { s.mu.Lock(); defer s.mu.Unlock(); return s.value }
+
+// Keep persistence and reconciliation ordering consistent for concurrent clients.
+// Otherwise two writers can both observe the old mode and the second can skip
+// reconciliation even though it reverses the first writer's choice.
+func (s *desktopSettings) update(ctx context.Context, raw json.RawMessage, changed func() error) (any, error) {
+	s.changes.Lock()
+	defer s.changes.Unlock()
+	before := s.snapshot().(desktopPreferences).Magpie
+	value, err := s.set(false)(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	if before != value.(desktopPreferences).Magpie {
+		if err := changed(); err != nil {
+			return nil, err
+		}
+	}
+	return value, nil
+}
 func (s *desktopSettings) set(importing bool) control.Handler {
-	return func(_ context.Context, raw json.RawMessage) (any, error) {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var request struct {
-			Magpie   *bool   `json:"magpie"`
-			Theme    *string `json:"theme"`
-			Language *string `json:"language"`
+			ExpectedRevision *uint64 `json:"expected_revision"`
+			Magpie           *bool   `json:"magpie"`
+			Theme            *string `json:"theme"`
+			Language         *string `json:"language"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if request.ExpectedRevision != nil && *request.ExpectedRevision != s.value.Revision {
+			return nil, &control.Fault{Code: "settings_changed", Message: "Settings changed", Retryable: false}
+		}
 		if importing && s.value.Initialized {
 			return s.value, nil
 		}
@@ -117,6 +145,13 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		if !validDesktop(next) {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported theme or language"}
 		}
+		if next == s.value {
+			return s.value, nil
+		}
+		if next.Revision == ^uint64(0) {
+			return nil, fmt.Errorf("settings revision exhausted")
+		}
+		next.Revision++
 		if err := writePublicJSON(s.path, next); err != nil {
 			return nil, err
 		}

@@ -182,3 +182,133 @@ func TestLoginCannotRaceActiveUninstall(t *testing.T) {
 		t.Fatal("rejected login modified account")
 	}
 }
+
+// A saved preference is not proof that its asynchronous configuration completed.
+func TestReconciliationGenerationsFenceQueuedConfiguration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan int64, 3)
+	release := make(chan struct{}, 3)
+	var calls atomic.Int64
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ string, w io.Writer) error {
+		n := calls.Add(1)
+		entered <- n
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		_, err := io.WriteString(w, "{\"type\":\"runtime_progress\",\"runtime_id\":\"shared\",\"stage\":\"agents_installed\",\"status\":\"ready\"}\n")
+		return err
+	}}
+	waitEntered := func() {
+		t.Helper()
+		select {
+		case <-entered:
+		case <-ctx.Done():
+			t.Fatal("configuration did not start")
+		}
+	}
+	waitReady := func() RuntimeState {
+		t.Helper()
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			s := c.runtimeSnapshot()
+			if s.Stage == "ready" && !s.Running && !s.Pending {
+				return s
+			}
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				t.Fatal("configuration did not complete")
+			}
+		}
+	}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	waitEntered()
+	initial := c.runtimeSnapshot()
+	if initial.Generation == 0 || initial.Pending {
+		t.Fatal(initial)
+	}
+	// Multiple choices while one operation is executing coalesce into one run.
+	for i := 0; i < 3; i++ {
+		if _, err := c.Reconcile(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	queued := c.runtimeSnapshot()
+	if !queued.Pending || queued.Generation != initial.Generation || !queued.Running {
+		t.Fatal(queued)
+	}
+	release <- struct{}{}
+	waitEntered()
+	next := c.runtimeSnapshot()
+	if next.Generation <= initial.Generation || next.Pending || !next.Running || len(next.Events) != 0 {
+		t.Fatalf("stale completion leaked into next run: %+v", next)
+	}
+	release <- struct{}{}
+	ready := waitReady()
+	if ready.Generation != next.Generation || ready.RuntimeID != "shared" || calls.Load() != 2 {
+		t.Fatal(ready, calls.Load())
+	}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.runtimeSnapshot().Generation != ready.Generation {
+		t.Fatal("readiness check created new configuration")
+	}
+}
+
+func TestFailedPreparationKeepsGenerationAndRetryAdvances(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return io.ErrUnexpectedEOF }}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	waitFailure := func() RuntimeState {
+		t.Helper()
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			state := c.runtimeSnapshot()
+			if !state.Running && state.Stage == "failed" {
+				return state
+			}
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				t.Fatal("missing failed completion")
+			}
+		}
+	}
+	first := waitFailure()
+	if first.Generation == 0 || first.Error == "" {
+		t.Fatal(first)
+	}
+	if _, err := c.retryRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	second := waitFailure()
+	if second.Generation <= first.Generation || second.Pending {
+		t.Fatal(first, second)
+	}
+	if err := manager.Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	signedOut := c.runtimeSnapshot()
+	if signedOut.Generation != 0 || signedOut.Pending || len(signedOut.Events) != 0 {
+		t.Fatal("previous account execution leaked", signedOut)
+	}
+}
