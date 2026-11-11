@@ -14,13 +14,16 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Native files are private to Fennec's sandbox agent configuration. No sessions,
@@ -312,10 +315,10 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			if s.Keychain != nil {
 				service := "Claude Code-credentials"
 				if s.Env("CLAUDE_CONFIG_DIR") != "" {
-					sum := sha256.Sum256([]byte(dir))
+					sum := sha256.Sum256([]byte(norm.NFC.String(dir)))
 					service += "-" + hex.EncodeToString(sum[:])[:8]
 				}
-				b, e = s.Keychain(ctx, service, s.Env("USER"))
+				b, e = s.Keychain(ctx, service, nativeKeychainAccount(s.Env("USER")))
 				if e != nil && !os.IsNotExist(e) {
 					return r, e
 				}
@@ -645,4 +648,16 @@ func nativeEnvForAgent(agent, key string) bool {
 		return true
 	}
 	return false
+}
+
+func nativeKeychainAccount(name string) string {
+	if name == "" {
+		if current, err := user.Current(); err == nil {
+			name = current.Username
+		}
+	}
+	if !regexp.MustCompile(`^[a-zA-Z0-9._-]+$`).MatchString(name) {
+		return "claude-code-user"
+	}
+	return name
 }
