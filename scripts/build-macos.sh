@@ -3,25 +3,20 @@ set -eu
 cd "$(dirname "$0")/.."
 app="${FENNEC_BUILD_DIR:-$PWD/build}/Fennec.app"
 identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
+sign_keychain="${FENNEC_SIGN_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 # One build timestamp shared by bundle metadata and every version label.
 build_stamp=$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')
-app_version="0.2.$build_stamp"
+app_version="${FENNEC_VERSION:-0.2.$build_stamp}"
+build_number="${FENNEC_BUILD_NUMBER:-1}"
+printf '%s\n' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo 'Invalid FENNEC_VERSION' >&2; exit 1; }
+printf '%s\n' "$build_number" | grep -Eq '^[0-9]+$' || { echo 'Invalid FENNEC_BUILD_NUMBER' >&2; exit 1; }
 if [ "${FENNEC_RELEASE:-0}" = 1 ] && [ "$identity" = - ]; then
   echo "Release builds require FENNEC_SIGN_IDENTITY (Developer ID Application)." >&2
   exit 1
 fi
 if [ "$identity" != - ]; then
-  if ! security find-identity "$HOME/Library/Keychains/login.keychain-db" | grep -F "\"$identity\"" >/dev/null; then
-    echo "Missing stable signing identity: $identity" >&2
-    if [ "$identity" = "Fennec Local Development" ]; then
-      echo "Create it once with ./scripts/create-development-identity.sh" >&2
-    fi
-    exit 1
-  fi
-fi
-if [ "$identity" != - ]; then
   # Resolve to one valid identity before touching an existing application.
-  identity=$(security find-identity "$HOME/Library/Keychains/login.keychain-db" | go run ./cmd/signing-identity "$identity")
+  identity=$(security find-identity "$sign_keychain" | go run ./cmd/signing-identity "$identity")
 fi
 sign_artifact() {
   artifact="$1"
@@ -29,7 +24,7 @@ sign_artifact() {
   if [ "$identity" = - ]; then
     codesign --force --sign - "$@" "$artifact"
   else
-    codesign --force --options runtime --timestamp --sign "$identity" "$@" "$artifact"
+    codesign --force --options runtime --timestamp --keychain "$sign_keychain" --sign "$identity" "$@" "$artifact"
   fi
 }
 # Always build the daemon from the same source snapshot as the native shell.
@@ -73,8 +68,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>com.runta.fennec</string>
 <key>CFBundleName</key><string>Fennec</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 <key>CFBundleExecutable</key><string>Fennec</string>
-<key>CFBundleVersion</key><string>$app_version</string>
+<key>CFBundleVersion</key><string>$build_number</string>
 <key>CFBundleShortVersionString</key><string>$app_version</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>

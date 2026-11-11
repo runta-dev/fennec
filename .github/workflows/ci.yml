@@ -20,3 +20,23 @@ jobs:
       - run: make check-ui
       - run: make test-connector
         timeout-minutes: 5
+  macos_package:
+    name: macOS arm64 package check
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build development validation package
+        env:
+          FENNEC_SIGN_IDENTITY: '-'
+          FENNEC_VERSION: '0.2.0'
+        run: |
+          set -eu
+          test "$(uname -m)" = arm64
+          go build -trimpath -o "$RUNNER_TEMP/fennec-daemon" .
+          FENNEC_DAEMON_BINARY="$RUNNER_TEMP/fennec-daemon" ./scripts/build-macos.sh
+          ./scripts/verify-macos-package.sh build/Fennec.app 0.2.0
