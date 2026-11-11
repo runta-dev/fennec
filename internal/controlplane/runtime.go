@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudstate"
 	"fennec/internal/control"
 	"fennec/internal/runta"
 	"fmt"
@@ -48,6 +49,13 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in before preparing a runtime"}
 	}
 	c.mu.Lock()
+	if c.cloudPausedEpoch != epoch {
+		c.cloudPaused = false
+	}
+	if c.cloudPaused && c.cloudPausedEpoch == epoch {
+		c.mu.Unlock()
+		return nil, &control.Fault{Code: "cloud_disabled", Message: "Create a cloud computer to continue"}
+	}
 	if c.maintenance || c.PreparationBlocked != nil && c.PreparationBlocked() {
 		c.mu.Unlock()
 		return nil, &control.Fault{Code: "uninstall_pending", Message: "Finish the pending uninstall before starting cloud work"}
@@ -92,7 +100,7 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		}
 		c.mu.Lock()
 		defer func() {
-			again := c.runtimeAgain && !c.maintenance && c.runtime.Epoch == epoch && lifecycle.Err() == nil
+			again := c.runtimeAgain && !c.maintenance && !(c.cloudPaused && c.cloudPausedEpoch == epoch) && c.runtime.Epoch == epoch && lifecycle.Err() == nil
 			if again {
 				c.runtimeAgain = false
 				c.runtime.Stage = "retrying"
@@ -106,6 +114,14 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 			return
 		}
 		c.runtime.Running = false
+		if errors.Is(err, cloudstate.ErrDisabled) {
+			c.cloudPaused, c.cloudPausedEpoch = true, epoch
+			c.runtimeAgain = false
+			c.runtime.Stage = "disabled"
+			c.runtime.Error = ""
+			c.runtime.Events = nil
+			return
+		}
 		if err != nil || ctx.Err() != nil {
 			c.runtime.Stage = "failed"
 			c.runtime.Error = "runtime_preparation_failed"
@@ -233,4 +249,76 @@ func (c *Controller) QuiesceForUninstall(ctx context.Context) error {
 		return err
 	}
 	return c.QuiescePreparation(ctx)
+}
+
+// QuiesceCloud pauses only the confirmed account's cloud lifecycle. It leaves
+// local login and settings available, unlike the global uninstall barrier.
+func (c *Controller) QuiesceCloud(ctx context.Context, epoch uint64, runtimeID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, _, current, ok := c.Account.Session()
+	if !ok || current != epoch {
+		return fmt.Errorf("cloud account changed")
+	}
+	c.mu.Lock()
+	if c.maintenance {
+		c.mu.Unlock()
+		return fmt.Errorf("uninstall is in progress")
+	}
+	if runtimeID == "" || (c.runtime.Epoch == epoch && c.runtime.RuntimeID != "" && c.runtime.RuntimeID != runtimeID) {
+		c.mu.Unlock()
+		return fmt.Errorf("cloud runtime changed")
+	}
+	if c.runtime.Running && c.runtime.Epoch != epoch {
+		c.mu.Unlock()
+		return fmt.Errorf("cloud account changed")
+	}
+	c.cloudPaused, c.cloudPausedEpoch = true, epoch
+	c.runtimeAgain = false
+	cancel, done := c.runtimeCancel, c.runtimeDone
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, _, current, ok = c.Account.Session()
+	if !ok || current != epoch {
+		return fmt.Errorf("cloud account changed")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.runtime.Epoch == epoch {
+		c.runtime.Running = false
+		c.runtime.Stage = "disabled"
+		c.runtime.Error = ""
+		c.runtime.Events = nil
+	}
+	return nil
+}
+
+// ResumeCloud is used only after explicit create-again authorization. It does
+// not itself provision a machine or erase a persisted deletion record.
+func (c *Controller) ResumeCloud(epoch uint64) error {
+	_, _, current, ok := c.Account.Session()
+	if !ok || current != epoch {
+		return fmt.Errorf("cloud account changed")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.maintenance || c.runtime.Running {
+		return fmt.Errorf("cloud lifecycle is busy")
+	}
+	c.cloudPaused = false
+	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Stage: "idle"}
+	return nil
 }

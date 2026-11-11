@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -235,5 +237,34 @@ func TestCreateConflictReconcilesWithoutSecondCreate(t *testing.T) {
 				t.Fatalf("posts=%d lists=%d", posts, lists)
 			}
 		})
+	}
+}
+
+func TestSharedDeletionPolicyRunsBeforeCreation(t *testing.T) {
+	var mutations atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			mutations.Add(1)
+			t.Error("blocked cloud was mutated")
+		}
+		if r.URL.Path == "/v2/me" {
+			fmt.Fprint(w, `{"data":{"user_id":"owner"}}`)
+			return
+		}
+		fmt.Fprint(w, `{"data":[],"pagination":{"has_more":false}}`)
+	}))
+	defer server.Close()
+	denied := fmt.Errorf("intentional cloud deletion")
+	c := Client{Endpoint: server.URL, Token: "fixture", SharedAllowed: func(owner string) error {
+		if owner != "owner" {
+			t.Error("unverified owner")
+		}
+		return denied
+	}}
+	if _, err := c.EnsureShared(context.Background()); !errors.Is(err, denied) {
+		t.Fatal(err)
+	}
+	if mutations.Load() != 0 {
+		t.Fatal("cloud recreated after deletion")
 	}
 }

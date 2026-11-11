@@ -401,6 +401,13 @@
       "zh-CN": "云端适配待接入",
       "zh-TW": "雲端支援待接入"
     },
+    "ui.cloud_cancel": {
+      "en-US": "Cancel",
+      "ja": "キャンセル",
+      "ko": "취소",
+      "zh-CN": "取消",
+      "zh-TW": "取消"
+    },
     "ui.cloud_computer": {
       "en-US": "Cloud computer",
       "ja": "クラウドコンピューター",
@@ -415,6 +422,41 @@
       "zh-CN": "云电脑尚未就绪",
       "zh-TW": "雲端電腦尚未就緒"
     },
+    "ui.cloud_confirm_unavailable": {
+      "en-US": "Could not confirm deletion, review the details again",
+      "ja": "削除を確認できませんでした、内容を再確認してください",
+      "ko": "삭제를 확인하지 못했습니다, 내용을 다시 검토하세요",
+      "zh-CN": "未能确认删除，请重新查看删除详情",
+      "zh-TW": "未能確認刪除，請重新檢視詳情"
+    },
+    "ui.cloud_create": {
+      "en-US": "Create cloud computer",
+      "ja": "クラウドコンピューターを作成",
+      "ko": "클라우드 컴퓨터 만들기",
+      "zh-CN": "创建云电脑",
+      "zh-TW": "建立雲端電腦"
+    },
+    "ui.cloud_create_unavailable": {
+      "en-US": "Could not create the cloud computer",
+      "ja": "クラウドコンピューターを作成できませんでした",
+      "ko": "클라우드 컴퓨터를 만들 수 없습니다",
+      "zh-CN": "暂时无法创建云电脑",
+      "zh-TW": "暫時無法建立雲端電腦"
+    },
+    "ui.cloud_delete_scope": {
+      "en-US": "All sessions, files, and data on this cloud computer will be permanently deleted",
+      "ja": "このクラウドのセッション、ファイル、データがすべて完全に削除されます",
+      "ko": "이 클라우드 컴퓨터의 모든 세션, 파일 및 데이터가 영구적으로 삭제됩니다",
+      "zh-CN": "此云电脑上的所有会话、文件和数据将被永久删除",
+      "zh-TW": "此雲端電腦上的所有工作階段、檔案和資料將永久刪除"
+    },
+    "ui.cloud_delete_title": {
+      "en-US": "Delete cloud computer",
+      "ja": "クラウドコンピューターを削除",
+      "ko": "클라우드 컴퓨터 삭제",
+      "zh-CN": "删除云电脑",
+      "zh-TW": "刪除雲端電腦"
+    },
     "ui.cloud_installation_is_not_yet_supported_for_this_version": {
       "en-US": "Cloud installation is not yet supported for this version",
       "ja": "このバージョンのクラウドインストールは未対応です",
@@ -422,12 +464,40 @@
       "zh-CN": "此版本尚未支持云端安装",
       "zh-TW": "此版本尚未支援雲端安裝"
     },
+    "ui.cloud_keep_local": {
+      "en-US": "Your Mac, Fennec app, and local sign-in will remain",
+      "ja": "Mac、Fennecアプリ、ローカルのログイン情報は保持されます",
+      "ko": "Mac, Fennec 앱 및 로컬 로그인은 유지됩니다",
+      "zh-CN": "你的 Mac、Fennec 应用和本地登录将保留",
+      "zh-TW": "你的 Mac、Fennec 應用程式和本機登入將保留"
+    },
+    "ui.cloud_manage": {
+      "en-US": "Manage cloud computer",
+      "ja": "クラウドコンピューターを管理",
+      "ko": "클라우드 컴퓨터 관리",
+      "zh-CN": "管理云电脑",
+      "zh-TW": "管理雲端電腦"
+    },
     "ui.cloud_model": {
       "en-US": "Cloud model",
       "ja": "クラウドモデル",
       "ko": "클라우드 모델",
       "zh-CN": "云端模型",
       "zh-TW": "雲端模型"
+    },
+    "ui.cloud_review_delete": {
+      "en-US": "Review deletion",
+      "ja": "削除内容を確認",
+      "ko": "삭제 내용 검토",
+      "zh-CN": "确认删除详情",
+      "zh-TW": "檢視刪除詳情"
+    },
+    "ui.cloud_review_unavailable": {
+      "en-US": "Could not load the deletion preview",
+      "ja": "削除内容を読み込めませんでした",
+      "ko": "삭제 미리보기를 불러올 수 없습니다",
+      "zh-CN": "暂时无法加载删除详情",
+      "zh-TW": "暫時無法載入刪除詳情"
     },
     "ui.cloud_sessions": {
       "en-US": "Cloud sessions",
@@ -442,6 +512,13 @@
       "ko": "이 버전의 클라우드 설치는 아직 구현되지 않았습니다",
       "zh-CN": "此版本的云端安装适配尚未完成",
       "zh-TW": "此版本的雲端安裝適配尚未完成"
+    },
+    "ui.cloud_status_unavailable": {
+      "en-US": "Could not update cloud computer status",
+      "ja": "クラウドの状態を更新できませんでした",
+      "ko": "클라우드 컴퓨터 상태를 업데이트할 수 없습니다",
+      "zh-CN": "暂时无法更新云电脑状态",
+      "zh-TW": "暫時無法更新雲端電腦狀態"
     },
     "ui.cloud_takeover": {
       "en-US": "Cloud takeover",
@@ -470,6 +547,13 @@
       "ko": "클라우드 전환에는 로그인 필요",
       "zh-CN": "云端接管，需先登录",
       "zh-TW": "雲端接管，需先登入"
+    },
+    "ui.cloud_type_id": {
+      "en-US": "Type the cloud computer ID to confirm",
+      "ja": "クラウドコンピューターのIDを入力して確認",
+      "ko": "확인하려면 클라우드 컴퓨터 ID를 입력하세요",
+      "zh-CN": "输入云电脑 ID 以确认",
+      "zh-TW": "輸入雲端電腦 ID 以確認"
     },
     "ui.cloud_working_directory": {
       "en-US": "Cloud working directory",

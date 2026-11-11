@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/cloudstate"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"io"
@@ -17,6 +18,9 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	s.mu.Unlock()
 	if channel == nil || user == "" || runtimeID == "" || current != epoch {
 		return false, nil
+	}
+	if err := cloudstate.New(s.home).Check(user); err != nil {
+		return true, err
 	}
 	transport, err := channel.get(ctx)
 	if err != nil {

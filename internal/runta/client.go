@@ -40,6 +40,7 @@ type RuntimeResources struct {
 }
 
 type Client struct {
+	SharedAllowed   func(owner string) error
 	Endpoint, Token string
 	HTTP            *http.Client
 	PollInterval    time.Duration
@@ -174,6 +175,11 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 	user, err := c.CurrentUser(ctx)
 	if err != nil {
 		return Runtime{}, err
+	}
+	if c.SharedAllowed != nil {
+		if err := c.SharedAllowed(user); err != nil {
+			return Runtime{}, err
+		}
 	}
 	result := <-listed
 	if result.err != nil {

@@ -24,7 +24,9 @@ the cloud computer by default. Account should independently offer cloud-computer
 deletion with dangerous-action confirmation. Also cover dragging the app to Trash:
 removing the app must not break original agent commands, and cloud failures must
 never be mistaken for permission to run locally. The independent cloud deletion
-entry is not complete and must not be reported as delivered.
+entry is implemented in source but still requires rendered and disposable-runtime
+acceptance before delivery. Track its safeguards and remaining verification in
+[cloud deletion](docs/tasks/cloud-deletion.md).
 
 Development evidence and outstanding work are in the
 [onboarding audit](docs/tasks/onboarding-audit-2026-11-11.md).

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/account"
+	"fennec/internal/cloudstate"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launchprofile"
+	"fennec/internal/runta"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -150,5 +152,8 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		return value, nil
 	}
 	installUninstallControl(home, executable, manager, services, controller)
+	installCloudControl(home, services, controller, func(token string) cloudstate.Backend {
+		return &runta.Client{Endpoint: "https://api.runta.com", Token: token}
+	})
 	return manager, services, controller
 }

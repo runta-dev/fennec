@@ -34,6 +34,8 @@ type Controller struct {
 	runtimeCancel      context.CancelFunc
 	runtimeDone        chan struct{}
 	maintenance        bool
+	cloudPaused        bool
+	cloudPausedEpoch   uint64
 }
 
 func (c *Controller) Handlers() map[string]control.Handler {
@@ -145,11 +147,16 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			continue
 		}
 		handlers[name] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+			epoch := c.Account.Snapshot().Epoch
 			c.mu.Lock()
 			blocked := c.maintenance || c.PreparationBlocked != nil && c.PreparationBlocked()
+			cloudPaused := c.cloudPaused && c.cloudPausedEpoch == epoch
 			c.mu.Unlock()
 			if blocked {
 				return nil, &control.Fault{Code: "uninstall_pending", Message: "Finish the pending uninstall before changing Fennec"}
+			}
+			if cloudPaused && (strings.HasPrefix(name, "sessions.") || strings.HasPrefix(name, "agent.login.")) {
+				return nil, &control.Fault{Code: "cloud_disabled", Message: "Create a cloud computer to continue"}
 			}
 			return handler(ctx, raw)
 		}

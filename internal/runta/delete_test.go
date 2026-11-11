@@ -2,6 +2,7 @@ package runta
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -118,5 +119,32 @@ func TestRejectedDeletionDoesNotDiscardLocalRecovery(t *testing.T) {
 	c := Client{Endpoint: server.URL}
 	if e := c.DeleteOwnedShared(context.Background(), "runtime", "owner", 7); e == nil {
 		t.Fatal("authorization rejection treated as success")
+	}
+}
+
+func TestDeletionConflictIsDistinctFromUnknownOutcome(t *testing.T) {
+	for _, status := range []int{409, 412, 403, 500} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/me" {
+					fmt.Fprint(w, `{"data":{"user_id":"owner"}}`)
+					return
+				}
+				if r.Method == "DELETE" {
+					w.WriteHeader(status)
+					return
+				}
+				fmt.Fprint(w, `{"data":{"id":"runtime","owner_user_id":"owner","revision":7,"status":"running","environment_variables":{"FENNEC_PURPOSE":"shared-v1"}}}`)
+			}))
+			defer server.Close()
+			c := Client{Endpoint: server.URL}
+			err := c.DeleteOwnedShared(context.Background(), "runtime", "owner", 7)
+			if err == nil {
+				t.Fatal("rejection accepted")
+			}
+			if errors.Is(err, ErrDeletionRejected) != (status == 409 || status == 412) {
+				t.Fatal("incorrect outcome classification", status, err)
+			}
+		})
 	}
 }

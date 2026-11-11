@@ -44,3 +44,16 @@ assert.equal(runtimePanel.hidden,false,'existing sessions remain visible while c
 context.visibleSessionCount=0;
 context.window.renderPreparation({stage:'agents_installed'});
 assert.equal(runtimePanel.hidden,false,'completed preparation may show the empty state');
+
+context.tab=value=>messages.push('tab:'+value);
+context.window.renderPreparation({stage:'connecting'});
+context.window.renderPreparation({stage:'disabled'});
+assert.equal(panel.hidden,false);
+assert.equal(runtimePanel.hidden,true,'intentional cloud deletion must not expose stale sessions');
+assert.equal(panel.attrs['aria-busy'],'false','deleted cloud is not still preparing');
+assert.equal(panel.children.length,1);
+const manage=panel.children[0].children[0];
+assert.equal(manage.tag,'button');
+manage.onclick();
+assert.deepEqual(messages.slice(-2),['tab:account','load-cloud']);
+console.log('PASS intentional cloud deletion offers management without failure or loading');

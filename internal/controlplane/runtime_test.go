@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/cloudstate"
 	"fennec/internal/control"
 	"fennec/internal/runta"
 
@@ -310,5 +311,136 @@ func TestFailedPreparationKeepsGenerationAndRetryAdvances(t *testing.T) {
 	signedOut := c.runtimeSnapshot()
 	if signedOut.Generation != 0 || signedOut.Pending || len(signedOut.Events) != 0 {
 		t.Fatal("previous account execution leaked", signedOut)
+	}
+}
+
+func TestCloudQuiesceDrainsAndKeepsLocalControlsAvailable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, _, epoch, _ := manager.Session()
+	entered, released := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int64
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ string, _ io.Writer) error {
+		calls.Add(1)
+		close(entered)
+		<-ctx.Done()
+		<-released
+		return ctx.Err()
+	}}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	c.mu.Lock()
+	c.runtime.RuntimeID = "shared"
+	c.mu.Unlock()
+	if err := c.QuiesceCloud(ctx, epoch, "other"); err == nil {
+		t.Fatal("wrong runtime paused preparation")
+	}
+	c.mu.Lock()
+	wronglyPaused := c.cloudPaused
+	c.mu.Unlock()
+	if wronglyPaused {
+		t.Fatal("rejected runtime changed preparation admission")
+	}
+	if _, err := c.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	paused := make(chan error, 1)
+	go func() { paused <- c.QuiesceCloud(ctx, epoch, "shared") }()
+	for {
+		c.mu.Lock()
+		stopping := c.cloudPaused
+		c.mu.Unlock()
+		if stopping {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("pause not started")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if _, err := c.ensureRuntime(ctx, nil); err == nil {
+		t.Fatal("cloud preparation restarted while draining")
+	}
+	select {
+	case <-paused:
+		t.Fatal("quiesce returned before preparation drained")
+	default:
+	}
+	close(released)
+	if err := <-paused; err != nil {
+		t.Fatal(err)
+	}
+	if c.runtimeSnapshot().Stage != "disabled" || calls.Load() != 1 {
+		t.Fatal("queued preparation escaped pause")
+	}
+	c.Additional = map[string]control.Handler{
+		"settings.set": func(context.Context, json.RawMessage) (any, error) { return "available", nil },
+		"sessions.browser": func(context.Context, json.RawMessage) (any, error) {
+			t.Error("browser session escaped pause")
+			return nil, nil
+		},
+		"agent.login.start": func(context.Context, json.RawMessage) (any, error) { t.Error("login escaped pause"); return nil, nil },
+	}
+	handlers := c.Handlers()
+	if _, err := handlers["settings.set"](ctx, nil); err != nil {
+		t.Fatal("local settings blocked", err)
+	}
+	for _, method := range []string{"sessions.browser", "agent.login.start"} {
+		if _, err := handlers[method](ctx, nil); err == nil {
+			t.Fatal("cloud operation allowed", method)
+		}
+	}
+	if manager.Snapshot().Status != "authorized" {
+		t.Fatal("cloud pause removed local login")
+	}
+	if err := c.ResumeCloud(epoch + 1); err == nil {
+		t.Fatal("foreign account resumed lifecycle")
+	}
+	if err := c.ResumeCloud(epoch); err != nil {
+		t.Fatal(err)
+	}
+	if state := c.runtimeSnapshot(); state.Stage != "idle" || state.Running {
+		t.Fatal(state)
+	}
+}
+
+func TestIntentionalCloudDeletionRestoresWithoutPreparationError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { calls.Add(1); return cloudstate.ErrDisabled }}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		state := c.runtimeSnapshot()
+		if !state.Running {
+			if state.Stage != "disabled" || state.Error != "" || len(state.Events) != 0 {
+				t.Fatal(state)
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("restore did not complete")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if _, err := c.ensureRuntime(ctx, nil); err == nil {
+		t.Fatal("automatic creation allowed")
+	}
+	if calls.Load() != 1 || manager.Snapshot().Status != "authorized" {
+		t.Fatal("restoration changed login or retried preparation")
 	}
 }

@@ -132,11 +132,16 @@ const previewAgents=[
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},
  {id:'opencode',name:'OpenCode',icon:'opencode.svg',installed:false,cloudSupported:false}];
 let previewPrefs={magpie:false,theme:'light',language:'en-US',initialized:true};
+let previewCloudComputer={stage:'available',runtime_id:'preview-cloud',request_id:'preview-request',can_create:false};
 const previewCloud=new Set(['claude','codex','pi']);
 const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id==='codex'?'configured':'credentials_required',model:'codex/gpt-preview'}));
 window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(typeof message!=='string')return;
  const colon=message.indexOf(':');const action=colon<0?message:message.slice(0,colon);let p={};try{p=JSON.parse(message.slice(colon+1))}catch{}
+ if(action==='load-cloud'||message==='visible-tab:account')queueMicrotask(()=>window.renderCloudState(previewCloudComputer));
+ if(action==='cloud-preview')queueMicrotask(()=>window.renderCloudPreview({id:'preview-plan',target:{runtime:previewCloudComputer.runtime_id}}));
+ if(action==='cloud-delete'){previewCloudComputer={...previewCloudComputer,stage:'deleting'};queueMicrotask(()=>window.renderCloudDeleteResult(true));setTimeout(()=>{previewCloudComputer={...previewCloudComputer,stage:'deleted',can_create:true};window.renderCloudState(previewCloudComputer)},700);}
+ if(action==='cloud-create'){previewCloudComputer={stage:'available',runtime_id:'preview-new-cloud',request_id:'',can_create:false};queueMicrotask(()=>window.renderCloudCreateResult(true));}
  if(action==='get-agent-account')queueMicrotask(()=>window.renderNativeAccount({agent:p.agent,location:p.location,status:p.agent==='codex'?'signed_in':'signed_out',accounts:p.agent==='codex'?[{provider:'openai',email:'developer@example.com',subscription:'ChatGPT Pro',auth_type:'oauth'}]:[]}));
  if(action==='get-model' && p.agent!=='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'',models:[{id:'',name:'Default'}]}));
  if(action==='get-model' && p.agent==='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'gpt-preview',effort:'low',models:[{id:'',name:'Default'},{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]}));

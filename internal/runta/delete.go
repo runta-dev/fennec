@@ -10,6 +10,7 @@ import (
 )
 
 var ErrDeletionAccountChanged = errors.New("account changed; sign in to the confirmed account again")
+var ErrDeletionRejected = errors.New("cloud computer changed; review a new deletion preview")
 
 // DeleteOwnedShared removes only the exact runtime approved in a fresh preview.
 // A successful DELETE response is acceptance, not proof of deletion. Never
@@ -39,13 +40,16 @@ func (c *Client) DeleteOwnedShared(ctx context.Context, id, owner string, revisi
 		return nil
 	}
 	if runtime.Revision != revision && runtime.Status != "deleting" {
-		return fmt.Errorf("cloud computer changed; review the uninstall request again")
+		return ErrDeletionRejected
 	}
 	var deletionErr error
 	if runtime.Status != "deleting" {
 		deletionErr = c.request(ctx, http.MethodDelete, fmt.Sprintf("/v2/runtimes/%s?expected_revision=%d", url.PathEscape(id), revision), nil, "", nil)
 		var rejected *APIError
 		if errors.As(deletionErr, &rejected) && rejected.Status >= 400 && rejected.Status < 500 && rejected.Status != http.StatusNotFound {
+			if rejected.Status == http.StatusConflict || rejected.Status == http.StatusPreconditionFailed {
+				return errors.Join(ErrDeletionRejected, deletionErr)
+			}
 			return deletionErr
 		}
 		// Even a lost response may have committed. Read the same ID before deciding;

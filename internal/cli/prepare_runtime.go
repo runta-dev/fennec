@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/cloudstate"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
@@ -65,7 +66,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}()
 	var recorded bytes.Buffer
 	output = io.MultiWriter(output, &recorded)
-	client := &runta.Client{Endpoint: "https://api.runta.com", Token: token}
+	client := &runta.Client{Endpoint: "https://api.runta.com", Token: token, SharedAllowed: cloudstate.New(home).Check}
 	emit := func(stage, id, status string) {
 		json.NewEncoder(output).Encode(map[string]string{"type": "runtime_progress", "stage": stage, "runtime_id": id, "status": status})
 	}

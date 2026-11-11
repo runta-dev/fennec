@@ -28,6 +28,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	method := ""
 	params := map[string]any{}
 	switch args[0] {
+	case "cloud":
+		return true, fenCloudCommand(args[1:], output)
 	case "hooks":
 		if len(args) == 1 || len(args) == 2 && args[1] == "list" {
 			method = "hooks.config.get"
@@ -245,6 +247,7 @@ Usage: fen [attach [session-id]]
 	fen install [--check] [--replace] [--destination <app-path>]
 	fen uninstall --dry-run
 	fen uninstall [--yes] [--delete-cloud --confirm-runtime <id>]
+	fen cloud status | delete <runtime-id> [--confirm-runtime <runtime-id>] | create
   fen daemon start|stop|status
   fen login [--reauth]
   fen status | logout | agents | account | billing
