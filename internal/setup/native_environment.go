@@ -30,7 +30,7 @@ func nativeSourceEnvironment(ctx context.Context) map[string]string {
 		return result
 	}
 	var script strings.Builder
-	script.WriteString("printf '%s\\0'")
+	script.WriteString("printf '\\0'; printf '%s\\0'")
 	for _, key := range keys {
 		script.WriteString(" \"")
 		script.WriteString(key)

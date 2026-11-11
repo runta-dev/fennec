@@ -278,3 +278,25 @@ func TestNativeRejectsCredentialCommands(t *testing.T) {
 		t.Fatal("local command exported", e)
 	}
 }
+
+func TestNativeShellEnvironmentIgnoresStartupBannerAndUnrelatedSecrets(t *testing.T) {
+	shell := filepath.Join(t.TempDir(), "shell")
+	script := `#!/bin/sh
+printf 'interactive startup banner\n'
+export OPENAI_API_KEY=fixture-key
+export UNRELATED_SECRET=not-an-agent-credential
+exec /bin/sh -c "$2"
+`
+	if err := os.WriteFile(shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
+	t.Setenv("OPENAI_API_KEY", "")
+	env := nativeSourceEnvironment(context.Background())
+	if env["OPENAI_API_KEY"] != "fixture-key" {
+		t.Fatal("startup banner corrupted the first credential")
+	}
+	if _, ok := env["UNRELATED_SECRET"]; ok {
+		t.Fatal("unrelated secret copied")
+	}
+}
