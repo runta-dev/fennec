@@ -66,6 +66,8 @@ func runUninstallWorker(path string) error {
 		var api *runta.APIError
 		if errors.As(err, &fault) {
 			record.ErrorCode = fault.Code
+		} else if errors.Is(err, runta.ErrDeletionAccountChanged) {
+			record.ErrorCode = "login_required"
 		} else if errors.As(err, &api) && (api.Status == 401 || api.Status == 403) {
 			record.ErrorCode = "login_required"
 		}

@@ -609,7 +609,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
             let code = account["user_code"] as? String ?? ""
-            let loginErrors = ["authorization_expired":"授权已过期，请重新登录。", "access_denied":"授权已取消。"]
+            let loginErrors = ["authorization_expired":"授权已过期，请重新登录。", "session_expired":"登录已过期，请重新登录。", "access_denied":"授权已取消。"]
             let errorCode = account["error"] as? String
             let message = pending ? (code.isEmpty ? "正在连接 Runta…" : "请在浏览器确认授权码：" + code) : (errorCode.map { loginErrors[$0] ?? "暂时无法完成登录，请重试。" } ?? "")
             renderLogin(message, pending || account["status"] as? String == "restoring")
@@ -765,6 +765,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
         case "ready","refresh": lastState = nil; pollState(); refreshAgents(); renderLoginItem()
         case "login": mutate("account.login")
+	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling()
         case "retry-runtime": mutate("runtime.retry")

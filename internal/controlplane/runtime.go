@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fennec/internal/control"
+	"fennec/internal/runta"
 	"fmt"
 	"sync"
 	"time"
@@ -80,6 +82,10 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 			}
 		}}
 		err := c.Prepare(ctx, token, writer)
+		var api *runta.APIError
+		if errors.As(err, &api) && api.Status == 401 {
+			c.Account.RejectCredential(token, epoch)
+		}
 		c.mu.Lock()
 		defer func() {
 			again := c.runtimeAgain && !c.maintenance && c.runtime.Epoch == epoch && lifecycle.Err() == nil
@@ -208,4 +214,19 @@ func (c *Controller) QuiescePreparation(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (c *Controller) QuiesceForUninstall(ctx context.Context) error {
+	for !c.authActions.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	defer c.authActions.Unlock()
+	if err := c.Account.CancelAuthorization(ctx); err != nil {
+		return err
+	}
+	return c.QuiescePreparation(ctx)
 }

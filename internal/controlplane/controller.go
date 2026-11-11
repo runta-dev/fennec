@@ -22,6 +22,8 @@ type Controller struct {
 	Settings           func() any
 	PreparationBlocked func() bool
 	UninstallState     func() any
+	LoginAllowed       func() bool
+	authActions        sync.Mutex
 	Account            *account.Manager
 	Prepare            func(context.Context, string, io.Writer) error
 	Session            func(context.Context, string, string, string, SessionParams) (any, error)
@@ -56,7 +58,36 @@ func (c *Controller) Handlers() map[string]control.Handler {
 		"account.status":  func(context.Context, json.RawMessage) (any, error) { return c.Account.Snapshot(), nil },
 		"account.profile": func(ctx context.Context, _ json.RawMessage) (any, error) { return c.Account.Profile(ctx) },
 		"account.billing": func(ctx context.Context, _ json.RawMessage) (any, error) { return c.Account.Billing(ctx) },
-		"account.login":   func(context.Context, json.RawMessage) (any, error) { return c.Account.Login(), nil },
+		"account.login": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			for !c.authActions.TryLock() {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			defer c.authActions.Unlock()
+			if c.LoginAllowed != nil && !c.LoginAllowed() {
+				return nil, &control.Fault{Code: "uninstall_pending", Message: "Wait for uninstall to finish before signing in"}
+			}
+			var request struct {
+				Reauthenticate bool `json:"reauthenticate"`
+			}
+			if len(raw) > 0 && json.Unmarshal(raw, &request) != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid login request"}
+			}
+			if request.Reauthenticate {
+				state := c.Account.Reauthenticate(ctx)
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				return state, nil
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return c.Account.Login(), nil
+		},
 		"account.logout": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			if err := c.Account.Logout(ctx); err != nil {
 				return nil, &control.Fault{Code: "credentials_unavailable", Message: "Unable to update login credentials"}

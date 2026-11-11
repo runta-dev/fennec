@@ -122,3 +122,25 @@ Fennec 服务、Keychain 和真实云电脑未被该 probe 操作。
 
 另已修复前一提交的两个 gofmt 遗漏；修正提交 99ee63f 的 GitHub CI
 42964771981 已通过。后续代码的 CI 仍须按新提交独立验证。
+
+## 后续：过期登录与卸载恢复
+
+发现：账号从 Keychain 恢复后即标为 authorized。旧 token 失效时，普通
+Login() 的幂等判断会直接返回原状态，导致卸载恢复的登录按钮没有实际作用。
+
+修复与开发证据：
+
+- `account.login` 支持显式 `reauthenticate:true`，UI 卸载恢复使用该请求；
+  CLI 对应 `fen login --reauth`。已在进行的授权仍合并为一个流程。
+- 新授权完成前不删除旧的持久凭据，拒绝/取消不会擦掉恢复信息。
+- 当前账号查询或运行时准备收到 401 时退回登录入口，并记录 session_expired；
+  403/5xx 不触发登出。拒绝只作用于匹配 token 且匹配 epoch 的会话，迟到的
+  旧响应不能登出更新后的登录，即使测试服务复用了相同 token 字符串。
+- 卸载前排空账号写入、取消尚未完成的设备授权；进行中的卸载拒绝并发登录。
+  失败后的重新授权仍可使用，持久卸载标记继续阻止自动重建云电脑。
+- 删除前发现账号改变时返回可识别的恢复错误，危险目标仍绑定原 owner/ID。
+
+`/tmp/fennec-auth-recovery-final-tests.log` 中 account、controlplane、CLI 和
+Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift typecheck
+通过。认证测试使用 HTTP/内存凭据 fixture，没有修改用户真实登录或 Keychain。
+仍需在最终签名 DMG 和专用用户上验证真实浏览器授权、Keychain 提示、取消及升级。

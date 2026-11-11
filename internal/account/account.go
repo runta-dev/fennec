@@ -142,6 +142,71 @@ func (m *Manager) Login() Snapshot {
 	go m.authorize(ctx, epoch)
 	return m.state
 }
+
+// Reauthenticate starts a new device flow even when a cached token left the
+// public state authorized. Preserve the stored credential until replacement
+// succeeds; cancellation or refusal must not erase uninstall recovery access.
+func (m *Manager) Reauthenticate(requests ...context.Context) Snapshot {
+	request := m.parent
+	if len(requests) > 0 {
+		request = requests[0]
+	}
+	for !m.credentialsMu.TryLock() {
+		select {
+		case <-request.Done():
+			return m.Snapshot()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	defer m.credentialsMu.Unlock()
+	if request.Err() != nil {
+		return m.Snapshot()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state.Status == "authorizing" {
+		return m.state
+	}
+	ctx, epoch := m.resetLocked("authorizing")
+	go m.authorize(ctx, epoch)
+	return m.state
+}
+
+// RejectCredential invalidates only the session that made the rejected request.
+// A late 401 must never sign out a newer login, even if a server reused a token.
+func (m *Manager) RejectCredential(token string, epoch uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state.Status != "authorized" || m.state.Epoch != epoch || m.token != token {
+		return
+	}
+	m.resetLocked("signed_out")
+	m.state.Error = "session_expired"
+	m.notifyLocked()
+}
+
+// CancelAuthorization drains credential writes before stopping an outstanding
+// login. Uninstall must not leave a late device-flow response recreating the
+// Keychain item after local credentials have been removed.
+func (m *Manager) CancelAuthorization(ctx context.Context) error {
+	for !m.credentialsMu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	defer m.credentialsMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state.Status == "authorizing" {
+		m.resetLocked("signed_out")
+	}
+	return nil
+}
 func (m *Manager) fail(epoch uint64, code string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

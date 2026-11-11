@@ -24,7 +24,7 @@
  cancel.onclick=()=>{if(!busy)modal.close();};
  modal.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
  retry.onclick=preview;
- login.onclick=()=>{send('login');say('请在浏览器完成登录，然后重试');};
+ login.onclick=()=>{send('reauthenticate');say('请在浏览器完成登录，然后重试');};
  confirm.onclick=()=>{
   if(confirm.disabled||!plan)return;
   busy=true;retry.hidden=true;sync();say('正在卸载…');

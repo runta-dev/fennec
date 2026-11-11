@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fennec/internal/account"
 	"fennec/internal/control"
+	"fennec/internal/runta"
 
 	"io"
 	"sync"
@@ -134,5 +135,50 @@ func TestPersistentUninstallBlocksPreparationAfterDaemonRestart(t *testing.T) {
 	}
 	if _, err := handlers["uninstall.plan"](ctx, nil); err != nil {
 		t.Fatal("recovery disabled", err)
+	}
+}
+
+func TestUnauthorizedPreparationOffersAccountLogin(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	store := &testCredentials{token: "fixture"}
+	manager := account.New(ctx, store, "")
+	_ = manager.Restore(ctx)
+	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return &runta.APIError{Status: 401} }}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		changed := manager.Changes()
+		state := manager.Snapshot()
+		if state.Status == "signed_out" {
+			if state.Error != "session_expired" {
+				t.Fatal(state)
+			}
+			break
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			t.Fatal("preparation failure did not restore sign-in entry")
+		}
+	}
+	if token, _ := store.Read(ctx); token != "fixture" {
+		t.Fatal("stored credential removed before reauthorization")
+	}
+}
+
+func TestLoginCannotRaceActiveUninstall(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &testCredentials{token: "fixture"}
+	manager := account.New(ctx, store, "")
+	_ = manager.Restore(ctx)
+	c := &Controller{Account: manager, LoginAllowed: func() bool { return false }}
+	if _, err := c.Handlers()["account.login"](ctx, json.RawMessage(`{"reauthenticate":true}`)); err == nil {
+		t.Fatal("login started while uninstall was active")
+	}
+	if manager.Snapshot().Status != "authorized" {
+		t.Fatal("rejected login modified account")
 	}
 }

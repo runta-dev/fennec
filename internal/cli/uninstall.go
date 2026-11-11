@@ -161,6 +161,7 @@ func validateLocalUninstall(plan uninstall.LocalPlan) error {
 func installUninstallControl(home, executable string, manager *account.Manager, services *daemonServices, controller *controlplane.Controller) {
 	service := &uninstallService{home: home, executable: executable, account: manager, plans: map[string]uninstall.Plan{}}
 	controller.PreparationBlocked = func() bool { return uninstall.Pending(home) }
+	controller.LoginAllowed = func() bool { return !uninstallRunning(home) }
 	controller.UninstallState = func() any {
 		service.mu.Lock()
 		path := service.receipt
@@ -241,7 +242,7 @@ func installUninstallControl(home, executable string, manager *account.Manager, 
 		if !uninstall.Pending(home) {
 			return nil, fmt.Errorf("confirmed uninstall intent required")
 		}
-		if err := controller.QuiescePreparation(ctx); err != nil {
+		if err := controller.QuiesceForUninstall(ctx); err != nil {
 			return nil, err
 		}
 		done := make(chan struct{})

@@ -3,6 +3,8 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -52,5 +54,52 @@ func TestBillingAggregationAndPublicProfile(t *testing.T) {
 	}
 	if result["balance"] != float64(123) || result["spend"] != float64(50) || result["cpu"] != "1.25 vCPU-h" || result["stale"] != true {
 		t.Fatal(result)
+	}
+}
+
+func TestOnlyUnauthorizedResponseReturnsAccountToSignIn(t *testing.T) {
+	for _, status := range []int{401, 403, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); fmt.Fprint(w, `{}`) }))
+			defer server.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			store := &memoryCredentials{token: "fixture-private"}
+			m := New(ctx, store, server.URL)
+			if err := m.Restore(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := m.Profile(ctx); err == nil {
+				t.Fatal("API failure ignored")
+			}
+			state := m.Snapshot()
+			if status == 401 {
+				if state.Status != "signed_out" || state.Error != "session_expired" {
+					t.Fatal("expired credential trapped in authorized state", state)
+				}
+			} else if state.Status != "authorized" {
+				t.Fatal("permission/server failure logged user out", state)
+			}
+			if token, _ := store.Read(ctx); token != "fixture-private" {
+				t.Fatal("stored recovery credential erased")
+			}
+		})
+	}
+}
+func TestLateUnauthorizedResponseCannotSignOutNewLogin(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &memoryCredentials{token: "same-fixture-token"}
+	m := New(ctx, store, "")
+	_ = m.Restore(ctx)
+	_, token, epoch, _ := m.Session()
+	if err := m.Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	store.Write(ctx, token)
+	_ = m.Restore(ctx)
+	m.RejectCredential(token, epoch)
+	if m.Snapshot().Status != "authorized" {
+		t.Fatal("old request invalidated a newer epoch using the same token")
 	}
 }

@@ -54,10 +54,13 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 		}
 		method = "login-item." + args[1]
 	case "login":
-		if len(args) != 1 {
-			return true, fmt.Errorf("usage: fen login [--json]")
+		if len(args) != 1 && !(len(args) == 2 && args[1] == "--reauth") {
+			return true, fmt.Errorf("usage: fen login [--reauth] [--json]")
 		}
 		method = "account.login"
+		if len(args) == 2 {
+			params["reauthenticate"] = true
+		}
 	case "logout":
 		if len(args) != 1 {
 			return true, fmt.Errorf("usage: fen logout")
@@ -205,7 +208,8 @@ Usage: fen [attach [session-id]]
 	fen uninstall --dry-run
 	fen uninstall [--yes] [--delete-cloud --confirm-runtime <id>]
   fen daemon start|stop|status
-  fen status | login | logout | agents | account | billing
+  fen login [--reauth]
+  fen status | logout | agents | account | billing
   fen runtime status|ensure|retry
   fen takeover [agent on|off]
   fen model <agent> <provider/model>

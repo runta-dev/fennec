@@ -17,3 +17,5 @@ assert.equal(get('#uninstall-cloud').disabled,true);assert.equal(get('#uninstall
 const after=sent.length;window.renderUninstallStatus({plan:{id:'cloud-preview',delete_cloud:true,cloud:{id:'exact-runtime'}},stage:'failed',error:'fixture'});
 assert.equal(sent.length,after);assert.equal(get('#uninstall-retry').hidden,false);assert.equal(get('#uninstall-cloud').disabled,true);assert.equal(get('#uninstall-confirm').disabled,true);
 console.log('PASS uninstall defaults local, binds exact cloud ID, rejects stale previews and never retries deletion automatically');
+get('#uninstall-login').onclick();assert.equal(sent.at(-1),'reauthenticate');
+console.log('PASS uninstall sign-in recovery explicitly requests reauthentication');
