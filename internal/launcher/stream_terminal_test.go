@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -33,6 +34,15 @@ func TestStreamExitChild(t *testing.T) {
 }
 
 func TestExitFrameSurvivesFinalCreditWriteFailure(t *testing.T) {
+	testStreamTerminalCleanup(t, false)
+}
+
+func TestDisconnectedStreamClearsMouseReportingBeforeError(t *testing.T) {
+	testStreamTerminalCleanup(t, true)
+}
+
+func testStreamTerminalCleanup(t *testing.T, disconnect bool) {
+	t.Helper()
 	home, err := os.MkdirTemp("/tmp", "fn-stream-exit-")
 	if err != nil {
 		t.Fatal(err)
@@ -61,8 +71,10 @@ func TestExitFrameSurvivesFinalCreditWriteFailure(t *testing.T) {
 		conn.CloseRead()
 		encoder := json.NewEncoder(conn)
 		encoder.Encode(terminalstream.Frame{Type: "receipt", ID: id, Terminal: &cloudruntime.LocalTerminal{ID: id, Agent: "codex", Address: "t1", State: "live"}})
-		encoder.Encode(terminalstream.Frame{Type: "data", ID: id, Data: []byte("TAIL")})
-		encoder.Encode(terminalstream.Frame{Type: "exit", ID: id, Code: 0})
+		encoder.Encode(terminalstream.Frame{Type: "data", ID: id, Data: []byte("\x1b[?1003h\x1b[?1006hTAIL")})
+		if !disconnect {
+			encoder.Encode(terminalstream.Frame{Type: "exit", ID: id, Code: 0})
+		}
 	}()
 	executable, err := os.Executable()
 	if err != nil {
@@ -78,7 +90,13 @@ func TestExitFrameSurvivesFinalCreditWriteFailure(t *testing.T) {
 	}
 	defer terminal.Close()
 	output, _ := io.ReadAll(terminal)
-	if err := command.Wait(); err != nil || !strings.Contains(string(output), "TAIL") || strings.Contains(string(output), "STREAM_FAILED") {
-		t.Fatalf("normal exit treated as disconnect: %v %q", err, output)
+	err = command.Wait()
+	text := string(output)
+	reset := strings.Index(text, terminalstate.Reset)
+	if (err != nil) != disconnect || !strings.Contains(text, "TAIL") || reset < strings.Index(text, "TAIL") {
+		t.Fatalf("terminal cleanup failed: %v %q", err, output)
+	}
+	if disconnect && (strings.Index(text, "STREAM_FAILED") < reset) {
+		t.Fatalf("error printed before reporting disabled: %q", output)
 	}
 }

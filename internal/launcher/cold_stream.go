@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"golang.org/x/term"
@@ -27,7 +28,7 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 		if err != nil {
 			return err
 		}
-		defer term.Restore(int(os.Stdin.Fd()), saved)
+		defer terminalstate.Restore(os.Stdin, os.Stdout, saved)
 	}
 	facts, early, err := probeDisplay(os.Stdin, os.Stdout)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fennec/internal/terminalinput"
+	"fennec/internal/terminalstate"
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -20,7 +21,7 @@ func runAttachment(ctx context.Context, command *exec.Cmd, input *os.File, outpu
 	if err != nil {
 		return err
 	}
-	defer term.Restore(int(input.Fd()), state)
+	defer terminalstate.Restore(input, output, state)
 	size, err := pty.GetsizeFull(input)
 	if err != nil {
 		size = &pty.Winsize{Rows: 40, Cols: 120}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fennec/internal/launchprofile"
 	"fennec/internal/terminalinput"
+	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"net"
@@ -63,7 +64,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		return err
 	}
 	defer connection.Close()
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 	window := terminalstream.NewCreditWindow()
 	var writeMu sync.Mutex
@@ -93,9 +94,8 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		if err != nil {
 			return err
 		}
-		defer term.Restore(int(os.Stdin.Fd()), state)
+		defer terminalstate.Restore(os.Stdin, os.Stdout, state)
 		fmt.Fprint(os.Stdout, "\x1b[?1004h")
-		defer fmt.Fprint(os.Stdout, "\x1b[?1004l")
 	}
 	var display *terminalstream.DisplayFacts
 	var earlyInput []byte
