@@ -147,6 +147,14 @@ func (m *Manager) Login() Snapshot {
 // public state authorized. Preserve the stored credential until replacement
 // succeeds; cancellation or refusal must not erase uninstall recovery access.
 func (m *Manager) Reauthenticate(requests ...context.Context) Snapshot {
+	m.mu.Lock()
+	if m.state.Status == "authorizing" {
+		state := m.state
+		m.mu.Unlock()
+		return state
+	}
+	epochAtRequest := m.state.Epoch
+	m.mu.Unlock()
 	request := m.parent
 	if len(requests) > 0 {
 		request = requests[0]
@@ -164,7 +172,7 @@ func (m *Manager) Reauthenticate(requests ...context.Context) Snapshot {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.state.Status == "authorizing" {
+	if m.state.Status == "authorizing" || m.state.Epoch != epochAtRequest {
 		return m.state
 	}
 	ctx, epoch := m.resetLocked("authorizing")

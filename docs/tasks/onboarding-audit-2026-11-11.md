@@ -144,3 +144,15 @@ Login() 的幂等判断会直接返回原状态，导致卸载恢复的登录按
 Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift typecheck
 通过。认证测试使用 HTTP/内存凭据 fixture，没有修改用户真实登录或 Keychain。
 仍需在最终签名 DMG 和专用用户上验证真实浏览器授权、Keychain 提示、取消及升级。
+
+### Keychain 写入期间重复登录
+
+`Reauthenticate` 原先先等待凭据写锁，再检查 authorizing；如果用户在 Keychain
+保存尚未结束时重复点击，后一个请求可能等到前一个已变成 authorized 后又启动
+新授权。现在先复用进行中的 flow，并记录请求 epoch；等待期间发生的更新登录/
+退出也不会被迟到的请求覆盖。
+
+新增受控凭据写入回归：真实设备流程 HTTP fixture 走到 token 保存阶段后暂停
+写入，重复请求必须立即返回同一 authorizing epoch；释放写入后只存在一次授权。
+`/tmp/fennec-keychain-coalescing-tests.log` 中 account race 测试通过；`make check`
+通过。该测试未触发真实 Keychain 弹窗。前一提交 b8cbfd2 的 CI 42968246384 已通过。

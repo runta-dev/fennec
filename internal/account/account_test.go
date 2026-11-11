@@ -281,3 +281,70 @@ func TestCredentialWriteDrainHonorsUninstallDeadline(t *testing.T) {
 		t.Fatal("failed quiesce changed account state")
 	}
 }
+
+type gatedCredentialWrite struct {
+	*memoryCredentials
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *gatedCredentialWrite) Write(ctx context.Context, token string) error {
+	s.once.Do(func() { close(s.entered) })
+	select {
+	case <-s.release:
+		return s.memoryCredentials.Write(ctx, token)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func TestDuplicateReauthenticationDoesNotWaitForKeychainWrite(t *testing.T) {
+	var authorizations atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/authorization") {
+			authorizations.Add(1)
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"device_code": "fixture", "user_code": "CODE", "verification_uri_complete": "https://dashboard.runta.com/authorize", "interval": 5}})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "replacement"})
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store := &gatedCredentialWrite{memoryCredentials: &memoryCredentials{token: "previous"}, entered: make(chan struct{}), release: make(chan struct{})}
+	var release sync.Once
+	defer release.Do(func() { close(store.release) })
+	m := New(ctx, store, server.URL)
+	_ = m.Restore(ctx)
+	first := m.Reauthenticate()
+	select {
+	case <-store.entered:
+	case <-ctx.Done():
+		t.Fatal("credential write did not start")
+	}
+	reply := make(chan Snapshot, 1)
+	go func() { reply <- m.Reauthenticate(ctx) }()
+	select {
+	case state := <-reply:
+		if state.Status != "authorizing" || state.Epoch != first.Epoch {
+			t.Fatal("duplicate request replaced the in-flight login")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("duplicate login waited on the user's Keychain authorization")
+	}
+	release.Do(func() { close(store.release) })
+	for {
+		changed := m.Changes()
+		if m.Snapshot().Status == "authorized" {
+			break
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			t.Fatal("login did not settle")
+		}
+	}
+	if authorizations.Load() != 1 {
+		t.Fatal("duplicate device authorization")
+	}
+}
