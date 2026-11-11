@@ -3,6 +3,8 @@ set -eu
 cd "$(dirname "$0")/.."
 app="${FENNEC_BUILD_DIR:-$PWD/build}/Fennec.app"
 identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
+deployment_target=13.0
+swift_target="$(uname -m)-apple-macos$deployment_target"
 sign_keychain="${FENNEC_SIGN_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 # One build timestamp shared by bundle metadata and every version label.
 build_stamp=$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')
@@ -32,11 +34,11 @@ sign_artifact() {
 mkdir -p "$app/Contents/MacOS"
 helper_cache="$PWD/build/credential-helper-cache"
 helper_source=$(shasum -a 256 native/macos/CredentialHelper.swift | cut -d ' ' -f 1)
-helper_key=$(printf '%s' "$identity:$helper_source:$(uname -m)" | shasum -a 256 | cut -d ' ' -f 1)
+helper_key=$(printf '%s' "$identity:$helper_source:$swift_target" | shasum -a 256 | cut -d ' ' -f 1)
 helper="$helper_cache/$helper_key/fennec-credentials"
 if [ ! -f "$helper" ]; then
   mkdir -p "$helper_cache/$helper_key"
-  swiftc native/macos/CredentialHelper.swift -o "$helper" -framework Security
+  swiftc -target "$swift_target" native/macos/CredentialHelper.swift -o "$helper" -framework Security
   sign_artifact "$helper"
 fi
 codesign --verify --strict "$helper"
@@ -57,7 +59,7 @@ else
   exit 1
 fi
 ln -sfn fen "$app/Contents/MacOS/fennec-daemon"
-swiftc native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
@@ -69,6 +71,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleName</key><string>Fennec</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>LSMinimumSystemVersion</key><string>$deployment_target</string>
 <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 <key>CFBundleExecutable</key><string>Fennec</string>
 <key>CFBundleVersion</key><string>$build_number</string>
