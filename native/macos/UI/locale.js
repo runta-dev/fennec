@@ -194,6 +194,6 @@ Object.assign(translations, {
 localize();
 Object.assign(translations, {
  '关于 Magpie':['關於 Magpie','About Magpie','Magpie について','Magpie 소개'],
- 'Magpie 是一个本地 AI 网关。':['Magpie 是一個本地 AI 閘道。','Magpie is a local AI gateway.','Magpie はローカル AI ゲートウェイです。','Magpie는 로컬 AI 게이트웨이입니다.']
+ 'Magpie 是一个本地 AI 网关，可将智能体连接到不同的模型服务。你可以通过它为云端智能体选择和切换模型。':['Magpie 是一個本地 AI 閘道，可將智慧代理連接到不同的模型服務。你可以透過它為雲端智慧代理選擇和切換模型。','Magpie is a local AI gateway that connects your agents to different model providers. Use it to choose and switch models for your cloud agents.','Magpie はエージェントをさまざまなモデルプロバイダーに接続するローカル AI ゲートウェイです。クラウドエージェントで使うモデルを選択・切り替えできます。','Magpie는 에이전트를 여러 모델 제공업체에 연결하는 로컬 AI 게이트웨이입니다. 클라우드 에이전트에서 사용할 모델을 선택하고 전환할 수 있습니다.']
 });
 localize();
