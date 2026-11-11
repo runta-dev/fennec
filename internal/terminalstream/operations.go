@@ -5,11 +5,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/launchprofile"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
+	"time"
 )
 
 func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
+	if err := ctx.Err(); err != nil {
+		return cloudruntime.LocalTerminal{}, err
+	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return cloudruntime.LocalTerminal{}, err
@@ -30,6 +35,10 @@ func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTermin
 }
 
 func (t *Transport) Operate(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	started := time.Now()
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, err
@@ -45,6 +54,10 @@ func (t *Transport) Operate(ctx context.Context, operation cloudruntime.LocalOpe
 	}
 	if frame.Type != "result" || !json.Valid(frame.Result) {
 		return nil, fmt.Errorf("operation not confirmed; inspect before retrying")
+	}
+	launchprofile.Record("operation."+operation.Kind+".roundtrip", started, time.Since(started))
+	if elapsed, ok := frame.Timings["operation"]; ok {
+		launchprofile.Record("operation."+operation.Kind+".remote", time.Now(), time.Duration(elapsed*float64(time.Millisecond)))
 	}
 	return frame.Result, nil
 }

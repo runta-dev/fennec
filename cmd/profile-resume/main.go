@@ -171,7 +171,7 @@ func measure(binary, id, root string, sample int, debugStall bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary, "fen", "resume", id)
-	command.Env = append(os.Environ(), "TERM=xterm-256color")
+	command.Env = append(os.Environ(), "TERM=xterm-256color", "NO_COLOR=", "FENNEC_DEBUG=")
 	started := time.Now()
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 40, Cols: 120})
 	if err != nil {

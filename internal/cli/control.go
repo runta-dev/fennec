@@ -7,6 +7,8 @@ import (
 	"fennec/internal/account"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
+	"fennec/internal/launchprofile"
+	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +42,7 @@ func describeControl(output io.Writer) error {
 		methods = append(methods, method)
 	}
 	sort.Strings(methods)
-	return json.NewEncoder(output).Encode(map[string]any{"version": control.Version, "methods": methods})
+	return json.NewEncoder(output).Encode(map[string]any{"version": control.Version, "terminal_protocol": terminalstream.ProtocolVersion, "methods": methods})
 }
 
 func serveControl(arguments []string) error {
@@ -68,6 +70,7 @@ func serveControl(arguments []string) error {
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
 		controller.Start(ctx)
 		go func() {
+			defer launchprofile.Begin("account.restore")()
 			restore, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
 			_ = manager.Restore(restore)
@@ -107,6 +110,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	services := newDaemonServices(home, manager)
 	controller := &controlplane.Controller{Account: manager, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
+	installBrowserTerminal(ctx, services, controller)
 	settings := newDesktopSettings(home)
 	controller.Settings = settings.snapshot
 	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return settings.snapshot(), nil }

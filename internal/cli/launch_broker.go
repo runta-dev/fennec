@@ -11,7 +11,9 @@ import (
 	"fennec/internal/project"
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/terminalstream"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"os"
 	"os/exec"
@@ -24,14 +26,17 @@ import (
 )
 
 type brokerConfiguration struct {
-	Token        string   `json:"token"`
-	RuntimeID    string   `json:"runtime_id"`
-	Device       string   `json:"device"`
-	Socket       string   `json:"socket"`
-	Agents       []string `json:"agents"`
-	Roots        []string `json:"roots"`
-	Selected     []string `json:"selected,omitempty"`
-	AutoProjects bool     `json:"auto_projects,omitempty"`
+	PreparedTerminal  *terminalstream.Transport `json:"-"`
+	PreparedSSH       *ssh.Client               `json:"-"`
+	PreparedRuntimeID string                    `json:"-"`
+	Token             string                    `json:"token"`
+	RuntimeID         string                    `json:"runtime_id"`
+	Device            string                    `json:"device"`
+	Socket            string                    `json:"socket"`
+	Agents            []string                  `json:"agents"`
+	Roots             []string                  `json:"roots"`
+	Selected          []string                  `json:"selected,omitempty"`
+	AutoProjects      bool                      `json:"auto_projects,omitempty"`
 }
 
 // Roots and agent enablement arrive only from the parent-owned pipe. A local
@@ -160,10 +165,16 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 	if err != nil {
 		return err
 	}
-	sharedDone := shared.Start()
 	channel := &terminalChannel{ctx: ctx, shared: shared, home: home, runtimeID: config.RuntimeID}
+	if config.PreparedRuntimeID == config.RuntimeID {
+		channel.preparedSSH = config.PreparedSSH
+		if config.PreparedTerminal != nil && config.PreparedTerminal.IsReady() {
+			channel.transport = config.PreparedTerminal
+			channel.generation = 1
+		}
+	}
 	channelDone := channel.start()
-	defer func() { cancel(); <-channelDone; <-sharedDone }()
+	defer func() { cancel(); <-channelDone; shared.Close() }()
 	stopSessions, err := startFenSessionService(ctx, home, config.RuntimeID, shared, channel)
 	if err != nil {
 		return err
@@ -216,10 +227,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 				return launcher.LaunchPlan{}, err
 			}
 		} else {
-			control, err = shared.Get(operation)
-			if err != nil {
-				return launcher.LaunchPlan{}, fmt.Errorf("shared SSH connection is not ready: %w", err)
-			}
+			control = shared.ControlPath()
 		}
 		if err := journal.Reserve(operation, intent); err != nil {
 			return launcher.LaunchPlan{}, err

@@ -94,3 +94,22 @@ func Discover() []Agent {
 	home, _ := os.UserHomeDir()
 	return discoverAt(home, searchPaths(home), []string{"/Applications", filepath.Join(home, "Applications")})
 }
+
+// PanelCatalog keeps the announced integrations visible without claiming that
+// they are installed. Discovery remains factual for runtime preparation.
+func PanelCatalog(discovered []Agent) []Agent {
+	fixed := map[string]bool{"kimi": true, "claude-desktop": true, "opencode": true, "devin": true, "grok": true, "cursor": true}
+	byID := map[string]Agent{}
+	for _, item := range discovered {
+		byID[item.ID] = item
+	}
+	result := []Agent{}
+	for _, definition := range catalog {
+		if item, ok := byID[definition.id]; ok {
+			result = append(result, item)
+		} else if fixed[definition.id] {
+			result = append(result, Agent{ID: definition.id, Name: definition.name, Icon: definition.icon, Cloud: definition.cloud})
+		}
+	}
+	return result
+}

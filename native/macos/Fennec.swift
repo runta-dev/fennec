@@ -408,7 +408,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let outputWindow = TerminalOutputWindow()
             terminalOutputWindow = outputWindow
             terminalTransport = transport; terminalGeneration = generation
-            let executable = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("fennec-daemon")
+            let executable = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("fen")
             do {
                 try transport.start(executable: executable, arguments: ["fen","attach",sessionID], cols: UInt16(cols), rows: UInt16(rows), output: { [weak self] bytes in
                     for offset in stride(from: 0, to: bytes.count, by: 16384) {
@@ -706,11 +706,17 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
-        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","launch-agent:","select-model:"] where action.hasPrefix(prefix) {
+        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:"] where action.hasPrefix(prefix) {
             guard let data = String(action.dropFirst(prefix.count)).data(using:.utf8),let params = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else { return }
             let id = params["session_id"] as? String ?? "", address = params["address"] as? String ?? ""
             switch prefix {
             case "copy-attach:": copyCloudAttachCommand(address,id)
+            case "browser-attach:":
+                mutate("sessions.browser",params) { success,value in
+                    guard success, let result = value as? [String:Any], let text = result["url"] as? String,
+                          let url = URL(string:text), url.scheme == "http", url.host == "127.0.0.1" else { return }
+                    NSWorkspace.shared.open(url)
+                }
             case "stop-session:": mutate("sessions.stop",params) { [weak self] success,_ in self?.render(success ? "renderSessionStopped" : "renderSessionActionError",success ? [id] : []) }
             case "send-session:": mutate("sessions.send",params) { [weak self] success,_ in self?.render("renderSessionSent",[id,success]) }
             case "read-session:":

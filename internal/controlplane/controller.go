@@ -53,7 +53,7 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			}
 			return c.Account.Snapshot(), nil
 		},
-		"agents.list": func(context.Context, json.RawMessage) (any, error) { return agent.Discover(), nil },
+		"agents.list": func(context.Context, json.RawMessage) (any, error) { return agent.PanelCatalog(agent.Discover()), nil },
 		"state.wait": func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var request struct {
 				Revision uint64 `json:"revision"`

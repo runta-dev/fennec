@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fennec/internal/setup"
-	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -27,21 +27,19 @@ func TestSSHConfigurationDoesNotProbeInference(t *testing.T) {
 	var probes atomic.Int32
 	srv := &server.Server{Handler: func(session server.Session) {
 		command := session.RawCommand()
-		switch {
-		case strings.HasPrefix(command, "curl "):
-			fmt.Fprint(session, `{"data":[{"id":"fixture/model"}]}`)
-		case command == "sh -s":
-			raw, _ := io.ReadAll(session)
-			if strings.Contains(string(raw), "<<'PROBE'") && probes.Add(1) == 1 {
-				session.Exit(75)
-				return
-			}
-		case strings.HasSuffix(command, "magpie 'codex' model"):
-			fmt.Fprint(session, "Codex model fixture/model\n")
-		default:
+		prefix := `"$HOME/.local/fennec/bin/fennec-terminal" reconcile-routes `
+		if !strings.HasPrefix(command, prefix) {
+			probes.Add(1)
 			session.Exit(127)
 			return
 		}
+		data, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(command, prefix))
+		var routes []setup.AgentRoute
+		if err != nil || json.Unmarshal(data, &routes) != nil || len(routes) != 1 || routes[0].Agent != "codex" || routes[0].Model != "fixture/model" {
+			session.Exit(1)
+			return
+		}
+		json.NewEncoder(session).Encode([]setup.RouteResult{{Agent: "codex", Model: "fixture/model", Status: "configured"}})
 		session.Exit(0)
 	}}
 	srv.AddHostKey(signer)

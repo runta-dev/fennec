@@ -10,18 +10,22 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type Transport struct {
-	lastPong atomic.Int64
-	mu       sync.Mutex
-	writeMu  sync.Mutex
-	input    io.WriteCloser
-	command  *exec.Cmd
-	sessions map[string]*mailbox
-	ready    chan struct{}
-	done     chan struct{}
-	err      error
+	capabilities map[string]bool
+	initialized  atomic.Bool
+	lastPong     atomic.Int64
+	mu           sync.Mutex
+	writeMu      sync.Mutex
+	input        io.WriteCloser
+	stopProcess  func() error
+	sessions     map[string]*mailbox
+	ready        chan struct{}
+	done         chan struct{}
+	err          error
 }
 
 type Session struct {
@@ -43,7 +47,10 @@ func StartInitial(command *exec.Cmd, frame Frame) (*Transport, *Session, error) 
 	if err != nil {
 		return nil, nil, err
 	}
-	return transport, &Session{transport: transport, id: frame.ID, events: transport.sessions[frame.ID]}, nil
+	transport.mu.Lock()
+	events := transport.sessions[frame.ID]
+	transport.mu.Unlock()
+	return transport, &Session{transport: transport, id: frame.ID, events: events}, nil
 }
 
 func start(command *exec.Cmd, initial *Frame) (*Transport, error) {
@@ -61,10 +68,54 @@ func start(command *exec.Cmd, initial *Frame) (*Transport, error) {
 		output.Close()
 		return nil, err
 	}
-	transport := &Transport{input: input, command: command, sessions: map[string]*mailbox{}, ready: make(chan struct{}), done: make(chan struct{})}
+	return startTransport(input, output, command.Wait, command.Process.Kill, initial), nil
+}
+
+// StartSSH opens the resident protocol channel on an existing authenticated
+// connection. Closing this transport closes only its channel, not the shared
+// SSH client or any other sessions using it.
+func StartSSH(client *ssh.Client, command string) (*Transport, error) {
+	return StartSSHContext(context.Background(), client, command)
+}
+
+// A stalled channel-open/exec cannot outlive its connection owner's deadline.
+// No remote agent has been launched by this protocol-service startup yet.
+func StartSSHContext(ctx context.Context, client *ssh.Client, command string) (*Transport, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { client.Close() })
+	defer stop()
+	session, err := client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	input, err := session.StdinPipe()
+	if err != nil {
+		session.Close()
+		return nil, err
+	}
+	output, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		return nil, err
+	}
+	// Queue the exec request before exposing the transport. Session.Start must
+	// confirm remote exec success; protocol readiness is checked separately.
+	if err := session.Start(command); err != nil {
+		session.Close()
+		return nil, err
+	}
+	return startTransport(input, io.NopCloser(output), session.Wait, session.Close, nil), nil
+}
+
+func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() error, stop func() error, initial *Frame) *Transport {
+	transport := &Transport{input: input, stopProcess: stop, sessions: map[string]*mailbox{}, ready: make(chan struct{}), done: make(chan struct{})}
 	go transport.heartbeat()
 	if initial != nil {
+		transport.mu.Lock()
 		transport.sessions[initial.ID] = newMailbox()
+		transport.mu.Unlock()
 	}
 	go func() {
 		defer close(transport.done)
@@ -83,6 +134,13 @@ func start(command *exec.Cmd, initial *Frame) (*Transport, error) {
 					break
 				}
 				initialized = true
+				transport.mu.Lock()
+				transport.capabilities = map[string]bool{}
+				for _, capability := range frame.Capabilities {
+					transport.capabilities[capability] = true
+				}
+				transport.mu.Unlock()
+				transport.initialized.Store(true)
 				transport.lastPong.Store(time.Now().UnixNano())
 				close(transport.ready)
 				continue
@@ -108,9 +166,17 @@ func start(command *exec.Cmd, initial *Frame) (*Transport, error) {
 		}
 		transport.fail(fmt.Errorf("remote terminal channel disconnected"))
 		output.Close()
-		command.Wait()
+		wait()
 	}()
-	return transport, nil
+	return transport
+}
+
+func (transport *Transport) IsReady() bool { return transport.initialized.Load() && transport.Alive() }
+
+func (transport *Transport) Supports(capability string) bool {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	return transport.capabilities[capability]
 }
 
 func (transport *Transport) heartbeat() {
@@ -208,10 +274,16 @@ func (transport *Transport) Launch(frame Frame) (*Session, error) {
 	return session, nil
 }
 
-func (session *Session) Next(ctx context.Context) (Frame, error) { return session.events.next(ctx) }
+func (session *Session) Next(ctx context.Context) (Frame, error) {
+	frame, err := session.events.next(ctx)
+	if err == nil && (frame.Type == "exit" || frame.Type == "result" || frame.Type == "error") {
+		session.complete()
+	}
+	return frame, err
+}
 func (session *Session) Send(frame Frame) error {
 	switch frame.Type {
-	case "input", "credit", "resize", "close":
+	case "input", "focus", "credit", "resize", "close":
 	default:
 		return fmt.Errorf("invalid terminal control frame")
 	}
@@ -219,8 +291,21 @@ func (session *Session) Send(frame Frame) error {
 	return session.transport.Send(frame)
 }
 func (session *Session) Close() {
+	session.release(true)
+}
+
+// Completed operations have already released their remote worker. Sending a
+// close after the final result creates an unnecessary small SSH packet and can
+// delay the next request. In-flight cancellation still sends close.
+func (session *Session) complete() {
+	session.release(false)
+}
+
+func (session *Session) release(cancelRemote bool) {
 	session.once.Do(func() {
-		session.Send(Frame{Type: "close"})
+		if cancelRemote {
+			session.Send(Frame{Type: "close"})
+		}
 		session.transport.mu.Lock()
 		delete(session.transport.sessions, session.id)
 		session.transport.mu.Unlock()
@@ -229,6 +314,6 @@ func (session *Session) Close() {
 }
 func (transport *Transport) Close() {
 	transport.fail(io.EOF)
-	transport.command.Process.Kill()
+	transport.stopProcess()
 	<-transport.done
 }

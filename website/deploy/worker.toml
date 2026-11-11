@@ -1,0 +1,12 @@
+name = "fennec-website"
+compatibility_date = "2026-11-10"
+workers_dev = true
+preview_urls = true
+
+[assets]
+directory = "../dist/client"
+not_found_handling = "404-page"
+
+[[routes]]
+pattern = "fennec.runta.com"
+custom_domain = true

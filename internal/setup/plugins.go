@@ -105,34 +105,23 @@ func DesiredModelPlugins(home string) ([]ModelPlugin, error) {
 // ReconcileModelPlugins runs on every preparation, checks actual installed
 // package metadata and configuration, and repairs only missing/different specs.
 func ReconcileModelPlugins(ctx context.Context, client *ssh.Client, plugins []ModelPlugin) error {
-	for _, p := range plugins {
-		if !modelPluginAllowlist[p.Package] || !exactVersion.MatchString(p.Version) {
-			return fmt.Errorf("unsupported model plugin")
-		}
+	if err := validateModelPlugins(plugins); err != nil {
+		return err
+	}
+	if len(plugins) == 0 {
+		return nil
 	}
 	data, _ := json.Marshal(plugins)
-	script := `set -eu
-export PATH="$HOME/.local/fennec/node/bin:$HOME/.local/bin:$PATH"
-python3 - ` + shellQuote(base64.StdEncoding.EncodeToString(data)) + ` <<'RECONCILE'
-import base64,json,pathlib,subprocess,sys
-wanted=json.loads(base64.b64decode(sys.argv[1])) or []
-root=pathlib.Path.home()/'.config'/'magpie'
-def installed(name,version):
- manifest=root/'plugins.json'
- entries=json.loads(manifest.read_text()).get('plugins',[]) if manifest.exists() else []
- if not any(e.get('spec')==name+'@'+version for e in entries):return False
- for file in (root/'plugins').rglob('package.json'):
-  if file.is_symlink() or file.stat().st_size>1024*1024:continue
-  try: pkg=json.loads(file.read_text())
-  except (ValueError,OSError):continue
-  if pkg.get('name')==name and pkg.get('version')==version:return True
- return False
-for plugin in wanted:
- name,version=plugin['package'],plugin['version']
- if not installed(name,version):
-  result=subprocess.run(['magpie','plugin','add',name+'@'+version],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=180)
-  if result.returncode or not installed(name,version):raise SystemExit('model plugin installation verification failed')
-RECONCILE
-`
-	return Exec(ctx, client, script)
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	stop := context.AfterFunc(ctx, func() { session.Close() })
+	defer stop()
+	// Only allowlisted package/version metadata goes in argv; no auth data.
+	if err := session.Run(`"$HOME/.local/fennec/bin/fennec-terminal" reconcile-plugins ` + base64.StdEncoding.EncodeToString(data)); err != nil {
+		return fmt.Errorf("model plugin reconciliation failed")
+	}
+	return nil
 }

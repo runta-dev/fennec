@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/control"
+	"fennec/internal/sessionid"
 	"io"
+	"regexp"
 )
 
 // SessionParams contains client-controlled fields only. Runtime identity and
@@ -33,8 +35,11 @@ func (c *Controller) sessionHandler(operation string) control.Handler {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid session parameters"}
 			}
 		}
-		if operation != "list" && operation != "refresh" && params.SessionID == "" {
+		if operation != "list" && operation != "refresh" && !sessionid.Valid(params.SessionID) {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Session identity required"}
+		}
+		if params.Address != "" && !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(params.Address) {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid terminal address"}
 		}
 		lifecycle, token, epoch, ok := c.Account.Session()
 		if !ok {

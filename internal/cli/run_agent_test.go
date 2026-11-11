@@ -18,7 +18,7 @@ func TestRunAgentUsesCloudLatest(t *testing.T) {
 	}
 	oldRequest := brokerPlanRequest
 	oldReadiness := brokerReadiness
-	brokerReadiness = func(context.Context) error { return nil }
+	brokerReadiness = func(context.Context, string) error { return nil }
 	t.Cleanup(func() { brokerReadiness = oldReadiness })
 	t.Cleanup(func() { brokerPlanRequest = oldRequest })
 	called := false

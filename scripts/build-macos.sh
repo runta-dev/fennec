@@ -47,12 +47,13 @@ fi
 codesign --verify --strict "$helper"
 cp "$helper" "$app/Contents/MacOS/fennec-credentials"
 mkdir -p "$app/Contents/Resources"
+go run ./cmd/fennec-terminal protocol-version > "$app/Contents/Resources/terminal-protocol-version"
 for remote_arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=linux GOARCH="$remote_arch" go build -trimpath -o "$app/Contents/Resources/fennec-terminal-linux-$remote_arch" ./cmd/fennec-terminal
 done
 if [ -n "${FENNEC_DAEMON_BINARY:-}" ]; then
   test -f "$FENNEC_DAEMON_BINARY"
-  cp "$FENNEC_DAEMON_BINARY" "$app/Contents/MacOS/fennec-daemon"
+  cp "$FENNEC_DAEMON_BINARY" "$app/Contents/MacOS/fen"
 elif [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   echo "Set FENNEC_DAEMON_BINARY to a freshly cross-built daemon; refusing silent reuse." >&2
   exit 1
@@ -60,15 +61,18 @@ else
   echo "FENNEC_DAEMON_BINARY is required to package a complete application." >&2
   exit 1
 fi
+ln -sfn fen "$app/Contents/MacOS/fennec-daemon"
 swiftc native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
+cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.runta.fennec</string>
 <key>CFBundleName</key><string>Fennec</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleExecutable</key><string>Fennec</string>
 <key>CFBundleVersion</key><string>$app_version</string>
 <key>CFBundleShortVersionString</key><string>$app_version</string>
@@ -81,9 +85,9 @@ cp docs/licenses/magpie-MIT.txt "$app/Contents/Resources/licenses/"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same
   # certificate+identifier requirement already used for the native shell.
-  sign_artifact "$app/Contents/MacOS/fennec-daemon" --identifier com.runta.fennec
+  sign_artifact "$app/Contents/MacOS/fen" --identifier com.runta.fennec
 fi
-shasum -a 256 "$app/Contents/MacOS/fennec-daemon" | cut -d ' ' -f 1 > "$app/Contents/Resources/control-build-id"
+shasum -a 256 "$app/Contents/MacOS/fen" | cut -d ' ' -f 1 > "$app/Contents/Resources/control-build-id"
 go run ./cmd/check-control-contract "$app" native/macos/Fennec.swift native/macos/ControlClient.swift
 sign_artifact "$app"
 printf '%s\n' "$app"

@@ -12,13 +12,15 @@ for(const canStop of [true,false]){
  assert.equal(item.onclick,undefined);
  assert.equal(item.onkeydown,undefined);
  assert.equal(item.attributes.role,undefined);
- const [copy,more]=item.children[0].children;
- assert.equal(item.children[0].children.length,canStop?2:1);
+ const [copy,browser,more]=item.children[0].children;
+ assert.equal(item.children[0].children.length,canStop?3:2);
  copy.onclick();
  assert.equal(events[0],'copy-attach:'+JSON.stringify({address:'t1',session_id:row.sessionID}));
+ browser.onclick();
+ assert.equal(events[1],'browser-attach:'+JSON.stringify({address:'t1',session_id:row.sessionID}));
  if(canStop){more.onclick();assert.equal(menus.length,1);assert.equal(menus[0].session,row);assert.equal(more.attributes['aria-haspopup'],'menu');}
  else assert.equal(more,undefined);
- assert.equal(events.length,1);
+ assert.equal(events.length,2);
  assert.ok(events.every(value=>!value.startsWith('read-session:')));
 }
 console.log('PASS session rows expose copy and kill without detail navigation; finished sessions cannot be killed');

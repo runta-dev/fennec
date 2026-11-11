@@ -167,3 +167,16 @@ func (c *Controller) Start(ctx context.Context) {
 		}
 	}()
 }
+
+// Selecting cloud records intent even while setup is in progress. It starts
+// recovery after a failure, without scheduling duplicate work during setup.
+func (c *Controller) PrepareIfIdle(ctx context.Context) (any, error) {
+	c.mu.Lock()
+	if c.runtime.Running {
+		c.mu.Unlock()
+		return c.runtimeSnapshot(), nil
+	}
+	c.runtime.Stage = "retrying"
+	c.mu.Unlock()
+	return c.ensureRuntime(ctx, nil)
+}

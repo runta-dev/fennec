@@ -139,7 +139,7 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return launcher.Attach(receipt.RuntimeID, receipt.Address, receipt.SessionID, filepath.Join(home, ".config/fennec/cloud"))
+		return reconnectResident(context.Background(), receipt, home, func() {})
 	case "attach":
 		if len(arguments) != 4 {
 			return errors.New("attach requires runtime ID, terminal address and session ID")
@@ -148,7 +148,7 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return launcher.Attach(arguments[1], arguments[2], arguments[3], filepath.Join(home, ".config/fennec/cloud"))
+		return reconnectResident(context.Background(), launcher.LaunchReceipt{RuntimeID: arguments[1], Address: arguments[2], SessionID: arguments[3]}, home, func() {})
 	case "cloud-agent":
 		return cloudAgent(arguments[1:])
 	case "launch-project":
@@ -189,7 +189,7 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return launcher.Attach(arguments[1], arguments[2], arguments[3], filepath.Join(home, ".config", "fennec", "cloud"))
+		return reconnectResident(context.Background(), launcher.LaunchReceipt{RuntimeID: arguments[1], Address: arguments[2], SessionID: arguments[3]}, home, func() {})
 	case "local-agent":
 		if len(arguments) < 2 {
 			return errors.New("local-agent requires a supported agent name")

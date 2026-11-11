@@ -21,8 +21,10 @@ import (
 // Connect provisions a device-specific key and verifies the SSH gateway against
 // the host key returned by the authenticated HTTPS API. No host-key bypass.
 type SSHConnectionConfig struct {
-	Address string
-	Config  *ssh.ClientConfig
+	Address   string
+	Config    *ssh.ClientConfig
+	HostKey   ssh.PublicKey
+	ClientKey ssh.PublicKey
 }
 
 func (c *Client) PrepareSSH(ctx context.Context, id, directory string) (*SSHConnectionConfig, error) {
@@ -175,15 +177,33 @@ func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned boo
 		return nil, err
 	}
 	config := &ssh.ClientConfig{User: id, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(hostKey), Timeout: 20 * time.Second}
-	return &SSHConnectionConfig{Address: address, Config: config}, nil
+	return &SSHConnectionConfig{Address: address, Config: config, HostKey: hostKey, ClientKey: signer.PublicKey()}, nil
 }
 
 func (c *Client) Connect(ctx context.Context, id, directory string) (*ssh.Client, error) {
 	defer launchprofile.Begin("ssh.provision_and_connect")()
-	prepared, err := c.PrepareSSH(ctx, id, directory)
-	if err != nil {
-		return nil, err
-	}
+	cached := cachedSSHConfig(c.Endpoint, id, directory)
+	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) { return c.PrepareSSH(ctx, id, directory) }, dialPreparedSSH)
+}
+
+// ConnectResolved overlaps only a cached, pinned authentication handshake with
+// runtime discovery. The hint is not authority: resolve and fresh SSH API checks
+// must succeed and agree before the resulting connection is returned.
+func (c *Client) ConnectResolved(ctx context.Context, hint, directory string, resolve func(context.Context) (string, error)) (*ssh.Client, error) {
+	defer launchprofile.Begin("ssh.resolve_and_connect")()
+	return connectPreparedSSH(ctx, cachedSSHConfig(c.Endpoint, hint, directory), func(ctx context.Context) (*SSHConnectionConfig, error) {
+		id, err := resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if id == "" {
+			return nil, fmt.Errorf("runtime identity required")
+		}
+		return c.PrepareSSH(ctx, id, directory)
+	}, dialPreparedSSH)
+}
+
+func dialPreparedSSH(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {
 	address, config := prepared.Address, prepared.Config
 	dialDone := launchprofile.Begin("ssh.tcp")
 	raw, err := (&net.Dialer{Timeout: 20 * time.Second}).DialContext(ctx, "tcp", address)
@@ -191,6 +211,8 @@ func (c *Client) Connect(ctx context.Context, id, directory string) (*ssh.Client
 	if err != nil {
 		return nil, err
 	}
+	stop := context.AfterFunc(ctx, func() { raw.Close() })
+	defer stop()
 	raw.SetDeadline(time.Now().Add(20 * time.Second))
 	handshakeDone := launchprofile.Begin("ssh.handshake")
 	conn, channels, requests, err := ssh.NewClientConn(raw, address, config)
@@ -200,5 +222,9 @@ func (c *Client) Connect(ctx context.Context, id, directory string) (*ssh.Client
 		return nil, err
 	}
 	raw.SetDeadline(time.Time{})
+	if err := ctx.Err(); err != nil {
+		raw.Close()
+		return nil, err
+	}
 	return ssh.NewClient(conn, channels, requests), nil
 }

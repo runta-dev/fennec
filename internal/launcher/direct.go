@@ -55,6 +55,7 @@ func (output *receiptOutput) Write(data []byte) (int, error) {
 			return 0, err
 		}
 		output.confirmed = true
+		launchprofile.Session("direct.receipt", receipt.SessionID)
 		data = append([]byte(nil), output.buffer.Bytes()[lineEnd+1:]...)
 		output.buffer.Reset()
 	}

@@ -4,19 +4,25 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fennec/internal/launchprofile"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
 type ColdConnection struct {
-	runtimeID string
-	control   string
-	knownPath string
-	known     []byte
-	cancel    context.CancelFunc
-	done      chan struct{}
+	started      time.Time
+	readyOnce    sync.Once
+	closeOnce    sync.Once
+	closeProfile func()
+	runtimeID    string
+	control      string
+	knownPath    string
+	known        []byte
+	cancel       context.CancelFunc
+	done         chan struct{}
 }
 
 func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) *ColdConnection {
@@ -53,11 +59,18 @@ func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) 
 	connectionCtx, cancel := context.WithCancel(ctx)
 	args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=5", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + knownPath, "-i", filepath.Join(directory, "runtime_key"), preference.RuntimeID + "@ssh.runta.com"}
 	command := exec.CommandContext(connectionCtx, "/usr/bin/ssh", args...)
-	if err := command.Start(); err != nil {
+	started := time.Now()
+	closeProfile, err := attachSSHProfile(command, home, started)
+	if err != nil {
 		cancel()
 		return nil
 	}
-	connection := &ColdConnection{runtimeID: preference.RuntimeID, control: control, knownPath: knownPath, known: known, cancel: cancel, done: make(chan struct{})}
+	if err := command.Start(); err != nil {
+		closeProfile()
+		cancel()
+		return nil
+	}
+	connection := &ColdConnection{started: started, closeProfile: closeProfile, runtimeID: preference.RuntimeID, control: control, knownPath: knownPath, known: known, cancel: cancel, done: make(chan struct{})}
 	go func() { command.Wait(); close(connection.done) }()
 	return connection
 }
@@ -72,16 +85,24 @@ func (connection *ColdConnection) Ready(ctx context.Context, plan LaunchPlan) bo
 	}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
+	verified := func() bool {
+		current, err := os.ReadFile(connection.knownPath)
+		if err != nil || !bytes.Equal(current, connection.known) {
+			return false
+		}
+		connection.readyOnce.Do(func() { launchprofile.Record("cold.ssh_handshake", connection.started, time.Since(connection.started)) })
+		return true
+	}
 	for {
 		if info, err := os.Lstat(connection.control); err == nil && info.Mode()&os.ModeSocket != 0 {
-			return true
+			return verified()
 		}
 		select {
 		case <-ctx.Done():
 			return false
 		case <-connection.done:
 			info, err := os.Lstat(connection.control)
-			return err == nil && info.Mode()&os.ModeSocket != 0
+			return err == nil && info.Mode()&os.ModeSocket != 0 && verified()
 		case <-ticker.C:
 		}
 	}
@@ -91,9 +112,14 @@ func (connection *ColdConnection) Close() {
 	if connection == nil {
 		return
 	}
-	connection.cancel()
-	<-connection.done
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	exec.CommandContext(ctx, "/usr/bin/ssh", "-S", connection.control, "-O", "exit", connection.runtimeID+"@ssh.runta.com").Run()
+	connection.closeOnce.Do(func() {
+		connection.cancel()
+		<-connection.done
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		exec.CommandContext(ctx, "/usr/bin/ssh", "-S", connection.control, "-O", "exit", connection.runtimeID+"@ssh.runta.com").Run()
+		if connection.closeProfile != nil {
+			connection.closeProfile()
+		}
+	})
 }

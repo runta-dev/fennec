@@ -11,8 +11,8 @@ final class ControlClient {
     func start(_ completion: @escaping (Bool) -> Void) {
         queue.async {
             let process = Process()
-            process.executableURL = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("fennec-daemon")
-            process.arguments = ["fen", "start"]
+            process.executableURL = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("fen")
+            process.arguments = ["start"]
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice

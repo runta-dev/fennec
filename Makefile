@@ -43,4 +43,20 @@ test-connector: build
 
 .PHONY: test-e2e-ops
 test-e2e-ops:
-	FENNEC_LIVE_E2E=1 FENNEC_E2E_BINARY="$(CURDIR)/build/Fennec.app/Contents/MacOS/fennec-daemon" go test -count=1 -timeout=4m -v ./internal/ope2e
+	FENNEC_LIVE_E2E=1 FENNEC_E2E_BINARY="$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" go test -count=1 -timeout=4m -v ./internal/ope2e
+
+.PHONY: test-e2e-startup test-e2e-performance test-e2e-configuration
+test-e2e-configuration:
+	go run ./cmd/profile-launch --binary "$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" --mode daemon-cold --invalidate-configuration --samples 3
+
+test-e2e-startup:
+	go run ./cmd/profile-launch --binary "$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" --mode daemon-cold --samples 3
+	go run ./cmd/profile-launch --binary "$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" --mode cold --samples 3
+	go run ./cmd/profile-launch --binary "$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" --mode warm --samples 3
+
+# Serialize live measurements even under make -j: parallel profilers contend
+# for the same shared machine and distort the wall-time acceptance boundary.
+test-e2e-performance:
+	$(MAKE) test-e2e-startup
+	$(MAKE) test-e2e-ops
+	$(MAKE) test-e2e-configuration

@@ -4,12 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"fennec/internal/cli"
 )
 
 func main() {
-	if err := cli.Run(os.Args[1:], os.Stdout); err != nil {
+	arguments := os.Args[1:]
+	if filepath.Base(os.Args[0]) == "fen" && cli.PublicInvocation(arguments) {
+		arguments = append([]string{"fen"}, arguments...)
+	}
+	if err := cli.Run(arguments, os.Stdout); err != nil {
 		var status interface{ ExitCode() int }
 		if errors.As(err, &status) {
 			os.Exit(status.ExitCode())

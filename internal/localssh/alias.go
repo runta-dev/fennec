@@ -11,34 +11,34 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// DeviceAlias keeps a readable name plus a stable device suffix to avoid collisions.
+// DeviceAlias preserves the hostname. Registration resolves collisions remotely.
 func DeviceAlias(name, id string) (string, error) {
 	if !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(id) {
 		return "", fmt.Errorf("invalid device ID")
 	}
 	var out strings.Builder
-	for _, r := range strings.ToLower(name) {
-		if r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+	for _, r := range name {
+		if r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-') {
 			out.WriteRune(r)
 		} else if out.Len() > 0 && !strings.HasSuffix(out.String(), "-") {
 			out.WriteByte('-')
 		}
-		if out.Len() >= 40 {
+		if out.Len() >= 240 {
 			break
 		}
 	}
-	base := strings.Trim(out.String(), "-")
+	base := strings.Trim(out.String(), "-.")
 	if base == "" {
 		base = "computer"
 	}
-	return base + "-" + id[:8], nil
+	return base, nil
 }
 
 // AliasConfig is written to a Fennec-owned included file, never over ~/.ssh/config.
 // The private key referenced here must be generated on the runtime, not copied
 // from local login directories. The host key is supplied by the paired device.
 func AliasConfig(alias, address, deviceID, hostPublicKey string, defaultDevice bool) (string, string, error) {
-	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`).MatchString(alias) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(deviceID) {
+	if !validAlias(alias) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(deviceID) {
 		return "", "", fmt.Errorf("invalid alias identity")
 	}
 	host, portText, err := net.SplitHostPort(address)

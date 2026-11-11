@@ -52,7 +52,7 @@ func runAgentOriginal(arguments []string, original string) error {
 	socket := filepath.Join(home, ".config/fennec/ipc/launch.sock")
 	loading := startLaunchLoading(os.Stderr, isTerminal(os.Stderr), os.Getenv("TERM") != "dumb" && os.Getenv("NO_COLOR") == "" && os.Getenv("FENNEC_DEBUG") == "")
 	defer loading.Clear()
-	if err := brokerReadiness(ctx); err != nil {
+	if err := brokerReadiness(ctx, intent.Agent); err != nil {
 		loading.Fail()
 		return err
 	}
@@ -69,7 +69,9 @@ func runAgentOriginal(arguments []string, original string) error {
 			connection.Close()
 			connection = nil
 		}
-		if plan.StreamPath != "" {
+		if intent.Cold && connection != nil {
+			err = launcher.ExecuteColdStream(ctx, plan, intent, home, loading.Clear, connection)
+		} else if plan.StreamPath != "" {
 			err = launcher.ExecuteStream(plan, intent, home, loading.Clear)
 		} else {
 			err = launcher.ExecutePlan(plan, intent, home, loading.Clear, connection)
@@ -90,7 +92,7 @@ func runAgentOriginal(arguments []string, original string) error {
 
 var brokerLaunchRequest = launcher.RequestLaunch
 var brokerPlanRequest = launcher.RequestPlan
-var brokerReadiness = waitForBroker
+var brokerReadiness = waitForAgentBroker
 
 func runAgentWith(ctx context.Context, socket string, intent launcher.LaunchIntent, request func(context.Context, string, launcher.LaunchIntent) (launcher.LaunchReceipt, error), attach func(launcher.LaunchReceipt) error) error {
 	if err := intent.Validate(); err != nil {

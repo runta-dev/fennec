@@ -4,11 +4,15 @@ import (
 	"context"
 	"fennec/internal/launcher"
 	"fmt"
+	"path/filepath"
 )
 
 // A lost attachment may reconnect to the confirmed session once. It never
 // creates a replacement agent or opens an independent SSH connection.
 func reconnectResident(ctx context.Context, receipt launcher.LaunchReceipt, home string, ready func()) error {
+	if _, err := launcher.AttachArgs(receipt.RuntimeID, receipt.Address, receipt.SessionID, filepath.Join(home, ".config/fennec/cloud")); err != nil {
+		return err
+	}
 	if err := waitForBroker(ctx); err != nil {
 		return launcher.StreamLostError{Receipt: receipt}
 	}

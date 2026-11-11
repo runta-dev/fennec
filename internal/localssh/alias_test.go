@@ -10,11 +10,11 @@ import (
 
 func TestDeviceAliases(t *testing.T) {
 	a, e := DeviceAlias("Shiqi’s MacBook", "aabbccdd11223344")
-	if e != nil || a != "shiqi-s-macbook-aabbccdd" {
+	if e != nil || a != "Shiqi-s-MacBook" {
 		t.Fatalf("%s %v", a, e)
 	}
 	b, _ := DeviceAlias("中文电脑", "11223344")
-	if b != "computer-11223344" {
+	if b != "computer" {
 		t.Fatal(b)
 	}
 }

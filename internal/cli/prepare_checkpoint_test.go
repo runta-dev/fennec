@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+func TestCheckedServiceStartsOnlyAfterSuccessfulHealthCheck(t *testing.T) {
+	for _, check := range []string{"test \"a'b\" = \"a'b\"", "false", "exit 17"} {
+		command := exec.Command("/bin/sh", "-c", checkedServiceCommand(check, "printf service-started"))
+		output, err := command.Output()
+		if check == "test \"a'b\" = \"a'b\"" {
+			if err != nil || string(output) != "service-started" {
+				t.Fatalf("valid check failed: %q %v", output, err)
+			}
+		} else {
+			if err == nil || len(output) != 0 {
+				t.Fatalf("service started after failed check: %q %v", output, err)
+			}
+		}
+	}
+}
+
 func TestPreparationFingerprintInvalidation(t *testing.T) {
 	home := t.TempDir()
 	artifacts := t.TempDir()

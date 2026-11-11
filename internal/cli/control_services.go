@@ -11,7 +11,9 @@ import (
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
 	"fennec/internal/runta"
+	"fennec/internal/terminalstream"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"os"
 	"path/filepath"
@@ -81,15 +83,24 @@ func writePublicJSON(path string, value any) error {
 	}
 	return os.Rename(file.Name(), path)
 }
-func (s *daemonServices) initialize(lifecycle context.Context, token string, epoch uint64) error {
+
+// user is supplied only from EnsureShared's freshly verified runtime owner.
+func (s *daemonServices) initialize(lifecycle context.Context, token string, epoch uint64, user string) error {
 	s.initializeMu.Lock()
 	defer s.initializeMu.Unlock()
 	if lifecycle.Err() != nil {
 		return lifecycle.Err()
 	}
+	if user == "" {
+		return fmt.Errorf("verified account identity required")
+	}
 	s.mu.Lock()
 	if s.epoch == epoch && s.ctx != nil {
+		matches := s.user == user
 		s.mu.Unlock()
+		if !matches {
+			return fmt.Errorf("account identity changed within lifecycle")
+		}
 		return nil
 	}
 	old := s.cancel
@@ -97,11 +108,6 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	if old != nil {
 		old()
 		s.workers.Wait()
-	}
-	api := &runta.Client{Endpoint: "https://api.runta.com", Token: token}
-	user, err := api.CurrentUser(lifecycle)
-	if err != nil {
-		return err
 	}
 	directory := filepath.Join(s.home, ".config/fennec/ssh")
 	if err := localssh.BindOwner(directory, user); err != nil {
@@ -155,11 +161,34 @@ func (s *daemonServices) prepare(ctx context.Context, token string, output io.Wr
 	if !ok {
 		return fmt.Errorf("login required")
 	}
-	if err := s.initialize(lifecycle, token, epoch); err != nil {
-		return err
-	}
 	events := &serviceEvents{emit: func(event map[string]json.RawMessage) { s.runtimeEvent(epoch, event) }}
-	return prepareRuntime(ctx, token, io.MultiWriter(output, events))
+	return prepareRuntime(ctx, token, io.MultiWriter(output, events), preparationRetainer{Runtime: func(runtime runta.Runtime) error {
+		return s.initialize(lifecycle, token, epoch, runtime.Owner)
+	}, Connection: func(runtimeID string, connection *ssh.Client) bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.epoch != epoch || s.ctx == nil || s.ctx.Err() != nil || s.brokerRunning {
+			return false
+		}
+		if s.config.PreparedSSH != nil {
+			s.config.PreparedSSH.Close()
+		}
+		s.config.PreparedSSH = connection
+		s.config.PreparedTerminal = nil
+		s.config.PreparedRuntimeID = runtimeID
+		owner := s.ctx
+		s.workers.Add(1)
+		go func() { defer s.workers.Done(); <-owner.Done(); connection.Close() }()
+		return true
+	}, Terminal: func(runtimeID string, transport *terminalstream.Transport) bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.epoch != epoch || s.ctx == nil || s.ctx.Err() != nil || s.brokerRunning || s.config.PreparedRuntimeID != runtimeID {
+			return false
+		}
+		s.config.PreparedTerminal = transport
+		return true
+	}})
 }
 func decodeText(event map[string]json.RawMessage, key string) string {
 	var value string
@@ -171,7 +200,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 	runtimeID := decodeText(event, "runtime_id")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.epoch != epoch || s.ctx.Err() != nil {
+	if s.epoch != epoch || s.ctx == nil || s.ctx.Err() != nil {
 		return
 	}
 	if runtimeID != "" && s.config.RuntimeID == "" {

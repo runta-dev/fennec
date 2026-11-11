@@ -260,7 +260,7 @@ main{min-height:0}
 :root[data-theme=dark] .session-group-heading{color:#b2b2bc}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .session-group-heading{color:#b2b2bc}}
 /* Keep the action slot stable while the visible button hugs its content. */
-.session-actions{display:grid;grid-template-columns:56px 28px;justify-items:end}
+.session-actions{display:grid;grid-template-columns:56px 28px 28px;grid-auto-flow:column;justify-items:end;flex-shrink:0}
 .session-actions .session-copy{width:28px;min-width:0;max-width:56px;flex:none;transition:width .24s cubic-bezier(.23,1,.32,1),background-color .16s ease}
 .session-actions .session-copy.has-copy-feedback{width:var(--copy-feedback-width,56px)}
 .session-copy .session-terminal-icon{opacity:1;visibility:visible;transition:opacity .12s ease}
@@ -306,3 +306,5 @@ main{min-height:0}
 .agent-coming-soon .agent-icon{opacity:.45}
 .agent-coming-soon .agent-name{color:var(--muted)}
 .agent-coming-soon .detected{font-size:11px}
+/* Working is activity, not a warning; reserve amber/red for attention/errors. */
+.session-agent-identity>.session-state-dot[data-state=working]{background:#5b8fc9}
