@@ -94,7 +94,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 	}()
 	var capabilities []string
 	if operate != nil {
-		capabilities = []string{"reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog"}
+		capabilities = []string{"reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set"}
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err

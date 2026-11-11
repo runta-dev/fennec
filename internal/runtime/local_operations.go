@@ -12,16 +12,27 @@ import (
 )
 
 type LocalOperation struct {
-	Accounts  *setup.ModelAccountsRequest `json:"accounts,omitempty"`
-	Routes    []setup.AgentRoute          `json:"routes,omitempty"`
-	Launch    *LocalLaunch                `json:"launch,omitempty"`
-	Kind      string                      `json:"kind"`
-	Address   string                      `json:"address,omitempty"`
-	SessionID string                      `json:"session_id,omitempty"`
-	Text      string                      `json:"text,omitempty"`
+	NativeModel *setup.NativeModelSelection `json:"native_model,omitempty"`
+	Accounts    *setup.ModelAccountsRequest `json:"accounts,omitempty"`
+	Routes      []setup.AgentRoute          `json:"routes,omitempty"`
+	Launch      *LocalLaunch                `json:"launch,omitempty"`
+	Kind        string                      `json:"kind"`
+	Address     string                      `json:"address,omitempty"`
+	SessionID   string                      `json:"session_id,omitempty"`
+	Text        string                      `json:"text,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "native_models" || o.Kind == "native_model_set" {
+		if o.NativeModel == nil || !map[string]bool{"codex": true, "claude": true, "pi": true}[o.NativeModel.Agent] {
+			return fmt.Errorf("unsupported native model agent")
+		}
+		if o.Kind == "native_model_set" && !setup.NativeModelFamily(o.NativeModel.Agent, o.NativeModel.Model) {
+			return fmt.Errorf("unsupported native model")
+		}
+		return nil
+	}
+
 	if o.Kind == "model_catalog" {
 		return nil
 	}
@@ -51,6 +62,22 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "native_models" || o.Kind == "native_model_set" {
+		var state setup.NativeModelState
+		var err error
+		if !setup.NativeAgentMode(r.Home) {
+			return nil, fmt.Errorf("native models unavailable in gateway mode")
+		}
+		if o.Kind == "native_models" {
+			state, err = setup.NativeModels(ctx, r.Home, o.NativeModel.Agent, true)
+		} else {
+			state, err = setup.SetNativeModel(ctx, r.Home, *o.NativeModel)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(state)
 	}
 	if o.Kind == "model_catalog" {
 		models, err := setup.LocalGatewayModels(ctx)

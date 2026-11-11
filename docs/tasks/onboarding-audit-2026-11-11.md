@@ -193,3 +193,28 @@ Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift t
 这仍不是干净设备的最终验收。Safari 下载产生的 quarantine、真实 Gatekeeper
 首开、安装 UI 的实际点击/移交、其他 OS 用户的运行、系统登录/重启，以及最终
 公证 DMG 的完整首次使用，都仍需按 TODO 验证；本轮没有发布新的正式 DMG。
+
+## 原生模型边界与展开面板验收
+
+- Magpie 关闭时，新增常驻 channel 的 `native_models` / `native_model_set` 操作；
+  UI 与 `fen model <agent> [model|default] [effort]` 使用同一 Go 控制面。
+- 模型目录来自隔离的原生 Agent 缓存；Pi 只列出已配置 provider 的模型。
+  云端校验目录成员与 effort，跨厂商遗留选择清除为 Agent 默认值，不修改本机配置。
+- 展开面板改为完整宽度的 Model 控件、模型图标及有元数据支持时的 effort 滑杆。
+- 实测发现 Codex 写入 `[tui]` 后，旧同步基线误判冲突。修复仅允许保留云端生成的
+  TUI/notice/projects 附加字段和有效模型选择；provider 配置冲突仍拒绝覆盖。
+- 已在 canonical 开发 App 上重建并验证：原生 Codex 返回 GPT 模型目录，界面显示
+  GPT-6.1-Sol / low，菜单没有 Kimi；CLI 拒绝把 Kimi 设为原生 Codex 模型。
+  Claude 目录只含原生 aliases；Pi 无已连接原生 provider 时只显示 Default，
+  不再展示遗留的 Magpie 当前模型。
+- 测试期间临时关闭 Magpie，结束后恢复原先的开启设置；Claude/Codex/Pi 均恢复
+  configured、broker ready。未执行模型推理，未删除或停止用户会话。
+- 本地安装继续使用原始已签名 credential helper，SHA-256 保持
+  b0ee08622cd866bf1e1bfd7c5f7f76ba7eca51944364e329a6d47a33e3714d6e；完整 bundle
+  签名验证通过。仅本机开发包复用该 helper，不把它当作 macOS 13 分发验收证据。
+- `make check`、`make check-ui`、Native setup race 测试，以及 runtime/cli/terminalstream
+  race 测试通过。完整 setup 测试仍有三组安装用例因 macOS 缺少 flock 失败。
+
+证据在 `/tmp/fennec-native-tests.log`、`/tmp/fennec-model-control-tests.log`、
+`/tmp/fennec-native-codex-models.json`、`/tmp/fennec-models-restored-state.json`。
+尚未发布新 DMG；干净 Mac 首次安装与全部 onboarding 验收仍未完成。

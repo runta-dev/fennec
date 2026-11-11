@@ -36,14 +36,22 @@ func ExecNativeAgent(home, agent string, args []string) error {
 	if err != nil {
 		return fmt.Errorf("native agent binary missing")
 	}
+	env, err := nativeAgentEnvironment(home, agent)
+	if err != nil {
+		return err
+	}
+	return syscall.Exec(binary, append([]string{binary}, args...), env)
+}
+
+func nativeAgentEnvironment(home, agent string) ([]string, error) {
 	root := filepath.Join(home, ".local/fennec/native")
 	var values map[string]string
 	data, err := readNativeFile(filepath.Join(root, "env.json"))
 	if err != nil {
-		return fmt.Errorf("native environment is unavailable")
+		return nil, fmt.Errorf("native environment is unavailable")
 	}
 	if json.Unmarshal(data, &values) != nil {
-		return fmt.Errorf("invalid native environment")
+		return nil, fmt.Errorf("invalid native environment")
 	}
 	allowed := map[string]bool{}
 	for _, key := range nativeEnvKeys {
@@ -58,7 +66,7 @@ func ExecNativeAgent(home, agent string, args []string) error {
 	}
 	for key, value := range values {
 		if !allowed[key] || strings.ContainsRune(value, 0) {
-			return fmt.Errorf("invalid native environment key")
+			return nil, fmt.Errorf("invalid native environment key")
 		}
 		env = append(env, key+"="+value)
 	}
@@ -72,5 +80,5 @@ func ExecNativeAgent(home, agent string, args []string) error {
 	case "opencode":
 		env = append(env, "XDG_CONFIG_HOME="+filepath.Join(root, "opencode/config"), "XDG_DATA_HOME="+filepath.Join(root, "opencode/data"))
 	}
-	return syscall.Exec(binary, append([]string{binary}, args...), env)
+	return env, nil
 }

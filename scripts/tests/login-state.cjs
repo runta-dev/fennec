@@ -5,7 +5,7 @@ assert.equal((html.match(/class="[^"]*\blogin\b[^"]*"/g)||[]).length,1,'one logi
 const elements=new Map();
 function element(key){if(!elements.has(key))elements.set(key,{hidden:false,disabled:false,textContent:'',classList:{add(){},remove(){},toggle(){}},removeAttribute(){},replaceChildren(){}});return elements.get(key);}
 const actions=[];
-const context=vm.createContext({window:{renderAgents(){},renderBilling(){}},authorized:false,sessionListConnecting:true,visibleSessionCount:0,detectedAgents:[],routeResults:new Map(),takeoverAgents:new Set(),activeTakeoverAgents:new Set(),takeoverChanging:false,gatewayModels:[],modelSaving:false,userMenu:{hidden:false},tab:x=>actions.push('tab:'+x),send:x=>actions.push(x),document:{createElement:()=>({textContent:"",classList:{toggle(){}}}),querySelector:element,querySelectorAll:()=>[element('.header-login')]}});
+const context=vm.createContext({window:{renderAgents(){},renderBilling(){}},authorized:false,sessionListConnecting:true,visibleSessionCount:0,detectedAgents:[],routeResults:new Map(),takeoverAgents:new Set(),activeTakeoverAgents:new Set(),takeoverChanging:false,gatewayModels:[],nativeModelStates:new Map(),nativeModelRequests:new Map(),modelSaving:false,userMenu:{hidden:false},tab:x=>actions.push('tab:'+x),send:x=>actions.push(x),document:{createElement:()=>({textContent:"",classList:{toggle(){}}}),querySelector:element,querySelectorAll:()=>[element('.header-login')]}});
 for(const name of ['renderLogin','renderAuthorized','renderSignedOut']){
  const start=source.indexOf('window.'+name+' =');const end=source.indexOf('\n};',start)+3;
  vm.runInContext(source.slice(start,end),context);

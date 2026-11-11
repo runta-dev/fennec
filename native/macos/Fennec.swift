@@ -728,7 +728,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
-        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:"] where action.hasPrefix(prefix) {
+        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:"] where action.hasPrefix(prefix) {
             guard let data = String(action.dropFirst(prefix.count)).data(using:.utf8),let params = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else { return }
             let id = params["session_id"] as? String ?? "", address = params["address"] as? String ?? ""
             switch prefix {
@@ -744,8 +744,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             case "read-session:":
                 sessionReadRevision += 1; let revision = sessionReadRevision
                 mutate("sessions.read",params) { [weak self] success,value in guard let self,self.sessionReadRevision == revision else { return }; self.render("renderSessionDetail",[success ? value ?? ["error":true] : ["error":true]]) }
+            case "get-model:":
+                mutate("model.get",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) } else { self?.render("renderNativeModelFailure",[params["agent"] as? String ?? ""]) } }
             case "select-model:":
-                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] _,_ in self?.render("renderModelSaving",[false]) }
+                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
             case "launch-agent:":
                 let key = (params["agent"] as? String ?? "") + ":" + (params["directory"] as? String ?? "")
                 let launch: (String) -> Void = { [weak self] requestID in

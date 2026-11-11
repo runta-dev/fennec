@@ -49,3 +49,23 @@ Implementation references were inspected at Magpie commit
 
 These references inform the Go adapters; Fennec does not execute Magpie in the
 default discovery or credential synchronization path.
+
+### Native model selection
+
+With Magpie disabled, the cloud model picker uses the agent's own model catalog:
+Codex's isolated `models_cache.json`, Claude Code's built-in aliases and account
+model cache, and Pi's available models filtered to configured providers. Missing
+catalog metadata offers Default; preparation never runs inference to discover
+models. Pi's list command runs only on an explicit model metadata request, with
+extensions and skills disabled.
+
+`fen model <agent>` lists native choices. `fen model <agent> <model|default>
+[effort]` uses the same daemon control methods as the UI. Catalog membership and
+supported effort are checked on the cloud computer through the resident channel.
+Native selections live in the isolated native configuration, independently of
+Magpie route preferences. Repeated credential synchronization preserves explicit
+cloud choices while still detecting unrelated credential conflicts.
+
+Native synchronization removes inherited cross-vendor model IDs (for example,
+`kimi-code/...` from ChatGPT-backed Codex) and lets the agent choose its default.
+It never rewrites the user's local configuration or invents a replacement model.
