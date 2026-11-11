@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fennec/internal/cmuxhooks"
 	"fennec/internal/sessionid"
 	"fmt"
 	"os"
@@ -39,6 +40,12 @@ func runAgentOriginal(arguments []string, original string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	if arguments[0] == "codex" {
+		args, _, err = cmuxhooks.Rewrite(args, home, id)
+		if err != nil {
+			return err
+		}
 	}
 	if original == "" {
 		original, err = launcher.ResolveOriginal(arguments[0], os.Getenv("PATH"), filepath.Join(home, ".local/share/fennec/shims"), self)

@@ -60,3 +60,8 @@ test-e2e-performance:
 	$(MAKE) test-e2e-startup
 	$(MAKE) test-e2e-ops
 	$(MAKE) test-e2e-configuration
+
+.PHONY: test-cmux
+test-cmux:
+	test -n "$(CMUX_BINARY)" && test -x "$(CMUX_BINARY)"
+	FENNEC_CMUX_BINARY="$(CMUX_BINARY)" go test -race -count=1 -timeout=90s ./internal/cmuxhooks ./internal/terminalstream ./internal/launcher ./internal/cli ./cmd/fennec-terminal

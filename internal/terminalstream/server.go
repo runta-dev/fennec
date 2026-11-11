@@ -79,6 +79,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		return err
 	}
 	emit := func(frame Frame) error { return emitFrames(frame) }
+	hooks := newCmuxRelay(ctx, emit)
 	var sessionsMu sync.Mutex
 	sessions := map[string]*serverSession{}
 	var workers sync.WaitGroup
@@ -92,9 +93,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	var capabilities []string
+	capabilities := []string{"cmux_hooks"}
 	if operate != nil {
-		capabilities = []string{"reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog"}
+		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog")
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -147,6 +148,18 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				var terminal cloudruntime.LocalTerminal
 				var command *exec.Cmd
 				var err error
+				if frame.Cmux && (frame.Type == "launch" || frame.Type == "attach") {
+					sessionID := frame.ID
+					if frame.Terminal != nil {
+						sessionID = frame.Terminal.ID
+					}
+					unbind, hookErr := hooks.subscribe(session.ctx, frame.ID, sessionID)
+					if hookErr != nil {
+						emit(Frame{Type: "error", ID: frame.ID, Message: "cmux hook relay unavailable"})
+						return
+					}
+					defer unbind()
+				}
 				if frame.Type == "operation" {
 					result, err := operate(session.ctx, *frame.Operation)
 					if err != nil || len(result) > 4<<20 {
@@ -286,6 +299,8 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			frame.Data = FocusReport(frame.Focused)
 		}
 		switch frame.Type {
+		case "cmux_reply":
+			hooks.reply(frame)
 		case "credit":
 			if !session.window.add(frame.Bytes) {
 				session.cancel()

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cmuxhooks"
 	"fennec/internal/launchprofile"
 	"fennec/internal/terminalinput"
 	"fennec/internal/terminalstate"
@@ -112,10 +113,16 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display}); err != nil {
+	var cmux *cmuxhooks.Local
+	if plan.Agent == "codex" {
+		cmux = cmuxhooks.Capture()
+	}
+	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, Cmux: cmux != nil}); err != nil {
 		return err
 	}
 	inputDone := make(chan struct{})
+	var hookWorkers sync.WaitGroup
+	defer hookWorkers.Wait()
 	var detached atomic.Bool
 	stop := context.AfterFunc(ctx, func() { window.Close(); connection.Close() })
 	defer stop()
@@ -220,6 +227,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	scanner := bufio.NewScanner(connection)
 	scanner.Buffer(make([]byte, 4096), 262144)
 	confirmed := false
+	hookSlots := make(chan struct{}, 16)
 	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: intent.RequestID}
 	defer titles.Flush()
 	var receipt LaunchReceipt
@@ -230,6 +238,22 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			return fmt.Errorf("invalid terminal frame")
 		}
 		switch frame.Type {
+		case "cmux_hook":
+			if len(frame.HookID) != 32 || !cmuxhooks.ValidEvent(frame.HookEvent) || len(frame.Result) > cmuxhooks.PayloadLimit {
+				return fmt.Errorf("invalid cmux hook request")
+			}
+			select {
+			case hookSlots <- struct{}{}:
+				hookWorkers.Add(1)
+				go func(frame terminalstream.Frame) {
+					defer hookWorkers.Done()
+					defer func() { <-hookSlots }()
+					response := cmux.Run(ctx, frame.HookEvent, frame.Result)
+					_ = send(terminalstream.Frame{Type: "cmux_reply", HookID: frame.HookID, Code: response.Code, Result: response.Data})
+				}(frame)
+			default:
+				_ = send(terminalstream.Frame{Type: "cmux_reply", HookID: frame.HookID, Result: json.RawMessage(`{}`)})
+			}
 		case "receipt":
 			if confirmed || frame.Terminal == nil || frame.Terminal.ID != intent.RequestID || frame.Terminal.Agent != intent.Agent {
 				return fmt.Errorf("terminal receipt identity mismatch")

@@ -55,6 +55,16 @@ func OfferLocal(ctx context.Context, transport *Transport, directory string, ope
 		opening.Rows, opening.Columns = hello.Rows, hello.Columns
 		opening.Term = hello.Term
 		opening.Display = hello.Display
+		opening.Cmux = hello.Cmux
+		if opening.Cmux {
+			if err := transport.Ready(operation); err != nil {
+				return
+			}
+			if !transport.Supports("cmux_hooks") {
+				json.NewEncoder(connection).Encode(Frame{Type: "error", ID: opening.ID, Message: "Update Fennec to use cmux cloud hooks"})
+				return
+			}
+		}
 		var session *Session
 		if len(existing) > 0 {
 			session = existing[0]
