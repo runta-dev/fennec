@@ -84,7 +84,7 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 				return
 			}
 			switch event["type"] {
-			case "runtime_progress", "connector_ready", "shared_services_ready", "model_catalog", "route_results", "agent_routes", "provider_catalog":
+			case "runtime_progress", "connector_ready", "shared_services_ready", "model_catalog", "route_results", "agent_routes", "provider_catalog", "configuration_profile":
 			default:
 				return
 			}

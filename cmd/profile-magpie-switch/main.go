@@ -87,8 +87,15 @@ func run() (result error) {
 	if p.initial.Account.Status != "authorized" || p.initial.Runtime.RuntimeID != *runtimeID || !settled(p.initial.Runtime) || p.initial.Runtime.Generation == 0 {
 		return fmt.Errorf("require an authorized, settled runtime with configuration generation support")
 	}
+	baseline, err := routeBaseline(p.initial)
+	if err != nil {
+		return fmt.Errorf("initial route baseline unavailable: %w", err)
+	}
 	report := json.NewEncoder(os.Stdout)
 	if err = report.Encode(map[string]any{"started_at": time.Now().UTC(), "daemon_build": p.daemon.Build, "daemon_pid": p.daemon.PID, "runtime_id": *runtimeID, "initial_magpie": p.initial.Settings.Magpie, "settings_revision": p.initial.Settings.Revision}); err != nil {
+		return err
+	}
+	if err = report.Encode(map[string]any{"initial_routes": baseline}); err != nil {
 		return err
 	}
 	return p.measure(report, *budget)
@@ -125,9 +132,9 @@ func (p *probe) measure(report *json.Encoder, budget time.Duration) (result erro
 		state, err := p.wait(restored, beforeRestore.Runtime.Generation)
 		elapsed := time.Since(restoreStarted)
 		if err == nil {
-			err = validateCompletion(state, restored.Magpie)
+			err = validateRestoration(state, p.initial)
 		}
-		if writeErr := report.Encode(map[string]any{"operation": "restore", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil}); writeErr != nil {
+		if writeErr := report.Encode(map[string]any{"operation": "restore", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state)}); writeErr != nil {
 			err = errors.Join(err, writeErr)
 		}
 		if err == nil && elapsed > budget {
@@ -140,7 +147,7 @@ func (p *probe) measure(report *json.Encoder, budget time.Duration) (result erro
 	if err == nil {
 		err = validateCompletion(state, changed.Magpie)
 	}
-	if writeErr := report.Encode(map[string]any{"operation": "switch", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil}); writeErr != nil {
+	if writeErr := report.Encode(map[string]any{"operation": "switch", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state)}); writeErr != nil {
 		err = errors.Join(err, writeErr)
 	}
 	if err != nil {

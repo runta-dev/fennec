@@ -10,9 +10,17 @@ import (
 	"io"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, output io.Writer) (bool, error) {
+	timings := map[string]float64{}
+	phase := time.Now()
+	mark := func(name string) {
+		now := time.Now()
+		timings[name] = float64(now.Sub(phase).Microseconds()) / 1000
+		phase = now
+	}
 	s.mu.Lock()
 	channel, user, runtimeID, current := s.channel, s.user, s.config.RuntimeID, s.epoch
 	s.mu.Unlock()
@@ -32,6 +40,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	if !transport.Supports("reconfigure_runtime") {
 		return false, nil
 	}
+	mark("transport_ready")
 	magpie := newDesktopSettings(s.home).value.Magpie
 	ids := agent.CloudAgentIDs()
 	sourceIDs := ids
@@ -45,6 +54,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 		}
 	}
 	native, err := setup.GatherNativeAccounts(ctx, s.home, sourceIDs, magpie)
+	mark("native_accounts")
 	if err != nil {
 		return true, err
 	}
@@ -62,14 +72,17 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 		}
 		workers.Wait()
 		routes, err = setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
+		mark("local_routes")
 		if err != nil {
 			return true, err
 		}
 		plugins, err := setup.DesiredModelPlugins(s.home)
+		mark("plugins")
 		if err != nil {
 			return true, err
 		}
 		request.Accounts, err = setup.GatherModelAccountsRequest(s.home, plugins, ids)
+		mark("gateway_accounts")
 		if err != nil {
 			return true, err
 		}
@@ -78,6 +91,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 		request.Routes = routes
 	}
 	data, err := transport.Operate(ctx, r.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+	mark("remote_round_trip")
 	if err != nil {
 		return true, err
 	}
@@ -120,6 +134,11 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	}
 	routes, _ := json.Marshal(result.Routes)
 	if err = emit(map[string]string{"type": "route_results", "results": string(routes), "runtime_id": runtimeID}); err != nil {
+		return true, err
+	}
+	mark("publish")
+	profile, _ := json.Marshal(map[string]any{"local_ms": timings, "remote_ms": result.Timings})
+	if err = emit(map[string]string{"type": "configuration_profile", "timings": string(profile), "runtime_id": runtimeID}); err != nil {
 		return true, err
 	}
 	return true, emit(map[string]string{"type": "runtime_progress", "stage": "agents_installed", "status": "ready", "runtime_id": runtimeID})

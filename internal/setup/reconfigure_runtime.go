@@ -17,9 +17,10 @@ type RuntimeConfiguration struct {
 	Routes   []AgentRoute         `json:"routes,omitempty"`
 }
 type RuntimeConfigurationResult struct {
-	NeedsSetup bool          `json:"needs_setup,omitempty"`
-	Models     []string      `json:"models"`
-	Routes     []RouteResult `json:"routes,omitempty"`
+	Timings    map[string]float64 `json:"timings_ms,omitempty"`
+	NeedsSetup bool               `json:"needs_setup,omitempty"`
+	Models     []string           `json:"models"`
+	Routes     []RouteResult      `json:"routes,omitempty"`
 }
 
 func (r RuntimeConfiguration) Validate() error {
@@ -100,7 +101,13 @@ func ReconfigureRuntime(ctx context.Context, home string, request RuntimeConfigu
 	return reconfigureRuntimeWith(ctx, home, request, runtimeConfigurationOps{LocalGatewayModels, ApplyModelAccounts, ReconcileLocalRoutes})
 }
 func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeConfiguration, ops runtimeConfigurationOps) (RuntimeConfigurationResult, error) {
-	result := RuntimeConfigurationResult{}
+	result := RuntimeConfigurationResult{Timings: map[string]float64{}}
+	phase := time.Now()
+	mark := func(name string) {
+		now := time.Now()
+		result.Timings[name] = float64(now.Sub(phase).Microseconds()) / 1000
+		phase = now
+	}
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -123,6 +130,7 @@ func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeCon
 			return RuntimeConfigurationResult{NeedsSetup: true}, nil
 		}
 	}
+	mark("tool_preflight")
 	if !request.Accounts.Native {
 		if _, err := exec.LookPath("magpie"); err != nil {
 			return RuntimeConfigurationResult{NeedsSetup: true}, nil
@@ -140,11 +148,13 @@ func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeCon
 			return result, fmt.Errorf("gateway catalog is not available: %w", err)
 		}
 	}
+	mark("catalog_preflight")
 	request.Accounts.DeferCatalog = true
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	accounts, err := ops.accounts(ctx, home, request.Accounts)
+	mark("accounts")
 	if err != nil {
 		return result, err
 	}
@@ -161,12 +171,14 @@ func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeCon
 		}
 	} else {
 		result.Routes, err = ops.routes(ctx, home, request.Routes)
+		mark("routes")
 		if err != nil {
 			return result, fmt.Errorf("configuration readback failed: %w", err)
 		}
 		// Return the catalog after credentials/routes have been applied, not the
 		// preflight snapshot from the previous configuration.
 		result.Models, err = ops.models(ctx)
+		mark("catalog_readback")
 		if err != nil {
 			return result, err
 		}

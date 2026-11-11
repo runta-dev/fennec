@@ -10,6 +10,9 @@ Status: incomplete. Green CI, a working development machine, and isolated Linux
 fixtures are not clean-Mac acceptance with a real account and the final DMG.
 Do not check off items without verification.
 
+Current requirement-by-requirement evidence gaps are recorded in the
+[final acceptance audit](docs/tasks/final-acceptance-gap.md).
+
 User clarification on 2026-11-11: finish development before arranging clean-device
 acceptance. Also develop `fen uninstall` for test cleanup of development and DMG
 installations. Default to local cleanup. An explicit option may delete the entire
