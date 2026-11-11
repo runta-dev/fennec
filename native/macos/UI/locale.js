@@ -192,3 +192,8 @@ Object.assign(translations, {
  '本机凭据依赖本地命令，请使用智能体登录或 API key':['本機憑據依賴本機命令，請使用代理登入或 API key','Credentials depend on a local command. Use an agent sign-in or API key.','認証情報がローカルコマンドに依存しています。ログインまたは API キーを使用してください。','로그인 정보가 로컬 명령에 의존합니다. 에이전트 로그인 또는 API 키를 사용하세요.']
 });
 localize();
+Object.assign(translations, {
+ '关于 Magpie':['關於 Magpie','About Magpie','Magpie について','Magpie 소개'],
+ 'Magpie 是一个本地 AI 网关。':['Magpie 是一個本地 AI 閘道。','Magpie is a local AI gateway.','Magpie はローカル AI ゲートウェイです。','Magpie는 로컬 AI 게이트웨이입니다.']
+});
+localize();
