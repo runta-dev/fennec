@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/browserterminal"
+	"fennec/internal/localization"
 	"fennec/internal/terminalstream"
 	"flag"
 	"fmt"
@@ -34,6 +35,22 @@ func main() {
 		panic("preview must bind loopback")
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/locale-data.js", func(w http.ResponseWriter, r *http.Request) {
+		raw, err := os.ReadFile(filepath.Join(absolute, "translations.json"))
+		if err != nil {
+			http.Error(w, "Catalog unavailable", 500)
+			return
+		}
+		catalog, err := localization.Decode(raw)
+		if err != nil {
+			http.Error(w, "Catalog invalid", 500)
+			return
+		}
+		data, _ := json.Marshal(catalog.Messages)
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "no-store")
+		fmt.Fprintf(w, "window.FennecMessages = %s;", data)
+	})
 	terminals := &browserterminal.Server{}
 	defer terminals.Close()
 	mux.HandleFunc("/preview-login", func(w http.ResponseWriter, r *http.Request) {

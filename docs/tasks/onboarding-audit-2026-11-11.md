@@ -1,313 +1,366 @@
-# 干净环境 onboarding 审计：2026-11-11
+# Clean-environment onboarding audit: 2026-11-11
 
-最终用户验收尚未通过；本记录只描述本轮源码与隔离测试证据。
-用户选择先完成开发，再安排干净 Mac/测试账号。当前本机 UTM 仅发现一台
-已停止的 Windows VM，没有已准备好的干净 macOS 测试环境。
+Final end-user acceptance has not passed. This record describes source changes and
+isolated test evidence, with later development-machine observations identified separately.
+The user chose to finish development before arranging a clean Mac/test account.
+The local UTM inventory contained only a stopped Windows VM, not a prepared clean macOS environment.
 
-## 已发现并修复的开发环境依赖
+## Developer-environment dependencies found and fixed
 
-1. `ensureControl` 原先只比较 build ID，App 移动后同一 binary 可能继续复用
-   旧路径 daemon 和 LaunchAgent。现在同时检查实际执行路径及注册内容；
-   旧路径/旧注册/无响应注册会在启动锁内被替换。兼容 symlink 不会误触发重启。
-   回归覆盖移动路径、旧版本、旧协议缺执行路径、缺注册、转义路径及符号链接。
-2. Swift 默认 deployment target 取决于构建主机。实际旧开发包的 UI/helper
-   `minos=26.0`，已发布 0.2.11111055 的 UI/helper `minos=15.0`。
-   现在固定编译 target 为 macOS 13.0，Info.plist 显式记录最低版本，包装
-   校验检查所有 Mach-O 最低版本不高于 13.0；helper 缓存按 target 分隔。
-   现有用户正在使用的 helper 未被替换，也未重置任何 Keychain 数据。
+1. `ensureControl` previously compared only build IDs, so moving an app could reuse
+   the same binary through an old daemon path and LaunchAgent. It now also checks
+   the actual executable path and registration. Stale paths/registrations and
+   nonresponsive services are replaced under the startup lock. Compatibility symlinks
+   do not cause unnecessary restarts. Regression cases cover moved paths, old versions,
+   old protocols without executable paths, missing registrations, escaping, and symlinks.
+2. Swift's default deployment target depended on the build host. The old development
+   UI/helper had `minos=26.0`; released 0.2.11111055 had `minos=15.0`. Compilation now
+   explicitly targets macOS 13.0, Info.plist records that minimum, and package checks
+   reject Mach-O minimum versions above 13.0. Helper caches are separated by target.
+   The user's active helper and Keychain data were not replaced or reset in this step.
 
-验证：`go test -race ./internal/cli ./internal/controlplane` 通过；macOS 13
-Swift typecheck 通过；签名 staging 包 `/tmp/fennec-onboarding-os13/Fennec.app`
-通过 `scripts/verify-macos-package.sh`。这不是 macOS 13 真实运行验收，也不是
-已发布的新 DMG。日志：`/tmp/fennec-onboarding-os13-build.log`、
-`/tmp/fennec-onboarding-os13-verify.log`。
+Validation: `go test -race ./internal/cli ./internal/controlplane`, macOS 13 Swift
+checking, and `scripts/verify-macos-package.sh` for signed staging
+`/tmp/fennec-onboarding-os13/Fennec.app` passed. This was neither a real macOS 13 run
+nor a newly published DMG. Logs: `/tmp/fennec-onboarding-os13-build.log` and
+`/tmp/fennec-onboarding-os13-verify.log`.
 
-## 卸载开发进度
+## Initial uninstall implementation
 
-已实现的底层组件：
+Implemented components:
 
-- `internal/uninstall` 定义共用的确认与执行顺序：确认 → 停止自动恢复 →
-  可选云端删除并确认完成 → 关闭开机启动 → 停止本机服务 → 恢复命令 →
-  删除 Fennec 专属凭据 → 清理本机数据 → 删除自身 App。
-- `internal/runta/DeleteOwnedShared` 对确认的同一 runtime 重新检查用户、owner、
-  FENNEC_PURPOSE 和 revision；DELETE 接受不算完成，必须观察删除完成/404。
-  不会用新 revision 自动重发 DELETE，也不会寻找并删除另一个 runtime。
-- 本机计划仅枚举 Fennec 的目录及经过 bundle identifier 检查的 App；开发版
-  归档和 helper 缓存限于当前 Fennec 仓库 build 目录，不删除源码或原生 Agent 凭据。
-- 已实现 managed entry 恢复；如果其他包管理器已经更新了命令，则保留新命令。
-  shell 清理只移除有唯一边界的 Fennec block，保留用户内容、权限和 dotfile symlink。
-- 回归覆盖本机卸载不删除云端、错误确认零 mutation、云端失败时不清本机、
-  删除接受后超时不算成功、归属/purpose/revision 变化拒绝删除、保留源码/native auth、
-  外部命令更新和 shell 配置恢复。
+- `internal/uninstall` defines shared confirmation/execution order: confirmation →
+  stop automatic recovery → optionally delete and confirm the cloud runtime → disable
+  login startup → stop local services → restore commands → delete Fennec-specific
+  credentials → remove local data → remove the app itself.
+- `internal/runta/DeleteOwnedShared` rechecks the confirmed runtime's user, owner,
+  FENNEC_PURPOSE, and revision. An accepted DELETE is insufficient: observe deletion
+  completion or 404. Never automatically retry with a new revision or select another runtime.
+- Local plans enumerate only Fennec directories and bundle-ID-verified apps. Development
+  archives/helper caches are limited to the current repository's build directory;
+  source and native-agent credentials are preserved.
+- Managed entries are restored unless another package manager already updated the
+  command, in which case the new command is retained. Shell cleanup removes only
+  uniquely bounded Fennec blocks, preserving user content, modes, and dotfile symlinks.
+- Regression coverage includes local cleanup without cloud deletion, no mutations for
+  incorrect confirmation, preserving local recovery after cloud failure, deletion-acceptance
+  timeouts, changed ownership/purpose/revision, source/native-auth preservation, external
+  command updates, and shell restoration.
 
-`go test -race ./internal/uninstall ./internal/launcher ./internal/agent
-./internal/runta ./internal/cli ./internal/controlplane` 通过，日志：
-`/tmp/fennec-uninstall-first-batch.log`。所有删除测试均为临时目录/HTTP fixture。
-没有执行任何真实云端删除或本机 Fennec 卸载。
+`go test -race ./internal/uninstall ./internal/launcher ./internal/agent ./internal/runta
+./internal/cli ./internal/controlplane` passed; log: `/tmp/fennec-uninstall-first-batch.log`.
+All deletion tests used temporary directories/HTTP fixtures. No real cloud deletion
+or local Fennec uninstall was performed.
 
-必须继续完成：
+Outstanding at that stage:
 
-- 共用 plan/execute/status 控制 API、`fen uninstall` 与安全 dry-run。
-- 默认不选云端删除的危险 modal，明确绑定目标；CLI 显式确认参数。
-- 持久化卸载意图、取消准备任务、阻止自动重建 runtime，未知结果恢复和重试。
-- 独立自卸载执行器，确保删除自身后仍能完成清理；禁止误杀其他程序。
-- 真实 login-item 注销、LaunchAgent 注销、Fennec Keychain 条目删除、WebKit/
-  UserDefaults 清理，以及自定义 ZDOTDIR/XDG 的安装记录与发现。
-- 最终签名 DMG、干净 Mac/新用户/系统重启及同事独立使用验收。
+- Shared plan/execute/status APIs, `fen uninstall`, and a safe dry run.
+- A dangerous-action modal with cloud deletion off by default and an exact target;
+  explicit CLI confirmation parameters.
+- Durable uninstall intent, preparation cancellation, prevention of runtime recreation,
+  recovery from unknown outcomes, and retries.
+- An independent worker that can finish cleanup after removing its own app, without
+  terminating unrelated processes.
+- Actual login-item/LaunchAgent unregistration, Fennec Keychain deletion, WebKit/UserDefaults
+  cleanup, and recorded discovery of custom ZDOTDIR/XDG installation locations.
+- Final signed DMG, clean-Mac/new-user/reboot, and independent colleague acceptance.
 
-## 后续：共用卸载入口、恢复与移除 App 后的命令行为
+## Shared uninstall entry, recovery, and commands after app removal
 
-以下为开发实现及回归证据，尚未做真实用户自卸载或删除真实云机器：
+The following were development changes and regressions, not a real self-uninstall or
+real cloud-machine deletion. A later user decision removed the production uninstall UI;
+see the final section of this record.
 
-- 已接入设置页卸载 modal 与 `fen uninstall` 辅助命令，共用 Go 预览、确认
-  和 worker 逻辑。默认只清理本机；可选云端删除必须输入具体 runtime ID。
-  CLI 支持 `--dry-run`、`--yes`、`--delete-cloud --confirm-runtime <id>`。
-- 预览绑定本机安装和源码 hash；执行前再次校验。恢复预览只能重新确认同一
-  云端 ID/owner，不能转向替代 runtime。新 revision 必须经过新的预览和确认。
-- 持久卸载标记位于 `.local/state/fennec-uninstall/active.json`，晚于 App
-  清理才移除。它独立于普通设置目录，阻止失败后/重启后自动创建云机器。
-  准备任务先取消并排空，普通 mutation 被暂停；重新登录和卸载恢复仍可使用。
-- worker 从私有临时目录运行，签名 binary 字节与已确认 App 相同。清理范围
-  包括当前注册的 bundle；进程匹配限制当前用户、精确 executable 路径，保留
-  当前 CLI caller 和 worker。完成回执在本机清理及防重建标记移除之后发布。
-- 云端失败、进程中断、凭据过期、旧预览、错误确认均保留恢复路径；不自动
-  重发删除操作。UI 提供重新登录/重试；默认不展示内部状态码。
-- App 消失后的 managed entry/shim 可运行已解析的原始 Agent，并明确告知
-  当前在本机执行。参数、工作目录和退出码保留；App 仍存在时的云端失败绝不
-  触发本机 fallback。原始 executable 发现会跳过其他 Fennec shim，防止递归。
-- 设置页是主入口；Account 的独立“删除云电脑”入口仍需实现，不能把卸载弹窗
-  中的可选项当作该独立功能的验收。
+- Settings initially gained an uninstall modal, with `fen uninstall` as the auxiliary
+  command. Both used the Go preview/confirmation/worker flow. Local cleanup was the
+  default; cloud deletion required typing the exact runtime ID. CLI options included
+  `--dry-run`, `--yes`, and `--delete-cloud --confirm-runtime <id>`.
+- Previews bind installation and source hash and are revalidated before execution.
+  Recovery can reconfirm only the same cloud ID/owner, never a replacement runtime.
+  A new revision requires a new preview and confirmation.
+- Durable intent at `.local/state/fennec-uninstall/active.json` outlives app cleanup.
+  It is separate from ordinary settings and prevents automatic machine creation after
+  failures/restarts. Preparation is canceled and drained; ordinary mutations pause,
+  while reauthentication and uninstall recovery remain available.
+- The worker runs from a private temporary directory with signed bytes identical to
+  the confirmed app. Cleanup includes the currently registered bundle. Process matching
+  is restricted to the current user and exact executable path, preserving the CLI
+  caller and worker. Completion is published after local cleanup and marker removal.
+- Cloud failure, process interruption, expired credentials, stale previews, and incorrect
+  confirmation preserve recovery. Deletion is not automatically resent. UI offered
+  sign-in/retry without exposing internal status codes.
+- If the app disappears, managed entries/shims can execute the resolved original agent,
+  explicitly indicating local execution and preserving arguments, cwd, and exit code.
+  Cloud failures while the app still exists never trigger local fallback. Original
+  executable discovery skips other Fennec shims to prevent recursion.
+- Settings was the primary entry at this stage. Account's separate cloud-computer
+  deletion entry remained unfinished; an uninstall checkbox did not prove that feature.
 
-本轮证据：
+Evidence:
 
-- `/tmp/fennec-uninstall-review-tests.log`：launcher、agent、CLI、controlplane、
-  uninstall、Runta 客户端 race 测试通过。
-- `/tmp/fennec-uninstall-review-ui.log`：UI 检查及危险确认回归通过；包括默认不选
-  云端删除、错误 runtime ID 不提交、过期 UI 回复不覆盖新选择、失败不自动重试。
-- `/tmp/fennec-uninstall-review-vet.log`：Go vet 通过。
-- 已成功跑过签名 staging 包的 `fen uninstall --dry-run`，仅生成预览，未调用
-  worker。没有触发本机 Keychain 删除、服务注销、App 删除或任何真实云端 DELETE。
+- `/tmp/fennec-uninstall-review-tests.log`: launcher, agent, CLI, controlplane, uninstall,
+  and Runta-client race tests passed.
+- `/tmp/fennec-uninstall-review-ui.log`: UI/dangerous-confirmation regressions passed,
+  including default local-only cleanup, rejecting the wrong runtime ID, fencing stale
+  UI replies, and avoiding automatic retries after failure.
+- `/tmp/fennec-uninstall-review-vet.log`: Go vet passed.
+- Signed staging successfully ran `fen uninstall --dry-run`, generating only a preview.
+  No worker, Keychain deletion, service unregistration, app removal, or real cloud DELETE ran.
 
-仍需实际验收：独立云端删除入口、完整自卸载/崩溃恢复、系统注销/重启、权限
-与多副本的 SMAppService 行为、只拖入废纸篓后的后台注销、自定义 shell 安装
-位置的持久记录、干净 Mac/正式 DMG/真实账号/独立同事完整流程。不得将上述
-fixture、源码与 staging 结果标为最终用户验收完成。
+Real acceptance still needed independent cloud deletion, complete self-uninstall/crash
+recovery, system logout/reboot, permissions and multi-copy SMAppService behavior,
+background unregistration after dragging the app to Trash, persistent custom-shell
+installation locations, and the clean-Mac/final-DMG/real-account/independent-user flow.
+Fixtures, source tests, and staging were not final end-user acceptance.
 
-## 后续：Launch at login 与后台启动分离
+## Separating launch at login from backend startup
 
-发现的隐藏行为：daemon plist 原来同时配置 RunAtLoad=true 和
-KeepAlive.SuccessfulExit=false，因此即便用户关闭 UI 的 Launch at login，
-后台注册仍会在系统登录时启动，并可能恢复账号/云连接。系统自带
-launchd.plist 手册明确说明 SuccessfulExit 隐式要求 RunAtLoad。
+Hidden behavior: the daemon plist combined RunAtLoad=true with
+KeepAlive.SuccessfulExit=false. Consequently, even when the UI's Launch at login was
+off, system login could start the backend and restore an account/cloud connection.
+The system `launchd.plist` manual states that SuccessfulExit implicitly requires RunAtLoad.
 
-修复为 RunAtLoad=false + KeepAlive.AfterInitialDemand=true。UI 或 CLI 的
-明确启动执行 bootstrap 后 kickstart；首次需求之后保留异常退出自动恢复。
-AfterInitialDemand 使用系统 SDK launch.h 定义的 key，未引入外部工具依赖。
-原生 UI 在控制连接失败后重新进入启动流程，保留已有界面数据；卸载与启动
-共用启动锁，启动方再次检查持久卸载标记，防止卸载过程中被 UI 自动拉起。
+The fix uses RunAtLoad=false and KeepAlive.AfterInitialDemand=true. Explicit UI/CLI
+startup bootstraps and kickstarts the service; abnormal-exit recovery remains after
+initial demand. AfterInitialDemand uses the system SDK's `launch.h` key without an
+external-tool dependency. A failed native control connection reenters startup while
+preserving existing UI data. Uninstall and startup share a lock, and startup rechecks
+the durable uninstall marker to prevent UI recovery from relaunching during cleanup.
 
-实测 `TestLaunchAgentWaitsForExplicitDemand` 通过（约 6.5 秒）：
+Real `TestLaunchAgentWaitsForExplicitDemand` passed in about 6.5 seconds:
 
-1. 用独立的 `com.runta.fennec.test-demand.*` 临时 launchd label 注册无害 probe；
-   注册后不执行。
-2. 明确 kickstart 后执行。
-3. 对该测试进程发送 SIGKILL，确认由 launchd 自动恢复。
-4. bootout 后重新 bootstrap，确认不继承上次的 demand，不自动执行。
-5. 清理并确认该测试注册已消失。
+1. Register a harmless probe under an isolated `com.runta.fennec.test-demand.*` label;
+   registration alone must not execute it.
+2. Explicit kickstart executes it.
+3. SIGKILL the test process and confirm launchd recovery.
+4. Bootout and bootstrap again; prior demand must not persist or cause automatic execution.
+5. Clean up and confirm the test registration is gone.
 
-日志：`/tmp/fennec-login-policy-demand-recovery.log`。复现入口：
-`make test-e2e-launchd-demand`，非 macOS 会失败；普通单元测试不运行该系统测试。
-这不是完整的系统注销、重新登录、重启或干净 macOS 13 验收。用户当前
-Fennec 服务、Keychain 和真实云电脑未被该 probe 操作。
+Log: `/tmp/fennec-login-policy-demand-recovery.log`. Reproduce with
+`make test-e2e-launchd-demand`; non-macOS fails, and ordinary unit tests do not run it.
+This was not complete logout/login/reboot or clean macOS 13 acceptance. The probe did
+not operate on the user's real Fennec service, Keychain, or cloud computer.
 
-另已修复前一提交的两个 gofmt 遗漏；修正提交 99ee63f 的 GitHub CI
-42964771981 已通过。后续代码的 CI 仍须按新提交独立验证。
+Two missed gofmt changes from the preceding commit were also fixed. Commit `99ee63f`
+passed GitHub CI `42964771981`; later commits still need their own CI evidence.
 
-## 后续：过期登录与卸载恢复
+## Expired login and uninstall recovery
 
-发现：账号从 Keychain 恢复后即标为 authorized。旧 token 失效时，普通
-Login() 的幂等判断会直接返回原状态，导致卸载恢复的登录按钮没有实际作用。
+Finding: Keychain restoration immediately marked an account authorized. With an invalid
+old token, ordinary `Login()` returned that state idempotently, so the recovery sign-in
+button did nothing.
 
-修复与开发证据：
+Changes and development evidence:
 
-- `account.login` 支持显式 `reauthenticate:true`，UI 卸载恢复使用该请求；
-  CLI 对应 `fen login --reauth`。已在进行的授权仍合并为一个流程。
-- 新授权完成前不删除旧的持久凭据，拒绝/取消不会擦掉恢复信息。
-- 当前账号查询或运行时准备收到 401 时退回登录入口，并记录 session_expired；
-  403/5xx 不触发登出。拒绝只作用于匹配 token 且匹配 epoch 的会话，迟到的
-  旧响应不能登出更新后的登录，即使测试服务复用了相同 token 字符串。
-- 卸载前排空账号写入、取消尚未完成的设备授权；进行中的卸载拒绝并发登录。
-  失败后的重新授权仍可使用，持久卸载标记继续阻止自动重建云电脑。
-- 删除前发现账号改变时返回可识别的恢复错误，危险目标仍绑定原 owner/ID。
+- `account.login` accepts explicit `reauthenticate:true`, used by UI recovery;
+  CLI equivalent: `fen login --reauth`. Concurrent authorization still coalesces.
+- Persistent old credentials are retained until new authorization succeeds. Denial or
+  cancellation does not erase recovery information.
+- A 401 from account queries or runtime preparation returns to sign-in with session_expired.
+  A 403/5xx does not sign out. Rejection is fenced by both token and epoch, so a late old
+  response cannot invalidate a new login, even if a fixture reused the same token string.
+- Uninstall drains account writes and cancels incomplete device authorization. Active
+  uninstall rejects concurrent login. Reauthentication remains available after failure,
+  while the durable marker continues preventing automatic cloud recreation.
+- An account change before deletion returns a recognizable recovery error; the dangerous
+  target remains bound to the original owner/ID.
 
-`/tmp/fennec-auth-recovery-final-tests.log` 中 account、controlplane、CLI 和
-Runta 客户端 race 测试通过；`make check`、UI 检查及 macOS 13 Swift typecheck
-通过。认证测试使用 HTTP/内存凭据 fixture，没有修改用户真实登录或 Keychain。
-仍需在最终签名 DMG 和专用用户上验证真实浏览器授权、Keychain 提示、取消及升级。
+Account, controlplane, CLI, and Runta-client race tests passed in
+`/tmp/fennec-auth-recovery-final-tests.log`, along with `make check`, UI checks, and
+macOS 13 Swift checking. HTTP/in-memory credential fixtures did not modify the user's
+real login or Keychain. Real browser authorization, Keychain prompts, cancellation,
+and upgrades still require the final signed DMG and a dedicated user.
 
-### Keychain 写入期间重复登录
+### Duplicate login while writing Keychain
 
-`Reauthenticate` 原先先等待凭据写锁，再检查 authorizing；如果用户在 Keychain
-保存尚未结束时重复点击，后一个请求可能等到前一个已变成 authorized 后又启动
-新授权。现在先复用进行中的 flow，并记录请求 epoch；等待期间发生的更新登录/
-退出也不会被迟到的请求覆盖。
+`Reauthenticate` previously waited for the credential write lock before checking whether
+a flow was already authorizing. A repeated click during Keychain saving could wait until
+the first flow became authorized and then start another flow. It now reuses the active
+flow first and records the request epoch, preventing late requests from overwriting
+newer login/sign-out state while they wait.
 
-新增受控凭据写入回归：真实设备流程 HTTP fixture 走到 token 保存阶段后暂停
-写入，重复请求必须立即返回同一 authorizing epoch；释放写入后只存在一次授权。
-`/tmp/fennec-keychain-coalescing-tests.log` 中 account race 测试通过；`make check`
-通过。该测试未触发真实 Keychain 弹窗。前一提交 b8cbfd2 的 CI 42968246384 已通过。
+A controlled-write regression pauses a real device-flow HTTP fixture at token saving.
+Repeated requests must immediately return the same authorizing epoch; after releasing
+the write, only one authorization exists. Account race tests in
+`/tmp/fennec-keychain-coalescing-tests.log` and `make check` passed without a real
+Keychain prompt. Preceding commit `b8cbfd2` passed CI `42968246384`.
 
-## 后续：从 DMG 安装与分发权限
+## DMG installation and distribution permissions
 
-发现两个实际缺口：
+Two real gaps were found:
 
-- 原先可以从只读/临时 App 路径尝试注册后台，没有完整安装引导。
-- 已发布 0.2.11111055 的 ZIP 解包后，App/Contents/可执行文件为 0700，UI
-  资源为 0600：发布脚本保护签名材料的 umask 077 传播到了应用内容。
-  这不是可供其他本机用户正常读取/执行的应用包权限。
+- Read-only/temporary app locations could attempt backend registration without complete
+  installation guidance.
+- Released 0.2.11111055 ZIP contents used 0700 for app directories/executables and 0600
+  for UI resources. The release script's secret-protecting umask 077 leaked into app
+  contents, preventing normal reading/execution by other local users.
 
-本轮实现：
+Implemented:
 
-- Go 安装检查与复制逻辑，UI 启动前检查位置；需要安装时提供安装/选择目录/
-  退出入口和进度窗口。CLI 对应 `fen install --check` 与 `fen install`。
-- 签名通过后才发布复制结果；拒绝覆盖同名的其他应用，路径不能重叠或通过
-  symlink 递归进入源 App。发布失败会尝试恢复旧版本；并发目标不被覆盖。
-- 旧 bundle 保留在安装目录旁的 `.fennec-update-*`，保护仍映射旧 executable
-  的 CLI。卸载清单包含已验证的安装备份，只移除空的备份父目录。
-- 后台、内嵌终端和重启使用经过签名/原生 executable 摘要匹配的已知安装副本。
-  UI 资源仍在自身 bundle 内。没有逆推出 Gatekeeper 的原始路径、清除 quarantine
-  或关闭系统安全检查。设计参考 [Apple App Translocation Notes](https://developer.apple.com/forums/thread/724969)。
-- 构建明确使用 public bundle 权限，并在签名/公证相关步骤检查；签名材料仍在
-  bundle 外的私有目录。发布包的目录/程序为 0755、普通资源为 0644。
-- 新增 `cmd/check-bundle-permissions`；发布流水线还会挂载最终 DMG，检查卷根目录、
-  包内权限、代码签名、staple、Gatekeeper 及 CLI 安装检查，而非只检查 staging。
-- `make test-e2e-installation FENNEC_ACCEPTANCE_APP=/path/Fennec.app` 用 Go 驱动实际
-  只读磁盘镜像、签名复制、升级备份和权限检查。子进程只使用系统 PATH。
+- Go installation inspection/copy logic and a pre-UI location check. When needed, offer
+  install, choose-directory, and quit actions plus progress. CLI: `fen install --check`
+  and `fen install`.
+- Publish copies only after signature verification. Reject unrelated same-name apps,
+  overlapping paths, and symlink recursion into the source. Attempt rollback after a
+  publication failure and preserve concurrently created destinations.
+- Keep old bundles in adjacent `.fennec-update-*` directories to protect CLI processes
+  still mapping old executables. Uninstall discovery includes verified backups and
+  removes only empty backup parent directories.
+- Background service, embedded terminal, and restart use a known installed copy whose
+  signature/native executable digest match. UI resources remain in its own bundle.
+  No reverse engineering of Gatekeeper's original path, quarantine clearing, or disabling
+  of system checks was introduced. Reference:
+  [Apple App Translocation Notes](https://developer.apple.com/forums/thread/724969).
+- Build with explicit public bundle modes and check them during signing/notarization.
+  Signing material stays in private directories outside the bundle. Shipped directories/
+  executables are 0755; ordinary resources are 0644.
+- Add `cmd/check-bundle-permissions`. The release pipeline mounts the final DMG to inspect
+  volume-root/bundle permissions, signatures, staples, Gatekeeper, and CLI installation,
+  rather than checking only staging.
+- `make test-e2e-installation FENNEC_ACCEPTANCE_APP=/path/Fennec.app` uses Go to drive real
+  read-only images, signed copies, upgrade backups, and permission checks. Child processes
+  use only the system PATH.
 
-证据：`/tmp/fennec-install-final-gate-tests.log`、
-`/tmp/fennec-install-final-gate-verify.log`、
-`/tmp/fennec-install-final-gate-probe.json`。
-受限 umask 和系统 PATH 下的隔离复制测试通过，当前 LaunchAgent 注册内容未变。
-未安装到真实 Applications、未启动新 UI/后台、未访问 Keychain 或云端资源。
+Evidence: `/tmp/fennec-install-final-gate-tests.log`,
+`/tmp/fennec-install-final-gate-verify.log`, and `/tmp/fennec-install-final-gate-probe.json`.
+Isolated copying under restrictive umask/system PATH passed without changing the user's
+LaunchAgent. This stage did not install into real Applications, launch new UI/backend,
+or access Keychain/cloud resources.
 
-这仍不是干净设备的最终验收。Safari 下载产生的 quarantine、真实 Gatekeeper
-首开、安装 UI 的实际点击/移交、其他 OS 用户的运行、系统登录/重启，以及最终
-公证 DMG 的完整首次使用，都仍需按 TODO 验证；本轮没有发布新的正式 DMG。
+Clean-device acceptance still needed Safari quarantine, real Gatekeeper first launch,
+actual installation UI choices/handoff, another OS user, logout/reboot, and full first
+use of the final notarized DMG. No new official DMG was published in this stage.
 
-## 原生模型边界与展开面板验收
+## Native model boundaries and expanded-panel acceptance
 
-- Magpie 关闭时，新增常驻 channel 的 `native_models` / `native_model_set` 操作；
-  UI 与 `fen model <agent> [model|default] [effort]` 使用同一 Go 控制面。
-- 模型目录来自隔离的原生 Agent 缓存；Pi 只列出已配置 provider 的模型。
-  云端校验目录成员与 effort，跨厂商遗留选择清除为 Agent 默认值，不修改本机配置。
-- 展开面板改为完整宽度的 Model 控件、模型图标及有元数据支持时的 effort 滑杆。
-- 实测发现 Codex 写入 `[tui]` 后，旧同步基线误判冲突。修复仅允许保留云端生成的
-  TUI/notice/projects 附加字段和有效模型选择；provider 配置冲突仍拒绝覆盖。
-- 已在 canonical 开发 App 上重建并验证：原生 Codex 返回 GPT 模型目录，界面显示
-  GPT-6.1-Sol / low，菜单没有 Kimi；CLI 拒绝把 Kimi 设为原生 Codex 模型。
-  Claude 目录只含原生 aliases；Pi 无已连接原生 provider 时只显示 Default，
-  不再展示遗留的 Magpie 当前模型。
-- 测试期间临时关闭 Magpie，结束后恢复原先的开启设置；Claude/Codex/Pi 均恢复
-  configured、broker ready。未执行模型推理，未删除或停止用户会话。
-- 本地安装继续使用原始已签名 credential helper，SHA-256 保持
-  b0ee08622cd866bf1e1bfd7c5f7f76ba7eca51944364e329a6d47a33e3714d6e；完整 bundle
-  签名验证通过。仅本机开发包复用该 helper，不把它当作 macOS 13 分发验收证据。
-- `make check`、`make check-ui`、Native setup race 测试，以及 runtime/cli/terminalstream
-  race 测试通过。完整 setup 测试仍有三组安装用例因 macOS 缺少 flock 失败。
+- With Magpie off, `native_models` / `native_model_set` use the resident channel.
+  UI and `fen model <agent> [model|default] [effort]` share the Go control plane.
+- Catalogs come from isolated native-agent caches. Pi lists only configured providers.
+  The cloud validates catalog membership/effort and clears inherited cross-vendor
+  choices to the agent default without changing local configuration.
+- Expanded panels gained a full-width Model control, model icon, and an effort slider
+  only where metadata supports it.
+- Live inspection found that Codex adding `[tui]` triggered a false synchronization
+  conflict. Preserve only cloud-generated TUI/notice/projects additions and valid model
+  choices; overlapping provider configuration conflicts still reject overwrites.
+- The canonical development app was rebuilt and exercised. Native Codex returned GPT
+  choices and displayed GPT-6.1-Sol / low without Kimi; CLI rejected a Kimi choice for
+  native Codex. Claude exposed native aliases only. Pi without a connected native
+  provider showed Default, not an inherited Magpie model.
+- Magpie was temporarily disabled and then restored to its original enabled state.
+  Claude/Codex/Pi returned to configured, with broker ready. No inference, user-session
+  deletion, or user-session stop was performed.
+- Local installation retained the original signed credential helper, SHA-256
+  `b0ee08622cd866bf1e1bfd7c5f7f76ba7eca51944364e329a6d47a33e3714d6e`.
+  Full bundle signatures verified. This local-only helper reuse was not evidence of
+  macOS 13 distribution acceptance.
+- `make check`, `make check-ui`, Native setup race tests, and runtime/cli/terminalstream
+  race tests passed. Three groups of full setup installation tests still failed locally
+  because macOS lacked flock.
 
-证据在 `/tmp/fennec-native-tests.log`、`/tmp/fennec-model-control-tests.log`、
-`/tmp/fennec-native-codex-models.json`、`/tmp/fennec-models-restored-state.json`。
-尚未发布新 DMG；干净 Mac 首次安装与全部 onboarding 验收仍未完成。
+Evidence: `/tmp/fennec-native-tests.log`, `/tmp/fennec-model-control-tests.log`,
+`/tmp/fennec-native-codex-models.json`, and `/tmp/fennec-models-restored-state.json`.
+No new DMG was published at that point; clean-Mac installation/full onboarding remained incomplete.
 
-## 原生 OAuth 与遗留网关配置隔离
+## Isolating native OAuth from leftover gateway configuration
 
-继续审计发现，已有原生 OAuth 时，本地 localhost gateway 配置仍会导致
-`local_provider_unavailable`。新增源端导出、云端应用和执行环境三处约束：
-有原生 OAuth 身份才移除代理 endpoint/key 覆盖；没有原生 OAuth 时不会把
-代理 API key 改送官方服务。Claude 环境变量及 settings.env 内的显式 OAuth
-均覆盖；共享环境中其他 Agent 的凭据不再覆盖原生身份。
+The next audit found that localhost gateway configuration could still cause
+`local_provider_unavailable` despite an existing native OAuth login. Source export,
+cloud application, and execution environment now remove proxy endpoint/key overrides
+only when a native OAuth identity exists. Without native OAuth, a proxy API key is
+never redirected to an official service. Claude OAuth in environment/settings.env is
+covered, and another agent's shared environment credentials no longer override native identity.
 
-回归覆盖：Codex/Claude saved OAuth、Claude 环境变量/配置内 OAuth、代理 API
-identity 带旧 OAuth 字段、旧客户端导出、云端 TUI 配置保留、跨 Agent 环境隔离。
-`/tmp/fennec-native-identity-tests.log` 为 Native setup race 测试证据。
+Regressions cover saved Codex/Claude OAuth, Claude environment/settings OAuth, API-key
+identities with stale OAuth fields, old-client exports, cloud TUI preservation, and
+cross-agent environment isolation. Native setup race evidence:
+`/tmp/fennec-native-identity-tests.log`.
 
-开发机只读凭据形状审计确认：当前 Claude 无 saved/environment 原生 OAuth，
-Pi 的原生 auth provider 列表为空。因此它们在关闭 Magpie 后尚不可用，不能把
-fixture 的 OAuth 成功用例当作这两个实际账号的原生登录验收。真实开发包关闭
-Magpie 时 Codex configured；恢复原先 Magpie 开启设置后三个 Agent 均 configured，
-broker ready。记录为 `/tmp/fennec-native-identity-live-off.json` 与
-`/tmp/fennec-native-identity-live-restored.json`。未运行模型推理或停止用户会话。
+Read-only credential-shape inspection found no saved/environment Claude native OAuth
+and an empty Pi native auth-provider list on the development machine. They therefore
+remained unavailable with Magpie off; fixture successes cannot stand in for those real
+accounts' native login acceptance. The real development package configured Codex with
+Magpie off and restored all three agents plus broker readiness when the original
+Magpie setting was restored. Evidence: `/tmp/fennec-native-identity-live-off.json` and
+`/tmp/fennec-native-identity-live-restored.json`. No inference or user-session stop ran.
 
-尚需产品内原生登录入口、专用原生测试账号和最终 DMG/干净 Mac 验收；TODO
-对应项保持未完成。此次仅为开发与开发机验证，不是最终用户交付完成证据。
+Product-native sign-in, dedicated native test accounts, and final-DMG/clean-Mac acceptance
+were still required. TODO items remained unchecked; development evidence did not prove
+final end-user delivery.
 
-## 原生账户入口与 UI 收敛（开发候选，未完成最终验收）
+## Native account entry and UI consolidation (development candidate)
 
-按后续用户要求更新产品边界：首次初始化检测到实际安装的 Magpie 时默认开启，
-未安装则关闭，保存过的手动选择优先；正式 UI 不再提供卸载入口或卸载弹窗，
-`fen uninstall` 保留为 clean macOS 测试工具。这些要求取代本文件较早的默认值
-和卸载 UI 描述，TODO 的最终验收项仍全部保留。
+Later user decisions changed the product boundary: first initialization enables Magpie
+only when it is actually installed locally, otherwise disables it; saved manual choices
+always win. Production UI no longer offers uninstall, while `fen uninstall` remains a
+clean-macOS test tool. These requirements supersede earlier defaults and uninstall UI
+descriptions in this record. All final TODO acceptance items remain required.
 
-本轮实现：
+Implemented:
 
-- 原生账户信息经 `agent.account.get` / `fen agent account` 读取，本机与云端按
-  运行位置区分，返回白名单字段（账户邮箱、认证类型、明确的套餐名称），不返回
-  token、API key 或凭空推断额度。显式 Claude OAuth token 不沿用另一登录文件的
-  邮箱或套餐。无可迁移凭据正常返回未登录，单个 Agent 不阻塞其他 Agent。
-- 原生 cloud 登录经 `agent.login.start/finish/cancel` 与 `fen agent login` 共用
-  Go 控制面和常驻协议 channel。云端调用已安装的原生 CLI，在独立目录中登录，
-  完成后原子选择该账户。旧请求、取消请求不能迟到覆盖身份，本地凭据同步不覆盖
-  用户明确选择的云端账户。确认登录进程停止后清除取消尝试的临时凭据。
-- daemon 从原有会话列表响应中的公开登录 ID 识别完成状态，无需 UI 回调或新建
-  SSH channel；按用户及 runtime 保存源选择提示并重新确认配置。
-- 缺少凭据等稳定状态允许复用准备结果，不再因此反复安装环境；真实安装失败和
-  未确认的凭据读取失败仍不能缓存为成功。
-- 原生模式显示账户订阅，Magpie 模式提供对应本机/云端的模型选择，本机选择不会
-  错写云端。保存反馈留在原控件内，滑杆改为细灰轨道、离散刻度与白色圆形滑块，
-  交互期间不替换正在拖动的控件。界面文案遵循不使用句号的项目规则。
-- 会话页不再把 Agent 未登录汇总成全局环境错误，先渲染 Agent 结果再渲染准备状态。
-- 构建时重新复制 UI 资源，删除的页面脚本不会残留在重复使用的 staging bundle。
+- `agent.account.get` / `fen agent account` read native account information separately
+  for local/cloud locations, returning only allowlisted fields: account email, auth type,
+  and explicit plan name. No tokens, API keys, or inferred quotas are returned. An explicit
+  Claude OAuth token does not borrow another login file's email/plan. Missing migratable
+  credentials yield a normal signed-out state; one agent does not block others.
+- `agent.login.start/finish/cancel` and `fen agent login` share the Go control plane and
+  resident protocol channel. An installed native CLI signs in inside a separate cloud
+  directory; completion atomically selects that account. Stale/canceled requests cannot
+  overwrite identity, and local credential sync cannot overwrite an explicit cloud choice.
+  Canceled attempts' temporary credentials are removed after the login process is confirmed stopped.
+- The daemon detects completion from public login IDs in the existing session listing,
+  without a UI callback or another SSH channel. It persists source-selection hints by
+  user/runtime and reconfirms configuration.
+- Stable missing-credential states allow preparation reuse instead of repeated installation.
+  Actual install failures or unconfirmed credential reads are not cached as success.
+- Native mode shows account/subscription information. Magpie mode offers the appropriate
+  local/cloud model selector; local choices cannot write cloud state. Save feedback stays
+  in the control. Sliders use a thin gray track, discrete ticks, and a white circular thumb,
+  and dragging controls are not replaced. UI copy follows the no-sentence-period rule.
+- Sessions no longer turns unsigned-in agents into a global environment error. Agent
+  results render before preparation state.
+- Builds recopy UI resources so removed scripts cannot survive in reused staging bundles.
 
-开发验证：Native setup、CLI、runtime、terminalstream、controlplane、uninstall
-相关 Go/race 测试，以及 `make check` / `make check-ui` 已分别执行。完整 setup
-测试在本机仍有已有的 flock 安装用例失败，须由 Linux CI 再验证。
-证据包括 `/tmp/fennec-onboarding-final-focused.log`、
-`/tmp/fennec-final-control-tests.log`、`/tmp/fennec-scope-cache-tests.log`。
+Development verification included Native setup, CLI, runtime, terminalstream, controlplane,
+and uninstall Go/race tests, plus `make check` / `make check-ui`. Full setup still had the
+existing macOS flock installation failures, requiring Linux CI confirmation. Evidence:
+`/tmp/fennec-onboarding-final-focused.log`, `/tmp/fennec-final-control-tests.log`, and
+`/tmp/fennec-scope-cache-tests.log`.
 
-限制：原生登录的 subprocess 测试使用独立 Go fixture agent，并非真实订阅登录。
-尚缺专用账号完成 Codex/Claude/Pi 实际登录、取消、过期和响应任务的完整验收；
-staging 的构建/签名检查不能替代最终 CI DMG、干净 Mac、系统重启或独立用户验收。
-此次没有删除真实云电脑，也未将开发签名包替换到当前正式安装的 /Applications。
+Limitations: native-login subprocess tests used an isolated Go fixture agent, not a real
+subscription login. Dedicated accounts must still exercise actual Codex/Claude/Pi login,
+cancellation, expiry, and task response. Staging/signature checks do not replace final
+CI DMG, clean Mac, reboot, or independent-user acceptance. No real cloud computer was
+deleted, and no development-signed package replaced the current official `/Applications` install.
 
-## 暖态配置与干净 Mac 入口修复
+## Warm configuration and clean-Mac entry points
 
-发现 `prepareRuntime` 曾按本机 CLI 可执行文件筛选云端准备清单，导致干净 Mac
-缺少 Claude/Codex/Pi 的准备路径；`PanelCatalog(nil)` 也只显示 Coming soon 项。
-现已将公开云端能力与本机安装事实分离，未安装仍显示真实未安装状态，但能选择
-云端 Agent。发现测试 `TestCleanMacKeepsCloudAgentEntryPoints` 覆盖了该回归。
+Cloud preparation previously depended on locally installed CLI executables, while an
+empty discovery result hid Claude/Codex/Pi from the panel. Cloud capability is now separate
+from local installation evidence; absent local tools remain honestly marked not installed.
+`TestCleanMacKeepsCloudAgentEntryPoints` covers this regression.
 
-Magpie 开关曾参与公共会话服务安装指纹，使切换触发 Herdr/Go helper 重传。
-公共安装指纹现与网关开关分离。新增 `reconfigure_runtime` 操作，在已验证的
-常驻通道内迁移配置、确认路由并返回模型目录；仅在变更前确认缺少工具/服务时
-返回需要初始化，变更后的失败不会自动换连接重放。过期模式的结果不发布为就绪。
+Magpie used to participate in the common installation fingerprint, forcing Herdr/helper
+uploads on mode changes. Common installation is now independent. `reconfigure_runtime`
+uses the verified resident protocol, synchronizes configuration, reads back routes and
+then reads the model catalog. Initialization is requested only before mutation when
+required resources are absent. A post-mutation failure cannot replay through another
+connection, and superseded mode results do not publish readiness.
 
-`TestReconfigurationUsesExistingResidentProtocol` 验证多次配置使用同一协议进程，
-`/tmp/fennec-warm-config-control-tests.log`、`/tmp/fennec-reconfigure-test.log` 为
-Go/race 回归结果。这是隔离配置与协议测试，不是实际 WAN、真实 Magpie 完成路径
-或完整 UI 的 1 秒验收。该性能要求仍未勾选完成，也未据此宣称达标。
+`TestReconfigurationUsesExistingResidentProtocol` verifies repeated use of one protocol
+process. Evidence: `/tmp/fennec-warm-config-control-tests.log` and
+`/tmp/fennec-reconfigure-test.log`. These isolated regressions do not prove real Magpie
+or full-UI completion within one second. Visual iterations use `make preview-ui` and
+remain distinct from real authorization, backend timing, and clean-Mac acceptance.
 
-按用户要求，后续视觉迭代用 `make preview-ui`，不每次制作/安装 DMG。预览与
-真实订阅授权、生产后端性能及干净 Mac 验收分开记录。
+## Installed read-only baseline
 
-## 已安装版本只读操作基线
-
-针对 `/Applications/Fennec.app` 0.2.11112304 的既有常驻通道执行只读测量，daemon
-build ID 为 `a8c76277299e3fdffbf422a3bff5e410f11d296e4d6567eb58ff91e550647196`。
-`model.get` 五次为 305.270、303.670、301.630、491.705、300.646ms；
-`agent.account.get`（cloud/Codex）五次为 269.481、501.757、271.255、284.470、269.842ms。
-测量前后通道 generation 均未变化，未发送模型推理或修改账户设置。
-
-新增 `cmd/profile-model-ops`：错误、无可用结果、任一样本超预算，以及测量期间
-通道/daemon 变化均非零退出。证据在 `/tmp/fennec-model-read-baseline.jsonl` 与
-`/tmp/fennec-account-read-baseline.jsonl`。这些只是已安装版本的真实只读控制路径
-基线，不证明新版 Magpie 模式切换、全链路 UI 或全部操作已达到 1 秒。
+The existing resident channel in `/Applications/Fennec.app` 0.2.11112304 was measured.
+Daemon build: `a8c76277299e3fdffbf422a3bff5e410f11d296e4d6567eb58ff91e550647196`.
+Five `model.get` samples were 305.270, 303.670, 301.630, 491.705 and 300.646ms.
+Five cloud/Codex `agent.account.get` samples were 269.481, 501.757, 271.255, 284.470
+and 269.842ms. Channel generation stayed unchanged; no inference or settings mutation
+was performed. `cmd/profile-model-ops` fails errors, unusable responses, any over-budget
+sample, and channel/daemon changes. Evidence: `/tmp/fennec-model-read-baseline.jsonl`
+and `/tmp/fennec-account-read-baseline.jsonl`. This does not establish the new Magpie
+switch path, full UI latency, or the complete one-second requirement.

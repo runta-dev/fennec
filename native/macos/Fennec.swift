@@ -482,18 +482,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     private func permissionText(_ key: String) -> String {
-        let copy: [String: [String]] = [
-            "project": ["选择允许此智能体同步的 Git 项目。文件会与您的云电脑双向同步。", "選擇允許此智慧代理同步的 Git 專案。檔案會與您的雲電腦雙向同步。", "Choose a Git project this agent may sync. Files sync both ways with your cloud computer.", "このエージェントに同期を許可する Git プロジェクトを選択してください。ファイルはクラウドと双方向に同期されます。", "이 에이전트가 동기화할 Git 프로젝트를 선택하세요. 파일은 클라우드 컴퓨터와 양방향으로 동기화됩니다。"],
-            "title": ["本机访问请求", "本機存取請求", "Local access request", "ローカルアクセスの要求", "로컬 접근 요청"],
-            "hookTitle": ["本机 Hook 运行请求", "本機 Hook 執行請求", "Local hook request", "ローカルフック実行の要求", "로컬 훅 실행 요청"],
-            "hookNote": ["在此 Mac 上运行，输出会返回云端智能体。始终允许仅适用于此 Hook 配置。", "在此 Mac 上執行，輸出會傳回雲端智慧代理。一律允許僅適用於此 Hook 設定。", "Runs on this Mac and returns its output to your cloud agent. Always Allow applies to this hook configuration.", "この Mac で実行し、出力をクラウドエージェントに返します。常に許可はこのフック設定に適用されます。", "이 Mac에서 실행하고 출력을 클라우드 에이전트로 반환합니다. 항상 허용은 이 훅 설정에 적용됩니다."],
-            "note": ["始终允许将自动批准此配对设备的后续访问。", "一律允許將自動核准此配對裝置的後續存取。", "Always Allow automatically approves future access from this paired device.", "常に許可を選択すると、このペアリング済みデバイスからの今後のアクセスを自動で許可します。", "항상 허용을 선택하면 이 페어링된 기기의 이후 접근을 자동으로 허용합니다."],
-            "always": ["始终允许", "一律允許", "Always Allow", "常に許可", "항상 허용"],
-            "deny": ["拒绝", "拒絕", "Deny", "拒否", "거부"],
-            "allow": ["允许一次", "允許一次", "Allow once", "今回のみ許可", "한 번 허용"]
-        ]
-        let index = ["zh-CN": 0, "zh-TW": 1, "en-US": 2, "en-GB": 2, "ja": 3, "ko": 4][nativeLanguage] ?? 0
-        return copy[key]?[index] ?? key
+        L10n.text(key, language: nativeLanguage)
     }
 
     private func renderApprovals() {
@@ -522,7 +511,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             stack.widthAnchor.constraint(equalToConstant: innerWidth),
             stack.topAnchor.constraint(equalTo: controller.view.topAnchor, constant: inset)
         ])
-        let title = NSTextField(labelWithString: permissionText(request["kind"] == "hook" ? "hookTitle" : "title"))
+        let title = NSTextField(labelWithString: permissionText(request["kind"] == "hook" ? "permission.hookTitle" : "permission.title"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
         stack.addArrangedSubview(title)
         let scroll = NSScrollView()
@@ -547,15 +536,15 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         stack.addArrangedSubview(scroll)
         scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: commandHeight).isActive = true
-        let note = NSTextField(wrappingLabelWithString: permissionText(request["kind"] == "hook" ? "hookNote" : "note"))
+        let note = NSTextField(wrappingLabelWithString: permissionText(request["kind"] == "hook" ? "permission.hookNote" : "permission.note"))
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
         note.preferredMaxLayoutWidth = innerWidth
         stack.addArrangedSubview(note)
         note.widthAnchor.constraint(equalToConstant: innerWidth).isActive = true
-        let always = NSButton(title: permissionText("always"), target: self, action: #selector(alwaysAllowCommand))
-        let deny = NSButton(title: permissionText("deny"), target: self, action: #selector(denyCommand))
-        let allow = NSButton(title: permissionText("allow"), target: self, action: #selector(allowCommand))
+        let always = NSButton(title: permissionText("permission.always"), target: self, action: #selector(alwaysAllowCommand))
+        let deny = NSButton(title: permissionText("permission.deny"), target: self, action: #selector(denyCommand))
+        let allow = NSButton(title: permissionText("permission.allow"), target: self, action: #selector(allowCommand))
         for button in [always,deny,allow] { button.bezelStyle = .rounded }
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -623,9 +612,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
             let code = account["user_code"] as? String ?? ""
-            let loginErrors = ["authorization_expired":"授权已过期，请重新登录。", "session_expired":"登录已过期，请重新登录。", "access_denied":"授权已取消。"]
+            let loginErrors = ["authorization_expired":"[[i18n:ui.authorization_expired_sign_in_again]]", "session_expired":"[[i18n:ui.session_expired_sign_in_again]]", "access_denied":"[[i18n:ui.authorization_cancelled]]"]
             let errorCode = account["error"] as? String
-            let message = pending ? (code.isEmpty ? "正在连接 Runta…" : "请在浏览器确认授权码：" + code) : (errorCode.map { loginErrors[$0] ?? "暂时无法完成登录，请重试。" } ?? "")
+            let message = pending ? (code.isEmpty ? "[[i18n:ui.connecting_to_runta]]" : "[[i18n:ui.confirm_this_code_in_your_browser]]" + code) : (errorCode.map { loginErrors[$0] ?? "[[i18n:ui.could_not_sign_in_try_again]]" } ?? "")
             renderLogin(message, pending || account["status"] as? String == "restoring")
             if pending, let link = account["verification_url"] as? String, link != openedLoginURL,
                let url = URL(string: link), url.scheme == "https", url.host == "dashboard.runta.com" {
@@ -655,7 +644,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let epoch = accountEpoch
         control.call("account.profile") { [weak self] result in
             guard let self, self.accountEpoch == epoch, case .success(let value) = result, let profile = value as? [String:Any] else { return }
-            self.render("renderProfile", [profile["display_name"] as? String ?? profile["email"] as? String ?? "账户"])
+            let name = profile["display_name"] as? String ?? profile["email"] as? String
+            self.render("renderProfile", [name ?? "", name == nil])
         }
     }
     @objc private func refreshAgents() {
@@ -685,7 +675,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         control.call("account.billing") { [weak self] result in
             guard let self else { return }; self.loadingBilling = false; self.renderRefreshActivity()
             guard self.accountEpoch == epoch else { return }
-            switch result { case .success(let value): self.render("renderBilling", [value]); case .failure: self.render("renderBilling", [["error":"无法读取账户用量，请重试"]]) }
+            switch result { case .success(let value): self.render("renderBilling", [value]); case .failure: self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
         }
     }
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {

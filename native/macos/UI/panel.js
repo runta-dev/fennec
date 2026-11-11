@@ -116,7 +116,7 @@ window.renderAgents = agents => {
     name.textContent = agent.name;
     const state = document.createElement('span');
     state.className = 'detected';
-    state.textContent = '本机';
+    state.textContent = "[[i18n:ui.this_mac]]";
     const arrow = document.createElement('span');
     arrow.className = 'chevron';
     arrow.innerHTML = chevron;
@@ -125,7 +125,7 @@ window.renderAgents = agents => {
       head.disabled=true;
       head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
       head.classList.add('agent-coming-soon');
-      state.textContent='即将支持';arrow.remove();
+      state.textContent="[[i18n:ui.coming_soon]]";arrow.remove();
       if(expandedAgent===agent.id)expandedAgent=null;
       article.append(head);list.append(article);continue;
     }
@@ -138,10 +138,10 @@ window.renderAgents = agents => {
     const clip = document.createElement('div');
     clip.className = 'agent-fold-clip';
     detail.innerHTML = `
-      <div class="takeover"><span class="takeover-name">运行位置</span><div class="location-segments" role="radiogroup" aria-label="运行位置"><button type="button" role="radio" data-location="local" aria-checked="true" disabled>本机</button><button type="button" role="radio" data-location="cloud" aria-checked="false" disabled>云电脑</button></div></div>
-      <div class="takeover-status">登录后开启云端接管</div>
+      <div class="takeover"><span class="takeover-name">[[i18n:ui.run_location]]</span><div class="location-segments" role="radiogroup" aria-label="[[i18n:ui.run_location]]"><button type="button" role="radio" data-location="local" aria-checked="true" disabled>[[i18n:ui.this_mac]]</button><button type="button" role="radio" data-location="cloud" aria-checked="false" disabled>[[i18n:ui.cloud_computer]]</button></div></div>
+      <div class="takeover-status">[[i18n:ui.sign_in_for_cloud_takeover]]</div>
 `;
-    if (!agent.installed) state.textContent = '未安装';
+    if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
       if(expandedAgent && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(agent.id);
@@ -190,24 +190,24 @@ window.renderAgents = agents => {
        button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const other=choices[1-index];if(!other.disabled){other.click();other.focus();}};
       });
       if (enabled) {
-        state.textContent = '云电脑';
+        state.textContent = "[[i18n:ui.cloud_computer]]";
       }
-      const labels = {distribution_unsupported:'此版本的云端安装适配尚未完成', version_detection_failed:'无法读取智能体版本', installation_failed:'智能体版本安装失败', catalog_refresh_failed:'模型目录刷新失败', configured:'可开启', model_unavailable:'所选模型暂不可用', model_selection_required:'请先在本机选择模型', configuration_failed:'模型配置失败', verification_failed:'模型配置验证失败', model_query_failed:'无法读取本机模型', local_gateway_not_found:'未找到本机模型网关'};
-      detail.querySelector('.takeover-status').textContent = activeTakeoverAgents.has(agent.id) ? '' : route && route.status !== 'configured' ? (labels[route.status] || '暂时无法连接，请重试') : enabled ? '正在连接…' : '';
+      const labels = {distribution_unsupported:"[[i18n:ui.cloud_setup_for_this_version_is_not_yet_implemented]]", version_detection_failed:"[[i18n:ui.cannot_read_agent_version]]", installation_failed:"[[i18n:ui.agent_version_installation_failed]]", catalog_refresh_failed:"[[i18n:ui.model_catalog_refresh_failed]]", configured:"[[i18n:ui.ready_to_enable]]", model_unavailable:"[[i18n:ui.selected_model_unavailable]]", model_selection_required:"[[i18n:ui.select_a_local_model_first]]", configuration_failed:"[[i18n:ui.model_configuration_failed]]", verification_failed:"[[i18n:ui.model_verification_failed]]", model_query_failed:"[[i18n:ui.cannot_read_local_model]]", local_gateway_not_found:"[[i18n:ui.local_model_gateway_not_found]]"};
+      detail.querySelector('.takeover-status').textContent = activeTakeoverAgents.has(agent.id) ? '' : route && route.status !== 'configured' ? (labels[route.status] || "[[i18n:ui.unable_to_connect_please_try_again]]") : enabled ? "[[i18n:ui.connecting]]" : '';
 
       const statusNode = detail.querySelector('.takeover-status');
       if (!activeTakeoverAgents.has(agent.id)) {
-        const recoveryLabels = {model_rate_limited:'模型限流，正在自动重试...', model_temporarily_unavailable:'模型暂时不可用，正在自动重试...', model_authentication_required:'模型凭据失效，请重新授权', model_access_denied:'模型服务拒绝访问，请检查服务限制'};
+        const recoveryLabels = {model_rate_limited:"[[i18n:ui.model_rate_limited_retrying]]", model_temporarily_unavailable:"[[i18n:ui.model_temporarily_unavailable_retrying]]", model_authentication_required:"[[i18n:ui.model_credentials_expired_sign_in_again]]", model_access_denied:"[[i18n:ui.model_access_denied_check_your_provider_s_limits]]"};
         if (recoveryLabels[route?.status]) statusNode.textContent = recoveryLabels[route.status];
       }
       const unknown = !takeoverSelectionKnown && agent.cloudSupported && !enabled;
       if(unknown){
-        state.textContent='';state.classList.add('agent-location-skeleton','setting-skeleton');state.setAttribute('aria-label','正在读取设置');toggle.hidden=true;statusNode.textContent='';
-        const placeholder=document.createElement('span');placeholder.className='takeover-loading setting-skeleton';placeholder.setAttribute('aria-label','正在读取设置');
+        state.textContent='';state.classList.add('agent-location-skeleton','setting-skeleton');state.setAttribute('aria-label',"[[i18n:ui.loading_settings]]");toggle.hidden=true;statusNode.textContent='';
+        const placeholder=document.createElement('span');placeholder.className='takeover-loading setting-skeleton';placeholder.setAttribute('aria-label',"[[i18n:ui.loading_settings]]");
         detail.querySelector('.takeover').append(placeholder);
       }
       statusNode.hidden = !statusNode.textContent;
-      if(statusNode.textContent==='正在连接…'){statusNode.textContent='';statusNode.hidden=true;state.classList.add('loading-shimmer');}
+      if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
       {
         const row=document.createElement('div');row.className='agent-integration-row';
@@ -223,7 +223,7 @@ window.renderAgents = agents => {
         const location=enabled?'cloud':'local';const key=agent.id+':'+location;const account=nativeAccountStates.get(key);
         if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(agent.id,location);
         statusNode.hidden=true;statusNode.textContent='';
-        const card=document.createElement('div');card.className='native-account-card';card.setAttribute('aria-label','账户');
+        const card=document.createElement('div');card.className='native-account-card';card.setAttribute('aria-label',"[[i18n:ui.account]]");
         const entries=account?.status==='signed_in'&&account.accounts?.length?account.accounts:[null];
         for(const identity of entries){
           const accountRow=document.createElement('div');accountRow.className='native-account-row';
@@ -231,14 +231,14 @@ window.renderAgents = agents => {
           badge.innerHTML=identity?'<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="m5.8 10 2.7 2.8 5.7-6" fill="none" stroke="var(--card)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>':'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><circle cx="10" cy="7" r="2.4"/><path d="M5.4 16v-1.2c0-2 1.9-3.1 4.6-3.1s4.6 1.1 4.6 3.1V16"/></svg>';
           const name=document.createElement('span');name.className='native-account-name';
           if(identity)name.dataset.identity='true';
-          name.textContent=identity?(identity.email||({openai:'OpenAI',anthropic:'Anthropic','openai-codex':'ChatGPT',google:'Google'}[identity.provider]||identity.provider)):(account?.status==='signed_out'?'未登录':account?'读取账户失败':'');
+          name.textContent=identity?(identity.email||({openai:'OpenAI',anthropic:'Anthropic','openai-codex':'ChatGPT',google:'Google'}[identity.provider]||identity.provider)):(account?.status==='signed_out'?"[[i18n:ui.not_signed_in]]":account?"[[i18n:ui.account_unavailable]]":'');
           if(!account)name.classList.add('setting-skeleton');
           accountRow.append(badge,name);
           if(identity){const plan=document.createElement('span');plan.className='native-subscription';plan.textContent=identity.subscription||(identity.auth_type==='api_key'?'API key':'OAuth');accountRow.append(plan);}
-          const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label','刷新账户');refresh.title='刷新账户';refresh.disabled=nativeAccountPending.has(key);
+          const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label',"[[i18n:ui.refresh_account]]");refresh.title="[[i18n:ui.refresh_account]]";refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
           refresh.onclick=()=>{loadNativeAccount(agent.id,location,true);refresh.disabled=true;};accountRow.append(refresh);
-          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent='登录';login.disabled=!route;login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
+          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
           card.append(accountRow);
         }
         detail.append(card);
@@ -248,17 +248,17 @@ window.renderAgents = agents => {
         const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(agent.id);
         if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(agent.id))loadLocalGatewayModel(agent.id);
         if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(agent.id))loadNativeModel(agent.id);
-        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:'Default'}];
+        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
         const current=magpieEnabled ? (local?localModel?.model:route?.model) || '' : native?.model || '';
         const row=document.createElement('div');row.className='agent-model-row';
-        const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label','Model');
+        const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label',"[[i18n:ui.model]]");
         for(const model of models){const option=document.createElement('option');option.value=model.id;option.textContent=model.name;select.append(option);}
         select.value=current;
         const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
         trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
-        const label=document.createElement('span');label.className='field-label';label.textContent='Model';
-        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?'重试':'') : models.find(m=>m.id===current)?.name || current || (magpieEnabled?'选择模型':'Default');
-        if(local&&localModel?.error)value.textContent='重试';
+        const label=document.createElement('span');label.className='field-label';label.textContent="[[i18n:ui.model]]";
+        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?"[[i18n:ui.retry]]":'') : models.find(m=>m.id===current)?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
+        if(local&&localModel?.error)value.textContent="[[i18n:ui.retry]]";
         if(!magpieEnabled && !native && nativeModelRequests.get(agent.id)==='pending')value.classList.add('setting-skeleton');
         const modelIcon=icon.cloneNode(true);modelIcon.className='model-provider-icon';modelIcon.alt='';
         const provider=magpieEnabled ? current.split('/')[0] : models.find(m=>m.id===current)?.provider;
@@ -273,10 +273,10 @@ window.renderAgents = agents => {
         if(!magpieEnabled && selected?.efforts?.length){
           const levels=['',...selected.efforts];
           const effort=document.createElement('div');effort.className='agent-effort';
-          const caption=document.createElement('label');caption.textContent='Effort';
-          const result=document.createElement('span');result.textContent=native.effort || 'Default';caption.append(result);
+          const caption=document.createElement('label');caption.textContent="[[i18n:ui.reasoning_effort]]";
+          const result=document.createElement('span');result.textContent=native.effort || "[[i18n:ui.default]]";caption.append(result);
           const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max=String(levels.length-1);slider.step='1';slider.value=String(Math.max(0,levels.indexOf(native.effort||'')));slider.disabled=modelSaving;slider.setAttribute('aria-label','Reasoning effort');slider.setAttribute('aria-valuetext',result.textContent);
-          slider.oninput=()=>{result.textContent=levels[Number(slider.value)]||'Default';slider.setAttribute('aria-valuetext',result.textContent);};
+          slider.oninput=()=>{result.textContent=levels[Number(slider.value)]||"[[i18n:ui.default]]";slider.setAttribute('aria-valuetext',result.textContent);};
           slider.onpointerdown=()=>{agentEffortEditing=true;};slider.onkeydown=event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))agentEffortEditing=true;};
           slider.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:current,effort:levels[Number(slider.value)]}));};
           const track=document.createElement('div');track.className='effort-track';
@@ -310,7 +310,8 @@ window.renderAuthorized = () => {
   authorized = true;
   document.querySelector('#notice').hidden = true;
   const header = document.querySelector('.header-login');
-  header.textContent = '账户';
+  header.textContent = "[[i18n:ui.account]]";
+  header.setAttribute('data-i18n','ui.account');
   header.disabled = false;
   header.classList.remove('login');
   header.classList.add('account-link');
@@ -357,7 +358,7 @@ function openSessionActions(trigger,row){
  const stop=document.createElement('button');stop.type='button';stop.className='session-stop';stop.setAttribute('role','menuitem');
  const stopIcon=document.createElement('span');stopIcon.className='session-kill-icon';
  stopIcon.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5" fill="currentColor"/></svg>';
- const stopLabel=document.createElement('span');stopLabel.textContent=typeof translate==='function'?translate('终止会话'):'终止会话';
+ const stopLabel=document.createElement('span');stopLabel.textContent=typeof translate==='function'?translate("[[i18n:ui.stop_session]]"):"[[i18n:ui.stop_session]]";
  stop.append(stopIcon,stopLabel);
  stop.onclick=()=>{
   if(!row.canStop||stop.disabled)return;
@@ -414,11 +415,11 @@ window.renderRuntimes = (rows, message) => {
     feedback.append(icon);
   }
   const text = document.createElement('span');
-  text.textContent = message || '暂无活跃会话';
+  text.textContent = message || "[[i18n:ui.no_active_sessions]]";
   feedback.append(text);
   list.hidden = false;
   const groups = [
-    ['idle','空闲'],['working','正在工作'],['blocked','等待输入'],['error','会话出错']
+    ['idle',"[[i18n:ui.idle]]"],['working',"[[i18n:ui.working]]"],['blocked',"[[i18n:ui.needs_input]]"],['error',"[[i18n:ui.errored]]"]
   ];
   for (const [group,label] of groups) {
    const members=rows.filter(row=>(row.group || 'unknown')===group);
@@ -434,6 +435,7 @@ window.renderRuntimes = (rows, message) => {
     if(row.depth) item.classList.add('session-child');
     const info = document.createElement('div'); info.className = 'runtime-info';
     const name = document.createElement('span'); name.className='session-title'; name.textContent = row.name; name.title=row.name;
+    if(row.untitled)name.setAttribute('data-i18n','ui.untitled_session');
     const status = document.createElement('span'); status.className = 'runtime-status';
     status.classList.add('session-state-dot');status.dataset.state=group;
     status.setAttribute('aria-label',row.displayStatus || row.status);
@@ -461,10 +463,10 @@ window.renderRuntimes = (rows, message) => {
       const payload=JSON.stringify({address:row.address,session_id:row.sessionID});
       const copy=document.createElement('button');copy.className='session-copy';copy.type='button';
       copy.dataset.sessionId=row.sessionID;
-      copy.setAttribute('aria-label','复制连接命令');
+      copy.setAttribute('aria-label',"[[i18n:ui.copy_attach_command_2]]");
       const terminalIcon=document.createElement('span');terminalIcon.className='session-terminal-icon';
       terminalIcon.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>';
-      const copyLabel=document.createElement('span');copyLabel.className='session-copy-label';copyLabel.textContent='复制连接命令';
+      const copyLabel=document.createElement('span');copyLabel.className='session-copy-label';copyLabel.textContent="[[i18n:ui.copy_attach_command_2]]";
       copy.append(terminalIcon,copyLabel);
       const copyResult=document.createElement('span');copyResult.className='session-copy-result';
       copyResult.setAttribute('role','status');copyResult.setAttribute('aria-live','polite');
@@ -473,12 +475,12 @@ window.renderRuntimes = (rows, message) => {
       copy.onclick=()=>send('copy-attach:'+payload);
       actions.append(copy);
       const browser=document.createElement('button');browser.className='session-more session-browser';browser.type='button';
-      browser.setAttribute('aria-label','在浏览器打开');browser.title='在浏览器打开';
+      browser.setAttribute('aria-label',"[[i18n:ui.open_in_browser]]");browser.title="[[i18n:ui.open_in_browser]]";
       browser.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 3h6v6m0-6-9 9M8 5H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3"/></svg>';
       browser.onclick=()=>send('browser-attach:'+payload);actions.append(browser);
       if(row.canStop){
        const more=document.createElement('button');more.className='session-more';more.type='button';
-       more.setAttribute('aria-label','会话操作');more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded','false');
+       more.setAttribute('aria-label',"[[i18n:ui.session_actions]]");more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded','false');
        more.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg>';
        more.onclick=()=>openSessionActions(more,row);actions.append(more);
       }
@@ -489,10 +491,10 @@ window.renderRuntimes = (rows, message) => {
    list.append(section);
   }
 };
-window.renderProfile = name => {
+window.renderProfile = (name, fallback = false) => {
   const button = document.querySelector('.header-login');
-  button.textContent = name;
-  button.title = name;
+  if(fallback){button.setAttribute('data-i18n','ui.account');button.textContent='[[i18n:ui.account]]';button.removeAttribute('title');}
+  else{button.removeAttribute('data-i18n');button.textContent=name;button.title=name;}
 };
 window.renderSignedOut = () => {
   window.resetAgentLogin?.();
@@ -504,7 +506,7 @@ window.renderSignedOut = () => {
   gatewayModels = [];localGatewayModels.clear();localGatewayPending.clear();
   nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();
   modelSaving = false;
-  window.renderBilling({error:"请先登录"});
+  window.renderBilling({error:"[[i18n:ui.sign_in_first]]"});
   userMenu.hidden = true;
   document.querySelector('#runtime-panel').hidden = true;
   document.querySelector('#runtime-list').replaceChildren();
@@ -512,7 +514,8 @@ window.renderSignedOut = () => {
   const header = document.querySelector('.header-login');
   header.classList.remove('account-link');
   header.classList.add('login');
-  header.textContent = '登录 Runta';
+  header.textContent = "[[i18n:ui.sign_in_to_runta]]";
+  header.setAttribute('data-i18n','ui.sign_in_to_runta');
   header.removeAttribute('title');
   header.disabled = false;
   document.querySelector('#notice').hidden = true;
@@ -576,7 +579,7 @@ window.renderLoginItem = value => {
   loginItemSwitch.disabled = !value.supported;
   loginItemSwitch.setAttribute('aria-checked', String(!!value.enabled));
   loginItemApproval.hidden = !value.approvalRequired;
-  if (value.error) showFeedbackToast('无法更新开机自启，请重试');
+  if (value.error) showFeedbackToast("[[i18n:ui.could_not_update_login_item_try_again]]");
 };
 if (loginItemSwitch) loginItemSwitch.onclick = () => {
   loginItemSwitch.disabled = true;
@@ -592,12 +595,12 @@ window.renderApprovals = requests => {
   region.replaceChildren(); region.hidden = !requests.length;
   for (const request of requests) {
     const card = document.createElement('div'); card.className = 'approval-card';
-    const heading = document.createElement('strong'); heading.textContent = '请求在本机执行命令';
+    const heading = document.createElement('strong'); heading.textContent = "[[i18n:ui.request_to_run_a_local_command]]";
     const source = document.createElement('p'); source.textContent = request.fingerprint;
     const command = document.createElement('pre'); command.textContent = request.command;
-    const warning = document.createElement('p'); warning.textContent = '以当前用户执行，可访问该用户的文件和网络。';
-    const deny = document.createElement('button'); deny.textContent = '拒绝'; deny.onclick = () => send('deny:' + request.id);
-    const approve = document.createElement('button'); approve.textContent = '允许一次'; approve.onclick = () => send('approve:' + request.id);
+    const warning = document.createElement('p'); warning.textContent = "[[i18n:ui.runs_as_you_with_access_to_your_files_and_network]]";
+    const deny = document.createElement('button'); deny.textContent = "[[i18n:ui.deny]]"; deny.onclick = () => send('deny:' + request.id);
+    const approve = document.createElement('button'); approve.textContent = "[[i18n:ui.allow_once]]"; approve.onclick = () => send('approve:' + request.id);
     card.append(heading, source, command, warning, deny, approve); region.append(card);
   }
 };
@@ -611,11 +614,11 @@ window.renderPreparation = state => {
   // still need sign-in or model selection; those actions belong to their cards.
   panel.hidden = !state.stage || ['waiting_credentials', 'credentials_required', 'agents_installed'].includes(state.stage);
   if (panel.hidden) return;
-  const titles = {checking_resources:'正在确认云电脑资源', installing_session_service:'正在准备会话服务', restoring_model_accounts:'正在恢复模型账户', configuring_routes:'正在配置智能体模型', installing_model_plugins:'正在配置模型插件', migrating_credentials:'正在迁移模型凭据', discovering_providers:'正在读取模型配置', waiting_credentials:'正在读取登录凭证', credentials_required:'请重新登录以继续准备', installing_pi:'正在安装 Pi', installing_opencode:'正在安装 OpenCode', starting_magpie:'正在启动大模型网关', installing_node:'正在安装运行工具', installing_magpie:'正在安装大模型网关', detecting_versions:'正在发现可用智能体', syncing_versions:'正在确认云端智能体', installing_claude:'正在安装 Claude Code', installing_codex:'正在安装 Codex', agents_installed:'等待配置大模型网关', allocating:'正在分配云电脑', starting:'正在启动云电脑', connecting:'正在连接云电脑', runtime_ready:'环境已启动，等待安装智能体', failed:'云电脑准备失败'};
+  const titles = {checking_resources:"[[i18n:ui.verifying_cloud_computer_resources]]", installing_session_service:"[[i18n:ui.preparing_session_service]]", restoring_model_accounts:"[[i18n:ui.restoring_model_accounts]]", configuring_routes:"[[i18n:ui.configuring_agent_models]]", installing_model_plugins:"[[i18n:ui.configuring_model_plugins]]", migrating_credentials:"[[i18n:ui.migrating_model_credentials]]", discovering_providers:"[[i18n:ui.loading_model_configuration]]", waiting_credentials:"[[i18n:ui.reading_sign_in_credentials]]", credentials_required:"[[i18n:ui.sign_in_again_to_continue_setup]]", installing_pi:"[[i18n:ui.installing_pi]]", installing_opencode:"[[i18n:ui.installing_opencode]]", starting_magpie:"[[i18n:ui.starting_model_gateway]]", installing_node:"[[i18n:ui.installing_runtime_tools]]", installing_magpie:"[[i18n:ui.installing_model_gateway]]", detecting_versions:"[[i18n:ui.discovering_available_agents]]", syncing_versions:"[[i18n:ui.checking_cloud_agents]]", installing_claude:"[[i18n:ui.installing_claude_code]]", installing_codex:"[[i18n:ui.installing_codex]]", agents_installed:"[[i18n:ui.waiting_for_model_gateway_configuration]]", allocating:"[[i18n:ui.allocating_cloud_computer]]", starting:"[[i18n:ui.starting_cloud_computer]]", connecting:"[[i18n:ui.connecting_to_cloud_computer]]", runtime_ready:"[[i18n:ui.environment_started_agent_installation_pending]]", failed:"[[i18n:ui.environment_preparation_failed]]"};
   const row = document.createElement('div'); row.className = 'preparation-row';
   const title = document.createElement('span'); title.className = 'preparation-title';
-  const reasons = {native_credentials_need_attention:'请在本机登录要使用的智能体，然后重试',model_routes_need_attention:'部分智能体模型需要配置', routes_configured_inference_pending:'模型已配置，等待验证', no_local_model_credentials:'本机尚未配置模型凭据', no_model_providers:'尚未配置模型服务', no_compatible_model_providers:'暂无兼容的模型配置', provider_catalog_unavailable:'无法读取模型配置', provider_selection_required:'等待选择模型服务'};
-  title.textContent = reasons[state.status] || titles[state.stage] || '正在准备…';
+  const reasons = {native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
+  title.textContent = reasons[state.status] || titles[state.stage] || "[[i18n:ui.preparing_2]]";
   const indicator = document.createElement('span'); indicator.className = 'preparation-indicator';
   const needsAction = ['failed', 'credentials_required', 'agents_installed'].includes(state.stage);
   panel.setAttribute('aria-busy', String(!needsAction));
@@ -625,19 +628,19 @@ window.renderPreparation = state => {
     title.classList.add('loading-shimmer');
     indicator.classList.add('working');
     indicator.setAttribute('role', 'progressbar');
-    indicator.setAttribute('aria-label', '准备进度');
+    indicator.setAttribute('aria-label', "[[i18n:ui.setup_progress]]");
     indicator.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="progress-track" cx="10" cy="10" r="7.5"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5"/></svg>';
   }
   row.append(title, indicator); panel.append(row);
   if (state.stage === 'failed') {
     const detail = document.createElement('p');
-    detail.textContent = '暂时无法完成准备，请重试。';
+    detail.textContent = "[[i18n:ui.unable_to_finish_setup_please_retry]]";
     panel.append(detail);
   }
   if (needsAction) {
     const retry = document.createElement('button');
     const loginRequired = state.stage === 'credentials_required';
-    retry.textContent = loginRequired ? '登录' : '重试';
+    retry.textContent = loginRequired ? "[[i18n:ui.sign_in]]" : "[[i18n:ui.retry]]";
     retry.onclick = () => send(loginRequired ? 'login' : 'retry-runtime');
     panel.append(retry);
   }
@@ -652,11 +655,11 @@ window.renderProviderCatalog = candidates => {
 
 let lastBillingPayload = {};
 const billingFields = [
- ['balance','剩余余额','<path d="M4 6h12a2 2 0 0 1 2 2v8H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11v2M18 10h-5v4h5"/><path d="M15 12h.01"/>'],
- ['spend','近30天消费','<rect x="3" y="4" width="14" height="14" rx="2"/><path d="M6 2v4m8-4v4M3 8h14m-11 6 3-3 2 2 3-3"/>'],
+ ['balance',"[[i18n:ui.available_balance]]",'<path d="M4 6h12a2 2 0 0 1 2 2v8H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11v2M18 10h-5v4h5"/><path d="M15 12h.01"/>'],
+ ['spend',"[[i18n:ui.last_30_days_spend]]",'<rect x="3" y="4" width="14" height="14" rx="2"/><path d="M6 2v4m8-4v4M3 8h14m-11 6 3-3 2 2 3-3"/>'],
  ['cpu','CPU','<rect x="5" y="5" width="10" height="10" rx="2"/><rect x="8" y="8" width="4" height="4" rx=".5"/><path d="M7 2v3m6-3v3M7 15v3m6-3v3M2 7h3m-3 6h3m10-6h3m-3 6h3"/>'],
- ['memory','内存','<rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5 8v4m3-4v4m4-4v4m3-4v4M5 15v2m5-2v2m5-2v2"/>'],
- ['disk','磁盘','<path d="m4 4-2 8v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4l-2-8Z"/><path d="M2 12h16m-4 3h.01m-3 0h.01"/>']
+ ['memory',"[[i18n:ui.memory]]",'<rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5 8v4m3-4v4m4-4v4m3-4v4M5 15v2m5-2v2m5-2v2"/>'],
+ ['disk',"[[i18n:ui.disk]]",'<path d="m4 4-2 8v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4l-2-8Z"/><path d="M2 12h16m-4 3h.01m-3 0h.01"/>']
 ];
 function renderBillingRows(payload,loading){
  const content=document.querySelector('#billing-content');content.replaceChildren();
@@ -674,17 +677,17 @@ function renderBillingRows(payload,loading){
   icon.innerHTML=`<svg viewBox="0 0 20 20">${path}</svg>`;
   const text=document.createElement('span');text.textContent=label;title.append(icon,text);
   const value=document.createElement('span');value.className='billing-value';
-  if(loading&&!valid){value.classList.add('setting-skeleton','billing-skeleton-value');value.setAttribute('aria-label','正在加载…');}
+  if(loading&&!valid){value.classList.add('setting-skeleton','billing-skeleton-value');value.setAttribute('aria-label',"[[i18n:ui.loading]]");}
   else value.textContent=valid?(money?new Intl.NumberFormat(document.documentElement.lang,{style:'currency',currency:payload.currency||'USD'}).format(raw/100):String(raw)):'—';
   row.append(title,value);
   if(money)content.append(row);else resources.append(row);
  }
  content.append(resources);
- const note=document.createElement('p');note.className='billing-footnote';note.textContent='近30天资源用量';content.append(note);
+ const note=document.createElement('p');note.className='billing-footnote';note.textContent="[[i18n:ui.resource_usage_last_30_days]]";content.append(note);
  const footer=document.createElement('div');footer.className='billing-footer';
  const status=document.createElement('span');status.className='billing-status';
- status.textContent=!loading?(payload.error||(payload.stale?'数据更新中，显示最近记录':'')):'';
- const retry=document.createElement('button');retry.type='button';retry.textContent='重试';
+ status.textContent=!loading?(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":'')):'';
+ const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
  retry.style.visibility=!loading&&(missing||payload.error||payload.stale)?'visible':'hidden';retry.disabled=loading;
  retry.onclick=()=>{window.renderBillingLoading();send('load-billing');};
  footer.append(status,retry);content.append(footer);
@@ -719,7 +722,7 @@ document.querySelector('#clear-trust').onclick = () => {
 window.renderTrustResult = success => {
   document.querySelector('#clear-trust').disabled=false;
   const notice=document.querySelector('#trust-result');notice.hidden=true;notice.textContent='';
-  showFeedbackToast(success?'已撤销本机自动授权':'撤销失败，请重试');
+  showFeedbackToast(success?"[[i18n:ui.automatic_access_revoked]]":"[[i18n:ui.could_not_revoke_access_try_again]]");
 };
 
 let lastSessionTerminals=[];
@@ -731,7 +734,7 @@ window.renderSessionStopped = sessionID => {
 window.renderHerdrSessions = terminals => {
  lastSessionTerminals=terminals.filter(terminal=>!confirmedStoppedSessions.has(terminal.labels?.['fennec.session']));
  terminals=lastSessionTerminals;
- const labels={working:'正在工作',blocked:'等待输入',idle:'空闲',error:'会话出错'};
+ const labels={working:"[[i18n:ui.working]]",blocked:"[[i18n:ui.needs_input]]",idle:"[[i18n:ui.idle]]",error:"[[i18n:ui.errored]]"};
  const readableName=value=>{
   if(typeof value!=='string')return '';
   const title=value.trim().replace(/\s*[|·]\s*(?:[a-f0-9]{24,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9][a-f0-9-]{7,63}(?:\.{3}|…))\s*$/i,'').trim();
@@ -742,7 +745,8 @@ window.renderHerdrSessions = terminals => {
    const group=Object.hasOwn(labels,raw)?raw:'idle';
    const displayStatus=labels[group];
    const sessionID=terminal.labels?.['fennec.session'];
-   return {agent:terminal.labels?.["fennec.agent"] || terminal.agent,name:readableName(terminal.title) || readableName(terminal.name) || '未命名会话', group, status:raw || '',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
+   const name=readableName(terminal.title)||readableName(terminal.name);
+   return {agent:terminal.labels?.["fennec.agent"] || terminal.agent,name:name||"[[i18n:ui.untitled_session]]",untitled:!name,group,status:raw||'',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
  });
  window.renderRuntimes(rows,'');
 };
@@ -758,7 +762,7 @@ window.renderSessionRefreshError = () => {
  note.replaceChildren();
  note.hidden=false;
  note.className='runtime-note';
- note.textContent='会话状态暂不可用，请刷新重试';
+ note.textContent="[[i18n:ui.session_status_unavailable_refresh_to_retry]]";
  // Existing rows remain visible; absence of a response is not an empty list.
 };
 
@@ -790,7 +794,7 @@ window.renderAttachCopyResult = (sessionID,success) => {
 };
 
 window.renderSessionActionError = () => {
- const note=document.querySelector('#runtime-message');note.hidden=false;note.textContent='会话操作未确认，请刷新后重试';
+ const note=document.querySelector('#runtime-message');note.hidden=false;note.textContent="[[i18n:ui.session_action_unconfirmed_refresh_and_retry]]";
  document.querySelectorAll('.session-stop').forEach(button=>{
   if(button.dataset.canStop==='true')button.disabled=false;
  });
@@ -815,10 +819,10 @@ window.renderSessionDetail = result => {
  const form=document.querySelector('#session-input-form');
  form.hidden=!result || !!result.error || result.terminal?.state!=='live';
  const note=document.querySelector('#session-detail-status');
- if(!result){output.textContent='';note.textContent='正在加载…';return;}
- if(result.error){output.textContent='';note.textContent='会话读取失败，请重试';return;}
+ if(!result){output.textContent='';note.textContent="[[i18n:ui.loading]]";return;}
+ if(result.error){output.textContent='';note.textContent="[[i18n:ui.could_not_read_session_retry]]";return;}
  output.textContent=result.screen?.text || '';
- note.textContent=result.screen?.complete===false?'显示当前屏幕，历史记录未完整加载':'';
+ note.textContent=result.screen?.complete===false?"[[i18n:ui.current_screen_only_history_is_incomplete]]":'';
 };
 document.querySelector('#session-back').onclick=()=>tab('sessions');
 
@@ -827,13 +831,13 @@ document.querySelector('#session-input-form').onsubmit = event => {
  const input=document.querySelector('#session-input');
  if(!activeSession||sessionSending||!input.value.trim())return;
  sessionSending=true;document.querySelector('#session-send').disabled=true;
- document.querySelector('#session-send-status').textContent='正在提交…';
+ document.querySelector('#session-send-status').textContent="[[i18n:ui.submitting]]";
  send('send-session:'+JSON.stringify({...activeSession,text:input.value}));
 };
 window.renderSessionSent = (sessionID,success) => {
  sessionSending=false;document.querySelector('#session-send').disabled=false;
  if(!sessionDetailOpen||activeSession?.session_id!==sessionID)return;
- document.querySelector('#session-send-status').textContent=success?'已提交':'提交未确认，请查看会话后重试';
+ document.querySelector('#session-send-status').textContent=success?"[[i18n:ui.submitted]]":"[[i18n:ui.submission_unconfirmed_inspect_session_before_retrying]]";
  if(success)document.querySelector('#session-input').value='';
 };
 

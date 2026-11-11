@@ -34,8 +34,7 @@ func runLoginItemAdapter(_ operation: String) -> Bool {
 func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
     var installedHint: String?
     if let index = CommandLine.arguments.firstIndex(of:"--installed-application"), index + 1 < CommandLine.arguments.count { installedHint = CommandLine.arguments[index + 1] }
-    let chinese = Locale.preferredLanguages.first?.hasPrefix("zh") == true
-    func text(_ zh: String, _ en: String) -> String { chinese ? zh : en }
+    func text(_ key: String) -> String { L10n.text(key, language: Locale.preferredLanguages.first ?? "en-US") }
     func run(_ arguments: [String], _ finished: @escaping ([String:Any]?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process(), pipe = Pipe()
@@ -62,7 +61,7 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
-        panel.prompt = text("安装到此处", "Install Here")
+        panel.prompt = text("installation.install_here")
         selected(panel.runModal() == .OK ? panel.url?.appendingPathComponent("Fennec.app").path : nil)
     }
     func openInstalled(_ path: String) {
@@ -79,8 +78,8 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
                 if error == nil { NSApp.terminate(nil) }
                 else {
                 let alert = NSAlert()
-                alert.messageText = text("Fennec 已安装", "Fennec is installed")
-                alert.informativeText = text("请从 Applications 文件夹打开 Fennec。", "Open Fennec from your Applications folder.")
+                alert.messageText = text("installation.fennec_is_installed")
+                alert.informativeText = text("installation.open_fennec_from_your_applications_folder")
                 alert.runModal(); NSApp.terminate(nil)
                 }
             }
@@ -91,10 +90,10 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
         if replace { args.append("--replace") }
         let progress = NSPanel(contentRect:NSRect(x:0,y:0,width:320,height:110),styleMask:[.titled],backing:.buffered,defer:false)
         progress.isReleasedWhenClosed = false
-        progress.title = text("安装 Fennec", "Install Fennec")
+        progress.title = text("installation.install_fennec")
         let spinner = NSProgressIndicator(frame:NSRect(x:148,y:58,width:24,height:24))
         spinner.style = .spinning; spinner.isIndeterminate = true; spinner.startAnimation(nil)
-        let label = NSTextField(labelWithString:text("正在安装 Fennec…", "Installing Fennec…"))
+        let label = NSTextField(labelWithString:text("installation.installing_fennec"))
         label.frame = NSRect(x:20,y:22,width:280,height:22); label.alignment = .center
         progress.contentView?.addSubview(spinner); progress.contentView?.addSubview(label)
         progress.center(); progress.makeKeyAndOrderFront(nil)
@@ -102,11 +101,11 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
             progress.close()
             guard result?["success"] as? Bool == true, let path = result?["application"] as? String else {
                 let alert = NSAlert()
-                alert.messageText = text("暂时无法安装 Fennec", "Could not install Fennec")
+                alert.messageText = text("installation.could_not_install_fennec")
                 let unverified = result?["error"] as? String == "unverified_app"
-                alert.informativeText = unverified ? text("无法验证这份安装包，请重新下载。", "This copy could not be verified. Download a fresh copy.") : text("请选择其他安装文件夹。", "Choose another installation folder.")
-                alert.addButton(withTitle:unverified ? text("下载 Fennec", "Download Fennec") : text("选择文件夹…", "Choose Folder…"))
-                alert.addButton(withTitle:text("退出", "Quit"))
+                alert.informativeText = unverified ? text("installation.this_copy_could_not_be_verified_download_a_fresh_copy") : text("installation.choose_another_installation_folder")
+                alert.addButton(withTitle:unverified ? text("installation.download_fennec") : text("installation.choose_folder"))
+                alert.addButton(withTitle:text("installation.quit"))
                 if alert.runModal() == .alertFirstButtonReturn {
                     if unverified {
                         if let url = URL(string:"https://github.com/runta-dev/fennec/releases/latest") { NSWorkspace.shared.open(url) }
@@ -126,10 +125,10 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
     run(inspection) { state in
         guard let state, state["success"] as? Bool == true, let required = state["required"] as? Bool else {
             let alert = NSAlert()
-            alert.messageText = text("无法打开这份 Fennec", "This copy of Fennec could not start")
-            alert.informativeText = text("请重新下载安装包。", "Download a fresh copy of Fennec.")
-            alert.addButton(withTitle:text("下载 Fennec", "Download Fennec"))
-            alert.addButton(withTitle:text("退出", "Quit"))
+            alert.messageText = text("installation.this_copy_of_fennec_could_not_start")
+            alert.informativeText = text("installation.download_a_fresh_copy_of_fennec")
+            alert.addButton(withTitle:text("installation.download_fennec"))
+            alert.addButton(withTitle:text("installation.quit"))
             if alert.runModal() == .alertFirstButtonReturn, let url = URL(string:"https://github.com/runta-dev/fennec/releases/latest") { NSWorkspace.shared.open(url) }
             NSApp.terminate(nil); return
         }
@@ -141,11 +140,11 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
         guard let destination = state["destination"] as? String else { completion(nil); return }
         let existing = state["existing"] as? Bool == true
         let alert = NSAlert()
-        alert.messageText = existing ? text("替换已安装的 Fennec？", "Replace the installed Fennec?") : text("安装 Fennec？", "Install Fennec?")
-        alert.informativeText = existing ? text("设置和云端会话会保留。", "Your settings and cloud sessions will be kept.") : text("安装到 Applications 后开始使用。", "Install in Applications to get started.")
-        alert.addButton(withTitle:existing ? text("替换并打开", "Replace and Open") : text("安装并打开", "Install and Open"))
-        alert.addButton(withTitle:text("选择文件夹…", "Choose Folder…"))
-        alert.addButton(withTitle:text("退出", "Quit"))
+        alert.messageText = existing ? text("installation.replace_the_installed_fennec") : text("installation.install_fennec")
+        alert.informativeText = existing ? text("installation.your_settings_and_cloud_sessions_will_be_kept") : text("installation.install_in_applications_to_get_started")
+        alert.addButton(withTitle:existing ? text("installation.replace_and_open") : text("installation.install_and_open"))
+        alert.addButton(withTitle:text("installation.choose_folder"))
+        alert.addButton(withTitle:text("installation.quit"))
         NSApp.activate(ignoringOtherApps:true)
         switch alert.runModal() {
         case .alertFirstButtonReturn: install(destination,replace:existing)

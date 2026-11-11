@@ -183,3 +183,31 @@ fresh-user login, Keychain, reboot, or real cloud-session acceptance.
 
 `check-bundle-permissions` gates public application/volume permissions in the
 release pipeline. Signing key material remains private outside the app bundle.
+
+## Source language and UI messages
+
+Implementation, comments, developer documentation, and project skills are written in
+English. Translated UI copy lives in `native/macos/UI/translations.json` under stable
+English IDs. Keep IDs unchanged when editing copy; do not derive keys from translated
+sentences.
+
+- Use `[[i18n:ui.retry]]`-style tokens for dynamic WebView copy. The localization observer
+  resolves them before paint and retains their identities across language changes.
+- Static HTML supplies English fallback text and `data-i18n`; accessible attributes use
+  `data-i18n-aria-label`, `data-i18n-placeholder`, or `data-i18n-title`.
+- Native AppKit copy uses `L10n.text` with the same catalog. Packaging generates
+  `locale-data.js` for the WebView and `FennecEnglish.swift` for a compiled native English
+  fallback. Generated artifacts belong in the build directory, not source control.
+- User identities, session titles, typed input, terminal output, and provider data are
+  not translation keys. Explicitly mark app-generated fallback titles instead of
+  matching user text against UI copy.
+- Preserve meaningful Unicode fixtures. `cmd/check-english` lists narrow, documented
+  fixture exceptions; their surrounding code and comments remain English.
+
+`make check` enforces source language, catalog shape, English fallbacks, and static
+message references. `make check-ui` runs the existing UI regressions. Go tests cover
+locale switching, cloned controls, unchanged user data, and native Foundation bundle
+loading/fallback; native bundle tests run on macOS. A bare source HTML file does not
+include generated locale data or the native message bridge: preview the built UI with
+an isolated bridge fixture, and distinguish that rendering check from live app/service
+acceptance.

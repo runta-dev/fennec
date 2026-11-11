@@ -3,10 +3,10 @@ const source=fs.readFileSync('native/macos/UI/panel.js','utf8');
 const html=fs.readFileSync('native/macos/UI/index.html','utf8');
 assert.equal((html.match(/class="[^"]*\blogin\b[^"]*"/g)||[]).length,1,'one login entry only');
 const elements=new Map();
-function element(key){if(!elements.has(key))elements.set(key,{hidden:false,disabled:false,textContent:'',classList:{add(){},remove(){},toggle(){}},removeAttribute(){},replaceChildren(){}});return elements.get(key);}
+function element(key){if(!elements.has(key))elements.set(key,{hidden:false,disabled:false,textContent:'',attributes:{},classList:{add(){},remove(){},toggle(){}},setAttribute(name,value){this.attributes[name]=value},removeAttribute(name){delete this.attributes[name]},replaceChildren(){}});return elements.get(key);}
 const actions=[];
 const context=vm.createContext({window:{renderAgents(){},renderBilling(){}},authorized:false,sessionListConnecting:true,visibleSessionCount:0,detectedAgents:[],routeResults:new Map(),takeoverAgents:new Set(),activeTakeoverAgents:new Set(),takeoverChanging:false,gatewayModels:[],localGatewayModels:new Map(),localGatewayPending:new Set(),nativeModelStates:new Map(),nativeAccountStates:new Map(),nativeAccountPending:new Set(),nativeModelRequests:new Map(),modelSaving:false,userMenu:{hidden:false},tab:x=>actions.push('tab:'+x),send:x=>actions.push(x),document:{createElement:()=>({textContent:"",classList:{toggle(){}}}),querySelector:element,querySelectorAll:()=>[element('.header-login')]}});
-for(const name of ['renderLogin','renderAuthorized','renderSignedOut']){
+for(const name of ['renderLogin','renderAuthorized','renderProfile','renderSignedOut']){
  const start=source.indexOf('window.'+name+' =');const end=source.indexOf('\n};',start)+3;
  vm.runInContext(source.slice(start,end),context);
 }
@@ -17,6 +17,10 @@ assert.equal(element('#notice').hidden,false);
 assert.equal(element('.header-login').disabled,true);
 assert.deepEqual(actions,[],'login feedback must not switch tabs');
 context.window.renderAuthorized();
+assert.equal(element('.header-login').attributes['data-i18n'],'ui.account');
+context.window.renderProfile('[[i18n:ui.account]]');
+assert.equal(element('.header-login').textContent,'[[i18n:ui.account]]');
+assert.equal(element('.header-login').attributes['data-i18n'],undefined,'user identity is not a message key');
 assert.equal(element('#session-signin').hidden,true);
 assert.equal(element('.header-login').disabled,false);
 context.window.renderSignedOut();

@@ -27,7 +27,7 @@
    send({type:"terminal-error",generation:current,stage:"renderer-init",kind:error?.name || "Error"});
    window.closeSessionTerminal();
    const note=document.querySelector('#session-detail-status');
-   if(note)note.textContent='无法打开终端，请重试';
+   if(note)note.textContent="[[i18n:ui.could_not_open_terminal_try_again]]";
    return false;
   }
  };
@@ -36,7 +36,7 @@
   connected=false;
   terminal.options.disableStdin=true;
   const note=document.querySelector('#session-detail-status');
-  if(note)note.textContent=failed?'无法打开终端，请重试':'终端连接已结束';
+  if(note)note.textContent=failed?"[[i18n:ui.could_not_open_terminal_try_again]]":"[[i18n:ui.terminal_connection_closed]]";
   window.agentLoginTerminalEnded?.();
  };
  window.writeSessionTerminal = (id,base64) => {
