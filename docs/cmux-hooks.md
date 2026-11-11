@@ -98,3 +98,13 @@ cmux/cloud session remains a separate post-deployment acceptance step.
 Official implementation references:
 - https://github.com/manaflow-ai/cmux/blob/12023d89feb5425c766ba05e8d8e4cfc176e3991/CLI/CMUXCLI%2BCodexFireAndForgetHooks.swift
 - https://github.com/manaflow-ai/cmux/blob/12023d89feb5425c766ba05e8d8e4cfc176e3991/Packages/macOS/CMUXAgentLaunch/Sources/CMUXAgentLaunch/CodexHookInjectionSchema.swift
+
+## Real release acceptance (2026-11-11)
+
+The signed and notarized [0.2.11111843 candidate](https://github.com/runta-dev/fennec/releases/tag/v0.2.11111843), source `892a25f7f062b6a5a3c1d02b4f09d255b080951a`, was installed from its actual CI DMG and exercised in official cmux 0.65.2 (113), with cloud Codex 0.167.1. [Release CI](https://github.com/runta-dev/errand/actions/runs/43005873516) passed.
+
+A real cloud task executed `printf` and returned its requested marker. Seven one-shot authorizations covered session-start, prompt-submit, inbox-drain, pre-tool-use, post-tool-use, stop, and inbox-stop. The real cmux workstream journal recorded sessionStart, userPrompt, toolUse, toolResult, and stop for the same session; the actual sidebar showed `codex · Done`. No persistent Always Allow grant was added. This was not a fixture socket or a direct synthetic hook call substituted for an agent event.
+
+This verifies the reported cloud hook 127 fix and the exercised hook lifecycle on a Mac with existing login state. It does not establish clean-Mac onboarding, colleague-device acceptance, or live coverage of PermissionRequest and subagent events.
+
+The independent `cmux-cua` MCP attachment still references a Mac-local client/socket and is not supported in the cloud. The user explicitly deferred this feature on 2026-11-11. Its native MCP profile and Codex compatibility profile have different contracts and authorization requirements; unfinished relay experiments were removed from the release worktree, not shipped. See the deferred item in [TODO](../TODO.md).
