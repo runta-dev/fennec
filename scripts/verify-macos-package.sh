@@ -20,6 +20,8 @@ for arch in amd64 arm64; do
   file "$app/Contents/Resources/fennec-terminal-linux-$arch" | grep -q ELF
 done
 [[ -s "$app/Contents/Resources/UI/index.html" ]]
+[[ -s "$app/Contents/Resources/UI/translations.json" ]]
+[[ -s "$app/Contents/Resources/UI/locale-data.js" ]]
 [[ -s "$app/Contents/Resources/control-build-id" ]]
 codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/fennec-daemon" help >/dev/null

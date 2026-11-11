@@ -62,11 +62,13 @@ else
   exit 1
 fi
 ln -sfn fen "$app/Contents/MacOS/fennec-daemon"
-swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 # Removed UI features must not survive in a reused staging bundle.
 rm -rf "$app/Contents/Resources/UI"
 mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
+english_source="$(dirname "$app")/FennecEnglish.swift"
+go run ./cmd/build-locales native/macos/UI/translations.json "$app/Contents/Resources/UI/locale-data.js" "$english_source"
+swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift native/macos/Localization.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -10,12 +10,12 @@ const context = vm.createContext({
   activeTakeoverAgents: new Set(),
   entryCoverage: new Map(),
   route: {status: 'model_unavailable'},
-  labels: {model_unavailable: '所选模型暂不可用'},
+  labels: {model_unavailable: "[[i18n:ui.selected_model_unavailable]]"},
   enabled: true,
   agent: {cloudSupported: true},
 });
 vm.runInContext(`detail.querySelector('.takeover-status').textContent = ${expression}`, context);
-assert.equal(status.textContent, '所选模型暂不可用');
+assert.equal(status.textContent, "[[i18n:ui.selected_model_unavailable]]");
 console.log('PASS unavailable model takes precedence over stale takeover preference');
 context.agent.id='codex';context.activeTakeoverAgents.add('codex');
 for(const coverage of [undefined,'new_shells','failed','entry_and_new_shells']){
