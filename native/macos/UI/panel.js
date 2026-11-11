@@ -192,15 +192,27 @@ window.renderAgents = agents => {
         detail.querySelector('.takeover').append(placeholder);
       }
       statusNode.hidden = !statusNode.textContent;
-      if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='请选择云端模型';statusNode.hidden=false;}
+      if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
       if (route?.status === 'credentials_required') {statusNode.textContent='请先在本机登录此智能体，然后重试';statusNode.hidden=false;}
       if (route?.status === 'credentials_unavailable') {statusNode.textContent='无法读取此智能体的登录凭据，请检查授权后重试';statusNode.hidden=false;}
-      if (route?.status === 'local_provider_unavailable') {statusNode.textContent='本机模型地址无法在云端使用，请配置云端可访问的地址，或启用 Magpie';statusNode.hidden=false;}
+      if (route?.status === 'local_provider_unavailable') {
+        statusNode.textContent='';statusNode.hidden=true;
+        if (enabled && !magpieEnabled) {
+          const row=document.createElement('div');row.className='agent-integration-row';
+          const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
+          const label=document.createElement('span');label.textContent='Magpie';
+          const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';
+          toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked','false');
+          toggle.onclick=()=>send('settings:'+JSON.stringify({magpie:true}));
+          if(icon)row.append(icon);row.append(label,toggle);detail.append(row);
+        }
+      }
       if (route?.status === 'local_credential_command') {statusNode.textContent='本机凭据依赖本地命令，请使用智能体登录或 API key';statusNode.hidden=false;}
       if (magpieEnabled && enabled) {
         const row=document.createElement('div');row.className='preference-row';
         const label=document.createElement('label');label.textContent='云端模型';
         const select=document.createElement('select');select.setAttribute('aria-label','云端模型');
+        select.disabled=modelSaving || gatewayModels.length===0;
         const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='选择模型';select.append(placeholder);
         for(const model of gatewayModels){const option=document.createElement('option');option.value=model;option.textContent=model;select.append(option);}
         select.value=route?.model||'';

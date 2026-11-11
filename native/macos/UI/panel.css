@@ -315,3 +315,7 @@ main{min-height:0}
 #preferences>.card+.card{margin-top:9px}
 /* Official yetone/magpie build/icon/magpie-small.svg; bundled MIT notice applies. */
 #preferences .magpie-icon{fill:currentColor;stroke:none}
+.agent-integration-row{display:flex;align-items:center;gap:8px;min-height:36px;font-size:12px}
+.agent-integration-row .magpie-icon{width:16px;height:16px;flex:none;fill:currentColor;stroke:none;color:var(--muted)}
+.agent-integration-row .switch{margin-left:auto}
+.detail>.preference-row{padding-left:0;padding-right:0}
