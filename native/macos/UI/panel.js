@@ -205,10 +205,16 @@ window.renderAgents = agents => {
           const row=document.createElement('div');row.className='agent-integration-row';
           const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
           const label=document.createElement('span');label.textContent='Magpie';
+          const info=document.querySelector('#magpie-label')?.parentElement?.querySelector('.setting-info')?.cloneNode(true);
+          if(info){
+            const tooltip=info.querySelector('[role="tooltip"]');
+            const button=info.querySelector('.setting-info-button');
+            if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}
+          }
           const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';
           toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked','false');
           toggle.onclick=()=>send('settings:'+JSON.stringify({magpie:true}));
-          if(icon)row.append(icon);row.append(label,toggle);detail.append(row);
+          if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
         }
       }
       if (route?.status === 'local_credential_command') {statusNode.textContent='本机凭据依赖本地命令，请使用智能体登录或 API key';statusNode.hidden=false;}
