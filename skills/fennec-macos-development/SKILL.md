@@ -57,6 +57,8 @@ Use a fresh, valid `provider/model` route when the configured model has actually
 
 ## 会话操作必须复用常驻 channel
 
+用户后续要求：模型目录加载、Magpie 切换等日常交互操作的端到端 wall time 必须在 1 秒以内；既有会话热路径继续执行更严格的 500ms 门槛，冷 SSH/首次安装单独计量。以实际数据可用或配置生效为终点，不能用提前回执、预览 fixture、旧缓存或缩短超时伪装达标
+
 用户的一台共享云机器由一个 Go daemon 管理。UI 和 CLI 使用同一个控制面；launch、resume、stop/kill、read、send、list/refresh 都必须检查实际传输路径，不能只优化启动。
 
 - 正常操作复用 daemon 已验证身份、运行时归属及主机密钥的常驻 SSH connection **和常驻协议 channel**。复用 SSH ControlMaster 但每次再执行 `ssh ... sh -s` 仍有新 exec channel 的开销，不算完成复用。
@@ -74,6 +76,11 @@ Use a fresh, valid `provider/model` route when the configured model has actually
 ## 产品界面与内部诊断
 
 ### UI 文案与控件
+
+- UI 样式迭代优先使用 `make preview-ui` 本地开发预览，直接读取 UI 源码，刷新即可查看；不为每次视觉调整执行完整 DMG 打包安装。预览使用隔离展示数据，不改账户或云端状态，不能替代真实认证、性能或正式包验收
+
+- Fennec 不接管原生 Agent 账号管理，已登录时只展示订阅信息和刷新，不提供 Sign in again 或账户切换；未登录时可提供 Sign in，通过现有浏览器 session 通道打开原生 Agent 登录会话，不在面板内嵌登录管理界面
+- 不使用通用失败/Please retry toast 处理后台读取或瞬时连接状态，先修复失败根因；后台读取保留已有内容并恢复，用户操作的失败反馈必须贴近相关控件，说明已知原因与具体恢复动作，不能让用户盲目重试
 
 - 正式 UI 不提供 Uninstall Fennec 入口或卸载弹窗，`fen uninstall` 保留为 clean macOS 验收和测试环境清理工具，不作为正式设置项；独立删除云电脑的危险确认属于另一个产品操作
 

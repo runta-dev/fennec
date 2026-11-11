@@ -1,4 +1,8 @@
 .PHONY: dev build test check
+.PHONY: preview-ui
+preview-ui:
+	go run ./cmd/ui-preview
+
 dev:
 	go run . serve
 build:
@@ -23,6 +27,7 @@ check-ui:
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js
+	node --check native/macos/UI/terminal-links.js
 	node scripts/tests/terminal-bridge.cjs
 	node scripts/tests/terminal-localization.cjs
 	node scripts/tests/menu-state.cjs

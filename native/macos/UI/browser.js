@@ -2,6 +2,7 @@
  const token=location.hash.slice(1);
  const terminal=new Terminal({cursorBlink:true,fontFamily:'Menlo, Monaco, monospace',fontSize:14,theme:{background:'#101114'},scrollback:10000});
  const fit=new FitAddon.FitAddon();terminal.loadAddon(fit);terminal.open(document.querySelector('#terminal'));fit.fit();
+ window.installTerminalLinks?.(terminal,text=>{const url=new URL(text);if(url.protocol==='https:'&&!url.username&&!url.password)window.open(url.href,'_blank','noopener,noreferrer');});
  let fitting=false;function scheduleFit(){if(fitting)return;fitting=true;requestAnimationFrame(()=>{fitting=false;fit.fit();});}
  document.fonts.ready.then(scheduleFit);
  const loading=document.querySelector('#loading'),reconnect=document.querySelector('#reconnect');

@@ -37,12 +37,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}
 	magpie := newDesktopSettings(home).value.Magpie
 	versions := []setup.Agent{}
-	ids := []string{}
-	for _, id := range []string{"claude", "codex", "pi", "opencode"} {
-		if _, err := agent.EntryPath(id); err == nil {
-			versions = append(versions, setup.Agent{ID: id, Version: "latest"})
-			ids = append(ids, id)
-		}
+	ids := agent.CloudAgentIDs()
+	for _, id := range ids {
+		versions = append(versions, setup.Agent{ID: id, Version: "latest"})
 	}
 	localRoutes := make([]setup.AgentRoute, len(versions))
 	localReady := make(chan struct{})
@@ -211,7 +208,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	} else {
 		cacheStatus("fingerprint_failed")
 	}
-	installation, installationErr := installationFingerprint(home, token, runtime.ID, []any{versions, magpie}, artifacts)
+	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
 	var resident *terminalstream.Transport
 	startResident := func(ctx context.Context, command string) error {
 		transport, err := terminalstream.StartSSHContext(ctx, connection, command)
@@ -234,9 +231,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	if installationErr == nil && installationCheckpointMatches(home, installation) {
 		check, cancel := context.WithTimeout(ctx, 5*time.Second)
 		if retained && retain[0].Terminal != nil {
-			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation", magpie)) == nil
+			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation", false)) == nil
 		} else {
-			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation", magpie)) == nil
+			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation", false)) == nil
 		}
 		cancel()
 	}
@@ -274,20 +271,20 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			emit("failed", runtime.ID, "Go terminal service installation failed")
 			return err
 		}
-		if magpie {
-			emit("installing_magpie", runtime.ID, "")
-			if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
-				emit("failed", runtime.ID, "Magpie installation failed")
-				return err
-			}
-			emit("starting_magpie", runtime.ID, "")
-			if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
-				emit("failed", runtime.ID, "Magpie service failed: "+err.Error())
-				return err
-			}
-		}
 		if installationErr == nil && setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
 			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
+		}
+	}
+	// Gateway readiness is independent of the shared terminal installation.
+	// Toggling integration must never re-upload Herdr or fennec-terminal.
+	if magpie {
+		emit("installing_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
+			return err
+		}
+		emit("starting_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
+			return err
 		}
 	}
 	if retained && retain[0].Terminal != nil && resident == nil {

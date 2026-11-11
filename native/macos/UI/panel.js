@@ -227,7 +227,8 @@ window.renderAgents = agents => {
         const entries=account?.status==='signed_in'&&account.accounts?.length?account.accounts:[null];
         for(const identity of entries){
           const accountRow=document.createElement('div');accountRow.className='native-account-row';
-          const badge=document.createElement('span');badge.className='native-account-check';badge.textContent=identity?'✓':'○';badge.setAttribute('aria-hidden','true');
+          const badge=document.createElement('span');badge.className='native-account-check'+(identity?'':' is-signed-out');badge.setAttribute('aria-hidden','true');
+          badge.innerHTML=identity?'<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="m5.8 10 2.7 2.8 5.7-6" fill="none" stroke="var(--card)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>':'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><circle cx="10" cy="7" r="2.4"/><path d="M5.4 16v-1.2c0-2 1.9-3.1 4.6-3.1s4.6 1.1 4.6 3.1V16"/></svg>';
           const name=document.createElement('span');name.className='native-account-name';
           if(identity)name.dataset.identity='true';
           name.textContent=identity?(identity.email||({openai:'OpenAI',anthropic:'Anthropic','openai-codex':'ChatGPT',google:'Google'}[identity.provider]||identity.provider)):(account?.status==='signed_out'?'未登录':account?'读取账户失败':'');
@@ -237,7 +238,7 @@ window.renderAgents = agents => {
           const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label','刷新账户');refresh.title='刷新账户';refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
           refresh.onclick=()=>{loadNativeAccount(agent.id,location,true);refresh.disabled=true;};accountRow.append(refresh);
-          if(enabled){const login=document.createElement('button');login.type='button';login.className='native-account-login';const retry=route?.status==='installation_failed';login.textContent=retry?'重试':identity?'重新登录':'登录';login.disabled=!account||!route;login.onclick=()=>retry?send('retry-runtime'):window.startAgentLogin(agent.id);accountRow.append(login);}
+          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent='登录';login.disabled=!route;login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
           card.append(accountRow);
         }
         detail.append(card);
@@ -692,8 +693,9 @@ window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);
 window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(payload,false);};
 
 window.renderRouteResults = results => {
+  const previous=routeResults;
   routeResults = new Map(results.map(result => [result.agent, result]));
-  for(const result of results){const key=result.agent+':cloud';if(nativeAccountStates.get(key)?.status==='unavailable')nativeAccountStates.delete(key);}
+  for(const result of results){const key=result.agent+':cloud';if(nativeAccountStates.get(key)?.status==='unavailable'||previous.get(result.agent)?.status!==result.status){nativeAccountStates.delete(key);if(nativeModelRequests.get(result.agent)==='failed')nativeModelRequests.delete(result.agent);}}
   window.renderAgents(detectedAgents);
 };
 

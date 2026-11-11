@@ -278,3 +278,36 @@ broker ready。记录为 `/tmp/fennec-native-identity-live-off.json` 与
 尚缺专用账号完成 Codex/Claude/Pi 实际登录、取消、过期和响应任务的完整验收；
 staging 的构建/签名检查不能替代最终 CI DMG、干净 Mac、系统重启或独立用户验收。
 此次没有删除真实云电脑，也未将开发签名包替换到当前正式安装的 /Applications。
+
+## 暖态配置与干净 Mac 入口修复
+
+发现 `prepareRuntime` 曾按本机 CLI 可执行文件筛选云端准备清单，导致干净 Mac
+缺少 Claude/Codex/Pi 的准备路径；`PanelCatalog(nil)` 也只显示 Coming soon 项。
+现已将公开云端能力与本机安装事实分离，未安装仍显示真实未安装状态，但能选择
+云端 Agent。发现测试 `TestCleanMacKeepsCloudAgentEntryPoints` 覆盖了该回归。
+
+Magpie 开关曾参与公共会话服务安装指纹，使切换触发 Herdr/Go helper 重传。
+公共安装指纹现与网关开关分离。新增 `reconfigure_runtime` 操作，在已验证的
+常驻通道内迁移配置、确认路由并返回模型目录；仅在变更前确认缺少工具/服务时
+返回需要初始化，变更后的失败不会自动换连接重放。过期模式的结果不发布为就绪。
+
+`TestReconfigurationUsesExistingResidentProtocol` 验证多次配置使用同一协议进程，
+`/tmp/fennec-warm-config-control-tests.log`、`/tmp/fennec-reconfigure-test.log` 为
+Go/race 回归结果。这是隔离配置与协议测试，不是实际 WAN、真实 Magpie 完成路径
+或完整 UI 的 1 秒验收。该性能要求仍未勾选完成，也未据此宣称达标。
+
+按用户要求，后续视觉迭代用 `make preview-ui`，不每次制作/安装 DMG。预览与
+真实订阅授权、生产后端性能及干净 Mac 验收分开记录。
+
+## 已安装版本只读操作基线
+
+针对 `/Applications/Fennec.app` 0.2.11112304 的既有常驻通道执行只读测量，daemon
+build ID 为 `a8c76277299e3fdffbf422a3bff5e410f11d296e4d6567eb58ff91e550647196`。
+`model.get` 五次为 305.270、303.670、301.630、491.705、300.646ms；
+`agent.account.get`（cloud/Codex）五次为 269.481、501.757、271.255、284.470、269.842ms。
+测量前后通道 generation 均未变化，未发送模型推理或修改账户设置。
+
+新增 `cmd/profile-model-ops`：错误、无可用结果、任一样本超预算，以及测量期间
+通道/daemon 变化均非零退出。证据在 `/tmp/fennec-model-read-baseline.jsonl` 与
+`/tmp/fennec-account-read-baseline.jsonl`。这些只是已安装版本的真实只读控制路径
+基线，不证明新版 Magpie 模式切换、全链路 UI 或全部操作已达到 1 秒。

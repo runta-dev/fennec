@@ -98,7 +98,7 @@ func Discover() []Agent {
 // PanelCatalog keeps the announced integrations visible without claiming that
 // they are installed. Discovery remains factual for runtime preparation.
 func PanelCatalog(discovered []Agent) []Agent {
-	fixed := map[string]bool{"kimi": true, "claude-desktop": true, "opencode": true, "devin": true, "grok": true, "cursor": true}
+	fixed := map[string]bool{"claude": true, "codex": true, "pi": true, "kimi": true, "claude-desktop": true, "opencode": true, "devin": true, "grok": true, "cursor": true}
 	byID := map[string]Agent{}
 	for _, item := range discovered {
 		byID[item.ID] = item
@@ -113,3 +113,6 @@ func PanelCatalog(discovered []Agent) []Agent {
 	}
 	return result
 }
+
+// These cloud agents are available even when this Mac has no CLI installation.
+func CloudAgentIDs() []string { return []string{"claude", "codex", "pi"} }

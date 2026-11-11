@@ -68,7 +68,7 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		writer := &runtimeEvents{emit: func(event map[string]string) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			if ctx.Err() != nil || c.runtime.Epoch != epoch {
+			if ctx.Err() != nil || c.runtime.Epoch != epoch || c.runtimeAgain {
 				return
 			}
 			switch event["type"] {

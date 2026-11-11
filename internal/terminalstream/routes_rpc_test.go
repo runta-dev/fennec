@@ -8,6 +8,7 @@ import (
 	"fennec/internal/setup"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -17,6 +18,14 @@ func TestRouteRPCServiceChild(t *testing.T) {
 		return
 	}
 	runtime := cloudruntime.NewLocalRuntime(t.TempDir())
+	if binary := os.Getenv("FENNEC_RPC_TEST_BINARY"); binary != "" {
+		for _, name := range []string{".local/fennec/node/bin/node", ".local/bin/herdr-core"} {
+			path := filepath.Join(runtime.Home, name)
+			if os.MkdirAll(filepath.Dir(path), 0700) != nil || os.Symlink(binary, path) != nil {
+				os.Exit(2)
+			}
+		}
+	}
 	if err := ServeWithOperations(context.Background(), os.Stdin, os.Stdout, nil, nil, nil, runtime.Operation); err != nil {
 		os.Exit(1)
 	}
@@ -95,5 +104,50 @@ func TestNativeCredentialsReuseResidentChannelWithoutGateway(t *testing.T) {
 	}
 	if !transport.Alive() {
 		t.Fatal("native sync closed resident channel")
+	}
+}
+
+func TestReconfigurationUsesExistingResidentProtocol(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	trueBinary, err := exec.LookPath("true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err = os.Symlink(trueBinary, bin+"/codex"); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(executable, "-test.run=^TestRouteRPCServiceChild$")
+	command.Env = append(os.Environ(), "FENNEC_ROUTE_RPC_CHILD=1", "PATH="+bin, "FENNEC_RPC_TEST_BINARY="+trueBinary)
+	transport, err := Start(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transport.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !transport.Supports("reconfigure_runtime") {
+		t.Fatal("configuration capability missing")
+	}
+	pid := command.Process.Pid
+	request := setup.RuntimeConfiguration{Accounts: setup.ModelAccountsRequest{Version: 1, Native: true, Agents: []string{"codex"}, Files: map[string]string{"env.json": base64.StdEncoding.EncodeToString([]byte(`{}`)), "codex/auth.json": base64.StdEncoding.EncodeToString([]byte(`{"tokens":{"access_token":"fixture-only"}}`))}}}
+	for i := 0; i < 2; i++ {
+		raw, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var result setup.RuntimeConfigurationResult
+		if json.Unmarshal(raw, &result) != nil || result.NeedsSetup || len(result.Routes) != 1 || result.Routes[0].Status != "configured" {
+			t.Fatal("configuration not verified", string(raw))
+		}
+		if !transport.Alive() || command.Process.Pid != pid {
+			t.Fatal("configuration replaced the resident transport")
+		}
 	}
 }

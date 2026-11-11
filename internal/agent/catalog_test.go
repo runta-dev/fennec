@@ -25,7 +25,7 @@ func TestDiscoveryEvidence(t *testing.T) {
 }
 
 func TestComingSoonCatalogDoesNotDependOnInstallation(t *testing.T) {
-	expected := []string{"kimi", "claude-desktop", "opencode", "devin", "grok", "cursor"}
+	expected := []string{"claude", "codex", "pi", "kimi", "claude-desktop", "opencode", "devin", "grok", "cursor"}
 	empty := PanelCatalog(nil)
 	if len(empty) != len(expected) {
 		t.Fatal(empty)
@@ -36,10 +36,29 @@ func TestComingSoonCatalogDoesNotDependOnInstallation(t *testing.T) {
 		}
 	}
 	present := PanelCatalog([]Agent{{ID: "codex", Installed: true, Name: "Codex", Evidence: "executable"}, {ID: "kimi", Installed: true, Name: "Kimi Code", Evidence: "configuration"}})
-	if len(present) != 7 || present[0].ID != "codex" || !present[1].Installed || present[1].ID != "kimi" {
+	if len(present) != 9 || present[1].ID != "codex" || !present[1].Installed || !present[3].Installed || present[3].ID != "kimi" {
 		t.Fatal("missing or duplicate catalog entries", present)
 	}
 	if got := discoverAt(t.TempDir(), nil, nil); len(got) != 0 {
 		t.Fatal("placeholders contaminated real discovery", got)
+	}
+}
+
+func TestCleanMacKeepsCloudAgentEntryPoints(t *testing.T) {
+	home := t.TempDir()
+	discovered := discoverAt(home, nil, nil)
+	if len(discovered) != 0 {
+		t.Fatal("clean fixture contains installed agents")
+	}
+	panel := PanelCatalog(discovered)
+	byID := map[string]Agent{}
+	for _, entry := range panel {
+		byID[entry.ID] = entry
+	}
+	for _, id := range CloudAgentIDs() {
+		entry, ok := byID[id]
+		if !ok || !entry.Cloud || entry.Installed || entry.Evidence != "" {
+			t.Fatalf("cloud entry %s unavailable or pretends to be installed: %+v", id, entry)
+		}
 	}
 }

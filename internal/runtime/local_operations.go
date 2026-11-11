@@ -13,18 +13,25 @@ import (
 )
 
 type LocalOperation struct {
-	Login       *setup.NativeLogin          `json:"login,omitempty"`
-	NativeModel *setup.NativeModelSelection `json:"native_model,omitempty"`
-	Accounts    *setup.ModelAccountsRequest `json:"accounts,omitempty"`
-	Routes      []setup.AgentRoute          `json:"routes,omitempty"`
-	Launch      *LocalLaunch                `json:"launch,omitempty"`
-	Kind        string                      `json:"kind"`
-	Address     string                      `json:"address,omitempty"`
-	SessionID   string                      `json:"session_id,omitempty"`
-	Text        string                      `json:"text,omitempty"`
+	Configuration *setup.RuntimeConfiguration `json:"configuration,omitempty"`
+	Login         *setup.NativeLogin          `json:"login,omitempty"`
+	NativeModel   *setup.NativeModelSelection `json:"native_model,omitempty"`
+	Accounts      *setup.ModelAccountsRequest `json:"accounts,omitempty"`
+	Routes        []setup.AgentRoute          `json:"routes,omitempty"`
+	Launch        *LocalLaunch                `json:"launch,omitempty"`
+	Kind          string                      `json:"kind"`
+	Address       string                      `json:"address,omitempty"`
+	SessionID     string                      `json:"session_id,omitempty"`
+	Text          string                      `json:"text,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "reconfigure_runtime" {
+		if o.Configuration == nil {
+			return fmt.Errorf("configuration required")
+		}
+		return o.Configuration.Validate()
+	}
 	if o.Kind == "native_login_status" || o.Kind == "native_login_cancel" {
 		if o.Login == nil || !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(o.Address) {
 			return fmt.Errorf("login required")
@@ -70,6 +77,13 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "reconfigure_runtime" {
+		result, err := setup.ReconfigureRuntime(ctx, r.Home, *o.Configuration)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(result)
 	}
 	if o.Kind == "native_account" {
 		view, err := setup.NativeCloudAccount(r.Home, o.NativeModel.Agent)

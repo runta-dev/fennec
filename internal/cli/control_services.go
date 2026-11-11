@@ -169,7 +169,15 @@ func (s *daemonServices) prepare(ctx context.Context, token string, output io.Wr
 	if !ok {
 		return fmt.Errorf("login required")
 	}
-	events := &serviceEvents{emit: func(event map[string]json.RawMessage) { s.runtimeEvent(epoch, event) }}
+	if handled, err := s.reconfigureExisting(ctx, epoch, output); handled {
+		return err
+	}
+	configurationMode := newDesktopSettings(s.home).value.Magpie
+	events := &serviceEvents{emit: func(event map[string]json.RawMessage) {
+		if ctx.Err() == nil && newDesktopSettings(s.home).value.Magpie == configurationMode {
+			s.runtimeEvent(epoch, event)
+		}
+	}}
 	return prepareRuntime(ctx, token, io.MultiWriter(output, events), preparationRetainer{Runtime: func(runtime runta.Runtime) error {
 		return s.initialize(lifecycle, token, epoch, runtime.Owner)
 	}, Connection: func(runtimeID string, connection *ssh.Client) bool {

@@ -688,6 +688,15 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             switch result { case .success(let value): self.render("renderBilling", [value]); case .failure: self.render("renderBilling", [["error":"无法读取账户用量，请重试"]]) }
         }
     }
+    private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
+        let epoch=accountEpoch
+        control.call("sessions.browser",params) { [weak self] result in
+            guard let self,self.accountEpoch==epoch else{return}
+            guard case .success(let value)=result,let reply=value as? [String:Any],let text=reply["url"] as? String,
+                  let url=URL(string:text),url.scheme=="http",url.host=="127.0.0.1" else {done?(false);return}
+            done?(NSWorkspace.shared.open(url))
+        }
+    }
     private func mutate(_ method: String, _ params: [String:Any] = [:], done: ((Bool,Any?) -> Void)? = nil) {
 	    guard controlReady else{return}
 	    viewRevision += 1
@@ -700,7 +709,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             case .failure(let error):
                 done?(false,nil)
                 NSLog("Fennec control operation %@ failed: %@",method,error.localizedDescription)
-                self.render("showFeedbackToast",[method.hasPrefix("sessions.") ? "操作未确认，正在更新会话状态。" : "暂时无法完成操作，请稍后重试。"])
+                // Each operation owns its contextual feedback; background reads
+                // must not produce a generic failure toast.
             }
             self.lastState = nil; self.pollState()
         }
@@ -732,7 +742,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 let start: (String) -> Void = { [weak self] requestID in
                     guard let self else { return };self.launchRequests[key] = requestID
                     self.mutate("agent.login.start",["agent":agent,"session_id":requestID]) { [weak self] success,value in
-                        self?.render("renderAgentLoginStarted",[success ? value ?? NSNull() : NSNull(),agent])
+                        guard let self else{return}
+                        guard success,let receipt=value as? [String:Any],let sessionID=receipt["session_id"] as? String,let runtimeID=receipt["runtime_id"] as? String else {self.render("renderAgentLoginStarted",[NSNull(),agent]);return}
+                        self.openBrowserSession(["session_id":sessionID,"expected_runtime_id":runtimeID]) { opened in
+                            self.render("renderAgentLoginStarted",[opened ? receipt : NSNull(),agent])
+                        }
+
                     }
                 }
                 if let requestID=launchRequests[key] { if !requestID.isEmpty {start(requestID)} }
@@ -754,12 +769,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                     self?.render("renderAgentLoginCanceled",[success])
                 }
             case "copy-attach:": copyCloudAttachCommand(address,id)
-            case "browser-attach:":
-                mutate("sessions.browser",params) { success,value in
-                    guard success, let result = value as? [String:Any], let text = result["url"] as? String,
-                          let url = URL(string:text), url.scheme == "http", url.host == "127.0.0.1" else { return }
-                    NSWorkspace.shared.open(url)
-                }
+            case "browser-attach:": openBrowserSession(params)
             case "stop-session:": mutate("sessions.stop",params) { [weak self] success,_ in self?.render(success ? "renderSessionStopped" : "renderSessionActionError",success ? [id] : []) }
             case "send-session:": mutate("sessions.send",params) { [weak self] success,_ in self?.render("renderSessionSent",[id,success]) }
             case "read-session:":
@@ -780,7 +790,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                     else {self.render("renderLocalModel",[["agent":params["agent"] as? String ?? "","error":true] as [String:Any]])}
                 }
             case "get-model:":
-                mutate("model.get",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) } else { self?.render("renderNativeModelFailure",[params["agent"] as? String ?? ""]) } }
+                let epoch=accountEpoch
+                control.call("model.get",params) { [weak self] result in
+                    guard let self,self.accountEpoch==epoch else{return}
+                    if case .success(let value)=result {self.render("renderNativeModels",[value])}
+                    else {self.render("renderNativeModelFailure",[params["agent"] as? String ?? ""])}
+                }
             case "select-model:":
                 render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render(params["location"] as? String == "local" ? "renderLocalModel" : "renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
             case "launch-agent:":
