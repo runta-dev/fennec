@@ -14,7 +14,7 @@ for(const stage of ['installing_codex','connecting','configuring_routes']){
  assert.ok(panel.children[0].children[1].classes.has('working'));
  assert.equal(panel.children.filter(x=>x.tag==='button').length,0);
 }
-for(const stage of ['failed','agents_installed']){
+for(const stage of ['failed']){
  context.window.renderPreparation({stage});
  assert.equal(panel.attrs['aria-busy'],'false');
  assert.ok(!panel.children[0].children[1].classes.has('working'));
@@ -24,6 +24,13 @@ for(const stage of ['failed','agents_installed']){
 console.log('PASS preparation waits expose action; active work retains spinner');
 
 for (const stage of ['waiting_credentials','credentials_required']) { context.window.renderPreparation({stage}); assert.equal(panel.hidden,true); assert.equal(panel.children.length,0); }
+
+for(const status of ['native_credentials_need_attention','model_routes_need_attention']){
+ context.routeResults.clear();
+ context.window.renderPreparation({stage:'agents_installed',status});
+ assert.equal(panel.hidden,true,'agent results arriving later must not leave a global credential error');
+ assert.equal(panel.children.length,0,'no ineffective global retry for an agent sign-in');
+}
 
 context.routeResults.set('claude',{status:'configured'});
 context.routeResults.set('opencode',{status:'installation_failed'});

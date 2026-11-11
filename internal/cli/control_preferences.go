@@ -12,7 +12,27 @@ import (
 )
 
 func (s *daemonServices) handlers(controller *controlplane.Controller) map[string]control.Handler {
+	s.mu.Lock()
+	s.loginObserver = func(ctx context.Context, runtime string, data []byte) {
+		var listing struct {
+			Accounts map[string]string `json:"native_accounts"`
+		}
+		if json.Unmarshal(data, &listing) == nil && len(listing.Accounts) > 0 {
+			_ = s.acceptNativeAccounts(ctx, runtime, listing.Accounts, controller)
+		}
+	}
+	s.mu.Unlock()
 	return map[string]control.Handler{
+		"agent.account.get": s.nativeAccount,
+		"agent.login.start": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return s.nativeLogin(ctx, raw, "start", controller)
+		},
+		"agent.login.finish": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return s.nativeLogin(ctx, raw, "finish", controller)
+		},
+		"agent.login.cancel": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return s.nativeLogin(ctx, raw, "cancel", controller)
+		},
 		"connection.status": func(context.Context, json.RawMessage) (any, error) {
 			s.mu.Lock()
 			channel := s.channel
@@ -70,9 +90,19 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 		"trust.clear": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			return s.decide(ctx, json.RawMessage(`{"action":"clear_trust"}`))
 		},
-		"model.get": s.getNativeModels,
+		"model.get":       s.getNativeModels,
+		"model.local.get": s.localModel,
 		"model.set": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			var scope struct {
+				Location string `json:"location"`
+			}
+			if json.Unmarshal(raw, &scope) != nil || (scope.Location != "" && scope.Location != "cloud" && scope.Location != "local") {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Choose a run location"}
+			}
 			if !newDesktopSettings(s.home).value.Magpie {
+				if scope.Location == "local" {
+					return nil, &control.Fault{Code: "unsupported_operation", Message: "Choose the local model in your agent"}
+				}
 				return s.setNativeModel(ctx, raw)
 			}
 			var choice struct {
@@ -81,6 +111,12 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 			}
 			if json.Unmarshal(raw, &choice) != nil {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Agent and model required"}
+			}
+			if scope.Location == "local" {
+				if err := setup.SetLocalMagpieModel(ctx, s.home, choice.Agent, choice.Model); err != nil {
+					return nil, err
+				}
+				return map[string]any{"saved": true, "agent": choice.Agent, "model": choice.Model, "location": "local"}, nil
 			}
 			_, _, epoch, ok := s.account.Session()
 			if !ok {

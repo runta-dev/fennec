@@ -85,3 +85,18 @@ model override variables are removed. Source files and cloud-refreshed tokens
 retain the existing isolation/conflict rules; policy migration preserves cloud
 TUI preferences. This does not create a native login when the user only signed
 in through Magpie: the product still needs a native sign-in recovery flow.
+
+### Account surfaces and cloud sign-in
+
+Native mode shows the current native account in both run locations. Account
+metadata is a whitelist derived from the agent's saved files and explicit token
+claims; it is not a live quota probe. A missing account is a normal signed-out
+state, not a global preparation failure. Magpie mode uses gateway model selection;
+local changes use the local Magpie CLI and cloud changes use the cloud control plane.
+
+`fen agent account <agent> [local|cloud]` reads the same account view as the UI.
+`fen agent login <agent>` opens an isolated cloud sign-in session. Its successful
+completion selects the cloud account without modifying the Mac's credentials.
+The daemon observes completed login IDs through its existing session channel,
+including when the UI is closed. Canceling invalidates the pending login before
+stopping it; temporary credentials are removed only after stop is confirmed.

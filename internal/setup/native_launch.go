@@ -44,7 +44,10 @@ func ExecNativeAgent(home, agent string, args []string) error {
 }
 
 func nativeAgentEnvironment(home, agent string) ([]string, error) {
-	root := filepath.Join(home, ".local/fennec/native")
+	root, _, err := NativeAccountRoot(home, agent)
+	if err != nil {
+		return nil, err
+	}
 	var values map[string]string
 	data, err := readNativeFile(filepath.Join(root, "env.json"))
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fennec/internal/setup"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 )
 
 type LocalOperation struct {
+	Login       *setup.NativeLogin          `json:"login,omitempty"`
 	NativeModel *setup.NativeModelSelection `json:"native_model,omitempty"`
 	Accounts    *setup.ModelAccountsRequest `json:"accounts,omitempty"`
 	Routes      []setup.AgentRoute          `json:"routes,omitempty"`
@@ -23,7 +25,13 @@ type LocalOperation struct {
 }
 
 func (o LocalOperation) Validate() error {
-	if o.Kind == "native_models" || o.Kind == "native_model_set" {
+	if o.Kind == "native_login_status" || o.Kind == "native_login_cancel" {
+		if o.Login == nil || !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(o.Address) {
+			return fmt.Errorf("login required")
+		}
+		return o.Login.Validate()
+	}
+	if o.Kind == "native_models" || o.Kind == "native_model_set" || o.Kind == "native_account" {
 		if o.NativeModel == nil || !map[string]bool{"codex": true, "claude": true, "pi": true}[o.NativeModel.Agent] {
 			return fmt.Errorf("unsupported native model agent")
 		}
@@ -62,6 +70,40 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "native_account" {
+		view, err := setup.NativeCloudAccount(r.Home, o.NativeModel.Agent)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(view)
+	}
+	if o.Kind == "native_login_status" || o.Kind == "native_login_cancel" {
+		terminal, err := r.Terminal(ctx, o.Address, o.Login.ID)
+		if err != nil {
+			return nil, err
+		}
+		if o.Kind == "native_login_cancel" {
+			if err := setup.CancelNativeLogin(ctx, r.Home, *o.Login); err != nil {
+				root, selected, readErr := setup.NativeAccountRoot(r.Home, o.Login.Agent)
+				if readErr == nil && selected && filepath.Base(root) == o.Login.ID {
+					return json.Marshal(map[string]bool{"signed_in": true})
+				}
+				return nil, err
+			}
+			if _, err := r.Stop(ctx, o.Address, o.Login.ID); err != nil {
+				return nil, err
+			}
+			if err := setup.DiscardNativeLogin(ctx, r.Home, *o.Login); err != nil {
+				return nil, err
+			}
+			return json.Marshal(map[string]bool{"canceled": true})
+		}
+		root, selected, err := setup.NativeAccountRoot(r.Home, o.Login.Agent)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"signed_in": selected && filepath.Base(root) == o.Login.ID, "running": terminal.State == "live", "agent": o.Login.Agent, "session_id": o.Login.ID})
 	}
 	if o.Kind == "native_models" || o.Kind == "native_model_set" {
 		var state setup.NativeModelState
@@ -210,6 +252,9 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	listing["terminals"], err = json.Marshal(rows)
 	if err != nil {
 		return nil, err
+	}
+	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
+		listing["native_accounts"], _ = json.Marshal(accounts)
 	}
 	return json.Marshal(listing)
 }

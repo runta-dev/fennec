@@ -19,7 +19,7 @@ macos-run: macos
 check-ui:
 	node --check internal/gui/assets/app.js
 	node --check native/macos/UI/panel.js
-	node --check native/macos/UI/uninstall.js
+	node --check native/macos/UI/agent-login.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js
@@ -33,7 +33,6 @@ check-ui:
 	node scripts/tests/login-state.cjs
 	node scripts/tests/takeover-state.cjs
 	node scripts/tests/fox-motion.cjs
-	node scripts/tests/uninstall.cjs
 
 test-connector: build
 	python3 scripts/tests/relay.py

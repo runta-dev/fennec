@@ -63,6 +63,8 @@ else
 fi
 ln -sfn fen "$app/Contents/MacOS/fennec-daemon"
 swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+# Removed UI features must not survive in a reused staging bundle.
+rm -rf "$app/Contents/Resources/UI"
 mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"

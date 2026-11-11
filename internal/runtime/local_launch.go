@@ -18,6 +18,7 @@ import (
 )
 
 type LocalLaunch struct {
+	NativeLogin    bool                 `json:"native_login,omitempty"`
 	Hooks          []hookbridge.Binding `json:"hooks,omitempty"`
 	ID             string               `json:"id"`
 	Agent          string               `json:"agent"`
@@ -47,6 +48,9 @@ type LocalRuntime struct {
 }
 
 func (request LocalLaunch) Validate() error {
+	if request.NativeLogin && (request.Agent == "opencode" || len(request.Arguments) != 0 || len(request.Hooks) != 0) {
+		return fmt.Errorf("invalid native login launch")
+	}
 	if err := hookbridge.ValidateBindings(request.Hooks); err != nil {
 		return err
 	}
@@ -206,6 +210,12 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		if request.Agent == "opencode" {
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		}
+	}
+	if request.NativeLogin {
+		if err := setup.PrepareNativeLogin(ctx, runtime.Home, setup.NativeLogin{ID: request.ID, Agent: request.Agent}); err != nil {
+			return LocalTerminal{}, err
+		}
+		command = []string{filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal"), "native-login", request.Agent, request.ID}
 	}
 	mark("workspace_prepare")
 	if err := ctx.Err(); err != nil {

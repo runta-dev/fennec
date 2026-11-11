@@ -13,6 +13,7 @@ import (
 )
 
 type terminalChannel struct {
+	onListing       func(context.Context, []byte)
 	ctx             context.Context
 	shared          *launcher.SharedConnection
 	preparedSSH     *ssh.Client

@@ -141,7 +141,7 @@ func (service *fenSessionService) handle(ctx context.Context, request fenService
 			selected = &launcher.LaunchReceipt{RuntimeID: service.runtimeID, Address: request.Address, SessionID: request.SessionID}
 		}
 	}
-	if selected == nil && (request.Operation == "resume" || request.Operation == "kill") && service.home != "" {
+	if selected == nil && (request.Operation == "resume" || request.Operation == "attach" || request.Operation == "kill") && service.home != "" {
 		if receipt, err := launcher.ReadReceipt(filepath.Join(service.home, ".config/fennec/launches"), request.SessionID); err == nil && receipt.RuntimeID == service.runtimeID {
 			selected = &receipt
 		}
@@ -261,7 +261,14 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 			if err != nil {
 				return nil, err
 			}
-			return transport.Operate(operation, cloudruntime.LocalOperation{Kind: "list"})
+			data, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "list"})
+			channels[0].mu.Lock()
+			observe := channels[0].onListing
+			channels[0].mu.Unlock()
+			if err == nil && observe != nil {
+				observe(operation, data)
+			}
+			return data, err
 		}
 		service.stop = func(operation context.Context, receipt launcher.LaunchReceipt) (map[string]float64, error) {
 			transport, err := channels[0].get(operation)

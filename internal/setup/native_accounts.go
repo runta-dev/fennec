@@ -458,9 +458,17 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		return result, e
 	}
 	writes := []credentialWrite{}
+	cloudLogins, e := readCloudLogins(home)
+	if e != nil {
+		return result, e
+	}
 	for name, encoded := range r.Files {
 		if !nativeFiles[name] {
 			return result, fmt.Errorf("unsupported native credential file")
+		}
+		agent, _, _ := strings.Cut(name, "/")
+		if cloudLogins[agent] != "" {
+			continue
 		}
 		data, e := base64.StdEncoding.DecodeString(encoded)
 		if e != nil || len(data) > 4<<20 {
@@ -538,7 +546,11 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		return result, e
 	}
 	for _, id := range r.Agents {
-		result.NativeReady[id] = r.NativeProblems[id] == "" && nativeHasCredentials(root, id)
+		accountRoot, cloud, err := NativeAccountRoot(home, id)
+		if err != nil {
+			return result, err
+		}
+		result.NativeReady[id] = (cloud || r.NativeProblems[id] == "") && nativeHasCredentials(accountRoot, id)
 	}
 	result.AvailableAgents = availableAgentInventory(home, r.Agents)
 	if e := ConfigureAgentMode(home, true); e != nil {

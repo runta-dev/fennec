@@ -77,11 +77,16 @@ if (!supportedLanguages.includes(language)) language = 'zh-CN';
 languageSelect.value = language;
 const textSources = new WeakMap();
 const attrSources = new WeakMap();
+function uiCopy(text, locale) {
+  const separator=locale==='ja'?'、':locale?.startsWith('zh')?'，':' · ';
+  return text.replace(/\.{3}/g,'…').replace(/[。．](?=\S)/g,separator).replace(/[。．]$/,'').replace(/\.\s+(?=\S)/g,separator).replace(/\.$/,'');
+}
 function translate(source) {
   const index = {'zh-TW':0,'en-US':1,'en-GB':1,ja:2,ko:3}[language];
-  if (index === undefined) return source;
   const trimmed = source.trim();
-  if (translations[trimmed]) return source.replace(trimmed, translations[trimmed][index]);
+  const entry=Object.prototype.hasOwnProperty.call(translations,trimmed)?translations[trimmed]:null;
+  if (Array.isArray(entry)) return source.replace(trimmed, uiCopy(index===undefined?trimmed:(entry[index]??trimmed),language));
+  if (index === undefined) return source;
   if (translations[trimmed + '…']) return source.replace(trimmed, translations[trimmed + '…'][index].replace(/(?:\.{3}|…)$/, ''));
   const prefix = '请在浏览器确认授权码：';
   if (source.startsWith(prefix)) return translations[prefix][index] + source.slice(prefix.length);
@@ -93,7 +98,7 @@ function localize() {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let node;
   while ((node = walker.nextNode())) {
-    if (node.parentElement.closest('script,style,#session-output,#session-terminal,#session-detail-title,#language,#runtime-list,.approval-card pre,.header-login.account-link,.preference-account')) continue;
+    if (node.parentElement.closest('script,style,#session-output,#session-terminal,#session-detail-title,#language,#runtime-list,.approval-card pre,.header-login.account-link,.preference-account,.native-account-name[data-identity],.native-subscription')) continue;
     const previous = textSources.get(node);
     const source = previous && node.nodeValue === previous.output ? previous.source : node.nodeValue;
     const output = translate(source);
@@ -181,7 +186,7 @@ Object.assign(translations, {'即将支持':['即將支援','Coming soon','近�
 localize();
 translations['在浏览器打开']=['在瀏覽器開啟','Open in browser','ブラウザで開く','브라우저에서 열기'];
 Object.assign(translations, {
- '为云端智能体自由选择模型。':['為雲端智慧代理自由選擇模型。','Choose any model for your cloud agents.','クラウドエージェントのモデルを自由に選べます。','클라우드 에이전트의 모델을 자유롭게 선택하세요.'],
+ '为云端智能体自由选择模型':['為雲端智慧代理自由選擇模型','Choose any model for your cloud agents','クラウドエージェントのモデルを自由に選べます','클라우드 에이전트의 모델을 자유롭게 선택하세요'],
  '云端模型':['雲端模型','Cloud model','クラウドモデル','클라우드 모델'],
  '选择模型':['選擇模型','Choose a model','モデルを選択','모델 선택'],
  '请选择云端模型':['請選擇雲端模型','Choose a cloud model','クラウドモデルを選択してください','클라우드 모델을 선택하세요'],
@@ -194,7 +199,7 @@ Object.assign(translations, {
 localize();
 Object.assign(translations, {
  '关于 Magpie':['關於 Magpie','About Magpie','Magpie について','Magpie 소개'],
- 'Magpie 是一个本地 AI 网关，可将智能体连接到不同的模型服务。你可以通过它为云端智能体选择和切换模型。':['Magpie 是一個本地 AI 閘道，可將智慧代理連接到不同的模型服務。你可以透過它為雲端智慧代理選擇和切換模型。','Magpie is a local AI gateway that connects your agents to different model providers. Use it to choose and switch models for your cloud agents.','Magpie はエージェントをさまざまなモデルプロバイダーに接続するローカル AI ゲートウェイです。クラウドエージェントで使うモデルを選択・切り替えできます。','Magpie는 에이전트를 여러 모델 제공업체에 연결하는 로컬 AI 게이트웨이입니다. 클라우드 에이전트에서 사용할 모델을 선택하고 전환할 수 있습니다.']
+ 'Magpie 是一个本地 AI 网关，可将智能体连接到不同的模型服务，并为云端智能体选择和切换模型':['Magpie 是一個本地 AI 閘道，可將智慧代理連接到不同的模型服務，並為雲端智慧代理選擇和切換模型','Magpie is a local AI gateway for connecting agents to different model providers and switching models for your cloud agents','Magpie はエージェントをさまざまなモデルプロバイダーに接続するローカル AI ゲートウェイです。クラウドエージェントで使うモデルを選択・切り替えできます。','Magpie는 에이전트를 여러 모델 제공업체에 연결하는 로컬 AI 게이트웨이입니다. 클라우드 에이전트에서 사용할 모델을 선택하고 전환할 수 있습니다.']
 });
 localize();
 Object.assign(translations, {
@@ -220,3 +225,16 @@ Object.assign(translations, {'请先登录，再删除云电脑':['請先登入�
 localize();
 Object.assign(translations, {'查看要移除的 App':['查看要移除的 App','Review apps to remove','削除するアプリを確認','제거할 앱 확인']});
 localize();
+Object.assign(translations,{
+ '登录智能体':['登入智慧代理','Sign in','エージェントにログイン','에이전트 로그인'],
+ '完成登录':['完成登入','Continue','続行','계속'],
+ '取消登录':['取消登入','Cancel sign-in','ログインをキャンセル','로그인 취소'],
+ '输入 /login 选择服务，登录后退出 Pi。':['輸入 /login 選擇服務，登入後退出 Pi。','Enter /login to choose a provider. Exit Pi after signing in.','/login でプロバイダーを選び、ログイン後に Pi を終了してください。','/login으로 제공자를 선택하세요. 로그인 후 Pi를 종료하세요.'],
+ '在终端中的链接打开授权页面，完成后继续。':['開啟終端中的連結進行授權，完成後繼續。','Open the authorization link in the terminal, then continue.','ターミナルのリンクで認証し、続行してください。','터미널의 인증 링크를 열고 완료 후 계속하세요.'],
+ '请完成登录后继续。':['請完成登入後繼續。','Finish signing in, then continue.','ログインを完了してから続行してください。','로그인을 완료한 후 계속하세요.'],
+ '登录未完成，请重新开始。':['登入未完成，請重新開始。','Sign-in was not completed. Start again.','ログインが完了しませんでした。もう一度開始してください。','로그인이 완료되지 않았습니다. 다시 시작하세요.'],
+ '暂时无法检查登录，请重试。':['暫時無法檢查登入，請重試。','Could not check sign-in. Try again.','ログインを確認できません。もう一度お試しください。','로그인을 확인할 수 없습니다. 다시 시도하세요.'],
+ '暂时无法取消登录，请重试。':['暫時無法取消登入，請重試。','Could not cancel sign-in. Try again.','ログインをキャンセルできません。もう一度お試しください。','로그인을 취소할 수 없습니다. 다시 시도하세요.']
+});
+Object.assign(translations,{'重新登录':['重新登入','Sign in again','再ログイン','다시 로그인']});
+Object.assign(translations,{'未登录':['未登入','Not signed in','未ログイン','로그인되지 않음'],'刷新账户':['重新整理帳戶','Refresh account','アカウントを更新','계정 새로 고침'],'读取账户失败':['讀取帳戶失敗','Account unavailable','アカウントを取得できません','계정을 불러올 수 없음'],'登录':['登入','Sign in','ログイン','로그인']});

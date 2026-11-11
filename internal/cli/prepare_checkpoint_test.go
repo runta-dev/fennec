@@ -113,3 +113,16 @@ func TestNativeCheckpointDoesNotRequireMagpie(t *testing.T) {
 		t.Fatal("native readiness checks removed")
 	}
 }
+
+func TestMissingNativeCredentialsRetainPreparedInfrastructure(t *testing.T) {
+	for _, status := range []string{"configured", "credentials_required", "local_provider_unavailable", "local_credential_command", "unsupported_agent"} {
+		if !stablePreparedRoute(status) {
+			t.Fatalf("stable state %s causes repeated installation", status)
+		}
+	}
+	for _, status := range []string{"credentials_unavailable", "installation_failed", "verification_failed", ""} {
+		if stablePreparedRoute(status) {
+			t.Fatalf("unverified failure %s cached as stable", status)
+		}
+	}
+}

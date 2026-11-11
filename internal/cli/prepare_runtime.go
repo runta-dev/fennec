@@ -133,7 +133,19 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	// EnsureShared already authenticated and matched this owner against /v2/me.
 	routes := localRoutes
 	var plugins []setup.ModelPlugin
-	nativeRequest, err := setup.GatherNativeAccounts(ctx, home, ids, magpie)
+	sourceIDs := ids
+	if !magpie {
+		cloudAccounts := setup.NativeCloudPreferences(filepath.Join(home, ".config/fennec"), runtime.Owner, runtime.ID)
+		sourceIDs = nil
+		for _, id := range ids {
+			if !cloudAccounts[id] {
+				sourceIDs = append(sourceIDs, id)
+			}
+		}
+	}
+	nativeRequest, err := setup.GatherNativeAccounts(ctx, home, sourceIDs, magpie)
+	nativeRequest.Agents = ids
+
 	if err != nil {
 		return err
 	}
@@ -399,8 +411,14 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			break
 		}
 	}
-	if !magpie && status == "model_routes_need_attention" {
-		status = "native_credentials_need_attention"
+	if !magpie {
+		status = "ready"
+		for _, result := range results {
+			if !stablePreparedRoute(result.Status) && result.Status != "credentials_unavailable" {
+				status = "agents_need_attention"
+				break
+			}
+		}
 	}
 	// All agent results have been published. Optional model-list refresh must
 	// not precede verified route readiness or delay the first usable terminal.
@@ -416,9 +434,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}
 	cacheable := fingerprintErr == nil && len(results) > 0
 	for _, result := range results {
-		switch result.Status {
-		case "configured", "model_selection_required", "local_gateway_not_found", "unsupported_agent":
-		default:
+		if !stablePreparedRoute(result.Status) {
 			cacheable = false
 		}
 	}
@@ -443,4 +459,16 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}
 	emit("agents_installed", runtime.ID, status)
 	return nil
+}
+
+// Missing or non-portable local credentials are stable user configuration,
+// not a reason to repeat cloud installation. Source changes are fingerprinted
+// before cache lookup; completed cloud logins invalidate the checkpoint.
+func stablePreparedRoute(status string) bool {
+	switch status {
+	case "configured", "model_selection_required", "local_gateway_not_found", "unsupported_agent",
+		"credentials_required", "local_provider_unavailable", "local_credential_command":
+		return true
+	}
+	return false
 }

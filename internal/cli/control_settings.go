@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/agent"
 	"fennec/internal/control"
 	"fmt"
 	"os"
@@ -24,7 +25,15 @@ type desktopPreferences struct {
 }
 
 func newDesktopSettings(home string) *desktopSettings {
+	return newDesktopSettingsWithMagpie(home, func() bool { return installedMagpie(home, "/Applications", agent.ExecutableSearchPath(home)) })
+}
+func newDesktopSettingsWithMagpie(home string, installed func() bool) *desktopSettings {
 	settings := &desktopSettings{path: filepath.Join(home, ".config/fennec/settings.json"), value: desktopPreferences{Theme: "system", Language: "zh-CN"}}
+	if _, err := os.Lstat(settings.path); os.IsNotExist(err) {
+		settings.value.Magpie = installed()
+		// Publish complete defaults once, without replacing a concurrent explicit choice.
+		_ = initializeDesktopPreferences(settings.path, settings.value)
+	}
 	if raw, err := os.ReadFile(settings.path); err == nil {
 		var value desktopPreferences
 		if json.Unmarshal(raw, &value) == nil && validDesktop(value) {
@@ -32,6 +41,48 @@ func newDesktopSettings(home string) *desktopSettings {
 		}
 	}
 	return settings
+}
+func installedMagpie(home, applications, searchPath string) bool {
+	var candidates []string
+	for _, root := range []string{applications, filepath.Join(home, "Applications")} {
+		for _, name := range []string{"Magpie.app", "magpie.app"} {
+			candidates = append(candidates, filepath.Join(root, name, "Contents/MacOS/magpie"), filepath.Join(root, name, "Contents/MacOS/Magpie"))
+		}
+	}
+	for _, dir := range filepath.SplitList(searchPath) {
+		if filepath.IsAbs(dir) {
+			candidates = append(candidates, filepath.Join(dir, "magpie"))
+		}
+	}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0111 != 0 {
+			return true
+		}
+	}
+	return false
+}
+func initializeDesktopPreferences(path string, value desktopPreferences) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".settings-initial-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	data, _ := json.Marshal(value)
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	err = os.Link(file.Name(), path)
+	if os.IsExist(err) {
+		return nil
+	}
+	return err
 }
 func validDesktop(value desktopPreferences) bool {
 	return map[string]bool{"system": true, "light": true, "dark": true}[value.Theme] && map[string]bool{"zh-CN": true, "zh-TW": true, "en-US": true, "en-GB": true, "ja": true, "ko": true}[value.Language]

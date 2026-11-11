@@ -10,7 +10,14 @@ let entryCoverage = new Map();
 let detectedAgents = [];
 let routeResults = new Map();
 let gatewayModels = [];
+let localGatewayModels = new Map();
+let localGatewayPending = new Set();
+function loadLocalGatewayModel(agent){if(localGatewayPending.has(agent))return;localGatewayPending.add(agent);send('get-local-model:'+JSON.stringify({agent}));}
 let nativeModelStates = new Map();
+let nativeAccountStates = new Map();
+let nativeAccountPending = new Set();
+function loadNativeAccount(agent,location,refresh=false){const key=agent+':'+location;if(nativeAccountPending.has(key))return;nativeAccountPending.add(key);send('get-agent-account:'+JSON.stringify({agent,location,refresh}));}
+
 let nativeModelRequests = new Map();
 function loadNativeModel(agent){nativeModelRequests.set(agent,'pending');send('get-model:'+JSON.stringify({agent}));}
 let modelSaving = false;
@@ -83,9 +90,12 @@ let agentFoldTimer = null;
 let agentLocationTimer = null;
 const renderedLocations = new Map();
 let pendingAgentRender = false;
+let agentEffortEditing = false;
+const finishEffortEditing=()=>{if(!agentEffortEditing)return;agentEffortEditing=false;requestAnimationFrame(()=>{if(pendingAgentRender&&!modelSaving&&!agentEffortEditing){pendingAgentRender=false;window.renderAgents(detectedAgents);}});};
+window.addEventListener('pointerup',finishEffortEditing);window.addEventListener('pointercancel',finishEffortEditing);window.addEventListener('keyup',finishEffortEditing);
 window.renderAgents = agents => {
   detectedAgents = agents;
-  if (agentFoldTimer !== null || agentLocationTimer !== null) { pendingAgentRender = true; return; }
+  if (agentFoldTimer !== null || agentLocationTimer !== null || agentEffortEditing || modelSaving) { pendingAgentRender = true; return; }
   const list = document.querySelector('#agent-list');
   list.replaceChildren();
   document.querySelector('#count').textContent = agents.length;
@@ -134,7 +144,8 @@ window.renderAgents = agents => {
     if (!agent.installed) state.textContent = '未安装';
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
-      if(expandedAgent && !magpieEnabled && takeoverAgents.has(agent.id) && ['codex','claude','pi'].includes(agent.id)) loadNativeModel(agent.id);
+      if(expandedAgent && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(agent.id);
+      if(expandedAgent && !magpieEnabled){loadNativeAccount(agent.id,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(agent.id);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -196,45 +207,57 @@ window.renderAgents = agents => {
         detail.querySelector('.takeover').append(placeholder);
       }
       statusNode.hidden = !statusNode.textContent;
+      if(statusNode.textContent==='正在连接…'){statusNode.textContent='';statusNode.hidden=true;state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
-      if (route?.status === 'credentials_required') {statusNode.textContent='请先在本机登录此智能体，然后重试';statusNode.hidden=false;}
-      if (route?.status === 'credentials_unavailable') {statusNode.textContent='无法读取此智能体的登录凭据，请检查授权后重试';statusNode.hidden=false;}
-      if (route?.status === 'local_provider_unavailable') {
-        statusNode.textContent='';statusNode.hidden=true;
-        if (enabled && !magpieEnabled) {
-          const row=document.createElement('div');row.className='agent-integration-row';
-          const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
-          const label=document.createElement('span');label.textContent='Magpie';
-          const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';
-          toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked','false');
-          toggle.onclick=()=>send('settings:'+JSON.stringify({magpie:true}));
-          if(icon)row.append(icon);row.append(label,toggle);detail.append(row);
+      if(!magpieEnabled){
+        const location=enabled?'cloud':'local';const key=agent.id+':'+location;const account=nativeAccountStates.get(key);
+        if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(agent.id,location);
+        statusNode.hidden=true;statusNode.textContent='';
+        const card=document.createElement('div');card.className='native-account-card';card.setAttribute('aria-label','账户');
+        const entries=account?.status==='signed_in'&&account.accounts?.length?account.accounts:[null];
+        for(const identity of entries){
+          const accountRow=document.createElement('div');accountRow.className='native-account-row';
+          const badge=document.createElement('span');badge.className='native-account-check';badge.textContent=identity?'✓':'○';badge.setAttribute('aria-hidden','true');
+          const name=document.createElement('span');name.className='native-account-name';
+          if(identity)name.dataset.identity='true';
+          name.textContent=identity?(identity.email||({openai:'OpenAI',anthropic:'Anthropic','openai-codex':'ChatGPT',google:'Google'}[identity.provider]||identity.provider)):(account?.status==='signed_out'?'未登录':account?'读取账户失败':'');
+          if(!account)name.classList.add('setting-skeleton');
+          accountRow.append(badge,name);
+          if(identity){const plan=document.createElement('span');plan.className='native-subscription';plan.textContent=identity.subscription||(identity.auth_type==='api_key'?'API key':'OAuth');accountRow.append(plan);}
+          const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label','刷新账户');refresh.title='刷新账户';refresh.disabled=nativeAccountPending.has(key);
+          refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
+          refresh.onclick=()=>{loadNativeAccount(agent.id,location,true);refresh.disabled=true;};accountRow.append(refresh);
+          if(enabled){const login=document.createElement('button');login.type='button';login.className='native-account-login';const retry=route?.status==='installation_failed';login.textContent=retry?'重试':identity?'重新登录':'登录';login.disabled=!account||!route;login.onclick=()=>retry?send('retry-runtime'):window.startAgentLogin(agent.id);accountRow.append(login);}
+          card.append(accountRow);
         }
+        detail.append(card);
       }
-      if (route?.status === 'local_credential_command') {statusNode.textContent='本机凭据依赖本地命令，请使用智能体登录或 API key';statusNode.hidden=false;}
-      if (enabled && (magpieEnabled || ['codex','claude','pi'].includes(agent.id))) {
+      if (magpieEnabled || (enabled && ['codex','claude','pi'].includes(agent.id))) {
         const native=nativeModelStates.get(agent.id);
+        const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(agent.id);
+        if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(agent.id))loadLocalGatewayModel(agent.id);
         if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(agent.id))loadNativeModel(agent.id);
-        const models=magpieEnabled ? gatewayModels.map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:'Default'}];
-        const current=magpieEnabled ? route?.model || '' : native?.model || '';
+        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:'Default'}];
+        const current=magpieEnabled ? (local?localModel?.model:route?.model) || '' : native?.model || '';
         const row=document.createElement('div');row.className='agent-model-row';
         const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label','Model');
         for(const model of models){const option=document.createElement('option');option.value=model.id;option.textContent=model.name;select.append(option);}
         select.value=current;
         const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
-        trigger.disabled=modelSaving || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
+        trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
         const label=document.createElement('span');label.className='field-label';label.textContent='Model';
-        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?'重试':'') : models.find(m=>m.id===current)?.name || current || 'Default';
+        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?'重试':'') : models.find(m=>m.id===current)?.name || current || (magpieEnabled?'选择模型':'Default');
+        if(local&&localModel?.error)value.textContent='重试';
         if(!magpieEnabled && !native && nativeModelRequests.get(agent.id)==='pending')value.classList.add('setting-skeleton');
         const modelIcon=icon.cloneNode(true);modelIcon.className='model-provider-icon';modelIcon.alt='';
         const provider=magpieEnabled ? current.split('/')[0] : models.find(m=>m.id===current)?.provider;
         const providerIcon={codex:'codex-color.svg',openai:'codex-color.svg',anthropic:'claude-color.svg',claude:'claude-color.svg',google:'geminicli-color.svg',xai:'xai.svg','kimi-code':'kimi.svg'}[provider];if(providerIcon)modelIcon.src='icons/'+providerIcon;
         const chevron=document.createElementNS('http://www.w3.org/2000/svg','svg');chevron.setAttribute('viewBox','0 0 16 16');chevron.innerHTML='<path d="m5 6 3 3 3-3"/>';
         trigger.append(label,value,modelIcon,chevron);
-        trigger.onclick=()=>{if(!magpieEnabled && !native){loadNativeModel(agent.id);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
-        trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();openChoiceMenu(select,trigger,{optimistic:false});}};
-        select.onchange=()=>send('select-model:'+JSON.stringify({agent:agent.id,model:select.value}));
-        row.append(select,trigger);detail.append(row);
+        trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(agent.id);trigger.disabled=true;}else if(!magpieEnabled && !native){loadNativeModel(agent.id);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
+        trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();trigger.click();}};
+        select.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:select.value,location:local?'local':'cloud'}));};
+        row.append(select,trigger);if(magpieEnabled)detail.append(row);
         const selected=models.find(m=>m.id===current);
         if(!magpieEnabled && selected?.efforts?.length){
           const levels=['',...selected.efforts];
@@ -243,8 +266,12 @@ window.renderAgents = agents => {
           const result=document.createElement('span');result.textContent=native.effort || 'Default';caption.append(result);
           const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max=String(levels.length-1);slider.step='1';slider.value=String(Math.max(0,levels.indexOf(native.effort||'')));slider.disabled=modelSaving;slider.setAttribute('aria-label','Reasoning effort');slider.setAttribute('aria-valuetext',result.textContent);
           slider.oninput=()=>{result.textContent=levels[Number(slider.value)]||'Default';slider.setAttribute('aria-valuetext',result.textContent);};
-          slider.onchange=()=>send('select-model:'+JSON.stringify({agent:agent.id,model:current,effort:levels[Number(slider.value)]}));
-          effort.append(caption,slider);detail.append(effort);
+          slider.onpointerdown=()=>{agentEffortEditing=true;};slider.onkeydown=event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))agentEffortEditing=true;};
+          slider.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:current,effort:levels[Number(slider.value)]}));};
+          const track=document.createElement('div');track.className='effort-track';
+          const ticks=document.createElement('div');ticks.className='effort-ticks';ticks.setAttribute('aria-hidden','true');
+          levels.forEach((_,index)=>{const tick=document.createElement('span');tick.style.left=(index/(levels.length-1)*100)+'%';ticks.append(tick);});
+          track.append(ticks,slider);effort.append(caption,track);detail.append(effort);
         }
       }
 
@@ -457,13 +484,14 @@ window.renderProfile = name => {
   button.title = name;
 };
 window.renderSignedOut = () => {
+  window.resetAgentLogin?.();
   authorized = false;
   sessionListConnecting = true;
   visibleSessionCount = 0;
   routeResults.clear();
   takeoverAgents.clear();activeTakeoverAgents.clear();takeoverChanging=false;takeoverSelectionKnown=false;
-  gatewayModels = [];
-  nativeModelStates.clear();nativeModelRequests.clear();
+  gatewayModels = [];localGatewayModels.clear();localGatewayPending.clear();
+  nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();
   modelSaving = false;
   window.renderBilling({error:"请先登录"});
   userMenu.hidden = true;
@@ -507,10 +535,14 @@ themeButtons.forEach((button,index)=>{
  };
 });
 window.exportLocalPreferences = () => ({theme:appearance.value,language:document.querySelector('#language')?.value || 'zh-CN'});
-window.renderPreferences = value => {
- if(magpieEnabled !== (value.magpie === true)){nativeModelStates.clear();nativeModelRequests.clear();}
- magpieEnabled = value.magpie === true;
+window.renderMagpiePreference = enabled => {
+ if(magpieEnabled!==enabled){nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();localGatewayModels.clear();localGatewayPending.clear();}
+ magpieEnabled=enabled;
  document.querySelector('#magpie-integration')?.setAttribute('aria-checked',String(magpieEnabled));
+};
+window.renderPreferences = value => {
+
+ window.renderMagpiePreference(value.magpie === true);
  window.renderAgents(detectedAgents);
  if(['system','light','dark'].includes(value.theme) && appearance.value!==value.theme){appearance.value=value.theme;applyAppearance();}
  if(typeof supportedLanguages!=='undefined' && supportedLanguages.includes(value.language) && language!==value.language){
@@ -564,9 +596,9 @@ window.renderPreparation = state => {
   document.querySelector('#runtime-panel').hidden = !authorized || (sessionListConnecting && visibleSessionCount === 0);
   const panel = document.querySelector('#preparation');
   panel.replaceChildren();
-  // Authentication belongs to the header, not a second setup card.
-  panel.hidden = !state.stage || ['waiting_credentials', 'credentials_required'].includes(state.stage) ||
-    (state.stage === 'agents_installed' && [...routeResults.values()].some(result => result.status === 'configured'));
+  // Completed infrastructure is not a global error when individual agents
+  // still need sign-in or model selection; those actions belong to their cards.
+  panel.hidden = !state.stage || ['waiting_credentials', 'credentials_required', 'agents_installed'].includes(state.stage);
   if (panel.hidden) return;
   const titles = {checking_resources:'正在确认云电脑资源', installing_session_service:'正在准备会话服务', restoring_model_accounts:'正在恢复模型账户', configuring_routes:'正在配置智能体模型', installing_model_plugins:'正在配置模型插件', migrating_credentials:'正在迁移模型凭据', discovering_providers:'正在读取模型配置', waiting_credentials:'正在读取登录凭证', credentials_required:'请重新登录以继续准备', installing_pi:'正在安装 Pi', installing_opencode:'正在安装 OpenCode', starting_magpie:'正在启动大模型网关', installing_node:'正在安装运行工具', installing_magpie:'正在安装大模型网关', detecting_versions:'正在发现可用智能体', syncing_versions:'正在确认云端智能体', installing_claude:'正在安装 Claude Code', installing_codex:'正在安装 Codex', agents_installed:'等待配置大模型网关', allocating:'正在分配云电脑', starting:'正在启动云电脑', connecting:'正在连接云电脑', runtime_ready:'环境已启动，等待安装智能体', failed:'云电脑准备失败'};
   const row = document.createElement('div'); row.className = 'preparation-row';
@@ -651,19 +683,21 @@ window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(
 
 window.renderRouteResults = results => {
   routeResults = new Map(results.map(result => [result.agent, result]));
+  for(const result of results){const key=result.agent+':cloud';if(nativeAccountStates.get(key)?.status==='unavailable')nativeAccountStates.delete(key);}
   window.renderAgents(detectedAgents);
 };
 
+window.renderNativeAccount = state => {if(!state?.agent||!state?.location)return;const key=state.agent+':'+state.location;nativeAccountPending.delete(key);nativeAccountStates.set(key,state);window.renderAgents(detectedAgents);};
+window.resetNativeAccountViews = () => {modelSaving=false;agentEffortEditing=false;nativeAccountStates.clear();nativeAccountPending.clear();nativeModelStates.clear();nativeModelRequests.clear();};
+window.renderLocalModel = state => {if(!state?.agent)return;localGatewayPending.delete(state.agent);localGatewayModels.set(state.agent,{...localGatewayModels.get(state.agent),...state});window.renderAgents(detectedAgents);};
 window.renderNativeModelFailure = agent => {nativeModelRequests.set(agent,'failed');window.renderAgents(detectedAgents);};
 window.renderNativeModels = state => { if(!state || magpieEnabled || !Array.isArray(state.models))return;nativeModelStates.set(state.agent,state);window.renderAgents(detectedAgents); };
 window.renderModelCatalog = models => { gatewayModels = models; window.renderAgents(detectedAgents); };
 
 window.renderModelSaving = busy => {
   modelSaving=busy;
-  const notice=document.querySelector('#notice');
-  notice.hidden=!busy;
-  if(busy)notice.textContent='正在保存模型选择…';
-  window.renderAgents(detectedAgents);
+  document.querySelectorAll('.agent-model-trigger,.agent-effort input').forEach(control=>{control.disabled=busy;});
+  if(!busy)window.renderAgents(detectedAgents);
 };
 
 document.querySelector('#clear-trust').onclick = () => {

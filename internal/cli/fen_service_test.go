@@ -98,3 +98,21 @@ func TestStopUsesPersistentChannelAndChecksRuntime(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
+
+func TestFenAttachNewLoginReceiptBeforeListRefresh(t *testing.T) {
+	home := t.TempDir()
+	receipt := launcher.LaunchReceipt{RuntimeID: "01a1b144-56c1-7fc2-a4ab-cf8d84f8543e", Address: "t12", SessionID: "login-fixture", Agent: "codex"}
+	if err := launcher.SaveReceipt(filepath.Join(home, ".config/fennec/launches"), receipt); err != nil {
+		t.Fatal(err)
+	}
+	service := fenSessionService{home: home, runtimeID: receipt.RuntimeID, resume: func(_ context.Context, got launcher.LaunchReceipt) (launcher.LaunchPlan, error) {
+		if got != receipt {
+			t.Fatal("wrong receipt")
+		}
+		return launcher.LaunchPlan{SessionID: got.SessionID, StreamPath: "/fixture"}, nil
+	}}
+	reply := service.handle(context.Background(), fenServiceRequest{Operation: "attach", SessionID: receipt.SessionID})
+	if reply.Error != "" || reply.Plan == nil || reply.Plan.SessionID != receipt.SessionID {
+		t.Fatal("new login required an unrelated list refresh", reply.Error)
+	}
+}

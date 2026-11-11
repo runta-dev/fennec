@@ -240,3 +240,41 @@ broker ready。记录为 `/tmp/fennec-native-identity-live-off.json` 与
 
 尚需产品内原生登录入口、专用原生测试账号和最终 DMG/干净 Mac 验收；TODO
 对应项保持未完成。此次仅为开发与开发机验证，不是最终用户交付完成证据。
+
+## 原生账户入口与 UI 收敛（开发候选，未完成最终验收）
+
+按后续用户要求更新产品边界：首次初始化检测到实际安装的 Magpie 时默认开启，
+未安装则关闭，保存过的手动选择优先；正式 UI 不再提供卸载入口或卸载弹窗，
+`fen uninstall` 保留为 clean macOS 测试工具。这些要求取代本文件较早的默认值
+和卸载 UI 描述，TODO 的最终验收项仍全部保留。
+
+本轮实现：
+
+- 原生账户信息经 `agent.account.get` / `fen agent account` 读取，本机与云端按
+  运行位置区分，返回白名单字段（账户邮箱、认证类型、明确的套餐名称），不返回
+  token、API key 或凭空推断额度。显式 Claude OAuth token 不沿用另一登录文件的
+  邮箱或套餐。无可迁移凭据正常返回未登录，单个 Agent 不阻塞其他 Agent。
+- 原生 cloud 登录经 `agent.login.start/finish/cancel` 与 `fen agent login` 共用
+  Go 控制面和常驻协议 channel。云端调用已安装的原生 CLI，在独立目录中登录，
+  完成后原子选择该账户。旧请求、取消请求不能迟到覆盖身份，本地凭据同步不覆盖
+  用户明确选择的云端账户。确认登录进程停止后清除取消尝试的临时凭据。
+- daemon 从原有会话列表响应中的公开登录 ID 识别完成状态，无需 UI 回调或新建
+  SSH channel；按用户及 runtime 保存源选择提示并重新确认配置。
+- 缺少凭据等稳定状态允许复用准备结果，不再因此反复安装环境；真实安装失败和
+  未确认的凭据读取失败仍不能缓存为成功。
+- 原生模式显示账户订阅，Magpie 模式提供对应本机/云端的模型选择，本机选择不会
+  错写云端。保存反馈留在原控件内，滑杆改为细灰轨道、离散刻度与白色圆形滑块，
+  交互期间不替换正在拖动的控件。界面文案遵循不使用句号的项目规则。
+- 会话页不再把 Agent 未登录汇总成全局环境错误，先渲染 Agent 结果再渲染准备状态。
+- 构建时重新复制 UI 资源，删除的页面脚本不会残留在重复使用的 staging bundle。
+
+开发验证：Native setup、CLI、runtime、terminalstream、controlplane、uninstall
+相关 Go/race 测试，以及 `make check` / `make check-ui` 已分别执行。完整 setup
+测试在本机仍有已有的 flock 安装用例失败，须由 Linux CI 再验证。
+证据包括 `/tmp/fennec-onboarding-final-focused.log`、
+`/tmp/fennec-final-control-tests.log`、`/tmp/fennec-scope-cache-tests.log`。
+
+限制：原生登录的 subprocess 测试使用独立 Go fixture agent，并非真实订阅登录。
+尚缺专用账号完成 Codex/Claude/Pi 实际登录、取消、过期和响应任务的完整验收；
+staging 的构建/签名检查不能替代最终 CI DMG、干净 Mac、系统重启或独立用户验收。
+此次没有删除真实云电脑，也未将开发签名包替换到当前正式安装的 /Applications。

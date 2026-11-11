@@ -26,6 +26,11 @@ import (
 // daemonServices owns the account-scoped processes. UI clients never own these
 // contexts, pipes, credentials, preferences or reconnect timers.
 type daemonServices struct {
+	nativeLoginMu                              sync.Mutex
+	loginObserver                              func(context.Context, string, []byte)
+	nativeAccountMu                            sync.Mutex
+	nativeAccountCache                         map[string]cachedNativeAccount
+	nativeAccountPending                       map[string]chan struct{}
 	channel                                    *terminalChannel
 	initializeMu                               sync.Mutex
 	user                                       string
@@ -276,6 +281,16 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 					defer s.mu.Unlock()
 					if s.epoch == epoch {
 						s.channel = channel
+						channel.mu.Lock()
+						channel.onListing = func(ctx context.Context, data []byte) {
+							s.mu.Lock()
+							observe := s.loginObserver
+							s.mu.Unlock()
+							if observe != nil {
+								observe(ctx, channel.runtimeID, data)
+							}
+						}
+						channel.mu.Unlock()
 					}
 				})
 				s.mu.Lock()

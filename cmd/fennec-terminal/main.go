@@ -93,6 +93,9 @@ func run() (int, error) {
 	if len(os.Args) >= 3 && os.Args[1] == "native-agent" {
 		return 1, setup.ExecNativeAgent(home, os.Args[2], os.Args[3:])
 	}
+	if len(os.Args) == 4 && os.Args[1] == "native-login" {
+		return 0, setup.RunNativeLogin(ctx, home, setup.NativeLogin{Agent: os.Args[2], ID: os.Args[3]}, os.Stdin, os.Stdout, os.Stderr)
+	}
 	if len(os.Args) == 2 && os.Args[1] == "restore-model-identity" {
 		return 0, setup.RestoreLocalCodexIdentity(ctx, home)
 	}

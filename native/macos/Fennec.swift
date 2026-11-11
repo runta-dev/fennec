@@ -447,6 +447,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         guard terminalGeneration == generation else { return }
+        if type == "terminal-link",let text=message["url"] as? String,text.utf8.count<=8192,
+           let url=URL(string:text),url.scheme=="https",url.user==nil,url.password==nil {NSWorkspace.shared.open(url);return}
         if type == "terminal-credit", let count = message["bytes"] as? Int {
             terminalOutputWindow?.acknowledge(count)
         }
@@ -604,14 +606,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func applyState(_ state: [String:Any]) {
-	    render("renderUninstallStatus",[state["uninstall"] ?? NSNull()])
+	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool != true {render("renderMagpiePreference",[preferences["magpie"] as? Bool ?? false])}
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
 	    }
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
-        if epoch != accountEpoch { accountEpoch = epoch; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal() }
+        if epoch != accountEpoch { accountEpoch = epoch; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews") }
         let isAuthorized = account["status"] as? String == "authorized"
         if isAuthorized != authorized {
             authorized = isAuthorized
@@ -635,10 +637,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         preparationState = events["runtime_progress"] ?? [:]
         if let id = runtime["runtime_id"] as? String { preparationState["runtime_id"] = id }
         if runtime["stage"] as? String == "failed" { preparationState["stage"] = "failed"; preparationState["status"] = "runtime_preparation_failed" }
-        render("renderPreparation", [preparationState])
         for (kind,field,function) in [("model_catalog","models","renderModelCatalog"),("route_results","results","renderRouteResults"),("provider_catalog","candidates","renderProviderCatalog")] {
             if let text = events[kind]?[field], let data = text.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) { render(function,[value]) }
         }
+        render("renderPreparation", [preparationState])
         let services = state["services"] as? [String:Any] ?? [:]
         takeoverAgents = Set(services["selected"] as? [String] ?? [])
         let ready = services["broker_ready"] as? Bool == true
@@ -714,26 +716,43 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
-	    if action.hasPrefix("uninstall-plan:"),let data=String(action.dropFirst(15)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
-	        let requestID=params["request_id"] as? Int ?? 0
-	        control.call("uninstall.plan",params){[weak self] result in
-	            if case .success(let value)=result {self?.render("renderUninstallPlan",[value,requestID])}
-	            else if case .failure(let error)=result {self?.render("renderUninstallPlan",[["login_required":(error as NSError).userInfo["FennecCode"] as? String == "login_required"],requestID])}
-	        };return
-	    }
-	    if action.hasPrefix("uninstall-execute:"),let data=String(action.dropFirst(18)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
-	        mutate("uninstall.execute",params){[weak self] success,_ in self?.render("renderUninstallStarted",[success])};return
-	    }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
-        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:"] where action.hasPrefix(prefix) {
+        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
             guard let data = String(action.dropFirst(prefix.count)).data(using:.utf8),let params = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else { return }
             let id = params["session_id"] as? String ?? "", address = params["address"] as? String ?? ""
             switch prefix {
+            case "start-agent-login:":
+                let agent = params["agent"] as? String ?? ""
+                let key = "login:" + agent
+                let start: (String) -> Void = { [weak self] requestID in
+                    guard let self else { return };self.launchRequests[key] = requestID
+                    self.mutate("agent.login.start",["agent":agent,"session_id":requestID]) { [weak self] success,value in
+                        self?.render("renderAgentLoginStarted",[success ? value ?? NSNull() : NSNull(),agent])
+                    }
+                }
+                if let requestID=launchRequests[key] { if !requestID.isEmpty {start(requestID)} }
+                else {
+                    launchRequests[key]=""
+                    mutate("sessions.allocate") { [weak self] success,result in
+                        if success,let allocation=result as? [String:Any],let requestID=allocation["session_id"] as? String {start(requestID)}
+                        else {self?.launchRequests.removeValue(forKey:key);self?.render("renderAgentLoginStarted",[NSNull(),agent])}
+                    }
+                }
+            case "finish-agent-login:":
+                mutate("agent.login.finish",params) { [weak self] success,value in
+                    if let state=value as? [String:Any],state["signed_in"] as? Bool==true || state["running"] as? Bool==false {self?.launchRequests.removeValue(forKey:"login:"+(params["agent"] as? String ?? ""))}
+                    self?.render("renderAgentLoginFinished",[success ? value ?? NSNull() : NSNull()])
+                }
+            case "cancel-agent-login:":
+                mutate("agent.login.cancel",params) { [weak self] success,_ in
+                    if success {self?.launchRequests.removeValue(forKey:"login:"+(params["agent"] as? String ?? ""))}
+                    self?.render("renderAgentLoginCanceled",[success])
+                }
             case "copy-attach:": copyCloudAttachCommand(address,id)
             case "browser-attach:":
                 mutate("sessions.browser",params) { success,value in
@@ -746,10 +765,24 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             case "read-session:":
                 sessionReadRevision += 1; let revision = sessionReadRevision
                 mutate("sessions.read",params) { [weak self] success,value in guard let self,self.sessionReadRevision == revision else { return }; self.render("renderSessionDetail",[success ? value ?? ["error":true] : ["error":true]]) }
+            case "get-agent-account:":
+                let epoch=accountEpoch
+                control.call("agent.account.get",params) { [weak self] result in
+                    guard let self,self.accountEpoch==epoch else{return}
+                    if case .success(let value)=result {self.render("renderNativeAccount",[value])}
+                    else {self.render("renderNativeAccount",[["agent":params["agent"] as? String ?? "","location":params["location"] as? String ?? "local","status":"unavailable","accounts":[]] as [String:Any]])}
+                }
+            case "get-local-model:":
+                let epoch=accountEpoch
+                control.call("model.local.get",params) { [weak self] result in
+                    guard let self,self.accountEpoch==epoch else{return}
+                    if case .success(let value)=result {self.render("renderLocalModel",[value])}
+                    else {self.render("renderLocalModel",[["agent":params["agent"] as? String ?? "","error":true] as [String:Any]])}
+                }
             case "get-model:":
                 mutate("model.get",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) } else { self?.render("renderNativeModelFailure",[params["agent"] as? String ?? ""]) } }
             case "select-model:":
-                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
+                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render(params["location"] as? String == "local" ? "renderLocalModel" : "renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
             case "launch-agent:":
                 let key = (params["agent"] as? String ?? "") + ":" + (params["directory"] as? String ?? "")
                 let launch: (String) -> Void = { [weak self] requestID in

@@ -251,6 +251,9 @@ Usage: fen [attach [session-id]]
   fen runtime status|ensure|retry
   fen takeover [agent on|off]
   fen model <agent> [model|default] [effort]
+  fen agent login <agent> [session-id] [--json]
+  fen agent account <agent> [local|cloud]
+  fen agent finish|cancel <agent> <session-id>
   fen sessions | launch <agent> [-- <agent arguments>]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear

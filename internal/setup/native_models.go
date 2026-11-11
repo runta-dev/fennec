@@ -150,7 +150,10 @@ func nativeSettings(root, agent string) (map[string]any, []byte, error) {
 }
 func NativeModels(ctx context.Context, home, agent string, refresh bool) (NativeModelState, error) {
 	state := NativeModelState{Agent: agent, Models: []NativeModelChoice{{ID: "", Name: "Default"}}}
-	root := filepath.Join(home, ".local/fennec/native")
+	root, _, err := NativeAccountRoot(home, agent)
+	if err != nil {
+		return state, err
+	}
 	cfg, _, err := nativeSettings(root, agent)
 	if err != nil {
 		return state, err
@@ -332,7 +335,11 @@ func piListedModels(ctx context.Context, home string) []NativeModelChoice {
 	step, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	command := exec.CommandContext(step, "pi", "--no-extensions", "--no-skills", "--list-models")
-	command.Dir = filepath.Join(home, ".local/fennec/native/pi")
+	root, _, err := NativeAccountRoot(home, "pi")
+	if err != nil {
+		return nil
+	}
+	command.Dir = filepath.Join(root, "pi")
 	env, err := nativeAgentEnvironment(home, "pi")
 	if err != nil {
 		return nil
@@ -377,7 +384,10 @@ func ValidateNativeSelection(choice NativeModelSelection, state NativeModelState
 	return fmt.Errorf("model is not in this agent's native model list")
 }
 func writeNativeSelection(home string, choice NativeModelSelection) error {
-	root := filepath.Join(home, ".local/fennec/native")
+	root, _, err := NativeAccountRoot(home, choice.Agent)
+	if err != nil {
+		return err
+	}
 	cfg, previous, err := nativeSettings(root, choice.Agent)
 	if err != nil {
 		return err
@@ -419,7 +429,11 @@ func writeNativeSelection(home string, choice NativeModelSelection) error {
 		return err
 	}
 	path := filepath.Join(root, nativeModelFile(choice.Agent))
-	if err = ensureNativeDirectory(home, filepath.Join(".local/fennec/native", filepath.Dir(nativeModelFile(choice.Agent)))); err != nil {
+	relative, err := filepath.Rel(home, filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	if err = ensureNativeDirectory(home, relative); err != nil {
 		return err
 	}
 	marker := filepath.Join(root, ".baseline.json")
