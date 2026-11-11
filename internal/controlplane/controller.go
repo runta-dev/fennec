@@ -29,9 +29,10 @@ type Controller struct {
 
 func (c *Controller) Handlers() map[string]control.Handler {
 	buildID := control.BuildID()
+	executable, _ := os.Executable()
 	handlers := map[string]control.Handler{
 		"daemon.ping": func(context.Context, json.RawMessage) (any, error) {
-			return map[string]any{"pid": os.Getpid(), "protocol": control.Version, "build_id": buildID}, nil
+			return map[string]any{"pid": os.Getpid(), "protocol": control.Version, "build_id": buildID, "executable": executable}, nil
 		},
 		"state.get": func(context.Context, json.RawMessage) (any, error) {
 			state := map[string]any{"account": c.Account.Snapshot(), "runtime": c.runtimeSnapshot()}

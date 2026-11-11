@@ -36,7 +36,18 @@ func ensureControl(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
 	packaged := runtime.GOOS == "darwin" && (filepath.Base(binary) == "fen" || filepath.Base(binary) == "fennec-daemon") && filepath.Base(filepath.Dir(binary)) == "MacOS" && !strings.HasPrefix(binary, "/tmp/") && !strings.HasPrefix(binary, os.TempDir())
+	plist := filepath.Join(home, "Library/LaunchAgents", daemonLabel+".plist")
+	desiredRegistration := daemonPlist(binary, filepath.Join(home, ".config/fennec/logs/daemon.log"))
+	actualExecutable := ""
+	registrationMatches := func() bool {
+		data, err := os.ReadFile(plist)
+		return err == nil && bytes.Equal(data, desiredRegistration)
+	}
 	expected := ""
 	if packaged {
 		data, readErr := os.ReadFile(filepath.Join(filepath.Dir(binary), "../Resources/control-build-id"))
@@ -52,13 +63,15 @@ func ensureControl(ctx context.Context) error {
 		probe, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 		var result struct {
-			BuildID string `json:"build_id"`
+			BuildID    string `json:"build_id"`
+			Executable string `json:"executable"`
 		}
 		err := (control.Client{Socket: socket}).Call(probe, "daemon.ping", nil, &result)
+		actualExecutable = result.Executable
 		return result.BuildID, err
 	}
 	actual, err := ping()
-	if err == nil && (expected == "" || actual == expected) {
+	if err == nil && (expected == "" || reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches())) {
 		return nil
 	}
 	var fault *control.Fault
@@ -77,20 +90,18 @@ func ensureControl(ctx context.Context) error {
 	}
 	defer lock.Close()
 	actual, err = ping()
-	if err == nil && actual == expected {
+	if err == nil && reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches()) {
 		return nil
 	}
-	if err == nil && actual != expected {
+	// A live job can still point to an old location, or be crash-looping without
+	// answering ping. Replace its registration before bootstrapping the new path.
+	if exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil {
 		if exec.CommandContext(ctx, "/bin/launchctl", "bootout", daemonTarget()).Run() != nil {
 			return fmt.Errorf("unable to replace the previous Fennec service")
 		}
 		if err := waitServiceRemoval(ctx, func() bool { return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil }); err != nil {
 			return err
 		}
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
 	}
 	directory := filepath.Join(home, "Library/LaunchAgents")
 	if err = os.MkdirAll(directory, 0700); err != nil {
@@ -100,8 +111,7 @@ func ensureControl(ctx context.Context) error {
 	if err = os.MkdirAll(logs, 0700); err != nil {
 		return err
 	}
-	plist := filepath.Join(directory, daemonLabel+".plist")
-	data := daemonPlist(binary, filepath.Join(logs, "daemon.log"))
+	data := desiredRegistration
 	// The LaunchAgent is per-user and contains paths only, never credentials.
 	file, err := os.CreateTemp(directory, ".fennec-agent-*")
 	if err != nil {
@@ -130,11 +140,31 @@ func ensureControl(ctx context.Context) error {
 	}
 	launchctlDone()
 	defer launchprofile.Begin("daemon.wait_ready")()
-	return waitControlReady(ctx, expected, ping,
+	return waitControlReady(ctx, expected, func() (string, error) {
+		id, err := ping()
+		if err == nil && !reusableDaemon(expected, id, binary, actualExecutable, registrationMatches()) {
+			return "", fmt.Errorf("waiting for the installed Fennec service")
+		}
+		return id, err
+	},
 		func() bool { return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil },
 		func() error {
 			return exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), plist).Run()
 		})
+}
+
+func reusableDaemon(expected, actual, binary, running string, registrationMatches bool) bool {
+	if expected == "" || actual != expected || running == "" || !registrationMatches {
+		return false
+	}
+	canonical := func(path string) string {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			return resolved
+		}
+		return filepath.Clean(path)
+	}
+	return canonical(binary) == canonical(running)
 }
 
 // A concurrent reconnect can kickstart a registration that is still retiring
