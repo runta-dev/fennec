@@ -3,7 +3,9 @@ package terminalstream
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	cloudruntime "fennec/internal/runtime"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,7 +17,21 @@ func TestTransportServiceChild(t *testing.T) {
 	if os.Getenv("FENNEC_TRANSPORT_TEST_SERVICE") != "1" {
 		return
 	}
-	err := Serve(context.Background(), os.Stdin, os.Stdout, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+	if os.Getenv("FENNEC_DELAY_READY") == "1" {
+		gate := os.NewFile(3, "ready-gate")
+		var b [1]byte
+		if _, err := gate.Read(b[:]); err != nil {
+			os.Exit(2)
+		}
+		gate.Close()
+	}
+	var input io.Reader = os.Stdin
+	if id := os.Getenv("FENNEC_INITIAL_TEST_ID"); id != "" {
+		frame := Frame{Type: "launch", ID: id, Launch: &cloudruntime.LocalLaunch{ID: id, Agent: "codex", Device: "1234abcd", LocalDirectory: "/project"}}
+		raw, _ := json.Marshal(frame)
+		input = io.MultiReader(bytes.NewReader(append(raw, '\n')), os.Stdin)
+	}
+	err := Serve(context.Background(), input, os.Stdout, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 		executable, err := os.Executable()
 		if err != nil {
 			return cloudruntime.LocalTerminal{}, nil, err
@@ -155,5 +171,104 @@ func TestTransportReusesOneProcessForDistinctSessions(t *testing.T) {
 		}
 		session.Close()
 		session.Close()
+	}
+}
+
+func TestInitialLaunchReceivesEarlyFramesWithoutResending(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	id := strings.Repeat("b", 32)
+	command := exec.CommandContext(ctx, executable, "-test.run=^TestTransportServiceChild$")
+	command.Env = append(os.Environ(), "FENNEC_TRANSPORT_TEST_SERVICE=1", "FENNEC_INITIAL_TEST_ID="+id)
+	opening := Frame{Type: "launch", ID: id, Launch: &cloudruntime.LocalLaunch{ID: id, Agent: "codex", Device: "1234abcd", LocalDirectory: "/project"}}
+	transport, session, err := StartInitial(command, opening)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transport.Close()
+	defer session.Close()
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	receipts := 0
+	var output bytes.Buffer
+	for {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch frame.Type {
+		case "receipt":
+			receipts++
+		case "data":
+			output.Write(frame.Data)
+		case "error":
+			t.Fatal(frame.Message)
+		case "exit":
+			if receipts != 1 || output.String() != "OK" || frame.Code != 0 {
+				t.Fatal(receipts, output.String(), frame.Code)
+			}
+			return
+		}
+	}
+}
+
+func TestLaunchCanQueueBeforeReadyWithoutReplay(t *testing.T) {
+	executable, _ := os.Executable()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gate, release, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer release.Close()
+	command := exec.CommandContext(ctx, executable, "-test.run=^TestTransportServiceChild$")
+	command.Env = append(os.Environ(), "FENNEC_TRANSPORT_TEST_SERVICE=1", "FENNEC_DELAY_READY=1")
+	command.ExtraFiles = []*os.File{gate}
+	transport, err := Start(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transport.Close()
+	gate.Close()
+	if transport.IsReady() {
+		t.Fatal("transport claimed ready before server greeting")
+	}
+	id := strings.Repeat("e", 32)
+	session, err := transport.Launch(Frame{Type: "launch", ID: id, Launch: &cloudruntime.LocalLaunch{ID: id, Agent: "codex", LocalDirectory: "/project", Device: "1234abcd"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	release.Write([]byte{1})
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !transport.IsReady() {
+		t.Fatal("validated greeting not reflected")
+	}
+	receipts := 0
+	for {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == "receipt" {
+			receipts++
+		}
+		if frame.Type == "error" {
+			t.Fatal(frame.Message)
+		}
+		if frame.Type == "exit" {
+			if receipts != 1 {
+				t.Fatal("initial launch replayed", receipts)
+			}
+			return
+		}
 	}
 }

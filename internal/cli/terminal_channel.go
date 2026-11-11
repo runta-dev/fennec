@@ -4,8 +4,10 @@ import (
 	"context"
 	"fennec/internal/launcher"
 	"fennec/internal/terminalstream"
+	"golang.org/x/crypto/ssh"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -13,12 +15,14 @@ import (
 type terminalChannel struct {
 	ctx             context.Context
 	shared          *launcher.SharedConnection
+	preparedSSH     *ssh.Client
 	home, runtimeID string
 	mu              sync.Mutex
 	pending         chan struct{}
 	transport       *terminalstream.Transport
 	service         *fenSessionService
 	err             error
+	generation      uint64
 }
 
 func (channel *terminalChannel) start() <-chan struct{} {
@@ -67,14 +71,36 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 		go func() {
 			operation, cancel := context.WithTimeout(channel.ctx, 35*time.Second)
 			defer cancel()
-			control, err := channel.shared.Get(operation)
 			var transport *terminalstream.Transport
-			if err == nil {
-				directory := filepath.Join(channel.home, ".config/fennec/cloud")
-				command := exec.CommandContext(channel.ctx, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), channel.runtimeID+"@ssh.runta.com", `"$HOME/.local/fennec/bin/fennec-terminal" serve`)
-				transport, err = terminalstream.Start(command)
+			var err error
+			if channel.preparedSSH != nil {
+				transport, err = terminalstream.StartSSHContext(operation, channel.preparedSSH, `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
+				if err != nil {
+					channel.preparedSSH.Close()
+					channel.preparedSSH = nil
+				}
+			}
+			if transport == nil {
+				var control string
+				control, err = channel.shared.Get(operation)
 				if err == nil {
-					err = transport.Ready(operation)
+					directory := filepath.Join(channel.home, ".config/fennec/cloud")
+					command := exec.CommandContext(channel.ctx, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), channel.runtimeID+"@ssh.runta.com", `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
+					transport, err = terminalstream.Start(command)
+				}
+			}
+			if transport != nil {
+				if err == nil {
+					// Authorization is already complete. The explicit remote version
+					// argument rejects incompatible binaries before they read stdin,
+					// so the first launch may be queued without another WAN round trip.
+					go func(transport *terminalstream.Transport) {
+						readyCtx, cancel := context.WithTimeout(channel.ctx, 35*time.Second)
+						defer cancel()
+						if transport.Ready(readyCtx) != nil {
+							transport.Close()
+						}
+					}(transport)
 				}
 				if err != nil && transport != nil {
 					transport.Close()
@@ -83,6 +109,9 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 			}
 			channel.mu.Lock()
 			channel.transport = transport
+			if err == nil && transport != nil {
+				channel.generation++
+			}
 			channel.err = err
 			channel.pending = nil
 			close(pending)

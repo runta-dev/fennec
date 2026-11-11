@@ -13,6 +13,7 @@ import (
 func TestNativeLaunchPreservesIdentityAndContext(t *testing.T) {
 	var terminal *LocalTerminal
 	launches := 0
+	cloudCWD := ""
 	backend := &LocalRuntime{Home: t.TempDir(), Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
 		if args[0] == "ls" {
 			var values []LocalTerminal
@@ -25,6 +26,11 @@ func TestNativeLaunchPreservesIdentityAndContext(t *testing.T) {
 			t.Fatal(args)
 		}
 		launches++
+		for i, arg := range args {
+			if arg == "--cwd" && i+1 < len(args) {
+				cloudCWD = args[i+1]
+			}
+		}
 		terminal = &LocalTerminal{Address: "t1", State: "live"}
 		return json.Marshal(terminal)
 	}}
@@ -38,13 +44,18 @@ func TestNativeLaunchPreservesIdentityAndContext(t *testing.T) {
 	if launches != 1 {
 		t.Fatal("duplicate agent launched", launches)
 	}
-	data, err := os.ReadFile(filepath.Join(backend.Home, ".local/fennec/sessions", request.ID, ".fennec-local-context.json"))
+	if cloudCWD != filepath.Join(backend.Home, ".fen", request.ID) {
+		t.Fatal("wrong agent cwd", cloudCWD)
+	}
+	data, err := os.ReadFile(filepath.Join(cloudCWD, "AGENTS.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var metadata map[string]any
-	if json.Unmarshal(data, &metadata) != nil || metadata["local_directory"] != request.LocalDirectory || metadata["files_synchronized"] != false {
+	if !strings.Contains(string(data), request.LocalDirectory) || !strings.Contains(string(data), "fennec-device-"+request.Device) || !strings.Contains(string(data), "uncommitted changes") {
 		t.Fatal("wrong local context")
+	}
+	if _, err := os.Stat(filepath.Join(cloudCWD, ".fennec-local-context.json")); !os.IsNotExist(err) {
+		t.Fatal("unexpected separate agent context file", err)
 	}
 	request.Agent = "pi"
 	if _, err := backend.Launch(context.Background(), request); err == nil {

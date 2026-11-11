@@ -179,3 +179,4 @@ Object.assign(translations, {'近30天资源用量':['近30天資源用量','Res
 localize();
 Object.assign(translations, {'即将支持':['即將支援','Coming soon','近日対応予定','곧 지원 예정']});
 localize();
+translations['在浏览器打开']=['在瀏覽器開啟','Open in browser','ブラウザで開く','브라우저에서 열기'];

@@ -61,7 +61,7 @@ func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, opera
 		if reply.Error != "" {
 			return nil, &control.Fault{Code: "stop_unconfirmed", Message: reply.Error}
 		}
-		return map[string]string{"state": "finished", "session_id": params.SessionID}, nil
+		return map[string]any{"state": "finished", "session_id": params.SessionID, "timings_ms": reply.Timings}, nil
 	}
 	address := params.Address
 	if address == "" {

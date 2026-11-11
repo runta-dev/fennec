@@ -378,6 +378,10 @@ window.renderRuntimes = (rows, message) => {
       updateSessionCopyButton(copy);
       copy.onclick=()=>send('copy-attach:'+payload);
       actions.append(copy);
+      const browser=document.createElement('button');browser.className='session-more session-browser';browser.type='button';
+      browser.setAttribute('aria-label','在浏览器打开');browser.title='在浏览器打开';
+      browser.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11 3h6v6m0-6-9 9M8 5H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3"/></svg>';
+      browser.onclick=()=>send('browser-attach:'+payload);actions.append(browser);
       if(row.canStop){
        const more=document.createElement('button');more.className='session-more';more.type='button';
        more.setAttribute('aria-label','会话操作');more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-expanded','false');

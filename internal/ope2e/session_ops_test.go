@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/terminalstream"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,6 +23,11 @@ import (
 const warmLimit = 500 * time.Millisecond
 
 type liveClient struct{ binary string }
+
+type daemonIdentity struct {
+	PID     int    `json:"pid"`
+	BuildID string `json:"build_id"`
+}
 
 func (c liveClient) call(ctx context.Context, method string, params any) (json.RawMessage, time.Duration, error) {
 	data, err := json.Marshal(params)
@@ -53,6 +59,12 @@ func checked(t *testing.T, c liveClient, method string, params any) json.RawMess
 	if !json.Valid(raw) {
 		t.Fatal("invalid operation response")
 	}
+	var diagnostics struct {
+		Timings map[string]float64 `json:"timings_ms"`
+	}
+	if json.Unmarshal(raw, &diagnostics) == nil && len(diagnostics.Timings) > 0 {
+		t.Logf("%s remote_timings_ms=%v", method, diagnostics.Timings)
+	}
 	return raw
 }
 func nonce(t *testing.T) string {
@@ -77,6 +89,23 @@ func TestSessionOperations500ms(t *testing.T) {
 	c := liveClient{binary}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	identity, _, err := c.call(ctx, "daemon.ping", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original daemonIdentity
+	if json.Unmarshal(identity, &original) != nil || original.PID <= 0 || original.BuildID == "" {
+		t.Fatal("cannot identify installed daemon for performance measurement")
+	}
+	t.Cleanup(func() {
+		verify, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		raw, _, err := c.call(verify, "daemon.ping", map[string]any{})
+		var current daemonIdentity
+		if err != nil || json.Unmarshal(raw, &current) != nil || current != original {
+			t.Errorf("INVALID MEASUREMENT: daemon restarted or changed during live profiling (original pid=%d build=%s)", original.PID, original.BuildID)
+		}
+	})
 	raw, _, err := c.call(ctx, "state.get", map[string]any{})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +152,29 @@ func TestSessionOperations500ms(t *testing.T) {
 			t.Errorf("cold SSH exceeds 5s: %s", elapsed)
 		}
 	})
-	for _, method := range []string{"daemon.ping", "account.status", "agents.list", "settings.get", "takeover.get", "approvals.list", "state.get", "sessions.list", "sessions.refresh", "sessions.allocate"} {
+	var resident struct {
+		Ready      bool `json:"ready"`
+		Generation int  `json:"generation"`
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		raw, _, err := c.call(ctx, "connection.status", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if json.Unmarshal(raw, &resident) != nil {
+			t.Fatal("invalid connection status")
+		}
+		if resident.Ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("resident channel failed to become ready")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	initialGeneration := resident.Generation
+	for _, method := range []string{"daemon.ping", "connection.status", "account.status", "agents.list", "settings.get", "takeover.get", "approvals.list", "state.get", "sessions.list", "sessions.refresh", "sessions.allocate"} {
 		t.Run(method, func(t *testing.T) {
 			for i := 0; i < 3; i++ {
 				checked(t, c, method, map[string]any{})
@@ -139,6 +190,7 @@ func TestSessionOperations500ms(t *testing.T) {
 		if err != nil {
 			t.Fatal("fixture creation", err)
 		}
+		fixtureStarted := time.Now()
 		var fixture struct {
 			Address string `json:"address"`
 		}
@@ -170,6 +222,35 @@ func TestSessionOperations500ms(t *testing.T) {
 			raw := checked(t, c, "sessions.read", params)
 			if !bytes.Contains(raw, []byte(marker)) {
 				t.Fatal("send did not deliver literal input")
+			}
+		})
+		// Keep the first-send gate above: a second send distinguishes startup
+		// settling from steady-state input latency without hiding either cost.
+		t.Run(fmt.Sprintf("send_existing_%d", sample), func(t *testing.T) {
+			text := marker + "-existing"
+			checked(t, c, "sessions.send", map[string]any{"session_id": id, "address": fixture.Address, "text": text})
+			raw := checked(t, c, "sessions.read", params)
+			if !bytes.Contains(raw, []byte(text)) {
+				t.Fatal("existing-session send did not deliver literal input")
+			}
+		})
+		t.Run(fmt.Sprintf("send_mature_%d", sample), func(t *testing.T) {
+			// Herdr applies startup settling for ten seconds. Keep fresh-send
+			// measurements above, and separately measure a mature terminal.
+			if remaining := time.Until(fixtureStarted.Add(11 * time.Second)); remaining > 0 {
+				timer := time.NewTimer(remaining)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+			}
+			text := marker + "-mature"
+			checked(t, c, "sessions.send", map[string]any{"session_id": id, "address": fixture.Address, "text": text})
+			raw := checked(t, c, "sessions.read", params)
+			if !bytes.Contains(raw, []byte(text)) {
+				t.Fatal("mature-session send did not deliver literal input")
 			}
 		})
 		// Refresh must complete remotely before testing attachment; a cached list is
@@ -261,6 +342,13 @@ func TestSessionOperations500ms(t *testing.T) {
 	if ping["pid"] != initialPID {
 		t.Fatal("daemon restarted during hot-operation tests")
 	}
+	raw, _, err = c.call(ctx, "connection.status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if json.Unmarshal(raw, &resident) != nil || !resident.Ready || resident.Generation != initialGeneration {
+		t.Fatal("hot operations replaced the resident channel")
+	}
 }
 
 func attachReady(parent context.Context, binary, operation, id, marker string) (time.Duration, error) {
@@ -277,10 +365,15 @@ func attachReady(parent context.Context, binary, operation, id, marker string) (
 	var output bytes.Buffer
 	buffer := make([]byte, 16384)
 	elapsed := time.Duration(0)
+	displayAnswered := false
 	for {
 		n, err := terminal.Read(buffer)
 		if n > 0 {
 			output.Write(buffer[:n])
+			if !displayAnswered && bytes.Contains(output.Bytes(), []byte(terminalstream.DisplayQuery)) {
+				terminal.Write((terminalstream.DisplayFacts{Foreground: "#cccccc", Background: "#181818", Cursor: "#cccccc", CellWidth: 8, CellHeight: 16}).Replies())
+				displayAnswered = true
+			}
 			if elapsed == 0 && bytes.Contains(output.Bytes(), []byte(marker)) {
 				elapsed = time.Since(started)
 				terminal.Write([]byte{28})

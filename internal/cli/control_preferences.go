@@ -13,6 +13,17 @@ import (
 
 func (s *daemonServices) handlers(controller *controlplane.Controller) map[string]control.Handler {
 	return map[string]control.Handler{
+		"connection.status": func(context.Context, json.RawMessage) (any, error) {
+			s.mu.Lock()
+			channel := s.channel
+			s.mu.Unlock()
+			if channel == nil {
+				return map[string]any{"ready": false, "generation": 0}, nil
+			}
+			channel.mu.Lock()
+			defer channel.mu.Unlock()
+			return map[string]any{"ready": channel.transport != nil && channel.transport.IsReady(), "generation": channel.generation, "connection_started_unix_ms": channel.shared.StartedUnixMS()}, nil
+		},
 		"sessions.dispatch": s.dispatchSession,
 		"sessions.allocate": func(context.Context, json.RawMessage) (any, error) {
 			id, err := sessionid.Allocate(s.home)
@@ -22,6 +33,8 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 			if err := s.account.Logout(ctx); err != nil {
 				return nil, err
 			}
+			s.mu.Lock()
+			defer s.mu.Unlock()
 			if err := launcher.PublishEnabled(filepath.Join(s.home, ".config/fennec/takeover.json"), nil); err != nil {
 				return nil, err
 			}
@@ -30,7 +43,26 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 		"takeover.get": func(context.Context, json.RawMessage) (any, error) {
 			return s.publicFields("selected", "active", "broker_ready", "selection_known", "coverage"), nil
 		},
-		"takeover.set": s.setTakeover,
+		"takeover.set": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			result, err := s.setTakeover(ctx, raw)
+			if err != nil {
+				return nil, err
+			}
+			var request struct {
+				Agent   string
+				Enabled bool
+			}
+			json.Unmarshal(raw, &request)
+			s.mu.Lock()
+			ready := s.ready[request.Agent]
+			s.mu.Unlock()
+			if request.Enabled && !ready {
+				if _, err := controller.PrepareIfIdle(ctx); err != nil {
+					return nil, err
+				}
+			}
+			return result, nil
+		},
 		"approvals.list": func(context.Context, json.RawMessage) (any, error) {
 			return s.publicFields("approvals", "connector"), nil
 		},

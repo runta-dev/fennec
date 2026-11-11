@@ -2,10 +2,12 @@ package setup
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/ssh"
+	"os/exec"
 	"strings"
 )
 
@@ -21,6 +23,10 @@ func GatewayModels(ctx context.Context, client *ssh.Client) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("model catalog unavailable")
 	}
+	return parseGatewayModels(raw)
+}
+
+func parseGatewayModels(raw []byte) ([]string, error) {
 	var response struct {
 		Data []struct {
 			ID string `json:"id"`
@@ -47,12 +53,119 @@ type RouteResult struct {
 // ReconcileRoutes repairs routes individually and verifies their readback.
 // Unknown local defaults remain explicit blockers, never invented fallbacks.
 func ReconcileRoutes(ctx context.Context, client *ssh.Client, routes []AgentRoute) ([]RouteResult, error) {
+	if len(routes) == 0 {
+		return []RouteResult{}, nil
+	}
+	if err := ValidateDesiredRoutes(routes); err != nil {
+		return nil, err
+	}
+	blocked := make([]RouteResult, 0, len(routes))
+	for _, route := range routes {
+		if route.Problem != "" {
+			blocked = append(blocked, RouteResult{Agent: route.Agent, Model: route.Model, Status: route.Problem})
+		}
+	}
+	if len(blocked) == len(routes) {
+		return blocked, nil
+	}
+	data, _ := json.Marshal(routes)
+	payload := base64.StdEncoding.EncodeToString(data)
+	if len(payload) > 65536 {
+		return nil, fmt.Errorf("oversized route request")
+	}
+	session, err := client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	stop := context.AfterFunc(ctx, func() { session.Close() })
+	defer stop()
+	data, err = session.Output(`"$HOME/.local/fennec/bin/fennec-terminal" reconcile-routes ` + payload)
+	if err != nil {
+		return nil, fmt.Errorf("route reconciliation not confirmed")
+	}
+	return DecodeRouteResults(data, routes)
+}
+
+func DecodeRouteResults(data []byte, routes []AgentRoute) ([]RouteResult, error) {
+	var results []RouteResult
+	if len(data) > 1<<20 || json.Unmarshal(data, &results) != nil || len(results) != len(routes) {
+		return nil, fmt.Errorf("invalid route reconciliation result")
+	}
+	for i, result := range results {
+		if result.Agent != routes[i].Agent || result.Model != routes[i].Model {
+			return nil, fmt.Errorf("route result identity mismatch")
+		}
+		if routes[i].Problem != "" {
+			if result.Status != routes[i].Problem {
+				return nil, fmt.Errorf("route blocker was not preserved")
+			}
+		} else if result.Status != "configured" && result.Status != "configuration_failed" && result.Status != "verification_failed" {
+			return nil, fmt.Errorf("invalid route result status")
+		}
+	}
+	return results, nil
+}
+
+func ValidateDesiredRoutes(routes []AgentRoute) error {
+	if len(routes) > 64 {
+		return fmt.Errorf("too many routes")
+	}
+	for _, route := range routes {
+		if route.Problem != "" {
+			continue
+		}
+		provider, model, ok := strings.Cut(route.Model, "/")
+		if !ok || len(route.Model) > 512 {
+			return fmt.Errorf("invalid desired route")
+		}
+		if _, err := gatewayRouteScript(GatewayRoute{Provider: provider, Model: model, Agents: []string{route.Agent}}, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ReconcileLocalRoutes(ctx context.Context, home string, routes []AgentRoute) ([]RouteResult, error) {
+	return reconcileRoutesWith(ctx, routes, func(ctx context.Context, script string) error {
+		command := exec.CommandContext(ctx, "/bin/sh", "-s")
+		command.Stdin = strings.NewReader(script)
+		return command.Run()
+	}, func(ctx context.Context, agent string) ([]byte, error) {
+		return readModelWithLock(ctx, home, agent)
+	})
+}
+
+func reconcileRoutesWith(ctx context.Context, routes []AgentRoute, write func(context.Context, string) error, read func(context.Context, string) ([]byte, error)) ([]RouteResult, error) {
+	if err := ValidateDesiredRoutes(routes); err != nil {
+		return nil, err
+	}
 	results := make([]RouteResult, 0, len(routes))
 	for _, route := range routes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		result := RouteResult{Agent: route.Agent, Model: route.Model, Status: route.Problem}
 		if result.Status != "" {
 			results = append(results, result)
 			continue
+		}
+		// A successful readback already proves an unchanged route. Avoid the
+		// write subprocess (which would repeat this same check) and second read.
+		current, readErr := read(ctx, route.Agent)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+			return nil, readErr
+		}
+		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && actual == route.Model {
+			result.Status = "configured"
+			results = append(results, result)
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		provider, model, ok := strings.Cut(route.Model, "/")
 		if !ok {
@@ -62,19 +175,12 @@ func ReconcileRoutes(ctx context.Context, client *ssh.Client, routes []AgentRout
 		if err != nil {
 			return nil, err
 		}
-		if err = Exec(ctx, client, magpieWriteLock+script); err != nil {
+		if err = write(ctx, magpieWriteLock+script); err != nil {
 			result.Status = "configuration_failed"
 			results = append(results, result)
 			continue
 		}
-		verify, err := client.NewSession()
-		if err != nil {
-			return nil, err
-		}
-		stop := context.AfterFunc(ctx, func() { verify.Close() })
-		output, err := verify.Output("export PATH=\"$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH\"; magpie " + shellQuote(route.Agent) + " model")
-		stop()
-		verify.Close()
+		output, err := read(ctx, route.Agent)
 		actual, parseErr := ParseAgentModel(string(output))
 		if err != nil || parseErr != nil || actual != route.Model {
 			result.Status = "verification_failed"

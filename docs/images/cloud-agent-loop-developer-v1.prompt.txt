@@ -1,0 +1,17 @@
+Tool: built-in image_gen
+
+Use case: style-transfer.
+Edit target: the attached Fennec workflow illustration. Preserve its main composition and concept: a persistent cloud agent loop above, and three left-to-right stages below—work locally, close the Mac, attach and continue. Make this a polished developer-facing product illustration, not a children's illustration.
+
+Art direction: mature editorial technical illustration on warm off-white paper, restrained graphite/ink linework, very subtle paper grain, precise device drawings, spacious composition, quiet burnt-orange brand accents and desaturated blue cloud tint. Clean professional sans-serif typography, monospaced text inside terminal windows. Retain a little human warmth and drawn character, but remove crayon texture, bubbly lettering, cute facial expressions, big-headed people, sun/moon/stars, plants, music notes, mugs and decorative doodles. Replace the cartoon fox working at a laptop with a small angular fennec fox brand symbol integrated into a simple cloud agent interface. No cartoon human characters.
+
+Top: a large elegantly drawn cloud enclosure with the heading exactly "Cloud agent loop". Inside, a restrained fox symbol and three minimal technical cards connected in a circular loop, labeled exactly "Reason", "Execute", "Observe". Small understated label "Persistent sessions". This is the conceptual focus.
+
+Bottom left: an open, accurately proportioned Mac laptop showing a crisp dark developer terminal with exactly "$ codex". A subtle folder glyph and shell glyph beside it. Heading below exactly "Work locally". An orange dashed bidirectional connection to the cloud, with small readable label exactly "Files + commands" and sublabel exactly "While your Mac is online".
+
+Bottom center: a closed Mac laptop, minimal and calm, without people. Heading below exactly "Close your Mac". Smaller supporting line exactly "Cloud-ready work continues". Connect the bottom stages with understated horizontal arrows.
+
+Bottom right: another open Mac with a dark terminal showing exactly "$ fen attach". Heading below exactly "Attach & continue". An orange dashed bidirectional connection to the same cloud.
+
+One small footer line: "Local access pauses when your Mac is offline."
+Maintain the original spatial relationship and storytelling, with notably better hierarchy and alignment. Do not imply local files or local commands remain available when the Mac is offline. No performance numbers, no technical debug messages, no extra slogans. Wide landscape composition around 2:1. Produce one finished high-quality image with all text legible, quiet and sophisticated enough for a developer tool's landing page.

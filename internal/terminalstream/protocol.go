@@ -8,26 +8,29 @@ import (
 )
 
 type Frame struct {
-	Display   *DisplayFacts                `json:"display,omitempty"`
-	Operation *cloudruntime.LocalOperation `json:"operation,omitempty"`
-	Result    json.RawMessage              `json:"result,omitempty"`
-	Version   int                          `json:"version,omitempty"`
-	Type      string                       `json:"type"`
-	Term      string                       `json:"term,omitempty"`
-	ID        string                       `json:"id,omitempty"`
-	Launch    *cloudruntime.LocalLaunch    `json:"launch,omitempty"`
-	Terminal  *cloudruntime.LocalTerminal  `json:"terminal,omitempty"`
-	Data      []byte                       `json:"data,omitempty"`
-	Rows      int                          `json:"rows,omitempty"`
-	Columns   int                          `json:"columns,omitempty"`
-	Bytes     int                          `json:"bytes,omitempty"`
-	Code      int                          `json:"code,omitempty"`
-	Message   string                       `json:"message,omitempty"`
+	Capabilities []string                     `json:"capabilities,omitempty"`
+	Focused      bool                         `json:"focused,omitempty"`
+	Timings      map[string]float64           `json:"timings_ms,omitempty"`
+	Display      *DisplayFacts                `json:"display,omitempty"`
+	Operation    *cloudruntime.LocalOperation `json:"operation,omitempty"`
+	Result       json.RawMessage              `json:"result,omitempty"`
+	Version      int                          `json:"version,omitempty"`
+	Type         string                       `json:"type"`
+	Term         string                       `json:"term,omitempty"`
+	ID           string                       `json:"id,omitempty"`
+	Launch       *cloudruntime.LocalLaunch    `json:"launch,omitempty"`
+	Terminal     *cloudruntime.LocalTerminal  `json:"terminal,omitempty"`
+	Data         []byte                       `json:"data,omitempty"`
+	Rows         int                          `json:"rows,omitempty"`
+	Columns      int                          `json:"columns,omitempty"`
+	Bytes        int                          `json:"bytes,omitempty"`
+	Code         int                          `json:"code,omitempty"`
+	Message      string                       `json:"message,omitempty"`
 }
 
 const Window = 65536
 const Chunk = 16384
-const ProtocolVersion = 6
+const ProtocolVersion = 7
 
 func (frame Frame) validateOpen() error {
 	if !regexp.MustCompile(`^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$`).MatchString(frame.ID) {

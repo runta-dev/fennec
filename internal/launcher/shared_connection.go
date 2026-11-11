@@ -9,19 +9,37 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type SharedConnection struct {
-	ctx        context.Context
-	mu         sync.Mutex
-	pending    chan struct{}
-	ready      bool
-	err        error
-	control    string
-	initialize func(context.Context) error
-	check      func(context.Context) error
-	stop       func()
+	startedUnixMS atomic.Int64
+	ctx           context.Context
+	mu            sync.Mutex
+	pending       chan struct{}
+	ready         bool
+	err           error
+	control       string
+	initialize    func(context.Context) error
+	check         func(context.Context) error
+	stop          func()
+}
+
+// ControlPath is immutable; callers still obtain the resident transport before
+// use. Reading this path must not fork a local ssh check on each hot operation.
+func (manager *SharedConnection) ControlPath() string  { return manager.control }
+func (manager *SharedConnection) StartedUnixMS() int64 { return manager.startedUnixMS.Load() }
+
+// Close releases a fallback master after its owner has cancelled the lifecycle.
+func (manager *SharedConnection) Close() {
+	manager.mu.Lock()
+	pending := manager.pending
+	manager.mu.Unlock()
+	if pending != nil {
+		<-pending
+	}
+	manager.stop()
 }
 
 func NewSharedConnection(ctx context.Context, directory, runtimeID string, authorize func(context.Context) error) (*SharedConnection, error) {
@@ -54,10 +72,7 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 		defer cancel()
 		controlOperation(stopCtx, "stop")
 	}
-	manager.initialize = func(ctx context.Context) error {
-		if err := authorize(ctx); err != nil {
-			return err
-		}
+	connect := func(ctx context.Context) error {
 		args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=yes", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com"}
 		err := exec.CommandContext(ctx, "/usr/bin/ssh", args...).Run()
 		if ctx.Err() != nil {
@@ -65,6 +80,17 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 			return ctx.Err()
 		}
 		return err
+	}
+	manager.initialize = func(ctx context.Context) error {
+		manager.startedUnixMS.Store(time.Now().UnixMilli())
+		identity, err := connectionIdentity(directory)
+		if err != nil {
+			if err := authorize(ctx); err != nil {
+				return err
+			}
+			return connect(ctx)
+		}
+		return prepareConnection(ctx, authorize, connect, func() bool { current, err := connectionIdentity(directory); return err == nil && current == identity }, manager.stop)
 	}
 	return manager, nil
 }

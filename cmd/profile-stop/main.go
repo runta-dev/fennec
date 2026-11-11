@@ -80,7 +80,7 @@ func run() error {
 		return err
 	}
 	for _, mode := range strings.Split(*paths, ",") {
-		if mode != "fresh_ssh_exec" && mode != "resident_channel" && mode != "local_cli" {
+		if mode != "fresh_ssh_exec" && mode != "resident_channel" && mode != "local_cli" && mode != "attach" {
 			return fmt.Errorf("unknown path")
 		}
 		if mode == "local_cli" && *daemon == "" {
@@ -88,7 +88,11 @@ func run() error {
 		}
 		for i := 0; i < *samples; i++ {
 			id := nonce()
-			create := command("/root/.local/bin/herdr-core run --json --bg --no-parent --no-notify --label fennec.session=" + id + " --label fennec.agent=codex -- /bin/sleep 120")
+			program := "/bin/sleep 120"
+			if mode == "attach" {
+				program = "/usr/bin/timeout 120 /bin/cat"
+			}
+			create := command("/root/.local/bin/herdr-core run --json --bg --no-parent --no-notify --label fennec.session=" + id + " --label fennec.agent=codex -- " + program)
 			raw, err := create.Output()
 			if err != nil {
 				return fmt.Errorf("create owned test session: %w", err)
@@ -100,6 +104,43 @@ func run() error {
 			terminal.ID = id
 			if _, err := r.StopScript(terminal.Address, id); err != nil {
 				return err
+			}
+			if mode == "attach" {
+				marker := "ATTACH_READY_" + id[:8]
+				if _, err := transport.Operate(ctx, r.LocalOperation{Kind: "send", Address: terminal.Address, SessionID: id, Text: marker}); err != nil {
+					return err
+				}
+				started := time.Now()
+				stream, err := transport.Launch(terminalstream.Frame{Type: "attach", ID: nonce(), Terminal: &terminal, Rows: 40, Columns: 120, Display: &terminalstream.DisplayFacts{Foreground: "#cccccc", Background: "#181818", CellWidth: 8, CellHeight: 16}})
+				if err != nil {
+					return err
+				}
+				var output bytes.Buffer
+				for {
+					frame, err := stream.Next(ctx)
+					if err != nil {
+						return err
+					}
+					if frame.Type == "receipt" {
+						json.NewEncoder(os.Stdout).Encode(map[string]any{"stage": "receipt", "wall_ms": float64(time.Since(started).Microseconds()) / 1000, "guest": frame.Terminal.Timings})
+					}
+					if frame.Type == "error" {
+						return fmt.Errorf("attach failed")
+					}
+					if frame.Type == "data" {
+						output.Write(frame.Data)
+						stream.Send(terminalstream.Frame{Type: "credit", Bytes: len(frame.Data)})
+						if bytes.Contains(output.Bytes(), []byte(marker)) {
+							json.NewEncoder(os.Stdout).Encode(map[string]any{"stage": "visible", "wall_ms": float64(time.Since(started).Microseconds()) / 1000, "guest": frame.Timings})
+							break
+						}
+					}
+				}
+				stream.Close()
+				if _, err := transport.Stop(ctx, terminal); err != nil {
+					return err
+				}
+				continue
 			}
 			start := time.Now()
 			var result r.LocalTerminal

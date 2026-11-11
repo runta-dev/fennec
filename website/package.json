@@ -1,0 +1,31 @@
+{
+  "name": "fennec-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vinext dev --host 127.0.0.1",
+    "build": "vinext build",
+    "typecheck": "tsc --noEmit",
+    "preview": "wrangler dev --config deploy/worker.toml --port 4188",
+    "deploy": "npm run build && wrangler deploy --config deploy/worker.toml"
+  },
+  "dependencies": {
+    "vinext": "1.0.0-beta.10",
+    "vite": "^8.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "@vitejs/plugin-rsc": "^0.5.34",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-server-dom-webpack": "^19.2.6",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "wrangler": "^4.0.0",
+    "postcss": "^8.5.0"
+  }
+}

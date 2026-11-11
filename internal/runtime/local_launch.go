@@ -153,31 +153,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	if err != nil {
 		return LocalTerminal{}, fmt.Errorf("cloud agent executable missing")
 	}
-	cwd := filepath.Join(runtime.Home, ".local/fennec/sessions", request.ID)
-	if err := os.MkdirAll(cwd, 0700); err != nil {
+	cwd, err := prepareSessionWorkspace(runtime.Home, request)
+	if err != nil {
 		return LocalTerminal{}, err
-	}
-	metadata := map[string]any{"local_directory": request.LocalDirectory, "device": request.Device, "ssh_host": "fennec-device-" + request.Device, "files_synchronized": false}
-	if err := exclusiveJSON(filepath.Join(cwd, ".fennec-local-context.json"), metadata); err != nil {
-		return LocalTerminal{}, err
-	}
-	instructions := []byte("This agent loop runs in the cloud. Local directory and device metadata are in .fennec-local-context.json. Local files have NOT been synchronized. Do not interpret an empty cloud directory as missing local files. Use the exact ssh_host in that JSON for local access, respecting its permission requests. Do not use the generic machine alias because another computer may own it. Do not upload the entire home directory. If the device is offline, report that local access is unavailable.\n")
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-		file, err := os.OpenFile(filepath.Join(cwd, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if os.IsExist(err) {
-			continue
-		}
-		if err != nil {
-			return LocalTerminal{}, err
-		}
-		_, err = file.Write(instructions)
-		closeErr := file.Close()
-		if err != nil {
-			return LocalTerminal{}, err
-		}
-		if closeErr != nil {
-			return LocalTerminal{}, closeErr
-		}
 	}
 	command := []string{binary}
 	switch request.Agent {

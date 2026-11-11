@@ -81,17 +81,17 @@ func TestFenRefreshCannotResurrectKilledSession(t *testing.T) {
 func TestStopUsesPersistentChannelAndChecksRuntime(t *testing.T) {
 	id := strings.Repeat("a", 32)
 	calls := 0
-	service := fenSessionService{runtimeID: "owned", stop: func(_ context.Context, receipt launcher.LaunchReceipt) error {
+	service := fenSessionService{runtimeID: "owned", stop: func(_ context.Context, receipt launcher.LaunchReceipt) (map[string]float64, error) {
 		calls++
 		if receipt.SessionID != id || receipt.Address != "t1" {
 			t.Fatal(receipt)
 		}
-		return nil
+		return map[string]float64{"stop_confirm": 2}, nil
 	}, execute: func(context.Context, string) ([]byte, error) { t.Fatal("stop opened exec channel"); return nil, nil }}
 	if reply := service.handle(context.Background(), fenServiceRequest{Operation: "kill", RuntimeID: "other", Address: "t1", SessionID: id}); reply.Error == "" {
 		t.Fatal("cross-runtime stop accepted")
 	}
-	if reply := service.handle(context.Background(), fenServiceRequest{Operation: "kill", RuntimeID: "owned", Address: "t1", SessionID: id}); reply.Error != "" {
+	if reply := service.handle(context.Background(), fenServiceRequest{Operation: "kill", RuntimeID: "owned", Address: "t1", SessionID: id}); reply.Error != "" || reply.Timings["stop_confirm"] != 2 {
 		t.Fatal(reply)
 	}
 	if calls != 1 {

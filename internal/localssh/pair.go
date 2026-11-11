@@ -2,7 +2,7 @@ package localssh
 
 import (
 	"context"
-	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -130,30 +130,22 @@ func withPairingLock(ctx context.Context, directory string, action func() error)
 // InstallAlias adds only a Fennec-owned Include and generated device file. Existing
 // user configuration is preserved; the Include is appended, never prepended.
 func InstallAlias(ctx context.Context, client *ssh.Client, alias, address, deviceID, hostKey string, defaultDevice bool) error {
-	config, known, err := AliasConfig(alias, address, deviceID, hostKey, defaultDevice)
+	_, _, err := AliasConfig(alias, address, deviceID, hostKey, defaultDevice)
 	if err != nil {
 		return err
 	}
-	encode := func(value string) string { return base64.StdEncoding.EncodeToString([]byte(value)) }
-	script := `set -eu
-umask 077
-mkdir -p "$HOME/.ssh/fennec"
-printf '%s' '` + encode(config) + `' | base64 -d > "$HOME/.ssh/fennec/` + deviceID + `.conf.tmp"
-mv "$HOME/.ssh/fennec/` + deviceID + `.conf.tmp" "$HOME/.ssh/fennec/` + deviceID + `.conf"
-printf '%s' '` + encode(known) + `' | base64 -d > "$HOME/.ssh/fennec/` + deviceID + `.known_hosts"
-cat "$HOME/.ssh/fennec/"*.known_hosts > "$HOME/.ssh/fennec/known_hosts.tmp"
-mv "$HOME/.ssh/fennec/known_hosts.tmp" "$HOME/.ssh/fennec/known_hosts"
-touch "$HOME/.ssh/config"
-if ! grep -Fqx 'Include ~/.ssh/fennec/*.conf' "$HOME/.ssh/config"; then printf '\nInclude ~/.ssh/fennec/*.conf\n' >> "$HOME/.ssh/config"; fi
-`
+	payload, err := json.Marshal(AliasRegistration{Alias: alias, Address: address, Device: deviceID, HostKey: hostKey, Default: defaultDevice})
+	if err != nil {
+		return err
+	}
 	session, err := client.NewSession()
 	if err != nil {
 		return err
 	}
 	defer session.Close()
-	session.Stdin = strings.NewReader(script)
+	session.Stdin = strings.NewReader(string(payload))
 	done := make(chan error, 1)
-	go func() { done <- session.Run("sh -s") }()
+	go func() { done <- session.Run(`"$HOME/.local/fennec/bin/fennec-terminal" register-alias`) }()
 	select {
 	case err := <-done:
 		return err

@@ -30,74 +30,46 @@ func TestLaunchUsesHerdrAndReplayGuard(t *testing.T) {
 	}
 }
 
-func TestHerdrLaunchRetriesDoNotDuplicate(t *testing.T) {
+func TestCloudLaunchDelegatesStructuredContextToGo(t *testing.T) {
 	home := t.TempDir()
-	bin := filepath.Join(home, ".local/bin")
-	os.MkdirAll(bin, 0700)
-	fake := `#!/usr/bin/env python3
-import json,sys,pathlib,os
-root=pathlib.Path.home()
-state=root/'terminal.json'
-if sys.argv[1]=='ls':
- print(json.dumps({'terminals':[json.loads(state.read_text())] if state.exists() else []}))
-elif sys.argv[1]=='run':
- with open(root/'launch-count','a') as f:f.write('run\n')
- value={'address':'t7','state':'live','status':'working'}
- state.write_text(json.dumps(value))
- print(json.dumps(value))
-else:raise SystemExit(1)
-`
-	os.WriteFile(filepath.Join(bin, "herdr-core"), []byte(fake), 0700)
-	os.WriteFile(filepath.Join(bin, "magpie"), []byte("#!/bin/sh\nprintf 'Codex model test/model\\n'\n"), 0700)
-	hook := `import urllib.request,io
-urllib.request.urlopen=lambda *a,**k:io.BytesIO(b'{"data":[]}')
-`
-	os.WriteFile(filepath.Join(home, "sitecustomize.py"), []byte(hook), 0600)
-	run := func(agent string) error {
-		script, err := CloudLaunchScript(strings.Repeat("b", 32), agent, "/local/project with spaces", "1234abcd", nil)
-		if err != nil {
-			return err
-		}
-		cmd := exec.Command("sh", "-s")
-		cmd.Env = append(os.Environ(), "HOME="+home, "PYTHONPATH="+home)
-		cmd.Stdin = strings.NewReader(script)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Logf("script failure: %s", output)
-		}
-		return err
-	}
-	os.WriteFile(filepath.Join(bin, "magpie"), []byte("#!/bin/sh\nprintf 'Codex model default\\n'\n"), 0700)
-	os.WriteFile(filepath.Join(bin, "codex"), []byte("#!/bin/sh\nexit 0\n"), 0700)
-	if err := run("codex"); err != nil {
+	bin := filepath.Join(home, ".local/fennec/bin")
+	if err := os.MkdirAll(bin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	contextPath := filepath.Join(home, ".local/fennec/sessions", strings.Repeat("b", 32), ".fennec-local-context.json")
-	contextData, err := os.ReadFile(contextPath)
+	if err := os.WriteFile(filepath.Join(bin, "fennec-terminal"), []byte("#!/bin/sh\n[ \"$1\" = launch ] || exit 1\ncat\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"literal $(touch should-not-exist)", "a'b", "line\nbreak"}
+	script, err := CloudLaunchScript("sunny-spicy", "codex", "/local/project with spaces", "1234abcd", args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var localContext map[string]any
-	if json.Unmarshal(contextData, &localContext) != nil || localContext["local_directory"] != "/local/project with spaces" || localContext["ssh_host"] != "fennec-device-1234abcd" || localContext["files_synchronized"] != false {
-		t.Fatal("cloud context changed", string(contextData))
+	if strings.Contains(script, "python") || strings.Contains(script, "local-context") {
+		t.Fatal("legacy cloud path retained")
 	}
-	if err := run("codex"); err != nil {
+	command := exec.Command("sh", "-s")
+	command.Env = append(os.Environ(), "HOME="+home)
+	command.Stdin = strings.NewReader(script)
+	output, err := command.Output()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := run("pi"); err == nil {
-		t.Fatal("same session accepted different agent")
+	var request LocalLaunch
+	if json.Unmarshal(output, &request) != nil || request.ID != "sunny-spicy" || request.LocalDirectory != "/local/project with spaces" || !reflect.DeepEqual(request.Arguments, args) {
+		t.Fatal("context or arguments changed")
 	}
-	data, _ := os.ReadFile(filepath.Join(home, "launch-count"))
-	if string(data) != "run\n" {
-		t.Fatalf("duplicate launches: %q", data)
+	attached, err := CloudLaunchAttachScript(request.ID, request.Agent, request.LocalDirectory, request.Device, args)
+	if err != nil {
+		t.Fatal(err)
 	}
-	os.Remove(filepath.Join(home, "terminal.json"))
-	if err := run("codex"); err == nil {
-		t.Fatal("unknown launch outcome replayed")
+	parts := strings.Fields(attached)
+	payload, err := base64.StdEncoding.DecodeString(parts[len(parts)-1])
+	if err != nil {
+		t.Fatal(err)
 	}
-	data, _ = os.ReadFile(filepath.Join(home, "launch-count"))
-	if string(data) != "run\n" {
-		t.Fatal("replayed after missing terminal")
+	var decoded LocalLaunch
+	if json.Unmarshal(payload, &decoded) != nil || !reflect.DeepEqual(decoded, request) {
+		t.Fatal("attach context differs")
 	}
 }
 

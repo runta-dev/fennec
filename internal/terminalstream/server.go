@@ -2,6 +2,7 @@ package terminalstream
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
@@ -60,16 +62,23 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		defer stop()
 	}
 	var writeMu sync.Mutex
-	encoder := json.NewEncoder(output)
-	emit := func(frame Frame) error {
+	emitFrames := func(frames ...Frame) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		err := encoder.Encode(frame)
+		var batch bytes.Buffer
+		encoder := json.NewEncoder(&batch)
+		for _, frame := range frames {
+			if err := encoder.Encode(frame); err != nil {
+				return err
+			}
+		}
+		_, err := output.Write(batch.Bytes())
 		if err != nil {
 			cancel()
 		}
 		return err
 	}
+	emit := func(frame Frame) error { return emitFrames(frame) }
 	var sessionsMu sync.Mutex
 	sessions := map[string]*serverSession{}
 	var workers sync.WaitGroup
@@ -83,7 +92,11 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	if err := emit(Frame{Type: "ready", Version: ProtocolVersion}); err != nil {
+	var capabilities []string
+	if operate != nil {
+		capabilities = []string{"reconcile_routes", "model_accounts", "deferred_catalog", "model_catalog"}
+	}
+	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
 	}
 	scanner := bufio.NewScanner(input)
@@ -122,6 +135,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			sessionsMu.Unlock()
 			workers.Add(1)
 			go func(frame Frame, session *serverSession) {
+				opened := time.Now()
 				defer workers.Done()
 				defer func() {
 					session.cancel()
@@ -138,7 +152,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					if err != nil || len(result) > 4<<20 {
 						emit(Frame{Type: "error", ID: frame.ID, Message: "operation not confirmed; inspect before retrying"})
 					} else {
-						emit(Frame{Type: "result", ID: frame.ID, Result: result})
+						emit(Frame{Type: "result", ID: frame.ID, Result: result, Timings: map[string]float64{"operation": float64(time.Since(opened).Microseconds()) / 1000}})
 					}
 					return
 				}
@@ -160,9 +174,8 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					emit(Frame{Type: "error", ID: frame.ID, Message: "remote launch failed; inspect session before retrying"})
 					return
 				}
-				if err := emit(Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal}); err != nil {
-					return
-				}
+				emit, finishReceipt := coalesceReceipt(emitFrames, Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal})
+				defer finishReceipt()
 				session.mu.Lock()
 				if command.Env == nil {
 					command.Env = os.Environ()
@@ -192,10 +205,17 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				inputDone := make(chan struct{})
 				go func() { defer close(inputDone); session.pumpInput(frame.ID, emit) }()
 				probe := DisplayResponder{Facts: frame.Display}
+				firstRead := float64(0)
+				firstVisible := true
 				emitData := func(data []byte) error {
 					for len(data) > 0 {
 						n := min(len(data), Chunk)
-						if err := emit(Frame{Type: "data", ID: frame.ID, Data: data[:n]}); err != nil {
+						var timings map[string]float64
+						if firstVisible {
+							firstVisible = false
+							timings = map[string]float64{"first_pty_read": firstRead, "first_visible_output": float64(time.Since(opened).Microseconds()) / 1000}
+						}
+						if err := emit(Frame{Type: "data", ID: frame.ID, Data: data[:n], Timings: timings}); err != nil {
 							return err
 						}
 						data = data[n:]
@@ -213,6 +233,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 						session.window.add(count - length)
 					}
 					if length > 0 {
+						if firstRead == 0 {
+							firstRead = float64(time.Since(opened).Microseconds()) / 1000
+						}
 						shown, reply, refunded := probe.Filter(data[:length])
 						if refunded > 0 {
 							session.window.add(refunded)
@@ -257,6 +280,10 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		if session == nil || session.ctx.Err() != nil {
 			continue
+		}
+		if frame.Type == "focus" {
+			frame.Type = "input"
+			frame.Data = FocusReport(frame.Focused)
 		}
 		switch frame.Type {
 		case "credit":

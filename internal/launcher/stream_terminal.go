@@ -41,6 +41,15 @@ func (err StreamLostError) Error() string {
 }
 
 func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func()) error {
+	return executeStream(plan, intent, home, ready, nil)
+}
+
+type preparedDisplay struct {
+	facts *terminalstream.DisplayFacts
+	input []byte
+}
+
+func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), prepared *preparedDisplay) error {
 	launchprofile.Record("stream.enter", time.Now(), 0)
 	streamID := plan.StreamID
 	if streamID == "" {
@@ -65,6 +74,15 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		defer writeMu.Unlock()
 		return encoder.Encode(frame)
 	}
+	interaction := terminalstream.InteractionEncoder{}
+	sendInput := func(data []byte) error {
+		for _, frame := range interaction.Frames(data) {
+			if err := send(frame); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {
 		columns, rows = 120, 40
@@ -76,8 +94,18 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			return err
 		}
 		defer term.Restore(int(os.Stdin.Fd()), state)
+		fmt.Fprint(os.Stdout, "\x1b[?1004h")
+		defer fmt.Fprint(os.Stdout, "\x1b[?1004l")
 	}
-	display, earlyInput, err := probeDisplay(os.Stdin, os.Stdout)
+	var display *terminalstream.DisplayFacts
+	var earlyInput []byte
+	if prepared != nil {
+		display, earlyInput = prepared.facts, prepared.input
+	} else {
+		probeDone := launchprofile.Begin("terminal.local_display")
+		display, earlyInput, err = probeDisplay(os.Stdin, os.Stdout)
+		probeDone()
+	}
 	if err != nil {
 		return err
 	}
@@ -103,7 +131,7 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			data, detach := keys.Feed(earlyInput[:count])
 			earlyInput = earlyInput[count:]
 			if len(data) > 0 {
-				if err := send(terminalstream.Frame{Type: "input", Data: data}); err != nil {
+				if err := sendInput(data); err != nil {
 					cancel()
 					return
 				}
@@ -121,7 +149,7 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			if poll[0].Revents == 0 {
 				if pending := keys.Flush(); len(pending) > 0 {
-					if err := send(terminalstream.Frame{Type: "input", Data: pending}); err != nil {
+					if err := sendInput(pending); err != nil {
 						cancel()
 						return
 					}
@@ -162,7 +190,7 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				detached.Store(true)
 				launchprofile.Record("stream.detach_input", time.Now(), 0)
 			}
-			if err := send(terminalstream.Frame{Type: "input", Data: data}); err != nil {
+			if err := sendInput(data); err != nil {
 				cancel()
 				return
 			}
@@ -203,10 +231,10 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 		switch frame.Type {
 		case "receipt":
-			launchprofile.Record("stream.receipt", time.Now(), 0)
 			if confirmed || frame.Terminal == nil || frame.Terminal.ID != intent.RequestID || frame.Terminal.Agent != intent.Agent {
 				return fmt.Errorf("terminal receipt identity mismatch")
 			}
+			launchprofile.Session("stream.receipt", frame.Terminal.ID)
 			receipt = LaunchReceipt{RuntimeID: plan.RuntimeID, SessionID: intent.RequestID, Agent: intent.Agent, Address: frame.Terminal.Address}
 			var saveErr error
 			if plan.Resume {
@@ -218,7 +246,7 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				return saveErr
 			}
 			confirmed = true
-			for _, stage := range []string{"journal_lock", "session_lookup", "workspace_prepare", "journal_sync", "herdr_spawn"} {
+			for _, stage := range []string{"journal_lock", "session_lookup", "workspace_prepare", "journal_sync", "herdr_spawn", "attach_lookup"} {
 				if value, ok := frame.Terminal.Timings[stage]; ok {
 					elapsed := time.Duration(value * float64(time.Millisecond))
 					launchprofile.Record("guest."+stage, time.Now().Add(-elapsed), elapsed)
@@ -226,6 +254,12 @@ func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			connection.SetReadDeadline(time.Time{})
 		case "data":
+			for stage, value := range frame.Timings {
+				if stage == "first_pty_read" || stage == "first_visible_output" {
+					elapsed := time.Duration(value * float64(time.Millisecond))
+					launchprofile.Record("guest."+stage, time.Now().Add(-elapsed), elapsed)
+				}
+			}
 			if !confirmed || len(frame.Data) > terminalstream.Chunk {
 				return fmt.Errorf("terminal output before receipt")
 			}

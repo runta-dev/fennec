@@ -23,3 +23,23 @@ func TestDiscoveryEvidence(t *testing.T) {
 		t.Fatalf("missing config evidence: %+v", found)
 	}
 }
+
+func TestComingSoonCatalogDoesNotDependOnInstallation(t *testing.T) {
+	expected := []string{"kimi", "claude-desktop", "opencode", "devin", "grok", "cursor"}
+	empty := PanelCatalog(nil)
+	if len(empty) != len(expected) {
+		t.Fatal(empty)
+	}
+	for i, id := range expected {
+		if empty[i].ID != id || empty[i].Installed || empty[i].Evidence != "" {
+			t.Fatal("placeholder claims installation", empty[i])
+		}
+	}
+	present := PanelCatalog([]Agent{{ID: "codex", Installed: true, Name: "Codex", Evidence: "executable"}, {ID: "kimi", Installed: true, Name: "Kimi Code", Evidence: "configuration"}})
+	if len(present) != 7 || present[0].ID != "codex" || !present[1].Installed || present[1].ID != "kimi" {
+		t.Fatal("missing or duplicate catalog entries", present)
+	}
+	if got := discoverAt(t.TempDir(), nil, nil); len(got) != 0 {
+		t.Fatal("placeholders contaminated real discovery", got)
+	}
+}

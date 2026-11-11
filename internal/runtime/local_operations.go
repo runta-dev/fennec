@@ -3,21 +3,34 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/setup"
 	"fmt"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 type LocalOperation struct {
-	Launch    *LocalLaunch `json:"launch,omitempty"`
-	Kind      string       `json:"kind"`
-	Address   string       `json:"address,omitempty"`
-	SessionID string       `json:"session_id,omitempty"`
-	Text      string       `json:"text,omitempty"`
+	Accounts  *setup.ModelAccountsRequest `json:"accounts,omitempty"`
+	Routes    []setup.AgentRoute          `json:"routes,omitempty"`
+	Launch    *LocalLaunch                `json:"launch,omitempty"`
+	Kind      string                      `json:"kind"`
+	Address   string                      `json:"address,omitempty"`
+	SessionID string                      `json:"session_id,omitempty"`
+	Text      string                      `json:"text,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "model_catalog" {
+		return nil
+	}
+	if o.Kind == "model_accounts" && o.Accounts != nil {
+		return setup.ValidateModelAccountsRequest(*o.Accounts)
+	}
+	if o.Kind == "reconcile_routes" {
+		return setup.ValidateDesiredRoutes(o.Routes)
+	}
 	if o.Kind == "launch" && o.Launch != nil {
 		return o.Launch.Validate()
 	}
@@ -39,6 +52,27 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
+	if o.Kind == "model_catalog" {
+		models, err := setup.LocalGatewayModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(models)
+	}
+	if o.Kind == "model_accounts" {
+		result, err := setup.ApplyModelAccounts(ctx, r.Home, *o.Accounts)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(result)
+	}
+	if o.Kind == "reconcile_routes" {
+		results, err := setup.ReconcileLocalRoutes(ctx, r.Home, o.Routes)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(results)
+	}
 	if o.Kind == "list" {
 		return r.List(ctx)
 	}
@@ -56,7 +90,9 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 		}
 		return json.Marshal(terminal)
 	}
+	lookupStarted := time.Now()
 	terminal, err := r.Terminal(ctx, o.Address, o.SessionID)
+	lookupDuration := time.Since(lookupStarted)
 	if err != nil {
 		return nil, err
 	}
@@ -73,14 +109,19 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	if terminal.State != "live" {
 		return nil, fmt.Errorf("terminal is not live")
 	}
+	sendStarted := time.Now()
 	raw, err := r.Run(ctx, "send", "--json", "--", o.Address, o.Text)
+	sendDuration := time.Since(sendStarted)
 	if err != nil {
 		return nil, fmt.Errorf("input outcome unknown; inspect before retrying")
 	}
 	if len(raw) > 1<<20 || !json.Valid(raw) {
 		return nil, fmt.Errorf("input result invalid; inspect before retrying")
 	}
-	return json.Marshal(map[string]any{"receipt": json.RawMessage(raw)})
+	return json.Marshal(map[string]any{"receipt": json.RawMessage(raw), "timings_ms": map[string]float64{
+		"identity_check": float64(lookupDuration.Microseconds()) / 1000,
+		"herdr_send":     float64(sendDuration.Microseconds()) / 1000,
+	}})
 }
 func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	// Session surfaces show live programs. Enumerating every historical terminal

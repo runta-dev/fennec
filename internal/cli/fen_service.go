@@ -14,9 +14,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,6 +28,7 @@ type fenServiceRequest struct {
 }
 
 type fenServiceReply struct {
+	Timings     map[string]float64      `json:"timings_ms,omitempty"`
 	Plan        *launcher.LaunchPlan    `json:"plan,omitempty"`
 	Sessions    []fenSession            `json:"sessions"`
 	Receipt     *launcher.LaunchReceipt `json:"receipt,omitempty"`
@@ -39,7 +38,7 @@ type fenServiceReply struct {
 }
 
 type fenSessionService struct {
-	stop       func(context.Context, launcher.LaunchReceipt) error
+	stop       func(context.Context, launcher.LaunchReceipt) (map[string]float64, error)
 	resume     func(context.Context, launcher.LaunchReceipt) (launcher.LaunchPlan, error)
 	mu         sync.Mutex
 	sessions   []fenSession
@@ -165,8 +164,11 @@ func (service *fenSessionService) handle(ctx context.Context, request fenService
 		return fenServiceReply{Receipt: selected, ControlPath: control}
 	}
 	defer launchprofile.Begin("session.stop.broker")()
+	var timings map[string]float64
 	if service.stop != nil {
-		if err := service.stop(ctx, *selected); err != nil {
+		var err error
+		timings, err = service.stop(ctx, *selected)
+		if err != nil {
 			return fenServiceReply{Error: "Kill not confirmed; refresh before retrying."}
 		}
 	} else {
@@ -193,10 +195,13 @@ func (service *fenSessionService) handle(ctx context.Context, request fenService
 	}
 	service.sessions = remaining
 	service.listing = removeStoppedTerminal(service.listing, request.SessionID)
-	return fenServiceReply{Sessions: append([]fenSession{}, remaining...)}
+	return fenServiceReply{Sessions: append([]fenSession{}, remaining...), Timings: timings}
 }
 
 func startFenSessionService(ctx context.Context, home, runtimeID string, shared *launcher.SharedConnection, channels ...*terminalChannel) (func(), error) {
+	if len(channels) != 1 || channels[0] == nil {
+		return nil, fmt.Errorf("resident terminal channel required")
+	}
 	directory := filepath.Join(home, ".config/fennec/ipc")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
@@ -258,13 +263,13 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 			}
 			return transport.Operate(operation, cloudruntime.LocalOperation{Kind: "list"})
 		}
-		service.stop = func(operation context.Context, receipt launcher.LaunchReceipt) error {
+		service.stop = func(operation context.Context, receipt launcher.LaunchReceipt) (map[string]float64, error) {
 			transport, err := channels[0].get(operation)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			_, err = transport.Stop(operation, cloudruntime.LocalTerminal{ID: receipt.SessionID, Address: receipt.Address, Agent: receipt.Agent})
-			return err
+			terminal, err := transport.Stop(operation, cloudruntime.LocalTerminal{ID: receipt.SessionID, Address: receipt.Address, Agent: receipt.Agent})
+			return terminal.Timings, err
 		}
 		service.resume = func(operation context.Context, receipt launcher.LaunchReceipt) (launcher.LaunchPlan, error) {
 			transport, err := channels[0].get(operation)
@@ -283,17 +288,6 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 			}
 			return launcher.LaunchPlan{RuntimeID: runtimeID, SessionID: receipt.SessionID, Agent: receipt.Agent, StreamID: id, StreamPath: path, Resume: true}, nil
 		}
-	}
-	service.execute = func(operation context.Context, script string) ([]byte, error) {
-		control, err := shared.Get(operation)
-		if err != nil {
-			return nil, err
-		}
-		cloud := filepath.Join(home, ".config/fennec/cloud")
-		command := exec.CommandContext(operation, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(cloud, "known_hosts"), "-i", filepath.Join(cloud, "runtime_key"), runtimeID+"@ssh.runta.com", "sh -s")
-		command.Stdin = strings.NewReader(script)
-		command.WaitDelay = time.Second
-		return command.Output()
 	}
 	go func() {
 		service.update(ctx)

@@ -24,3 +24,10 @@ for(const coverage of [undefined,'new_shells','failed','entry_and_new_shells']){
  assert.equal(status.textContent,'','internal CLI integration state leaked into product UI');
 }
 console.log('PASS internal entry diagnostics never appear as product errors');
+const disabledExpression=source.match(/button\.disabled=(.*);/)[1];
+for(const route of [undefined,{status:'configuration_failed'},{status:'configured'}]){
+ const button={};const state=vm.createContext({button,takeoverChanging:false,takeoverSelectionKnown:true,enabled:false,cloud:true,agent:{cloudSupported:true},route});
+ vm.runInContext('button.disabled='+disabledExpression,state);
+ assert.equal(button.disabled,false,'cloud placement must remain selectable while preparation recovers');
+}
+console.log('PASS cloud placement is independent of model/preparation readiness');

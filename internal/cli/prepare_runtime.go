@@ -7,7 +7,11 @@ import (
 	"fennec/internal/agent"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
+	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/terminalstream"
+	"fmt"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +21,13 @@ import (
 
 // prepareRuntime is shared by the standalone daemon and the legacy command.
 // Its cancellation belongs to the caller's account lifecycle.
-func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
+type preparationRetainer struct {
+	Runtime    func(runta.Runtime) error
+	Connection func(string, *ssh.Client) bool
+	Terminal   func(string, *terminalstream.Transport) bool
+}
+
+func prepareRuntime(ctx context.Context, token string, output io.Writer, retain ...preparationRetainer) error {
 	defer launchprofile.Begin("prepare.total")()
 	ctx, cancelPreparation := context.WithCancel(ctx)
 	defer cancelPreparation()
@@ -55,35 +65,55 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 		json.NewEncoder(output).Encode(map[string]string{"type": "runtime_progress", "stage": stage, "runtime_id": id, "status": status})
 	}
 	emit("allocating", "", "")
-	runtime, err := client.EnsureShared(ctx)
-	if err != nil {
-		emit("failed", "", err.Error())
-		return err
+	var hint struct {
+		RuntimeID string `json:"runtime_id"`
 	}
-	switch runtime.Status {
-	case "shutdown", "stopped":
-		err = client.Start(ctx, runtime.ID)
-	case "paused", "suspended":
-		err = client.Resume(ctx, runtime.ID)
+	if data, err := os.ReadFile(filepath.Join(home, ".config/fennec/takeover-preferences.json")); err == nil && len(data) <= 8192 {
+		_ = json.Unmarshal(data, &hint)
 	}
+	var runtime runta.Runtime
+	connection, err := client.ConnectResolved(ctx, hint.RuntimeID, filepath.Join(home, ".config", "fennec", "cloud"), func(ctx context.Context) (string, error) {
+		var err error
+		runtime, err = client.EnsureShared(ctx)
+		if err != nil {
+			return "", err
+		}
+		if len(retain) == 1 && retain[0].Runtime != nil {
+			if err := retain[0].Runtime(runtime); err != nil {
+				return "", err
+			}
+		}
+		switch runtime.Status {
+		case "shutdown", "stopped":
+			err = client.Start(ctx, runtime.ID)
+		case "paused", "suspended":
+			err = client.Resume(ctx, runtime.ID)
+		}
+		if err != nil {
+			return "", err
+		}
+		if runtime.Status != "running" || runtime.Degraded || !runtime.SSHEnabled {
+			err = client.WaitReady(ctx, runtime.ID, func(r runta.Runtime) { emit("starting", r.ID, r.Status) })
+		}
+		if err != nil {
+			return "", err
+		}
+		emit("connecting", runtime.ID, "")
+		return runtime.ID, nil
+	})
 	if err != nil {
 		emit("failed", runtime.ID, err.Error())
 		return err
 	}
-	if runtime.Status != "running" || runtime.Degraded || !runtime.SSHEnabled {
-		err = client.WaitReady(ctx, runtime.ID, func(r runta.Runtime) { emit("starting", r.ID, r.Status) })
+	retained := false
+	if len(retain) == 1 && retain[0].Connection != nil {
+		retained = retain[0].Connection(runtime.ID, connection)
 	}
-	if err != nil {
-		emit("failed", runtime.ID, err.Error())
-		return err
-	}
-	emit("connecting", runtime.ID, "")
-	connection, err := client.Connect(ctx, runtime.ID, filepath.Join(home, ".config", "fennec", "cloud"))
-	if err != nil {
-		emit("failed", runtime.ID, err.Error())
-		return err
-	}
-	defer connection.Close()
+	defer func() {
+		if !retained {
+			connection.Close()
+		}
+	}()
 	// The local connector needs authenticated runtime SSH, not agent or
 	// model readiness. Publish this independently so model setup failures
 	// cannot prevent the user's computer from reconnecting.
@@ -116,7 +146,22 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 		if checkpoint, ok := readPreparationCheckpoint(home, fingerprint); ok {
 			check, cancel := context.WithTimeout(ctx, 5*time.Second)
 			healthDone := launchprofile.Begin("prepare.health")
-			err := setup.Exec(check, connection, checkpointHealthScript(fingerprint, ids))
+			var err error
+			if retained && retain[0].Terminal != nil {
+				var transport *terminalstream.Transport
+				transport, err = terminalstream.StartSSHContext(check, connection, checkpointTerminalCommand(fingerprint, ids))
+				if err == nil {
+					err = transport.Ready(check)
+				}
+				if err == nil && !retain[0].Terminal(runtime.ID, transport) {
+					err = fmt.Errorf("prepared terminal handoff no longer valid")
+				}
+				if err != nil && transport != nil {
+					transport.Close()
+				}
+			} else {
+				err = setup.ExecPublicCheck(check, connection, checkpointHealthScript(fingerprint, ids))
+			}
 			healthDone()
 			cancel()
 			if err == nil {
@@ -132,63 +177,137 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 	} else {
 		cacheStatus("fingerprint_failed")
 	}
-	if err := setup.Exec(ctx, connection, "test -d / && command -v sh >/dev/null"); err != nil {
-		return err
+	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
+	var resident *terminalstream.Transport
+	startResident := func(ctx context.Context, command string) error {
+		transport, err := terminalstream.StartSSHContext(ctx, connection, command)
+		if err == nil {
+			err = transport.Ready(ctx)
+		}
+		if err == nil && !retain[0].Terminal(runtime.ID, transport) {
+			err = fmt.Errorf("prepared terminal handoff no longer valid")
+		}
+		if err != nil {
+			if transport != nil {
+				transport.Close()
+			}
+			return err
+		}
+		resident = transport
+		return nil
+	}
+	installationReady := false
+	if installationErr == nil && installationCheckpointMatches(home, installation) {
+		check, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if retained && retain[0].Terminal != nil {
+			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation")) == nil
+		} else {
+			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation")) == nil
+		}
+		cancel()
+	}
+	if installationReady {
+		cacheStatus("installation_hit_configuration_changed")
+	}
+	if !installationReady {
+		if err := setup.Exec(ctx, connection, "test -d / && command -v sh >/dev/null"); err != nil {
+			return err
+		}
 	}
 	json.NewEncoder(output).Encode(map[string]string{"type": "connector_ready", "runtime_id": runtime.ID})
-	emit("checking_resources", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.GuestCapacityScript); err != nil {
-		emit("failed", runtime.ID, "cloud resource allocation has not taken effect")
-		return err
+	if !installationReady {
+		emit("checking_resources", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.GuestCapacityScript); err != nil {
+			emit("failed", runtime.ID, "cloud resource allocation has not taken effect")
+			return err
+		}
+		emit("syncing_versions", runtime.ID, "")
+		if err = setup.SyncAgentManifest(ctx, connection, versions); err != nil {
+			emit("failed", runtime.ID, "agent version manifest sync failed")
+			return err
+		}
+		emit("installing_node", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
+			emit("failed", runtime.ID, "Node setup failed")
+			return err
+		}
+		emit("installing_session_service", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.HerdrSetupScript); err != nil {
+			emit("failed", runtime.ID, "session service reconciliation failed")
+			return err
+		}
+		if err = setup.InstallTerminalBinary(ctx, connection, filepath.Join(filepath.Dir(executable), "..", "Resources")); err != nil {
+			emit("failed", runtime.ID, "Go terminal service installation failed")
+			return err
+		}
+		emit("installing_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
+			emit("failed", runtime.ID, "Magpie installation failed")
+			return err
+		}
+		emit("starting_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
+			emit("failed", runtime.ID, "Magpie service failed: "+err.Error())
+			return err
+		}
+		if installationErr == nil && setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
+			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
+		}
 	}
-	emit("syncing_versions", runtime.ID, "")
-	if err = setup.SyncAgentManifest(ctx, connection, versions); err != nil {
-		emit("failed", runtime.ID, "agent version manifest sync failed")
-		return err
+	if retained && retain[0].Terminal != nil && resident == nil {
+		start, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := startResident(start, fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion))
+		cancel()
+		if err != nil {
+			return err
+		}
 	}
-	emit("installing_node", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
-		emit("failed", runtime.ID, "Node setup failed")
-		return err
-	}
-	emit("installing_session_service", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.HerdrSetupScript); err != nil {
-		emit("failed", runtime.ID, "session service reconciliation failed")
-		return err
-	}
-	if err = setup.InstallTerminalBinary(ctx, connection, filepath.Join(filepath.Dir(executable), "..", "Resources")); err != nil {
-		emit("failed", runtime.ID, "Go terminal service installation failed")
-		return err
-	}
-	emit("installing_magpie", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
-		emit("failed", runtime.ID, "Magpie installation failed")
-		return err
-	}
-	emit("starting_magpie", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
-		emit("failed", runtime.ID, "Magpie service failed: "+err.Error())
-		return err
+	configureRoute := func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
+		if route.Problem != "" {
+			return []setup.RouteResult{{Agent: route.Agent, Model: route.Model, Status: route.Problem}}, nil
+		}
+		if resident == nil || !resident.Supports("reconcile_routes") {
+			return setup.ReconcileRoutes(ctx, connection, []setup.AgentRoute{route})
+		}
+		raw, err := resident.Operate(ctx, cloudruntime.LocalOperation{Kind: "reconcile_routes", Routes: []setup.AgentRoute{route}})
+		if err != nil {
+			return nil, err
+		} // Never replay an uncertain mutation on another channel.
+		return setup.DecodeRouteResults(raw, []setup.AgentRoute{route})
 	}
 	emit("migrating_credentials", runtime.ID, "")
-	migrated, err := setup.MigrateMagpieCredentials(ctx, connection, home)
+	accountsDone := launchprofile.Begin("prepare.accounts.sync")
+	accounts, err := func() (setup.ModelAccountsResult, error) {
+		request, err := setup.GatherModelAccountsRequest(home, plugins, ids)
+		if err != nil {
+			return setup.ModelAccountsResult{}, err
+		}
+		request.DeferCatalog = resident != nil && resident.Supports("deferred_catalog") && resident.Supports("model_catalog")
+		// Keep credentials within the existing bounded frame size. Large stores
+		// select authenticated stdin before any mutation; never retry on error.
+		return syncPreparedAccounts(ctx, request, resident != nil && resident.Supports("model_accounts"), func(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
+			return resident.Operate(ctx, operation)
+		}, func(ctx context.Context, request setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {
+			request.DeferCatalog = false
+			return setup.SyncModelAccountsRequest(ctx, connection, request)
+		})
+	}()
+	accountsDone()
 	if err != nil {
 		emit("failed", runtime.ID, err.Error())
 		return err
 	}
-	emit("installing_model_plugins", runtime.ID, "")
-	if err = setup.ReconcileModelPlugins(ctx, connection, plugins); err != nil {
-		emit("failed", runtime.ID, "model plugin reconciliation failed")
-		return err
+	migrated := accounts.Migrated
+	for _, phase := range []string{"credentials", "plugins", "identity", "catalog", "inventory"} {
+		elapsed, ok := accounts.Timings[phase]
+		if !ok {
+			continue
+		}
+		// Remote durations observed at receipt, not synchronized cross-host spans.
+		launchprofile.Record("prepare.accounts.remote."+phase, time.Now(), time.Duration(elapsed*float64(time.Millisecond)))
 	}
-	emit("restoring_model_accounts", runtime.ID, "")
-	if err = setup.Exec(ctx, connection, setup.RestoreCodexIdentityScript); err != nil {
-		emit("failed", runtime.ID, "model account restoration failed")
-		return err
-	}
-	models, catalogErr := setup.GatewayModels(ctx, connection)
-	if catalogErr == nil {
-		data, _ := json.Marshal(models)
+	if accounts.CatalogAvailable {
+		data, _ := json.Marshal(accounts.Models)
 		json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data)})
 	}
 	results := []setup.RouteResult{}
@@ -197,6 +316,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 	json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(initialResults)})
 	err = prepareAgentsIndependently(ctx, versions, routes,
 		func(ctx context.Context, a setup.Agent) error {
+			if accounts.AvailableAgents[a.ID] {
+				launchprofile.Record("prepare.binary_reused."+a.ID, time.Now(), 0)
+				return nil
+			}
+			defer launchprofile.Begin("prepare.binary_ensure." + a.ID)()
 			script, err := setup.EnsureAgentScript(a)
 			if err != nil {
 				return err
@@ -204,7 +328,8 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 			return setup.Exec(ctx, connection, script)
 		},
 		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
-			return setup.ReconcileRoutes(ctx, connection, []setup.AgentRoute{route})
+			defer launchprofile.Begin("prepare.route." + route.Agent)()
+			return configureRoute(ctx, route)
 		},
 		func(one []setup.RouteResult) {
 			results = append(results, one...)
@@ -218,7 +343,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 
 	results, err = recoverRoutes(ctx, routes, results, 30*time.Second,
 		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
-			return setup.ReconcileRoutes(ctx, connection, []setup.AgentRoute{route})
+			return configureRoute(ctx, route)
 		}, func(current []setup.RouteResult) {
 			encoded, _ := json.Marshal(current)
 			json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(encoded)})
@@ -235,6 +360,18 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer) error {
 	}
 	if migrated == 0 {
 		status = "no_local_model_credentials"
+	}
+	// All agent results have been published. Optional model-list refresh must
+	// not precede verified route readiness or delay the first usable terminal.
+	if accounts.CatalogDeferred && resident != nil && resident.Supports("model_catalog") {
+		catalogCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		raw, err := resident.Operate(catalogCtx, cloudruntime.LocalOperation{Kind: "model_catalog"})
+		cancel()
+		var models []string
+		if err == nil && json.Unmarshal(raw, &models) == nil {
+			data, _ := json.Marshal(models)
+			json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data)})
+		}
 	}
 	cacheable := fingerprintErr == nil && len(results) > 0
 	for _, result := range results {

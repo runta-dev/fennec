@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fennec/internal/control"
+	"fennec/internal/launchprofile"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -27,6 +27,7 @@ func daemonPlist(binary, logPath string) []byte {
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + daemonLabel + `</string><key>ProgramArguments</key><array><string>` + escape(binary) + `</string><string>control-daemon</string></array><key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ProcessType</key><string>Background</string><key>StandardErrorPath</key><string>` + escape(logPath) + `</string></dict></plist>`)
 }
 func ensureControl(ctx context.Context) error {
+	defer launchprofile.Begin("daemon.ensure")()
 	socket, err := controlSocket()
 	if err != nil {
 		return err
@@ -35,7 +36,7 @@ func ensureControl(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	packaged := runtime.GOOS == "darwin" && filepath.Base(binary) == "fennec-daemon" && filepath.Base(filepath.Dir(binary)) == "MacOS" && !strings.HasPrefix(binary, "/tmp/") && !strings.HasPrefix(binary, os.TempDir())
+	packaged := runtime.GOOS == "darwin" && (filepath.Base(binary) == "fen" || filepath.Base(binary) == "fennec-daemon") && filepath.Base(filepath.Dir(binary)) == "MacOS" && !strings.HasPrefix(binary, "/tmp/") && !strings.HasPrefix(binary, os.TempDir())
 	expected := ""
 	if packaged {
 		data, readErr := os.ReadFile(filepath.Join(filepath.Dir(binary), "../Resources/control-build-id"))
@@ -70,34 +71,11 @@ func ensureControl(ctx context.Context) error {
 	if !packaged {
 		return fmt.Errorf("start the daemon from the installed Fennec bundle; development binaries can run control-daemon in the foreground")
 	}
-	if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
-		return err
-	}
-	if info, err := os.Lstat(filepath.Dir(socket)); err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return fmt.Errorf("private control directory required")
-	}
-	lock, err := os.OpenFile(filepath.Join(filepath.Dir(socket), "control-start.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	lock, err := acquireControlStartLock(ctx, filepath.Dir(socket))
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	for {
-		err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
-			return err
-		}
-		timer := time.NewTimer(50 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	actual, err = ping()
 	if err == nil && actual == expected {
 		return nil
@@ -105,6 +83,9 @@ func ensureControl(ctx context.Context) error {
 	if err == nil && actual != expected {
 		if exec.CommandContext(ctx, "/bin/launchctl", "bootout", daemonTarget()).Run() != nil {
 			return fmt.Errorf("unable to replace the previous Fennec service")
+		}
+		if err := waitServiceRemoval(ctx, func() bool { return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil }); err != nil {
+			return err
 		}
 	}
 	home, err := os.UserHomeDir()
@@ -137,6 +118,7 @@ func ensureControl(ctx context.Context) error {
 	if err = os.Rename(file.Name(), plist); err != nil {
 		return err
 	}
+	launchctlDone := launchprofile.Begin("daemon.launchctl")
 	if err = exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run(); err != nil {
 		if err = exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), plist).Run(); err != nil {
 			if exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() != nil {
@@ -146,12 +128,30 @@ func ensureControl(ctx context.Context) error {
 	} else if err = exec.CommandContext(ctx, "/bin/launchctl", "kickstart", daemonTarget()).Run(); err != nil {
 		return fmt.Errorf("unable to start Fennec daemon")
 	}
+	launchctlDone()
+	defer launchprofile.Begin("daemon.wait_ready")()
+	return waitControlReady(ctx, expected, ping,
+		func() bool { return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil },
+		func() error {
+			return exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), plist).Run()
+		})
+}
+
+// A concurrent reconnect can kickstart a registration that is still retiring
+// during bootout. Its disappearance must trigger registration again while the
+// caller still owns the startup lock, rather than stranding every other client.
+func waitControlReady(ctx context.Context, expected string, ping func() (string, error), registered func() bool, bootstrap func() error) error {
 	timer := time.NewTicker(50 * time.Millisecond)
 	defer timer.Stop()
 	for {
-		actual, err = ping()
+		actual, err := ping()
 		if err == nil && actual == expected {
 			return nil
+		}
+		if ctx.Err() == nil && !registered() {
+			if err := bootstrap(); err != nil && !registered() {
+				return fmt.Errorf("unable to register Fennec daemon: %w", err)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -159,6 +159,21 @@ func ensureControl(ctx context.Context) error {
 		case <-timer.C:
 		}
 	}
+}
+
+// bootout may acknowledge before launchd drops the old job registration. Never
+// kickstart that retiring job: it would disappear after the apparent success.
+func waitServiceRemoval(ctx context.Context, present func() bool) error {
+	for present() {
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("previous service did not unregister: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return ctx.Err()
 }
 func daemonCommand(arguments []string, output io.Writer) error {
 	if len(arguments) != 1 {
@@ -173,10 +188,21 @@ func daemonCommand(arguments []string, output io.Writer) error {
 		if runtime.GOOS != "darwin" {
 			return fmt.Errorf("stop the foreground control-daemon process")
 		}
+		socket, err := controlSocket()
+		if err != nil {
+			return err
+		}
+		lock, err := acquireControlStartLock(ctx, filepath.Dir(socket))
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
 		if err := exec.CommandContext(ctx, "/bin/launchctl", "bootout", daemonTarget()).Run(); err != nil {
 			return fmt.Errorf("unable to stop Fennec daemon")
 		}
-		return nil
+		return waitServiceRemoval(ctx, func() bool {
+			return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil
+		})
 	case "status":
 		socket, err := controlSocket()
 		if err != nil {
@@ -193,6 +219,11 @@ func daemonCommand(arguments []string, output io.Writer) error {
 }
 
 func waitForBroker(ctx context.Context) error {
+	return waitForAgentBroker(ctx, "")
+}
+
+func waitForAgentBroker(ctx context.Context, agent string) error {
+	defer launchprofile.Begin("broker.wait_ready")()
 	if err := ensureControl(ctx); err != nil {
 		return err
 	}
@@ -213,14 +244,18 @@ func waitForBroker(ctx context.Context) error {
 				Stage string `json:"stage"`
 			} `json:"runtime"`
 			Services struct {
-				Ready bool `json:"broker_ready"`
+				Ready  bool     `json:"broker_ready"`
+				Active []string `json:"active"`
 			} `json:"services"`
 		}
 		if err := client.Call(ctx, "state.get", nil, &state); err != nil {
 			return err
 		}
-		if state.Services.Ready {
+		if state.Services.Ready && brokerAgentReady(agent, state.Services.Active) {
 			return nil
+		}
+		if agent != "" && state.Services.Ready && state.Runtime.Stage == "ready" {
+			return fmt.Errorf("%s is not configured to run in the cloud", agent)
 		}
 		if state.Account.Status == "signed_out" && time.Since(started) > 200*time.Millisecond {
 			return fmt.Errorf("sign in with fen login first")
@@ -234,4 +269,16 @@ func waitForBroker(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func brokerAgentReady(agent string, active []string) bool {
+	if agent == "" {
+		return true
+	}
+	for _, id := range active {
+		if id == agent {
+			return true
+		}
+	}
+	return false
 }

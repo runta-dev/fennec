@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,17 +28,26 @@ func run() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, filepath.Join(os.Args[1], "Contents/MacOS/fennec-daemon"), "describe-control")
+	command := exec.CommandContext(ctx, filepath.Join(os.Args[1], "Contents/MacOS/fen"), "describe-control")
 	raw, err := command.Output()
 	if err != nil {
 		return fmt.Errorf("cannot inspect packaged control API: %w", err)
 	}
 	var schema struct {
-		Version int      `json:"version"`
-		Methods []string `json:"methods"`
+		Version          int      `json:"version"`
+		TerminalProtocol int      `json:"terminal_protocol"`
+		Methods          []string `json:"methods"`
 	}
 	if json.Unmarshal(raw, &schema) != nil || schema.Version != 1 {
 		return fmt.Errorf("packaged control protocol is incompatible")
+	}
+	protocol, err := os.ReadFile(filepath.Join(os.Args[1], "Contents/Resources/terminal-protocol-version"))
+	if err != nil {
+		return err
+	}
+	expected, err := strconv.Atoi(strings.TrimSpace(string(protocol)))
+	if err != nil || expected != schema.TerminalProtocol {
+		return fmt.Errorf("packaged daemon and remote terminal protocols differ; rebuild Go from the current source")
 	}
 	supported := map[string]bool{}
 	for _, method := range schema.Methods {

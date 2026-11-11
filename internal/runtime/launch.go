@@ -22,7 +22,7 @@ func LaunchScriptWithArgs(id, agent, cwd string, arguments []string) (string, er
 }
 
 func LaunchScriptWithVersion(id, agent, cwd string, arguments []string, version string) (string, error) {
-	return launchScript(id, agent, cwd, arguments, version, nil, false)
+	return launchScript(id, agent, cwd, arguments, version, false)
 }
 
 func CloudLaunchScript(id, agent, localDirectory, device string, arguments []string) (string, error) {
@@ -34,13 +34,22 @@ func CloudLaunchAttachScript(id, agent, localDirectory, device string, arguments
 }
 
 func cloudLaunchScript(id, agent, localDirectory, device string, arguments []string, attach bool) (string, error) {
-	if !filepath.IsAbs(localDirectory) || strings.ContainsAny(localDirectory, "\x00\r\n") || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(device) {
-		return "", fmt.Errorf("invalid local session context")
+	request := LocalLaunch{ID: id, Agent: agent, LocalDirectory: localDirectory, Device: device, Arguments: arguments}
+	if err := request.Validate(); err != nil {
+		return "", err
 	}
-	return launchScript(id, agent, "/validation", arguments, "", map[string]any{"local_directory": localDirectory, "device": device, "ssh_host": "fennec-device-" + device, "files_synchronized": false}, attach)
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+	if attach {
+		return "exec \"$HOME/.local/fennec/bin/fennec-terminal\" start " + base64.StdEncoding.EncodeToString(payload) + "\n", nil
+	}
+	quoted := "'" + strings.ReplaceAll(string(payload), "'", "'\"'\"'") + "'"
+	return "printf '%s' " + quoted + " | \"$HOME/.local/fennec/bin/fennec-terminal\" launch\n", nil
 }
 
-func launchScript(id, agent, cwd string, arguments []string, version string, localContext map[string]any, attach bool) (string, error) {
+func launchScript(id, agent, cwd string, arguments []string, version string, attach bool) (string, error) {
 	if version != "" && !regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`).MatchString(version) {
 		return "", fmt.Errorf("invalid agent version")
 	}
@@ -75,9 +84,7 @@ func launchScript(id, agent, cwd string, arguments []string, version string, loc
 	}
 	command = append(command, arguments...)
 	request := map[string]any{"id": id, "agent": agent, "cwd": cwd, "command": command, "version": version}
-	if localContext != nil {
-		request["local_context"] = localContext
-	}
+
 	if attach {
 		request["attach"] = true
 	}
@@ -89,7 +96,6 @@ import base64,json,pathlib,subprocess,sys,fcntl,os,time
 timings={}
 phase=time.monotonic()
 request=json.loads(base64.b64decode(sys.argv[1]))
-if 'local_context' in request:request['cwd']=str(pathlib.Path.home()/'.local/fennec/sessions'/request['id'])
 def output_result(result):
  if not request.get('attach'):
   print(json.dumps(result));return
@@ -127,18 +133,6 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  if terminals:
   output_result(terminals[0]);raise SystemExit(0)
  if marker.exists():raise SystemExit('launch outcome unknown; inspect before retrying')
- if 'local_context' in request:
-  workspace=pathlib.Path(request['cwd'])
-  workspace.mkdir(parents=True,exist_ok=True)
-  context_file=workspace/'.fennec-local-context.json'
-  if context_file.exists() and json.loads(context_file.read_text())!=request['local_context']:raise SystemExit('session local context mismatch')
-  if not context_file.exists():
-   with context_file.open('x') as output:json.dump(request['local_context'],output)
-  instructions='This agent loop runs in the cloud. Local directory and device metadata are in .fennec-local-context.json. Local files have NOT been synchronized. Do not interpret an empty cloud directory as missing local files. Use the exact ssh_host in that JSON for local access, respecting its permission requests. Do not use the generic machine alias because another computer may own it. Do not upload the entire home directory. If the device is offline, report that local access is unavailable.\n'
-  for name in ('AGENTS.md','CLAUDE.md'):
-   target=workspace/name
-   if not target.exists():
-    with target.open('x') as output:output.write(instructions)
  if not pathlib.Path(request['cwd']).is_dir():raise SystemExit('cloud working directory does not exist')
  command=list(request['command'])
  # OpenCode v1 uses a permission configuration environment override. v2

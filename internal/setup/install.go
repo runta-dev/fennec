@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"sync"
@@ -122,17 +123,27 @@ func (b *setupOutput) String() string { b.mu.Lock(); defer b.mu.Unlock(); return
 
 // Exec runs a finite setup step and closes the SSH session on cancellation.
 func Exec(ctx context.Context, client *ssh.Client, script string) error {
+	return execSetup(ctx, client, "sh -s", strings.NewReader(script))
+}
+
+// ExecPublicCheck sends a non-secret check in the exec request itself, avoiding
+// the extra stdin write/EOF round trip. Credential-bearing scripts must use Exec.
+func ExecPublicCheck(ctx context.Context, client *ssh.Client, script string) error {
+	return execSetup(ctx, client, "sh -c "+shellQuote(script), nil)
+}
+
+func execSetup(ctx context.Context, client *ssh.Client, command string, input io.Reader) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
 	}
 	defer session.Close()
-	session.Stdin = strings.NewReader(script)
+	session.Stdin = input
 	diagnostics := &setupOutput{}
 	session.Stdout = diagnostics
 	session.Stderr = diagnostics
 	done := make(chan error, 1)
-	go func() { done <- session.Run("sh -s") }()
+	go func() { done <- session.Run(command) }()
 	select {
 	case err := <-done:
 		if err != nil {
