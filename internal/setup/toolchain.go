@@ -49,6 +49,9 @@ cat > "$base/magpie-supervisor.sh" <<'SUPERVISOR'
 #!/bin/sh
 export PATH="$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
 export MAGPIE_ADDR=127.0.0.1:3425
+export CODEX_HOME="$HOME/.local/fennec/native/codex"
+export CLAUDE_CONFIG_DIR="$HOME/.local/fennec/native/claude"
+export PI_CODING_AGENT_DIR="$HOME/.local/fennec/native/pi"
 child=
 trap 'test -z "$child" || kill "$child" 2>/dev/null; exit 0' TERM INT
 while :; do

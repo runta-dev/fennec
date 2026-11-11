@@ -26,8 +26,8 @@ func checkpointTerminalCommand(fingerprint string, agents []string) string {
 	return checkpointTerminalCommandForMarker(fingerprint, agents, "prepared-runtime")
 }
 
-func checkpointTerminalCommandForMarker(fingerprint string, agents []string, marker string) string {
-	return checkedServiceCommand(checkpointHealthScriptForMarker(fingerprint, agents, marker), fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion))
+func checkpointTerminalCommandForMarker(fingerprint string, agents []string, marker string, magpie ...bool) string {
+	return checkedServiceCommand(checkpointHealthScriptForMarker(fingerprint, agents, marker, magpie...), fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion))
 }
 
 // Contains only digests and public preparation results, never credential contents.
@@ -127,7 +127,7 @@ func checkpointHealthScript(fingerprint string, agents []string) string {
 	return checkpointHealthScriptForMarker(fingerprint, agents, "prepared-runtime")
 }
 
-func checkpointHealthScriptForMarker(fingerprint string, agents []string, marker string) string {
+func checkpointHealthScriptForMarker(fingerprint string, agents []string, marker string, magpie ...bool) string {
 	if marker != "prepared-runtime" && marker != "prepared-installation" {
 		return "exit 1"
 	}
@@ -142,11 +142,12 @@ func checkpointHealthScriptForMarker(fingerprint string, agents []string, marker
 export PATH="$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
 test "$(cat "$HOME/.config/fennec/` + marker + `")" = '` + fingerprint + `'
 command -v node >/dev/null
-command -v magpie >/dev/null
 test -x "$HOME/.local/fennec/bin/fennec-terminal"
 herdr-core server status >/dev/null 2>&1
-curl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null
 `
+	if len(magpie) == 0 || magpie[0] {
+		script += "command -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
+	}
 	for _, id := range agents {
 		if !strings.Contains("|claude|codex|pi|opencode|", "|"+id+"|") || id == "" {
 			return "exit 1"

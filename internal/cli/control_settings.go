@@ -17,6 +17,7 @@ type desktopSettings struct {
 	value desktopPreferences
 }
 type desktopPreferences struct {
+	Magpie      bool   `json:"magpie"`
 	Theme       string `json:"theme"`
 	Language    string `json:"language"`
 	Initialized bool   `json:"initialized"`
@@ -39,6 +40,7 @@ func (s *desktopSettings) snapshot() any { s.mu.Lock(); defer s.mu.Unlock(); ret
 func (s *desktopSettings) set(importing bool) control.Handler {
 	return func(_ context.Context, raw json.RawMessage) (any, error) {
 		var request struct {
+			Magpie   *bool   `json:"magpie"`
 			Theme    *string `json:"theme"`
 			Language *string `json:"language"`
 		}
@@ -51,6 +53,9 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			return s.value, nil
 		}
 		next := s.value
+		if request.Magpie != nil && !importing {
+			next.Magpie = *request.Magpie
+		}
 		if request.Theme != nil {
 			next.Theme = *request.Theme
 		}

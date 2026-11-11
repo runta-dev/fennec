@@ -103,3 +103,13 @@ func TestPreparationHealthRequiresRemoteMarkerAndBinaries(t *testing.T) {
 		t.Fatal("unsafe identifier")
 	}
 }
+
+func TestNativeCheckpointDoesNotRequireMagpie(t *testing.T) {
+	script := checkpointHealthScriptForMarker(strings.Repeat("a", 64), []string{"codex"}, "prepared-runtime", false)
+	if strings.Contains(script, "magpie") || strings.Contains(script, "3425") {
+		t.Fatal("native health depends on gateway", script)
+	}
+	if !strings.Contains(script, "herdr-core") || !strings.Contains(script, "command -v codex") {
+		t.Fatal("native readiness checks removed")
+	}
+}

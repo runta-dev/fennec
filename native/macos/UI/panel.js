@@ -192,6 +192,21 @@ window.renderAgents = agents => {
         detail.querySelector('.takeover').append(placeholder);
       }
       statusNode.hidden = !statusNode.textContent;
+      if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='请选择云端模型';statusNode.hidden=false;}
+      if (route?.status === 'credentials_required') {statusNode.textContent='请先在本机登录此智能体，然后重试';statusNode.hidden=false;}
+      if (route?.status === 'credentials_unavailable') {statusNode.textContent='无法读取此智能体的登录凭据，请检查授权后重试';statusNode.hidden=false;}
+      if (route?.status === 'local_provider_unavailable') {statusNode.textContent='本机模型地址无法在云端使用，请配置云端可访问的地址，或启用 Magpie';statusNode.hidden=false;}
+      if (route?.status === 'local_credential_command') {statusNode.textContent='本机凭据依赖本地命令，请使用智能体登录或 API key';statusNode.hidden=false;}
+      if (magpieEnabled && enabled) {
+        const row=document.createElement('div');row.className='preference-row';
+        const label=document.createElement('label');label.textContent='云端模型';
+        const select=document.createElement('select');select.setAttribute('aria-label','云端模型');
+        const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='选择模型';select.append(placeholder);
+        for(const model of gatewayModels){const option=document.createElement('option');option.value=model;option.textContent=model;select.append(option);}
+        select.value=route?.model||'';
+        select.onchange=()=>{if(select.value)send('select-model:'+JSON.stringify({agent:agent.id,model:select.value}));};
+        row.append(label,select);detail.append(row);
+      }
     }
     clip.append(detail);
     fold.append(clip);
@@ -451,6 +466,9 @@ themeButtons.forEach((button,index)=>{
 });
 window.exportLocalPreferences = () => ({theme:appearance.value,language:document.querySelector('#language')?.value || 'zh-CN'});
 window.renderPreferences = value => {
+ magpieEnabled = value.magpie === true;
+ document.querySelector('#magpie-integration')?.setAttribute('aria-checked',String(magpieEnabled));
+ window.renderAgents(detectedAgents);
  if(['system','light','dark'].includes(value.theme) && appearance.value!==value.theme){appearance.value=value.theme;applyAppearance();}
  if(typeof supportedLanguages!=='undefined' && supportedLanguages.includes(value.language) && language!==value.language){
   language=value.language;languageSelect.value=language;
@@ -463,6 +481,9 @@ window.renderPreferences = value => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppearance);
 
 const loginItemSwitch = document.querySelector('#launch-at-login');
+let magpieEnabled = false;
+const magpieSwitch = document.querySelector('#magpie-integration');
+if(magpieSwitch) magpieSwitch.onclick=()=>send('settings:'+JSON.stringify({magpie:!magpieEnabled}));
 const loginItemApproval = document.querySelector('#login-item-approval');
 window.renderLoginItem = value => {
   if (!loginItemSwitch || !loginItemApproval) return;
@@ -507,7 +528,7 @@ window.renderPreparation = state => {
   const titles = {checking_resources:'正在确认云电脑资源', installing_session_service:'正在准备会话服务', restoring_model_accounts:'正在恢复模型账户', configuring_routes:'正在配置智能体模型', installing_model_plugins:'正在配置模型插件', migrating_credentials:'正在迁移模型凭据', discovering_providers:'正在读取模型配置', waiting_credentials:'正在读取登录凭证', credentials_required:'请重新登录以继续准备', installing_pi:'正在安装 Pi', installing_opencode:'正在安装 OpenCode', starting_magpie:'正在启动大模型网关', installing_node:'正在安装运行工具', installing_magpie:'正在安装大模型网关', detecting_versions:'正在发现可用智能体', syncing_versions:'正在确认云端智能体', installing_claude:'正在安装 Claude Code', installing_codex:'正在安装 Codex', agents_installed:'等待配置大模型网关', allocating:'正在分配云电脑', starting:'正在启动云电脑', connecting:'正在连接云电脑', runtime_ready:'环境已启动，等待安装智能体', failed:'云电脑准备失败'};
   const row = document.createElement('div'); row.className = 'preparation-row';
   const title = document.createElement('span'); title.className = 'preparation-title';
-  const reasons = {model_routes_need_attention:'部分智能体模型需要配置', routes_configured_inference_pending:'模型已配置，等待验证', no_local_model_credentials:'本机尚未配置模型凭据', no_model_providers:'尚未配置模型服务', no_compatible_model_providers:'暂无兼容的模型配置', provider_catalog_unavailable:'无法读取模型配置', provider_selection_required:'等待选择模型服务'};
+  const reasons = {native_credentials_need_attention:'请在本机登录要使用的智能体，然后重试',model_routes_need_attention:'部分智能体模型需要配置', routes_configured_inference_pending:'模型已配置，等待验证', no_local_model_credentials:'本机尚未配置模型凭据', no_model_providers:'尚未配置模型服务', no_compatible_model_providers:'暂无兼容的模型配置', provider_catalog_unavailable:'无法读取模型配置', provider_selection_required:'等待选择模型服务'};
   title.textContent = reasons[state.status] || titles[state.stage] || '正在准备…';
   const indicator = document.createElement('span'); indicator.className = 'preparation-indicator';
   const needsAction = ['failed', 'credentials_required', 'agents_installed'].includes(state.stage);

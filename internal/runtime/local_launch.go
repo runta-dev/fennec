@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/setup"
 	"fmt"
 	"os"
 	"os/exec"
@@ -180,6 +181,22 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		}
 	}
 	command = append(command, request.Arguments...)
+	if setup.NativeAgentMode(runtime.Home) {
+		// The launcher reads secrets from private files, never command arguments.
+		if request.Agent == "claude" {
+			command = command[2:]
+		}
+		if request.Agent == "opencode" && len(command) > 0 && command[0] == "env" {
+			command = command[2:]
+		}
+		command = append([]string{filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal"), "native-agent", request.Agent}, command[1:]...)
+		if request.Agent == "claude" {
+			command = append([]string{"env", "IS_SANDBOX=1"}, command...)
+		}
+		if request.Agent == "opencode" {
+			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
+		}
+	}
 	mark("workspace_prepare")
 	if err := ctx.Err(); err != nil {
 		return LocalTerminal{}, err

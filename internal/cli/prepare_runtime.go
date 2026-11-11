@@ -35,6 +35,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	if err != nil {
 		return err
 	}
+	magpie := newDesktopSettings(home).value.Magpie
 	versions := []setup.Agent{}
 	ids := []string{}
 	for _, id := range []string{"claude", "codex", "pi", "opencode"} {
@@ -53,7 +54,14 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			workers.Add(1)
 			go func(i int, version setup.Agent) {
 				defer workers.Done()
-				localRoutes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{version})[0]
+				if magpie {
+					localRoutes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{version})[0]
+					if localRoutes[i].Problem == "local_gateway_not_found" {
+						localRoutes[i].Problem = "model_selection_required"
+					}
+				} else {
+					localRoutes[i] = setup.AgentRoute{Agent: version.ID}
+				}
 			}(i, version)
 		}
 		workers.Wait()
@@ -123,11 +131,19 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return ctx.Err()
 	}
 	// EnsureShared already authenticated and matched this owner against /v2/me.
-	routes, err := setup.ApplyModelPreferences(filepath.Join(home, ".config", "fennec"), runtime.Owner, localRoutes)
+	routes := localRoutes
+	var plugins []setup.ModelPlugin
+	nativeRequest, err := setup.GatherNativeAccounts(ctx, home, ids, magpie)
 	if err != nil {
 		return err
 	}
-	plugins, err := setup.DesiredModelPlugins(home)
+	if magpie {
+		routes, err = setup.ApplyModelPreferences(filepath.Join(home, ".config", "fennec"), runtime.Owner, localRoutes)
+		if err != nil {
+			return err
+		}
+		plugins, err = setup.DesiredModelPlugins(home)
+	}
 	if err != nil {
 		return err
 	}
@@ -136,7 +152,13 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return err
 	}
 	artifacts := filepath.Join(filepath.Dir(executable), "..", "Resources")
-	fingerprint, fingerprintErr := preparationFingerprint(home, token, runtime.ID, []any{versions, routes, plugins}, artifacts)
+	var fingerprint string
+	var fingerprintErr error
+	if magpie {
+		fingerprint, fingerprintErr = preparationFingerprint(home, token, runtime.ID, []any{versions, routes, plugins, nativeRequest}, artifacts)
+	} else {
+		fingerprint, fingerprintErr = scopedPreparationFingerprint(home, token, runtime.ID, []any{versions, nativeRequest}, artifacts, false)
+	}
 	cacheStatus := func(result string) {
 		data, _ := json.Marshal(map[string]string{"result": result})
 		_ = os.WriteFile(filepath.Join(home, ".config/fennec/preparation-cache-status.json"), data, 0600)
@@ -149,7 +171,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			var err error
 			if retained && retain[0].Terminal != nil {
 				var transport *terminalstream.Transport
-				transport, err = terminalstream.StartSSHContext(check, connection, checkpointTerminalCommand(fingerprint, ids))
+				transport, err = terminalstream.StartSSHContext(check, connection, checkpointTerminalCommandForMarker(fingerprint, ids, "prepared-runtime", magpie))
 				if err == nil {
 					err = transport.Ready(check)
 				}
@@ -160,7 +182,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 					transport.Close()
 				}
 			} else {
-				err = setup.ExecPublicCheck(check, connection, checkpointHealthScript(fingerprint, ids))
+				err = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(fingerprint, ids, "prepared-runtime", magpie))
 			}
 			healthDone()
 			cancel()
@@ -177,7 +199,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	} else {
 		cacheStatus("fingerprint_failed")
 	}
-	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
+	installation, installationErr := installationFingerprint(home, token, runtime.ID, []any{versions, magpie}, artifacts)
 	var resident *terminalstream.Transport
 	startResident := func(ctx context.Context, command string) error {
 		transport, err := terminalstream.StartSSHContext(ctx, connection, command)
@@ -200,9 +222,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	if installationErr == nil && installationCheckpointMatches(home, installation) {
 		check, cancel := context.WithTimeout(ctx, 5*time.Second)
 		if retained && retain[0].Terminal != nil {
-			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation")) == nil
+			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation", magpie)) == nil
 		} else {
-			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation")) == nil
+			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation", magpie)) == nil
 		}
 		cancel()
 	}
@@ -240,15 +262,17 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			emit("failed", runtime.ID, "Go terminal service installation failed")
 			return err
 		}
-		emit("installing_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
-			emit("failed", runtime.ID, "Magpie installation failed")
-			return err
-		}
-		emit("starting_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
-			emit("failed", runtime.ID, "Magpie service failed: "+err.Error())
-			return err
+		if magpie {
+			emit("installing_magpie", runtime.ID, "")
+			if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
+				emit("failed", runtime.ID, "Magpie installation failed")
+				return err
+			}
+			emit("starting_magpie", runtime.ID, "")
+			if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
+				emit("failed", runtime.ID, "Magpie service failed: "+err.Error())
+				return err
+			}
 		}
 		if installationErr == nil && setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
 			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
@@ -278,14 +302,20 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	emit("migrating_credentials", runtime.ID, "")
 	accountsDone := launchprofile.Begin("prepare.accounts.sync")
 	accounts, err := func() (setup.ModelAccountsResult, error) {
-		request, err := setup.GatherModelAccountsRequest(home, plugins, ids)
+		request := nativeRequest
+		var err error
+		if magpie {
+			request, err = setup.GatherModelAccountsRequest(home, plugins, ids)
+			request.NativeFiles = nativeRequest.Files
+			request.NativeProblems = nativeRequest.NativeProblems
+		}
 		if err != nil {
 			return setup.ModelAccountsResult{}, err
 		}
 		request.DeferCatalog = resident != nil && resident.Supports("deferred_catalog") && resident.Supports("model_catalog")
 		// Keep credentials within the existing bounded frame size. Large stores
 		// select authenticated stdin before any mutation; never retry on error.
-		return syncPreparedAccounts(ctx, request, resident != nil && resident.Supports("model_accounts"), func(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
+		return syncPreparedAccounts(ctx, request, resident != nil && resident.Supports("model_accounts") && resident.Supports("native_accounts"), func(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
 			return resident.Operate(ctx, operation)
 		}, func(ctx context.Context, request setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {
 			request.DeferCatalog = false
@@ -297,7 +327,6 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		emit("failed", runtime.ID, err.Error())
 		return err
 	}
-	migrated := accounts.Migrated
 	for _, phase := range []string{"credentials", "plugins", "identity", "catalog", "inventory"} {
 		elapsed, ok := accounts.Timings[phase]
 		if !ok {
@@ -329,6 +358,16 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		},
 		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
 			defer launchprofile.Begin("prepare.route." + route.Agent)()
+			if !magpie {
+				status := "credentials_required"
+				if nativeRequest.NativeProblems[route.Agent] != "" {
+					status = nativeRequest.NativeProblems[route.Agent]
+				}
+				if accounts.NativeReady[route.Agent] {
+					status = "configured"
+				}
+				return []setup.RouteResult{{Agent: route.Agent, Status: status}}, nil
+			}
 			return configureRoute(ctx, route)
 		},
 		func(one []setup.RouteResult) {
@@ -341,15 +380,17 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return err
 	}
 
-	results, err = recoverRoutes(ctx, routes, results, 30*time.Second,
-		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
-			return configureRoute(ctx, route)
-		}, func(current []setup.RouteResult) {
-			encoded, _ := json.Marshal(current)
-			json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(encoded)})
-		})
-	if err != nil {
-		return err
+	if magpie {
+		results, err = recoverRoutes(ctx, routes, results, 30*time.Second,
+			func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
+				return configureRoute(ctx, route)
+			}, func(current []setup.RouteResult) {
+				encoded, _ := json.Marshal(current)
+				json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(encoded)})
+			})
+		if err != nil {
+			return err
+		}
 	}
 	status := "routes_configured_inference_pending"
 	for _, result := range results {
@@ -358,8 +399,8 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			break
 		}
 	}
-	if migrated == 0 {
-		status = "no_local_model_credentials"
+	if !magpie && status == "model_routes_need_attention" {
+		status = "native_credentials_need_attention"
 	}
 	// All agent results have been published. Optional model-list refresh must
 	// not precede verified route readiness or delay the first usable terminal.

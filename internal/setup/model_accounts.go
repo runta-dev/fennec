@@ -13,14 +13,18 @@ import (
 )
 
 type ModelAccountsRequest struct {
-	DeferCatalog bool              `json:"defer_catalog,omitempty"`
-	Version      int               `json:"version"`
-	Files        map[string]string `json:"files"`
-	Plugins      []ModelPlugin     `json:"plugins"`
-	Agents       []string          `json:"agents,omitempty"`
+	Native         bool              `json:"native,omitempty"`
+	NativeFiles    map[string]string `json:"native_files,omitempty"`
+	NativeProblems map[string]string `json:"native_problems,omitempty"`
+	DeferCatalog   bool              `json:"defer_catalog,omitempty"`
+	Version        int               `json:"version"`
+	Files          map[string]string `json:"files"`
+	Plugins        []ModelPlugin     `json:"plugins"`
+	Agents         []string          `json:"agents,omitempty"`
 }
 
 type ModelAccountsResult struct {
+	NativeReady      map[string]bool    `json:"native_ready,omitempty"`
 	CatalogDeferred  bool               `json:"catalog_deferred,omitempty"`
 	Version          int                `json:"version"`
 	Migrated         int                `json:"migrated"`
@@ -105,6 +109,14 @@ func ReceiveModelAccounts(ctx context.Context, home string, input io.Reader) (Mo
 }
 
 func ValidateModelAccountsRequest(request ModelAccountsRequest) error {
+	for id, problem := range request.NativeProblems {
+		if validateAgentInventory([]string{id}) != nil || !map[string]bool{"credentials_unavailable": true, "local_provider_unavailable": true, "local_credential_command": true}[problem] {
+			return fmt.Errorf("invalid native credential status")
+		}
+	}
+	if request.Native && len(request.Plugins) != 0 {
+		return fmt.Errorf("native synchronization cannot install model plugins")
+	}
 	if request.Version != 1 {
 		return fmt.Errorf("unsupported account synchronization version")
 	}
@@ -115,6 +127,17 @@ func ValidateModelAccountsRequest(request ModelAccountsRequest) error {
 }
 
 func ApplyModelAccounts(ctx context.Context, home string, request ModelAccountsRequest) (ModelAccountsResult, error) {
+	if err := ValidateModelAccountsRequest(request); err != nil {
+		return ModelAccountsResult{}, err
+	}
+	if request.Native {
+		return ApplyNativeAccounts(ctx, home, request)
+	}
+	if len(request.NativeFiles) > 0 {
+		if _, err := ApplyNativeAccounts(ctx, home, ModelAccountsRequest{Version: 1, Native: true, Files: request.NativeFiles, Agents: request.Agents}); err != nil {
+			return ModelAccountsResult{}, err
+		}
+	}
 	result, err := reconcileModelAccounts(ctx, home, request, ReconcileLocalModelPlugins, RestoreLocalCodexIdentity)
 	if err != nil {
 		return result, err
@@ -130,6 +153,9 @@ func ApplyModelAccounts(ctx context.Context, home string, request ModelAccountsR
 	result.AvailableAgents = availableAgentInventory(home, request.Agents)
 	result.Timings["inventory"] = float64(time.Since(started).Microseconds()) / 1000
 	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if err := ConfigureAgentMode(home, false); err != nil {
 		return result, err
 	}
 	return result, nil

@@ -114,7 +114,25 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	settings := newDesktopSettings(home)
 	controller.Settings = settings.snapshot
 	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return settings.snapshot(), nil }
-	controller.Additional["settings.set"] = settings.set(false)
+	controller.Additional["settings.set"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		before := settings.snapshot().(desktopPreferences).Magpie
+		value, err := settings.set(false)(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
+		if before != value.(desktopPreferences).Magpie {
+			services.mu.Lock()
+			services.ready = map[string]bool{}
+			services.reconcileSelectionLocked()
+			services.mu.Unlock()
+			if _, _, _, ok := manager.Session(); ok {
+				if _, err := controller.Reconcile(ctx); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return value, nil
+	}
 	controller.Additional["settings.import"] = settings.set(true)
 	for _, operation := range []string{"status", "on", "off", "settings"} {
 		controller.Additional["login-item."+operation] = func(ctx context.Context, _ json.RawMessage) (any, error) { return platformLoginItem(ctx, operation) }

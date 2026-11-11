@@ -78,6 +78,9 @@ func run() (int, error) {
 		}
 		return 0, json.NewEncoder(os.Stdout).Encode(result)
 	}
+	if len(os.Args) >= 3 && os.Args[1] == "native-agent" {
+		return 1, setup.ExecNativeAgent(home, os.Args[2], os.Args[3:])
+	}
 	if len(os.Args) == 2 && os.Args[1] == "restore-model-identity" {
 		return 0, setup.RestoreLocalCodexIdentity(ctx, home)
 	}

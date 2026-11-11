@@ -10,6 +10,9 @@
 
 ## 启动与连接设计
 
+- Magpie 只能是设置页显式启用的可选集成，默认关闭；不可因检测到本机 Magpie、旧模型配置或旧版本状态而自动开启。默认从各 Agent 自己的文件、环境或 Keychain 同步凭据到云端隔离配置目录，不安装、启动或探测 Magpie。UI 与 CLI 使用同一 `settings.set` 控制面；开启后才允许云端跨模型切换。
+- 原生凭据同步须覆盖没有安装 Magpie 的首次使用、各 Agent 独立失败、云端 OAuth 刷新保留、密钥链拒绝、路径与凭据隔离。不要复制整个配置目录、会话、hooks 或本机可执行命令；不要把 secret 放进 argv、日志、RPC 回复或版本库。
+
 - 每个用户使用一台共享云机器，所有 cloud agents 在该机器内运行。一个 Fennec daemon 管理一条共享 SSH 连接，各会话通过独立 channel 复用；不引入多机器连接池或调度设计。
 - 共享连接的初始化与重连合并为同一个等待结果，避免并发重复建连。继续校验身份、运行时所有权和主机密钥，保持会话隔离及未知启动结果的防重复机制。
 - 所有会话操作（launch/resume/stop/read/send/list）经同一 daemon 控制面复用常驻协议 channel；仅复用 SSH ControlMaster、每次另建 exec channel 不算完成。禁止 UI/CLI 正常操作重复鉴权与 SSH 建连。操作确认后直接更新缓存与 UI，并阻止迟到刷新覆盖新状态。实现与验收遵循 `skills/fennec-macos-development/SKILL.md` 的“会话操作必须复用常驻 channel”。

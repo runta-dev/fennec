@@ -23,3 +23,29 @@ func TestDesktopSettingsImportDoesNotOverwriteCLIPreference(t *testing.T) {
 		t.Fatal("invalid settings accepted")
 	}
 }
+
+func TestMagpieRequiresExplicitOptIn(t *testing.T) {
+	home := t.TempDir()
+	s := newDesktopSettings(home)
+	if s.value.Magpie {
+		t.Fatal("Magpie enabled by default")
+	}
+	if _, e := s.set(true)(context.Background(), json.RawMessage(`{"magpie":true}`)); e != nil {
+		t.Fatal(e)
+	}
+	if s.value.Magpie {
+		t.Fatal("legacy import implicitly enabled Magpie")
+	}
+	if _, e := s.set(false)(context.Background(), json.RawMessage(`{"magpie":true}`)); e != nil {
+		t.Fatal(e)
+	}
+	if !newDesktopSettings(home).value.Magpie {
+		t.Fatal("explicit choice not persisted")
+	}
+	if _, e := s.set(false)(context.Background(), json.RawMessage(`{"magpie":false}`)); e != nil {
+		t.Fatal(e)
+	}
+	if newDesktopSettings(home).value.Magpie {
+		t.Fatal("disable not persisted")
+	}
+}

@@ -180,3 +180,15 @@ localize();
 Object.assign(translations, {'即将支持':['即將支援','Coming soon','近日対応予定','곧 지원 예정']});
 localize();
 translations['在浏览器打开']=['在瀏覽器開啟','Open in browser','ブラウザで開く','브라우저에서 열기'];
+Object.assign(translations, {
+ '可选：为云端智能体切换模型。默认使用各智能体自己的登录凭据。':['可選：為雲端智慧代理切換模型。預設使用各代理自己的登入憑據。','Optional: switch models for cloud agents. Native agent credentials are used by default.','任意：クラウドエージェントのモデルを切り替えます。既定では各エージェントの認証情報を使用します。','선택 사항: 클라우드 에이전트의 모델을 전환합니다. 기본적으로 각 에이전트의 로그인 정보를 사용합니다.'],
+ '云端模型':['雲端模型','Cloud model','クラウドモデル','클라우드 모델'],
+ '选择模型':['選擇模型','Choose a model','モデルを選択','모델 선택'],
+ '请选择云端模型':['請選擇雲端模型','Choose a cloud model','クラウドモデルを選択してください','클라우드 모델을 선택하세요'],
+ '请先在本机登录此智能体，然后重试':['請先在本機登入此智慧代理，然後重試','Sign in to this agent on your Mac, then retry','この Mac でエージェントにログインして再試行してください','이 Mac에서 에이전트에 로그인한 후 다시 시도하세요'],
+ '请在本机登录要使用的智能体，然后重试':['請在本機登入要使用的智慧代理，然後重試','Sign in to the agents you want to use on your Mac, then retry','この Mac で使用するエージェントにログインして再試行してください','이 Mac에서 사용할 에이전트에 로그인한 후 다시 시도하세요'],
+ '无法读取此智能体的登录凭据，请检查授权后重试':['無法讀取此代理的登入憑據，請檢查授權後重試','Could not read this agent’s credentials. Check access and retry.','認証情報を読み取れません。アクセス許可を確認して再試行してください。','로그인 정보를 읽을 수 없습니다. 접근 권한을 확인한 후 다시 시도하세요.'],
+ '本机模型地址无法在云端使用，请配置云端可访问的地址，或启用 Magpie':['本機模型位址無法在雲端使用，請設定雲端可存取的位址，或啟用 Magpie','This model address is local to your Mac. Use a cloud-accessible address or enable Magpie.','モデルのアドレスはこの Mac 専用です。クラウドから接続できるアドレスを使うか、Magpie を有効にしてください。','이 모델 주소는 Mac 전용입니다. 클라우드에서 접근 가능한 주소를 사용하거나 Magpie를 켜세요.'],
+ '本机凭据依赖本地命令，请使用智能体登录或 API key':['本機憑據依賴本機命令，請使用代理登入或 API key','Credentials depend on a local command. Use an agent sign-in or API key.','認証情報がローカルコマンドに依存しています。ログインまたは API キーを使用してください。','로그인 정보가 로컬 명령에 의존합니다. 에이전트 로그인 또는 API 키를 사용하세요.']
+});
+localize();

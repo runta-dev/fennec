@@ -37,11 +37,17 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			method = "settings.get"
 			break
 		}
-		if len(args) != 3 || (args[1] != "theme" && args[1] != "language") {
-			return true, fmt.Errorf("usage: fen settings [theme|language <value>]")
+		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie") {
+			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off]")
 		}
 		method = "settings.set"
 		params[args[1]] = args[2]
+		if args[1] == "magpie" {
+			if args[2] != "on" && args[2] != "off" {
+				return true, fmt.Errorf("usage: fen settings magpie on|off")
+			}
+			params[args[1]] = args[2] == "on"
+		}
 	case "login-item":
 		if len(args) != 2 || (args[1] != "status" && args[1] != "on" && args[1] != "off" && args[1] != "settings") {
 			return true, fmt.Errorf("usage: fen login-item status|on|off|settings")
@@ -205,7 +211,7 @@ Usage: fen [attach [session-id]]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear
   fen control <method>  (JSON parameters on stdin)
-  fen settings [theme|language <value>]
+  fen settings [theme|language <value> | magpie on|off]
   fen login-item status|on|off|settings
 
 Picker: ↑/↓ j/k select · enter attach · x kill · r refresh · esc quit

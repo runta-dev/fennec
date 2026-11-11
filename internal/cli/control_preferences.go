@@ -71,6 +71,9 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 			return s.decide(ctx, json.RawMessage(`{"action":"clear_trust"}`))
 		},
 		"model.set": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			if !newDesktopSettings(s.home).value.Magpie {
+				return nil, &control.Fault{Code: "integration_disabled", Message: "Enable Magpie in Settings to switch cloud models"}
+			}
 			var choice struct {
 				Agent string `json:"agent"`
 				Model string `json:"model"`
