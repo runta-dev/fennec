@@ -133,3 +133,51 @@ func UninstallShellFile(path string) error {
 	}
 	return os.Rename(file.Name(), path)
 }
+
+// ValidateUninstallShellFile is read-only, so known conflicts are discovered
+// before accepting any cloud deletion or stopping the user's local services.
+func ValidateUninstallShellFile(path string) error {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 4<<20 {
+		return fmt.Errorf("shell configuration cannot be safely updated")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if filepath.Base(path) == "fennec.fish" {
+		if !bytes.HasPrefix(data, []byte("# Fennec CLI integration\n")) {
+			return fmt.Errorf("unmanaged fish configuration preserved")
+		}
+		return nil
+	}
+	_, err = RemoveShellBlock(data)
+	return err
+}
+func ValidateUninstallEntry(path string) error {
+	raw, err := os.ReadFile(path + ".fennec-original.json")
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var record entryRecord
+	if json.Unmarshal(raw, &record) != nil || record.Link == "" || !strings.HasPrefix(record.Wrapper, "#!/bin/sh\n# Fennec managed entry v1\n") {
+		return fmt.Errorf("invalid Fennec entry backup; executable preserved")
+	}
+	current, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if bytes.Contains(current, []byte("# Fennec managed entry v1\n")) && !bytes.Equal(current, []byte(record.Wrapper)) && (record.PendingWrapper == "" || !bytes.Equal(current, []byte(record.PendingWrapper))) {
+		return fmt.Errorf("modified Fennec wrapper requires review; executable preserved")
+	}
+	return nil
+}

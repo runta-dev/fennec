@@ -245,7 +245,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		}
 		return launcher.LaunchPlan{RuntimeID: config.RuntimeID, SessionID: intent.RequestID, Agent: intent.Agent, Device: config.Device, Launch: &native, ControlPath: control, StreamPath: streamPath}, nil
 	}, func() error {
-		if err := launcher.InstallShims(filepath.Join(home, ".local/share/fennec/shims"), executable); err != nil {
+		if err := launcher.InstallShims(filepath.Join(home, ".local/share/fennec/shims"), executable, agent.ExecutableSearchPath(home)); err != nil {
 			return err
 		}
 		shell := os.Getenv("SHELL")

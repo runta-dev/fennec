@@ -89,14 +89,23 @@ func DiscoverLocal(home, executable string, entries []string, zdot, xdg string) 
 		return plan, fmt.Errorf("Fennec bundle identity could not be verified")
 	}
 	candidates := []string{plan.App, filepath.Join(home, "Applications/Fennec.app"), "/Applications/Fennec.app"}
+	if registered := registeredApplication(home); registered != "" {
+		candidates = append(candidates, registered)
+	}
 	// Development archives are scoped to the current app's build directory.
-	if filepath.Base(filepath.Dir(plan.App)) == "build" {
-		module, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(plan.App)), "go.mod"))
-		if err == nil && bytes.HasPrefix(module, []byte("module fennec\n")) {
-			matches, _ := filepath.Glob(filepath.Join(filepath.Dir(plan.App), "Fennec*.app"))
-			candidates = append(candidates, matches...)
-			plan.Data = append(plan.Data, filepath.Join(filepath.Dir(plan.App), "credential-helper-cache"))
+	caches := map[string]bool{}
+	for _, candidate := range append([]string{}, candidates...) {
+		if filepath.Base(filepath.Dir(candidate)) == "build" {
+			module, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(candidate)), "go.mod"))
+			if err == nil && bytes.HasPrefix(module, []byte("module fennec\n")) {
+				matches, _ := filepath.Glob(filepath.Join(filepath.Dir(candidate), "Fennec*.app"))
+				candidates = append(candidates, matches...)
+				caches[filepath.Join(filepath.Dir(candidate), "credential-helper-cache")] = true
+			}
 		}
+	}
+	for cache := range caches {
+		plan.Data = append(plan.Data, cache)
 	}
 	seen := map[string]bool{}
 	for _, app := range candidates {
@@ -164,10 +173,12 @@ func (p LocalPlan) RemoveData() error {
 	for _, relative := range localData {
 		allowed[filepath.Join(p.Home, relative)] = true
 	}
-	if filepath.Base(filepath.Dir(p.App)) == "build" {
-		module, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(p.App)), "go.mod"))
-		if err == nil && bytes.HasPrefix(module, []byte("module fennec\n")) {
-			allowed[filepath.Join(filepath.Dir(p.App), "credential-helper-cache")] = true
+	for _, app := range p.Apps {
+		if filepath.Base(filepath.Dir(app)) == "build" {
+			module, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(app)), "go.mod"))
+			if err == nil && bytes.HasPrefix(module, []byte("module fennec\n")) {
+				allowed[filepath.Join(filepath.Dir(app), "credential-helper-cache")] = true
+			}
 		}
 	}
 	for _, path := range p.Data {
@@ -191,4 +202,63 @@ func RemoveLocalApps(apps []string) error {
 		}
 	}
 	return nil
+}
+
+// A DMG or second app copy may not be the bundle that owns the running daemon.
+// Include the registered bundle so uninstall cannot leave it recreating state.
+func registeredApplication(home string) string {
+	file, err := os.Open(filepath.Join(home, "Library/LaunchAgents/com.runta.fennec.daemon.plist"))
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	decoder := xml.NewDecoder(io.LimitReader(file, 1<<20))
+	key, label, binary := "", "", ""
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return ""
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch start.Name.Local {
+		case "key":
+			if decoder.DecodeElement(&key, &start) != nil {
+				return ""
+			}
+		case "string":
+			var value string
+			if decoder.DecodeElement(&value, &start) != nil {
+				return ""
+			}
+			if key == "Label" {
+				label = value
+			}
+		case "array":
+			if key == "ProgramArguments" {
+				var values struct {
+					Strings []string `xml:"string"`
+				}
+				if decoder.DecodeElement(&values, &start) != nil {
+					return ""
+				}
+				if len(values.Strings) > 0 {
+					binary = values.Strings[0]
+				}
+			}
+		}
+	}
+	if label != "com.runta.fennec.daemon" || !filepath.IsAbs(binary) || filepath.Base(filepath.Dir(binary)) != "MacOS" {
+		return ""
+	}
+	app := filepath.Dir(filepath.Dir(filepath.Dir(binary)))
+	if id, err := BundleID(app); err != nil || id != "com.runta.fennec" {
+		return ""
+	}
+	return app
 }

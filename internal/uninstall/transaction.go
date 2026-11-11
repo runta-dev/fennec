@@ -27,7 +27,7 @@ type Steps struct {
 	DeleteCredentials func(context.Context) error
 	RemoveData        func(context.Context) error
 	RemoveApps        func(context.Context) error
-	Progress          func(string)
+	Progress          func(string) error
 }
 
 func Execute(ctx context.Context, request Request, target *CloudTarget, steps Steps) error {
@@ -50,7 +50,9 @@ func Execute(ctx context.Context, request Request, target *CloudTarget, steps St
 			return err
 		}
 		if steps.Progress != nil {
-			steps.Progress(stage)
+			if err := steps.Progress(stage); err != nil {
+				return err
+			}
 		}
 		return fn(ctx)
 	}
@@ -73,7 +75,7 @@ func Execute(ctx context.Context, request Request, target *CloudTarget, steps St
 		}
 	}
 	if steps.Progress != nil {
-		steps.Progress("complete")
+		return steps.Progress("complete")
 	}
 	return nil
 }

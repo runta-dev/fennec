@@ -54,3 +54,41 @@ Swift typecheck 通过；签名 staging 包 `/tmp/fennec-onboarding-os13/Fennec.
 - 真实 login-item 注销、LaunchAgent 注销、Fennec Keychain 条目删除、WebKit/
   UserDefaults 清理，以及自定义 ZDOTDIR/XDG 的安装记录与发现。
 - 最终签名 DMG、干净 Mac/新用户/系统重启及同事独立使用验收。
+
+## 后续：共用卸载入口、恢复与移除 App 后的命令行为
+
+以下为开发实现及回归证据，尚未做真实用户自卸载或删除真实云机器：
+
+- 已接入设置页卸载 modal 与 `fen uninstall` 辅助命令，共用 Go 预览、确认
+  和 worker 逻辑。默认只清理本机；可选云端删除必须输入具体 runtime ID。
+  CLI 支持 `--dry-run`、`--yes`、`--delete-cloud --confirm-runtime <id>`。
+- 预览绑定本机安装和源码 hash；执行前再次校验。恢复预览只能重新确认同一
+  云端 ID/owner，不能转向替代 runtime。新 revision 必须经过新的预览和确认。
+- 持久卸载标记位于 `.local/state/fennec-uninstall/active.json`，晚于 App
+  清理才移除。它独立于普通设置目录，阻止失败后/重启后自动创建云机器。
+  准备任务先取消并排空，普通 mutation 被暂停；重新登录和卸载恢复仍可使用。
+- worker 从私有临时目录运行，签名 binary 字节与已确认 App 相同。清理范围
+  包括当前注册的 bundle；进程匹配限制当前用户、精确 executable 路径，保留
+  当前 CLI caller 和 worker。完成回执在本机清理及防重建标记移除之后发布。
+- 云端失败、进程中断、凭据过期、旧预览、错误确认均保留恢复路径；不自动
+  重发删除操作。UI 提供重新登录/重试；默认不展示内部状态码。
+- App 消失后的 managed entry/shim 可运行已解析的原始 Agent，并明确告知
+  当前在本机执行。参数、工作目录和退出码保留；App 仍存在时的云端失败绝不
+  触发本机 fallback。原始 executable 发现会跳过其他 Fennec shim，防止递归。
+- 设置页是主入口；Account 的独立“删除云电脑”入口仍需实现，不能把卸载弹窗
+  中的可选项当作该独立功能的验收。
+
+本轮证据：
+
+- `/tmp/fennec-uninstall-review-tests.log`：launcher、agent、CLI、controlplane、
+  uninstall、Runta 客户端 race 测试通过。
+- `/tmp/fennec-uninstall-review-ui.log`：UI 检查及危险确认回归通过；包括默认不选
+  云端删除、错误 runtime ID 不提交、过期 UI 回复不覆盖新选择、失败不自动重试。
+- `/tmp/fennec-uninstall-review-vet.log`：Go vet 通过。
+- 已成功跑过签名 staging 包的 `fen uninstall --dry-run`，仅生成预览，未调用
+  worker。没有触发本机 Keychain 删除、服务注销、App 删除或任何真实云端 DELETE。
+
+仍需实际验收：独立云端删除入口、完整自卸载/崩溃恢复、系统注销/重启、权限
+与多副本的 SMAppService 行为、只拖入废纸篓后的后台注销、自定义 shell 安装
+位置的持久记录、干净 Mac/正式 DMG/真实账号/独立同事完整流程。不得将上述
+fixture、源码与 staging 结果标为最终用户验收完成。

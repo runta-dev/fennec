@@ -197,3 +197,26 @@ Object.assign(translations, {
  'Magpie 是一个本地 AI 网关，可将智能体连接到不同的模型服务。你可以通过它为云端智能体选择和切换模型。':['Magpie 是一個本地 AI 閘道，可將智慧代理連接到不同的模型服務。你可以透過它為雲端智慧代理選擇和切換模型。','Magpie is a local AI gateway that connects your agents to different model providers. Use it to choose and switch models for your cloud agents.','Magpie はエージェントをさまざまなモデルプロバイダーに接続するローカル AI ゲートウェイです。クラウドエージェントで使うモデルを選択・切り替えできます。','Magpie는 에이전트를 여러 모델 제공업체에 연결하는 로컬 AI 게이트웨이입니다. 클라우드 에이전트에서 사용할 모델을 선택하고 전환할 수 있습니다.']
 });
 localize();
+Object.assign(translations, {
+ '卸载 Fennec':['解除安裝 Fennec','Uninstall Fennec','Fennec をアンインストール','Fennec 제거'],
+ '移除此 Mac 上的 Fennec、设置和登录信息。':['移除此 Mac 上的 Fennec、設定和登入資訊。','Remove Fennec, its settings, and sign-in information from this Mac.','この Mac から Fennec、設定、ログイン情報を削除します。','이 Mac에서 Fennec, 설정 및 로그인 정보를 제거합니다.'],
+ '同时删除云电脑':['同時刪除雲電腦','Also delete my cloud computer','クラウドコンピューターも削除','클라우드 컴퓨터도 삭제'],
+ '此操作不可撤销':['此操作無法復原','This cannot be undone','この操作は元に戻せません','이 작업은 되돌릴 수 없습니다'],
+ '云电脑中的所有会话、文件和数据都将永久删除。':['雲電腦中的所有工作階段、檔案和資料都將永久刪除。','All sessions, files, and data on this cloud computer will be permanently deleted.','クラウドコンピューターのすべてのセッション、ファイル、データを完全に削除します。','이 클라우드 컴퓨터의 모든 세션, 파일 및 데이터가 영구 삭제됩니다.'],
+ '输入云电脑 ID 以确认':['輸入雲電腦 ID 以確認','Type the cloud computer ID to confirm','確認のためクラウドコンピューター ID を入力','확인하려면 클라우드 컴퓨터 ID를 입력하세요'],
+ '卸载':['解除安裝','Uninstall','アンインストール','제거'],
+ '删除云电脑并卸载':['刪除雲電腦並解除安裝','Delete cloud computer & uninstall','クラウドを削除してアンインストール','클라우드 삭제 및 제거'],
+ '正在准备…':['正在準備…','Preparing…','準備中…','준비 중…'],
+ '正在卸载…':['正在解除安裝…','Uninstalling…','アンインストール中…','제거 중…'],
+ '正在删除云电脑…':['正在刪除雲電腦…','Deleting cloud computer…','クラウドコンピューターを削除中…','클라우드 컴퓨터 삭제 중…'],
+ '暂时无法准备卸载，请重试':['暫時無法準備解除安裝，請重試','Could not prepare uninstall. Try again.','アンインストールを準備できません。再試行してください。','제거를 준비할 수 없습니다. 다시 시도하세요.'],
+ '暂时无法卸载，请重试':['暫時無法解除安裝，請重試','Could not start uninstall. Try again.','アンインストールを開始できません。再試行してください。','제거를 시작할 수 없습니다. 다시 시도하세요.'],
+ '卸载未完成，请重试':['解除安裝尚未完成，請重試','Uninstall did not finish. Try again.','アンインストールが完了しませんでした。再試行してください。','제거가 완료되지 않았습니다. 다시 시도하세요.'],
+ '卸载完成':['解除安裝完成','Uninstall complete','アンインストール完了','제거 완료'],
+ '请在浏览器完成登录，然后重试':['請在瀏覽器完成登入，然後重試','Finish signing in in your browser, then retry.','ブラウザでログインを完了してから再試行してください。','브라우저에서 로그인을 완료한 후 다시 시도하세요.']
+});
+localize();
+Object.assign(translations, {'请先登录，再删除云电脑':['請先登入，再刪除雲電腦','Sign in to delete your cloud computer.','クラウドコンピューターを削除するにはログインしてください。','클라우드 컴퓨터를 삭제하려면 로그인하세요.']});
+localize();
+Object.assign(translations, {'查看要移除的 App':['查看要移除的 App','Review apps to remove','削除するアプリを確認','제거할 앱 확인']});
+localize();

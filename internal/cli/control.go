@@ -151,5 +151,6 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		}
 		return value, nil
 	}
+	installUninstallControl(home, executable, manager, services, controller)
 	return manager, services, controller
 }

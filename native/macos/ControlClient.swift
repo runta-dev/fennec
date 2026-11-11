@@ -6,7 +6,7 @@ import Darwin
 final class ControlClient {
     private let queue = DispatchQueue(label: "com.runta.fennec.control", attributes: .concurrent)
     private let socketPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/fennec/ipc/control.sock").path
-    private func failure(_ text: String) -> NSError { NSError(domain: "FennecControl", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
+    private func failure(_ text: String, code: String = "") -> NSError { NSError(domain: "FennecControl", code: 1, userInfo: [NSLocalizedDescriptionKey: text, "FennecCode":code]) }
 
     func start(_ completion: @escaping (Bool) -> Void) {
         queue.async {
@@ -75,7 +75,7 @@ final class ControlClient {
         guard response.count <= 8 * 1024 * 1024,
               let object = try JSONSerialization.jsonObject(with: response) as? [String: Any],
               object["version"] as? Int == 1, object["id"] as? String == identity else { throw failure("Invalid daemon response") }
-        if let error = object["error"] as? [String: Any] { throw failure(error["message"] as? String ?? "Daemon operation failed") }
+        if let error = object["error"] as? [String: Any] { throw failure(error["message"] as? String ?? "Daemon operation failed",code:error["code"] as? String ?? "") }
         return object["result"] ?? NSNull()
     }
 }

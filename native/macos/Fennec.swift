@@ -591,6 +591,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func applyState(_ state: [String:Any]) {
+	    render("renderUninstallStatus",[state["uninstall"] ?? NSNull()])
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
@@ -700,6 +701,16 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
+	    if action.hasPrefix("uninstall-plan:"),let data=String(action.dropFirst(15)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+	        let requestID=params["request_id"] as? Int ?? 0
+	        control.call("uninstall.plan",params){[weak self] result in
+	            if case .success(let value)=result {self?.render("renderUninstallPlan",[value,requestID])}
+	            else if case .failure(let error)=result {self?.render("renderUninstallPlan",[["login_required":(error as NSError).userInfo["FennecCode"] as? String == "login_required"],requestID])}
+	        };return
+	    }
+	    if action.hasPrefix("uninstall-execute:"),let data=String(action.dropFirst(18)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+	        mutate("uninstall.execute",params){[weak self] success,_ in self?.render("renderUninstallStarted",[success])};return
+	    }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }

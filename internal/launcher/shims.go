@@ -10,7 +10,7 @@ import (
 
 // InstallShims creates only Fennec-owned wrappers. It never rewrites the original
 // CLI or shell configuration. Unknown files in the destination are preserved.
-func InstallShims(directory, executable string) error {
+func InstallShims(directory, executable string, searchPath ...string) error {
 	if !filepath.IsAbs(directory) || !filepath.IsAbs(executable) || strings.ContainsAny(executable, "\x00\r\n") {
 		return fmt.Errorf("absolute shim directory and executable required")
 	}
@@ -28,6 +28,10 @@ func InstallShims(directory, executable string) error {
 		commands[agent] = " dispatch-agent " + quote(agent)
 	}
 	commands["fen"] = " fen"
+	paths := os.Getenv("PATH")
+	if len(searchPath) > 0 {
+		paths = searchPath[0]
+	}
 	for agent, dispatch := range commands {
 		path := filepath.Join(directory, agent)
 		if info, err := os.Lstat(path); err == nil {
@@ -44,7 +48,11 @@ func InstallShims(directory, executable string) error {
 		} else if !os.IsNotExist(err) {
 			return err
 		}
-		script := "#!/bin/sh\n" + marker + "exec " + quote(executable) + dispatch + " \"$@\"\n"
+		original := ""
+		if Supported[agent] {
+			original, _ = ResolveOriginal(agent, paths, directory, executable)
+		}
+		script := "#!/bin/sh\n" + marker + removedApplicationFallback(executable, original) + "exec " + quote(executable) + dispatch + " \"$@\"\n"
 		file, err := os.CreateTemp(directory, ".shim-")
 		if err != nil {
 			return err

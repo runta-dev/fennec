@@ -2,6 +2,7 @@
 package launcher
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,7 +40,11 @@ func ResolveOriginal(agent, path, shimDir, self string) (string, error) {
 		if selfInfo != nil && os.SameFile(selfInfo, info) {
 			continue
 		}
-		return OriginalEntry(candidate)
+		original, err := OriginalEntry(candidate)
+		if errors.Is(err, errManagedLauncher) {
+			continue
+		}
+		return original, err
 	}
 	return "", fmt.Errorf("original %s executable not found outside Fennec shims", agent)
 }

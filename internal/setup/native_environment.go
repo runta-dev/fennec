@@ -15,7 +15,7 @@ import (
 // roots. Read only this fixed allowlist; never print it or execute credential
 // helper commands referenced inside agent configuration.
 func nativeSourceEnvironment(ctx context.Context) map[string]string {
-	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "USER")
+	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "ZDOTDIR", "USER")
 	result := map[string]string{}
 	for _, key := range keys {
 		if value := os.Getenv(key); value != "" {
@@ -68,4 +68,10 @@ func (b *nativeEnvironmentOutput) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("native environment exceeds size limit")
 	}
 	return b.Builder.Write(p)
+}
+
+// LocalShellDirectories returns only shell configuration locations, never keys.
+func LocalShellDirectories(ctx context.Context) (string, string) {
+	env := nativeSourceEnvironment(ctx)
+	return env["ZDOTDIR"], env["XDG_CONFIG_HOME"]
 }

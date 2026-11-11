@@ -326,3 +326,11 @@ main{min-height:0}
 .setting-info:hover .setting-tooltip,.setting-info:focus-within .setting-tooltip{visibility:visible;opacity:1}
 @media(prefers-reduced-motion:reduce){.setting-tooltip{transition:none}}
 #preferences .card:has(.setting-info){overflow:visible}
+.uninstall-settings{margin-top:9px}.uninstall-settings button{color:#d7443e}
+#uninstall-dialog{width:min(380px,calc(100vw - 30px));max-height:calc(100vh - 30px);overflow:auto;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);box-shadow:0 12px 40px #00000030}
+#uninstall-dialog::backdrop{background:#0005}#uninstall-dialog h2{font-size:17px;margin:0 0 12px}#uninstall-dialog p{font-size:12px;line-height:1.5;color:var(--muted)}
+.uninstall-option{display:flex;align-items:center;gap:8px;font-size:12px;margin:16px 0}
+#uninstall-cloud-warning{border:1px solid #d7443e55;border-radius:8px;padding:12px;margin:12px 0}#uninstall-cloud-warning strong{color:#d7443e}#uninstall-cloud-warning label{display:block;font-size:12px;margin:10px 0 5px}#uninstall-runtime-id{font-size:10px;user-select:text;overflow-wrap:anywhere}
+#uninstall-confirmation{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);user-select:text;font:11px ui-monospace,monospace}
+.uninstall-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.uninstall-actions button{font-size:12px;padding:7px 10px}.uninstall-danger{background:#c63732;color:white;border-color:#c63732}
+.uninstall-scope{font-size:11px;color:var(--muted);margin:10px 0}.uninstall-scope summary{cursor:pointer}.uninstall-scope ul{padding-left:16px;overflow-wrap:anywhere;user-select:text}

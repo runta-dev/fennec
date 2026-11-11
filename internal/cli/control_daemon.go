@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fennec/internal/control"
 	"fennec/internal/launchprofile"
+	"fennec/internal/uninstall"
 	"fmt"
 	"io"
 	"os"
@@ -254,6 +255,9 @@ func waitForBroker(ctx context.Context) error {
 
 func waitForAgentBroker(ctx context.Context, agent string) error {
 	defer launchprofile.Begin("broker.wait_ready")()
+	if home, err := os.UserHomeDir(); err == nil && uninstall.Pending(home) {
+		return fmt.Errorf("Fennec uninstall is pending; finish it before starting a cloud agent")
+	}
 	if err := ensureControl(ctx); err != nil {
 		return err
 	}
