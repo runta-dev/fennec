@@ -18,8 +18,8 @@ type Plan struct {
 	Expires     time.Time    `json:"expires"`
 }
 type Record struct {
-	WorkerPID int `json:"worker_pid,omitempty"`
-	WorkerPath string `json:"worker_path,omitempty"`
+	WorkerPID    int     `json:"worker_pid,omitempty"`
+	WorkerPath   string  `json:"worker_path,omitempty"`
 	Plan         Plan    `json:"plan"`
 	Request      Request `json:"request"`
 	Stage        string  `json:"stage"`

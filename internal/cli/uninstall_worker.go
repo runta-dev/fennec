@@ -51,7 +51,8 @@ func runUninstallWorker(path string) error {
 		return fmt.Errorf("invalid uninstall work")
 	}
 	record := work.Record
-	record.WorkerPID=os.Getpid();record.WorkerPath=self
+	record.WorkerPID = os.Getpid()
+	record.WorkerPath = self
 	plan := record.Plan
 	dir := filepath.Dir(path)
 	receipt := filepath.Join(dir, "result.json")
