@@ -25,7 +25,7 @@ const daemonLabel = "com.runta.fennec.daemon"
 func daemonTarget() string { return "gui/" + strconv.Itoa(os.Getuid()) + "/" + daemonLabel }
 func daemonPlist(binary, logPath string) []byte {
 	escape := func(s string) string { var out bytes.Buffer; xml.EscapeText(&out, []byte(s)); return out.String() }
-	return []byte(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + daemonLabel + `</string><key>ProgramArguments</key><array><string>` + escape(binary) + `</string><string>control-daemon</string></array><key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ProcessType</key><string>Background</string><key>StandardErrorPath</key><string>` + escape(logPath) + `</string></dict></plist>`)
+	return []byte(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + daemonLabel + `</string><key>ProgramArguments</key><array><string>` + escape(binary) + `</string><string>control-daemon</string></array><key>RunAtLoad</key><false/><key>KeepAlive</key><dict><key>AfterInitialDemand</key><true/><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ProcessType</key><string>Background</string><key>StandardErrorPath</key><string>` + escape(logPath) + `</string></dict></plist>`)
 }
 func ensureControl(ctx context.Context) error {
 	defer launchprofile.Begin("daemon.ensure")()
@@ -85,6 +85,9 @@ func ensureControl(ctx context.Context) error {
 	if !packaged {
 		return fmt.Errorf("start the daemon from the installed Fennec bundle; development binaries can run control-daemon in the foreground")
 	}
+	if uninstallRunning(home) {
+		return fmt.Errorf("Fennec is uninstalling")
+	}
 	lock, err := acquireControlStartLock(ctx, filepath.Dir(socket))
 	if err != nil {
 		return err
@@ -93,6 +96,9 @@ func ensureControl(ctx context.Context) error {
 	actual, err = ping()
 	if err == nil && reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches()) {
 		return nil
+	}
+	if uninstallRunning(home) {
+		return fmt.Errorf("Fennec is uninstalling")
 	}
 	// A live job can still point to an old location, or be crash-looping without
 	// answering ping. Replace its registration before bootstrapping the new path.
@@ -136,7 +142,8 @@ func ensureControl(ctx context.Context) error {
 				return fmt.Errorf("unable to register Fennec daemon")
 			}
 		}
-	} else if err = exec.CommandContext(ctx, "/bin/launchctl", "kickstart", daemonTarget()).Run(); err != nil {
+	}
+	if err = exec.CommandContext(ctx, "/bin/launchctl", "kickstart", daemonTarget()).Run(); err != nil {
 		return fmt.Errorf("unable to start Fennec daemon")
 	}
 	launchctlDone()
@@ -150,7 +157,10 @@ func ensureControl(ctx context.Context) error {
 	},
 		func() bool { return exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil },
 		func() error {
-			return exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), plist).Run()
+			if err := exec.CommandContext(ctx, "/bin/launchctl", "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), plist).Run(); err != nil && exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() != nil {
+				return err
+			}
+			return exec.CommandContext(ctx, "/bin/launchctl", "kickstart", daemonTarget()).Run()
 		})
 }
 

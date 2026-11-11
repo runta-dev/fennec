@@ -62,3 +62,8 @@ test-e2e-performance:
 	$(MAKE) test-e2e-startup
 	$(MAKE) test-e2e-ops
 	$(MAKE) test-e2e-configuration
+
+.PHONY: test-e2e-launchd-demand
+test-e2e-launchd-demand:
+	test "$$(uname -s)" = Darwin
+	FENNEC_LAUNCHD_E2E=1 go test -count=1 -timeout=30s -v ./internal/cli -run '^TestLaunchAgentWaitsForExplicitDemand$$'

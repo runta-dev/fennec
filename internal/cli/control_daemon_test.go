@@ -69,3 +69,10 @@ func TestMovedApplicationRegistrationUsesNewEscapedPath(t *testing.T) {
 		t.Fatal("move did not update the registration safely")
 	}
 }
+
+func TestDaemonRegistrationDoesNotBypassLoginPreference(t *testing.T) {
+	plist := daemonPlist("/Applications/Fennec.app/Contents/MacOS/fen", "/fixture/log")
+	if !bytes.Contains(plist, []byte("<key>RunAtLoad</key><false/>")) || !bytes.Contains(plist, []byte("<key>AfterInitialDemand</key><true/>")) {
+		t.Fatal("daemon implicitly starts at login")
+	}
+}

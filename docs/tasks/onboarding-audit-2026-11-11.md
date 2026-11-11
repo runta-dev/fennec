@@ -92,3 +92,33 @@ Swift typecheck 通过；签名 staging 包 `/tmp/fennec-onboarding-os13/Fennec.
 与多副本的 SMAppService 行为、只拖入废纸篓后的后台注销、自定义 shell 安装
 位置的持久记录、干净 Mac/正式 DMG/真实账号/独立同事完整流程。不得将上述
 fixture、源码与 staging 结果标为最终用户验收完成。
+
+## 后续：Launch at login 与后台启动分离
+
+发现的隐藏行为：daemon plist 原来同时配置 RunAtLoad=true 和
+KeepAlive.SuccessfulExit=false，因此即便用户关闭 UI 的 Launch at login，
+后台注册仍会在系统登录时启动，并可能恢复账号/云连接。系统自带
+launchd.plist 手册明确说明 SuccessfulExit 隐式要求 RunAtLoad。
+
+修复为 RunAtLoad=false + KeepAlive.AfterInitialDemand=true。UI 或 CLI 的
+明确启动执行 bootstrap 后 kickstart；首次需求之后保留异常退出自动恢复。
+AfterInitialDemand 使用系统 SDK launch.h 定义的 key，未引入外部工具依赖。
+原生 UI 在控制连接失败后重新进入启动流程，保留已有界面数据；卸载与启动
+共用启动锁，启动方再次检查持久卸载标记，防止卸载过程中被 UI 自动拉起。
+
+实测 `TestLaunchAgentWaitsForExplicitDemand` 通过（约 6.5 秒）：
+
+1. 用独立的 `com.runta.fennec.test-demand.*` 临时 launchd label 注册无害 probe；
+   注册后不执行。
+2. 明确 kickstart 后执行。
+3. 对该测试进程发送 SIGKILL，确认由 launchd 自动恢复。
+4. bootout 后重新 bootstrap，确认不继承上次的 demand，不自动执行。
+5. 清理并确认该测试注册已消失。
+
+日志：`/tmp/fennec-login-policy-demand-recovery.log`。复现入口：
+`make test-e2e-launchd-demand`，非 macOS 会失败；普通单元测试不运行该系统测试。
+这不是完整的系统注销、重新登录、重启或干净 macOS 13 验收。用户当前
+Fennec 服务、Keychain 和真实云电脑未被该 probe 操作。
+
+另已修复前一提交的两个 gofmt 遗漏；修正提交 99ee63f 的 GitHub CI
+42964771981 已通过。后续代码的 CI 仍须按新提交独立验证。

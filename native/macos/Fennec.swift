@@ -583,6 +583,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             guard let self else { return }
             self.stateLoading = false
 	        guard revision == self.viewRevision else {self.pollState();return}
+            if case .failure = result { self.controlReady = false; return }
             guard case .success(let value) = result, let state = value as? [String:Any],
                   let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) else { return }
             guard data != self.lastState else { return }

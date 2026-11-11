@@ -345,10 +345,32 @@ func uninstallWorkerAlive(record uninstall.Record) bool {
 	if record.WorkerPID <= 1 || record.WorkerPath == "" {
 		return false
 	}
+	if err := syscall.Kill(record.WorkerPID, 0); err == syscall.ESRCH {
+		return false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(ctx, "/bin/ps", "-ww", "-p", fmt.Sprint(record.WorkerPID), "-o", "comm=").Output()
-	return err == nil && strings.TrimSpace(string(output)) == record.WorkerPath
+	if err != nil {
+		return true
+	}
+	actual := strings.TrimSpace(string(output))
+	expected := record.WorkerPath
+	if path, err := filepath.EvalSymlinks(actual); err == nil {
+		actual = path
+	}
+	if path, err := filepath.EvalSymlinks(expected); err == nil {
+		expected = path
+	}
+	return actual == expected
+}
+
+func uninstallRunning(home string) bool {
+	if !uninstall.Pending(home) {
+		return false
+	}
+	record, err := uninstall.ReadRecord(uninstall.Marker(home))
+	return err != nil || record.Stage != "failed" && record.Stage != "complete" && (record.WorkerPID <= 1 || uninstallWorkerAlive(record))
 }
 
 func matchesPendingUninstall(plan uninstall.Plan, pending uninstall.Record) bool {

@@ -193,6 +193,11 @@ func runUninstallWorker(path string) error {
 			return nil
 		},
 		StopLocal: func(ctx context.Context) error {
+			lock, err := acquireControlStartLock(ctx, filepath.Join(home, ".config/fennec/ipc"))
+			if err != nil {
+				return err
+			}
+			defer lock.Close()
 			if exec.CommandContext(ctx, "/bin/launchctl", "print", daemonTarget()).Run() == nil {
 				if err := exec.CommandContext(ctx, "/bin/launchctl", "bootout", daemonTarget()).Run(); err != nil {
 					return fmt.Errorf("unable to unregister background service")
