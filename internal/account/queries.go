@@ -3,12 +3,14 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/launchprofile"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
+	"time"
 )
 
 func (m *Manager) queryContext(parent context.Context) (context.Context, string, uint64, func(), error) {
@@ -35,6 +37,7 @@ func (m *Manager) get(ctx context.Context, token, address string, epoch uint64) 
 		m.RejectCredential(token, epoch)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		launchprofile.Record("account.http_status."+strconv.Itoa(response.StatusCode), time.Now(), 0)
 		return nil, fmt.Errorf("account HTTP %d", response.StatusCode)
 	}
 	var result map[string]any
@@ -80,6 +83,7 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 	}
 	rows, ok := organizations["data"].([]any)
 	if !ok || len(rows) != 1 {
+		launchprofile.Record("billing.organization_count."+strconv.Itoa(len(rows)), time.Now(), 0)
 		return nil, fmt.Errorf("one billing organization required")
 	}
 	org, ok := rows[0].(map[string]any)

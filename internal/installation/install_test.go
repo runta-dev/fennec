@@ -181,3 +181,114 @@ func TestInstalledCandidateRequiresExactSignedApplication(t *testing.T) {
 		t.Fatal("different application used for daemon startup")
 	}
 }
+
+func TestReplacementRestartsOnlyPreviouslyRunningUI(t *testing.T) {
+	for _, running := range []bool{true, false} {
+		root := t.TempDir()
+		source := filepath.Join(root, "image/Fennec.app")
+		dest := filepath.Join(root, "Applications/Fennec.app")
+		bundle(t, source, "com.runta.fennec", "new")
+		bundle(t, dest, "com.runta.fennec", "old")
+		ops := operations()
+		stopped, opened := 0, 0
+		ops.StopUI = func(_ context.Context, incoming, target string) (bool, error) {
+			stopped++
+			if contents(t, incoming) != "new" || contents(t, target) != "old" {
+				t.Error("stopped outside verified staging phase")
+			}
+			return running, nil
+		}
+		ops.OpenUI = func(_ context.Context, target string) error {
+			opened++
+			canonical, err := canonicalPath(dest)
+			if err != nil || target != canonical || contents(t, target) != "new" {
+				t.Error("opened wrong bundle")
+			}
+			return nil
+		}
+		result, err := Install(context.Background(), source, dest, true, ops)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stopped != 1 || result.UIRestarted != running || (running && opened != 1) || (!running && opened != 0) {
+			t.Fatal(result, stopped, opened)
+		}
+	}
+}
+func TestReplacementFailureReopensRolledBackUI(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "image/Fennec.app")
+	dest := filepath.Join(root, "Applications/Fennec.app")
+	bundle(t, source, "com.runta.fennec", "new")
+	bundle(t, dest, "com.runta.fennec", "old")
+	ops := operations()
+	publish := ops.Publish
+	opened := 0
+	ops.StopUI = func(context.Context, string, string) (bool, error) { return true, nil }
+	ops.OpenUI = func(_ context.Context, target string) error {
+		opened++
+		if contents(t, target) != "old" {
+			t.Error("did not reopen rollback")
+		}
+		return nil
+	}
+	ops.Publish = func(from, to string) error {
+		if filepath.Base(from) == "incoming.app" {
+			return errors.New("fixture publish failure")
+		}
+		return publish(from, to)
+	}
+	if _, err := Install(context.Background(), source, dest, true, ops); err == nil {
+		t.Fatal("failed publish accepted")
+	}
+	if opened != 1 || contents(t, dest) != "old" {
+		t.Fatal("old UI not restored")
+	}
+}
+func TestUnverifiedCopyNeverStopsRunningUI(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "image/Fennec.app")
+	dest := filepath.Join(root, "Applications/Fennec.app")
+	bundle(t, source, "com.runta.fennec", "new")
+	bundle(t, dest, "com.runta.fennec", "old")
+	ops := operations()
+	ops.Verify = func(_ context.Context, path string) error {
+		if filepath.Base(path) == "incoming.app" {
+			return errors.New("unverified")
+		}
+		return nil
+	}
+	ops.StopUI = func(context.Context, string, string) (bool, error) {
+		t.Error("unverified update stopped UI")
+		return true, nil
+	}
+	ops.OpenUI = func(context.Context, string) error { t.Error("unverified update reopened UI"); return nil }
+	if _, err := Install(context.Background(), source, dest, true, ops); err == nil {
+		t.Fatal("unverified update accepted")
+	}
+}
+func TestCanceledUpgradeAfterUIStopReopensOriginal(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "image/Fennec.app")
+	dest := filepath.Join(root, "Applications/Fennec.app")
+	bundle(t, source, "com.runta.fennec", "new")
+	bundle(t, dest, "com.runta.fennec", "old")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opened := 0
+	ops := operations()
+	ops.StopUI = func(context.Context, string, string) (bool, error) { cancel(); return true, nil }
+	ops.OpenUI = func(ctx context.Context, path string) error {
+		opened++
+		if ctx.Err() != nil || contents(t, path) != "old" {
+			t.Error("recovery context or bundle invalid")
+		}
+		return nil
+	}
+	if _, err := Install(ctx, source, dest, true, ops); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if opened != 1 || contents(t, dest) != "old" {
+		t.Fatal("canceled update did not restore UI")
+	}
+}

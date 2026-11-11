@@ -26,6 +26,7 @@ type Status struct {
 	Existing    bool   `json:"existing"`
 }
 type Result struct {
+	UIRestarted bool   `json:"ui_restarted,omitempty"`
 	Application string `json:"application"`
 	Backup      string `json:"backup,omitempty"`
 }
@@ -141,15 +142,19 @@ func MatchingInstalledApplication(ctx context.Context, source, candidate string,
 }
 
 type Operations struct {
+	StopUI  func(context.Context, string, string) (bool, error)
+	OpenUI  func(context.Context, string) error
 	Verify  func(context.Context, string) error
 	Copy    func(context.Context, string, string) error
 	Publish func(string, string) error
 }
 
-func Install(ctx context.Context, source, destination string, replace bool, ops Operations) (Result, error) {
-	var result Result
+func Install(ctx context.Context, source, destination string, replace bool, ops Operations) (result Result, err error) {
 	if ops.Verify == nil || ops.Copy == nil || ops.Publish == nil {
 		return result, fmt.Errorf("installation operations required")
+	}
+	if (ops.StopUI == nil) != (ops.OpenUI == nil) {
+		return result, fmt.Errorf("paired UI lifecycle operations required")
 	}
 	if !filepath.IsAbs(source) || !filepath.IsAbs(destination) || !strings.EqualFold(filepath.Ext(destination), ".app") {
 		return result, fmt.Errorf("absolute application paths required")
@@ -228,10 +233,41 @@ func Install(ctx context.Context, source, destination string, replace bool, ops 
 		return result, err
 	}
 	backup := filepath.Join(work, "Fennec.app")
+	reopen := false
+	defer func() {
+		if !reopen {
+			return
+		}
+		restart, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		id, identityErr := uninstall.BundleID(destination)
+		if identityErr != nil || id != "com.runta.fennec" || ops.Verify(restart, destination) != nil {
+			err = errors.Join(err, fmt.Errorf("cannot reopen verified application"))
+			return
+		}
+		openErr := ops.OpenUI(restart, destination)
+		if openErr == nil {
+			result.UIRestarted = true
+		}
+		err = errors.Join(err, openErr)
+	}()
 	if exists {
 		current, err := os.Lstat(destination)
 		if err != nil || !os.SameFile(prior, current) {
 			return result, fmt.Errorf("installed application changed; retry installation")
+		}
+		if ops.StopUI != nil {
+			reopen, err = ops.StopUI(ctx, incoming, destination)
+			if err != nil {
+				return result, err
+			}
+			if err = ctx.Err(); err != nil {
+				return result, err
+			}
+			current, err = os.Lstat(destination)
+			if err != nil || !os.SameFile(prior, current) {
+				return result, fmt.Errorf("installed application changed during UI shutdown")
+			}
 		}
 		if err = ops.Publish(destination, backup); err != nil {
 			return result, err

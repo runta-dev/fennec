@@ -53,45 +53,66 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 			}
 		}
 	}
-	native, err := setup.GatherNativeAccounts(ctx, s.home, sourceIDs, magpie)
-	mark("native_accounts")
-	if err != nil {
+	prepareStarted := time.Now()
+	var native setup.ModelAccountsRequest
+	var nativeElapsed float64
+	request := setup.RuntimeConfiguration{}
+	jobs := []func(context.Context) error{func(ctx context.Context) error {
+		started := time.Now()
+		var err error
+		native, err = setup.GatherNativeAccounts(ctx, s.home, sourceIDs, magpie)
+		nativeElapsed = float64(time.Since(started).Microseconds()) / 1000
+		return err
+	}}
+	if magpie {
+		jobs = append(jobs, func(ctx context.Context) error {
+			routes := make([]setup.AgentRoute, len(ids))
+			var workers sync.WaitGroup
+			for i, id := range ids {
+				workers.Add(1)
+				go func(i int, id string) {
+					defer workers.Done()
+					routes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{{ID: id, Version: "latest"}})[0]
+				}(i, id)
+			}
+			workers.Wait()
+			routes, err := setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
+			mark("local_routes")
+			if err != nil {
+				return err
+			}
+			plugins, err := setup.DesiredModelPlugins(s.home)
+			mark("plugins")
+			if err != nil {
+				return err
+			}
+			request.Accounts, err = setup.GatherModelAccountsRequest(s.home, plugins, ids)
+			mark("gateway_accounts")
+			if err != nil {
+				return err
+			}
+			request.Routes = routes
+			return nil
+		})
+	}
+	if err := gatherConfigurationInputs(ctx, jobs...); err != nil {
 		return true, err
 	}
+	timings["native_accounts"] = nativeElapsed
+	timings["local_prepare_wall"] = float64(time.Since(prepareStarted).Microseconds()) / 1000
+	phase = time.Now()
 	native.Agents = ids
-	request := setup.RuntimeConfiguration{Accounts: native}
 	if magpie {
-		routes := make([]setup.AgentRoute, len(ids))
-		var workers sync.WaitGroup
-		for i, id := range ids {
-			workers.Add(1)
-			go func(i int, id string) {
-				defer workers.Done()
-				routes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{{ID: id, Version: "latest"}})[0]
-			}(i, id)
-		}
-		workers.Wait()
-		routes, err = setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
-		mark("local_routes")
-		if err != nil {
-			return true, err
-		}
-		plugins, err := setup.DesiredModelPlugins(s.home)
-		mark("plugins")
-		if err != nil {
-			return true, err
-		}
-		request.Accounts, err = setup.GatherModelAccountsRequest(s.home, plugins, ids)
-		mark("gateway_accounts")
-		if err != nil {
-			return true, err
-		}
 		request.Accounts.NativeFiles = native.Files
 		request.Accounts.NativeProblems = native.NativeProblems
-		request.Routes = routes
+	} else {
+		request.Accounts = native
 	}
-	data, err := transport.Operate(ctx, r.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+	data, wireTimings, err := transport.OperateMeasured(ctx, r.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
 	mark("remote_round_trip")
+	for name, value := range wireTimings {
+		timings["transport_"+name] = value
+	}
 	if err != nil {
 		return true, err
 	}

@@ -902,6 +902,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 @main
 struct FennecMain {
     static func main() {
+	    if CommandLine.arguments.count==3,CommandLine.arguments[1]=="--platform-stop-ui" {
+	        exit(runStopUIAdapter(CommandLine.arguments[2]) ? 0 : 1)
+	    }
         if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--platform-login-item" {
             exit(runLoginItemAdapter(CommandLine.arguments[2]) ? 0 : 1)
         }

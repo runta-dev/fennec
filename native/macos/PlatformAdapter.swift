@@ -65,11 +65,7 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
         selected(panel.runModal() == .OK ? panel.url?.appendingPathComponent("Fennec.app").path : nil)
     }
     func openInstalled(_ path: String) {
-        // Existing windows close only after the verified copy is published.
-        // The independent Go service and remote sessions survive UI shutdown.
-        for application in NSRunningApplication.runningApplications(withBundleIdentifier:"com.runta.fennec") where application.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            application.terminate()
-        }
+        // Go stops only the replaced installation, preserving other app copies.
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         configuration.arguments = ["--installed-application",path]
@@ -117,7 +113,8 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
                 } else { NSApp.terminate(nil) }
                 return
             }
-            openInstalled(path)
+            if result?["ui_restarted"] as? Bool == true {NSApp.terminate(nil)}
+            else {openInstalled(path)}
         }
     }
     var inspection = ["install", "--check"]
@@ -152,4 +149,24 @@ func prepareApplicationInstallation(_ completion: @escaping (String?) -> Void) {
         default: NSApp.terminate(nil)
         }
     }
+}
+
+// Exact-bundle OS adapter for Go's transactional installer. It never stops the
+// independent daemon, an app from another path, or any remote agent process.
+func runStopUIAdapter(_ path: String) -> Bool {
+    let target=URL(fileURLWithPath:path).standardizedFileURL.resolvingSymlinksInPath()
+    let apps=NSRunningApplication.runningApplications(withBundleIdentifier:"com.runta.fennec").filter {
+        $0.processIdentifier != ProcessInfo.processInfo.processIdentifier &&
+        $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == target &&
+        $0.executableURL?.lastPathComponent == "Fennec"
+    }
+    for app in apps { _ = app.terminate() }
+    let deadline=Date().addingTimeInterval(8)
+    while apps.contains(where:{!$0.isTerminated}) && Date()<deadline {
+        RunLoop.current.run(until:Date().addingTimeInterval(0.025))
+    }
+    let success=apps.allSatisfy {$0.isTerminated}
+    let reply:[String:Any] = ["success":success,"stopped":success && !apps.isEmpty]
+    if let data=try? JSONSerialization.data(withJSONObject:reply){FileHandle.standardOutput.write(data)}
+    return success
 }

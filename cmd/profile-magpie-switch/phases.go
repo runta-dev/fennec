@@ -13,7 +13,7 @@ func phaseEvidence(state snapshot) any {
 		return nil
 	}
 	allowed := map[string][]string{
-		"local_ms":  {"transport_ready", "native_accounts", "local_routes", "plugins", "gateway_accounts", "remote_round_trip", "publish"},
+		"local_ms":  {"transport_ready", "native_accounts", "local_routes", "plugins", "gateway_accounts", "local_prepare_wall", "remote_round_trip", "transport_request_write", "transport_response_wait", "transport_remote_operation", "publish"},
 		"remote_ms": {"tool_preflight", "catalog_preflight", "accounts", "routes", "catalog_readback"},
 	}
 	result := map[string]map[string]float64{}
