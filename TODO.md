@@ -82,3 +82,19 @@ Magpie、旧账号状态或预先准备的云机器的 Mac 上，能够独立完
 [原生凭据设计](docs/native-agent-credentials.md)、
 [macOS 验收记录](docs/macos-acceptance.md)、
 [控制面与性能](docs/tasks/go-control-plane.md)。这些历史记录不是新版本验收结论。
+
+## 后续兼容性：cmux Computer Use（暂缓）
+
+2026-11-11 用户确认：`cmux-cua` 不是当前优先级，暂不实现或发布。
+
+- [ ] **cmux-cua / Computer Use MCP**：后续再处理本机 MCP client、Unix socket
+  与云端 Agent 的适配。明确 native MCP 与 Codex 专用 profile 并非严格 parity：
+  工具 schema、截图/界面树返回格式、应用审批和签名父进程要求不同。恢复开发前
+  先确定支持契约；不得通过 unverified-client 或 embedded 模式绕过 cmux 的授权。
+  未来验收须覆盖真实截图/读取界面/输入动作、macOS 权限、取消、断线与会话隔离。
+
+**cmux hooks 已解决**：Mac hook 路径导致云端 Codex 返回 127 的问题已修复并合入
+main；签名、公证候选包 `0.2.11111843` 完成了真实 cmux → 云端 Codex → 本机审批
+→ cmux 事件回传验收，覆盖 7 次单次授权及实际工具执行、Done 状态。
+这与尚未支持的 cmux-cua MCP 是两项独立能力；不把 CUA 暂缓误记为 hooks 未完成。
+详见 [cmux hooks 验收](docs/cmux-hooks.md#real-release-acceptance-2026-11-11)。

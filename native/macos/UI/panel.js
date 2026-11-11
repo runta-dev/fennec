@@ -209,6 +209,16 @@ window.renderAgents = agents => {
       statusNode.hidden = !statusNode.textContent;
       if(statusNode.textContent==='正在连接…'){statusNode.textContent='';statusNode.hidden=true;state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
+      {
+        const row=document.createElement('div');row.className='agent-integration-row';
+        const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
+        const label=document.createElement('span');label.textContent='Magpie';
+        const info=document.querySelector('#magpie-label')?.parentElement?.querySelector('.setting-info')?.cloneNode(true);
+        if(info){const tooltip=info.querySelector('[role="tooltip"]');const button=info.querySelector('.setting-info-button');if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}}
+        const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(magpieEnabled));
+        toggle.onclick=()=>send('settings:'+JSON.stringify({magpie:!magpieEnabled}));
+        if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
+      }
       if(!magpieEnabled){
         const location=enabled?'cloud':'local';const key=agent.id+':'+location;const account=nativeAccountStates.get(key);
         if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(agent.id,location);

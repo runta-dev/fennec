@@ -324,6 +324,8 @@ main{min-height:0}
 .setting-info-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
 .setting-tooltip{position:absolute;z-index:20;top:calc(100% + 5px);left:0;width:max-content;max-width:230px;padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);box-shadow:0 3px 12px #00000020;font-size:11px;font-weight:400;line-height:1.5;white-space:normal;visibility:hidden;opacity:0;transition:opacity .12s ease}
 .setting-info:hover .setting-tooltip,.setting-info:focus-within .setting-tooltip{visibility:visible;opacity:1}
+.agent-fold.open:has(.setting-info:hover)>.agent-fold-clip,.agent-fold.open:has(.setting-info:focus-within)>.agent-fold-clip{overflow:visible}
+.agent-fold.open .detail:has(.setting-info:hover),.agent-fold.open .detail:has(.setting-info:focus-within){overflow:visible}
 @media(prefers-reduced-motion:reduce){.setting-tooltip{transition:none}}
 #preferences .card:has(.setting-info){overflow:visible}
 .uninstall-settings{margin-top:9px}.uninstall-settings button{color:#d7443e}
