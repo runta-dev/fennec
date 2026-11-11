@@ -11,6 +11,7 @@
 ## 启动与连接设计
 
 - Magpie 只能是设置页显式启用的可选集成，默认关闭；不可因检测到本机 Magpie、旧模型配置或旧版本状态而自动开启。默认从各 Agent 自己的文件、环境或 Keychain 同步凭据到云端隔离配置目录，不安装、启动或探测 Magpie。UI 与 CLI 使用同一 `settings.set` 控制面；开启后才允许云端跨模型切换。
+- Magpie 关闭时，模型目录与设置必须由 Go 控制面按 Agent 的原生能力校验：Codex/OpenAI、Claude Code/Claude、Pi 已配置 provider。不得复用 Magpie 模型偏好；同步时清除跨厂商遗留模型，保留云端 TUI 设置及有效原生选择，不通过推理探测判断模型可用性。
 - 原生凭据同步须覆盖没有安装 Magpie 的首次使用、各 Agent 独立失败、云端 OAuth 刷新保留、密钥链拒绝、路径与凭据隔离。不要复制整个配置目录、会话、hooks 或本机可执行命令；不要把 secret 放进 argv、日志、RPC 回复或版本库。
 
 - 每个用户使用一台共享云机器，所有 cloud agents 在该机器内运行。一个 Fennec daemon 管理一条共享 SSH 连接，各会话通过独立 channel 复用；不引入多机器连接池或调度设计。

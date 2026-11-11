@@ -29,6 +29,11 @@ func Run(arguments []string, output io.Writer) error {
 		return nil
 	}
 	switch arguments[0] {
+	case "uninstall-worker":
+		if len(arguments) != 2 {
+			return fmt.Errorf("private uninstall work file required")
+		}
+		return runUninstallWorker(arguments[1])
 	case "describe-control":
 		return describeControl(output)
 	case "daemon":
@@ -100,7 +105,7 @@ func Run(arguments []string, output io.Writer) error {
 			return err
 		}
 		directory := filepath.Join(home, ".local/share/fennec/shims")
-		if err = launcher.InstallShims(directory, self); err != nil {
+		if err = launcher.InstallShims(directory, self, agent.ExecutableSearchPath(home)); err != nil {
 			return err
 		}
 		return json.NewEncoder(output).Encode(map[string]string{"directory": directory})

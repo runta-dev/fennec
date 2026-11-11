@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fennec/internal/control"
+	"fennec/internal/runta"
 	"fmt"
 	"sync"
 	"time"
@@ -43,6 +45,10 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in before preparing a runtime"}
 	}
 	c.mu.Lock()
+	if c.maintenance || c.PreparationBlocked != nil && c.PreparationBlocked() {
+		c.mu.Unlock()
+		return nil, &control.Fault{Code: "uninstall_pending", Message: "Finish the pending uninstall before starting cloud work"}
+	}
 	if c.runtime.Epoch == epoch && (c.runtime.Running || c.runtime.Stage == "ready") {
 		c.mu.Unlock()
 		return c.runtimeSnapshot(), nil
@@ -51,9 +57,13 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		c.runtimeAgain = false
 	}
 	c.runtime = RuntimeState{Epoch: epoch, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
+	ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
+	done := make(chan struct{})
+	c.runtimeCancel = cancel
+	c.runtimeDone = done
 	c.mu.Unlock()
 	go func() {
-		ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
+		defer close(done)
 		defer cancel()
 		writer := &runtimeEvents{emit: func(event map[string]string) {
 			c.mu.Lock()
@@ -72,9 +82,13 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 			}
 		}}
 		err := c.Prepare(ctx, token, writer)
+		var api *runta.APIError
+		if errors.As(err, &api) && api.Status == 401 {
+			c.Account.RejectCredential(token, epoch)
+		}
 		c.mu.Lock()
 		defer func() {
-			again := c.runtimeAgain && c.runtime.Epoch == epoch && lifecycle.Err() == nil
+			again := c.runtimeAgain && !c.maintenance && c.runtime.Epoch == epoch && lifecycle.Err() == nil
 			if again {
 				c.runtimeAgain = false
 				c.runtime.Stage = "retrying"
@@ -179,4 +193,40 @@ func (c *Controller) PrepareIfIdle(ctx context.Context) (any, error) {
 	c.runtime.Stage = "retrying"
 	c.mu.Unlock()
 	return c.ensureRuntime(ctx, nil)
+}
+
+// QuiescePreparation cancels and drains the current preparation before any
+// destructive runtime action. Account credentials remain available for retry.
+func (c *Controller) QuiescePreparation(ctx context.Context) error {
+	c.mu.Lock()
+	c.maintenance = true
+	c.runtimeAgain = false
+	cancel, done := c.runtimeCancel, c.runtimeDone
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (c *Controller) QuiesceForUninstall(ctx context.Context) error {
+	for !c.authActions.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	defer c.authActions.Unlock()
+	if err := c.Account.CancelAuthorization(ctx); err != nil {
+		return err
+	}
+	return c.QuiescePreparation(ctx)
 }

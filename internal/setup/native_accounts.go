@@ -156,6 +156,13 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 		if !strings.HasSuffix(name, ".toml") && !json.Valid(b) {
 			return fmt.Errorf("invalid native configuration for %s", strings.Split(name, "/")[0])
 		}
+		if !s.Gateway {
+			var err error
+			b, err = sanitizeNativeModelFile(name, b)
+			if err != nil {
+				return err
+			}
+		}
 		var value any
 		if strings.HasSuffix(name, ".toml") {
 			var m map[string]any
@@ -461,20 +468,39 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		if e != nil && !os.IsNotExist(e) {
 			return result, e
 		}
+		data, e = sanitizeNativeModelFile(name, data)
+		if e != nil {
+			return result, e
+		}
 		source := credentialHash(data)
 		old := baseline[name]
+		if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" {
+			continue
+		}
 		if exists && !bytes.Equal(previous, data) {
 			if source == old.Source {
-				continue
-			} // Preserve cloud-side OAuth refresh.
-			if credentialHash(previous) != old.Remote {
+				data = previous // Preserve refreshes and explicit native model choices.
+			} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previous, data) {
+				data = previous
+			} else if credentialHash(previous) != old.Remote {
 				return result, fmt.Errorf("native credentials changed on both computers; cloud copy preserved")
 			}
 		}
-		baseline[name] = credentialPair{Source: source, Remote: source}
+		if name == "pi/settings.json" {
+			data, e = sanitizeNativePiSettings(data, nativePiProviderFiles(func(name string) []byte { raw, _ := base64.StdEncoding.DecodeString(r.Files[name]); return raw }))
+			if e != nil {
+				return result, e
+			}
+		}
+		data, e = sanitizeNativeModelFile(name, data)
+		if e != nil {
+			return result, e
+		}
+		baseline[name] = credentialPair{Source: source, Remote: credentialHash(data)}
 		if !exists || !bytes.Equal(previous, data) {
 			writes = append(writes, credentialWrite{path: path, data: data, previous: previous, existed: exists})
 		}
+
 	}
 	for _, w := range writes {
 		if e := atomicCredential(w.path, w.data, w); e != nil {

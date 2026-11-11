@@ -3,6 +3,7 @@ package launcher
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,8 @@ type entryRecord struct {
 	Wrapper        string `json:"wrapper"`
 	PendingWrapper string `json:"pending_wrapper,omitempty"`
 }
+
+var errManagedLauncher = errors.New("managed launcher is not an original agent executable")
 
 // InstallEntry replaces only an executable symlink. Its target stays in place.
 // The sidecar is written exclusively before replacement, enabling recovery.
@@ -153,6 +156,9 @@ func OriginalEntry(path string) (string, error) {
 	header := make([]byte, 128)
 	n, _ := file.Read(header)
 	file.Close()
+	if bytes.Contains(header[:n], []byte("# Fennec managed launcher v1\n")) {
+		return "", errManagedLauncher
+	}
 	if !bytes.Contains(header[:n], []byte("# Fennec managed entry v1\n")) {
 		return path, nil
 	}
@@ -195,7 +201,21 @@ func entryScript(daemon, agent, target string) string {
 	quote := func(s string) string {
 		return "'" + string(bytes.ReplaceAll([]byte(s), []byte("'"), []byte("'\"'\"'"))) + "'"
 	}
-	return "#!/bin/sh\n# Fennec managed entry v1\nexec " + quote(daemon) + " dispatch-entry " + quote(agent) + " " + quote(target) + " \"$@\"\n"
+	return "#!/bin/sh\n# Fennec managed entry v1\n" + removedApplicationFallback(daemon, target) + "exec " + quote(daemon) + " dispatch-entry " + quote(agent) + " " + quote(target) + " \"$@\"\n"
+}
+
+// A missing application is different from a failed cloud launch. Only when the
+// installed executable no longer exists may a stale wrapper run the original
+// agent. Announce the location change rather than silently doing cloud work locally.
+func removedApplicationFallback(daemon, target string) string {
+	quote := func(value string) string {
+		return "'" + string(bytes.ReplaceAll([]byte(value), []byte("'"), []byte("'\"'\"'"))) + "'"
+	}
+	script := "if [ ! -e " + quote(daemon) + " ]; then\n"
+	if target != "" {
+		script += " if [ -x " + quote(target) + " ]; then\n  printf '%s\\n' 'Fennec is no longer installed here. Running locally.' >&2\n  unset FENNEC_LAUNCH_MODE\n  exec " + quote(target) + " \"$@\"\n fi\n"
+	}
+	return script + " printf '%s\\n' 'Fennec is no longer installed here. Reinstall Fennec or the original agent.' >&2\n exit 127\nfi\n"
 }
 
 func withEntryLock(path string, operation func() error) error {

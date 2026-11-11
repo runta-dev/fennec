@@ -19,6 +19,7 @@ macos-run: macos
 check-ui:
 	node --check internal/gui/assets/app.js
 	node --check native/macos/UI/panel.js
+	node --check native/macos/UI/uninstall.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js
@@ -32,6 +33,7 @@ check-ui:
 	node scripts/tests/login-state.cjs
 	node scripts/tests/takeover-state.cjs
 	node scripts/tests/fox-motion.cjs
+	node scripts/tests/uninstall.cjs
 
 test-connector: build
 	python3 scripts/tests/relay.py
@@ -65,3 +67,13 @@ test-e2e-performance:
 test-cmux:
 	test -n "$(CMUX_BINARY)" && test -x "$(CMUX_BINARY)"
 	FENNEC_CMUX_BINARY="$(CMUX_BINARY)" go test -race -count=1 -timeout=90s ./internal/cmuxhooks ./internal/hookbridge ./internal/hookplugins ./internal/localssh ./internal/control ./internal/terminalstream ./internal/launcher ./internal/cli ./cmd/fennec-terminal
+.PHONY: test-e2e-launchd-demand
+test-e2e-launchd-demand:
+	test "$$(uname -s)" = Darwin
+	FENNEC_LAUNCHD_E2E=1 go test -count=1 -timeout=30s -v ./internal/cli -run '^TestLaunchAgentWaitsForExplicitDemand$$'
+
+.PHONY: test-e2e-installation
+FENNEC_ACCEPTANCE_APP ?= $(CURDIR)/build/Fennec.app
+test-e2e-installation:
+	test "$$(uname -s)" = Darwin
+	go run ./cmd/check-installation --app "$(FENNEC_ACCEPTANCE_APP)"

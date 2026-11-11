@@ -97,6 +97,12 @@ func fenParseSessions(data []byte, runtimeID string) ([]fenSession, error) {
 }
 
 func fenCommand(arguments []string, output io.Writer) error {
+	if len(arguments) > 0 && arguments[0] == "install" {
+		return installCommand(arguments[1:], output)
+	}
+	if len(arguments) > 0 && arguments[0] == "uninstall" {
+		return uninstallCommand(arguments[1:], output)
+	}
 	if len(arguments) > 0 && arguments[0] == "start" {
 		if len(arguments) != 1 {
 			return fmt.Errorf("usage: fen start")

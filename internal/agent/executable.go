@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // originalExecutable never runs a launcher to discover what it wraps.
@@ -78,4 +79,10 @@ func ManagedEntryPaths(home string) []string {
 		}
 	}
 	return result
+}
+
+// ExecutableSearchPath includes the supported user toolchain locations even
+// when a GUI LaunchAgent inherits only the system PATH.
+func ExecutableSearchPath(home string) string {
+	return strings.Join(searchPaths(home), string(os.PathListSeparator))
 }

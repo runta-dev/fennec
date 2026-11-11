@@ -9,14 +9,21 @@ umask 077
 release_work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/fennec-release.XXXXXX")
 release_keychain="$release_work/signing.keychain-db"
 release_password=$(openssl rand -hex 24)
+release_mount=""
 original_keychains=()
 while IFS= read -r entry; do
   entry="${entry#*\"}"; entry="${entry%\"*}"
   [[ -z "$entry" ]] || original_keychains+=("$entry")
 done < <(security list-keychains -d user)
 cleanup() {
+  local mount_cleanup_ok=true
+  if [[ -n "$release_mount" ]]; then
+    hdiutil detach "$release_mount" >/dev/null 2>&1 || mount_cleanup_ok=false
+  fi
   security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
   security delete-keychain "$release_keychain" >/dev/null 2>&1 || true
+  rm -f "$release_work/certificate.p12" "$release_work/notary.p8" "$release_keychain"
+  if [[ "$mount_cleanup_ok" != true ]]; then echo 'Unable to detach release validation image' >&2; return 1; fi
   rm -rf "$release_work"
 }
 trap cleanup EXIT
@@ -48,10 +55,12 @@ notarize() {
 ditto -c -k --sequesterRsrc --keepParent "$app" "$release_work/notarize.zip"
 notarize "$release_work/notarize.zip" release/notarization-app.json
 xcrun stapler staple "$app"
+/bin/chmod -R -P a+rX,go-w "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute --verbose=2 "$app"
 ditto -c -k --sequesterRsrc --keepParent "$app" "release/Fennec-$version-macos-arm64.zip"
 mkdir "$release_work/dmg"
+/bin/chmod 755 "$release_work/dmg"
 ditto "$app" "$release_work/dmg/Fennec.app"
 ln -s /Applications "$release_work/dmg/Applications"
 dmg="release/Fennec-$version-macos-arm64.dmg"
@@ -61,6 +70,17 @@ notarize "$dmg" release/notarization-dmg.json
 xcrun stapler staple "$dmg"
 xcrun stapler validate "$dmg"
 codesign --verify --strict "$dmg"
+# Validate the app inside the shipped image, not only the source staging tree.
+mount_point="$release_work/mounted"
+mkdir "$mount_point"
+hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$dmg" >/dev/null
+release_mount="$mount_point"
+go run ./cmd/check-bundle-permissions --volume "$release_mount"
+./scripts/verify-macos-package.sh "$release_mount/Fennec.app" "$version"
+xcrun stapler validate "$release_mount/Fennec.app"
+spctl --assess --type execute "$release_mount/Fennec.app"
+hdiutil detach "$release_mount" >/dev/null
+release_mount=""
 # Verify the shipped ZIP, not just the build directory.
 ditto -x -k "release/Fennec-$version-macos-arm64.zip" "$release_work/unpacked"
 ./scripts/verify-macos-package.sh "$release_work/unpacked/Fennec.app" "$version"

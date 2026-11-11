@@ -70,9 +70,10 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 		"trust.clear": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			return s.decide(ctx, json.RawMessage(`{"action":"clear_trust"}`))
 		},
+		"model.get": s.getNativeModels,
 		"model.set": func(ctx context.Context, raw json.RawMessage) (any, error) {
 			if !newDesktopSettings(s.home).value.Magpie {
-				return nil, &control.Fault{Code: "integration_disabled", Message: "Enable Magpie in Settings to switch cloud models"}
+				return s.setNativeModel(ctx, raw)
 			}
 			var choice struct {
 				Agent string `json:"agent"`

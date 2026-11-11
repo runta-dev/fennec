@@ -80,10 +80,13 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 		}
 		method = "login-item." + args[1]
 	case "login":
-		if len(args) != 1 {
-			return true, fmt.Errorf("usage: fen login [--json]")
+		if len(args) != 1 && !(len(args) == 2 && args[1] == "--reauth") {
+			return true, fmt.Errorf("usage: fen login [--reauth] [--json]")
 		}
 		method = "account.login"
+		if len(args) == 2 {
+			params["reauthenticate"] = true
+		}
 	case "logout":
 		if len(args) != 1 {
 			return true, fmt.Errorf("usage: fen logout")
@@ -120,11 +123,22 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 		method = "takeover.set"
 		params = map[string]any{"agent": args[1], "enabled": args[2] == "on"}
 	case "model":
-		if len(args) != 3 {
-			return true, fmt.Errorf("usage: fen model <agent> <provider/model>")
+		if len(args) < 2 || len(args) > 4 {
+			return true, fmt.Errorf("usage: fen model <agent> [model|default] [effort]")
 		}
-		method = "model.set"
-		params = map[string]any{"agent": args[1], "model": args[2]}
+		method = "model.get"
+		params = map[string]any{"agent": args[1]}
+		if len(args) >= 3 {
+			method = "model.set"
+			model := args[2]
+			if model == "default" {
+				model = ""
+			}
+			params["model"] = model
+		}
+		if len(args) == 4 {
+			params["effort"] = args[3]
+		}
 	case "approvals":
 		if len(args) != 1 {
 			return true, fmt.Errorf("usage: fen approvals")
@@ -228,11 +242,15 @@ const fenControlHelp = `Fennec — one daemon, UI and CLI clients
 
 Usage: fen [attach [session-id]]
 	fen start
+	fen install [--check] [--replace] [--destination <app-path>]
+	fen uninstall --dry-run
+	fen uninstall [--yes] [--delete-cloud --confirm-runtime <id>]
   fen daemon start|stop|status
-  fen status | login | logout | agents | account | billing
+  fen login [--reauth]
+  fen status | logout | agents | account | billing
   fen runtime status|ensure|retry
   fen takeover [agent on|off]
-  fen model <agent> <provider/model>
+  fen model <agent> [model|default] [effort]
   fen sessions | launch <agent> [-- <agent arguments>]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear

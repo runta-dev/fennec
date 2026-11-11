@@ -11,16 +11,16 @@ import (
 	"sync"
 )
 
-func (m *Manager) queryContext(parent context.Context) (context.Context, string, func(), error) {
-	lifecycle, token, _, ok := m.Session()
+func (m *Manager) queryContext(parent context.Context) (context.Context, string, uint64, func(), error) {
+	lifecycle, token, epoch, ok := m.Session()
 	if !ok {
-		return nil, "", func() {}, fmt.Errorf("login required")
+		return nil, "", 0, func() {}, fmt.Errorf("login required")
 	}
 	ctx, cancel := context.WithCancel(parent)
 	stop := context.AfterFunc(lifecycle, cancel)
-	return ctx, token, func() { stop(); cancel() }, nil
+	return ctx, token, epoch, func() { stop(); cancel() }, nil
 }
-func (m *Manager) get(ctx context.Context, token, address string) (map[string]any, error) {
+func (m *Manager) get(ctx context.Context, token, address string, epoch uint64) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return nil, err
@@ -31,6 +31,9 @@ func (m *Manager) get(ctx context.Context, token, address string) (map[string]an
 		return nil, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		m.RejectCredential(token, epoch)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("account HTTP %d", response.StatusCode)
 	}
@@ -41,12 +44,12 @@ func (m *Manager) get(ctx context.Context, token, address string) (map[string]an
 	return result, nil
 }
 func (m *Manager) Profile(parent context.Context) (map[string]any, error) {
-	ctx, token, done, err := m.queryContext(parent)
+	ctx, token, epoch, done, err := m.queryContext(parent)
 	if err != nil {
 		return nil, err
 	}
 	defer done()
-	result, err := m.get(ctx, token, m.endpoint+"/v2/me")
+	result, err := m.get(ctx, token, m.endpoint+"/v2/me", epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -66,12 +69,12 @@ func (m *Manager) Billing(ctx context.Context) (map[string]any, error) {
 	return m.billing(ctx, "https://backend.runta.com")
 }
 func (m *Manager) billing(parent context.Context, backend string) (map[string]any, error) {
-	ctx, token, done, err := m.queryContext(parent)
+	ctx, token, epoch, done, err := m.queryContext(parent)
 	if err != nil {
 		return nil, err
 	}
 	defer done()
-	organizations, err := m.get(ctx, token, backend+"/v1/organizations")
+	organizations, err := m.get(ctx, token, backend+"/v1/organizations", epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +99,7 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			response, err := m.get(ctx, token, base+path)
+			response, err := m.get(ctx, token, base+path, epoch)
 			if err != nil {
 				errs[i] = err
 				return

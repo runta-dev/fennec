@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var ErrDeletionAccountChanged = errors.New("account changed; sign in to the confirmed account again")
+
 // DeleteOwnedShared removes only the exact runtime approved in a fresh preview.
 // A successful DELETE response is acceptance, not proof of deletion. Never
 // retry a destructive request with a new revision or resolve a replacement ID.
@@ -21,7 +23,7 @@ func (c *Client) DeleteOwnedShared(ctx context.Context, id, owner string, revisi
 		return err
 	}
 	if user != owner {
-		return fmt.Errorf("account changed; review the uninstall request again")
+		return ErrDeletionAccountChanged
 	}
 	runtime, err := c.Get(ctx, id)
 	if isRuntimeMissing(err) {

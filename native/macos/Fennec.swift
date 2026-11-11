@@ -27,6 +27,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var stateTimer: Timer?
     private var stateLoading = false
 	private var controlReady = false
+	private var installationPending = true
+	private var installedApplicationPath = Bundle.main.bundlePath
 	private var controlStarting = false
 	private var sessionServiceReady = false
 	private var viewRevision = 0
@@ -79,9 +81,15 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         item.button?.action = #selector(statusItemClicked)
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         buildPopup()
-	    connectControl()
-	    stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
-	    toggle()
+	    prepareApplicationInstallation { [weak self] application in
+	        guard let self,let application else{return}
+	        self.control.useInstalledApplication(application)
+	        self.installedApplicationPath=application
+	        self.installationPending=false
+	        self.connectControl()
+	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
+	        self.toggle()
+	    }
 	}
 
 	private func connectControl() {
@@ -125,6 +133,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+	    if installationPending{return false}
         if !popup.isVisible && popupPresentationID == nil { toggle() }
         return false
     }
@@ -139,6 +148,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     @objc private func statusItemClicked() {
+	    if installationPending{NSApp.activate(ignoringOtherApps:true);return}
         if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
             animateFoxIcon()
             popupPresentationID = nil
@@ -246,7 +256,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         // Positional arguments preserve bundle paths without shell interpolation.
-        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; /usr/bin/open \"$2\"", "fennec-restart", String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath]
+        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; /usr/bin/open -n \"$2\" --args --installed-application \"$2\"", "fennec-restart", String(ProcessInfo.processInfo.processIdentifier), installedApplicationPath]
         do { try task.run(); NSApp.terminate(nil) }
         catch { let alert = NSAlert(error: error); alert.runModal() }
     }
@@ -408,7 +418,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let outputWindow = TerminalOutputWindow()
             terminalOutputWindow = outputWindow
             terminalTransport = transport; terminalGeneration = generation
-            let executable = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("fen")
+            let executable = URL(fileURLWithPath:installedApplicationPath).appendingPathComponent("Contents/MacOS/fen")
             do {
                 try transport.start(executable: executable, arguments: ["fen","attach",sessionID], cols: UInt16(cols), rows: UInt16(rows), output: { [weak self] bytes in
                     for offset in stride(from: 0, to: bytes.count, by: 16384) {
@@ -585,6 +595,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             guard let self else { return }
             self.stateLoading = false
 	        guard revision == self.viewRevision else {self.pollState();return}
+            if case .failure = result { self.controlReady = false; return }
             guard case .success(let value) = result, let state = value as? [String:Any],
                   let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) else { return }
             guard data != self.lastState else { return }
@@ -593,6 +604,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func applyState(_ state: [String:Any]) {
+	    render("renderUninstallStatus",[state["uninstall"] ?? NSNull()])
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
@@ -609,7 +621,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
             let code = account["user_code"] as? String ?? ""
-            let loginErrors = ["authorization_expired":"授权已过期，请重新登录。", "access_denied":"授权已取消。"]
+            let loginErrors = ["authorization_expired":"授权已过期，请重新登录。", "session_expired":"登录已过期，请重新登录。", "access_denied":"授权已取消。"]
             let errorCode = account["error"] as? String
             let message = pending ? (code.isEmpty ? "正在连接 Runta…" : "请在浏览器确认授权码：" + code) : (errorCode.map { loginErrors[$0] ?? "暂时无法完成登录，请重试。" } ?? "")
             renderLogin(message, pending || account["status"] as? String == "restoring")
@@ -702,13 +714,23 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
+	    if action.hasPrefix("uninstall-plan:"),let data=String(action.dropFirst(15)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+	        let requestID=params["request_id"] as? Int ?? 0
+	        control.call("uninstall.plan",params){[weak self] result in
+	            if case .success(let value)=result {self?.render("renderUninstallPlan",[value,requestID])}
+	            else if case .failure(let error)=result {self?.render("renderUninstallPlan",[["login_required":(error as NSError).userInfo["FennecCode"] as? String == "login_required"],requestID])}
+	        };return
+	    }
+	    if action.hasPrefix("uninstall-execute:"),let data=String(action.dropFirst(18)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+	        mutate("uninstall.execute",params){[weak self] success,_ in self?.render("renderUninstallStarted",[success])};return
+	    }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
-        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:"] where action.hasPrefix(prefix) {
+        for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:"] where action.hasPrefix(prefix) {
             guard let data = String(action.dropFirst(prefix.count)).data(using:.utf8),let params = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else { return }
             let id = params["session_id"] as? String ?? "", address = params["address"] as? String ?? ""
             switch prefix {
@@ -724,8 +746,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             case "read-session:":
                 sessionReadRevision += 1; let revision = sessionReadRevision
                 mutate("sessions.read",params) { [weak self] success,value in guard let self,self.sessionReadRevision == revision else { return }; self.render("renderSessionDetail",[success ? value ?? ["error":true] : ["error":true]]) }
+            case "get-model:":
+                mutate("model.get",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) } else { self?.render("renderNativeModelFailure",[params["agent"] as? String ?? ""]) } }
             case "select-model:":
-                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] _,_ in self?.render("renderModelSaving",[false]) }
+                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render("renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
             case "launch-agent:":
                 let key = (params["agent"] as? String ?? "") + ":" + (params["directory"] as? String ?? "")
                 let launch: (String) -> Void = { [weak self] requestID in
@@ -755,6 +779,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
         case "ready","refresh": lastState = nil; pollState(); refreshAgents(); renderLoginItem()
         case "login": mutate("account.login")
+	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling()
         case "retry-runtime": mutate("runtime.retry")

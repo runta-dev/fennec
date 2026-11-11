@@ -10,6 +10,9 @@ let entryCoverage = new Map();
 let detectedAgents = [];
 let routeResults = new Map();
 let gatewayModels = [];
+let nativeModelStates = new Map();
+let nativeModelRequests = new Map();
+function loadNativeModel(agent){nativeModelRequests.set(agent,'pending');send('get-model:'+JSON.stringify({agent}));}
 let modelSaving = false;
 let sessionDetailOpen = false;
 let activeSession = null;
@@ -131,6 +134,7 @@ window.renderAgents = agents => {
     if (!agent.installed) state.textContent = '未安装';
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
+      if(expandedAgent && !magpieEnabled && takeoverAgents.has(agent.id) && ['codex','claude','pi'].includes(agent.id)) loadNativeModel(agent.id);
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -208,17 +212,42 @@ window.renderAgents = agents => {
         }
       }
       if (route?.status === 'local_credential_command') {statusNode.textContent='本机凭据依赖本地命令，请使用智能体登录或 API key';statusNode.hidden=false;}
-      if (magpieEnabled && enabled) {
-        const row=document.createElement('div');row.className='preference-row';
-        const label=document.createElement('label');label.textContent='云端模型';
-        const select=document.createElement('select');select.setAttribute('aria-label','云端模型');
-        select.disabled=modelSaving || gatewayModels.length===0;
-        const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='选择模型';select.append(placeholder);
-        for(const model of gatewayModels){const option=document.createElement('option');option.value=model;option.textContent=model;select.append(option);}
-        select.value=route?.model||'';
-        select.onchange=()=>{if(select.value)send('select-model:'+JSON.stringify({agent:agent.id,model:select.value}));};
-        row.append(label,select);detail.append(row);
+      if (enabled && (magpieEnabled || ['codex','claude','pi'].includes(agent.id))) {
+        const native=nativeModelStates.get(agent.id);
+        if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(agent.id))loadNativeModel(agent.id);
+        const models=magpieEnabled ? gatewayModels.map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:'Default'}];
+        const current=magpieEnabled ? route?.model || '' : native?.model || '';
+        const row=document.createElement('div');row.className='agent-model-row';
+        const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label','Model');
+        for(const model of models){const option=document.createElement('option');option.value=model.id;option.textContent=model.name;select.append(option);}
+        select.value=current;
+        const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
+        trigger.disabled=modelSaving || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
+        const label=document.createElement('span');label.className='field-label';label.textContent='Model';
+        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?'重试':'') : models.find(m=>m.id===current)?.name || current || 'Default';
+        if(!magpieEnabled && !native && nativeModelRequests.get(agent.id)==='pending')value.classList.add('setting-skeleton');
+        const modelIcon=icon.cloneNode(true);modelIcon.className='model-provider-icon';modelIcon.alt='';
+        const provider=magpieEnabled ? current.split('/')[0] : models.find(m=>m.id===current)?.provider;
+        const providerIcon={codex:'codex-color.svg',openai:'codex-color.svg',anthropic:'claude-color.svg',claude:'claude-color.svg',google:'geminicli-color.svg',xai:'xai.svg','kimi-code':'kimi.svg'}[provider];if(providerIcon)modelIcon.src='icons/'+providerIcon;
+        const chevron=document.createElementNS('http://www.w3.org/2000/svg','svg');chevron.setAttribute('viewBox','0 0 16 16');chevron.innerHTML='<path d="m5 6 3 3 3-3"/>';
+        trigger.append(label,value,modelIcon,chevron);
+        trigger.onclick=()=>{if(!magpieEnabled && !native){loadNativeModel(agent.id);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
+        trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();openChoiceMenu(select,trigger,{optimistic:false});}};
+        select.onchange=()=>send('select-model:'+JSON.stringify({agent:agent.id,model:select.value}));
+        row.append(select,trigger);detail.append(row);
+        const selected=models.find(m=>m.id===current);
+        if(!magpieEnabled && selected?.efforts?.length){
+          const levels=['',...selected.efforts];
+          const effort=document.createElement('div');effort.className='agent-effort';
+          const caption=document.createElement('label');caption.textContent='Effort';
+          const result=document.createElement('span');result.textContent=native.effort || 'Default';caption.append(result);
+          const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max=String(levels.length-1);slider.step='1';slider.value=String(Math.max(0,levels.indexOf(native.effort||'')));slider.disabled=modelSaving;slider.setAttribute('aria-label','Reasoning effort');slider.setAttribute('aria-valuetext',result.textContent);
+          slider.oninput=()=>{result.textContent=levels[Number(slider.value)]||'Default';slider.setAttribute('aria-valuetext',result.textContent);};
+          slider.onchange=()=>send('select-model:'+JSON.stringify({agent:agent.id,model:current,effort:levels[Number(slider.value)]}));
+          effort.append(caption,slider);detail.append(effort);
+        }
       }
+
     }
     clip.append(detail);
     fold.append(clip);
@@ -434,6 +463,7 @@ window.renderSignedOut = () => {
   routeResults.clear();
   takeoverAgents.clear();activeTakeoverAgents.clear();takeoverChanging=false;takeoverSelectionKnown=false;
   gatewayModels = [];
+  nativeModelStates.clear();nativeModelRequests.clear();
   modelSaving = false;
   window.renderBilling({error:"请先登录"});
   userMenu.hidden = true;
@@ -478,6 +508,7 @@ themeButtons.forEach((button,index)=>{
 });
 window.exportLocalPreferences = () => ({theme:appearance.value,language:document.querySelector('#language')?.value || 'zh-CN'});
 window.renderPreferences = value => {
+ if(magpieEnabled !== (value.magpie === true)){nativeModelStates.clear();nativeModelRequests.clear();}
  magpieEnabled = value.magpie === true;
  document.querySelector('#magpie-integration')?.setAttribute('aria-checked',String(magpieEnabled));
  window.renderAgents(detectedAgents);
@@ -623,6 +654,8 @@ window.renderRouteResults = results => {
   window.renderAgents(detectedAgents);
 };
 
+window.renderNativeModelFailure = agent => {nativeModelRequests.set(agent,'failed');window.renderAgents(detectedAgents);};
+window.renderNativeModels = state => { if(!state || magpieEnabled || !Array.isArray(state.models))return;nativeModelStates.set(state.agent,state);window.renderAgents(detectedAgents); };
 window.renderModelCatalog = models => { gatewayModels = models; window.renderAgents(detectedAgents); };
 
 window.renderModelSaving = busy => {
