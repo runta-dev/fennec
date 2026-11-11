@@ -96,7 +96,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 	}()
 	capabilities := []string{"hook_bridge_v1"}
 	if operate != nil {
-		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime")
+		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip")
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -107,6 +107,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		var frame Frame
 		if json.Unmarshal(scanner.Bytes(), &frame) != nil {
 			return fmt.Errorf("invalid terminal frame")
+		}
+		if err := expandConfiguration(&frame); err != nil {
+			return err
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()

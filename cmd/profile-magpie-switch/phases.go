@@ -27,3 +27,16 @@ func phaseEvidence(state snapshot) any {
 	}
 	return result
 }
+
+func catalogEvidence(state snapshot) any {
+	event := state.Runtime.Events["model_catalog"]
+	if event["runtime_id"] != state.Runtime.RuntimeID {
+		return nil
+	}
+	raw := []byte(event["models"])
+	var entries []json.RawMessage
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+	return map[string]int{"json_bytes": len(raw), "entries": len(entries)}
+}

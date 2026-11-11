@@ -134,7 +134,7 @@ func (p *probe) measure(report *json.Encoder, budget time.Duration) (result erro
 		if err == nil {
 			err = validateRestoration(state, p.initial)
 		}
-		if writeErr := report.Encode(map[string]any{"operation": "restore", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state)}); writeErr != nil {
+		if writeErr := report.Encode(map[string]any{"operation": "restore", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state), "catalog": catalogEvidence(state)}); writeErr != nil {
 			err = errors.Join(err, writeErr)
 		}
 		if err == nil && elapsed > budget {
@@ -147,7 +147,7 @@ func (p *probe) measure(report *json.Encoder, budget time.Duration) (result erro
 	if err == nil {
 		err = validateCompletion(state, changed.Magpie)
 	}
-	if writeErr := report.Encode(map[string]any{"operation": "switch", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state)}); writeErr != nil {
+	if writeErr := report.Encode(map[string]any{"operation": "switch", "wall_ms": float64(elapsed.Microseconds()) / 1000, "confirmed": err == nil, "phases": phaseEvidence(state), "catalog": catalogEvidence(state)}); writeErr != nil {
 		err = errors.Join(err, writeErr)
 	}
 	if err != nil {

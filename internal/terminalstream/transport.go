@@ -244,6 +244,13 @@ func (transport *Transport) Alive() bool {
 }
 
 func (transport *Transport) Send(frame Frame) error {
+	if frame.Type == "operation" && frame.Operation != nil && frame.Operation.Kind == "reconfigure_runtime" && transport.Supports("configuration_gzip") {
+		var err error
+		frame, err = compressConfiguration(frame)
+		if err != nil {
+			return err
+		}
+	}
 	transport.writeMu.Lock()
 	defer transport.writeMu.Unlock()
 	return json.NewEncoder(transport.input).Encode(frame)

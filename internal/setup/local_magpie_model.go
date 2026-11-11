@@ -18,7 +18,11 @@ func LocalMagpieBinary(home string) string {
 			candidates = append(candidates, filepath.Join(dir, "magpie"))
 		}
 	}
-	for _, root := range []string{"/Applications", filepath.Join(home, "Applications")} {
+	roots := []string{"/Applications"}
+	if filepath.IsAbs(home) {
+		roots = append(roots, filepath.Join(home, "Applications"))
+	}
+	for _, root := range roots {
 		for _, name := range []string{"Magpie.app", "magpie.app"} {
 			candidates = append(candidates, filepath.Join(root, name, "Contents/MacOS/magpie"), filepath.Join(root, name, "Contents/MacOS/Magpie"))
 		}

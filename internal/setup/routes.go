@@ -36,13 +36,8 @@ func ParseAgentModel(output string) (string, error) {
 }
 
 func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
-	binary, err := exec.LookPath("magpie")
-	if err != nil {
-		binary = "/Applications/magpie.app/Contents/MacOS/magpie"
-		if info, e := os.Stat(binary); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
-			binary = ""
-		}
-	}
+	home, _ := os.UserHomeDir()
+	binary := LocalMagpieBinary(home)
 	routes := make([]AgentRoute, 0, len(agents))
 	for _, agent := range agents {
 		route := AgentRoute{Agent: agent.ID}
