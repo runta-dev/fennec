@@ -153,11 +153,16 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
 }}}};
 window.addEventListener('DOMContentLoaded',()=>{
  document.title='Fennec development preview';
+ const params=new URLSearchParams(location.search);
+ if(params.get('lang'))previewPrefs.language=params.get('lang');
  window.renderPreferences(previewPrefs);window.renderAuthorized();
  document.querySelector('.header-login').textContent='Development preview';
  window.renderAgents(previewAgents);window.renderRouteResults(previewRoutes());
  window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true});
  window.renderModelCatalog(['codex/gpt-preview']);
- window.renderPreparation({stage:'agents_installed',status:'ready'});
+ const scenario=params.get('scenario');
+ if(scenario==='offline'){window.renderPreparation({stage:'offline',status:'network_offline'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
+ else if(scenario==='failed'){window.renderPreparation({stage:'failed',status:'runtime_preparation_failed'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
+ else window.renderPreparation({stage:'agents_installed',status:'ready'});
 });
 `

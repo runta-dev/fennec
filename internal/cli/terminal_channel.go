@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fennec/internal/connectivity"
 	"fennec/internal/launcher"
 	"fennec/internal/terminalstream"
 	"golang.org/x/crypto/ssh"
@@ -15,6 +16,7 @@ import (
 type terminalChannel struct {
 	onListing       func(context.Context, []byte)
 	ctx             context.Context
+	network         *connectivity.Monitor
 	shared          *launcher.SharedConnection
 	preparedSSH     *ssh.Client
 	home, runtimeID string
@@ -45,11 +47,33 @@ func (channel *terminalChannel) start() <-chan struct{} {
 			}
 		}()
 		for {
+			if channel.network != nil {
+				if channel.network.WaitOnline(channel.ctx) != nil {
+					return
+				}
+			}
+			var netChanged <-chan struct{}
+			if channel.network != nil {
+				netChanged = channel.network.Changes()
+			}
 			channel.get(channel.ctx)
+			timer := time.NewTimer(5 * time.Second)
 			select {
 			case <-channel.ctx.Done():
+				timer.Stop()
 				return
-			case <-time.After(5 * time.Second):
+			case <-netChanged:
+				timer.Stop()
+				if channel.network != nil && !channel.network.Online() {
+					channel.mu.Lock()
+					transport := channel.transport
+					channel.transport = nil
+					channel.mu.Unlock()
+					if transport != nil {
+						transport.Close()
+					}
+				}
+			case <-timer.C:
 			}
 		}
 	}()
@@ -59,6 +83,17 @@ func (channel *terminalChannel) start() <-chan struct{} {
 func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if channel.network != nil && !channel.network.Online() {
+		channel.mu.Lock()
+		transport := channel.transport
+		channel.transport = nil
+		channel.err = connectivity.ErrOffline
+		channel.mu.Unlock()
+		if transport != nil {
+			transport.Close()
+		}
+		return nil, connectivity.ErrOffline
 	}
 	channel.mu.Lock()
 	if channel.transport != nil && channel.transport.Alive() {

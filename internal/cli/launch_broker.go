@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/connectivity"
 	"fennec/internal/launchprofile"
 	"fennec/internal/project"
 	"fennec/internal/runta"
@@ -26,6 +27,7 @@ import (
 )
 
 type brokerConfiguration struct {
+	Network           *connectivity.Monitor     `json:"-"`
 	PreparedTerminal  *terminalstream.Transport `json:"-"`
 	PreparedSSH       *ssh.Client               `json:"-"`
 	PreparedRuntimeID string                    `json:"-"`
@@ -165,7 +167,12 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 	if err != nil {
 		return err
 	}
-	channel := &terminalChannel{ctx: ctx, shared: shared, home: home, runtimeID: config.RuntimeID}
+	if config.Network != nil {
+		shared.Online = config.Network.Online
+		shared.WaitOnline = config.Network.WaitOnline
+		shared.Changes = config.Network.Changes
+	}
+	channel := &terminalChannel{ctx: ctx, network: config.Network, shared: shared, home: home, runtimeID: config.RuntimeID}
 	if config.PreparedRuntimeID == config.RuntimeID {
 		channel.preparedSSH = config.PreparedSSH
 		if config.PreparedTerminal != nil && config.PreparedTerminal.IsReady() {

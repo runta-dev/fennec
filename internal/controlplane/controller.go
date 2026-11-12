@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fennec/internal/account"
 	"fennec/internal/agent"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"io"
 	"os"
@@ -25,6 +26,7 @@ type Controller struct {
 	LoginAllowed       func() bool
 	authActions        sync.Mutex
 	Account            *account.Manager
+	Connectivity       *connectivity.Monitor
 	Prepare            func(context.Context, string, io.Writer) error
 	Session            func(context.Context, string, string, string, SessionParams) (any, error)
 	mu                 sync.Mutex
@@ -33,6 +35,7 @@ type Controller struct {
 	runtimeGeneration  uint64
 	runtimeCancel      context.CancelFunc
 	runtimeDone        chan struct{}
+	runtimeWake        chan struct{}
 	maintenance        bool
 	cloudPaused        bool
 	cloudPausedEpoch   uint64
@@ -46,7 +49,11 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			return map[string]any{"pid": os.Getpid(), "protocol": control.Version, "build_id": buildID, "executable": executable}, nil
 		},
 		"state.get": func(context.Context, json.RawMessage) (any, error) {
-			state := map[string]any{"account": c.Account.Snapshot(), "runtime": c.runtimeSnapshot()}
+			state := map[string]any{
+				"account": c.Account.Snapshot(),
+				"runtime": c.runtimeSnapshot(),
+				"online":  c.Connectivity == nil || c.Connectivity.Online(),
+			}
 			if c.Services != nil {
 				state["services"] = c.Services()
 			}

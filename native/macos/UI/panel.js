@@ -207,7 +207,7 @@ window.renderAgents = agents => {
         detail.querySelector('.takeover').append(placeholder);
       }
       statusNode.hidden = !statusNode.textContent;
-      if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;state.classList.add('loading-shimmer');}
+      if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;if(window.fennecPreparationStage!=='offline')state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
       {
         const row=document.createElement('div');row.className='agent-integration-row';
@@ -606,11 +606,14 @@ window.renderApprovals = requests => {
 };
 
 window.renderPreparation = state => {
-  sessionListConnecting = !['agents_installed', 'failed', 'disabled'].includes(state.stage);
-  document.querySelector('#runtime-panel').hidden = !authorized || (sessionListConnecting && visibleSessionCount === 0);
+  const previousStage = window.fennecPreparationStage || '';
+  window.fennecPreparationStage = state.stage || '';
+  sessionListConnecting = !['agents_installed', 'disabled'].includes(state.stage);
+  document.querySelector('#runtime-panel').hidden = !authorized || state.stage === 'disabled' || (sessionListConnecting && visibleSessionCount === 0);
   const panel = document.querySelector('#preparation');
   panel.replaceChildren();
 	if(state.stage==='disabled'){
+	 window.fennecPreparationVisible=true;
 	 document.querySelector('#runtime-panel').hidden=true;panel.hidden=false;panel.setAttribute('aria-busy','false');
 	 const row=document.createElement('div');row.className='preparation-row';
 	 const button=document.createElement('button');button.type='button';button.textContent='[[i18n:ui.cloud_manage]]';button.onclick=()=>{tab('account');send('load-cloud');};
@@ -619,16 +622,41 @@ window.renderPreparation = state => {
   // Completed infrastructure is not a global error when individual agents
   // still need sign-in or model selection; those actions belong to their cards.
   panel.hidden = !state.stage || ['waiting_credentials', 'credentials_required', 'agents_installed'].includes(state.stage);
+  window.fennecPreparationVisible = !panel.hidden;
+  if (!panel.hidden) {
+    const runtimeNote = document.querySelector('#runtime-message');
+    if (runtimeNote && runtimeNote.className === 'runtime-note') {
+      runtimeNote.hidden = true;
+      runtimeNote.replaceChildren();
+    }
+  }
+  if (previousStage === 'offline' && state.stage !== 'offline' && typeof nativeAccountStates !== 'undefined') {
+    let cleared = false;
+    for (const [key, value] of nativeAccountStates) {
+      if (key.endsWith(':cloud') && value?.status === 'unavailable') { nativeAccountStates.delete(key); cleared = true; }
+    }
+    if (typeof nativeModelRequests !== 'undefined') {
+      for (const [agent, status] of nativeModelRequests) {
+        if (status === 'failed') { nativeModelRequests.delete(agent); cleared = true; }
+      }
+    }
+    if (cleared && typeof window.renderAgents === 'function') window.renderAgents(detectedAgents);
+  } else if ((previousStage === 'offline') !== (state.stage === 'offline') && typeof window.renderAgents === 'function') {
+    window.renderAgents(detectedAgents);
+  }
   if (panel.hidden) return;
-  const titles = {checking_resources:"[[i18n:ui.verifying_cloud_computer_resources]]", installing_session_service:"[[i18n:ui.preparing_session_service]]", restoring_model_accounts:"[[i18n:ui.restoring_model_accounts]]", configuring_routes:"[[i18n:ui.configuring_agent_models]]", installing_model_plugins:"[[i18n:ui.configuring_model_plugins]]", migrating_credentials:"[[i18n:ui.migrating_model_credentials]]", discovering_providers:"[[i18n:ui.loading_model_configuration]]", waiting_credentials:"[[i18n:ui.reading_sign_in_credentials]]", credentials_required:"[[i18n:ui.sign_in_again_to_continue_setup]]", installing_pi:"[[i18n:ui.installing_pi]]", installing_opencode:"[[i18n:ui.installing_opencode]]", starting_magpie:"[[i18n:ui.starting_model_gateway]]", installing_node:"[[i18n:ui.installing_runtime_tools]]", installing_magpie:"[[i18n:ui.installing_model_gateway]]", detecting_versions:"[[i18n:ui.discovering_available_agents]]", syncing_versions:"[[i18n:ui.checking_cloud_agents]]", installing_claude:"[[i18n:ui.installing_claude_code]]", installing_codex:"[[i18n:ui.installing_codex]]", agents_installed:"[[i18n:ui.waiting_for_model_gateway_configuration]]", allocating:"[[i18n:ui.allocating_cloud_computer]]", starting:"[[i18n:ui.starting_cloud_computer]]", connecting:"[[i18n:ui.connecting_to_cloud_computer]]", runtime_ready:"[[i18n:ui.environment_started_agent_installation_pending]]", failed:"[[i18n:ui.environment_preparation_failed]]"};
+  const titles = {checking_resources:"[[i18n:ui.verifying_cloud_computer_resources]]", installing_session_service:"[[i18n:ui.preparing_session_service]]", restoring_model_accounts:"[[i18n:ui.restoring_model_accounts]]", configuring_routes:"[[i18n:ui.configuring_agent_models]]", installing_model_plugins:"[[i18n:ui.configuring_model_plugins]]", migrating_credentials:"[[i18n:ui.migrating_model_credentials]]", discovering_providers:"[[i18n:ui.loading_model_configuration]]", waiting_credentials:"[[i18n:ui.reading_sign_in_credentials]]", credentials_required:"[[i18n:ui.sign_in_again_to_continue_setup]]", installing_pi:"[[i18n:ui.installing_pi]]", installing_opencode:"[[i18n:ui.installing_opencode]]", starting_magpie:"[[i18n:ui.starting_model_gateway]]", installing_node:"[[i18n:ui.installing_runtime_tools]]", installing_magpie:"[[i18n:ui.installing_model_gateway]]", detecting_versions:"[[i18n:ui.discovering_available_agents]]", syncing_versions:"[[i18n:ui.checking_cloud_agents]]", installing_claude:"[[i18n:ui.installing_claude_code]]", installing_codex:"[[i18n:ui.installing_codex]]", agents_installed:"[[i18n:ui.waiting_for_model_gateway_configuration]]", allocating:"[[i18n:ui.allocating_cloud_computer]]", starting:"[[i18n:ui.starting_cloud_computer]]", connecting:"[[i18n:ui.connecting_to_cloud_computer]]", runtime_ready:"[[i18n:ui.environment_started_agent_installation_pending]]", offline:"[[i18n:ui.offline_waiting_for_network]]", failed:"[[i18n:ui.environment_preparation_failed]]"};
   const row = document.createElement('div'); row.className = 'preparation-row';
   const title = document.createElement('span'); title.className = 'preparation-title';
-  const reasons = {native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
+  const reasons = {network_offline:"[[i18n:ui.offline_waiting_for_network]]", native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
   title.textContent = reasons[state.status] || titles[state.stage] || "[[i18n:ui.preparing_2]]";
   const indicator = document.createElement('span'); indicator.className = 'preparation-indicator';
+  const isOffline = state.stage === 'offline';
   const needsAction = ['failed', 'credentials_required', 'agents_installed'].includes(state.stage);
-  panel.setAttribute('aria-busy', String(!needsAction));
-  if (needsAction) {
+  panel.setAttribute('aria-busy', String(!needsAction && !isOffline));
+  if (isOffline) {
+    indicator.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3l14 14M16.7 13.5A4 4 0 0 0 15 6.1h-.7A5.5 5.5 0 0 0 4.6 4.7M3.5 8.1A4.5 4.5 0 0 0 5.5 16h8"/></svg>';
+  } else if (needsAction) {
     indicator.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 6v5m0 3h.01"/></svg>';
   } else {
     title.classList.add('loading-shimmer');
@@ -638,6 +666,11 @@ window.renderPreparation = state => {
     indicator.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="progress-track" cx="10" cy="10" r="7.5"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5"/></svg>';
   }
   row.append(title, indicator); panel.append(row);
+  if (isOffline) {
+    const detail = document.createElement('p');
+    detail.textContent = "[[i18n:ui.reconnects_automatically_when_back_online]]";
+    panel.append(detail);
+  }
   if (state.stage === 'failed') {
     const detail = document.createElement('p');
     detail.textContent = "[[i18n:ui.unable_to_finish_setup_please_retry]]";
@@ -764,6 +797,7 @@ window.renderLaunchStatus = (agent,message) => {
 };
 
 window.renderSessionRefreshError = () => {
+ if (window.fennecPreparationVisible) return;
  const note=document.querySelector('#runtime-message');
  note.replaceChildren();
  note.hidden=false;

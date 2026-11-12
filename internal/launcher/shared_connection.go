@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fennec/internal/connectivity"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,9 @@ import (
 )
 
 type SharedConnection struct {
+	Online        func() bool
+	WaitOnline    func(context.Context) error
+	Changes       func() <-chan struct{}
 	startedUnixMS atomic.Int64
 	ctx           context.Context
 	mu            sync.Mutex
@@ -109,11 +113,33 @@ func (manager *SharedConnection) Start() <-chan struct{} {
 			manager.stop()
 		}()
 		for {
+			if manager.WaitOnline != nil {
+				if manager.WaitOnline(manager.ctx) != nil {
+					return
+				}
+			}
+			var netChanged <-chan struct{}
+			if manager.Changes != nil {
+				netChanged = manager.Changes()
+			}
 			manager.Get(manager.ctx)
+			timer := time.NewTimer(5 * time.Second)
 			select {
 			case <-manager.ctx.Done():
+				timer.Stop()
 				return
-			case <-time.After(5 * time.Second):
+			case <-netChanged:
+				timer.Stop()
+				if manager.Online != nil && !manager.Online() {
+					manager.mu.Lock()
+					wasReady := manager.ready
+					manager.ready = false
+					manager.mu.Unlock()
+					if wasReady {
+						manager.stop()
+					}
+				}
+			case <-timer.C:
 			}
 		}
 	}()
@@ -123,6 +149,12 @@ func (manager *SharedConnection) Start() <-chan struct{} {
 func (manager *SharedConnection) Get(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	if manager.Online != nil && !manager.Online() {
+		manager.mu.Lock()
+		manager.ready = false
+		manager.mu.Unlock()
+		return "", connectivity.ErrOffline
 	}
 	manager.mu.Lock()
 	if manager.ctx.Err() != nil {

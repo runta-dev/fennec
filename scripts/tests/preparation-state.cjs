@@ -6,7 +6,8 @@ function element(tag){return {tag,children:[],attrs:{},classes:new Set(),classLi
 function node(tag){const el=element(tag);el.classList.owner=el;return el;}
 const panel=node('panel'),messages=[];
 const runtimePanel=node('runtime-panel');
-const context=vm.createContext({window:{},authorized:true,visibleSessionCount:0,sessionListConnecting:true,routeResults:new Map(),document:{querySelector:selector=>selector==='#runtime-panel'?runtimePanel:panel,createElement:node},send:x=>messages.push(x)});
+const runtimeMessage=node('runtime-message');
+const context=vm.createContext({window:{},authorized:true,visibleSessionCount:0,sessionListConnecting:true,routeResults:new Map(),document:{querySelector:selector=>selector==='#runtime-panel'?runtimePanel:selector==='#runtime-message'?runtimeMessage:panel,createElement:node},send:x=>messages.push(x)});
 vm.runInContext(source.slice(start,end),context);
 for(const stage of ['installing_codex','connecting','configuring_routes']){
  context.window.renderPreparation({stage});
@@ -15,12 +16,23 @@ for(const stage of ['installing_codex','connecting','configuring_routes']){
  assert.equal(panel.children.filter(x=>x.tag==='button').length,0);
 }
 for(const stage of ['failed']){
+ runtimeMessage.className='runtime-note';
+ runtimeMessage.hidden=false;
+ runtimeMessage.children.push(node('span'));
  context.window.renderPreparation({stage});
  assert.equal(panel.attrs['aria-busy'],'false');
+ assert.equal(runtimePanel.hidden,true,'failed setup with zero sessions must not stack an empty session card');
+ assert.equal(runtimeMessage.hidden,true,'preparation banner suppresses duplicate session refresh error notes');
  assert.ok(!panel.children[0].children[1].classes.has('working'));
  const button=panel.children.find(x=>x.tag==='button');assert.ok(button);button.onclick();
  assert.equal(messages.pop(),stage==='credentials_required'?'login':'retry-runtime');
 }
+context.window.renderPreparation({stage:'offline',status:'network_offline'});
+assert.equal(panel.hidden,false);
+assert.equal(panel.attrs['aria-busy'],'false');
+assert.equal(runtimePanel.hidden,true,'offline state with zero sessions must not show duplicate session card');
+assert.equal(panel.children.filter(x=>x.tag==='button').length,0,'offline state recovers automatically without manual retry');
+assert.equal(panel.children.filter(x=>x.tag==='p').length,1,'offline state explains automatic reconnection');
 console.log('PASS preparation waits expose action; active work retains spinner');
 
 for (const stage of ['waiting_credentials','credentials_required']) { context.window.renderPreparation({stage}); assert.equal(panel.hidden,true); assert.equal(panel.children.length,0); }

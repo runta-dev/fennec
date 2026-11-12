@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fennec/internal/account"
 	"fennec/internal/cloudstate"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/runta"
 
@@ -442,5 +443,107 @@ func TestIntentionalCloudDeletionRestoresWithoutPreparationError(t *testing.T) {
 	}
 	if calls.Load() != 1 || manager.Snapshot().Status != "authorized" {
 		t.Fatal("restoration changed login or retried preparation")
+	}
+}
+
+func TestOfflinePausesPreparationAndReconnectRecoversAutomatically(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var online atomic.Bool
+	online.Store(false)
+	network := connectivity.NewMonitor(online.Load, 10*time.Millisecond)
+	var calls atomic.Int64
+	entered := make(chan int64, 4)
+	release := make(chan struct{}, 4)
+	c := &Controller{
+		Account:      manager,
+		Connectivity: network,
+		Prepare: func(ctx context.Context, _ string, w io.Writer) error {
+			n := calls.Add(1)
+			entered <- n
+			select {
+			case <-release:
+				_, err := io.WriteString(w, "{\"type\":\"runtime_progress\",\"runtime_id\":\"shared\",\"stage\":\"agents_installed\",\"status\":\"ready\"}\n")
+				return err
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+	c.Start(ctx)
+
+	waitStage := func(want string) RuntimeState {
+		t.Helper()
+		ticker := time.NewTicker(2 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			state := c.runtimeSnapshot()
+			if state.Stage == want && !state.Running {
+				return state
+			}
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				t.Fatalf("timed out waiting for stage %q (last=%+v)", want, c.runtimeSnapshot())
+			}
+		}
+	}
+
+	initial := waitStage("offline")
+	if !initial.Offline || initial.Error != "" || calls.Load() != 0 {
+		t.Fatalf("offline startup invoked prepare or reported error: %+v calls=%d", initial, calls.Load())
+	}
+	rawState, err := c.Handlers()["state.get"](ctx, nil)
+	if err != nil || rawState.(map[string]any)["online"] != false {
+		t.Fatalf("expected online=false in state.get, got %v %v", rawState, err)
+	}
+
+	// Reconnecting starts preparation automatically without manual retry.
+	online.Store(true)
+	network.Refresh()
+	select {
+	case n := <-entered:
+		if n != 1 {
+			t.Fatalf("unexpected call count %d", n)
+		}
+	case <-ctx.Done():
+		t.Fatal("preparation did not start on reconnect")
+	}
+
+	// Queue a configuration change, then drop offline mid-preparation:
+	// in-flight work cancels immediately, does not report failed, and does not spin offline.
+	if _, err := c.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	online.Store(false)
+	network.Refresh()
+	disconnected := waitStage("offline")
+	if !disconnected.Offline || disconnected.Error != "" {
+		t.Fatalf("mid-flight disconnect misclassified as failure: %+v", disconnected)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if calls.Load() != 1 {
+		t.Fatalf("offline controller kept retrying prepare: calls=%d", calls.Load())
+	}
+
+	// Coming back online resumes the queued reconciliation automatically and reaches ready.
+	online.Store(true)
+	network.Refresh()
+	select {
+	case n := <-entered:
+		if n != 2 {
+			t.Fatalf("expected second prepare call on reconnect, got %d", n)
+		}
+	case <-ctx.Done():
+		t.Fatal("queued reconciliation did not resume on reconnect")
+	}
+	release <- struct{}{}
+	ready := waitStage("ready")
+	if ready.Offline || ready.Error != "" || ready.RuntimeID != "shared" {
+		t.Fatalf("unexpected ready state after reconnect: %+v", ready)
 	}
 }

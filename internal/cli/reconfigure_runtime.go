@@ -67,20 +67,27 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	if magpie {
 		jobs = append(jobs, func(ctx context.Context) error {
 			routes := make([]setup.AgentRoute, len(ids))
-			var workers sync.WaitGroup
 			for i, id := range ids {
+				routes[i] = setup.AgentRoute{Agent: id}
+			}
+			routes, err := setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
+			if err != nil {
+				mark("local_routes")
+				return err
+			}
+			var workers sync.WaitGroup
+			for i, route := range routes {
+				if route.Model != "" {
+					continue
+				}
 				workers.Add(1)
 				go func(i int, id string) {
 					defer workers.Done()
 					routes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{{ID: id, Version: "latest"}})[0]
-				}(i, id)
+				}(i, route.Agent)
 			}
 			workers.Wait()
-			routes, err := setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
 			mark("local_routes")
-			if err != nil {
-				return err
-			}
 			plugins, err := setup.DesiredModelPlugins(s.home)
 			mark("plugins")
 			if err != nil {

@@ -37,9 +37,15 @@ func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, opera
 	service := channel.service
 	channel.mu.Unlock()
 	if operation == "refresh" {
+		if s.network != nil && !s.network.Online() {
+			return channel.cachedListing(false), nil
+		}
 		service.update(ctx)
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if s.network != nil && !s.network.Online() {
+			return channel.cachedListing(false), nil
 		}
 		service.mu.Lock()
 		problem := service.problem

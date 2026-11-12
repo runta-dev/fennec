@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
@@ -26,6 +27,7 @@ import (
 // daemonServices owns the account-scoped processes. UI clients never own these
 // contexts, pipes, credentials, preferences or reconnect timers.
 type daemonServices struct {
+	network                                    *connectivity.Monitor
 	nativeLoginMu                              sync.Mutex
 	loginObserver                              func(context.Context, string, []byte)
 	nativeAccountMu                            sync.Mutex
@@ -62,9 +64,13 @@ type daemonServices struct {
 	hookLeases                                 map[string]hookLease
 }
 
-func newDaemonServices(home string, account *account.Manager) *daemonServices {
+func newDaemonServices(home string, account *account.Manager, monitors ...*connectivity.Monitor) *daemonServices {
 	executable, _ := os.Executable()
-	return &daemonServices{home: home, account: account, entryInstaller: func(ctx context.Context, id string) (string, error) {
+	var network *connectivity.Monitor
+	if len(monitors) > 0 {
+		network = monitors[0]
+	}
+	return &daemonServices{network: network, home: home, account: account, entryInstaller: func(ctx context.Context, id string) (string, error) {
 		return installManagedEntryAt(ctx, executable, id)
 	}}
 }
@@ -139,7 +145,7 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.user = user
 	s.ctx = ctx
 	s.cancel = cancel
-	s.config = brokerConfiguration{Token: token, Device: strings.TrimSpace(string(device)), Socket: filepath.Join(s.home, ".config/fennec/ipc/launch.sock"), AutoProjects: true}
+	s.config = brokerConfiguration{Network: s.network, Token: token, Device: strings.TrimSpace(string(device)), Socket: filepath.Join(s.home, ".config/fennec/ipc/launch.sock"), AutoProjects: true}
 	s.selected = map[string]bool{}
 	s.ready = map[string]bool{}
 	s.approvals = map[string]localssh.Event{}
@@ -425,12 +431,17 @@ func (s *daemonServices) startLinkLocked() {
 	epoch := s.epoch
 	token := s.config.Token
 	name, _ := os.Hostname()
-	config := localssh.LinkConfig{RuntimeID: s.config.RuntimeID, LocalAddress: s.connectorAddress, Name: name, Directory: filepath.Join(s.home, ".config/fennec/ssh")}
+	config := localssh.LinkConfig{RuntimeID: s.config.RuntimeID, LocalAddress: s.connectorAddress, Name: name, Directory: filepath.Join(s.home, ".config/fennec/ssh"), Network: s.network}
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
 		delay := time.Second
 		for ctx.Err() == nil {
+			if s.network != nil {
+				if s.network.WaitOnline(ctx) != nil {
+					return
+				}
+			}
 			_ = localssh.Link(ctx, &runta.Client{Endpoint: "https://api.runta.com", Token: token}, config, func(stage, detail string) {
 				s.mu.Lock()
 				defer s.mu.Unlock()
@@ -441,11 +452,25 @@ func (s *daemonServices) startLinkLocked() {
 				s.status["detail"] = detail
 				_ = writePublicJSON(filepath.Join(s.home, ".config/fennec/connector-status.json"), s.status)
 			})
+			if s.network != nil && !s.network.Refresh() {
+				delay = time.Second
+				continue
+			}
+			var netChanged <-chan struct{}
+			if s.network != nil {
+				netChanged = s.network.Changes()
+			}
 			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
 				timer.Stop()
 				return
+			case <-netChanged:
+				timer.Stop()
+				if s.network != nil && s.network.Online() {
+					delay = time.Second
+				}
+				continue
 			case <-timer.C:
 			}
 			delay = min(delay*2, 30*time.Second)

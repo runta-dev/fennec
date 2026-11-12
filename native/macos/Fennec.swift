@@ -48,6 +48,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var localMonitor: Any?
     private var web: WKWebView!
     private var authorized = false
+    private var isOnline = true
+    private var profileLoaded = false
     private var preparationState: [String:String] = [:]
     private var takeoverAgents = Set<String>()
     private var loadingRuntimes = false
@@ -142,7 +144,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     @objc private func toggle() {
         if popup.isVisible || popupPresentationID != nil { popupPresentationID = nil; popup.orderOut(nil); return }
         refreshAgents()
-        if authorized { loadRuntimes() }
+        if authorized, isOnline { loadRuntimes() }
         let request = UUID()
         popupPresentationID = request
         presentPopup(request, remaining: 40)
@@ -603,12 +605,18 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    }
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
-        if epoch != accountEpoch { accountEpoch = epoch; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews");render("resetCloudComputer") }
+        if epoch != accountEpoch { accountEpoch = epoch; profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews");render("resetCloudComputer") }
+        let online = state["online"] as? Bool ?? true
+        let reconnected = online && !isOnline
+        isOnline = online
         let isAuthorized = account["status"] as? String == "authorized"
         if isAuthorized != authorized {
             authorized = isAuthorized
+            if !authorized { profileLoaded = false }
             render(authorized ? "renderAuthorized" : "renderSignedOut")
-            if authorized { loadProfile() }
+            if authorized, online { loadProfile() }
+        } else if authorized, reconnected, !profileLoaded {
+            loadProfile()
         }
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
@@ -627,6 +635,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         preparationState = events["runtime_progress"] ?? [:]
         if let id = runtime["runtime_id"] as? String { preparationState["runtime_id"] = id }
         if runtime["stage"] as? String == "failed" { preparationState["stage"] = "failed"; preparationState["status"] = "runtime_preparation_failed" }
+        if runtime["stage"] as? String == "offline" || runtime["offline"] as? Bool == true || (!online && authorized && runtime["stage"] as? String != "disabled") {
+            preparationState["stage"] = "offline"
+            preparationState["status"] = "network_offline"
+        }
 	    if runtime["stage"] as? String == "disabled" { preparationState=["stage":"disabled"] }
         for (kind,field,function) in [("model_catalog","models","renderModelCatalog"),("route_results","results","renderRouteResults"),("provider_catalog","candidates","renderProviderCatalog")] {
             if let text = events[kind]?[field], let data = text.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) { render(function,[value]) }
@@ -636,6 +648,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         takeoverAgents = Set(services["selected"] as? [String] ?? [])
         let ready = services["broker_ready"] as? Bool == true
 	    sessionServiceReady=ready
+        if reconnected, authorized, ready { loadRuntimes() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] { render("renderHerdrSessions", [terminals]) }
@@ -646,6 +659,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let epoch = accountEpoch
         control.call("account.profile") { [weak self] result in
             guard let self, self.accountEpoch == epoch, case .success(let value) = result, let profile = value as? [String:Any] else { return }
+            self.profileLoaded = true
             let name = profile["display_name"] as? String ?? profile["email"] as? String
             self.render("renderProfile", [name ?? "", name == nil])
         }
@@ -659,14 +673,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func loadRuntimes() {
-        guard authorized,sessionServiceReady,!loadingRuntimes else { return }
+        guard authorized,isOnline,sessionServiceReady,!loadingRuntimes else { return }
         loadingRuntimes = true; renderRefreshActivity()
         let epoch = accountEpoch
         control.call("sessions.refresh") { [weak self] result in
             guard let self else { return }; self.loadingRuntimes = false; self.renderRefreshActivity()
             guard self.accountEpoch == epoch else { return }
             if case .success(let value) = result, let listing = value as? [String:Any], let rows = listing["terminals"] { self.render("renderHerdrSessions", [rows]) }
-            else { self.render("renderSessionRefreshError") }
+            else if self.isOnline { self.render("renderSessionRefreshError") }
         }
     }
     private func loadBilling() {

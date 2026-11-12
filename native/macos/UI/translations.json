@@ -1311,6 +1311,14 @@
       "zh-CN": "未登录",
       "zh-TW": "未登入"
     },
+    "ui.offline_waiting_for_network": {
+      "en-GB": "No internet connection",
+      "en-US": "No internet connection",
+      "ja": "インターネット未接続",
+      "ko": "인터넷에 연결되어 있지 않음",
+      "zh-CN": "当前无网络连接",
+      "zh-TW": "目前無網路連線"
+    },
     "ui.open_in_browser": {
       "en-US": "Open in browser",
       "ja": "ブラウザで開く",
@@ -1394,6 +1402,14 @@
       "ko": "추론 강도",
       "zh-CN": "推理强度",
       "zh-TW": "推理強度"
+    },
+    "ui.reconnects_automatically_when_back_online": {
+      "en-GB": "Fennec will reconnect automatically when your Mac is back online",
+      "en-US": "Fennec will reconnect automatically when your Mac is back online",
+      "ja": "オンラインに戻ると自動的に再接続します",
+      "ko": "온라인 상태가 되면 자동으로 다시 연결됩니다",
+      "zh-CN": "网络恢复后将自动重连",
+      "zh-TW": "網路恢復後將自動重新連線"
     },
     "ui.refresh_account": {
       "en-US": "Refresh account",

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
 	"fennec/internal/launchprofile"
@@ -38,6 +39,7 @@ type fenServiceReply struct {
 }
 
 type fenSessionService struct {
+	network    *connectivity.Monitor
 	stop       func(context.Context, launcher.LaunchReceipt) (map[string]float64, error)
 	resume     func(context.Context, launcher.LaunchReceipt) (launcher.LaunchPlan, error)
 	mu         sync.Mutex
@@ -56,6 +58,12 @@ type fenSessionService struct {
 }
 
 func (service *fenSessionService) update(ctx context.Context) {
+	if service.network != nil && !service.network.Online() {
+		service.mu.Lock()
+		service.problem = ""
+		service.mu.Unlock()
+		return
+	}
 	service.mu.Lock()
 	if service.refreshing {
 		done := service.updateDone
@@ -91,6 +99,10 @@ func (service *fenSessionService) update(ctx context.Context) {
 	defer close(done)
 	service.refreshing = false
 	if err != nil {
+		if service.network != nil && connectivity.IsOfflineError(err, service.network.Refresh()) {
+			service.problem = ""
+			return
+		}
 		service.problem = "Cloud session refresh failed; showing the last known list."
 		return
 	}
@@ -254,6 +266,7 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 	service := &fenSessionService{home: home, runtimeID: runtimeID, refresh: make(chan struct{}, 1), control: shared.Get}
 	if len(channels) > 0 {
 		channels[0].mu.Lock()
+		service.network = channels[0].network
 		channels[0].service = service
 		channels[0].mu.Unlock()
 		service.list = func(operation context.Context) ([]byte, error) {
@@ -301,13 +314,29 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
+			var netChanged <-chan struct{}
+			if service.network != nil {
+				netChanged = service.network.Changes()
+			}
 			select {
 			case <-ctx.Done():
 				return
+			case <-netChanged:
+				if service.network != nil && service.network.Online() {
+					service.update(ctx)
+				} else {
+					service.mu.Lock()
+					service.problem = ""
+					service.mu.Unlock()
+				}
 			case <-ticker.C:
-				service.update(ctx)
+				if service.network == nil || service.network.Online() {
+					service.update(ctx)
+				}
 			case <-service.refresh:
-				service.update(ctx)
+				if service.network == nil || service.network.Online() {
+					service.update(ctx)
+				}
 			}
 		}
 	}()

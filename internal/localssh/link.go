@@ -11,15 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"fennec/internal/connectivity"
 	"fennec/internal/runta"
 	"golang.org/x/crypto/ssh"
 )
 
 type LinkConfig struct {
-	RuntimeID    string `json:"runtime_id"`
-	LocalAddress string `json:"local_address"`
-	Name         string `json:"name"`
-	Directory    string `json:"-"`
+	RuntimeID    string                `json:"runtime_id"`
+	LocalAddress string                `json:"local_address"`
+	Name         string                `json:"name"`
+	Directory    string                `json:"-"`
+	Network      *connectivity.Monitor `json:"-"`
 }
 
 // Link maintains one reverse connector. Runtime ID must already be provisioned;
@@ -34,6 +36,11 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 	}
 	if err = os.MkdirAll(config.Directory, 0700); err != nil {
 		return err
+	}
+	if config.Network != nil {
+		if err = config.Network.WaitOnline(ctx); err != nil {
+			return nil
+		}
 	}
 	user, err := api.CurrentUser(ctx)
 	if err != nil {
@@ -79,6 +86,13 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 	hostKey := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 	delay := time.Second
 	for ctx.Err() == nil {
+		if config.Network != nil && !config.Network.Online() {
+			emit("offline", alias)
+			if config.Network.WaitOnline(ctx) != nil {
+				return nil
+			}
+			delay = time.Second
+		}
 		emit("connecting", alias)
 		connected := false
 		report := func(stage, detail string) {
@@ -94,12 +108,30 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 		if ctx.Err() != nil {
 			return nil
 		}
+		if config.Network != nil && !config.Network.Refresh() {
+			emit("offline", alias)
+			if config.Network.WaitOnline(ctx) != nil {
+				return nil
+			}
+			delay = time.Second
+			continue
+		}
+		var netChanged <-chan struct{}
+		if config.Network != nil {
+			netChanged = config.Network.Changes()
+		}
 		emit("reconnecting", err.Error())
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return nil
+		case <-netChanged:
+			timer.Stop()
+			if config.Network != nil && config.Network.Online() {
+				delay = time.Second
+			}
+			continue
 		case <-timer.C:
 		}
 		if delay < 30*time.Second {
@@ -144,6 +176,22 @@ func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device,
 	// A stalled SSH connection is closed, allowing the outer loop to reconnect.
 	keepaliveCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if config.Network != nil {
+		go func() {
+			for {
+				changed := config.Network.Changes()
+				if !config.Network.Online() {
+					client.Close()
+					return
+				}
+				select {
+				case <-keepaliveCtx.Done():
+					return
+				case <-changed:
+				}
+			}
+		}()
+	}
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()

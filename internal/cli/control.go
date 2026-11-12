@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fennec/internal/account"
 	"fennec/internal/cloudstate"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launchprofile"
@@ -109,8 +110,9 @@ func callControl(arguments []string, input io.Reader, output io.Writer) error {
 
 func newControlApplication(ctx context.Context, home, executable string) (*account.Manager, *daemonServices, *controlplane.Controller) {
 	manager := account.New(ctx, account.HelperCredentials{Path: filepath.Join(filepath.Dir(executable), "fennec-credentials")}, "https://api.runta.com")
-	services := newDaemonServices(home, manager)
-	controller := &controlplane.Controller{Account: manager, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
+	network := connectivity.NewMonitor(nil, 2*time.Second)
+	services := newDaemonServices(home, manager, network)
+	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
 	for name, handler := range services.hookHandlers() {
 		controller.Additional[name] = handler
