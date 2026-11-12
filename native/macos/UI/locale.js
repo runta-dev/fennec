@@ -47,6 +47,7 @@ function localize() {
     textSources.set(node, {source, output});
   }
   document.querySelectorAll('[aria-label],[placeholder],[title]').forEach(element => {
+    if (element.id === 'permission-mode') element.hidden = true;
     if (element.closest('#session-terminal,#session-output,.session-title:not([data-i18n]),.header-login.account-link:not([data-i18n]),.billing-account-name:not([data-i18n]),.native-account-name[data-identity],.sandbox-root-path')) return;
     const records = attrSources.get(element) || {};
     for (const attribute of ['aria-label','placeholder','title']) {

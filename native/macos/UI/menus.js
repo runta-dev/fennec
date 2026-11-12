@@ -14,6 +14,7 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
   document.querySelector('#user-menu').hidden = true;
   const menu = document.createElement('div');
   menu.className = 'choice-menu';
+  if (select.id === 'permission-mode') menu.id = 'permission-menu';
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', select.labels?.[0]?.textContent || '');
   let lastGroup = '';
@@ -127,7 +128,7 @@ for (const select of document.querySelectorAll('.preference-row select')) {
     icon.setAttribute('aria-hidden', 'true');
     const setTriggerState = () => {
       const selected = select.selectedOptions[0];
-      icon.innerHTML = selected.dataset.iconSvg || '';
+      icon.innerHTML = (selected.dataset.iconSvg || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
       trigger.classList.toggle('is-full', select.value === 'full');
       (trigger.querySelector('.field-value') || trigger.querySelector('span')).textContent = selected.textContent;
     };
