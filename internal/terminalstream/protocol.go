@@ -34,6 +34,11 @@ type Frame struct {
 }
 
 const Window = 65536
+
+// SocketWindow is the largest output window a socket stream may request with
+// Frame.Bytes when it opens. Bulk app-server replies (tool catalogs, file
+// reads) would otherwise wait one round trip per 64 KiB.
+const SocketWindow = 4 << 20
 const Chunk = 16384
 const ProtocolVersion = 7
 

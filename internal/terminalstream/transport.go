@@ -277,6 +277,9 @@ func (transport *Transport) Launch(frame Frame) (*Session, error) {
 		return nil, fmt.Errorf("duplicate terminal stream")
 	}
 	box := newMailbox()
+	if frame.Type == "socket" && frame.Bytes > Window && frame.Bytes <= SocketWindow {
+		box = newMailboxWindow(frame.Bytes)
+	}
 	transport.sessions[frame.ID] = box
 	transport.mu.Unlock()
 	session := &Session{transport: transport, id: frame.ID, events: box}

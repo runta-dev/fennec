@@ -8,6 +8,7 @@ import (
 )
 
 type mailbox struct {
+	window         int
 	mu             sync.Mutex
 	changed        chan struct{}
 	frames         []Frame
@@ -17,7 +18,11 @@ type mailbox struct {
 	err            error
 }
 
-func newMailbox() *mailbox { return &mailbox{changed: make(chan struct{})} }
+func newMailbox() *mailbox { return newMailboxWindow(Window) }
+
+func newMailboxWindow(window int) *mailbox {
+	return &mailbox{window: window, changed: make(chan struct{})}
+}
 
 func (box *mailbox) push(frame Frame) error {
 	box.mu.Lock()
@@ -35,7 +40,7 @@ func (box *mailbox) push(frame Frame) error {
 	if frame.Type == "input_credit" {
 		credits += frame.Bytes
 	}
-	if bytes > Window || credits > Window || len(box.frames) >= 2*Window+8 {
+	if bytes > box.window || credits > Window || len(box.frames) >= 2*Window+8 {
 		return fmt.Errorf("terminal flow window exceeded")
 	}
 	box.bytes, box.credits = bytes, credits

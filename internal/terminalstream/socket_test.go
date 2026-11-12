@@ -144,3 +144,39 @@ func TestSocketReceiptReportsServedMode(t *testing.T) {
 		t.Fatal(frame, err)
 	}
 }
+
+// A socket stream that requests a large window receives far more than 64 KiB
+// before granting any credit; streams that do not ask keep the PTY window.
+func TestSocketStreamHonorsRequestedOutputWindow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	payload := bytes.Repeat([]byte("w"), 1<<20)
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(context.Context, string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go func() { remote.Write(payload) }()
+		return local, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("f", 32), Target: SocketCodexAppServer, Bytes: SocketWindow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" {
+		t.Fatal(frame, err)
+	}
+	received := 0
+	for received < len(payload) {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal("stalled without credit after", received, err)
+		}
+		received += len(frame.Data)
+	}
+}

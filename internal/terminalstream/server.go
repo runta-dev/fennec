@@ -161,6 +161,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
 			session := &serverSession{ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan []byte, 256), inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			if frame.Type == "socket" && frame.Bytes > Window && frame.Bytes <= SocketWindow {
+				session.window = newWindowSize(frame.Bytes)
+			}
 			sessions[frame.ID] = session
 			sessionsMu.Unlock()
 			workers.Add(1)
