@@ -29,7 +29,10 @@ import (
 // rewrites only JSON fields named "cwd" in text messages. Control and binary
 // frames pass through unchanged.
 func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
-	filter := &chatgptPathFilter{Conn: conn, home: home, device: device, paths: loadChatGPTPaths(home)}
+	filter := &chatgptPathFilter{Conn: conn, home: home, device: device, paths: loadChatGPTPaths(home), threads: map[string]bool{}}
+	if served, ok := conn.(interface{ CodexHome() string }); ok {
+		filter.codexHome = served.CodexHome()
+	}
 	filter.inbound.server = false
 	filter.outbound.server = true
 	return filter
@@ -46,6 +49,10 @@ type chatgptPathFilter struct {
 
 	pathsMu sync.Mutex
 	paths   map[string]string // cloud directory -> Mac directory
+
+	codexHome string
+	threadsMu sync.Mutex
+	threads   map[string]bool // thread IDs already checked for migration
 
 	writeMu  sync.Mutex
 	inbound  wsStream
@@ -104,13 +111,21 @@ func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
 }
 
 func (filter *chatgptPathFilter) toCloud(message []byte) []byte {
-	return rewriteMessage(message, filter.desktopServer, func(path string) (string, bool) {
-		if !filepath.IsAbs(path) || strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
-			return "", false
-		}
-		cloud, err := filter.workspace(path)
-		return cloud, err == nil
-	})
+	filter.migrateThreads(message)
+	return rewriteMessage(message, filter.desktopServer, filter.cloudPath)
+}
+
+// toCloudPaths maps cwd fields only, for stored rollouts.
+func (filter *chatgptPathFilter) toCloudPaths(message []byte) []byte {
+	return rewriteCwd(message, filter.cloudPath)
+}
+
+func (filter *chatgptPathFilter) cloudPath(path string) (string, bool) {
+	if !filepath.IsAbs(path) || strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
+		return "", false
+	}
+	cloud, err := filter.workspace(path)
+	return cloud, err == nil
 }
 
 func (filter *chatgptPathFilter) toMac(message []byte) []byte {

@@ -239,6 +239,9 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		if serveDesktopMCP(operation, session, broker, command, crypto.FingerprintSHA256(session.PublicKey()), requireApproval) {
 			return
 		}
+		if serveCodexRollout(operation, session, broker, command, crypto.FingerprintSHA256(session.PublicKey()), requireApproval) {
+			return
+		}
 		policy := broker.effectivePolicy()
 		decisionType := "auto_sandbox"
 		fingerprint := crypto.FingerprintSHA256(session.PublicKey())

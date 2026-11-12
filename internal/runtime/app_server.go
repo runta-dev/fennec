@@ -124,8 +124,11 @@ func linkShared(path, target string) error {
 // appServerConn reports which mode served the stream.
 type appServerConn struct {
 	net.Conn
-	mode string
+	mode, codexHome string
 }
+
+// CodexHome is the CODEX_HOME of the app-server serving this connection.
+func (conn appServerConn) CodexHome() string { return conn.codexHome }
 
 func (conn appServerConn) StreamLabel() string { return conn.mode }
 
@@ -149,7 +152,7 @@ func DialCodexAppServer(ctx context.Context, home string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return appServerConn{Conn: conn, mode: mode}, nil
+	return appServerConn{Conn: conn, mode: mode, codexHome: codexHome}, nil
 }
 
 func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides []string, managed bool) (net.Conn, error) {
