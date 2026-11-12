@@ -5,11 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/audit"
 	"fennec/internal/control"
 	"fennec/internal/hookbridge"
 	"fennec/internal/hookplugins"
+	"fennec/internal/sandbox"
 	"fennec/internal/sessionid"
 	"fmt"
+	"time"
 )
 
 type hookLease struct {
@@ -145,9 +148,41 @@ func (s *daemonServices) executeHook(ctx context.Context, raw json.RawMessage) (
 	defer stop()
 	stopService := context.AfterFunc(current, cancel)
 	defer stopService()
+	started := time.Now()
+	approved := false
 	result := hookbridge.Execute(operation, lease.owner, lease.runtime, executor, request.Input, func(prompt context.Context, description, scope string) (context.Context, func(), error) {
-		return permissions.AuthorizeHook(prompt, operation, description, scope)
+		c, rel, authErr := permissions.AuthorizeHook(prompt, operation, description, scope)
+		if authErr == nil {
+			approved = true
+		}
+		return c, rel, authErr
 	})
+	if s.auditStore != nil {
+		mode := sandbox.ModeWorkspace
+		netAllowed := false
+		if s.sandboxPolicy != nil {
+			pol := s.sandboxPolicy()
+			mode = sandbox.NormalizeMode(pol.Mode)
+			netAllowed = pol.Network
+		}
+		dec := "user_approved"
+		blocked := false
+		if !approved {
+			dec = "user_denied"
+			blocked = true
+		}
+		_ = s.auditStore.Record(audit.Entry{
+			Kind:           "hook",
+			Command:        executor.Description(),
+			SandboxMode:    mode,
+			NetworkAllowed: netAllowed,
+			Decision:       dec,
+			Blocked:        blocked,
+			ExitCode:       result.Code,
+			DurationMS:     time.Since(started).Milliseconds(),
+			Detail:         string(result.Stderr),
+		})
+	}
 	return result, nil
 }
 

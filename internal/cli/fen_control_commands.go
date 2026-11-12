@@ -30,6 +30,10 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	switch args[0] {
 	case "update":
 		return true, fenUpdateCommand(args[1:], output)
+	case "sandbox":
+		return true, fenSandboxCommand(args[1:], output)
+	case "audit":
+		return true, fenAuditCommand(args[1:], output)
 	case "cloud":
 		return true, fenCloudCommand(args[1:], output)
 	case "hooks":
@@ -283,6 +287,8 @@ Usage: fen [attach [session-id]]
   fen sessions | launch <agent> [-- <agent arguments>]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear
+  fen sandbox [status | mode <read-only|workspace|full> | network <on|off> | add-root|remove-root <dir>]
+  fen audit [--blocked | --approved] [--limit <n>] [--clear]
   fen hooks [list|import <file>|remove <name>]
   fen control <method>  (JSON parameters on stdin)
   fen settings [theme|language <value> | magpie on|off | auto-update on|off]

@@ -6,10 +6,14 @@ import (
 	"fennec/internal/agent"
 	"fennec/internal/control"
 	"fennec/internal/runta"
+	"fennec/internal/sandbox"
+	"fennec/internal/syncengine"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -21,15 +25,44 @@ type desktopSettings struct {
 	value   desktopPreferences
 }
 type desktopPreferences struct {
-	Revision     uint64 `json:"revision"`
-	Magpie       bool   `json:"magpie"`
-	NoAutoUpdate bool   `json:"no_auto_update,omitempty"`
-	UpdateSkip   string `json:"update_skip,omitempty"`
-	Environment  string `json:"environment,omitempty"`
-	NoSSHNoDelay bool   `json:"no_ssh_nodelay,omitempty"`
-	Theme        string `json:"theme"`
-	Language     string `json:"language"`
-	Initialized  bool   `json:"initialized"`
+	Revision       uint64   `json:"revision"`
+	Magpie         bool     `json:"magpie"`
+	NoAutoUpdate   bool     `json:"no_auto_update,omitempty"`
+	UpdateSkip     string   `json:"update_skip,omitempty"`
+	Environment    string   `json:"environment,omitempty"`
+	NoSSHNoDelay   bool     `json:"no_ssh_nodelay,omitempty"`
+	SandboxMode    string   `json:"sandbox_mode,omitempty"`
+	SandboxNetwork bool     `json:"sandbox_network,omitempty"`
+	SandboxRoots   []string `json:"sandbox_roots,omitempty"`
+	Theme          string   `json:"theme"`
+	Language       string   `json:"language"`
+	Initialized    bool     `json:"initialized"`
+}
+
+func effectiveSandboxPolicy(home string, prefs desktopPreferences) sandbox.Policy {
+	mode := sandbox.NormalizeMode(prefs.SandboxMode)
+	seen := map[string]bool{}
+	roots := []string{}
+	for _, r := range prefs.SandboxRoots {
+		if norm, err := sandbox.NormalizeRoots([]string{r}); err == nil && len(norm) == 1 && !seen[norm[0]] {
+			seen[norm[0]] = true
+			roots = append(roots, norm[0])
+		}
+	}
+	if regs, err := syncengine.ListProjects(filepath.Join(home, ".config/fennec/projects")); err == nil {
+		for _, reg := range regs {
+			if norm, err := sandbox.NormalizeRoots([]string{reg.Root}); err == nil && len(norm) == 1 && !seen[norm[0]] {
+				seen[norm[0]] = true
+				roots = append(roots, norm[0])
+			}
+		}
+	}
+	sort.Strings(roots)
+	return sandbox.Policy{
+		Mode:          mode,
+		Network:       prefs.SandboxNetwork,
+		WritableRoots: roots,
+	}
 }
 
 func newDesktopSettings(home string) *desktopSettings {
@@ -96,6 +129,12 @@ func validDesktop(value desktopPreferences) bool {
 	if len(value.UpdateSkip) > 64 || strings.ContainsAny(value.UpdateSkip, "\x00\r\n ") {
 		return false
 	}
+	if !sandbox.ValidMode(value.SandboxMode) || len(value.SandboxRoots) > 64 {
+		return false
+	}
+	if _, err := sandbox.NormalizeRoots(value.SandboxRoots); err != nil {
+		return false
+	}
 	if value.Environment != "" {
 		if _, err := runta.ResolveEnvironment(value.Environment); err != nil {
 			return false
@@ -127,16 +166,19 @@ func (s *desktopSettings) update(ctx context.Context, raw json.RawMessage, chang
 func (s *desktopSettings) set(importing bool) control.Handler {
 	return func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var request struct {
-			ExpectedRevision *uint64 `json:"expected_revision"`
-			Magpie           *bool   `json:"magpie"`
-			AutoUpdate       *bool   `json:"auto_update"`
-			NoAutoUpdate     *bool   `json:"no_auto_update"`
-			UpdateSkip       *string `json:"update_skip"`
-			Environment      *string `json:"environment"`
-			SSHNoDelay       *bool   `json:"ssh_nodelay"`
-			NoSSHNoDelay     *bool   `json:"no_ssh_nodelay"`
-			Theme            *string `json:"theme"`
-			Language         *string `json:"language"`
+			ExpectedRevision *uint64         `json:"expected_revision"`
+			Magpie           *bool           `json:"magpie"`
+			AutoUpdate       *bool           `json:"auto_update"`
+			NoAutoUpdate     *bool           `json:"no_auto_update"`
+			UpdateSkip       *string         `json:"update_skip"`
+			Environment      *string         `json:"environment"`
+			SSHNoDelay       *bool           `json:"ssh_nodelay"`
+			NoSSHNoDelay     *bool           `json:"no_ssh_nodelay"`
+			SandboxMode      *string         `json:"sandbox_mode"`
+			SandboxNetwork   *bool           `json:"sandbox_network"`
+			SandboxRoots     json.RawMessage `json:"sandbox_roots"`
+			Theme            *string         `json:"theme"`
+			Language         *string         `json:"language"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
@@ -182,6 +224,30 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		if request.NoSSHNoDelay != nil && !importing {
 			next.NoSSHNoDelay = *request.NoSSHNoDelay
 		}
+		if request.SandboxMode != nil && !importing {
+			rawMode := strings.TrimSpace(strings.ToLower(*request.SandboxMode))
+			if rawMode == "full-access" || rawMode == "danger-full-access" {
+				rawMode = sandbox.ModeFull
+			}
+			if !sandbox.ValidMode(rawMode) {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported sandbox mode"}
+			}
+			next.SandboxMode = sandbox.NormalizeMode(rawMode)
+		}
+		if request.SandboxNetwork != nil && !importing {
+			next.SandboxNetwork = *request.SandboxNetwork
+		}
+		if len(request.SandboxRoots) > 0 && !importing {
+			var rawRoots []string
+			if string(request.SandboxRoots) != "null" && json.Unmarshal(request.SandboxRoots, &rawRoots) != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid sandbox roots"}
+			}
+			normalized, err := sandbox.NormalizeRoots(rawRoots)
+			if err != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: err.Error()}
+			}
+			next.SandboxRoots = normalized
+		}
 		if request.Theme != nil {
 			next.Theme = *request.Theme
 		}
@@ -192,7 +258,7 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		if !validDesktop(next) {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported theme or language"}
 		}
-		if next == s.value {
+		if reflect.DeepEqual(next, s.value) {
 			return s.value, nil
 		}
 		if next.Revision == ^uint64(0) {

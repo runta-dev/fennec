@@ -2,6 +2,8 @@ package localssh
 
 import (
 	"context"
+	"fennec/internal/audit"
+	"fennec/internal/sandbox"
 	"fmt"
 	"io"
 	"net"
@@ -41,11 +43,28 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 		watchPairing(ctx, cancel, func() bool { return paired(key) }, time.Second)
 		stop := context.AfterFunc(parent, cancel)
 		defer stop()
+		dest := net.JoinHostPort(target.Host, strconv.Itoa(int(target.Port)))
+		desc := fmt.Sprintf("TCP forwarding to %s", dest)
+		policy := broker.effectivePolicy()
+		mode := sandbox.NormalizeMode(policy.Mode)
+		decisionType := "auto_sandbox"
+		forcePrompt := mode != sandbox.ModeFull && !policy.Network
 		if approval {
 			prompt, done := context.WithTimeout(ctx, 2*time.Minute)
-			allowed := broker.approve(prompt, fmt.Sprintf("TCP forwarding to %s", net.JoinHostPort(target.Host, strconv.Itoa(int(target.Port)))), ssh.FingerprintSHA256(key))
+			allowed, dec := broker.approveWithDecision(prompt, desc, ssh.FingerprintSHA256(key), "tcp_forward", forcePrompt)
+			decisionType = dec
 			done()
 			if !allowed {
+				broker.recordAudit(audit.Entry{
+					Kind:           "tcp_forward",
+					Command:        desc,
+					SandboxMode:    mode,
+					NetworkAllowed: policy.Network,
+					Decision:       "user_denied",
+					Blocked:        true,
+					ExitCode:       126,
+					Detail:         "Forwarding denied",
+				})
 				<-slots
 				channel.Reject(ssh.Prohibited, "forwarding denied")
 				return
@@ -56,8 +75,19 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 			channel.Reject(ssh.Prohibited, "pairing revoked")
 			return
 		}
-		remote, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(target.Host, strconv.Itoa(int(target.Port))))
+		started := time.Now()
+		remote, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", dest)
 		if err != nil {
+			broker.recordAudit(audit.Entry{
+				Kind:           "tcp_forward",
+				Command:        desc,
+				SandboxMode:    mode,
+				NetworkAllowed: policy.Network,
+				Decision:       decisionType,
+				ExitCode:       1,
+				DurationMS:     time.Since(started).Milliseconds(),
+				Detail:         "Destination unavailable",
+			})
 			<-slots
 			channel.Reject(ssh.ConnectionFailed, "destination unavailable")
 			return
@@ -84,5 +114,14 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 			}
 		}()
 		copies.Wait()
+		broker.recordAudit(audit.Entry{
+			Kind:           "tcp_forward",
+			Command:        desc,
+			SandboxMode:    mode,
+			NetworkAllowed: true,
+			Decision:       decisionType,
+			ExitCode:       0,
+			DurationMS:     time.Since(started).Milliseconds(),
+		})
 	}
 }

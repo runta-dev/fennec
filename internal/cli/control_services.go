@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/audit"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
 	"fennec/internal/runta"
+	"fennec/internal/sandbox"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"golang.org/x/crypto/ssh"
@@ -27,6 +29,8 @@ import (
 // daemonServices owns the account-scoped processes. UI clients never own these
 // contexts, pipes, credentials, preferences or reconnect timers.
 type daemonServices struct {
+	auditStore                                 *audit.Store
+	sandboxPolicy                              func() sandbox.Policy
 	network                                    *connectivity.Monitor
 	nativeLoginMu                              sync.Mutex
 	loginObserver                              func(context.Context, string, []byte)
@@ -402,6 +406,8 @@ func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 			}
 		}}
 		permissions := localssh.NewBroker(filepath.Join(s.home, ".config/fennec/ssh"), events)
+		permissions.Audit = s.auditStore
+		permissions.Policy = s.sandboxPolicy
 		s.mu.Lock()
 		s.permissions = permissions
 		s.mu.Unlock()

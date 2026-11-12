@@ -27,6 +27,7 @@ check-ui:
 	node --check native/macos/UI/agent-login.js
 	node --check native/macos/UI/updater.js
 	node --check native/macos/UI/developer.js
+	node --check native/macos/UI/sandbox-audit.js
 	node --check native/macos/UI/onboarding.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
@@ -44,6 +45,7 @@ check-ui:
 	node scripts/tests/fox-motion.cjs
 	node scripts/tests/updater-state.cjs
 	node scripts/tests/developer-mode.cjs
+	node scripts/tests/sandbox-audit-state.cjs
 	node scripts/tests/onboarding-state.cjs
 	node scripts/tests/runtime-metrics.cjs
 
