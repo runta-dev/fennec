@@ -75,7 +75,7 @@ Run `make test-e2e-ops` against the installed paths. Each warm operation sample 
 
 ### UI copy and controls
 
-- Production UI has no Uninstall Fennec entry or dialog. `fen uninstall` remains a clean-macOS acceptance/test-cleanup tool, not a Settings item. Independent cloud-computer deletion is a separate dangerous-action flow.
+- Production UI has no Uninstall Fennec or Delete cloud computer entry or dialog. Both `fen uninstall` and `fen cloud` remain internal clean-macOS test-preparation CLI tools only, never exposed on Settings, Account, or Sessions UI.
 
 - On first initialization, enable Magpie only when it is actually installed; otherwise disable it. Saved choices always take precedence. Configuration/cache remnants are not installation evidence, and a user's explicit off choice must not be automatically reenabled.
 - With Magpie off, expanded agent panels show native account and real subscription information regardless of local/cloud location. Missing migratable credentials are normal signed-out state on the agent card, not a global Sessions credential error or ineffective retry.

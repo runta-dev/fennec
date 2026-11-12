@@ -25,7 +25,6 @@ check-ui:
 	node --check internal/gui/assets/app.js
 	node --check native/macos/UI/panel.js
 	node --check native/macos/UI/agent-login.js
-	node --check native/macos/UI/cloud-computer.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js

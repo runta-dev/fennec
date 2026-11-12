@@ -3,12 +3,12 @@
 Status: implemented in source, not accepted in production. Do not validate by
 deleting the user's current runtime. The running production app is unchanged.
 
-## Shared control plane
+## Internal CLI control plane (hidden from production UI)
 
-UI and CLI use `cloud.status`, `cloud.delete.preview`, `cloud.delete`, and
-`cloud.create`. The Account page has a dangerous-action modal describing permanent
-loss of all cloud sessions, files, and data, while retaining the Mac, local app,
-and login. Exact runtime-ID entry is required. No Uninstall UI entry was added.
+Cloud-computer deletion is an internal clean-macOS test-preparation tool only and
+must not appear in the production UI (Account, Settings, or Sessions) or public
+`fen --help`. The internal CLI uses `cloud.status`, `cloud.delete.preview`,
+`cloud.delete`, and `cloud.create`, requiring exact runtime-ID confirmation.
 
 CLI commands:
 

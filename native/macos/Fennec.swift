@@ -34,7 +34,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	private var viewRevision = 0
     private var lastState: Data?
     private var accountEpoch = -1
-	private var loadingCloudState = false
     private var openedLoginURL: String?
     private var item: NSStatusItem!
     private let permissionPopover = NSPopover()
@@ -605,7 +604,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    }
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
-        if epoch != accountEpoch { accountEpoch = epoch; profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews");render("resetCloudComputer") }
+        if epoch != accountEpoch { accountEpoch = epoch; profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews") }
         let online = state["online"] as? Bool ?? true
         let reconnected = online && !isOnline
         isOnline = online
@@ -694,17 +693,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             switch result { case .success(let value): self.render("renderBilling", [value]); case .failure: self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
         }
     }
-	private func loadCloudState() {
-	    guard authorized,controlReady,!loadingCloudState else{return}
-	    loadingCloudState=true
-	    let epoch=accountEpoch
-	    control.call("cloud.status") { [weak self] result in
-	        guard let self else{return};self.loadingCloudState=false
-	        guard self.accountEpoch==epoch else{return}
-	        if case .success(let value)=result {self.render("renderCloudState",[value])}
-	        else {self.render("renderCloudReadFailure")}
-	    }
-	}
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
         let epoch=accountEpoch
         control.call("sessions.browser",params) { [weak self] result in
@@ -745,20 +733,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
-        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity();if visibleRefreshTab=="account"{loadCloudState()}; return }
-        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling();loadCloudState() } else { refreshAgents() }; return }
-	    for prefix in ["cloud-preview:","cloud-delete:","cloud-create:"] where action.hasPrefix(prefix) {
-	        guard let data=String(action.dropFirst(prefix.count)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else{return}
-	        if prefix=="cloud-preview:" {
-	            let epoch=accountEpoch
-	            control.call("cloud.delete.preview",params) { [weak self] result in
-	                guard let self,self.accountEpoch==epoch else{return}
-	                if case .success(let value)=result{self.render("renderCloudPreview",[value])}else{self.render("renderCloudPreview",[NSNull()])}
-	            }
-	        } else if prefix=="cloud-delete:" {mutate("cloud.delete",params){[weak self] success,_ in self?.render("renderCloudDeleteResult",[success])}}
-	        else {mutate("cloud.create",params){[weak self] success,_ in self?.render("renderCloudCreateResult",[success])}}
-	        return
-	    }
+        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
+        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
         for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
@@ -877,7 +853,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling()
-	    case "load-cloud": loadCloudState()
         case "retry-runtime": mutate("runtime.retry")
         case "clear-trust": mutate("trust.clear") { [weak self] success,_ in self?.render("renderTrustResult",[success]) }
         case "cancel-session-read": sessionReadRevision += 1

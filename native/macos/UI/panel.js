@@ -616,8 +616,8 @@ window.renderPreparation = state => {
 	 window.fennecPreparationVisible=true;
 	 document.querySelector('#runtime-panel').hidden=true;panel.hidden=false;panel.setAttribute('aria-busy','false');
 	 const row=document.createElement('div');row.className='preparation-row';
-	 const button=document.createElement('button');button.type='button';button.textContent='[[i18n:ui.cloud_manage]]';button.onclick=()=>{tab('account');send('load-cloud');};
-	 row.append(button);panel.append(row);return;
+	 const title=document.createElement('span');title.className='preparation-title';title.textContent='[[i18n:ui.cloud_computer_is_not_ready]]';
+	 row.append(title);panel.append(row);return;
 	}
   // Completed infrastructure is not a global error when individual agents
   // still need sign-in or model selection; those actions belong to their cards.
