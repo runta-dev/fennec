@@ -215,12 +215,6 @@ window.renderAgents = agents => {
       <div class="takeover"><span class="takeover-name">[[i18n:ui.run_location]]</span><div class="location-segments" role="radiogroup" aria-label="[[i18n:ui.run_location]]"><button type="button" role="radio" data-location="local" aria-checked="true" disabled>[[i18n:ui.this_mac]]</button><button type="button" role="radio" data-location="cloud" aria-checked="false" disabled>[[i18n:ui.cloud_computer]]</button></div></div>
       <div class="takeover-status">[[i18n:ui.sign_in_for_cloud_takeover]]</div>
 `;
-    if (desktop) {
-      const description = document.createElement('p');
-      description.className = 'agent-description';
-      description.textContent = "[[i18n:ui.chatgpt_codex_desktop_description]]";
-      detail.prepend(description);
-    }
     if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
