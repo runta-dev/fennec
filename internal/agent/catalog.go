@@ -133,7 +133,7 @@ func PanelList(discovered []Agent) []Agent {
 }
 
 func panelList(discovered []Agent, appRoots []string) []Agent {
-	desktop := Agent{ID: CodexDesktopID, Name: "ChatGPT", Icon: "openai.svg", Cloud: true}
+	desktop := Agent{ID: CodexDesktopID, Name: "ChatGPT", Icon: "chatgpt.svg", Cloud: true}
 	if codexDesktopInstalled(appRoots) {
 		desktop.Installed, desktop.Evidence = true, "application"
 	}
