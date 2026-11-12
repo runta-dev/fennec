@@ -149,6 +149,22 @@ func run(tc testCase, mode string) (code int, stdout, stderr string, prompted []
 	return code, stdout, stderr, prompted
 }
 
+func daemonPID() string {
+	out, _ := exec.Command("pgrep", "-f", "Fennec.app/Contents/MacOS/fen control-daemon").Output()
+	return strings.TrimSpace(string(out))
+}
+
+// waitReady waits for the restarted daemon's connector before rerunning.
+func waitReady() {
+	for i := 0; i < 60; i++ {
+		out, _ := exec.Command(fen, "status").Output()
+		if strings.Contains(string(out), `"broker_ready":true`) {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func both(ask, auto, full expect) map[string]expect {
 	return map[string]expect{"ask": ask, "auto": auto, "full": full}
 }
@@ -199,7 +215,17 @@ func main() {
 		for _, tc := range cases {
 			ex := tc.expect[mode]
 			start := time.Now()
+			// A Fennec restart during a case (another session reinstalling the
+			// app) drops in-flight connections; rerun that case once instead of
+			// reporting a permission failure.
+			before := daemonPID()
 			code, stdout, stderr, prompted := run(tc, mode)
+			note := ""
+			if after := daemonPID(); after != before {
+				waitReady()
+				note = " (daemon restarted, rerun)"
+				code, stdout, stderr, prompted = run(tc, mode)
+			}
 			ok := (code == 0) == ex.ok && (len(prompted) > 0) == ex.prompt && (ex.stderr == "" || strings.Contains(stderr+stdout, ex.stderr))
 			verdict := "PASS"
 			if !ok {
@@ -220,7 +246,7 @@ func main() {
 			if len(stdout) > 40 {
 				stdout = stdout[:40]
 			}
-			fmt.Printf("%s %-36s exit=%-3d %4.1fs%s out=%q err=%q\n", verdict, tc.name, code, time.Since(start).Seconds(), reason, stdout, firstErr)
+			fmt.Printf("%s %-36s exit=%-3d %4.1fs%s%s out=%q err=%q\n", verdict, tc.name, code, time.Since(start).Seconds(), note, reason, stdout, firstErr)
 		}
 	}
 	for _, p := range []string{"fennec-e2e-outside", "fennec-e2e-esc", "fennec-e2e-esc-denied"} {
