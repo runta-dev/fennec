@@ -100,12 +100,37 @@ exit 70
 `
 }
 
+// Relay capacity: parkedBridges idle device sockets wait for agents at all
+// times, and a claimed socket is replaced immediately rather than when its
+// connection ends. Long-lived connections (such as desktop MCP servers) can
+// therefore never starve new commands; maxRelayConnections bounds the total.
+const (
+	parkedBridges       = 8
+	maxRelayConnections = 64
+)
+
 func serveRelay(ctx context.Context, client *ssh.Client, port int, local string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var workers sync.WaitGroup
-	// Eight channels permit parallel exec without exposing a public listener.
-	for i := 0; i < 8; i++ {
+	active := make(chan struct{}, maxRelayConnections)
+	forward := func(remote net.Conn) {
+		defer workers.Done()
+		defer func() { <-active }()
+		defer remote.Close()
+		target, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", local)
+		if err != nil {
+			return
+		}
+		stopLocal := context.AfterFunc(ctx, func() { target.Close(); remote.Close() })
+		defer stopLocal()
+		done := make(chan struct{})
+		go func() { io.Copy(remote, target); remote.Close(); close(done) }()
+		io.Copy(target, remote)
+		target.Close()
+		<-done
+	}
+	for i := 0; i < parkedBridges; i++ {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
@@ -118,23 +143,22 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string)
 				stop := context.AfterFunc(ctx, func() { remote.Close() })
 				var marker [1]byte
 				_, err = io.ReadFull(remote, marker[:])
-				if err == nil && marker[0] == 'F' {
-					target, e := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", local)
-					if e == nil {
-						stopLocal := context.AfterFunc(ctx, func() { target.Close() })
-						done := make(chan struct{})
-						go func() { io.Copy(remote, target); remote.Close(); close(done) }()
-						io.Copy(target, remote)
-						target.Close()
-						<-done
-						stopLocal()
-					}
-				}
 				stop()
-				remote.Close()
 				if err != nil {
+					remote.Close()
 					cancel()
 					return
+				}
+				if marker[0] != 'F' {
+					remote.Close()
+					continue
+				}
+				select {
+				case active <- struct{}{}:
+					workers.Add(1)
+					go forward(remote)
+				default:
+					remote.Close() // over capacity: refuse rather than queue
 				}
 			}
 		}()
