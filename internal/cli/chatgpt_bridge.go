@@ -376,7 +376,7 @@ func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, stri
 	b.services.mu.Lock()
 	device := b.services.config.Device
 	b.services.mu.Unlock()
-	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device, Bytes: terminalstream.SocketWindow})
+	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device})
 	if err != nil {
 		return nil, "", err
 	}

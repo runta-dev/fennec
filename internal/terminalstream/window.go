@@ -13,14 +13,11 @@ type flowWindow struct {
 	mu        sync.Mutex
 	changed   *sync.Cond
 	available int
-	capacity  int
 	closed    bool
 }
 
-func newWindow() *flowWindow { return newWindowSize(Window) }
-
-func newWindowSize(capacity int) *flowWindow {
-	window := &flowWindow{available: capacity, capacity: capacity}
+func newWindow() *flowWindow {
+	window := &flowWindow{available: Window}
 	window.changed = sync.NewCond(&window.mu)
 	return window
 }
@@ -42,7 +39,7 @@ func (window *flowWindow) take(maximum int) int {
 func (window *flowWindow) add(count int) bool {
 	window.mu.Lock()
 	defer window.mu.Unlock()
-	if count <= 0 || count > window.capacity-window.available || window.closed {
+	if count <= 0 || count > Window-window.available || window.closed {
 		return false
 	}
 	window.available += count
