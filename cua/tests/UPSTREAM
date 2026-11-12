@@ -1,0 +1,5 @@
+# The shuttle release fennec-cua is measured against. Only the coverage tooling
+# reads this checkout; no upstream code, test or documentation is copied here.
+repo https://github.com/loomhand/shuttle
+commit 6d7027428977062391149c25e3584c36de37a295
+version 0.1.50

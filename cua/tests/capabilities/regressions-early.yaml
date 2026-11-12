@@ -1,0 +1,1032 @@
+domain: regressions-early
+summary: Features and real-app edge cases recorded in shuttle's release notes 0.0.1 through 0.1.39 that fennec-cua must reproduce on macOS, stated as they behave in 0.1.50.
+capabilities:
+  - id: CAP-RGB-001
+    title: Daemon starts on demand and owns the driver
+    behavior: >-
+      The stdio MCP bridge answers `status` by itself and starts the daemon only for the first other
+      tool call. The daemon launches the bundled cua-driver on a private socket next to its own, restarts
+      it whenever it exits, and stops it when the daemon stops. Desk actions are executed one at a time.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestStartsOnFirstNonStatusCall, planned:internal/driver.TestRestartsDriverOnExit]
+    upstream: [changelog/0.1.0/1]
+
+  - id: CAP-RGB-002
+    title: MCP lists the tool set and every tool answers on macOS
+    behavior: >-
+      `tools/list` returns the six fennec-cua tools (observe, act, wait, run, flow, status) with
+      JSON schemas, and every one of them executes on macOS through the accessibility backend. This replaces
+      shuttle's desk, screenshot, gui_plan, script_run and status tools, which first only listed and then ran.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestToolsListSchemas, planned:scenario/EveryToolAnswers]
+    upstream: [changelog/0.0.1/2, changelog/0.1.0/2]
+
+  - id: CAP-RGB-003
+    title: Direct CLI call of a tool
+    behavior: >-
+      `fennec-cua serve` runs the daemon and `fennec-cua do <tool> <json>` sends one tool call to it from a
+      shell and prints the answer, so every verb can be exercised without an MCP client.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestCLIDoRoundTrip]
+    upstream: [changelog/0.0.1/3]
+
+  - id: CAP-RGB-004
+    title: One OpenAI-compatible model endpoint with the user's key
+    behavior: >-
+      Model calls (ask, ground, decide, verify) go to a single configured OpenAI-compatible endpoint
+      (chat completions, plus the decisions endpoint for decide and verify) with a key read from the config
+      file or a named environment variable. The key never reaches a script run or plugin environment.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestSingleEndpointKeySource, planned:internal/script.TestNoModelKeyInRun]
+    upstream: [changelog/0.1.0/3]
+
+  - id: CAP-RGB-005
+    title: Baseline safety controls
+    behavior: >-
+      Stop and resume from the CLI, a global kill hotkey (ctrl+alt+cmd+escape by default) and the menu-bar
+      indicator; stop ends the running plan or script and every call in flight, and no MCP tool or plan step
+      can resume. Confirm mode `coordinate` asks before any step that can end in a click at a point (click,
+      press, drag) and `every` before every action; while the dialog is open other actions fail. An app
+      allowlist checks every call by window, element and point and blacks out other apps in captures. Scripts
+      can be switched off. When the config fails to load, every call except status fails with the load error.
+    surface: policy
+    parity: oracle
+    tests: [planned:scenario/StopEndsRunInFlight, planned:scenario/AllowlistBlackout, planned:internal/policy.TestConfirmModes, planned:internal/policy.TestBadConfigFailsAllButStatus]
+    upstream: [changelog/0.1.0/4]
+
+  - id: CAP-RGB-006
+    title: Plan end skips the window wait for in-place keys
+    behavior: >-
+      A plan whose last step is a shifted character, an arrow key (shift or not) in a plain front window, or
+      typing without a newline returns without the end-of-plan wait for a window change; Tab and shift+Tab
+      still wait. Window listings never read cua-driver's own overlay windows, and a grounded click captures
+      the screen at most three times.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestNoEndWaitForInPlaceKeys, planned:internal/ax.TestSkipsDriverWindows]
+    upstream: [changelog/0.1.0/5]
+
+  - id: CAP-RGB-007
+    title: Bundled cua-driver pinned by checksum
+    behavior: >-
+      The cua-driver fennec-cua bundles is a fixed loomhand fork release verified by sha256 at build time;
+      a mismatch fails the build. (shuttle also bundled Node; fennec-cua runs scripts on goja instead.)
+    surface: packaging
+    parity: spec
+    tests: [planned:internal/driver.TestBundledDriverChecksum]
+    upstream: [changelog/0.1.0/7]
+
+  - id: CAP-RGB-008
+    title: Truncation note and malformed window ids
+    behavior: >-
+      When an outline is shortened, its note says whether the node cap (2500 nodes) or the text budget
+      cut it and points to a narrower observe (element scope or find); an outline exactly at the budget has no
+      note. A focus whose window target is malformed is refused with nothing sent rather than sent with an
+      empty id.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestTruncationNoteKinds, planned:internal/actions.TestFocusRejectsMalformedRef]
+    upstream: [changelog/0.1.2/1]
+
+  - id: CAP-RGB-009
+    title: Plan steps reuse fresh reads
+    behavior: >-
+      A multi-step act reuses the window list it just read when no action ran in between, the type step
+      reuses its window's tree, and a step that fails only to be retried captures no screen for its report.
+      Upstream measured a macOS plan 38 to 71 ms faster; fennec-cua must not regress below that.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestReusesWindowListWithoutAction, planned:internal/plan.TestRetryNoCapture]
+    upstream: [changelog/0.1.2/2, changelog/0.1.37/7]
+
+  - id: CAP-RGB-010
+    title: Plan run log rotates at 1 MiB
+    behavior: >-
+      The daemon's plan run log starts over once it exceeds 1 MiB, so it never grows without bound.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/plan.TestRunLogRotatesAt1MiB]
+    upstream: [changelog/0.1.2/3]
+
+  - id: CAP-RGB-011
+    title: Scroll, drag and screen stillness
+    behavior: >-
+      act scroll sends wheel notches at a point or scroll keys to the front window; act drag goes from one
+      point to another with both ends checked against the allowlist and confirm `coordinate` asking first.
+      wait until still answers once no 8-pixel block of a 320-pixel capture changed by more than 24 in a
+      channel for hold_ms (default 40), or still:false after timeout_ms (default 600, at most 5000, a polling
+      deadline); blocks cycling through three or more contents (clocks, spinners) are volatile and ignored,
+      and a block returning to an earlier content (a caret) counts only with new contents.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/vision.TestStillnessVolatileBlocks, planned:scenario/DragBothEndsAllowlisted, planned:scenario/ScrollAtPoint]
+    upstream: [changelog/0.1.3/1]
+
+  - id: CAP-RGB-012
+    title: Script plugins
+    behavior: >-
+      Spec files in a plugin directory (beside the config, or configured) each add a `*_run` tool that runs
+      its own program under the same contract as a script run (params, timeout, logs, error kinds); turning
+      scripts off turns these off too.
+    surface: extensions
+    parity: oracle
+    tests: [planned:internal/extensions.TestPluginSpecAddsRunTool, planned:internal/extensions.TestScriptsOffDisablesPlugins]
+    upstream: [changelog/0.1.3/2]
+
+  - id: CAP-RGB-013
+    title: Hotkey off and pinned decide builds
+    behavior: >-
+      The kill hotkey can be set to another chord or to `off` (no global hotkey; CLI and menu stop still
+      work). `decide_build` restricts which model builds may answer decide and verify (`#` matches one digit);
+      an answer from another build fails naming it. The driver overlay switch has no effect on macOS.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/hotkey.TestOffRegistersNone, planned:internal/models.TestDecideBuildPin]
+    upstream: [changelog/0.1.3/3]
+
+  - id: CAP-RGB-014
+    title: Long-lived service plugins
+    behavior: >-
+      A plugin file with a `service` key names a long-running program and its tools with their schemas. The
+      daemon starts it in its own process group with a socket in a 0700 directory, restarts it with backoff
+      from 1 s doubling to 30 s (1 s again after 30 s of uptime), splices each call's bytes to it without the
+      desk turn or a deadline, lists its tools over MCP unless `mcp: false`, and on stop refuses new calls and
+      closes those in flight while the service keeps running. On daemon exit it gets TERM, then KILL after 3 s.
+    surface: extensions
+    parity: oracle
+    tests: [planned:internal/extensions.TestServiceBackoff, planned:internal/extensions.TestServiceSplice, planned:internal/extensions.TestStopClosesServiceCalls]
+    upstream: [changelog/0.1.5/3]
+
+  - id: CAP-RGB-015
+    title: Shared endpoint for one group
+    behavior: >-
+      With `socket_group` set, the daemon socket is mode 0660 owned by that group so its members can use it;
+      unset, it is 0600. Stop and resume are still answered only to a peer running as the daemon's own user.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestSocketGroupMode, planned:internal/daemon.TestStopOnlyFromOwnUser]
+    upstream: [changelog/0.1.5/5]
+
+  - id: CAP-RGB-016
+    title: Failed runs are tool errors
+    behavior: >-
+      A run or plugin report that carries an error answers with `isError: true` and the whole report (logs,
+      stderr) as its content, so a client never mistakes a failed run for a success.
+    surface: run
+    parity: oracle
+    tests: [planned:internal/script.TestErrorReportIsToolError]
+    upstream: [changelog/0.1.5/6]
+
+  - id: CAP-RGB-017
+    title: A dropped client cancels its call
+    behavior: >-
+      When a client connection closes before the answer, the call it carried is cancelled: a run is ended
+      as on a stop and the desk turn is released at once instead of being held to the run limit.
+    surface: daemon
+    parity: oracle
+    tests: [planned:internal/daemon.TestDisconnectCancelsCall]
+    upstream: [changelog/0.1.5/7]
+
+  - id: CAP-RGB-018
+    title: Launch brings the app's window to the front
+    behavior: >-
+      act launch of an app, including a fast relaunch of a running one, ends with that app's window in front,
+      so the next step never meets "no focused window" with the app behind Finder. A focus by title takes the
+      active window among equal titles, and the step trace records how the focus ended.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/LaunchFrontsWindow, planned:scenario/FastRelaunchFronts]
+    upstream: [changelog/0.1.6/2, changelog/0.1.6/8]
+
+  - id: CAP-RGB-019
+    title: Extensions receive the daemon endpoint
+    behavior: >-
+      Plugins and services are handed the daemon's endpoint in one documented environment variable, which is
+      the same variable the binary itself reads to find the daemon.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestEndpointEnv]
+    upstream: [changelog/0.1.6/3]
+
+  - id: CAP-RGB-020
+    title: Flows only in the configured store
+    behavior: >-
+      Flows are read and saved only in the store the daemon configures; with none configured, flow calls fail
+      instead of falling back to a guessed directory. Waits use the daemon's own window-change wait, never a
+      polling fallback.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestNoStoreFails]
+    upstream: [changelog/0.1.6/4]
+
+  - id: CAP-RGB-021
+    title: Menu toggle reads its real state
+    behavior: >-
+      A menu step with a desired on/off state reads the item's check mark only while its menu is open (AppKit
+      validates marks then), presses only when it differs, and reads the state back after the press, failing
+      when the press did not take; this avoids toggling twice in a freshly launched TextEdit. The read-back
+      after the press is the 0.1.40 form of this behaviour; on the vision path a caveat is attached instead.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/MenuToggleIdempotent, planned:scenario/MenuToggleAfterLaunch]
+    upstream: [changelog/0.1.7/3]
+
+  - id: CAP-RGB-022
+    title: Window captures without the pointer and locked-screen report
+    behavior: >-
+      A window image never contains the mouse pointer, and input attempted while the screen is locked is
+      reported as refused because of the lock rather than failing obscurely. Background drags reach Electron
+      windows.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/WindowShotNoPointer, planned:internal/driver.TestLockedScreenRefusal]
+    upstream: [changelog/0.1.8/5]
+
+  - id: CAP-RGB-023
+    title: Background input mode
+    behavior: >-
+      With input mode `background`, keys, typing, scrolls and drags go to the named window without fronting
+      it or moving the user's pointer; a point click goes to the window under it or the named one; a press goes
+      to the element's own window even when covered. It never falls back to the foreground: an action that
+      needs it fails naming why. Only focus fronts a window. Results the driver could not confirm carry
+      `unconfirmed` and must not be resent.
+    surface: policy
+    parity: oracle
+    tests: [planned:scenario/BackgroundTypeNoFocusSteal, planned:scenario/BackgroundPressCovered]
+    upstream: [changelog/0.1.9/1]
+
+  - id: CAP-RGB-024
+    title: Point clicks after a capture land on target
+    behavior: >-
+      A desktop click right after a stillness wait, a screenshot or a settle lands exactly on the requested
+      point, at 1x and on Retina (shuttle once landed 4x or 8x off because captures shared the click session).
+      Screen size is reported in pixels on Retina.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/ClickAfterStillLandsOnPoint, planned:internal/vision.TestRetinaScreenPixels]
+    upstream: [changelog/0.1.9/2]
+
+  - id: CAP-RGB-025
+    title: MCP cancellation of running and queued calls
+    behavior: >-
+      The MCP server keeps reading while a call runs; `notifications/cancelled` drops the named request,
+      running or queued, without a reply, and a running one stops acting on the desktop promptly instead of
+      at the run limit.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestCancelRunning, planned:internal/mcpserver.TestCancelQueued]
+    upstream: [changelog/0.1.9/5]
+
+  - id: CAP-RGB-026
+    title: Graceful end of runs and plugins
+    behavior: >-
+      A run's timeout, a stop or a dropped client gives the run a chance to clean up (release held keys)
+      before it is forced to end: script runs are interrupted, plugin processes get SIGTERM then SIGKILL 2 s
+      later, and a client that leaves during the grace ends it at once. The report arrives within about 2.5 s
+      of the timeout with kind `timeout` or `stopped` and the logs kept. A plugin whose daemon died notices
+      within 1 s and exits.
+    surface: run
+    parity: spec
+    tests: [planned:internal/script.TestTimeoutReportsWithLogs, planned:internal/extensions.TestTermThenKill]
+    upstream: [changelog/0.1.9/8]
+
+  - id: CAP-RGB-027
+    title: Background plans
+    behavior: >-
+      In background mode a multi-step act drives the window its launch or wait step named, and the dialogs
+      that window owns, by window id without fronting it. It refuses: a title shared by two windows of the app,
+      steps that need the screen, menu-bar entries, closing a dialog it cannot tie to the window, unconfirmed
+      input that no later read shows, and input after the window is gone; an app that fronts itself fails the
+      step. Windows list sheet owners as `owner`. Since 0.1.40 a save after an escalated chain uses the window
+      the chain left.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/BackgroundPlanSaveSheet, planned:scenario/BackgroundPlanRefusesTwinTitles]
+    upstream: [changelog/0.1.10/1]
+
+  - id: CAP-RGB-028
+    title: Vision mode on macOS
+    behavior: >-
+      observe with vision returns a screenshot with numbered elements, and pixel or index actions map
+      screenshot pixels to the screen by the driver's frame scale, or by the ratio of screen to screenshot
+      width when none is given; window bounds may be fractional. Under an allowlist vision mode is refused.
+      An element whose app refuses its press action gets a hit-checked click at its centre.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/VisionIndexClick, planned:internal/vision.TestScaleFallbackByWidth]
+    upstream: [changelog/0.1.10/2]
+
+  - id: CAP-RGB-029
+    title: Launch grace for busy new apps
+    behavior: >-
+      An app that keeps timing out on accessibility stays in the window list, marked stale; it counts as not
+      responding only after 2 s of misses, and an app in its first 10 s on screen is never dropped, so a slow
+      launch is still visible within a launch step's wait.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestLaunchGraceKeepsWindow]
+    upstream: [changelog/0.1.10/3]
+
+  - id: CAP-RGB-030
+    title: Fast foreground typing
+    behavior: >-
+      Foreground typing of basic-plane text has no per-character delay (20 characters in about 385 ms upstream
+      on a VM); astral characters such as emoji and background typing keep the driver's default pacing.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/ForegroundTypingPace]
+    upstream: [changelog/0.1.10/4]
+
+  - id: CAP-RGB-031
+    title: Screen capture through ScreenCaptureKit
+    behavior: >-
+      A whole-desktop capture uses ScreenCaptureKit rather than spawning a screencapture process (about
+      170 ms against 325 ms at a 1024 edge cap upstream).
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestCaptureLatencyBudget]
+    upstream: [changelog/0.1.10/6]
+
+  - id: CAP-RGB-032
+    title: Auto input mode
+    behavior: >-
+      Input mode `auto` sends input in the background and takes the foreground only for an action background
+      refused before sending anything (or a call that asks for foreground): it fronts that window, runs the
+      action once, and reports input foreground. Unconfirmed input is never resent; a plan retypes in the
+      foreground only when read-back shows nothing landed and the front held. Steps background cannot do
+      (menu bar, grounding, pixel reads, visual expect) front the plan window and the rest of the plan runs in
+      the foreground, keeping that foreground for later key, type, close and Return steps (0.1.40).
+    surface: policy
+    parity: oracle
+    tests: [planned:scenario/AutoFallsBackOnRefusal, planned:internal/plan.TestAutoKeepsForeground]
+    upstream: [changelog/0.1.11/1]
+
+  - id: CAP-RGB-033
+    title: Menu-bar state icon
+    behavior: >-
+      The menu-bar indicator is an 18 pt template icon: outlined when idle, filled while acting, struck through
+      when stopped (and marked while recording). Its tooltip and first menu line name the version and the input
+      mode, and it redraws only on state changes.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestIndicatorStates]
+    upstream: [changelog/0.1.11/2]
+
+  - id: CAP-RGB-034
+    title: Windows on other Spaces
+    behavior: >-
+      In background mode the desktop window list also contains windows on other Spaces (desktops or full-screen
+      apps), marked as on another Space and never active, so background input can target them; this costs about
+      1 ms per listing and degrades to the visible list when the private calls are missing. A title shared by
+      two windows of one app across Spaces is refused naming both, a hidden Space-less twin is never preferred,
+      and window or point observation of an other-Space window fails with a clear on-another-Space error.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/OtherSpaceWindowListed, planned:scenario/OtherSpaceTwinRefused]
+    upstream: [changelog/0.1.11/3]
+
+  - id: CAP-RGB-035
+    title: Overlay does not slow background input
+    behavior: >-
+      With the driver's agent cursor animating, a background key, type or scroll still completes in about
+      0.5-0.6 s on a GPU-less VM, because the overlay repaints only around its cursors.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/BackgroundInputLatencyWithOverlay]
+    upstream: [changelog/0.1.12/2]
+
+  - id: CAP-RGB-036
+    title: Background text to kitty and off-Space lookup
+    behavior: >-
+      Background typing into kitty is delivered as an accessibility value write, which kitty accepts without
+      being key; a blank read-back is reported unconfirmed, not as zero characters delivered. A window on
+      another Space is found through its app's focused or main window, and one of an app with its own renderer
+      (Electron, Chromium, Qt) carries a note that its pixels may be stale.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/KittyBackgroundType, planned:internal/actions.TestBlankReadbackUnconfirmed]
+    upstream: [changelog/0.1.13/1]
+
+  - id: CAP-RGB-037
+    title: Guidance for unconfirmed input to an unseen window
+    behavior: >-
+      Unconfirmed background input to a window nobody sees (another Space, minimized or hidden) carries a hint
+      that it cannot be read back and may have landed even if an image looks unchanged: after typing, do not
+      type again and have the user confirm the text before Return or Send; after a key, click, scroll or drag,
+      do not resend and confirm its effect by a trustworthy read-back or by asking the user. The hint replaces
+      the driver's advice to retry in the foreground and is not an error.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestUnseenWindowHint]
+    upstream: [changelog/0.1.13/2, changelog/0.1.20/1]
+
+  - id: CAP-RGB-038
+    title: Clicks on text fields are hit-verified
+    behavior: >-
+      A left click on a text field, text area or combo box element fronts its window and clicks its centre only
+      when the hit test there finds that element or a descendant (verify_hit, 40 ms hover settle on macOS), so
+      the next typing reaches the field. When the driver refuses (covered, gone, replaced, no foreground), the
+      field gets its press action, or the refusal is returned; a click that failed after sending is not
+      repeated.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/TextFieldClickFocuses, planned:scenario/TextFieldCoveredRefused]
+    upstream: [changelog/0.1.13/5]
+
+  - id: CAP-RGB-039
+    title: Grounded clicks need an accessible element and high confidence
+    behavior: >-
+      A grounded click is made only where the element under the point is not a root (window, frame,
+      application, dialog, document or web area) and belongs to the plan window, a window it owns, or its
+      process; otherwise it refuses with a specific reason before asking a verification model. A grounded
+      point under another window is refused naming that window. The crop check accepts alone at p >= 0.9;
+      below it the zoom check (0.65) and the full-screen check with a ring (0.95) decide. The trace records the
+      check path, the probabilities and the element hit.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestGroundRefusesRoot, planned:internal/plan.TestGroundThresholds, planned:scenario/GroundUnderOtherWindowRefused]
+    upstream: [changelog/0.1.13/6]
+
+  - id: CAP-RGB-040
+    title: Wait for a window already in front is immediate
+    behavior: >-
+      A wait for a window that is already in front returns without reading its tree first, so a just-opened
+      Save As is awaited in milliseconds; a front window with the alert role still stops the plan, even when its
+      tree reads empty.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/plan.TestWaitFrontSkipsTree, planned:scenario/WaitAlertStops]
+    upstream: [changelog/0.1.14/1]
+
+  - id: CAP-RGB-041
+    title: Elements without a press action get a verified click
+    behavior: >-
+      A left or double click on an element whose app refuses its press action with -25206 (window, sheet,
+      toolbar, list, native text field) is retried once as a hit-verified click at the element's centre; if
+      the driver refuses, both errors are returned and nothing is clicked.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/PressRefusedFallsBackVerified]
+    upstream: [changelog/0.1.14/2]
+
+  - id: CAP-RGB-042
+    title: Point hit test reports a covering window
+    behavior: >-
+      observe at a point returns the element of the asked window and, when another window is on top there,
+      `covered` with that window's title and pid, taken from the system-wide hit test. The element carries its
+      pid.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/PointCoveredByOtherWindow]
+    upstream: [changelog/0.1.14/3]
+
+  - id: CAP-RGB-043
+    title: Plans with no front window
+    behavior: >-
+      When no window is in front, a wait step takes the one listed window carrying its title and fronts it,
+      and a step without a window acts in the plan's last window when exactly one listed window has its title.
+      Two matching windows still fail, an alert is not taken for the awaited window, and a plan with no window
+      of its own still stops at no focused window.
+    surface: wait
+    parity: spec
+    tests: [planned:internal/plan.TestNoFrontWindowAdoptsUniqueTitle]
+    upstream: [changelog/0.1.15/1]
+
+  - id: CAP-RGB-044
+    title: Cursor and input on displays with negative coordinates
+    behavior: >-
+      Input and the agent cursor work on a display placed left of or above the main one (negative desktop
+      coordinates), and the background gate enumerates windows without a Space snapshot.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/ClickOnNegativeOriginDisplay]
+    upstream: [changelog/0.1.16/1]
+
+  - id: CAP-RGB-045
+    title: On-screen window wins over a hidden twin
+    behavior: >-
+      Among windows of one app with the same title and none active, observation, find, background input,
+      focus and element clicks pick the newest window shown on a display over a minimized or hidden twin (as
+      WeChat's hidden 280x380 window beside its main one); a window is shown when its AX frame matches an
+      on-screen window of its process. An app's only window of that title can still be picked, equal frames
+      both count as shown, and twins across Spaces are refused.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestPickShownOverHiddenTwin, planned:scenario/HiddenTwinWindow]
+    upstream: [changelog/0.1.16/2, changelog/0.1.16/4]
+
+  - id: CAP-RGB-046
+    title: Window images on any display
+    behavior: >-
+      observe image window returns that window alone as the driver captures it, also on a secondary display;
+      a crop rectangle is in the window image's pixels. A rectangle off the main display fails with a hint to
+      name the window. The window is picked like focus, within the allowlist.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/WindowShotSecondDisplay]
+    upstream: [changelog/0.1.16/3]
+
+  - id: CAP-RGB-047
+    title: Embedded in an app bundle
+    behavior: >-
+      When the host app starts the daemon itself and marks it embedded, permissions belong to that app, the
+      driver starts without prompts of its own, and the MCP bridge only connects: with no daemon answering it
+      fails at once naming the endpoint and never starts or opens an app. This is the Fennec.app layout.
+    surface: packaging
+    parity: spec
+    tests: [planned:internal/mcpserver.TestEmbeddedNoAutostart]
+    upstream: [changelog/0.1.17/1]
+
+  - id: CAP-RGB-048
+    title: Stale driver socket removed before start
+    behavior: >-
+      Before each start of the driver, first or restart, a socket file at its endpoint that refuses a connect
+      is removed; a socket that answers, or any other error, leaves the file alone.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestRemovesDeadSocket]
+    upstream: [changelog/0.1.17/2]
+
+  - id: CAP-RGB-049
+    title: Pointer actions in window-image pixels
+    behavior: >-
+      A click, scroll or drag that names a window takes coordinates in the pixels of that window's image as
+      observe returned it, foreground or background, on any display and scale; a cropped image reports its
+      `origin` so a pixel maps to origin plus offset. The next click after a window image keeps that image's
+      scale, so a click on a window wider than 1280 image pixels does not land short. A title matching two
+      windows alike is refused for such points, and a window capture waits for an in-flight click. Without a
+      window, coordinates are desktop coordinates.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/ClickInWindowImagePixels, planned:scenario/ClickAfterWideWindowShot]
+    upstream: [changelog/0.1.17/3, changelog/0.1.17/4]
+
+  - id: CAP-RGB-050
+    title: Point hit test without a window
+    behavior: >-
+      observe at a point without a window or pid hit-tests the topmost app window at that point, and the
+      allowlist judges that window's app; with no app window there it fails with a no-app-window error.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/PointWithoutWindowSecondDisplay]
+    upstream: [changelog/0.1.17/5]
+
+  - id: CAP-RGB-051
+    title: Foreground input to a named window fronts it
+    behavior: >-
+      A foreground click, type or key that names a window (or a pid or app) brings that window to the front
+      first and refuses when it cannot, instead of going to the frontmost app.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/ForegroundKeyFrontsNamedWindow]
+    upstream: [changelog/0.1.19/1]
+
+  - id: CAP-RGB-052
+    title: Live front-to-back order and capture-scale reuse
+    behavior: >-
+      The desktop window list ranks windows by the live front-to-back order, so the frontmost window ranks
+      highest even when covered windows belong to other apps, and off-screen windows have no rank. A pixel
+      action reuses the capture scale proven by a read of the same window at the same bounds and display
+      layout instead of capturing again.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/WindowOrderAcrossApps, planned:internal/vision.TestReuseProvenScale]
+    upstream: [changelog/0.1.21/1]
+
+  - id: CAP-RGB-053
+    title: Press uses the AX action in the front window
+    behavior: >-
+      press on a button, check box, switch or link in the front window runs its AX press action (web page
+      presses still count as user activation); other elements get a hit-checked centre click. A press the app
+      does not answer within 500 ms (it opened a modal alert) counts as done and is never followed by a click,
+      in background too. An element in a window behind gets a click, which fronts its window.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/PressOpensModalNoDoubleClick, planned:scenario/PressWebUserActivation]
+    upstream: [changelog/0.1.21/2]
+
+  - id: CAP-RGB-054
+    title: Foreground point clicks are real clicks
+    behavior: >-
+      A foreground click at a point fronts the window, moves the pointer and clicks there (so System Settings'
+      sidebar switches panes), with a 50 ms post-action window watch. When another app's window covers the point
+      on any level, or the hit test cannot check it, the click goes to the target window in the background and
+      the result is unconfirmed naming the covering app or the unchecked point.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/SystemSettingsSidebarClick, planned:scenario/FloatingPanelCoversPoint]
+    upstream: [changelog/0.1.21/3]
+
+  - id: CAP-RGB-055
+    title: Background clicks carry the in-window location
+    behavior: >-
+      A background point click stamps the event's window-relative location as a real click would, so apps
+      that read it (WeChat on two displays) are not off by the window origin.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/BackgroundClickWindowLocation]
+    upstream: [changelog/0.1.23/1]
+
+  - id: CAP-RGB-056
+    title: Cover check falls back to the window server list
+    behavior: >-
+      When the AX hit test at a click point fails (apps with little accessibility, such as Qt), the cover check
+      reads the on-screen window list front to back and takes the first visible window below overlay levels,
+      skipping fennec-cua's and the driver's own: the target app's window gets a foreground click, another app's
+      a background click with that app named in unconfirmed; only with no window there is the point reported
+      as unchecked.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestCoverFallbackWindowList, planned:scenario/QtWindowForegroundClick]
+    upstream: [changelog/0.1.23/2]
+
+  - id: CAP-RGB-057
+    title: Model errors name the endpoint safely
+    behavior: >-
+      A model call that cannot connect or times out names the URL requested; one that gets an error status
+      names the URL that answered after redirects; credentials, query and fragment are stripped.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestErrorNamesRedactedURL]
+    upstream: [changelog/0.1.26/3]
+
+  - id: CAP-RGB-058
+    title: Background click focuses a text input
+    behavior: >-
+      A background pixel click on a text input whose AX press leaves it unfocused (a Qt line edit) also gives
+      it keyboard focus, so typing next goes into it, on the main and on a second display.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/BackgroundClickFocusesQtField]
+    upstream: [changelog/0.1.28/1]
+
+  - id: CAP-RGB-059
+    title: Background typing checks the focused field
+    behavior: >-
+      A background type reads the app's focused element first, names it, and refuses with nothing sent when the
+      last background click into that window left focused a text field not containing the click point. A
+      background click result names the focused element afterwards (marked when it is the clicked field). When
+      the app shows no focused text field, a type after a background click refuses unless the call accepts
+      unverified focus, and is then reported unconfirmed.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/BackgroundTypeWrongFocusRefused, planned:internal/actions.TestUnverifiedFocusOptIn]
+    upstream: [changelog/0.1.28/2]
+
+  - id: CAP-RGB-060
+    title: A requested delivery mode the policy does not allow is refused
+    behavior: >-
+      An act that asks for a delivery mode other than the one the configured input mode allows (for example
+      foreground on a background desk) is refused before anything is sent; under auto, asking for foreground
+      is honoured.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestDeliveryModeMismatchRefused]
+    upstream: [changelog/0.1.28/3]
+
+  - id: CAP-RGB-061
+    title: Continuing a stopped flow repairs it
+    behavior: >-
+      When a replayed flow stops at a step and the next act plan continues from the window it left and passes,
+      the flow is saved as its steps before the stop followed by the plan's steps, so the next replay passes.
+      A stop on a field that already holds text says to continue the flow rather than replay it.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestContinuationSavedIntoFlow]
+    upstream: [changelog/0.1.28/4]
+
+  - id: CAP-RGB-062
+    title: Runs report model usage
+    behavior: >-
+      A run or plugin run reports `usage` per model (calls, input, output, cached tokens) for the ask, ground
+      and decide calls it made, tallied after each call so a timed-out or stopped run reports them too; plans
+      report their own the same way.
+    surface: run
+    parity: spec
+    tests: [planned:internal/script.TestUsageSurvivesTimeout]
+    upstream: [changelog/0.1.28/5]
+
+  - id: CAP-RGB-063
+    title: JPEG captures encoded once
+    behavior: >-
+      A window or desktop capture can be returned as JPEG on request; captures keep raw pixels so each image
+      is encoded once, and the default PNG is unchanged.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestJPEGOnRequest]
+    upstream: [changelog/0.1.29/1]
+
+  - id: CAP-RGB-064
+    title: Background typing keeps focus stable; asleep display
+    behavior: >-
+      Background typing into a window with no focused AX element does not make that window lose and regain
+      key first, so a Qt app that resets focus on focus-in keeps text in its search field. A desktop capture
+      wakes a display that is off or refuses with display_asleep.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/QtBackgroundTypeKeepsField, planned:internal/driver.TestDisplayAsleep]
+    upstream: [changelog/0.1.30/1]
+
+  - id: CAP-RGB-065
+    title: Typing through a locked screen
+    behavior: >-
+      With `locked_input` on (off by default), background type and single-key key go through while the screen
+      is locked, to the app's key window as it was before the lock, and are reported unconfirmed; key chords,
+      clicks and every other action still refuse, and a driver without support refuses before sending.
+    surface: policy
+    parity: oracle
+    tests: [planned:scenario/LockedScreenType, planned:internal/policy.TestLockedChordRefused]
+    upstream: [changelog/0.1.30/2]
+
+  - id: CAP-RGB-066
+    title: Out-of-credit model endpoint
+    behavior: >-
+      A 402 Payment Required from the model endpoint fails ask, ground and decide with a message beginning
+      "model credits are used up:" naming model, endpoint and reason, with advice to add credit; a plan step
+      that gets it stops with that error and no fallback model calls.
+    surface: models
+    parity: oracle
+    tests: [planned:internal/models.Test402Message, planned:internal/plan.Test402StopsPlan]
+    upstream: [changelog/0.1.30/3]
+
+  - id: CAP-RGB-067
+    title: Tool description warns about Qt background typing
+    behavior: >-
+      The act tool description notes that in a macOS Qt app with no accessibility focus, background typing into
+      a search field may land in another field, and suggests scrolling the list or foreground input instead.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestActDescriptionQtNote]
+    upstream: [changelog/0.1.30/4]
+
+  - id: CAP-RGB-068
+    title: Plugin crash names its stderr
+    behavior: >-
+      When a plugin process exits nonzero without reporting an error, the run error ends with the last 2 KiB of
+      its stderr instead of only an exit status. (fennec-cua scripts run in-process; this applies to plugins.)
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestCrashStderrTail]
+    upstream: [changelog/0.1.30/5]
+
+  - id: CAP-RGB-069
+    title: Calls wait out a driver restart
+    behavior: >-
+      While the daemon restarts a dead driver, a call made meanwhile waits up to 10 s for it instead of failing
+      with connection refused.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestCallWaitsForRestart]
+    upstream: [changelog/0.1.30/6]
+
+  - id: CAP-RGB-070
+    title: Input naming an app goes there or nowhere
+    behavior: >-
+      key, type, click, scroll and drag can target an app by name and go to that app's window as with its pid;
+      if the app has no window the call fails with nothing sent. Auto mode never moves such a refused action to
+      the foreground, where it would reach whatever app is in front. Since 0.1.40 a pid or app alone reaches
+      that process's window rather than failing for want of a focused window.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/AppTargetNoWindowRefused, planned:internal/policy.TestAutoNoForegroundWithoutWindow]
+    upstream: [changelog/0.1.31/1, changelog/0.1.31/2]
+
+  - id: CAP-RGB-071
+    title: Windows matched by their whole title
+    behavior: >-
+      A window named by the full title the window list shows is found even when the driver lists a shorter,
+      elided title (long Chrome titles); titles come from accessibility matched by window number, also in error
+      messages, at no extra cost.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/LongChromeTitleTarget]
+    upstream: [changelog/0.1.32/1]
+
+  - id: CAP-RGB-072
+    title: Launch with arguments
+    behavior: >-
+      act launch accepts command-line arguments; on macOS they start a new instance, which an app such as
+      Chrome hands to its running instance (a profile and a URL in a new window).
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/LaunchChromeProfileArgs]
+    upstream: [changelog/0.1.32/2]
+
+  - id: CAP-RGB-073
+    title: Record a demonstration into a draft plan
+    behavior: >-
+      flow record start, note and stop record a demonstration and stop answers a draft plan: a launch step and
+      one more per change of app or window, menu clicks merged into menu steps, clicks with button, count,
+      modifiers, crop and point, typed runs and keys, the window each step left as `after`, and caller-named
+      values as parameters; a typed password becomes a secret parameter typed only into a password field and is
+      never saved.
+    surface: flow
+    parity: oracle
+    tests: [planned:scenario/RecordTextEditDraft, planned:internal/flows.TestDraftParameters]
+    upstream: [changelog/0.1.33/1]
+
+  - id: CAP-RGB-074
+    title: What a recording keeps
+    behavior: >-
+      A listen-only recording keeps each click with the element under it read before the app handles it, its
+      window and a crop from that window's capture before the click, each key, the window after each action and
+      the user's notes, in a 0600 file. Password-field keys, password managers, Keychain Access, Passwords,
+      System Settings and fennec-cua's own menu are left out.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestRedactions, planned:internal/record.TestFileMode]
+    upstream: [changelog/0.1.33/2]
+
+  - id: CAP-RGB-075
+    title: Alerts on sheets are their own windows
+    behavior: >-
+      A sheet shown over another sheet (TextEdit's replace confirmation over its Save sheet) is listed as its own
+      dialog window whose owner is the sheet below, and holds the app's focus, so a plan saving under a taken
+      name does not end ok with the alert still open.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/TextEditReplaceAlertOnSheet]
+    upstream: [changelog/0.1.33/3]
+
+  - id: CAP-RGB-076
+    title: Recorded step checks
+    behavior: >-
+      A step may carry `after` (the window expected next; waited for up to 5 s by default, never focused from
+      the background; missing stops the plan), a click may carry its recording (crop match, then grounding,
+      then the recorded point in a window of the recorded size, the trace naming which clicked), and a type may
+      carry the expected focus, re-read every 100 ms for up to 1 s, stopping the plan when focus is elsewhere.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestRecordedClickFallbackOrder, planned:scenario/TypeFocusMismatchStops]
+    upstream: [changelog/0.1.33/4]
+
+  - id: CAP-RGB-077
+    title: Window bounds in listings
+    behavior: >-
+      Every window in the desktop listing carries its bounds [x, y, w, h] in desktop coordinates.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestWindowBounds]
+    upstream: [changelog/0.1.33/5]
+
+  - id: CAP-RGB-078
+    title: Object replacement characters dropped from names
+    behavior: >-
+      Element names and values in outlines and vision element lists omit U+FFFC (embedded-object markers),
+      while the element kept for later actions keeps its original name.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestStripsObjectReplacement]
+    upstream: [changelog/0.1.33/6]
+
+  - id: CAP-RGB-079
+    title: Click reply names the point as the caller gave it
+    behavior: >-
+      A point click's result names the point in the coordinate space the caller used (screenshot or window
+      image pixels), not a mapped desktop point, followed by any scope note.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestClickReplyCallerPoint]
+    upstream: [changelog/0.1.33/7]
+
+  - id: CAP-RGB-080
+    title: Stop report for recorded checks
+    behavior: >-
+      When an after, focus or web check, or a recorded click whose crop, grounding and point all miss, stops a
+      plan, the error carries a stop record with the step, its intent, the reason and the remaining steps, so an
+      agent can take over from there.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestStopRecord]
+    upstream: [changelog/0.1.34/1]
+
+  - id: CAP-RGB-081
+    title: Web drafts from recordings
+    behavior: >-
+      A recording made in a web page drafts web steps: the first step into a page opens its address, each click
+      and typed run carries the page address and DOM id, and named values are templated in addresses too.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestWebDraft]
+    upstream: [changelog/0.1.34/2]
+
+  - id: CAP-RGB-082
+    title: Recording web pages in Chrome and Safari
+    behavior: >-
+      Clicks and typing in Chrome, other Chromium browsers or Safari record the page address and the element's
+      DOM id; a click on the text of a link or button names the link or button. A recording turns Chrome's
+      page tree on for each browser it records and restores it at the end.
+    surface: flow
+    parity: oracle
+    tests: [planned:scenario/RecordChromePage, planned:scenario/RecordSafariPage]
+    upstream: [changelog/0.1.34/3]
+
+  - id: CAP-RGB-083
+    title: Web steps and the Chromium web-tree switch
+    behavior: >-
+      A launch step with a URL opens it in the browser; a step with web {url, id} acts only when the window
+      shows that page (origin and path; query, fragment and trailing slash ignored) and prefers the element with
+      the recorded DOM id over a same-named one. The Chromium page tree is enabled for the plan and restored
+      after. Element observation returns a node's page address and DOM id, and the web-tree switch can be set.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/WebStepPageMismatchStops, planned:scenario/WebStepDomIdPreferred]
+    upstream: [changelog/0.1.34/4]
+
+  - id: CAP-RGB-084
+    title: Foreground input yields to the user
+    behavior: >-
+      Foreground input (click, drag, scroll, pointer move, key, typing, vision actions, fronting a window) is
+      refused with nothing sent while the user used mouse or keyboard in the last second, and goes through once
+      the user stops. fennec-cua's own input, and the 0.6 s after it, do not count as the user's (macOS can take
+      in posted input that late), nor does the user's answer to a confirm dialog. Background input is not
+      checked.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestYieldWindow, planned:scenario/YieldToUserMouse, planned:scenario/OwnTypingNotUser]
+    upstream: [changelog/0.1.35/1, changelog/0.1.37/2]
+
+  - id: CAP-RGB-085
+    title: Caveats for action-only proof
+    behavior: >-
+      A plan step whose only proof is an accessibility action's reply, which no later step reads, is listed under
+      `caveats` in the result while the plan still passes; the vision path of a menu toggle carries a caveat too.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestCaveatsForUnreadActions]
+    upstream: [changelog/0.1.35/4]
+
+  - id: CAP-RGB-086
+    title: One capture per screenshot
+    behavior: >-
+      A vision observe or action takes one full-size capture and downsizes it locally with Lanczos3, never a
+      second capture that would reset the click scale; an action whose settle ends still returns the capture it
+      settled on. PNG encoding uses a fast deflate level. Upstream timings to match: vision state about 658 ms
+      and a click about 2036 ms on a 2x Mac.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestSingleCapture, planned:internal/vision.TestScaleSurvivesDownsize]
+    upstream: [changelog/0.1.36/3, changelog/0.1.37/1, changelog/0.1.37/8]
+
+  - id: CAP-RGB-087
+    title: Idle driver sessions restart
+    behavior: >-
+      When the driver has ended an idle session and refuses it, a vision call starts the session again and sends
+      the request once more.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestRestartsEndedSession]
+    upstream: [changelog/0.1.37/5]
+
+  - id: CAP-RGB-088
+    title: Shorter settles after input
+    behavior: >-
+      The settle after an action ends at its first-change deadline when a Chrome page change reverts to the
+      screen before the action (not after 3 s), and a left click in a dialog that changes nothing waits 600 ms
+      rather than 1.5 s.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestSettleRevertEndsEarly, planned:internal/vision.TestDialogNoChangeSettle]
+    upstream: [changelog/0.1.37/6]
+
+  - id: CAP-RGB-089
+    title: App names match whole word starts or ends
+    behavior: >-
+      launch and app targets match a running app only when each word of the given name equals a word of the
+      app's name, begins one with at least three letters, or ends one with at least four (Note finds Notes or
+      Notepad, Text finds TextEdit, Chrome finds Google Chrome; `e` or `pad` alone find nothing); since 0.1.40 a
+      `+` belongs to its word. On macOS launch of a running app brings it back rather than opening a new one.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/view.TestAppNameWordMatch]
+    upstream: [changelog/0.1.39/3]
+
+excluded:
+  - upstream: [changelog/0.1.38/1, changelog/0.1.25/1, changelog/0.1.26/1, changelog/0.1.5/2, changelog/0.1.7/4, changelog/0.1.7/5, changelog/0.1.9/3, changelog/0.1.13/4, changelog/0.1.16/5]
+    reason: Linux-only (AT-SPI, X11, GNOME, LibreOffice launcher) behaviour; Linux is out of scope for fennec-cua.
+  - upstream: [changelog/0.1.5/4, changelog/0.1.5/8, changelog/0.1.6/6, changelog/0.1.6/7, changelog/0.1.7/1, changelog/0.1.7/2, changelog/0.1.9/4, changelog/0.1.9/6, changelog/0.1.9/7]
+    reason: Android-over-adb backend only; Android is out of scope.
+  - upstream: [changelog/0.1.0/6, changelog/0.1.3/4, changelog/0.1.3/5, changelog/0.1.6/1, changelog/0.1.8/1, changelog/0.1.8/2, changelog/0.1.8/3, changelog/0.1.10/5, changelog/0.1.1/1]
+    reason: Windows-only (UI Automation, named pipes, Job objects, display scaling, static C runtime); Windows is out of scope.
+  - upstream: [changelog/0.1.6/5]
+    reason: Changes the shot text format only on Linux and Android; macOS already returned the image this way, which CAP-RGB-046 and the observe schema cover.
+  - upstream: [changelog/0.0.1/1, changelog/0.0.1/4, changelog/0.0.1/5, changelog/0.0.1/6, changelog/0.1.13/3]
+    reason: Repository layout, release archives, installers and the product rename/paths; packaging-only with no desk behaviour (fennec-cua ships inside Fennec.app).
+  - upstream: [changelog/0.1.0/8, changelog/0.1.20/2]
+    reason: Docs-only notes (setup guide; advice to click a live list from a fresh shot), no behaviour to reproduce.
+  - upstream: [changelog/0.1.3/6]
+    reason: Node runtime packaging speed-up (pre-stripped .mjs); superseded by the in-process esbuild/goja runtime, whose cold start is measured in T6.
+  - upstream: [changelog/0.1.8/4]
+    reason: Test-harness fix (ETXTBSY in parallel cargo tests), process-only.
+  - upstream: [changelog/0.1.5/1]
+    reason: Release bookkeeping (void 0.1.4 version bump); its changes are listed and covered under their own notes.
+  - upstream: [changelog/0.1.6/9, changelog/0.1.9/9, changelog/0.1.10/7]
+    reason: Known-issue notes resolved later (menu toggle fixed in 0.1.7 and re-done in 0.1.40, see CAP-RGB-021; launch drop fixed by the 0.1.10 launch grace, see CAP-RGB-029; the remaining 3000 ms AX latency is the app's own, not a behaviour).
+  - upstream: [changelog/0.1.12/1]
+    reason: Stops a Linux MIT-SHM grabber attempt and its log line on macOS; fennec-cua has no such grabber, so there is nothing to reproduce.
+  - upstream: [changelog/0.1.18/1]
+    reason: Net-zero key edit after background writes to native search fields was removed again in 0.1.21 (cua-driver v0.38.0-loomhand.4).

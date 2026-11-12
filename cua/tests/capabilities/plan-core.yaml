@@ -1,0 +1,480 @@
+domain: plan-core
+summary: The multi-step executor behind act (app steps, target resolution, grounded clicks, background and auto input, terminal and secret typing, recorded window hand-offs) and when it stops and escalates instead of guessing.
+capabilities:
+  - id: CAP-PLN-001
+    title: App step reuses a running app's window
+    behavior: >-
+      An act plan that opens with an app step (launch or focus by app name) first looks for a window already
+      owned by an app of that name, whatever the window titles are, and takes it without launching. Only when
+      no app of that name has a window does it fall back to a window whose title contains the name as a whole
+      word (a name inside a longer word never matches). A window owned by the named app always wins over another
+      app's window whose title merely mentions the name (Mail's "Inbox" beats a browser's "Gmail - Inbox"). The
+      result names the window the plan settled on.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestAppStepReusesRunningAppWindow, planned:internal/plan.TestAppStepPrefersOwningAppOverTitleMention]
+    upstream:
+      - "node/appstep/an app step finds a running app by the app its windows name, whatever their titles"
+      - "node/appstep/an app step for a name that is no package still takes a window whose title contains it"
+      - "node/appstep/an app step takes the window of the app it names before a window whose title holds the name, and never one that holds it inside another word"
+  - id: CAP-PLN-002
+    title: App step launches and takes the launched app's window
+    behavior: >-
+      When the named app has no usable window, the app step launches it exactly once and takes the window the
+      launch raised or the first new window that belongs to the launched app, whatever that app and window are
+      called. A window of another app that changed its title while the launch was pending is never taken as the
+      launched app's window.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestAppStepTakesLaunchedWindow, planned:internal/plan.TestAppStepIgnoresRetitledForeignWindow]
+    upstream:
+      - "node/appstep/an app step takes the window a launch raised, whatever its app and title are called"
+      - "node/appstep/an app step after a launch takes a new window of the launched app, never a window another app retitled meanwhile"
+  - id: CAP-PLN-003
+    title: App step fronts a background launch only
+    behavior: >-
+      If the launch reports that the app started in the background (macOS left another app in front), the app step
+      focuses the new window once, even if the window list already marks it active. If the launch came up in front,
+      or the app was already running with an active window, no extra focus call is made.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestAppStepFocusesBackgroundLaunch]
+    upstream:
+      - "node/appstep/an app step brings a window it launched in the background to the front, even when the window reads active"
+      - "node/appstep/an app step leaves an active window as it is when the launch stays in front or the app was already open"
+  - id: CAP-PLN-004
+    title: App step escalates on an unresponsive app instead of relaunching
+    behavior: >-
+      When the named app has a listed window marked stale (its process stopped answering accessibility), or the
+      front window belongs to the app but cannot be listed, the app step stops at once with a recoverable error
+      that names the window title and pid and lists the affected windows; it never launches a second instance.
+      The same applies to an app step with a URL, including when the stale window's app is known by a shorter
+      name than the one requested (Chrome vs Google Chrome). Name matching here is not a prefix match: a stale
+      Safari does not block launching Safari Technology Preview for a URL.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestAppStepEscalatesOnStaleApp, planned:internal/plan.TestAppStepURLStaleMatchNotPrefix]
+    upstream:
+      - "node/appstep/an app step escalates at once on a listed window whose app stopped answering, and never launches another instance"
+      - "node/appstep/an app step escalates instead of launching when the front window of the app answers no window list"
+      - "node/appstep/an app step with a url escalates on a stale window of the app instead of launching it"
+      - "node/appstep/an app step with a url escalates on a stale window whose app the page launch knows by a shorter name"
+      - "node/appstep/an app step with a url launches an app whose name only begins with the name of a stale browser"
+  - id: CAP-PLN-005
+    title: Showing elements first in name resolution
+    behavior: >-
+      Selector resolution in act only presses elements that are showing: a hidden element is skipped even on an
+      exact name match, and a showing element is pressed through accessibility without any model call even when
+      the tree gives it no frame. A target of a name plus role words ("the Bold button") takes the showing control
+      of that name over hidden menu items of the same name, and falls back to the hidden menu item only when
+      nothing showing matches. Items of lists, tables and tree grids (layout tiles, cells) are valid targets, and
+      a drawn list item wins over a hidden menu entry with the same name; an item outside any list is not taken
+      for a loose description that only shares a word.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/view.TestResolvePrefersShowing, planned:internal/view.TestResolveListItems, planned:internal/plan.TestShowingWithoutFramePressedWithoutModel]
+    upstream:
+      - "node/action/a shown match in a tree without bounds, as GTK 4 gives, is clicked without a model pick"
+      - "node/resolve/a click takes no element that does not show, even by its exact name"
+      - "node/resolve/a click whose target is a name plus role words takes the showing button of that name over hidden menu entries, and a hidden menu entry when nothing showing matches"
+      - "node/resolve/an item of a list or tree grid is a target: a drawn layout tile wins over the hidden menu entries of the same name"
+  - id: CAP-PLN-006
+    title: Window list reuse after a settle
+    behavior: >-
+      After a step's effect settles, the executor keeps the window list it settled on and the next step (or the
+      end-of-plan summary) reuses it if no other daemon call came in between and it is fresh (within about 25 ms);
+      otherwise it lists the windows again. A settle that ended with no front window, and a step that fell back to
+      foreground input, never hand their list on; the next step lists again.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestSettleWindowListReuse]
+    upstream:
+      - "node/action/the step after a click, and the end of the plan, take the window list the click settled on instead of listing the windows again"
+      - "node/action/the step after a settle lists the windows again when another daemon call came after the settle"
+      - "node/action/a settle that ends with no front window leaves the next step to list the windows again"
+      - "node/auto/a background step that fell back to the foreground leaves the end of the plan to list the windows again"
+  - id: CAP-PLN-007
+    title: Model pick guards against ambiguity and mismatch
+    behavior: >-
+      When no element matches a selector by name, act may ask the decision model to pick one from the window's
+      elements. The pick is used only if its probability clears the step's bar (0.7 for clicks) and leads the
+      runner-up by at least 0.6; a closer runner-up stops the plan with an ambiguous-target error that lists the
+      top candidates and asks for a more exact name, and nothing is pressed. A text-only pick is rejected when the
+      element's own name, value and label share no word with the target, when it is a tab but the target does not
+      say tab, or when the target names a role that excludes the element (a spin button is not "the plus button";
+      a radio button is still a "radio button"). A target that names a link takes the link, never the row cell
+      whose name it mentions.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestModelPickMargin, planned:internal/plan.TestModelPickRejectsMismatch]
+    upstream:
+      - "node/resolve/a click whose jev pick has a close runner-up escalates as ambiguous instead of pressing the pick"
+      - "node/resolve/a click that names a link takes a link, never the row cell whose name the target contains"
+      - "node/resolve/a jev pick whose own words share none with the target, or a tab the target does not call a tab, is not found"
+      - "node/resolve/a jev pick of an element whose role the target's own word rules out, a spin button for \"the plus button"
+  - id: CAP-PLN-008
+    title: Screenshot-first model pick with text fallback
+    behavior: >-
+      When a vision-capable decision model is configured, the pick is first made on a screenshot annotated with
+      each candidate's position, so of two same-named links it can take the one in the described row, and it does
+      not require a target word in the element's name. If the screenshot pick fails, the text pick runs instead.
+      Each step (and a locate or find answer) reports which model calls served it, image or text, whether or not
+      an element was found, and reports none when the name alone resolved the target.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestScreenshotPickFirst, planned:internal/plan.TestServedModelCallsReported]
+    upstream:
+      - "node/resolve/a jev pick looks at the screenshot first, so of two links of the same name it takes the one the verify model places in the row"
+      - "node/resolve/a jev pick on the screenshot that fails falls back to the pick on the text"
+      - "node/resolve/a jev pick on the screenshot needs no word of the target in the element's own name, which a pick on the text does"
+      - "node/resolve/computer_act's target keeps the jev calls that answered it as served, found or not, and none when the name alone found it"
+  - id: CAP-PLN-009
+    title: Names for unnamed controls and repeated menu bars
+    behavior: >-
+      An unnamed control is matched by its own description, else by the name or description of the nearest
+      ancestors that contain only it, so icon-only tab buttons resolve by the label of the group around them
+      without a model call. When a window exposes the same menu bar entry several times, a menu step uses the
+      first occurrence instead of treating the duplicates as ambiguous.
+    surface: act
+    parity: spec
+    tests: [planned:internal/view.TestUnnamedControlInheritsLabel, planned:internal/plan.TestMenuRepeatedBarTakesFirst]
+    upstream:
+      - "node/resolve/an unnamed control takes its own description, else the name, else the description, of the ancestors that hold only it, so LibreOffice's sidebar tab buttons read as their decks"
+      - "node/resolve/a menu step takes a menu bar entry that several menu bars repeat from the first of them"
+  - id: CAP-PLN-010
+    title: Grounded click verification ladder
+    behavior: >-
+      A click that falls back to visual grounding is only sent after a visual check of the grounded point:
+      first a 640x400 crop around it must score at least 0.9; failing that, if the element under the point is
+      small (under 5000 square points) or unknown, an upscaled close-up crop (at least 384x288) must score at least
+      0.65; failing that, a full-screen capture with a red ring at the point must score at least 0.95, a stage that
+      can be turned off by configuration. Without a vision model the check asks the text model whether the element
+      under the point is the target (at least 0.7). The step trace and run log carry the check path and every
+      score plus the element under the point; a click that passes no stage is refused and nothing is clicked.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestGroundedCheckLadder, planned:internal/plan.TestGroundedCheckTrace]
+    upstream:
+      - "node/resolve/a grounded click is taken when jev sees the target at the point in a crop, and without that answer when jev says the element under it is the target; the run log keeps the check and its score"
+      - "node/resolve/a grounded click the 640x400 crop refuses is checked on the small element's crop scaled up, then on the screen with a ring at the point, unless DESK_FULL_CHECK=off; the run log keeps each score and the path"
+      - "node/resolve/a 640x400 crop answer below 0.9 leaves a grounded click to the zoom and ring checks, and the trace carries every score and the element under the point"
+  - id: CAP-PLN-011
+    title: Grounded checks use fresh captures in capture pixels
+    behavior: >-
+      The visual checks of a grounded point use captures taken after grounding: one crop capture, then a single
+      full-screen capture from which both the close-up and the ringed image are cut. On a Retina (2x) display the
+      point, crops and ring are placed in capture pixels, and the prompt states the capture size and pixel position.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestGroundedCheckFreshCaptures, planned:internal/vision.TestGroundedCheckRetinaPixels]
+    upstream:
+      - "node/resolve/a grounded step checks fresh captures taken after grounding: the crop, then one screen capture that the zoom and ring are cut from"
+      - "node/resolve/a grounded check places the point in capture pixels on a 2x capture"
+  - id: CAP-PLN-012
+    title: Grounded point hit-test refusals
+    behavior: >-
+      Before any visual check, act hit-tests the grounded point and refuses the click (with a distinct check code
+      in the trace and a reason naming the element) when: no accessible element is under it; the element is a
+      window, dialog, application or document root, or the plan window itself; it belongs to another process or
+      its process is unknown, unless it sits inside the plan window's own element path (out-of-process content
+      hosted in the window counts as the window's); it is in another window of the same process that the plan
+      window does not own; another window covers the point (that window is named); or reading the element failed
+      (the read error is reported, not "no element"). The point is hit-tested again immediately before the click,
+      so a window that appears over it during the check receives no click.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestGroundedPointRefusals, planned:internal/plan.TestGroundedPointRecheckedBeforeClick]
+    upstream:
+      - "node/resolve/a grounded point with no accessible element under it is refused before any check, and the trace says so"
+      - "node/resolve/a grounded point whose element is a window or document root, belongs to another process, or has no known process is refused before any check"
+      - "node/resolve/a grounded point inside the plan window counts as its own whatever the process, as a UWP app shows its content from another process"
+      - "node/resolve/a grounded point in another window of the plan's own process is refused, unless the plan window owns that window"
+      - "node/resolve/a grounded point that another window covers is refused before any check and names that window"
+      - "node/resolve/a grounded point is placed again right before the click, so a window that covers it during the check takes no click"
+      - "node/resolve/a failed read of the element under a grounded point is refused with its reason, not as no element"
+  - id: CAP-PLN-013
+    title: Auto input mode falls back to foreground only when safe
+    behavior: >-
+      In auto input mode an act plan behaves exactly like background mode (the same driver calls) until a step is
+      refused or provably had no effect. Typing that left the target unchanged and did not move the front window
+      is retried once in the foreground after focusing the plan window, and the step reports foreground input;
+      background mode instead stops with a "did not show" error. A macOS menu-bar step, which background mode
+      refuses before acting because the menu bar belongs to the front app, is run in the foreground under auto by
+      fronting the plan window first. Once a step has run in the foreground, a dialog that app then shows in front
+      does not fail later steps; later input goes to the foreground.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/plan.TestAutoMatchesBackground, planned:internal/plan.TestAutoForegroundFallback, planned:internal/plan.TestMenuStepBackgroundRefused]
+    upstream:
+      - "node/auto/an auto plan sends the same desk calls as a background plan when nothing falls back"
+      - "node/auto/typing that did not land and left the front alone runs once in the foreground under auto, and escalates under background"
+      - "node/auto/after auto ran a step in the foreground, a dialog of the app in front fails no later step"
+      - "node/auto/an auto macOS menu step fronts the plan window and runs the entry in the foreground, where background refuses"
+      - "node/background/a macOS menu step in the background refuses before it acts"
+  - id: CAP-PLN-014
+    title: Auto never retypes text that may have landed
+    behavior: >-
+      Auto mode does not retry typing in the foreground unless it can prove nothing landed. It stops with a "did
+      not show" error, after exactly one type call and without focusing anything, when the text landed in part,
+      the target field cannot be read, the window shows no field to read, the field is a secure (password) field
+      whose contents cannot be seen, or the field is long enough that only part of it (a cut tail, read limit
+      64 KiB) could be compared before or after typing.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/plan.TestAutoNoRetypeWhenUnprovable]
+    upstream:
+      - "node/auto/typing that landed in part is never typed again in the foreground"
+      - "node/auto/a field auto cannot read is never typed into again in the foreground"
+      - "node/auto/a window that shows auto no field to read is never typed into again in the foreground"
+      - "node/auto/a password auto cannot see in its field is never typed again in the foreground"
+      - "node/auto/a long field whose cut tail did not change is never typed into again in the foreground"
+      - "node/auto/a long field read in part before or after typing is never typed into again in the foreground"
+  - id: CAP-PLN-015
+    title: Unconfirmed steps and later read-back
+    behavior: >-
+      A step whose input the driver sent but could not confirm is marked unconfirmed with the driver's note. Typing
+      counts as confirmed when a field of the window now holds the typed text more often than before the step;
+      otherwise the plan stops with "did not show" and the note. A press that no later step reads back fails the
+      plan as sent but not confirmed; a later step confirms it only if it reads something the press could change
+      (a verify of the element's state or a passing expect), not a mere window wait or presence check. A note left
+      open by a background step still fails the plan even if a later step switched to the foreground. When a step
+      collects several notes, it keeps the first unless a later note says the target is a terminal.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestUnconfirmedStepReadBack, planned:internal/plan.TestUnconfirmedNoteKept]
+    upstream:
+      - "node/auto/a background note left open before a later step took the foreground still fails the plan"
+      - "node/auto/a step keeps the first note it heard unless a later one names a terminal"
+      - "node/background/typing the driver could not confirm and that the window does not show escalates with the driver note"
+      - "node/background/a press the driver could not confirm and no later step reads back fails the plan with its note"
+      - "node/background/a later step confirms an unconfirmed press only when it reads something the press could change"
+      - "node/background/typing the driver could not confirm passes only when a field holds the text more often than before it"
+  - id: CAP-PLN-016
+    title: Terminal echo decides confirmation and Return
+    behavior: >-
+      When typing into a terminal, act reads the screen back. Text that fully appears is confirmed and the
+      following Return is sent. Text that appears only in part stops the plan before any further key or Return,
+      with no retry. Text that does not appear at all (a no-echo prompt such as a password read) is never retyped:
+      the plan sends the line's single Return, continues, and reports the step unconfirmed with the terminal note.
+      The same holds in background and auto modes.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestTerminalEchoOutcomes]
+    upstream:
+      - "node/auto/typing a terminal does not show is never typed again in the foreground, and the plan goes on with the step unverified"
+      - "node/auto/typing a terminal shows in part stops the plan before its next key"
+      - "node/auto/typing an echoing terminal shows is confirmed"
+      - "node/auto/a typed line a terminal shows in part gets no Return"
+      - "node/auto/a typed line a terminal does not echo is submitted with one Return and stays unverified"
+  - id: CAP-PLN-017
+    title: Terminal echo comparison rules
+    behavior: >-
+      The terminal read-back comparison accepts trailing spaces or tabs the terminal trimmed, whitespace-only text
+      and blank lines that echoed, and a line break the terminal inserted when wrapping the text; it does not ignore
+      changed inner spacing or letter case, which count as "did not show" and stop the plan before Return.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestTerminalEchoComparison]
+    upstream:
+      - "node/auto/terminal confirmation takes a typed trailing space or tab the terminal trimmed"
+      - "node/auto/terminal confirmation takes echoed whitespace-only text and lines"
+      - "node/auto/terminal confirmation takes a line break the terminal wrapped into the text"
+      - "node/auto/terminal confirmation preserves spaces and case before sending Return"
+  - id: CAP-PLN-018
+    title: Terminal read-back on long screens
+    behavior: >-
+      On long terminal screens, including screens beyond the 64 KiB read limit where only the tail is read, the
+      echo check looks at the end of the screen: full text there is confirmed, partial text stops the plan before
+      the next key, and no change lets the plan go on with the step unconfirmed.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestTerminalLongScreenReadBack]
+    upstream:
+      - "node/auto/typing a long terminal screen shows in part at its end stops the plan before its next key"
+      - "node/auto/typing a long terminal screen does not show goes on unverified"
+      - "node/auto/typing a terminal screen past the read limit shows in part at its end stops the plan before its next key"
+      - "node/auto/typing a terminal screen past the read limit does not show goes on unverified"
+      - "node/auto/typing a terminal screen past the read limit shows at its end is confirmed"
+      - "node/auto/typing a long terminal screen shows at its end is confirmed"
+  - id: CAP-PLN-019
+    title: Multi-line typing line by line
+    behavior: >-
+      Multi-line text into a terminal is typed one line at a time, each checked against its own read-back and
+      followed by exactly one Return, waiting for a prompt drawn after the previous Return before checking; CRLF is
+      treated as a line break. A no-echo line that leaves the screen unchanged still gets one Return. Leading blank
+      lines (an empty answer) are submitted on their own and the next quiet line is checked against the screen
+      after them. Leading blank lines go through the focus-checked type path, so if the focus left the field of the
+      last click nothing is typed and the plan stops. Multi-line text into a non-terminal window sends the first
+      line, then all remaining lines in one call with no read in between, and no separate Return keys.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestMultiLineTerminalTyping, planned:internal/plan.TestMultiLineFieldTyping]
+    upstream:
+      - "node/auto/a background type of several lines sends each Return once when a terminal line that does not echo leaves its own screen unchanged"
+      - "node/auto/a background type of several lines into a window that is not a terminal sends the lines after the first in one call with no read between"
+      - "node/auto/a background type of several lines into a terminal types each line against its own read-back"
+      - "node/auto/a terminal line waits for a prompt drawn after its Return before it is checked"
+      - "node/auto/a blank answer before a quiet line is submitted alone and the quiet line is checked against the screen after it"
+      - "node/auto/a CRLF text into a terminal is typed line by line and a partial line stops the plan"
+      - "node/auto/leading blank lines go through the desk type that checks the focus of the last click"
+  - id: CAP-PLN-020
+    title: Multi-line terminal outcome and error detail
+    behavior: >-
+      A multi-line terminal step is confirmed when the driver confirmed every line, even if a Return between them
+      was unconfirmed. A line that did not echo keeps the whole step unconfirmed even if later lines echoed, and its
+      terminal note replaces an earlier Return note. A line that showed only in part stops the plan with an error
+      that names the line number out of the total and states that the previous line and its Return were sent.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestMultiLineTerminalOutcome]
+    upstream:
+      - "node/auto/a terminal step whose lines the driver confirmed is confirmed though a Return between them was not"
+      - "node/auto/a terminal note on a later line replaces a Return note the step heard before it"
+      - "node/auto/a terminal line that did not show stops the plan and says which line and what went before it"
+      - "node/auto/a terminal line that did not show keeps the step unverified though a later line showed"
+  - id: CAP-PLN-021
+    title: Secret typing never leaks and never submits an echoed password
+    behavior: >-
+      A type step marked secret must hold one password line (optionally ending in a newline) and secret must be a
+      boolean; otherwise the plan is refused before anything runs, with an error naming the step. The secret text,
+      and the step's free-text intent, never appear in results, traces, errors, the pending chain or saved flows
+      (the step is kept with only the secret flag). If the password echoed on screen, or the screen changed without
+      a prompt taking it, the Return is not sent and the plan stops. In the foreground the window is read back
+      before the Return as well. A password that does not show in a secure field after typing stops the plan
+      with an error that omits the password.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestSecretStepValidation, planned:internal/plan.TestSecretNeverLeaks, planned:internal/plan.TestSecretEchoBlocksReturn]
+    upstream:
+      - "node/auto/a secret step never shows its text, and a password the terminal echoed stops before its Return"
+      - "node/auto/a foreground secret step reads the window back before its Return, as a foreground type reply names no terminal"
+      - "node/auto/a secret step that is not one password line, or whose secret is not a boolean, is refused"
+      - "node/auto/a secret step drops its intent wherever the step is shown or kept"
+      - "node/background/a password the window does not show after typing escalates without the password"
+  - id: CAP-PLN-022
+    title: Background plan window identity
+    behavior: >-
+      In background input mode the plan types and presses into its app's window behind the front one, names that
+      window (title and pid) on every input call, and focuses, captures or launches nothing extra. A plan with no
+      app or wait step has no target window and stops before input. The window is tracked by id: input is refused
+      when another window of the app has the same title, a window that reuses the id under another process is not
+      the plan window, and once the plan window is gone a same-titled window of the app never replaces it; each case
+      stops the plan with no input sent.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestBackgroundTargetsPlanWindow, planned:internal/plan.TestBackgroundWindowIdentity]
+    upstream:
+      - "node/background/a background plan types into its app window behind the front one, names it on every input and fronts nothing"
+      - "node/background/a background plan with no app or wait step has no target and says so"
+      - "node/background/a background plan reads its window by id and refuses input when another window of the app has the same title"
+      - "node/background/when the plan window is gone a window of the app with the same title never takes its place"
+      - "node/background/a window that takes the plan window id under another process is not the plan window, and no input goes to it"
+  - id: CAP-PLN-023
+    title: Background dialogs and sheets
+    behavior: >-
+      A dialog that the system reports as owned by the plan window becomes the plan's target; a dialog of the same
+      app owned by another window never does. Input for a macOS sheet is addressed to the window the sheet hangs
+      on. An untitled plain window owned by the target never becomes the target. When two new unowned dialogs of
+      the app appear, background input is refused rather than guessing one. A close step without a name closes only
+      the plan window's own dialog and leaves another document's dialog open.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestBackgroundDialogOwnership, planned:internal/plan.TestBackgroundSheetInput]
+    upstream:
+      - "node/background/a dialog the OS says the plan window owns becomes the target, and a window of the same app it does not own never does"
+      - "node/background/input to a macOS sheet goes to the window it hangs on, which owns its pixels"
+      - "node/background/an untitled plain window the target owns, such as a console host, never becomes the target"
+      - "node/background/an unnamed background close leaves another document's dialog open"
+      - "node/background/two new macOS dialogs of the app with no owner make background input refuse instead of picking one"
+  - id: CAP-PLN-024
+    title: Background steps fail when the app steals the front
+    behavior: >-
+      If during a background step the target app brings itself (or the plan window, over the user's other window
+      of the same app) to the front, that step fails with a reason saying the app came to the front, and later
+      steps do not run.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestBackgroundFrontStealFails]
+    upstream:
+      - "node/background/an app that brings itself to the front during a step fails that step with the reason"
+      - "node/background/the plan window coming to the front over the user's other window of the same app fails the step"
+  - id: CAP-PLN-025
+    title: Background mode reads the tree, not the screen
+    behavior: >-
+      In background mode a target missing from the accessibility tree is not searched for on screen (no capture,
+      pixel click or grounding) and the plan stops saying background mode does not read the screen; an expect the
+      tree does not satisfy fails the same way without a screenshot, visual question or focus change. Read-back
+      of a window's fields that carry no value in the snapshot runs with at most four reads in flight.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestBackgroundNoScreenReads, planned:internal/plan.TestBackgroundFieldReadConcurrency]
+    upstream:
+      - "node/background/a background type reads the unvalued fields of its window four at a time"
+      - "node/background/an element that is not in the tree is not looked for on the screen in the background"
+      - "node/background/an expect the tree does not meet fails a background plan without a look at the screen"
+  - id: CAP-PLN-026
+    title: Background clicks in window-image pixels
+    behavior: >-
+      A background click carrying a button, click count or modifiers is delivered to the plan window at the
+      element's position in that window's captured image (window-relative points times the image scale, e.g. 2x
+      on Retina), never to a window covering it. The scale comes from a capture of the plan window of the plan's
+      own app (by pid) even when another app has a window with the same title.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestBackgroundClickImagePixels]
+    upstream:
+      - "node/background/a background click with a button, count or modifiers goes into the plan window in its image pixels, not to the covering window"
+      - "node/background/a background click with a count takes the image scale from the window of its own app when another app has a window of that title"
+  - id: CAP-PLN-027
+    title: Recorded window hand-off on a step
+    behavior: >-
+      A step may name the window it is expected to open (as recorded flows do). The executor waits (default 5 s,
+      overridable per step) for a new window of the app with that title and makes it the plan target; an exact
+      title wins over longer titles that contain it, two windows that only contain it give no target, an older
+      window that already contained the title is never taken, and a dialog not owned by the plan window is never
+      taken (the plan stops saying which window the recording saw). A newly opened matching window also confirms a
+      step the driver could not confirm; a matching window that was already in front before the step does not.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestRecordedAfterWindow, planned:internal/plan.TestRecordedAfterConfirms]
+    upstream:
+      - "node/background/a recorded after names a new window of the app, which the background plan then takes as its target"
+      - "node/background/a recorded after takes the one window of the app with that exact title over a longer title listed first, and no window when two titles only contain it"
+      - "node/background/a recorded after never takes a dialog of the app that the plan window does not own"
+      - "node/background/a recorded after waits for the window the step opens and never takes an older window whose title contains it"
+      - "node/background/a recorded after that the window the step opened satisfies confirms the step the driver could not"
+      - "node/background/a recorded after that was already in front before the step leaves the step the driver could not confirm unverified"
+  - id: CAP-PLN-028
+    title: Wait by title never guesses among several windows
+    behavior: >-
+      A wait for a window by text takes the one window whose title equals the text over others that only contain
+      it; if several windows contain the text and none equals it, the wait fails with a count of the matches and no
+      later input is sent.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/plan.TestWaitTitleExactOverContains]
+    upstream:
+      - "node/background/a background wait whose text several windows contain takes none of them"
+      - "node/background/a background wait takes the one window whose title is exactly the text over others that contain it"
+  - id: CAP-PLN-029
+    title: Saving the last plan as a flow from a new session
+    behavior: >-
+      After an act plan stops partway, a later flow save by name (even from a new daemon session) stores the step
+      chain the last plan left for its window, and a subsequent find resolves targets in the current front window.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestSaveLastPlanChain]
+    upstream:
+      - "node/background/a fresh background run saves the chain the last plan left at its window and locates in the front window"
+excluded:
+  - upstream:
+      - "node/appstep/an app step for a package takes the window that ends in its package, not one whose package it prefixes"
+      - "node/appstep/an app step for a package launches it when only a package it prefixes has a window"
+    reason: >-
+      Package-name matching against window titles that end in an Android package id belongs to shuttle's Android
+      desk; Android is out of scope and macOS window titles carry no package or bundle id.
+  - upstream:
+      - "node/resolve/locate gives a LibreOffice toolbar or tab row element the menu bar height its extents sit above it, until the frame relays out"
+    reason: >-
+      The menu-bar-height correction compensates for LibreOffice's in-window menu bar shifting toolbar extents on
+      Linux toolkits; on macOS LibreOffice uses the global menu bar, so no such offset exists to correct.

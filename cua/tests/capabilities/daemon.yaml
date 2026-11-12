@@ -1,0 +1,732 @@
+domain: daemon
+summary: The fennec-cua daemon and its edges - configuration, scheduling and cancellation, stop and confirm, MCP over stdio and HTTP, the in-process script runner, plugins and service plugins, the cua-driver child, the kill hotkey and indicator, and the model client.
+capabilities:
+  # ---------------------------------------------------------------- models
+  - id: CAP-DMN-001
+    title: Model request shapes
+    behavior: >-
+      Every model call is one non-streaming POST to the configured OpenAI-compatible endpoint with the
+      key as a Bearer header (none when no key is configured). A judgment state is sent as content
+      parts: strings and non-image values become text parts (objects as compact JSON), and image
+      parts become PNG data URLs (data:image/png;base64,...). ask sends the prompt then the images
+      with a 400-token cap to the ask model; ground sends the image then a prompt asking for one
+      JSON point_2d on a 0-1000 scale with a 100-token cap to the ground model; decide on the
+      decisions endpoint sends exactly {model, state, questions}.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestRequestBodies, planned:internal/models.TestStateParts]
+    upstream:
+      - rust/models/src/chat.rs::a_state_becomes_text_and_png_parts
+      - rust/models/src/chat.rs::a_png_part_serializes_as_a_data_url
+      - rust/models/tests/providers.rs::request_bodies_match_what_desk_mts_sends
+  - id: CAP-DMN-002
+    title: Decide answers are complete and normalised
+    behavior: >-
+      A decide reply yields exactly one answer per question. A yes/no question answers a probability
+      clamped to [0, 1]; a choice question answers {choice, confidence, probabilities}, where
+      confidence is the model's own or else the chosen key's probability. A choice outside the
+      question's criteria falls back to the criterion with the highest probability (its probability
+      becomes the confidence), and is an error when no criterion has one. A missing answer, a yes/no
+      without its probability, or a choice without probabilities is an error naming the model and
+      the question; a chat reply is read from the first '{' to the last '}', and a reply with no
+      JSON object, no message text or the wrong JSON type is an error.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestDecideAnswers, planned:internal/models.TestDecideBadReplies]
+    upstream:
+      - rust/models/src/decide.rs::a_chat_reply_becomes_one_answer_per_question
+      - rust/models/src/decide.rs::a_missing_or_partial_answer_is_an_error
+      - rust/models/src/decide.rs::a_choice_outside_the_criteria_falls_back_to_the_likeliest_criterion
+      - rust/models/tests/providers.rs::an_empty_or_partial_reply_is_an_error
+  - id: CAP-DMN-003
+    title: Decide routing between models and endpoints
+    behavior: >-
+      An image-based judgment (a visual expect or verify) uses the verify model when one is
+      configured and the decide model otherwise. decide goes to the decisions URL by default, or,
+      in chat mode, to chat completions asking the same questions as one JSON object, with no
+      Authorization header when no key is set. The answer reports the model asked, the build that
+      served it (the reply's model field) and the generation id when given, plus token usage
+      (input, output, cached) read from either the chat or the decisions field names.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestDecideVerifyModel, planned:internal/models.TestDecideOverChat]
+    upstream:
+      - rust/models/tests/providers.rs::decide_on_the_decisions_endpoint_asks_verify_for_an_image_and_keeps_the_build
+      - rust/models/tests/providers.rs::decide_over_chat_asks_for_the_same_json_without_a_key
+  - id: CAP-DMN-004
+    title: Pinned decide build
+    behavior: >-
+      An optional build pattern restricts which served build may answer a judgment: '#' matches
+      exactly one ASCII digit, every other character matches itself, and lengths must be equal. A
+      reply from a non-matching or unnamed build is an error naming the served build and the
+      pattern; without a pattern any build is accepted. An empty pattern in the configuration is
+      refused at load.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestBuildPattern]
+    upstream:
+      - rust/models/src/lib.rs::a_build_pattern_takes_any_digits_where_it_says_hash_and_nothing_else
+      - rust/models/tests/providers.rs::with_a_decide_build_pattern_only_a_matching_build_answers
+  - id: CAP-DMN-005
+    title: Grounding maps 0-1000 onto the desk area
+    behavior: >-
+      A grounding reply's first "x, y" number pair (found in JSON or free text) on the 0-1000 scale
+      is mapped onto the desk-coordinate area the image shows, independent of the image's pixel
+      size (a 2x Retina capture of a 1280x800 area maps like a 1x one). 1000 lands on the last
+      pixel of the area (left+width-1), 0 on its first; values below 0 or above 1000 are refused
+      with an error naming the target, and a reply with no pair is an error naming the target.
+    surface: models
+    parity: oracle
+    tests: [planned:internal/models.TestGroundPoint, planned:internal/models.TestGroundRetina]
+    upstream:
+      - rust/models/src/lib.rs::a_point_lands_in_desk_coordinates_whatever_the_screenshot_size
+      - rust/models/src/lib.rs::the_1000_edge_is_the_last_pixel_and_beyond_1000_is_refused
+      - rust/models/tests/providers.rs::ground_maps_the_point_onto_the_desk_area_of_a_2x_screenshot_up_to_its_last_pixel
+  - id: CAP-DMN-006
+    title: Model errors name the endpoint safely
+    behavior: >-
+      A model failure names the model and the endpoint with user, password, query and fragment
+      stripped, so a key in a URL never leaks. An HTTP error status names the URL that finally
+      answered (after redirects) with up to 300 characters of the body; a failed send names the URL
+      originally requested. A 402 from decide, ground or ask says the model credits are used up,
+      includes the body when present, and tells the user to add credit or upgrade. An unreachable
+      endpoint surfaces as a model error on the step or script call that needed it, and malformed
+      model arguments from a script are refused as invalid arguments.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestErrorNamesEndpoint, planned:internal/models.TestPaymentRequired]
+    upstream:
+      - rust/models/src/lib.rs::an_error_names_the_endpoint_without_its_credentials_query_or_fragment
+      - rust/models/tests/providers.rs::an_error_status_names_the_endpoint_that_answered_it_after_a_redirect
+      - rust/models/tests/providers.rs::a_402_from_decide_ground_or_ask_says_the_model_credits_are_used_up
+      - rust/models/tests/providers.rs::a_failed_send_names_the_url_it_requested_not_where_a_redirect_led
+      - rust/shuttle/src/daemon.rs::model_calls_go_to_the_providers_and_the_rest_to_the_desk
+
+  # ---------------------------------------------------------------- configuration
+  - id: CAP-DMN-007
+    title: Strict configuration file with defaults
+    behavior: >-
+      fennec-cua reads one TOML file at a fixed per-user path under the user config root. A missing
+      file means defaults (OpenRouter base URL and decisions URL, key variable OPENROUTER_API_KEY,
+      decisions mode, 60 s model timeout, no build pin, default model per role, verify unset). A
+      file overrides only the fields it names. Unknown keys in any table, wrong types and bad enum
+      values are refused with an error that names the offending key or value and its line number,
+      but never echoes the line, so a secret pasted under a wrong key does not print.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestConfigDefaults, planned:internal/daemon.TestConfigStrict]
+    upstream:
+      - rust/models/tests/config.rs::a_missing_file_is_openrouter_with_its_key_variable
+      - rust/models/tests/config.rs::a_file_overrides_some_fields_and_unknown_fields_are_refused
+      - rust/models/tests/config.rs::the_config_path_is_the_program_directory_under_the_config_root
+      - rust/models/tests/config.rs::a_config_error_names_the_line_but_never_prints_it
+  - id: CAP-DMN-008
+    title: Model key source and secrecy
+    behavior: >-
+      The model key comes from the file's api_key when set, else from the configured environment
+      variable when non-empty, else there is none. A file that holds a key and is readable by group
+      or others is refused with a hint to chmod 600; the key never appears in errors, logs, status
+      or debug output.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestConfigKey, planned:internal/daemon.TestConfigKeyFileMode]
+    upstream:
+      - rust/models/tests/config.rs::the_key_comes_from_the_file_else_from_its_variable
+      - rust/models/tests/config.rs::a_file_with_a_key_must_be_owner_only_and_the_key_never_prints
+  - id: CAP-DMN-009
+    title: Safety, tools, driver and input settings
+    behavior: >-
+      Defaults: every app allowed, kill hotkey ctrl+alt+cmd+escape, indicator on, confirm off,
+      scripts (run) on, plugin directory unset (tools.d beside the file), driver overlay on, input
+      mode foreground, locked-screen input off. The file can set an app allowlist, kill hotkey,
+      indicator, confirm mode (off, coordinate, every), turn scripts off, name a plugin directory,
+      turn the overlay off, choose input foreground, background or auto, and allow locked-screen
+      input. Retired or misspelled keys (for example a user-idle setting, cursor instead of overlay,
+      mode instead of input) and non-boolean overlay values are refused naming the key and line.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestConfigSafetyTables]
+    upstream:
+      - rust/models/tests/config.rs::the_safety_and_tools_tables_load_and_default_to_every_app_and_script_run_on
+      - rust/models/tests/config.rs::the_driver_table_turns_the_overlay_off_and_defaults_to_on
+      - rust/models/tests/config.rs::the_desk_table_picks_the_input_mode_and_defaults_to_foreground
+  - id: CAP-DMN-010
+    title: Shared socket group
+    behavior: >-
+      An optional daemon socket group opens the daemon's unix socket to that group (mode 0660);
+      unset, the socket is the user's alone (0600). An empty group name is refused with an error
+      saying to remove it, and other daemon keys such as a raw socket mode are refused as unknown.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestConfigSocketGroup]
+    upstream:
+      - rust/models/tests/config.rs::a_daemon_section_names_the_socket_group_and_an_empty_one_is_refused
+  - id: CAP-DMN-011
+    title: A broken configuration fails closed
+    behavior: >-
+      Because the safety controls live in the configuration, while it fails to load every tool call
+      (observe, act, wait, run, flow, model use) answers with the load error naming the file and
+      line, while stop and resume from the CLI or Fennec UI keep working.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/daemon.TestBrokenConfigFailsClosed]
+    upstream:
+      - rust/shuttle/src/daemon.rs::a_broken_config_fails_every_call_but_stop_since_the_safety_controls_are_in_it
+
+  # ---------------------------------------------------------------- scheduling
+  - id: CAP-DMN-012
+    title: One actor at a time with a bounded wait
+    behavior: >-
+      Input-producing calls (any act step, including pixel or vision actions) and whole act plans
+      or run scripts take the desk turn one at a time; reads do not. A caller that cannot get the
+      turn within 15 s gets a busy error that states nothing was sent. Two scripts started together
+      never interleave their actions: one runs to completion before the other's first action. An
+      action from another session while a script holds the turn is refused as busy after the bound
+      and the script's own actions continue unaffected.
+    surface: daemon
+    parity: oracle
+    tests: [planned:internal/daemon.TestTurnBusyBound, planned:internal/daemon.TestRunsNeverInterleave]
+    upstream:
+      - rust/shuttle/src/daemon.rs::a_computer_act_is_an_action_that_holds_the_turn
+      - rust/shuttle/src/daemon.rs::two_runs_at_once_never_interleave_their_actions
+      - rust/shuttle/src/daemon.rs::a_desk_action_during_a_run_gets_busy_after_the_bound
+  - id: CAP-DMN-013
+    title: Run identity, holds and the acting state
+    behavior: >-
+      Each run gets an owner id unique across daemon restarts (a per-daemon random nonce plus a
+      counter), so a new daemon never confuses its runs with an earlier daemon's. Whatever the run
+      held on the desk (driver sessions, web-tree switches) is released when it ends normally or is
+      dropped. The acting state shown by the indicator is true exactly while a run or an action is
+      in flight and returns to false after a run is dropped or an action is ended by a stop.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestRunIDsUnique, planned:internal/daemon.TestRunReleasesHolds, planned:internal/daemon.TestActingState]
+    upstream:
+      - rust/shuttle/src/daemon.rs::each_daemon_names_its_runs_apart_from_any_earlier_daemon
+      - rust/shuttle/src/daemon.rs::a_run_lets_go_of_its_desk_holds_when_it_ends_or_is_dropped
+      - rust/shuttle/src/daemon.rs::a_run_dropped_mid_flight_is_no_longer_acting
+      - rust/shuttle/src/daemon.rs::a_desk_action_a_stop_ends_is_not_acting_after_resume
+  - id: CAP-DMN-014
+    title: Cancel and disconnect end the call they name
+    behavior: >-
+      An MCP notifications/cancelled for a running or queued request ends it: the request gets no
+      reply, a running script is interrupted within 3 s, its desk turn is freed so the next run
+      starts within 5 s, and later requests on the same session go on (replies on the stdio bridge
+      keep request order). Over HTTP a cancel only reaches the request with that id in its own
+      Mcp-Session-Id; the same id in another session runs to completion. A client that drops its
+      connection mid-call cancels that call the same way.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestCancelRunning, planned:internal/mcpserver.TestCancelQueued, planned:internal/mcpserver.TestHTTPCancelPerSession, planned:internal/daemon.TestDisconnectCancels]
+    upstream:
+      - rust/shuttle/src/daemon.rs::an_mcp_cancel_ends_the_run_it_names_long_before_the_run_would_end
+      - rust/shuttle/src/daemon.rs::a_closed_connection_kills_its_run_with_its_children_and_frees_the_turn
+      - rust/shuttle/src/mcp.rs::a_cancelled_call_closes_its_daemon_connection_gets_no_reply_and_later_requests_go_on
+      - rust/shuttle/src/mcp.rs::a_cancel_drops_a_queued_request_and_replies_keep_their_order
+      - rust/shuttle/src/http.rs::a_cancel_stops_the_call_of_its_own_session_and_spares_the_same_id_of_another
+      - rust/shuttle/src/http.rs::a_dropped_client_closes_its_daemon_connection
+
+  # ---------------------------------------------------------------- stop and confirm
+  - id: CAP-DMN-015
+    title: Stop ends everything until resume
+    behavior: >-
+      A stop (CLI, Fennec UI or kill hotkey) ends every call in flight, including actions and
+      waits, within 1 s and a running script within 5 s, each answering a stopped error that says
+      how to resume. Until resume every observe, act, wait, run and model call fails with that error.
+      A run queued for the turn when the stop came never starts, even if resume happens before the
+      turn frees. After resume calls work again.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestStopEndsInFlight, planned:internal/policy.TestStopUntilResume, planned:internal/policy.TestQueuedRunDiesAtStop]
+    upstream:
+      - rust/shuttle/src/daemon.rs::stop_ends_a_desk_call_in_flight
+      - rust/shuttle/src/daemon.rs::stop_fails_every_call_and_ends_the_run_in_flight_until_resume
+      - rust/shuttle/src/daemon.rs::a_run_waiting_for_the_turn_ends_at_a_stop_even_after_a_resume
+  - id: CAP-DMN-016
+    title: Safety controls are out of an agent's reach
+    behavior: >-
+      Stop, resume and recording control are accepted only from a connection whose peer is the
+      daemon's own user (getpeereid), never from a shared-group member. No MCP tool, argument or
+      crafted name (including path tricks such as ../stop) routes to stop or resume; they are
+      reachable only from the CLI and Fennec's UI.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestOwnerOnlyControls, planned:internal/mcpserver.TestNoToolReachesSafety]
+    upstream:
+      - rust/shuttle/src/daemon.rs::the_stop_resume_and_recording_are_kept_to_the_daemons_own_user
+      - rust/shuttle/src/tools.rs::no_mcp_tool_reaches_the_safety_controls
+  - id: CAP-DMN-017
+    title: Confirm mode gates the actions it names
+    behavior: >-
+      With confirm = coordinate the user is asked before any step that can click at a screen point
+      or element: click, press, a click element action, drag, pointer actions (tap, click,
+      right/double/triple click, long press, swipe, drag), and typing at an element or point (which
+      clicks first); key presses, plain typing, scroll and reads pass without asking. A multi-step
+      act asks once if any step qualifies. confirm = every asks before every action. A no answers
+      declined with nothing sent; a yes lets the action run and the dialog click is not counted as
+      user interference. When no dialog can be shown, a gated action fails with a hint to turn
+      confirm off and nothing is marked acting or stopped.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestConfirmCoordinate, planned:internal/policy.TestConfirmEvery, planned:internal/policy.TestConfirmAllowedIsOwnInput]
+    upstream:
+      - rust/shuttle/src/daemon.rs::confirm_asks_before_the_actions_its_mode_names_and_a_no_declines
+      - rust/shuttle/src/daemon.rs::an_allowed_confirm_counts_as_the_desks_own_input_and_a_declined_one_does_not
+  - id: CAP-DMN-018
+    title: Confirm question names the target and cannot be forged
+    behavior: >-
+      The confirm question reads "Allow <product> to <what>?" naming the verb, the coordinates, the
+      modifiers held, and the target (window title, else process id, else app in background mode,
+      else the focused window), with typed text quoted and clipped to 120 characters and a
+      multi-step act listed step by step (step text clipped to 40) until the 200-character budget,
+      then "(+N more)". Newlines, Unicode line/paragraph separators, bidi controls and other control
+      characters from the agent are shown escaped (\u{...}) so the agent cannot add lines or reorder
+      the text the user reads.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestConfirmQuestionText, planned:internal/policy.TestConfirmQuestionEscapes]
+    upstream:
+      - rust/shuttle/src/daemon.rs::the_confirm_question_names_the_target_and_escapes_what_the_agent_sends
+  - id: CAP-DMN-019
+    title: Confirm dialog ordering
+    behavior: >-
+      A gated action asks only after it holds the desk turn, so its dialog never opens while
+      actions queued before it are still typing, and an action that times out waiting for the turn
+      fails busy without ever opening a dialog. While a dialog is open every other input or read
+      call fails at once with a "confirm dialog is open" error instead of queuing, and calls work
+      normally once it is answered.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestConfirmAfterTurn, planned:internal/policy.TestCallsFailWhileDialogOpen]
+    upstream:
+      - rust/shuttle/src/daemon.rs::a_confirm_dialog_opens_only_once_the_actions_queued_before_it_are_done
+      - rust/shuttle/src/daemon.rs::an_action_waiting_for_the_turn_never_opens_its_dialog
+      - rust/shuttle/src/daemon.rs::every_desk_call_fails_at_once_while_a_confirm_dialog_is_open
+  - id: CAP-DMN-020
+    title: Recording start under stop and confirm
+    behavior: >-
+      flow record start is refused while stopped (also from the menu). Under any confirm mode other
+      than off it asks "Allow <product> to record your input?" only once it holds the desk turn
+      (busy after the bound, no question); a no starts nothing; a stop while it waits for the turn
+      or while its question is open ends it with the stopped error, closes the question and starts
+      no recording, and input works again after resume. An apps argument that is not a list of
+      strings is refused as invalid arguments and starts nothing.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/daemon.TestRecordStartConfirm, planned:internal/daemon.TestRecordStartStop, planned:internal/daemon.TestRecordStartArgs]
+    upstream:
+      - rust/shuttle/src/daemon.rs::the_menu_starts_no_recording_while_stopped
+      - rust/shuttle/src/daemon.rs::record_start_asks_under_confirm_and_a_no_starts_nothing
+      - rust/shuttle/src/daemon.rs::record_start_asks_only_once_it_holds_the_desk
+      - rust/shuttle/src/daemon.rs::a_stop_while_record_start_waits_for_the_desk_ends_it_before_it_asks
+      - rust/shuttle/src/daemon.rs::a_stop_closes_an_open_record_start_question
+      - rust/shuttle/src/daemon.rs::record_start_refuses_apps_that_are_not_a_list_of_names
+
+  # ---------------------------------------------------------------- scripts
+  - id: CAP-DMN-021
+    title: Scripts switch
+    behavior: >-
+      With scripts turned off in the configuration, run and every script plugin tool answer an
+      error that says which setting turns them back on; act, observe, wait and service plugins keep
+      working.
+    surface: run
+    parity: oracle
+    tests: [planned:internal/script.TestRunTurnedOff]
+    upstream:
+      - rust/shuttle/src/daemon.rs::script_run_turned_off_answers_how_to_turn_it_on
+      - rust/shuttle/src/daemon.rs::with_script_run_off_a_plugin_answers_how_to_turn_it_on
+  - id: CAP-DMN-022
+    title: Script result report
+    behavior: >-
+      run executes a TS/JS module (inline code or an absolute file path) and answers a report with
+      main(params)'s value as result (params default to {}), the console output as logs capped at
+      32 KiB, the duration, and the model usage per model when the script used models (absent
+      otherwise). The cua API is available to the script, and the script can read whether desk
+      input goes to the foreground or the background.
+    surface: run
+    parity: oracle
+    tests: [planned:internal/script.TestRunResult, planned:internal/script.TestRunUsage, planned:internal/script.TestRunInputMode]
+    upstream:
+      - rust/shuttle/src/daemon.rs::script_run_goes_to_the_runner
+      - rust/shuttle/src/runner.rs::a_script_main_returns_its_value_with_the_logs_and_the_desk_api_at_hand
+      - rust/shuttle/src/runner.rs::a_run_reports_the_model_usage_it_left_and_none_without_it
+      - rust/shuttle/src/runner.rs::a_run_knows_whether_desk_input_goes_in_the_background
+  - id: CAP-DMN-023
+    title: Script failures are classified
+    behavior: >-
+      A failing script answers an MCP error whose text is the whole report (logs included). The
+      error kind is exception (thrown from main, with the message and stack), no_main (module
+      exports no main), import (module does not compile or load, result null), timeout (default
+      90 s, capped at 110 s, logs so far kept), stopped, or a crash kind for an error escaping main
+      asynchronously after it returned, carrying that error's message. A relative script path is
+      refused before running.
+    surface: run
+    parity: oracle
+    tests: [planned:internal/script.TestRunErrorKinds, planned:internal/script.TestRunTimeoutKeepsLogs]
+    upstream:
+      - rust/shuttle/src/daemon.rs::a_run_whose_report_carries_an_error_is_an_error_with_the_whole_report
+      - rust/shuttle/src/runner.rs::a_throwing_script_reports_its_error_and_a_slow_one_the_timeout_with_its_logs
+      - rust/shuttle/src/runner.rs::a_run_that_dies_without_reporting_names_its_stderr
+  - id: CAP-DMN-024
+    title: Plans run in the daemon and report what they left
+    behavior: >-
+      A multi-step act plan runs on the daemon's own executor, its steps going through the same
+      policy and turn as single actions, with no environment variables or model keys exposed to
+      it. A plan that hits its timeout stops and reports the timeout in seconds together with the
+      steps it already completed, so the agent knows what may have taken effect.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestPlanTimeoutReportsDone, planned:internal/plan.TestPlanNoHiddenEnv]
+    upstream:
+      - rust/shuttle/src/runner.rs::a_plan_stopped_at_its_timeout_reports_the_steps_it_left
+      - rust/shuttle/src/runner.rs::a_plan_runs_the_runtime_plan_executor_with_the_daemon_socket_and_no_hidden_variables
+
+  # ---------------------------------------------------------------- MCP
+  - id: CAP-DMN-025
+    title: MCP initialize and status
+    behavior: >-
+      initialize answers the client's protocol version when it is one of the supported versions
+      (2025-11-25, 2025-06-18, 2025-03-26) and the newest otherwise, with the server name and
+      instructions of at most 2048 characters; notifications get no reply. tools/list lists the six
+      built-in tools first, and status answers with the version even before the daemon has desk
+      access.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestInitialize, planned:internal/mcpserver.TestProtocolVersion]
+    upstream:
+      - rust/shuttle/src/mcp.rs::initialize_lists_the_built_in_tools_and_status_runs
+      - rust/shuttle/src/mcp.rs::unlisted_protocol_version_gets_the_newest
+  - id: CAP-DMN-026
+    title: MCP results, errors and verb coverage
+    behavior: >-
+      A tool result is text content plus an image content block (with its MIME type) when a capture
+      was taken; a failed call is a result with isError true and its message. Unparseable input
+      gets -32700 with a null id, an unknown method -32601, an unknown tool -32602 naming it, and a
+      request without a method -32600. Every desk verb shuttle answers on macOS is reachable through
+      one of the six tools.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestResultContent, planned:internal/mcpserver.TestJSONRPCErrors, planned:internal/mcpserver.TestVerbCoverage]
+    upstream:
+      - rust/shuttle/src/mcp.rs::desk_and_screenshot_go_to_the_daemon
+      - rust/shuttle/src/mcp.rs::bad_requests_get_json_rpc_errors
+      - rust/shuttle/src/tools.rs::the_desk_tool_takes_every_verb_the_desk_answers
+  - id: CAP-DMN-027
+    title: Each MCP session is its own agent
+    behavior: >-
+      Every MCP session gets its own agent id, so per-agent state (web-tree switches, driver
+      sessions, service calls) is never shared between sessions, even two sessions of the same
+      client; calls within one session share one id. On stdio the id is mcp-<client name>-<nonce>,
+      over HTTP mcp-http-<Mcp-Session-Id>; characters other than ASCII letters and digits become '-'
+      and each part is cut to 32 characters.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestAgentPerSession, planned:internal/mcpserver.TestAgentID]
+    upstream:
+      - rust/shuttle/src/mcp.rs::each_mcp_session_calls_the_daemon_as_its_own_agent
+      - rust/shuttle/src/mcp.rs::an_agent_id_keeps_letters_digits_and_cuts_each_part
+      - rust/shuttle/src/http.rs::the_calls_of_one_session_carry_one_agent_and_another_session_another
+  - id: CAP-DMN-028
+    title: Streamable HTTP request handling
+    behavior: >-
+      The HTTP transport serves POST /mcp only: a request gets 200 with an application/json reply,
+      a notification 202 with an empty body; another path 404; another method 405 with Allow: POST;
+      an Origin that is not localhost 403; a body that is not JSON or is a batch array 400; a body
+      over 8 MiB 413. initialize issues an Mcp-Session-Id per session.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestHTTPRequests, planned:internal/mcpserver.TestHTTPChecks]
+    upstream:
+      - rust/shuttle/src/http.rs::a_request_gets_its_json_reply_and_a_notification_gets_202
+      - rust/shuttle/src/http.rs::path_method_origin_and_body_are_checked
+  - id: CAP-DMN-029
+    title: HTTP bearer token is mandatory
+    behavior: >-
+      Every HTTP request, of any method, needs the configured Bearer token (scheme case-insensitive);
+      a missing or wrong one gets 401 with WWW-Authenticate: Bearer. Starting the HTTP transport
+      without a token is refused even on a loopback address, with an error naming the token
+      variable.
+    surface: mcp
+    parity: oracle
+    tests: [planned:internal/mcpserver.TestHTTPToken]
+    upstream:
+      - rust/shuttle/src/http.rs::the_token_is_required_on_every_request
+      - rust/shuttle/src/http.rs::a_bind_without_a_token_is_refused_even_on_loopback
+  - id: CAP-DMN-030
+    title: HTTP connection hygiene
+    behavior: >-
+      A client that does not finish its request header within 10 s is disconnected, and a refused
+      request (auth, origin, size, method) closes its kept-alive connection instead of reading
+      further requests on it.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestHTTPHeaderTimeout, planned:internal/mcpserver.TestHTTPRefusalCloses]
+    upstream:
+      - rust/shuttle/src/http.rs::a_client_that_never_finishes_its_header_is_closed
+      - rust/shuttle/src/http.rs::a_refused_request_closes_its_kept_alive_connection
+
+  # ---------------------------------------------------------------- bridge and startup
+  - id: CAP-DMN-031
+    title: Bridge starts the daemon through Fennec.app
+    behavior: >-
+      When fennec-cua mcp finds no daemon, a binary inside an app bundle starts the daemon through
+      its app (LaunchServices) so the Accessibility and Screen Recording grants attach to the
+      bundle, waiting up to 10 s for it; a bundle launched by launchd with no arguments serves in
+      place. A started daemon that exits before answering fails the call with its exit status. The
+      daemon never holds the bridge's stdio, so the bridge exits and its stdout closes when its
+      client closes stdin while the daemon keeps running, and only one daemon runs.
+    surface: packaging
+    parity: spec
+    tests: [planned:cmd/fennec-cua.TestBridgeStartsThroughApp, planned:cmd/fennec-cua.TestBridgeDetachedStdio, planned:cmd/fennec-cua.TestDaemonEarlyExit]
+    upstream:
+      - rust/shuttle/src/proxy.rs::only_a_macos_binary_inside_an_app_bundle_starts_through_its_app
+      - rust/shuttle/src/proxy.rs::a_started_daemon_that_exits_before_it_answers_names_its_exit
+      - rust/shuttle/src/cli.rs::only_launchd_starting_the_macos_app_bundle_counts_as_a_relaunch
+      - rust/shuttle/tests/start.rs::the_daemon_an_mcp_session_starts_holds_none_of_its_stdio
+  - id: CAP-DMN-032
+    title: Never resend, never start when embedded
+    behavior: >-
+      A call whose daemon connection drops after the request was written is answered as an error
+      and is never sent again, since it may have landed. When the host app owns the daemon
+      (embedded mode) and none is running, the bridge fails within 1 s with a message naming
+      embedded mode, starts nothing and leaves no socket behind.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/mcpserver.TestNoResend, planned:cmd/fennec-cua.TestEmbeddedNoDaemon]
+    upstream:
+      - rust/shuttle/src/proxy.rs::a_call_the_daemon_dropped_is_an_error_and_never_sent_again
+      - rust/shuttle/src/proxy.rs::an_embedded_mcp_with_no_daemon_fails_at_once_and_starts_nothing
+
+  # ---------------------------------------------------------------- cua-driver child
+  - id: CAP-DMN-033
+    title: cua-driver child lifecycle
+    behavior: >-
+      The daemon runs the bundled cua-driver on its own socket beside the daemon's, restarts it when
+      it exits (1 s, doubling up to 30 s for a driver that keeps failing, back to 1 s after one that
+      ran 30 s), and stops it with the daemon. A driver that does not listen within 10 s, or exits
+      before listening, fails the daemon's start. Without a bundled driver the daemon starts no
+      driver process.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestDriverRestart, planned:internal/driver.TestDriverBackoff, planned:internal/driver.TestDriverStartFails]
+    upstream:
+      - rust/shuttle/src/driver.rs::no_bundled_driver_starts_nothing
+      - rust/shuttle/src/driver.rs::the_driver_listens_on_its_own_socket_comes_back_after_it_dies_and_stops_with_the_daemon
+      - rust/shuttle/src/driver.rs::a_driver_that_keeps_failing_is_started_again_less_and_less_often
+      - rust/shuttle/src/driver.rs::a_driver_that_exits_before_it_listens_fails_the_start
+  - id: CAP-DMN-034
+    title: cua-driver stop and stale copies
+    behavior: >-
+      Stopping the driver asks it to exit and kills it after 3 s if it does not answer, including a
+      driver that forked; a stop during a restart leaves no half-started driver. A driver left by a
+      killed daemon is stopped and replaced at start, in embedded mode too. Before each start only a
+      socket file that refuses a connection is removed; a live socket, a regular file and a symlink
+      at that path are left alone.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestDriverStop, planned:internal/driver.TestDriverStale, planned:internal/driver.TestStaleSocketOnly]
+    upstream:
+      - rust/shuttle/src/driver.rs::a_stop_the_driver_never_answers_still_leaves_no_driver
+      - rust/shuttle/src/driver.rs::a_stop_while_the_driver_restarts_leaves_no_half_started_driver
+      - rust/shuttle/src/driver.rs::a_driver_a_killed_daemon_left_is_stopped_and_replaced
+      - rust/shuttle/src/driver.rs::an_embedded_driver_starts_and_restarts_over_the_socket_a_dead_driver_left
+      - rust/shuttle/src/driver.rs::only_a_socket_that_refuses_a_connect_is_cleared
+  - id: CAP-DMN-035
+    title: cua-driver launch settings on macOS
+    behavior: >-
+      The driver runs with telemetry off and its agent cursor drawn, gliding in 1 ms; on macOS the
+      overlay stays on even when configured off (front-window tracking needs it, and a warning says
+      so). With foreground input the driver's post-action window watch is bounded to 50 ms (unbounded
+      in background or auto). Only a driver fennec-cua owns (not embedded in a host app) may raise
+      the system's one-time screen capture consent alert; with embedded mode the driver is told so.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestDriverArgs, planned:internal/driver.TestDriverEnv]
+    upstream:
+      - rust/shuttle/src/driver.rs::the_driver_draws_its_cursor_and_glides_it_in_one_millisecond
+      - rust/shuttle/src/driver.rs::with_the_overlay_off_the_driver_starts_without_its_cursor_except_on_macos
+      - rust/shuttle/src/driver.rs::foreground_input_bounds_the_window_watch_of_the_macos_driver
+      - rust/shuttle/src/driver.rs::only_a_macos_driver_shuttle_owns_may_raise_the_capture_consent_alert
+
+  # ---------------------------------------------------------------- script plugins
+  - id: CAP-DMN-036
+    title: Script plugin files
+    behavior: >-
+      Script plugins are *.json files in the plugin directory (tools.d beside the config file, or
+      the configured directory, relative to the config file's directory), loaded in file-name order.
+      A name must be lowercase letters, digits and underscores, start with a letter and end in _run;
+      the description is at most 2048 characters; the entry path is absolute; resources need uri,
+      absolute path, mime and description with URIs unique across plugins. A file with any broken
+      rule, an unknown field, a built-in or already taken name is skipped whole; non-JSON files, a
+      missing directory and a broken configuration load no plugins.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestLoadPlugins, planned:internal/extensions.TestPluginName, planned:internal/extensions.TestPluginDir]
+    upstream:
+      - rust/shuttle/src/plugins.rs::loads_valid_plugins_in_file_name_order_and_skips_every_broken_file_whole
+      - rust/shuttle/src/plugins.rs::a_plugin_name_ends_in_run_and_has_lowercase_letters_digits_and_underscores
+      - rust/shuttle/src/plugins.rs::the_configured_directory_is_tools_d_beside_the_file_unless_tools_plugins_names_one
+  - id: CAP-DMN-037
+    title: Script plugins as MCP tools
+    behavior: >-
+      Each loaded script plugin is listed after the six built-in tools with run's input schema, runs
+      under run's contract (desk turn, stop, timeout, report) with its own entry in place of inline
+      code, and its desk calls pass the same policy. Its resources are listed and readable through
+      resources/list and resources/read (unknown URI gets -32602), and the resources capability is
+      advertised only when some plugin has resources. Without the plugin, its name is an unknown
+      tool.
+    surface: extensions
+    parity: oracle
+    tests: [planned:internal/extensions.TestPluginListed, planned:internal/extensions.TestPluginRuns, planned:internal/extensions.TestPluginResources]
+    upstream:
+      - rust/shuttle/src/tools.rs::the_built_in_names_are_the_listed_tools_and_plugins_follow_with_script_runs_arguments
+      - rust/shuttle/src/mcp.rs::a_plugin_is_listed_runs_through_the_daemon_and_serves_its_resource
+      - rust/shuttle/src/daemon.rs::a_plugin_runs_on_its_own_program_and_its_desk_calls_reach_the_desk
+
+  # ---------------------------------------------------------------- service plugins
+  - id: CAP-DMN-038
+    title: Service plugin files
+    behavior: >-
+      A JSON file with a service key declares a long-lived service: name matching ^[a-z][a-z0-9_]*$
+      up to 32 characters, an absolute program, optional args, and at least one tool whose name
+      (up to 64 characters) is unique, not built in, not starting with a reserved prefix and not
+      ending in _run, with an object input schema. Any broken rule, unknown field, duplicate service
+      or taken tool name skips the file whole. A service whose socket path would exceed the unix
+      socket limit fails the daemon's start with an error naming the service and asking for a
+      shorter path, without creating the services directory.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestLoadServices, planned:internal/extensions.TestServiceSocketTooLong]
+    upstream:
+      - rust/shuttle/src/plugins.rs::a_service_file_loads_its_tools_and_a_broken_rule_or_a_taken_name_skips_it_whole
+      - rust/shuttle/src/services.rs::a_service_whose_socket_path_is_too_long_fails_the_start_and_says_why
+  - id: CAP-DMN-039
+    title: Service lifecycle
+    behavior: >-
+      The daemon runs each service as its child with its socket in a 0700 services directory,
+      restarts it when it exits (1 s, doubling to 30 s), rebinding even when the killed service left
+      its socket file, and at daemon exit sends TERM, waits 3 s and kills the service with the
+      processes it started. A copy left by a killed daemon, whether or not it leads a process group,
+      is stopped before the service starts again.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestServiceRestart, planned:internal/extensions.TestServiceStaleCopy, planned:internal/extensions.TestServiceStopsWithDaemon]
+    upstream:
+      - rust/shuttle/src/services.rs::a_service_that_dies_comes_back_and_answers_again
+      - rust/shuttle/src/services.rs::a_service_killed_with_its_socket_left_behind_binds_again_on_restart
+      - rust/shuttle/src/services.rs::a_copy_a_dead_daemon_left_is_stopped_before_the_service_starts_again
+      - rust/shuttle/src/services.rs::a_left_copy_that_leads_no_process_group_is_stopped_too
+      - rust/shuttle/src/services.rs::a_service_serves_its_pipe_and_a_stop_ends_it_with_the_process_it_started
+  - id: CAP-DMN-040
+    title: Service tools over MCP
+    behavior: >-
+      Service tools are listed after script plugins with their own input schema, except tools the
+      file marks as not for MCP, which are neither listed nor callable. A call is forwarded to the
+      service unmodified with the caller's agent id and arguments, and the service's reply returned
+      unchanged; payloads up to 64 MiB pass both ways intact, and a service that replies before it
+      has read the whole request still receives all of it. The service gets the daemon's endpoint
+      for its own desk calls but none of the model key variables, and a service call takes no desk
+      turn.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestServiceListed, planned:internal/extensions.TestServiceForward, planned:internal/extensions.TestServiceLargePayload]
+    upstream:
+      - rust/shuttle/src/services.rs::the_mcp_server_lists_a_service_tool_with_its_schema_and_forwards_its_call
+      - rust/shuttle/src/tools.rs::a_service_tool_is_listed_with_its_own_schema_unless_it_is_for_the_wire_only
+      - rust/shuttle/src/services.rs::a_call_reaches_the_service_byte_for_byte_and_the_service_gets_its_environment
+      - rust/shuttle/src/services.rs::a_64_mib_raw_transfer_passes_both_ways_unchanged
+      - rust/shuttle/src/services.rs::a_service_that_replies_and_closes_its_output_early_still_gets_the_whole_upload
+  - id: CAP-DMN-041
+    title: Service call teardown
+    behavior: >-
+      A client that cancels or disconnects mid-call ends the service call, and the service sees its
+      connection close. A reply the service sends just before closing still reaches the caller even
+      if read late. A call that no service accepts within 10 s fails with an error.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestServiceCancel, planned:internal/extensions.TestServiceLateReply, planned:internal/extensions.TestServiceListenWait]
+    upstream:
+      - rust/shuttle/src/services.rs::a_client_that_closes_mid_call_ends_the_call_and_the_service_sees_its_pipe_close
+      - rust/shuttle/src/services.rs::a_reply_the_service_sends_before_it_closes_reaches_a_caller_that_reads_late
+      - rust/shuttle/src/services.rs::a_pipe_that_stays_busy_fails_the_call_after_the_listen_wait
+  - id: CAP-DMN-042
+    title: Services under stop and the scripts switch
+    behavior: >-
+      A stop closes every service call in flight within 1 s without a reply and refuses new ones
+      with the stopped error, but keeps the service process running (same pid after resume, when
+      calls work again). Turning scripts off leaves services running, listed and reachable.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestServiceStop, planned:internal/extensions.TestServiceScriptsOff]
+    upstream:
+      - rust/shuttle/src/services.rs::a_stop_drops_live_splices_refuses_new_calls_and_keeps_the_service
+      - rust/shuttle/src/services.rs::script_run_off_leaves_a_service_running_and_routed
+
+  # ---------------------------------------------------------------- hotkey, indicator, CLI
+  - id: CAP-DMN-043
+    title: Kill hotkey specification
+    behavior: >-
+      The kill hotkey is modifiers (ctrl/control, alt/option, shift, cmd) plus one key, case- and
+      space-insensitive, default ctrl+alt+cmd+escape (Escape keycode 53). A bare key is refused as
+      needing a modifier, an unknown modifier or key is refused naming it, and "off" in any case or
+      spacing means no hotkey (but "off" as a key in a combination is an error).
+    surface: policy
+    parity: spec
+    tests: [planned:internal/hotkey.TestParse]
+    upstream:
+      - rust/shuttle/src/hotkey.rs::the_default_and_spelled_out_combinations_parse_and_a_bare_or_unknown_key_does_not
+      - rust/shuttle/src/hotkey.rs::off_in_any_case_or_spacing_is_no_hotkey_on_either_os
+  - id: CAP-DMN-044
+    title: Menu-bar indicator icons
+    behavior: >-
+      The indicator has a distinct icon for each state (idle, acting, stopped, recording), each a
+      valid 18-point template image so it follows the menu-bar appearance.
+    surface: packaging
+    parity: spec
+    tests: [planned:internal/policy.TestIndicatorIcons]
+    upstream:
+      - rust/shuttle/src/mac.rs::each_state_has_an_18_point_template_icon
+  - id: CAP-DMN-045
+    title: CLI arguments and saved captures
+    behavior: >-
+      fennec-cua do takes a tool's arguments as one JSON object or as key=value pairs whose values
+      parse as JSON when they can (true, 7) and stay strings otherwise; a pair-free word is refused.
+      A capture returned to the CLI is written to a file whose extension follows the image bytes
+      (png, jpg, webp) with the exact bytes; invalid base64 is an error.
+    surface: daemon
+    parity: spec
+    tests: [planned:cmd/fennec-cua.TestDoArgs, planned:cmd/fennec-cua.TestSaveCapture]
+    upstream:
+      - rust/shuttle/src/cli.rs::cli_arguments_are_json_or_pairs_with_json_values
+      - rust/shuttle/src/cli.rs::a_screenshot_lands_in_a_file_named_by_its_format
+
+excluded:
+  - upstream:
+      - rust/models/tests/config.rs::an_android_section_names_the_device_and_its_files
+      - rust/models/tests/config.rs::an_android_section_refuses_an_app_allowlist_it_does_not_enforce
+      - rust/models/tests/config.rs::an_android_section_refuses_background_input_it_cannot_give
+    reason: Android devices over adb are out of scope (README); fennec-cua serves only the Mac's own desktop, so its configuration has no device section.
+  - upstream:
+      - rust/shuttle/src/hotkey.rs::windows_combinations_parse_to_virtual_keys_and_register_hotkey_modifiers
+      - rust/shuttle/src/driver.rs::a_linux_driver_removes_its_mpx_masters_whether_shuttle_owns_it_or_not
+    reason: Windows hotkey registration and Linux MPX input masters do not exist on macOS; the macOS hotkey parse is CAP-DMN-043 and the macOS driver settings CAP-DMN-035.
+  - upstream:
+      - rust/shuttle/src/runner.rs::a_timeout_stops_the_whole_process_group_and_keeps_the_logs_a_stray_pipe_holder_blocks
+      - rust/shuttle/src/runner.rs::a_timeout_or_a_stop_sends_term_first_so_the_scripts_handler_runs
+      - rust/shuttle/src/runner.rs::a_run_that_ignores_term_is_killed_once_the_grace_has_passed
+      - rust/shuttle/src/runner.rs::a_run_dropped_during_its_grace_still_kills_a_script_that_ignores_term
+      - rust/shuttle/src/runner.rs::a_dropped_run_lets_go_of_its_pipes_that_a_detached_child_still_holds
+      - rust/shuttle/src/runner.rs::a_run_whose_parent_is_gone_ends_itself
+      - rust/shuttle/src/runner.rs::a_run_whose_client_goes_away_gets_term_first
+    reason: These cover signalling a Node child process group (TERM, a 2 s grace, then KILL, orphan detection, pipes held by detached children). fennec-cua runs scripts in-process on goja with no child processes or signal handlers (README section 2). Timeout, stop, cancel and disconnect end a script immediately via vm.Interrupt(), which also breaks busy loops. The observable outcomes are CAP-DMN-014, CAP-DMN-015 and CAP-DMN-023.
+  - upstream:
+      - rust/shuttle/src/runner.rs::a_packaged_runtime_runs_its_stripped_modules_and_keeps_the_sources_importable
+      - rust/shuttle/src/runner.rs::the_scratch_directory_and_the_params_are_the_users_alone
+    reason: There is no bundled Node runtime to strip, and no scratch directory, script file or params file on disk. esbuild transpiles in memory and goja runs the result inside the daemon (README section 2), so script source and params never touch the file system.
+  - upstream:
+      - rust/shuttle/src/services.rs::tagged_frames_stream_both_ways_and_a_client_hangup_reaches_the_service
+    reason: Free-form bidirectional frame streaming between a raw desk-wire client and a service relies on shuttle's private wire. fennec-cua has no second private wire (README section 3.4), so service tools are reached only through MCP tools/call with one result. The hang-up half of this test is covered by CAP-DMN-041.
+  - upstream:
+      - rust/shuttle/src/services.rs::fake_service
+      - rust/shuttle/src/services.rs::splice_cost
+    reason: Neither is a behaviour. One is a helper process that the Windows pipe tests launch; the other is an ignored micro-benchmark with no assertion. Service forwarding cost is covered by the T6 performance layer.

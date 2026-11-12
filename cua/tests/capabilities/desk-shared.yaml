@@ -1,0 +1,789 @@
+domain: desk-shared
+summary: Cross-cutting desk behaviour behind observe, act and wait on macOS - window picking, input delivery modes, Spaces, window-pixel coordinates, the app allowlist, shots, reads, typing and scheduling.
+capabilities:
+  - id: CAP-DSK-001
+    title: Window list entries and stale windows
+    behavior: >-
+      observe scope=desktop lists each top-level window with its ref, title, role, pid, whether it is
+      active and, when macOS reports it, the owning app's name; optional fields are omitted when unknown.
+      A window whose app did not answer the listing in time is still listed from its last read and
+      flagged stale, and any read or action aimed at it (outline, find, close) fails with an error saying
+      the app is busy or hung, without touching it.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestWindowListFields, planned:internal/view.TestStaleWindowListedNotActedOn]
+    upstream:
+      - rust/desk/src/desk.rs::a_window_names_its_app_when_the_backend_knows_it
+      - rust/desk/src/desk.rs::a_window_kept_from_an_earlier_list_is_listed_but_never_acted_on
+
+  - id: CAP-DSK-002
+    title: Windows on another Space
+    behavior: >-
+      A window counts as unseen when it is on another Space, or (macOS) when it is not on screen, i.e.
+      minimized or hidden. Under background or auto input, observe scope=desktop also lists windows on
+      other Spaces, marked as on another Space and never active; under foreground input they are not listed.
+      Under pure background input (not auto) an outline or find aimed at such a window, by title or by
+      window ref, fails with a recoverable error saying it is on another Space (accessibility does not reach
+      it there), while an unknown title fails with the ordinary not-found error that does not mention Spaces.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestUnseenClassification, planned:internal/view.TestOtherSpaceWindowsListedInBackground, planned:internal/view.TestOutlineOfOtherSpaceWindowRefused]
+    upstream:
+      - rust/desk/src/desk.rs::a_window_is_unseen_on_another_space_and_on_macos_also_off_screen
+      - rust/desk/src/desk.rs::background_input_lists_a_window_on_another_space_and_foreground_input_does_not
+      - rust/desk/src/desk.rs::a_background_snapshot_of_a_window_on_another_space_says_so_by_title_or_id
+
+  - id: CAP-DSK-003
+    title: Background input into windows on another Space
+    behavior: >-
+      Background key, type, click, scroll and drag reach a window on another Space by its title or pid,
+      including when every window of an allowlisted app is on another Space. When a title is shared by a
+      window here and one on another Space, input goes to the one the title picks and the step is reported
+      unconfirmed with a note that the app may not repaint an unseen window, so the input must not be sent
+      again (typing adds: confirm the text before submitting). Title twins split across Spaces with several
+      on each side are refused with nothing sent, naming how many are on this Space and how many elsewhere.
+      An element click picks its own window by frame over a same-titled twin on another Space, while typing
+      to those indistinguishable twins by title is refused; an element click that lands in a window on
+      another Space is reported unconfirmed with the same do-not-resend note.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestBackgroundInputReachesOtherSpace, planned:internal/actions.TestTitleTwinsAcrossSpacesRefused, planned:internal/actions.TestElementClickOtherSpaceNote]
+    upstream:
+      - rust/desk/src/desk.rs::an_allowlisted_app_whose_windows_are_all_on_another_space_takes_background_input
+      - rust/desk/src/desk.rs::background_input_to_a_title_twin_goes_to_the_window_on_a_space_and_says_not_to_send_it_again
+      - rust/desk/src/desk.rs::background_input_to_title_twins_on_two_spaces_is_refused_and_names_both
+      - rust/desk/src/desk.rs::a_background_element_click_picks_its_window_by_frame_over_a_title_twin_on_another_space
+      - rust/desk/src/desk.rs::a_background_element_click_into_its_window_on_another_space_says_so
+
+  - id: CAP-DSK-004
+    title: Unseen windows - stale pixels and unconfirmed input
+    behavior: >-
+      On macOS observe image=window of a window on another Space, or minimized/hidden, still returns the
+      image but marks it stale with a note that its app may not repaint it and that an unchanged image is
+      not proof an action failed; a merely covered window gets no such mark. Background click or type into a
+      minimized window that the driver cannot confirm is unconfirmed with a note that it may have taken
+      effect and must not be resent (typing: confirm before Return/Send); into a covered but visible window
+      the driver's own note is passed through unchanged. Once the window is restored, a click by screen point
+      carries only the driver's note again.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestWindowShotStaleMark, planned:internal/actions.TestUnseenWindowInputNote]
+    upstream:
+      - rust/desk/src/desk.rs::a_macos_window_shot_says_its_pixels_may_be_stale_on_another_space_or_minimized_and_not_when_covered
+      - rust/desk/src/desk.rs::unconfirmed_background_input_to_a_minimized_window_may_have_taken_effect_and_to_a_covered_one_keeps_the_driver_note
+      - rust/desk/src/desk.rs::a_restored_window_clicked_by_its_point_keeps_the_driver_note
+
+  - id: CAP-DSK-005
+    title: Window shots on any display, crops and origin
+    behavior: >-
+      observe image=window captures the named window alone, picked as focus picks it (among a given pid's
+      windows when one is given), on whichever display shows it, reading only that window's state (no
+      accessibility tree, no full desktop capture); naming only a pid also captures that app's window. A
+      crop rectangle is in the window image's own pixels and the answer gives the crop's top-left origin in
+      the whole window image ([0,0] when uncropped; fractional offsets are truncated). A screen rectangle off
+      the main display fails with a hint to name the window instead. A window outside the app allowlist is
+      reported as not found, listing only admitted windows, and nothing is captured.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestWindowShotAnyDisplay, planned:internal/vision.TestWindowShotCropOrigin]
+    upstream:
+      - rust/desk/src/desk.rs::a_shot_by_window_captures_that_window_on_any_display_within_the_allowlist
+      - rust/desk/src/desk.rs::a_cropped_window_shot_names_its_origin_in_the_window_pixels
+
+  - id: CAP-DSK-006
+    title: Window-image pixel coordinates for click, scroll and drag
+    behavior: >-
+      When a pointer step names a window, its x/y (and drag end points) are pixels of that window's image
+      from observe image=window, on any display and any backing scale; fennec-cua maps them to the right
+      screen point in foreground mode and passes them window-relative in background mode. Taking a window
+      shot never changes the scale a later or concurrent click is mapped by, so a click before and after a
+      shot of the same window lands on the same point. A drag in a window reads the display scale once.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/vision.TestWindowPixelsMapAcrossScales, planned:internal/actions.TestShotDoesNotShiftClickScale]
+    upstream:
+      - rust/desk/src/desk.rs::a_click_after_a_shot_of_its_window_lands_where_the_click_before_it_landed
+      - rust/desk/src/desk.rs::with_a_window_x_and_y_are_pixels_of_its_shot_on_any_display_and_scale
+      - rust/desk/src/desk.rs::a_scroll_or_drag_with_a_window_takes_pixels_of_its_shot
+      - rust/desk/src/desk.rs::a_window_shot_during_a_click_does_not_change_the_scale_the_click_is_sent_by
+      - rust/desk/src/desk.rs::a_drag_in_a_window_reads_the_screen_scale_once
+
+  - id: CAP-DSK-007
+    title: Ambiguous window titles refuse window-pixel points
+    behavior: >-
+      A click, scroll or drag whose x/y are window-image pixels is refused with nothing sent when the window
+      title is shared by two windows (hint: name a window with a title of its own) or matches two windows at
+      the same match tier (hint: use a longer title); a more specific title or a plain screen point works.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestWindowPixelsNeedUniqueTitle]
+    upstream:
+      - rust/desk/src/desk.rs::a_title_two_windows_share_takes_no_points_in_shot_pixels
+      - rust/desk/src/desk.rs::a_title_that_matches_two_windows_at_one_tier_takes_no_points_in_shot_pixels
+
+  - id: CAP-DSK-008
+    title: Screen size in device pixels
+    behavior: >-
+      status (and observe image=screen metadata) reports the main screen's width and height in device
+      pixels on a Retina Mac (logical size times backing scale, e.g. 2560x1600 at scale 2) together with the
+      scale factor.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestScreenSizeInPixels]
+    upstream:
+      - rust/desk/src/desk.rs::the_screen_is_in_pixels_on_a_retina_mac_and_as_the_driver_reports_it_elsewhere
+
+  - id: CAP-DSK-009
+    title: Background input goes to the named target without raising it
+    behavior: >-
+      Under background input, key, type (each line plus Return between lines), click, scroll and drag aimed
+      at a window by title or by pid go to that window in the background delivery route, in the driver's
+      window session, with no desktop scope and no raise of the window; a pid alone reaches that app's window
+      even while another app is frontmost. Click/scroll/drag coordinates are converted into the target
+      window's frame.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestBackgroundInputNoRaise, planned:internal/actions.TestBackgroundPidReachesWindowBehind]
+    upstream:
+      - rust/desk/src/desk.rs::background_input_goes_to_the_named_window_without_raising_it
+      - rust/desk/src/desk.rs::a_background_click_in_a_named_window_does_not_raise_it
+      - rust/desk/src/desk.rs::background_input_naming_only_the_pid_of_an_app_behind_reaches_its_window
+
+  - id: CAP-DSK-010
+    title: Naming an app as the input target
+    behavior: >-
+      An input step may name its target app by app name instead of pid; when that app has no window the
+      step is refused, saying the app has no window and nothing was sent, in every input mode. App names
+      match case-insensitively on whole-word starts or ends of the app's name or process (e.g. "Chrome" for
+      Google Chrome, "Text" for TextEdit, "Notepad++" exactly), never on a short inner fragment, an empty or
+      blank name, or a different suffix such as "notepad" for "notepad++".
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestAppTargetWithoutWindowRefused, planned:internal/view.TestAppNameMatching]
+    upstream:
+      - rust/desk/src/desk.rs::input_naming_an_app_goes_to_that_app_or_nowhere
+      - rust/desk/src/desk.rs::a_name_matches_the_start_or_end_of_app_words_never_a_short_fragment
+
+  - id: CAP-DSK-011
+    title: Background input needs a target and pointer acceptance
+    behavior: >-
+      Under background input, key, type, scroll and drag without a target window are refused (the step needs
+      its target window), a scroll with x but not y is refused (both or neither), and click, scroll or drag
+      into a window whose background pointer route the driver reports as refused are refused (no pointer
+      input without the foreground); in all cases nothing is sent and nothing is raised. A step that asks for
+      a delivery mode the current policy does not use (foreground under background, or the reverse) is
+      refused before anything is sent; asking for the mode in force works.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestBackgroundNeedsTarget, planned:internal/policy.TestDeliveryModeMismatchRefused]
+    upstream:
+      - rust/desk/src/desk.rs::background_input_without_a_target_or_into_a_window_that_refuses_the_pointer_is_refused
+      - rust/desk/src/desk.rs::input_asking_for_a_delivery_mode_the_desk_does_not_use_is_refused_before_it_is_sent
+
+  - id: CAP-DSK-012
+    title: Unconfirmed background input is flagged
+    behavior: >-
+      When the driver cannot confirm background input took effect, the step's status is unconfirmed with the
+      driver's note (including any escalation it reports) and retry false; a confirmed background key gets a
+      plain ok. Foreground typing reports a confirmed result with the character count and no note. Under
+      auto input an unconfirmed (but not refused) background step returns its note and is not rerun in the
+      foreground.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestUnconfirmedBackgroundFlagged, planned:internal/policy.TestAutoKeepsUnconfirmedInBackground]
+    upstream:
+      - rust/desk/src/desk.rs::background_input_the_driver_cannot_confirm_says_so_and_foreground_input_does_not
+      - rust/desk/src/desk.rs::auto_input_the_driver_could_not_confirm_returns_its_note_without_a_foreground_run
+
+  - id: CAP-DSK-013
+    title: Auto input escalation to the foreground
+    behavior: >-
+      Under auto input a step is tried in the background; if the driver refuses before anything was sent,
+      fennec-cua raises the target window and runs the step exactly once in the foreground, reporting that it
+      ran in the foreground. If the refusal comes after part of the step was sent (e.g. a later line of a
+      multi-line type) it stays an error and nothing is resent or raised. A step that explicitly asks for the
+      foreground runs there directly (no window needed for a desktop-wide key), but the allowlist then judges
+      it by the current front window and refuses it, sending nothing, when that window is not admitted; under
+      plain background input an explicit foreground request is refused.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestAutoEscalatesOnceWhenNothingSent, planned:internal/policy.TestAutoNoResendAfterPartialSend, planned:internal/policy.TestAutoExplicitForeground]
+    upstream:
+      - rust/desk/src/desk.rs::auto_input_refused_before_any_was_sent_fronts_its_window_and_runs_once_in_the_foreground
+      - rust/desk/src/desk.rs::auto_input_refused_after_some_was_sent_stays_an_error_and_is_not_sent_again
+      - rust/desk/src/desk.rs::auto_input_asked_for_the_foreground_passes_the_allowlist_by_the_front_window
+      - rust/desk/src/desk.rs::auto_input_asked_for_the_foreground_runs_there_without_a_window
+
+  - id: CAP-DSK-014
+    title: Background typing follows the keyboard focus
+    behavior: >-
+      After a background click, the click's answer reports the focused element (role, name) and whether the
+      focus is at the clicked point. A following background type is refused with nothing typed when the
+      focus did not move to the clicked field, naming the field that holds it; after a key such as Tab moves
+      the focus deliberately, typing goes through. When the app exposes no focused text field at all, typing
+      is refused with a hint to confirm the field in a screenshot and retry with focus=unverified; with that
+      flag the text is sent and the result is unconfirmed with a note to check the field before Return/Send.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestBackgroundTypeChecksFocusAfterClick, planned:internal/actions.TestTypeFocusUnverified]
+    upstream:
+      - rust/desk/src/desk.rs::background_typing_after_a_click_the_keyboard_focus_did_not_follow_is_refused
+      - rust/desk/src/desk.rs::background_typing_after_a_click_into_an_app_with_no_focused_text_field_needs_focus_unverified
+
+  - id: CAP-DSK-015
+    title: Multi-line typing, terminals and partial failures
+    behavior: >-
+      A type step reports terminal=true when the driver identifies the target as a terminal emulator,
+      whether or not it confirmed the text. With background input on macOS, a line a terminal took without
+      the driver confirming it (as at a prompt without echo) ends the step before that line's Return, with an
+      error naming the line ("line N of M") and the driver's note, so a half-typed command is never run;
+      earlier confirmed lines keep their Returns. When a later line fails for any reason, the error says how
+      many lines were typed before it, so the agent does not retype them; a single-line failure says nothing
+      about lines.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTypeTerminalFlag, planned:internal/actions.TestTerminalLineWithoutConfirmGetsNoReturn, planned:internal/actions.TestTypeReportsLinesTypedBeforeFailure]
+    upstream:
+      - rust/desk/src/desk.rs::a_type_that_fails_on_a_later_line_says_how_many_went_in
+      - rust/desk/src/desk.rs::a_type_into_a_terminal_says_so_whether_or_not_the_driver_confirmed_it
+      - rust/desk/src/desk.rs::a_line_a_terminal_did_not_confirm_gets_no_return_and_other_lines_do
+
+  - id: CAP-DSK-016
+    title: Locked screen and locked-input mode
+    behavior: >-
+      When the screen is locked or showing the screen saver, an input step fails with an error explaining
+      that macOS hides windows and routes input to the lock screen, and that fennec-cua cannot reach the
+      lock screen's password field (said once, in every input mode). With the locked-input policy on and
+      background input, keys and typing (only those, never clicks) ask the driver for locked delivery to the
+      window that had focus before the lock; typing or keys aimed at the loginwindow process are refused as
+      having no focused window and send nothing. If the bundled driver does not support locked delivery the
+      step is refused with nothing sent.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestLockScreenRefusalHint, planned:internal/policy.TestLockedInputKeysAndTypingOnly, planned:internal/policy.TestLockedInputNeverTargetsLoginwindow]
+    upstream:
+      - rust/desk/src/desk.rs::a_lock_screen_refusal_says_once_that_shuttle_cannot_reach_the_password_field
+      - rust/desk/src/desk.rs::locked_input_typing_aimed_at_loginwindows_pid_sends_nothing
+      - rust/desk/src/desk.rs::locked_input_asks_the_driver_to_send_background_keys_and_typing_only
+
+  - id: CAP-DSK-017
+    title: Key names and typed text sent to the driver
+    behavior: >-
+      Key combinations are normalised to the driver's macOS names (super/meta become cmd, enter becomes
+      return, names are case-insensitive). The plus key goes as shift+= in the foreground (HID path) and as
+      a literal + in the background. Text is typed literally line by line with a Return key between lines.
+      Typing pacing: foreground typing whose characters all lie in the Basic Multilingual Plane uses an
+      explicit 0 ms per-character delay; background typing into a Chromium-based app uses 1 ms; other cases
+      (emoji or other astral characters in the foreground, non-Chromium background) leave the driver default.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestKeyNamesToDriver, planned:internal/actions.TestPlusKeyByRoute, planned:internal/actions.TestTypingDelayRules]
+    upstream:
+      - rust/desk/src/desk.rs::macos_sends_the_plus_key_as_shift_and_equals_only_on_the_hid_path
+      - rust/desk/src/desk.rs::keys_and_text_go_to_the_desktop_in_driver_names
+      - rust/desk/src/desk.rs::macos_typing_sets_the_driver_delay_for_foreground_basic_plane_text_and_background_chromium_apps
+
+  - id: CAP-DSK-018
+    title: Stray agent-protocol tags are not typed
+    behavior: >-
+      Before typing, trailing closing tags of agent tool-call markup (text, parameter, invoke, function_calls,
+      function_call, tool_use, tool_call and their namespaced variants) on their own trailing lines are dropped
+      when the text never opened them; a closing tag the text itself opened, any closing tag inside a line,
+      and ordinary HTML closers are typed unchanged. Empty text stays empty.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestStripTrailingProtocolTags]
+    upstream:
+      - rust/desk/src/desk.rs::typed_lines_keep_a_closing_tag_the_text_opens_and_drop_one_it_does_not
+      - rust/desk/src/desk.rs::a_trailing_protocol_tail_goes_only_when_the_text_does_not_open_it
+
+  - id: CAP-DSK-019
+    title: Bounded settle after typing
+    behavior: >-
+      After typing, fennec-cua waits at most 100 ms for the focused element's value to contain the typed
+      tail (the last 16 characters after the final line break; nothing when the text ends in a line break),
+      polling every 10 ms. A focus lookup that never answers is cut off within that budget, so the step
+      returns well under a second and the desk is free for the next call at once.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestTypeSettleBounded, planned:internal/actions.TestTypedTail]
+    upstream:
+      - rust/desk/src/desk.rs::a_focused_lookup_that_never_answers_ends_within_the_settle_and_frees_the_desk
+      - rust/desk/src/desk.rs::a_run_repeats_a_character_freely_and_the_typed_tail_is_the_last_line_end
+
+  - id: CAP-DSK-020
+    title: Serial input turn and busy timeout
+    behavior: >-
+      Input actions run one at a time: two concurrent type steps never interleave their characters. An
+      element click holds the input turn until the driver has clicked. A new action waits a bounded time for
+      the running one (15 s by default) and then fails with a desk-busy error, without sending anything,
+      while the running action completes intact.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestConcurrentTypingSerialised, planned:internal/daemon.TestBusyTimeout, planned:internal/daemon.TestElementClickHoldsTurn]
+    upstream:
+      - rust/desk/src/desk.rs::two_typing_calls_at_once_type_one_after_the_other
+      - rust/desk/src/desk.rs::an_action_waits_a_bounded_time_for_a_running_one_then_says_the_desk_is_busy
+      - rust/desk/src/desk.rs::an_element_click_holds_the_input_turn_until_the_driver_clicks
+
+  - id: CAP-DSK-021
+    title: Foreground input raises the named window first
+    behavior: >-
+      Under foreground input, a key or type step naming a window (by title, pid or app) first brings that
+      window to the front and then sends to the desktop; named-window pointer steps convert window-relative
+      points to screen points. If the window does not come to the front, the step fails saying it is not
+      frontmost and naming the actual front window, and nothing is typed or pressed.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestForegroundRaisesNamedWindow, planned:internal/actions.TestForegroundUnfrontedSendsNothing]
+    upstream:
+      - rust/desk/src/desk.rs::foreground_input_raises_the_named_window_and_goes_to_the_desktop_at_its_pixels
+      - rust/desk/src/desk.rs::foreground_keys_naming_an_app_bring_its_window_to_the_front_first
+      - rust/desk/src/desk.rs::foreground_input_to_a_window_that_cannot_come_to_the_front_sends_nothing_on_macos
+      - rust/desk/src/desk.rs::windows_foreground_typing_into_a_named_window_raises_it_first
+
+  - id: CAP-DSK-022
+    title: Foreground pointer raise rules
+    behavior: >-
+      A foreground click, scroll or drag in a named window raises that window only when the point lies inside
+      it and another window is on top there; it waits up to 500 ms for the cover to leave. It does not raise
+      when the point is outside the named window or over no window. A covering window of the same app is
+      raised past only when it is a listed top-level window; an untitled one, or one the window list does not
+      list (a popup or owned dialog matched by window number, else by title), counts as the target's own.
+      On macOS a foreground click on a covered point of a named window goes to that window.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestForegroundPointerRaiseRules, planned:internal/ax.TestListedTopLevelByNumberOrTitle]
+    upstream:
+      - rust/desk/src/desk.rs::a_foreground_click_where_no_window_is_does_not_raise_the_named_one
+      - rust/desk/src/desk.rs::a_same_app_window_on_top_is_raised_past_unless_the_desk_does_not_list_it
+      - rust/desk/src/desk.rs::a_point_outside_the_named_window_does_not_raise_it
+      - rust/desk/src/desk.rs::a_listed_window_is_found_by_its_number_where_frames_carry_one_else_by_title
+      - rust/desk/src/desk.rs::a_foreground_click_on_a_covered_point_goes_to_the_named_window_on_macos
+
+  - id: CAP-DSK-023
+    title: macOS click targets the top window under the point
+    behavior: >-
+      A macOS click by screen point raises the topmost window under it, then clicks inside that window in its
+      own pixel space (with count for double clicks) using the foreground route; a point over no window is
+      clicked on the desktop. When the driver has no WindowServer connection or the window refuses pointer
+      input (e.g. a sheet), the click falls back to a plain desktop click. A window's state is read once and
+      reused while it has not moved, and read again when the driver forgot it or the display scale changes
+      (no read at scale 1).
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestClickTargetsTopWindow, planned:internal/actions.TestClickDesktopFallbacks, planned:internal/driver.TestWindowStateReadReuse]
+    upstream:
+      - rust/desk/src/desk.rs::a_macos_click_targets_the_top_window_under_the_point_in_its_pixels
+      - rust/desk/src/desk.rs::a_macos_window_click_without_a_windowserver_connection_goes_to_the_desktop
+      - rust/desk/src/desk.rs::a_macos_click_into_a_window_refusing_pointer_input_goes_to_the_desktop
+      - rust/desk/src/desk.rs::macos_clicks_read_an_unmoved_window_once_and_again_when_the_driver_forgot_it
+      - rust/desk/src/desk.rs::a_macos_click_takes_the_display_scale_of_the_moment
+      - rust/desk/src/desk.rs::on_linux_a_window_input_drops_the_read_its_driver_session_held
+
+  - id: CAP-DSK-024
+    title: Click under another app's window
+    behavior: >-
+      A macOS foreground click on a point covered by another app's window, or where the hit test fails and
+      the window list does not show the target on top, is sent in the background to the target window
+      without moving the pointer and reported unconfirmed with a note to confirm by read-back; when the hit
+      test fails but the window list shows the target on top, it is a normal foreground click. A click in a
+      named window whose point another app covers, where that window takes no background click, is refused
+      with nothing clicked and a hint to bring the window to the front first; it never falls back to a
+      desktop click.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestCoveredClickGoesBackground, planned:internal/actions.TestCoveredNamedWindowNoDesktopFallback]
+    upstream:
+      - rust/desk/src/desk.rs::a_macos_foreground_click_under_another_apps_window_goes_in_the_background_and_says_so
+      - rust/desk/src/desk.rs::a_macos_foreground_click_where_the_hit_test_fails_goes_in_the_background_and_says_so
+      - rust/desk/src/desk.rs::a_macos_foreground_click_where_the_hit_test_fails_follows_the_window_list
+      - rust/desk/src/desk.rs::a_named_window_click_under_another_apps_window_never_falls_back_to_the_desktop
+
+  - id: CAP-DSK-025
+    title: Clicking an open menu item runs it
+    behavior: >-
+      A click by point on an item of an open menu performs the item's accessibility action instead of a
+      pointer click; when the item has no action to perform the step fails rather than reporting success.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestClickOnOpenMenuItemRunsIt]
+    upstream:
+      - rust/desk/src/desk.rs::a_macos_click_on_an_open_menu_item_runs_it_instead_of_clicking
+      - rust/desk/src/desk.rs::a_macos_click_on_a_menu_item_that_takes_no_action_fails
+
+  - id: CAP-DSK-026
+    title: Background element clicks find the element's own window
+    behavior: >-
+      A background click on an element (act press/click by ref) goes to the element's own window, even when
+      another window covers it, at the element's centre in that window's pixels, and is reported unconfirmed.
+      The own window is matched by title and checked by frame (scale-aware; on macOS no resize-border slack):
+      same-titled twins are told apart by frame, and a lone or fuzzy title match whose frame does not match is
+      refused as ambiguous, as are twins the frames cannot separate; an element with no matching window is
+      refused as not found. Nothing is clicked on refusal. Under background input on macOS the element actions
+      focus, select and perform-action run without fronting the window.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestElementClickOwnWindow, planned:internal/actions.TestElementClickFrameCheck, planned:internal/actions.TestBackgroundElementActionsNoRaise]
+    upstream:
+      - rust/desk/src/desk.rs::a_background_element_click_goes_to_the_elements_own_window_under_the_window_that_covers_it
+      - rust/desk/src/desk.rs::a_background_element_click_tells_same_titled_windows_apart_by_frame_or_refuses
+      - rust/desk/src/desk.rs::on_linux_a_background_element_click_allows_the_window_manager_s_decorations
+      - rust/desk/src/desk.rs::only_windows_allows_a_resize_border_between_the_element_frame_and_its_window
+      - rust/desk/src/desk.rs::a_background_focus_action_refuses_on_windows_where_it_fronts_the_window
+      - rust/desk/src/desk.rs::a_background_element_click_checks_the_frame_of_a_lone_or_fuzzy_title_match
+
+  - id: CAP-DSK-027
+    title: Press by ref
+    behavior: >-
+      act press on an element ref performs its accessibility press where it has one, else clicks its centre
+      through the driver, and the result says which way it went. A ref from an outline that pushed the id
+      table past its cap (50,000 ids) still resolves, and re-observing evicts stale ids so only current ones
+      are held.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestPressActionOrClick, planned:internal/view.TestRefsSurviveIdCapEviction]
+    upstream:
+      - rust/desk/src/desk.rs::a_press_click_goes_through_the_driver
+      - rust/desk/src/desk.rs::a_macos_press_resolves_an_id_of_the_snapshot_that_crossed_the_id_cap
+
+  - id: CAP-DSK-028
+    title: Picking a window by title, pid or activity
+    behavior: >-
+      A window name resolves by exact title, then trimmed case-insensitive title, then contained title,
+      skipping unlisted and unfocusable windows; with a pid, only that app's windows count and a pid alone
+      takes that app's front window even while another app has focus. Among equal titles the active one wins,
+      else the newest shown one, and a lone hidden or minimized window is still reachable; a title that only
+      matches a hidden twin loses to the on-screen one. A stale title falls back to its app's window only when
+      that is unambiguous (one window, or the active one), otherwise the error lists that app's window titles.
+      focus and close of one of two same-titled windows act on the active one.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestWindowPickTiers, planned:internal/view.TestWindowPickEqualTitles, planned:internal/view.TestStaleTitleFallback, planned:internal/actions.TestFocusCloseActiveTwin]
+    upstream:
+      - rust/desk-core/src/window.rs::among_equal_titles_none_active_the_newest_shown_window_wins_and_a_lone_hidden_one_still_counts
+      - rust/desk-core/src/window.rs::a_window_is_picked_by_exact_then_trimmed_then_contained_title
+      - rust/desk-core/src/window.rs::a_pid_alone_picks_its_window_while_another_app_has_the_focus
+      - rust/desk-core/src/window.rs::a_stale_title_takes_its_app_window_only_when_that_is_unambiguous
+      - rust/desk/src/desk.rs::a_title_picks_the_on_screen_window_over_its_hidden_twin_and_still_reaches_a_lone_minimized_window
+      - rust/desk/src/desk.rs::focus_takes_the_active_window_among_equal_titles
+      - rust/desk/src/desk.rs::closing_one_of_two_same_titled_windows_closes_the_active_one
+
+  - id: CAP-DSK-029
+    title: Long titles the window server elides
+    behavior: >-
+      A window is addressed by its full accessibility title even when the driver's window list shows it
+      elided; fennec-cua matches the two by window number. A not-found error lists full titles, and a point
+      hit test reports the full title of the window under the point.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestElidedTitlesMatchByNumber]
+    upstream:
+      - rust/desk/src/desk.rs::input_names_a_window_by_its_whole_accessibility_title_where_the_driver_lists_it_elided
+      - rust/desk/src/desk.rs::at_a_point_reads_the_window_the_driver_lists_there_by_its_number_not_its_elided_title
+
+  - id: CAP-DSK-030
+    title: App allowlist hides and refuses other apps
+    behavior: >-
+      With an app allowlist (case-insensitive app names), the window list shows only admitted apps' windows;
+      outlines, refs, point hit tests, element actions, clicks, launches and desktop-wide keys or typing whose
+      target (the front window for untargeted input) is outside it are refused with nothing sent, and
+      not-found errors list only admitted windows. Pointer steps are gated on every point they touch: both
+      ends of a drag and the point of a scroll; a point over no window is refused. Named background input is
+      gated on its target app, not on whatever window covers the point.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestAllowlistHidesWindows, planned:internal/policy.TestAllowlistGatesEveryPoint, planned:internal/policy.TestAllowlistGatesNamedTargetNotCover]
+    upstream:
+      - rust/desk/src/desk.rs::an_app_allowlist_hides_and_refuses_the_windows_of_other_apps
+      - rust/desk/src/desk.rs::an_app_allowlist_gates_every_point_and_element_a_call_reaches
+      - rust/desk/src/desk.rs::an_app_allowlist_gates_both_ends_of_a_drag_and_the_point_of_a_scroll
+      - rust/desk/src/desk.rs::the_allowlist_gates_named_background_input_on_its_target_app_not_on_what_covers_it
+
+  - id: CAP-DSK-031
+    title: Allowlist blackout in screenshots
+    behavior: >-
+      With an allowlist, screen and region captures paint every pixel outside admitted windows black (crops
+      included), and a window that moves or leaves while the capture is taken is never shown: the capture is
+      retried (up to 3 times) until the window set is stable, else it fails asking to retry. Without an
+      allowlist no masking work is done and only one capture call is made.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestCaptureBlackout, planned:internal/policy.TestCaptureMaskStableWindows]
+    upstream:
+      - rust/desk/src/desk.rs::an_app_allowlist_masks_shots_outside_its_windows_and_costs_nothing_without_one
+      - rust/desk/src/desk.rs::a_masked_shot_never_shows_a_window_that_left_while_it_was_taken
+      - rust/desk-core/src/shot.rs::a_backend_capture_paints_the_unadmitted_windows_black
+
+  - id: CAP-DSK-032
+    title: Screenshot encoding and cropping
+    behavior: >-
+      Captures are taken in a driver session separate from input. A region crop is given in screen points
+      and scaled to image pixels by the backing scale, clamped to the image, and a rectangle wholly outside
+      the image fails; the cropped PNG holds exactly the source pixels of the rectangle as RGB, and encoding
+      then decoding a capture reproduces its pixels bit for bit.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestCropScalesAndClamps, planned:internal/vision.TestPNGRoundTrip, planned:internal/driver.TestCaptureSessionSeparate]
+    upstream:
+      - rust/desk-core/src/shot.rs::a_crop_scales_screen_pixels_to_the_screenshot
+      - rust/desk-core/src/shot.rs::crop_cuts_an_rgb_rectangle
+      - rust/desk-core/src/shot.rs::a_screenshot_png_decodes_to_the_pixels_it_was_encoded_from
+      - rust/desk/src/desk.rs::a_shot_captures_in_its_own_driver_session
+
+  - id: CAP-DSK-033
+    title: Launching apps on macOS
+    behavior: >-
+      act launch always asks the system to open the app (it never just raises an existing window) and the
+      app stays in the background, which the result says. Arguments that include an option start a new
+      instance with those arguments; arguments with no option (URLs, files) are handed to the running app as
+      documents, starting no second instance. When the driver finds no app by the given name, the launch is
+      retried once by the bundle name of a running app whose windows carry that name (e.g. Chrome to Google
+      Chrome), keeping the URLs. With an allowlist, any argument starting with "-" is refused before launching.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestLaunchStaysBackground, planned:internal/actions.TestLaunchArgsNewInstanceUrlsToRunning, planned:internal/actions.TestLaunchRetryByBundleName, planned:internal/policy.TestAllowlistRefusesLaunchFlags]
+    upstream:
+      - rust/desk/src/desk.rs::a_macos_launch_never_raises_a_running_app_and_a_windows_one_does
+      - rust/desk/src/desk.rs::only_a_macos_launch_reports_that_it_stays_in_the_background
+      - rust/desk/src/desk.rs::a_launch_with_arguments_starts_a_new_instance_on_macos_with_them
+      - rust/desk/src/desk.rs::a_launch_with_only_urls_hands_them_to_the_running_app_on_macos
+      - rust/desk/src/desk.rs::a_launch_the_driver_refuses_by_name_retries_once_by_the_running_apps_bundle
+      - rust/desk/src/desk.rs::an_allowlist_refuses_launch_flags_and_keeps_plain_arguments
+
+  - id: CAP-DSK-034
+    title: A plan's launch step fronts what it launched
+    behavior: >-
+      In a multi-step act plan on macOS, a launch step is followed by bringing the launched app's window to
+      the front, since a macOS launch stays in the background, and the trace records how it was focused.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestLaunchStepFrontsWindow]
+    upstream:
+      - rust/desk/src/desk.rs::a_plan_focuses_a_window_it_launched_on_a_macos_desk_only
+
+  - id: CAP-DSK-035
+    title: Outline line format
+    behavior: >-
+      Each outline line shows indentation by depth, role, the quoted name (quotes, backslashes and newlines
+      escaped, cut by characters not bytes), then states in brackets, the keyboard shortcut, the element id,
+      and a quoted value after a colon. Quoting caps names at the outline's character budget.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestOutlineLineFormat, planned:internal/view.TestQuoteEscapesAndCuts]
+    upstream:
+      - rust/desk/src/desk.rs::the_outline_shows_states_shortcuts_ids_and_values
+      - rust/desk-core/src/text.rs::quoting_cuts_and_escapes
+
+  - id: CAP-DSK-036
+    title: Menu bar and link URLs on request
+    behavior: >-
+      observe scope=window includes the app's menu bar only when asked, while find always searches it. Link
+      targets are attached to link nodes in outlines and find results only when asked, and always in an
+      element read.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestMenusOnlyWhenAsked, planned:internal/view.TestLinkUrlsWhenAsked]
+    upstream:
+      - rust/desk/src/desk.rs::a_snapshot_takes_the_menu_bar_only_when_asked_and_find_always_searches_it
+      - rust/desk/src/desk.rs::snapshot_and_find_read_link_urls_only_when_asked_and_read_always_does
+
+  - id: CAP-DSK-037
+    title: Find by name
+    behavior: >-
+      find compares names after normalising them: case folded, label punctuation such as leading underscores,
+      trailing colons and ellipses dropped, whitespace collapsed. Exact normalised matches win over contained
+      ones; an optional role filter takes alternatives separated by "|"; an empty or punctuation-only query
+      matches nothing.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestNameNormalisation, planned:internal/view.TestFindExactBeforeContained]
+    upstream:
+      - rust/desk-core/src/text.rs::names_compare_without_label_punctuation
+      - rust/desk-core/src/text.rs::names_match_exactly_before_they_match_contained
+
+  - id: CAP-DSK-038
+    title: Element value reads
+    behavior: >-
+      observe scope=element without full text returns the element's whole name and the first 80 characters
+      of its value as a preview, with no truncation flag. With full text it returns up to 65,536 characters,
+      the head by default or with tail the end, cut on whole characters (multi-byte and emoji never split),
+      and flags truncated only when something was cut; asking for tail without full text is an error. With
+      the web option on macOS the read also gives the page URL of the containing document and the element's
+      DOM id where exposed; a plain read gives neither.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestReadPreviewAndFullText, planned:internal/view.TestTailClipWholeCharacters, planned:internal/view.TestReadWebUrlDomId]
+    upstream:
+      - rust/desk/src/desk.rs::a_text_read_keeps_its_head_or_with_tail_its_end_and_says_when_it_was_cut
+      - rust/desk/src/desk.rs::a_read_without_text_previews_eighty_characters_of_the_value_and_the_whole_name
+      - rust/desk-core/src/text.rs::a_tail_clip_keeps_the_last_characters_whole
+      - rust/desk/src/desk.rs::a_read_with_web_adds_the_page_address_and_dom_id_and_a_plain_read_does_not
+
+  - id: CAP-DSK-039
+    title: Point hit tests
+    behavior: >-
+      observe scope=point returns the element under a screen point, its ancestors and its process id. Without
+      a named window it reads the topmost app window at the point (not the front window), choosing among
+      same-titled twins the one whose bounds hold the point and failing when twins cannot be told apart; a
+      point over no app window fails with a hint to name a window or pid; an unadmitted window under the point
+      is refused by the allowlist. When another window covers the point the answer names it (title, pid).
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestPointHitTopWindow, planned:internal/view.TestPointHitCover]
+    upstream:
+      - rust/desk/src/desk.rs::at_names_the_process_of_the_element_under_the_point
+      - rust/desk/src/desk.rs::at_without_a_window_reads_the_top_window_at_the_point_not_the_front_one
+      - rust/desk/src/desk.rs::at_without_a_window_reads_the_twin_whose_bounds_hold_the_point
+      - rust/desk/src/desk.rs::at_names_the_window_that_covers_the_point
+
+  - id: CAP-DSK-040
+    title: Pid-scoped accessibility reads
+    behavior: >-
+      Without an allowlist, an outline, find, hit test or close that names a pid reads only that app's
+      windows instead of enumerating every app; with an allowlist such calls still enumerate every window so
+      the allowlist judges the full picture. A pid-less outline still reads all apps.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestPidScopedReads]
+    upstream:
+      - rust/desk/src/desk.rs::a_call_that_names_a_process_reads_only_that_apps_windows
+      - rust/desk/src/desk.rs::with_an_allowlist_a_call_that_names_a_process_still_reads_every_window
+
+  - id: CAP-DSK-041
+    title: Chromium web-tree switch with holders
+    behavior: >-
+      fennec-cua turns on a Chromium/Electron app's web accessibility tree for a holder (an MCP session, a
+      run, a recording) and reports whether it was already on before the first hold. The tree stays on while
+      any holder remains and goes off when the last holder lets go, but only if it was off originally; a run
+      or recording lets go when it ends however it ends. Concurrent first holds are serialised so the
+      original state is recorded once. An app outside the allowlist is refused and its tree is left alone.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestWebTreeHolders, planned:internal/ax.TestWebTreeConcurrentFirstHolds]
+    upstream:
+      - rust/desk/src/desk.rs::a_page_tree_stays_on_while_anyone_holds_it_and_goes_off_with_the_last_hold
+
+  - id: CAP-DSK-042
+    title: Waiting for the window list to change
+    behavior: >-
+      wait for a window change answers with changed=true and the new window list as soon as it differs from
+      the given baseline, or with changed=false and the unchanged list once the timeout (capped at 5 s) has
+      passed in wall time, list reads included; a list read that ends past the deadline ends the wait, and a
+      zero timeout reads the list once. Both the baseline and the fresh list are filtered by the allowlist
+      before comparing, so unadmitted windows neither trigger a change nor appear.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/actions.TestWaitWindowChange, planned:internal/actions.TestWaitTimeoutCountsListReads, planned:internal/policy.TestWaitComparesAdmittedOnly]
+    upstream:
+      - rust/desk/src/desk.rs::a_wait_returns_the_new_window_list_once_a_window_opens
+      - rust/desk/src/desk.rs::a_wait_without_a_change_returns_the_same_list_at_its_timeout
+      - rust/desk/src/desk.rs::slow_window_lists_count_against_a_waits_timeout
+      - rust/desk/src/desk.rs::a_read_that_ends_past_the_deadline_ends_the_wait
+      - rust/desk/src/desk.rs::a_zero_timeout_wait_reads_the_list_once
+      - rust/desk/src/desk.rs::a_wait_lists_and_compares_only_the_windows_the_allowlist_admits
+
+  - id: CAP-DSK-043
+    title: Cheap window-change polling and prompt cancellation
+    behavior: >-
+      While waiting, fennec-cua checks a cheap on-screen window fingerprint every 10 ms and reads the full
+      window list immediately when it changes (also right after a slow list read), otherwise only every
+      100 ms or the last read's duration, whichever is longer, so a steady screen costs few full lists. A wait
+      cancelled early releases the desk at once for the next call.
+    surface: wait
+    parity: spec
+    tests: [planned:internal/ax.TestWindowFingerprintPolling, planned:internal/daemon.TestCancelledWaitFreesDesk]
+    upstream:
+      - rust/desk/src/desk.rs::a_wait_ended_early_frees_the_desk_at_once
+      - rust/desk/src/desk.rs::a_hint_change_right_after_a_slow_list_reads_the_list_at_once
+      - rust/desk/src/desk.rs::a_steady_hint_spares_full_window_lists
+      - rust/desk/src/desk.rs::a_hint_change_reads_the_window_list_at_once
+
+  - id: CAP-DSK-044
+    title: Screen stillness with volatile regions
+    behavior: >-
+      wait for stillness answers still=true once no 8-pixel block of a 320-pixel-wide capture has changed in
+      a way that counts for hold_ms (default 40 ms), or still=false at timeout_ms (default 600 ms, at most
+      5 s, checked between captures), with changed (whether anything counted during the wait), ms and the
+      count of volatile blocks. A block that cycles through three or more contents (clock, spinner, video)
+      stops counting, so a churning region does not hold the answer back. Each check is one capture of the
+      whole screen and returns no pixels.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/vision.TestStillnessHoldAndTimeout, planned:internal/vision.TestStillnessIgnoresVolatileBlocks]
+    upstream:
+      - rust/desk/src/desk.rs::still_answers_once_the_screen_holds_and_a_churning_region_does_not_hold_it_back
+
+  - id: CAP-DSK-045
+    title: Scroll and drag basics
+    behavior: >-
+      A scroll with x and y wheels that many notches (default 3) at that screen point; without a point it
+      sends scroll keys to the front app window by pid and window id in the window session - with an
+      allowlist, the window the allowlist picks, or that app's topmost window when the driver titles it
+      differently. x without y is refused. A drag presses at the start point, moves and releases at the end
+      point.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestScrollAtPointOrFrontWindow, planned:internal/actions.TestDragTwoPoints]
+    upstream:
+      - rust/desk/src/desk.rs::a_scroll_wheels_at_its_point_or_at_the_front_window_and_a_drag_spans_two_points
+      - rust/desk/src/desk.rs::a_checked_window_the_driver_titles_differently_falls_back_to_its_apps_topmost_window
+
+  - id: CAP-DSK-046
+    title: Argument defaults
+    behavior: >-
+      Every optional tool argument has a default, so a call with no arguments (e.g. observe with none) uses
+      them all; a missing required argument (such as the keys of a key step) is rejected with a schema error
+      before anything runs.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestArgumentDefaults]
+    upstream:
+      - rust/desk-core/src/args.rs::a_call_without_args_takes_every_default
+
+  - id: CAP-DSK-047
+    title: Oversized messages refused
+    behavior: >-
+      The daemon's socket refuses a message whose declared or actual size exceeds 64 MiB with an error and
+      without allocating for it or crashing.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestOversizedMessageRefused]
+    upstream:
+      - rust/desk-core/src/wire.rs::an_oversized_frame_is_refused
+
+excluded:
+  - upstream:
+      - rust/desk/src/desk.rs::an_outline_shows_a_linux_raw_key_binding_in_place_of_the_shortcut
+      - rust/desk/src/desk.rs::the_window_list_marks_the_windows_of_the_desktop_shell
+      - rust/desk/src/desk.rs::the_unanswered_front_window_is_named_only_for_an_allowed_app
+      - rust/desk/src/desk.rs::a_linux_launch_raises_the_running_app_and_starts_it_only_when_asked_or_absent
+      - rust/desk/src/desk.rs::a_window_names_an_app_by_its_process_or_the_desktop_id_of_its_menu_name
+      - rust/desk/src/desk.rs::on_linux_a_background_type_waits_for_a_window_shot_s_read
+      - rust/desk/src/desk.rs::linux_keys_take_keysym_names_and_text_goes_in_runs_of_eight_new_characters
+      - rust/desk/src/desk.rs::a_linux_line_xtest_types_skips_the_driver_and_a_stop_ends_xtest_at_its_next_key
+      - rust/desk/src/desk.rs::a_shot_tells_the_backend_whether_the_driver_may_show_its_overlay
+      - rust/desk/src/desk.rs::a_linux_shot_from_the_driver_answers_the_image_and_writes_no_file
+    reason: >-
+      Linux-only desk behaviour that the test suite runs on every platform: AT-SPI raw key bindings,
+      desktop-shell windows and the unanswered _NET_ACTIVE_WINDOW probe (null on macOS), desktop-file app ids,
+      the raise-instead-of-launch rule, XTest typing and keysym names, eight-character text runs, MIT-SHM
+      captures with the driver's cursor overlay, and a Linux driver session that drops reads. None has a macOS
+      counterpart.
+  - upstream:
+      - rust/desk/src/desk.rs::an_auto_drag_on_windows_runs_in_the_foreground_from_the_start
+      - rust/desk/src/desk.rs::windows_foreground_typing_sends_each_line_as_one_text
+      - rust/desk/src/desk.rs::a_pointless_windows_scroll_refuses_a_front_window_another_window_covers
+    reason: >-
+      Windows-only rules (auto drags start in the foreground, each foreground line goes as one text, a
+      point-less scroll wheels at the window centre and refuses when covered); on macOS drags follow the normal
+      auto escalation and a point-less scroll sends scroll keys to the window (CAP-DSK-045).
+  - upstream:
+      - rust/desk-core/src/wire.rs::a_frame_round_trips
+      - rust/desk-core/src/wire.rs::the_tool_of_a_frame_comes_without_its_arguments
+      - rust/desk-core/src/wire.rs::the_wire_keeps_its_json_shape
+    reason: >-
+      Encoding of shuttle's private length-prefixed desk wire (frame layout, routing a frame by tool name
+      without parsing arguments, its text/is_error/image_b64 JSON shape). fennec-cua has no second wire: the
+      daemon speaks MCP JSON-RPC directly on its unix socket (README section 3.4), whose framing is covered by
+      the mcp-surface catalog; the size limit is kept as CAP-DSK-047.

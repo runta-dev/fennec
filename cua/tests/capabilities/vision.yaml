@@ -1,0 +1,464 @@
+domain: vision
+summary: Screenshot-and-pixel driving for vision agents, where observe vision=true returns a scaled screenshot with numbered elements and act takes element numbers or screenshot-pixel points, waits for the screen to settle and answers with the next screenshot.
+capabilities:
+  - id: CAP-VIS-001
+    title: Vision window lines in screenshot pixels
+    behavior: >-
+      observe vision=true lists the on-screen windows ordered front to back by
+      their stacking order, one line each with pid, window id, app name,
+      quoted title, and origin and size divided by the screenshot scale so
+      they read in screenshot pixels. Window bounds given as integers or as
+      fractional numbers are both accepted (fractions rounded). Windows
+      narrower or shorter than 10 points, or lying wholly left of or above
+      the screen, are left out.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestWindowLinesInScreenshotPixels, planned:internal/vision.TestWindowBoundsWholeOrFractional]
+    upstream:
+      - rust/desk/src/computer.rs::a_window_list_takes_whole_or_fractional_bounds
+      - rust/desk/src/computer.rs::window_lines_and_click_replies_are_in_screenshot_pixels
+  - id: CAP-VIS-002
+    title: Numbered element list for vision
+    behavior: >-
+      observe vision=true numbers the elements of the frontmost application
+      window, or of a given pid (its frontmost listed window unless a window
+      id is given), reading at most 300 elements. Each line shows the number,
+      role, quoted label, a value preview of at most 60 characters, the
+      element centre in screenshot pixels and a disabled flag, indented by
+      depth (capped at 10 levels); past about 15000 characters the list stops
+      with a note to narrow it with a query. U+FFFC object placeholders are
+      removed from shown labels and values (the stored label is unchanged),
+      and quotes and line breaks inside labels and values are escaped so one
+      element always occupies exactly one line and text in an app cannot
+      forge another element line.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestElementListForPidUsesFrontmostWindow, planned:internal/vision.TestElementLinesDropObjectPlaceholders, planned:internal/vision.TestElementLinesEscapeForgedLines]
+    upstream:
+      - rust/desk/src/computer.rs::a_pid_without_a_window_id_reads_its_frontmost_listed_window
+      - rust/desk/src/computer.rs::element_lines_leave_out_object_replacement_characters
+      - rust/desk/src/computer.rs::a_label_or_value_holding_a_forged_element_line_stays_on_its_own_escaped_line
+  - id: CAP-VIS-003
+    title: One full-size capture shrunk locally
+    behavior: >-
+      A vision screenshot asks cua-driver for exactly one full-resolution
+      desktop capture in the caller's session (never a driver-side rescale),
+      then shrinks it in fennec-cua with a Lanczos3 filter so the long edge
+      is max_edge (default 1024; 0 means full size). A capture whose long
+      edge is already no larger than max_edge is not resized. The scale kept
+      for later mapping is the capture's own points-per-pixel factor times
+      the shrink ratio.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestScreenshotIsOneFullSizeCapture, planned:internal/vision.TestFittedShrinksToLongEdge]
+    upstream:
+      - rust/desk/src/computer.rs::a_screenshot_is_one_full_size_capture_in_the_callers_session
+      - rust/desk/src/computer.rs::fitted_shrinks_a_full_size_capture_to_the_long_edge_and_leaves_a_small_one
+  - id: CAP-VIS-004
+    title: Screenshot encoding and size report
+    behavior: >-
+      Screenshots are sent as lossless WebP for UI-like content and as JPEG at
+      quality 80 when a sample of every 7th pixel holds more than 2500
+      distinct colours; the alpha channel is always dropped. A driver PNG
+      that is not resized is re-encoded only when the result is smaller,
+      otherwise passed through. The answer states the image format, its
+      pixel size, its size in KB rounded up and an estimate of input tokens
+      of ceil(width*height/750); when the image cannot be parsed only the KB
+      size is given.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestPhotoDetectionThreshold, planned:internal/vision.TestShrinkFlatWebPNoiseJPEG, planned:internal/vision.TestDropAlpha, planned:internal/vision.TestScreenshotWeightReport]
+    upstream:
+      - rust/desk/src/computer.rs::photo_answers_as_a_hash_set_of_the_sampled_colours_does
+      - rust/desk/src/computer.rs::shrink_keeps_every_pixel_of_a_flat_screen_as_webp_and_turns_noise_into_jpeg
+      - rust/desk/src/computer.rs::rgb_drops_the_alpha_of_every_pixel_as_a_per_pixel_copy_does
+      - rust/desk/src/computer.rs::a_screenshot_reports_its_format_size_and_input_tokens
+  - id: CAP-VIS-005
+    title: Point mapping by screenshot scale
+    behavior: >-
+      act takes x,y in pixels of the screenshot the agent saw and multiplies
+      them by that screenshot's scale before sending. The scale is the
+      capture's frame scale, or the screen width divided by the screenshot
+      width when the driver reports no frame scale, times any local shrink.
+      An explicit scale on a step or on a plan overrides the session's
+      latest; two acts running at once on one session each use their own
+      scale. A scale that is zero, negative or not finite is rejected before
+      anything is sent, and an unknown action name is rejected by name.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/vision.TestScaleFromScreenAndScreenshotWidths, planned:internal/vision.TestPinnedScaleMapsStepAndPlan, planned:internal/vision.TestConcurrentActsKeepOwnScale]
+    upstream:
+      - rust/desk/src/computer.rs::a_driver_without_frame_scale_maps_by_its_screen_and_screenshot_widths
+      - rust/desk/src/computer.rs::a_pinned_scale_maps_an_action_and_every_action_of_a_list
+      - rust/desk/src/computer.rs::two_acts_at_once_on_one_session_each_map_by_their_own_scale
+  - id: CAP-VIS-006
+    title: Multi-step pixel plans
+    behavior: >-
+      An act with several pixel steps maps every step by the screenshot taken
+      before the plan started, even though the plan's own screenshot uses a
+      different max_edge; the next plan maps by that newer screenshot. Steps
+      run in order and stop at the first failure, saying how many steps did
+      not run. Only one screenshot is captured, after the last step that ran;
+      intermediate steps settle but produce no image.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/vision.TestPlanMapsByScreenshotBeforeIt, planned:internal/vision.TestPlanCapturesAfterLastStepOnly]
+    upstream:
+      - rust/desk/src/computer.rs::every_point_of_an_action_list_maps_by_the_screenshot_taken_before_it
+      - rust/desk/src/computer.rs::an_action_list_captures_the_screen_after_its_last_action_only
+  - id: CAP-VIS-007
+    title: Scale fallback across sessions
+    behavior: >-
+      A session that has no screenshot of its own maps points by the latest
+      screenshot of any session, including a one-shot screenshot taken
+      without a session; ending a session forgets its scale so it falls back
+      the same way. A read-only shared screenshot (workspace_only) records the
+      scale for its own session only and never becomes the global latest
+      that other sessions fall back to.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestSessionWithoutShotUsesLatestOfAny, planned:internal/vision.TestSharedShotLeavesOtherScalesAlone]
+    upstream:
+      - rust/desk/src/computer.rs::a_session_without_its_own_screenshot_maps_by_the_latest_one_of_any_session
+      - rust/desk/src/computer.rs::a_read_share_screenshot_leaves_the_scale_of_other_sessions_alone
+  - id: CAP-VIS-008
+    title: Retina clicks land where the screenshot showed
+    behavior: >-
+      On a Retina display, desktop-scope points (click, drag start and end)
+      are converted by both the screenshot scale and the backing scale factor
+      the capture reports, so a click at a screenshot pixel lands on the
+      on-screen spot shown there after a downscaled screenshot, after a
+      region zoom, and after a full-size screenshot alike; the zoom's pixel
+      mapping accounts for the backing factor.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/vision.TestRetinaClickLandsWhereShown]
+    upstream:
+      - rust/desk/src/computer.rs::a_retina_desktop_click_lands_where_the_screenshot_showed_after_a_shot_a_zoom_or_a_full_shot
+  - id: CAP-VIS-009
+    title: Windowless and frontmost input on macOS
+    behavior: >-
+      On macOS, act input at a screenshot point (click, drag) goes to the
+      driver with desktop scope and foreground delivery, since it moves the
+      real pointer. Keys and typing without an element go to the frontmost
+      window through desktop scope without a pid. When no application window
+      is on screen at all, a key still goes to the desktop, while typing
+      fails with an error asking to open or focus a window and sends nothing.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/vision.TestWindowlessInputUsesDesktopScope, planned:internal/vision.TestFrontmostKeysGoToDesktop, planned:internal/vision.TestTypeWithNoWindowFails]
+    upstream:
+      - rust/desk/src/computer.rs::off_linux_windowless_input_goes_with_desktop_scope_and_no_target
+      - rust/desk/src/computer.rs::keys_for_the_frontmost_window_go_to_the_desktop_off_linux
+      - rust/desk/src/computer.rs::a_key_with_no_window_on_the_screen_goes_to_the_desktop_and_typing_fails
+  - id: CAP-VIS-010
+    title: Settle on a still screen after each action
+    behavior: >-
+      After each vision input act waits for the screen to change and then
+      hold still, comparing thumbnails (long edge 160 px) captured every 40 ms
+      in a separate probe session so the action session's capture context is
+      untouched. A frame counts as changed only when some channel of some
+      pixel differs by more than 48. The wait lasts at least 600 ms, extends
+      to 600 ms past the first change but never beyond 3 s, and ends once the
+      changed screen has been still for 40 ms. When it settled, the
+      screenshot returned is the probe capture it settled on (scaled to
+      max_edge), not a fresh one.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestSettledActionReturnsSettledCapture, planned:internal/vision.TestFramesDifferPastTolerance, planned:internal/vision.TestThumbnailChangeDetection]
+    upstream:
+      - rust/desk/src/computer.rs::an_action_that_settles_still_returns_the_capture_it_settled_on
+      - rust/desk/src/computer.rs::a_change_counts_outside_the_volatile_blocks_only
+      - rust/desk/src/computer.rs::frames_differ_only_past_the_tolerance
+  - id: CAP-VIS-011
+    title: Capture failures
+    behavior: >-
+      When the capture for observe vision=true fails, the call fails with the
+      driver's own reason (for example a sleeping display). When the
+      screenshot after an act fails, the act still reports the step as done
+      (not an error, no image) and adds that the screenshot afterwards
+      failed and why, so the agent does not repeat input that landed; the
+      same holds for each step of a plan and for a wait step.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestFailedCaptureCarriesDriverReason, planned:internal/vision.TestActionReportsRunWhenShotFails]
+    upstream:
+      - rust/desk/src/computer.rs::a_failed_capture_fails_with_the_drivers_reason
+      - rust/desk/src/computer.rs::an_action_whose_screenshot_fails_still_reports_that_it_ran
+  - id: CAP-VIS-012
+    title: Per-caller vision sessions
+    behavior: >-
+      Each MCP client gets its own default vision session, named from its
+      client id with non-alphanumeric characters replaced, so element numbers
+      and scale from one agent never serve another; acting on an element
+      number before that caller has observed fails with a hint to observe
+      first. Ending one caller's session leaves the others usable, and the
+      ended one starts again on its next call. When cua-driver reports that
+      a session has ended, fennec-cua restarts it under the same name, sends
+      the call once more, and the click still lands where the screenshot
+      showed.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/vision.TestCallersGetOwnDefaultSession, planned:internal/driver.TestEndedSessionRestartsOnce]
+    upstream:
+      - rust/desk/src/computer.rs::callers_without_a_session_get_their_own_and_an_ended_default_starts_again
+      - rust/desk/src/computer.rs::a_session_the_driver_ended_starts_again_and_its_click_lands_where_the_screenshot_showed
+  - id: CAP-VIS-013
+    title: Region zoom
+    behavior: >-
+      observe image=region takes x, y, w, h in pixels of the caller's latest
+      screenshot (else the latest of any session), cuts that rectangle from a
+      full-resolution capture at native resolution, clips it at the image
+      edge (a rectangle wholly outside fails as off screen), and shrinks it
+      by area averaging only when max_edge is smaller. The answer gives the
+      formula mapping a zoom pixel px,py back to act x,y as origin plus px or
+      py times a factor. A zoom without a session captures in a one-shot
+      session of its own and ends it afterwards.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/vision.TestCropClipsAtImageEdge, planned:internal/vision.TestZoomCutsFromFullCapture, planned:internal/vision.TestZoomMapsByLatestScreenshot, planned:internal/vision.TestZoomOneShotSessionEnded, planned:internal/vision.TestFitAveragesBlocks]
+    upstream:
+      - rust/desk/src/computer.rs::a_crop_keeps_the_rgb_of_its_rectangle_and_stops_at_the_image_edge
+      - rust/desk/src/computer.rs::a_zoom_without_mit_shm_cuts_the_region_from_a_full_size_capture
+      - rust/desk/src/computer.rs::a_region_without_a_session_maps_by_the_latest_screenshot
+      - rust/desk/src/computer.rs::a_region_without_a_session_captures_in_a_session_of_its_own_and_ends_it
+      - rust/desk/src/computer.rs::fit_averages_blocks_down_to_the_long_edge
+  - id: CAP-VIS-014
+    title: Click replies in screenshot pixels
+    behavior: >-
+      Every point a driver reply mentions is restated in screenshot pixels
+      (divided by the scale and rounded), and a desktop click reply names the
+      screenshot point the agent asked for instead of screen-absolute or
+      device-pixel coordinates, keeping the reply's remaining qualifiers.
+      Parenthesised text that is not a numeric pair is left as is.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestClickReplyNamesScreenshotPoint, planned:internal/vision.TestReplyPointsDividedByScale]
+    upstream:
+      - rust/desk/src/computer.rs::a_desktop_click_reply_names_the_screenshot_point_on_linux_and_macos
+      - rust/desk/src/computer.rs::shot_points_divides_each_point_by_the_scale
+  - id: CAP-VIS-015
+    title: Off-screen points refused
+    behavior: >-
+      Before any input, act refuses a pixel step whose point (or a drag's
+      start or end) maps outside the screen, naming the screen size in
+      screenshot pixels and the valid x and y ranges and telling the agent to
+      take a new screenshot; element-targeted steps skip the start check.
+      shuttle applies this only on X11; fennec-cua applies it on macOS as the
+      safer outcome (no stray input).
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestOffScreenPointRefused]
+    upstream:
+      - rust/desk/src/computer.rs::a_point_off_the_screen_is_refused_in_screenshot_pixels
+  - id: CAP-VIS-016
+    title: Vision key names and combinations
+    behavior: >-
+      Vision key steps share the one key-name vocabulary: X11-style aliases
+      (Prior, Next, Return, Control_L, BackSpace) map to canonical names,
+      matching is case-insensitive, a single key string holding a
+      combination such as ctrl+l is sent as a hotkey, a hotkey of one key is
+      sent as a plain key, and empty or dangling combinations are rejected.
+      On macOS a foreground combination with the plus key is sent as shift
+      and equals.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestVisionKeyAliasesAndCombos, planned:internal/actions.TestMacPlusKeyIsShiftEquals]
+    upstream:
+      - rust/desk/src/computer.rs::key_aliases_become_driver_names_and_a_key_combination_a_hotkey
+      - rust/desk/src/computer.rs::a_macos_foreground_plus_key_goes_as_shift_and_equals
+  - id: CAP-VIS-017
+    title: Vision typing
+    behavior: >-
+      A type step with a point first clicks there, then types into whatever
+      has focus (the text itself carries no point). On macOS a trailing
+      newline is typed together with the text in one call rather than as a
+      separate Return, and foreground typing addresses the frontmost window
+      without raising it first. Text with non-ASCII characters is typed
+      literally in consecutive chunks that each hold at most 8 distinct
+      non-ASCII characters and together equal the text. A trailing
+      tool-call closing tag leaked into the text is stripped before typing.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTypeAtPointClicksThenTypes, planned:internal/actions.TestTrailingNewlineTypedWithText, planned:internal/actions.TestMacForegroundTypeCallSequence, planned:internal/actions.TestNonASCIIChunksOfEight, planned:internal/actions.TestProtocolTailStripped]
+    upstream:
+      - rust/desk/src/computer.rs::a_type_at_a_point_clicks_it_then_types_into_the_focus
+      - rust/desk/src/computer.rs::off_linux_a_typed_trailing_newline_goes_with_the_text
+      - rust/desk/src/computer.rs::a_linux_foreground_type_brings_its_window_to_the_front_before_typing
+      - rust/desk/src/computer.rs::a_foreground_type_of_twenty_distinct_cjk_goes_as_runs_of_at_most_eight
+      - rust/desk/src/computer.rs::a_typed_protocol_tail_reaches_neither_the_xtest_typer_nor_the_driver
+  - id: CAP-VIS-018
+    title: Partial typing is counted
+    behavior: >-
+      A type step that fails part way reports how many of the characters
+      landed out of the total, derived from the driver's skipped characters
+      or its own typed count (zero when neither is given), stops there, and
+      marks the step unconfirmed so the text is not typed again.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestFailedTypeCountsLanded]
+    upstream:
+      - rust/desk/src/computer.rs::a_failed_type_counts_the_characters_that_landed
+  - id: CAP-VIS-019
+    title: Hit-checked click on text fields
+    behavior: >-
+      On macOS a plain left click on a numbered text field, text area or
+      combo box that has a window id is sent as one hit-checked click (the
+      driver raises the window and clicks the centre only if the field is on
+      top there). If the driver refuses before sending (hit mismatch,
+      foreground unavailable, hit check unavailable), the field gets its
+      press action instead and the answer notes the focus may not have
+      moved; if that press is unsupported or fails, the answer carries the
+      refusal (and the press error), never a pixel click. Any other error, or
+      a hit-checked click that failed after sending, is returned without a
+      retry. Buttons, right clicks and fields without a window id get a plain
+      press.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTextFieldClickIsHitChecked, planned:internal/actions.TestHitRefusalFallsBackToPress, planned:internal/actions.TestRefusalThenUnsupportedPressNoPixelClick, planned:internal/actions.TestSentHitCheckedClickNotRepeated]
+    upstream:
+      - rust/desk/src/computer.rs::off_linux_a_click_on_a_text_field_asks_the_driver_for_a_hit_checked_click
+      - rust/desk/src/computer.rs::off_linux_a_hit_refusal_falls_back_to_the_press_and_other_elements_are_pressed
+      - rust/desk/src/computer.rs::after_a_hit_refusal_an_unsupported_press_returns_the_refusal_and_no_pixel_click
+      - rust/desk/src/computer.rs::a_hit_checked_click_that_failed_after_sending_is_not_repeated
+  - id: CAP-VIS-020
+    title: Unsupported press retried once hit-checked
+    behavior: >-
+      When a left single, double or triple click on a numbered element fails
+      because the app does not support the press action (AX error -25206),
+      fennec-cua retries exactly once as a hit-checked click on that element,
+      with a click count of 2 for a double click. If the driver refuses that
+      too, both errors are returned and no pixel click is made. No retry
+      happens for right clicks or other non-left buttons, for elements
+      without a window id, or for presses that failed any other way such as
+      a timeout (-25204).
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestUnsupportedPressGetsOneHitCheckedClick, planned:internal/actions.TestUnsupportedDoubleClickRetriedWithCount, planned:internal/actions.TestNoRetryWithoutWindowOrLeftButton, planned:internal/actions.TestTimedOutPressNotRetried, planned:internal/actions.TestLeftClickClassification]
+    upstream:
+      - rust/desk/src/computer.rs::an_element_without_the_press_action_gets_one_hit_checked_click
+      - rust/desk/src/computer.rs::a_refused_hit_checked_click_after_an_unsupported_press_returns_both_errors
+      - rust/desk/src/computer.rs::an_unsupported_double_click_is_retried_as_a_hit_checked_double_click
+      - rust/desk/src/computer.rs::an_unsupported_press_without_a_window_id_or_a_left_button_is_not_retried
+      - rust/desk/src/computer.rs::a_press_that_timed_out_is_not_clicked_again
+      - rust/desk/src/computer.rs::return_and_a_typed_line_confirm_and_only_left_clicks_click_left
+  - id: CAP-VIS-021
+    title: Background mode refuses vision input
+    behavior: >-
+      With the background input mode in force, every vision act step (pixel
+      clicks, typing, plans of them) is refused with an error saying it
+      needs the foreground and pointing to semantic targets with a window,
+      before any driver call and before any keystroke is injected.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestBackgroundRefusesVisionActs]
+    upstream:
+      - rust/desk/src/computer.rs::background_input_refuses_computer_actions_before_any_driver_call
+      - rust/desk/src/computer.rs::background_input_never_reaches_the_xtest_typer
+  - id: CAP-VIS-022
+    title: Vision input yields to the user
+    behavior: >-
+      Foreground vision input passes the same user-activity check as other
+      input: when the user touched the mouse or keyboard within the last
+      second, the call is refused with how long ago that was and nothing is
+      sent; events fennec-cua itself injected (within 600 ms after its own
+      input) do not count as user activity.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestVisionInputUserActivityGuard]
+    upstream:
+      - rust/desk/src/computer.rs::computer_input_takes_the_same_user_check_and_counts_as_the_drivers_own
+  - id: CAP-VIS-023
+    title: Vision input shares the input turn
+    behavior: >-
+      Vision acts (including launch) take the same single input turn as
+      semantic acts before any driver call: while another act or a run holds
+      it, a vision step waits without sending anything, and after 15 s of
+      waiting answers busy; it proceeds as soon as the turn is free.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestVisionActWaitsForSharedTurn, planned:internal/daemon.TestVisionActBusyAfterTurnWait]
+    upstream:
+      - rust/desk/src/computer.rs::a_computer_action_waits_while_a_desk_action_holds_the_shared_turn
+      - rust/desk/src/computer.rs::an_action_takes_the_input_turn_before_any_driver_call
+      - rust/desk/src/computer.rs::an_action_or_a_launch_behind_a_held_turn_answers_busy_after_the_turn_wait
+  - id: CAP-VIS-024
+    title: Driver request resilience
+    behavior: >-
+      A driver request made while cua-driver is restarting waits for it to
+      come back (up to 10 s) instead of failing. A read (window list, window
+      state, desktop capture, end session) that gets an empty reply is sent
+      once more after 250 ms; an input request that gets an empty reply is
+      never resent and fails as possibly delivered.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestRequestWaitsForRestartingDriver, planned:internal/driver.TestReadRetriedOnceAfterEmptyReply, planned:internal/driver.TestInputNeverRetried]
+    upstream:
+      - rust/desk/src/computer.rs::a_request_waits_for_a_driver_that_is_restarting
+      - rust/desk/src/computer.rs::a_read_is_retried_once_after_an_empty_reply
+      - rust/desk/src/computer.rs::an_input_action_is_never_retried_after_an_empty_reply
+  - id: CAP-VIS-025
+    title: Separate clicks never merge into a double click
+    behavior: >-
+      A click within 16 points of the previous click is held until 500 ms
+      have passed since that click, so two separate click steps are never
+      read by the app as a double click; a click farther away goes at once.
+    surface: act
+    parity: spec
+    tests: [planned:internal/driver.TestNearbyClickWaitsOutDoubleClickTime]
+    upstream:
+      - rust/desk/src/computer.rs::a_click_near_the_last_one_waits_out_the_double_click_time
+  - id: CAP-VIS-026
+    title: Malformed vision arguments rejected
+    behavior: >-
+      A vision observe or act call whose arguments are not a JSON object
+      fails with an invalid-arguments error naming the tool, before any
+      driver call.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestNonObjectArgsRejected]
+    upstream:
+      - rust/desk/src/computer.rs::a_computer_call_whose_args_are_not_an_object_is_an_error
+excluded:
+  - upstream:
+      - rust/desk/src/computer.rs::a_typeable_desktop_line_goes_on_the_core_keyboard_without_a_driver_type_call
+      - rust/desk/src/computer.rs::a_desktop_line_the_typer_cannot_type_goes_to_the_driver
+      - rust/desk/src/computer.rs::a_typer_error_fails_the_type_without_a_driver_retry
+      - rust/desk/src/computer.rs::a_cancelled_type_holds_the_input_turn_until_its_typer_returns
+      - rust/desk/src/computer.rs::pid_addressed_input_a_dialog_line_and_cjk_never_reach_the_typer
+    reason: >-
+      These cover the X11 XTest core-keyboard typer, which only exists on
+      Linux; on macOS all typing goes through cua-driver, covered by
+      CAP-VIS-017 and CAP-VIS-018.
+  - upstream:
+      - rust/desk/src/computer.rs::the_settle_sampler_starts_with_the_first_computer_call
+    reason: >-
+      The background volatile-block sampler runs only on Linux over MIT-SHM;
+      on macOS the settle compares probe thumbnails (CAP-VIS-010) and no
+      sampler is started.
+  - upstream:
+      - rust/desk/src/computer.rs::an_element_has_moved_once_enough_of_its_pixels_changed
+    reason: >-
+      The moved-element check gates a pixel-click shortcut that needs the
+      MIT-SHM frame kept with the element list, so it only applies on Linux
+      X11; on macOS element clicks always go through the element (CAP-VIS-019,
+      CAP-VIS-020).
+  - upstream:
+      - rust/desk/src/computer.rs::a_hidden_modal_dialog_names_the_window_it_blocks
+    reason: >-
+      Hidden-modal lines come from X11 window properties and shuttle shows
+      none on macOS; macOS sheets and their owners are reported by observe in
+      the observe domain.
+  - upstream:
+      - rust/desk/src/computer.rs::a_left_click_a_navigation_key_or_a_typed_newline_commits
+      - rust/desk/src/computer.rs::only_a_newline_after_other_text_is_split_off
+    reason: >-
+      Both feed X11-only paths: the longer settle for page loads in Linux
+      Chrome and splitting a typed line's Return off for X11 dialogs; on
+      macOS the settle timing is fixed (CAP-VIS-010) and a trailing newline
+      is typed with the text (CAP-VIS-017).
+  - upstream:
+      - rust/desk/src/computer.rs::a_toolbar_button_and_its_menu_item_have_one_label_key
+    reason: >-
+      The label key matches an off-screen GTK toolbar button to its menu-bar
+      twin, a workaround for GTK apps on Linux that has no macOS counterpart.

@@ -1,0 +1,351 @@
+domain: flows
+summary: Saved parameterised flows in a git-backed store, recording the user's own input through a listen-only event tap, turning a recording into a draft plan, and replaying recorded clicks.
+capabilities:
+  # --- recording (flow record start/note/stop) ---
+  - id: CAP-FLW-001
+    title: Recorded click context and crop
+    behavior: >-
+      For every kept click, flow record stores the point, button, click count and modifiers, the app, the
+      title and bounds of the window under it, the role, name and ancestor path of the element the tap read
+      at mouse-down (an element read by the tap wins over whatever a later hit test finds), and a `root`
+      flag when the element is missing or is a window, frame, application, dialog or document. It also
+      stores a PNG crop of that window alone, 200 by 100 points scaled by the display's pixels per point,
+      clipped at the window's edges, with the crop's scale and the click's offset from the crop centre
+      (desk units, rounded to 0.1) so an edge crop still locates its point. A click into a window that
+      opened after the last window listing still resolves that window by relisting.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestClickKeepsElementWindowAndCrop, planned:internal/record.TestTapReadElementWins, planned:internal/record.TestClickOnRootIsMarked, planned:internal/record.TestClickInNewWindowRelists]
+    upstream:
+      - rust/shuttle/src/record.rs::a_click_keeps_the_element_under_it_its_window_and_a_crop_around_it
+      - rust/shuttle/src/record.rs::a_click_the_tap_read_keeps_that_element_and_not_what_the_desk_finds_later
+      - rust/shuttle/src/record.rs::a_click_on_a_document_root_is_marked_root
+      - rust/shuttle/src/record.rs::a_click_in_a_window_newer_than_the_last_list_finds_it
+  - id: CAP-FLW-002
+    title: Recording inside web pages
+    behavior: >-
+      While a recording runs, fennec-cua holds the Chromium web accessibility tree on for each app the
+      recording keeps (once per process, never for apps it leaves out) and releases that hold when the
+      recording stops, so a tree that was off goes back off. A click (and the first key of a typing run)
+      in a web page stores the page address and, when present, the element's DOM id.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestHoldsWebTreeUntilStop, planned:internal/record.TestWebClickKeepsURLAndDOMID]
+    upstream:
+      - rust/shuttle/src/record.rs::a_recording_holds_the_page_tree_of_each_app_it_keeps_and_lets_go_at_its_end
+      - rust/shuttle/src/record.rs::a_click_in_a_web_page_keeps_the_page_address_and_the_dom_id
+  - id: CAP-FLW-003
+    title: Recorded keys, focus and password redaction
+    behavior: >-
+      The first key of each typing run records the focused field it went to (role, name, frame role,
+      window, secure flag, page URL and DOM id where readable), or an explicit null focus when none could be
+      read; later keys of the run carry no focus. A click into a secure text field, or a secure field
+      taking keyboard focus without a click, is marked as a password event attributed to the process that
+      owns the focus, not to the frontmost app (a password focus in a process outside the recording is a
+      bare skip). A key delivered to a secure field is recorded only as a secret key with no text or code.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestFirstKeyKeepsFocus, planned:internal/record.TestPasswordFieldMarked, planned:internal/record.TestPasswordFocusOwnerApp, planned:internal/record.TestSecureKeyHasNoText]
+    upstream:
+      - rust/shuttle/src/record.rs::the_first_key_of_a_run_keeps_the_field_it_went_to_or_that_none_was_readable
+      - rust/shuttle/src/record.rs::a_password_field_clicked_or_focused_is_marked
+      - rust/shuttle/src/record.rs::a_password_focus_counts_for_the_app_that_has_it_and_not_the_front_one
+      - rust/shuttle/src/record.rs::a_key_into_a_password_field_keeps_no_text
+  - id: CAP-FLW-004
+    title: Input the recording leaves out
+    behavior: >-
+      Input to Keychain Access, Passwords, System Settings, the common password managers (1Password,
+      1Password 7, Bitwarden, Dashlane, KeePassXC, LastPass) and fennec-cua itself is never recorded,
+      matched case-insensitively on the app name or the bundle name. Such input, input to an app outside
+      the apps named at flow record start, input whose app cannot be named, and input to a process that
+      owns no window (Spotlight, quick-access panels) becomes a bare `skipped` marker with no point,
+      element, text or crop, and is never attributed to the frontmost app; no capture is taken for it.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestBlockedAppsCaseInsensitive, planned:internal/record.TestBlockedInputSkippedBare, planned:internal/record.TestWindowlessProcessSkipped]
+    upstream:
+      - rust/shuttle/src/record.rs::the_blocked_apps_match_whatever_the_case
+      - rust/shuttle/src/record.rs::input_in_a_blocked_or_unnamed_app_is_skipped_without_details
+      - rust/shuttle/src/record.rs::input_to_a_process_with_no_window_is_skipped_and_not_given_to_the_front_app
+  - id: CAP-FLW-005
+    title: Recording stop and the kill hotkey
+    behavior: >-
+      flow record stop (and a daemon shutdown that ends a recording) returns only after the ended
+      recording has been written to disk (directory 0700, file 0600), so the answer and the file agree.
+      When the kill hotkey ends a recording, the keystroke of that hotkey is dropped from the events and
+      never becomes a step.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestStopWaitsForSave, planned:internal/record.TestKillHotkeyNotRecorded]
+    upstream:
+      - rust/shuttle/src/record.rs::finishing_waits_until_the_ended_recording_is_saved
+      - rust/shuttle/src/record.rs::the_kill_hotkey_that_ends_a_recording_is_no_step_of_it
+  - id: CAP-FLW-006
+    title: Window changes recorded as after events
+    behavior: >-
+      About 700 ms after each input settles, the recorder relists windows and, when a different kept window
+      is now in front, appends an `after` event with its title, role and app. flow record note inserts the
+      user's note at its place in the event order. At stop, a window that came to the front after the last
+      settle is still appended as a final `after` event.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestAfterWindowKeptAtStop, planned:internal/record.TestAfterWindowsAndNotesInOrder]
+    upstream:
+      - rust/shuttle/src/record.rs::a_window_that_came_after_the_last_input_settled_is_kept_when_the_recording_stops
+      - rust/shuttle/src/record.rs::a_new_front_window_after_input_is_kept_with_notes_in_order
+  # --- draft plan built at flow record stop ---
+  - id: CAP-FLW-007
+    title: Recording becomes a parameterised draft
+    behavior: >-
+      flow record stop answers a draft plan built from the recording: consecutive clicks through a menu bar
+      menu and its item merge into one menu step (`File > New`); typed runs become type steps; any typed
+      text, window title or caption equal to a value passed as a parameter example is replaced by
+      `{{name}}`; each step that left a new window in front carries that title as its expected after
+      window; clicks keep a recorded block (target text, crop, scale, point relative to the window and the
+      window size, root flag). The draft lists its params with their examples, the notes with the step index
+      they belong to, and the step indexes where skipped input left gaps.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftFromRecording]
+    upstream:
+      - node/draft/a recording becomes gui_plan steps with menus merged, typed values and window titles as params, and the recorded click
+  - id: CAP-FLW-008
+    title: Draft anchors and switches windows
+    behavior: >-
+      A draft starts with a step that brings up the app of the first input, at the window title of the
+      first click or the window the first keys were typed into. Whenever later input goes to another app,
+      or to another window of the same app that was not announced by an after event, the draft inserts a
+      switch step to that app and window before it.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftStartsAtFirstWindow, planned:internal/flows.TestDraftSwitchesAppAndWindow]
+    upstream:
+      - node/draft/a recording that starts with a click in a window opens its app at that window
+      - node/draft/a recording that starts with typing starts at the window it typed into, and a click in another one switches there
+      - node/draft/input that moves to another app or another window of the app first switches there
+  - id: CAP-FLW-009
+    title: Passwords in drafts
+    behavior: >-
+      A draft never holds a password: a click into a password field stays a click and is followed by one
+      secret `{{password}}` type step, and the secret keys after it add nothing; a password field that took
+      focus with no click also yields exactly one such step. Successive password steps are named
+      `password`, `password_2`, `password_3`, are declared as secret params with no example, and each
+      requires a secure focused field: the one the recording read where it read one, else any secure field.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftPasswordAfterClick, planned:internal/flows.TestDraftPasswordFocusOnly, planned:internal/flows.TestDraftPasswordFieldRequired]
+    upstream:
+      - node/draft/a click into a password field becomes a click and a secret password step, and the keys after it add none
+      - node/draft/a password field that took the focus with no click becomes one secret password step
+      - node/draft/every password step asks for a password field, the one the recording read where it read one
+  - id: CAP-FLW-010
+    title: Typed runs and key combos in drafts
+    behavior: >-
+      Each draft type step carries the field the recording typed into, or `unverified` when the recording
+      read no focus, so replay checks focus only where it can. A note made mid-run does not split the typed
+      run. Shift-only and Option-only characters stay inside the typed text; Shift is kept only on a key
+      combo (shift+tab, cmd+shift+s), and non-text keys become key steps in the shared key-name vocabulary.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftTypeKeepsFocus, planned:internal/flows.TestDraftNoteKeepsRun, planned:internal/flows.TestDraftShiftAndOption]
+    upstream:
+      - node/draft/each typed run and password keeps the field the recording typed into, or unverified where it read none
+      - node/draft/a note in the middle of typing keeps the run one step with its field
+      - node/draft/shift stays on a key combo and leaves only typed text
+      - node/draft/an Option-typed character stays inside its typed run
+  - id: CAP-FLW-011
+    title: Web pages in drafts
+    behavior: >-
+      A recording made in a web page starts its draft by opening the page address in that browser, with
+      parameter values templated into the URL, and every following step carries the page (and DOM id where
+      recorded) so replay can check it is still on that page; type steps keep the field's DOM id.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftWebPage]
+    upstream:
+      - node/draft/a recording in a web page opens its address and keeps the page and DOM id on each step
+  - id: CAP-FLW-012
+    title: Model captions for unnamed click targets
+    behavior: >-
+      A click whose element has no usable name is captioned by one model ask over its crop; the caption
+      keeps only its first line, at most 80 characters, without trailing periods or quotes, so injected text
+      after the first line never enters the plan.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftCaptionFirstLine80]
+    upstream:
+      - node/draft/a model caption keeps its first line and at most 80 characters
+  - id: CAP-FLW-013
+    title: Edge crop offset in drafts
+    behavior: >-
+      A recorded click whose crop was clipped at the window edge keeps the recorded offset from the crop
+      centre in its recorded block, together with the point relative to the window and the window size, so
+      replay clicks the recorded point rather than the crop centre.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftKeepsCropOffset]
+    upstream:
+      - node/draft/a click near the screen edge keeps its crop offset for the replay
+  # --- replaying recorded steps ---
+  - id: CAP-FLW-014
+    title: Recorded click found by crop matching
+    behavior: >-
+      When a recorded click's target text is unchanged, flow run first searches a fresh screenshot for the
+      recorded crop by normalized cross-correlation, accepting a score of at least 0.8, rescaling a crop
+      taken at another pixels-per-point; it clicks the match plus the recorded offset (fractional offsets
+      are hit-tested at whole pixels but clicked at the exact point), after the usual hit check, with no
+      model call; the trace reports how=crop.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestRecordedCropFindsMovedTarget, planned:internal/plan.TestRecordedCropScale, planned:internal/plan.TestRecordedCropEdgeOffset, planned:internal/plan.TestRecordedCropFractionalOffset]
+    upstream:
+      - node/recorded/a recorded click with no element under it finds its recorded crop where the layout moved it, with no model call
+      - node/recorded/a recorded crop taken at twice the desk scale matches a screen at desk scale
+      - node/recorded/a recorded crop cut at the screen edge clicks its point, not its centre
+      - node/recorded/a recorded crop point at a fractional offset is checked at whole pixels and clicked by its crop
+  - id: CAP-FLW-015
+    title: Parameter-changed targets ground instead
+    behavior: >-
+      When a parameter changed a recorded click's target text (compared exactly, so a case-only change
+      counts), replay skips the crop and the recorded point and grounds the new text with the model; for a
+      recorded step the grounded point may land on the window or document content root. A click step with
+      no recorded block still refuses a grounded point on a content root and clicks nothing.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestChangedTargetSkipsCrop, planned:internal/plan.TestCaseChangeSkipsCrop, planned:internal/plan.TestUnrecordedRefusesRootGround]
+    upstream:
+      - node/recorded/a recorded click whose target a parameter changed skips the crop and the point, and grounding may land on the content root
+      - node/recorded/a target a parameter changed only in case is no recorded target, and skips the crop
+      - node/recorded/a plan step that no recording made still refuses a grounded point on the content root
+  - id: CAP-FLW-016
+    title: Recorded point as the last fallback
+    behavior: >-
+      After crop matching and grounding both fail, replay clicks the recorded window-relative point only if
+      the current window size is within 2 desk units of the recorded size and the point passes the hit
+      check (how=point). Otherwise the step stops without clicking and the error lists what each fallback
+      found (crop score, where grounding pointed), with the plan step reported without its recorded block.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestRecordedPointLast, planned:internal/plan.TestRecordedPointWrongSizeStops]
+    upstream:
+      - node/recorded/a recorded click takes its recorded point last, and only in a window of the recorded size
+      - node/recorded/a recorded point in a window of another size is no fallback, and the step escalates with what each fallback found
+  - id: CAP-FLW-017
+    title: Recorded after-window check
+    behavior: >-
+      A step carrying a recorded after window waits (default 5 s, or the step timeout) for a window of that
+      title to come to the front by itself; it passes when it does, and otherwise stops the plan as an
+      error naming the expected and the actual front window. A matching window that is open behind the
+      front one does not count and is never focused to make the step pass.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestAfterWindowMissingStops, planned:internal/plan.TestAfterWindowComes, planned:internal/plan.TestAfterWindowBehindNotFocused]
+    upstream:
+      - node/recorded/a step whose recorded after-window does not come stops the plan as an error
+      - node/recorded/a step whose recorded after-window comes passes
+      - node/recorded/a recorded after-window open behind the front one fails the step and is never focused to pass it
+  - id: CAP-FLW-018
+    title: Right, double and modifier clicks survive record and replay
+    behavior: >-
+      A recorded right click, double click or modified click keeps its button, count and modifiers in the
+      draft, and on replay it clicks the resolved element's centre with that button, count and modifiers
+      instead of pressing the element through an accessibility action.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/flows.TestDraftKeepsButtonCountMods, planned:internal/plan.TestModifiedClickClicksCentre]
+    upstream:
+      - node/draft/a right click, a double click and a click with modifiers keep their button, count and mods
+      - node/recorded/a recorded right click, double click or modifier click clicks the element centre with them instead of pressing it
+  # --- the flow store ---
+  - id: CAP-FLW-019
+    title: Flow names and auto-saved chains
+    behavior: >-
+      flow save stores a flow under a slug of its name (lowercase, runs of other characters as `-`, at most
+      40 characters), including plans whose recorded clicks resolved by crop. Passing act plans are also
+      auto-saved under a name derived from their app and targets; an auto name never overwrites a flow
+      saved by name with the same slug but takes a `-2`, `-3` suffix that still fits in 40 characters, and
+      later auto saves replace the earlier auto save.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestNamedFlowNotOverwritten, planned:internal/flows.TestSuffixedAutoNameFits, planned:internal/flows.TestRecordedPlanSaves]
+    upstream:
+      - node/flows/an unnamed chain never overwrites a flow saved by name under its slug, and auto saves still replace each other
+      - node/flows/a suffixed auto name stays within the slug length, so it never names the flow it stepped around
+      - node/recorded/a plan whose recorded click took its crop is saved as a flow
+  - id: CAP-FLW-020
+    title: Chain record of consecutive plans
+    behavior: >-
+      fennec-cua keeps a private (0600) record of the latest chain of passing plans: a plan that starts, within
+      10 minutes, in the window or process where the chain ended extends it. A chain ending in an untitled
+      window keeps that window's process id so the next plan can still join. The record is marked dirty
+      before a plan acts and cleared when it ends, so a run killed midway is never chained onto. flow save
+      with only a name names the last chain and merges any params given, and works without git available.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestChainKeepsUntitledWindowPid, planned:internal/flows.TestChainDirtyWhileActing, planned:internal/flows.TestSaveNamesLastChainWithoutGit]
+    upstream:
+      - node/flows/a chain that ends in an untitled window keeps that window's process
+      - node/flows/a plan marks the chain record dirty before it acts and clears the mark when it ends, so a killed run never chains over its steps
+      - node/flows/save renames the last flow without git and keeps the params it is given
+  - id: CAP-FLW-021
+    title: Passwords never persisted in flows
+    behavior: >-
+      A value typed into a password field, whether passed as a parameter or written literally, and whether
+      the step passed or stopped, never appears in a saved flow file or the chain record: it is stored as a
+      template parameter with no value. When a plan types a username and then a password, the saved flow
+      names them distinctly (`{{text}}`, `{{text_2}}`) and keeps only the non-secret example, whether saved
+      directly with the plan or later from the chain record.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestPasswordNotInFlowOrChain, planned:internal/flows.TestStoppedPasswordNotInChain, planned:internal/flows.TestUserAndPasswordDistinctParams]
+    upstream:
+      - node/flows/a value typed into a password field is never written to a saved flow or the chain record
+      - node/flows/the chain record holds no password, neither from a password step that stopped nor typed as a literal
+      - node/flows/a typed username and a typed password get distinct names whether the flow is saved from the plan or from the chain record
+  - id: CAP-FLW-022
+    title: Saving a just-run plan does not retype
+    behavior: >-
+      flow save with the same steps as the plan that just passed stores them from the chain without
+      running them again (answering ran=false, nothing typed), including when they typed a password. If the
+      steps differ, for example the password step now ends in Return, the plan runs again before it is saved.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestSaveJustRunNoRetype, planned:internal/flows.TestSaveChangedStepsRuns]
+    upstream:
+      - node/flows/saving the steps of a plan that just typed a password stores them without typing again
+      - node/flows/saving a plan whose password step adds a Return runs it again
+  - id: CAP-FLW-023
+    title: File-name templating
+    behavior: >-
+      A `{{name:base}}` placeholder expands to the file name of a path parameter. When a flow is saved, a
+      later step text (such as a waited window title) that contains the file name of a path typed earlier
+      is templated as `{{param:base}}`, so a replay with another path expects the new file's title.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestBaseTemplating]
+    upstream:
+      - "node/flows/Windows paths: :base takes the file name, and a saved flow templates a title that holds a typed path's file name"
+  - id: CAP-FLW-024
+    title: Finding a flow by intent
+    behavior: >-
+      flow list with a query asks the model to choose among the indexed flows or none, and names a flow
+      only when it is not `none`, its probability is at least 0.6 and it leads the runner-up by at least
+      0.25; otherwise it names no flow and reports the top probability.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestFindThresholds]
+    upstream:
+      - node/flows/find names the saved flow the model picks, and no flow under 0.6 or within 0.25 of the runner-up
+  - id: CAP-FLW-025
+    title: Flow index tolerates malformed files
+    behavior: >-
+      The flow index (one line per flow, newest first, with its params, a `once` marker for flows that
+      type or press non-idempotent keys, and a step summary) is rebuilt and committed to the store's git
+      repo; a flow file lacking saved_at, params or steps is left out while the valid flows beside it are
+      still indexed.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/flows.TestIndexSkipsMalformed]
+    upstream:
+      - node/flows/a flow file without saved_at or params stays out of the index, and the flows beside it still index
+excluded: []

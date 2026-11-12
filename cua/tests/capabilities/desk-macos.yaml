@@ -1,0 +1,485 @@
+domain: desk-macos
+summary: The macOS desk core under every tool - accessibility reads and window bookkeeping, press planning, the key vocabulary, the cua-driver client, the accessibility worker, the screen-still block model and the daemon's local socket.
+capabilities:
+  - id: CAP-MAC-001
+    title: Window ids survive Spaces and id-cache eviction
+    behavior: >-
+      A window keeps one ref in observe scope=desktop whether it is listed from the current Space
+      through accessibility or from another Space through the window server only. Element and window
+      ids live in one cache capped at 50,000 entries; nothing is evicted below the cap. When a tree
+      walk pushes the cache over the cap, every id that walk handed out still resolves until the walk
+      ends; the next walk then drops everything except the ids of currently listed windows, so window
+      refs stay valid while stale element refs fail with a recoverable error that asks for a fresh
+      observe.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestWindowIDStableAcrossSpaces, planned:internal/view.TestIDCacheEvictsAtCapKeepingListedWindows]
+    upstream:
+      - rust/desk/src/ax.rs::ids_of_a_walk_that_crosses_the_cap_resolve_and_the_next_walk_keeps_only_window_ids
+      - rust/desk/src/ax.rs::a_window_listed_on_this_space_and_then_off_it_has_one_id
+      - rust/desk/src/model.rs::ids_are_evicted_only_at_the_cap_and_keep_the_listed_frames
+  - id: CAP-MAC-002
+    title: Spaces and on-screen visibility of listed windows
+    behavior: >-
+      observe scope=desktop includes app windows on other Spaces, considering only user desktop Spaces
+      and full-screen Spaces (system and other Space kinds hold no app windows). The private Space
+      calls are resolved at run time, and a missing symbol degrades to listing the current Space only
+      instead of failing. An accessibility window counts as shown when its frame matches one of its
+      process's on-screen window-server bounds within 1 point on every edge; a window whose frame
+      could not be read is treated as shown.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestOtherSpaceWindowsListed, planned:internal/ax.TestSpaceSymbolsOptional, planned:internal/ax.TestFrameShownWithinOnePoint]
+    upstream:
+      - rust/desk/src/ax.rs::desktop_and_full_screen_spaces_hold_app_windows_and_others_do_not
+      - rust/desk/src/ax.rs::the_space_calls_resolve_at_run_time_and_a_missing_symbol_is_none
+      - rust/desk/src/ax.rs::a_frame_shows_when_it_is_one_of_its_process_s_on_screen_windows
+  - id: CAP-MAC-003
+    title: Hung apps are detected, skipped and reported stale
+    behavior: >-
+      Accessibility reads of each app use a 500 ms messaging timeout. A read that took at least 90%
+      of that timeout and still returned no window list counts as a miss. An app whose misses have
+      lasted at least 2 s, and that has been listed for at least 10 s (a launch grace, so a just
+      launched app is never written off), is marked hung and skipped for 10 s; at its first miss after
+      the skip it is marked hung again at once. While an app is missed or skipped, observe
+      scope=desktop keeps showing its last known windows flagged stale rather than dropping them.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestReadMissAtTimeout, planned:internal/ax.TestHungAppKeepsStaleWindows, planned:internal/ax.TestHungAfterLaunchGrace]
+    upstream:
+      - rust/desk/src/ax.rs::an_app_read_that_ran_into_the_timeout_without_its_windows_is_a_miss
+      - rust/desk/src/ax.rs::a_hung_app_keeps_its_last_frames_stale
+      - rust/desk/src/ax.rs::a_still_hung_app_is_marked_again_at_its_first_miss_after_the_skip
+      - rust/desk/src/model.rs::an_app_listed_within_the_launch_grace_is_not_skipped_as_hung
+  - id: CAP-MAC-004
+    title: Which stale window is active
+    behavior: >-
+      The frontmost app is read from the workspace without sending any accessibility message, so it is
+      known even when that app hangs, and the read works off the main thread. A stale window is
+      reported active only when its app is frontmost and no answering (non-stale) window is active;
+      of that app's stale windows the one last seen active wins, else its first. A stale window of an
+      app that is not in front, or behind a frontmost app with no windows, is never active.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestStaleWindowActiveOnlyWhenFront, planned:internal/ax.TestFrontAppWithoutAXMessage]
+    upstream:
+      - rust/desk/src/ax.rs::a_stale_window_behind_a_windowless_front_app_is_not_active
+      - rust/desk/src/ax.rs::a_stale_window_follows_its_app_into_and_out_of_the_front
+      - rust/desk/src/ax.rs::a_stale_frame_stays_active_only_while_its_app_is_in_front_and_no_answering_app_is
+      - rust/desk/src/ax.rs::the_front_app_is_read_off_the_main_thread_without_asking_an_app
+  - id: CAP-MAC-005
+    title: Top window at a screen point
+    behavior: >-
+      When accessibility cannot say which app owns a point (cover detection in observe scope=point and
+      for click routing in act), the window-server list is scanned front to back for the first window
+      that contains the point, has a layer from 0 up to but excluding 102 (above that are overlays
+      such as the cursor and screen shields), and has non-zero alpha; processes the caller asks to
+      skip are passed over. A point over no such window has no owner.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestTopListedWindowBelowOverlays]
+    upstream:
+      - rust/desk/src/ax.rs::the_top_listed_window_at_a_point_is_the_first_visible_one_below_the_overlays
+  - id: CAP-MAC-006
+    title: The bundled driver's own windows are invisible
+    behavior: >-
+      Windows belonging to the bundled cua-driver (identified by the canonical executable path of the
+      process, which sits beside the daemon) never appear in observe scope=desktop or in hit tests, so
+      the driver's overlays cannot be targeted. A process whose path cannot be resolved is not treated
+      as the driver.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestDriverWindowsHidden]
+    upstream:
+      - rust/desk/src/ax.rs::a_process_path_is_its_canonical_executable_as_the_daemon_finds_its_driver_beside
+  - id: CAP-MAC-007
+    title: AX roles and states in the outline
+    behavior: >-
+      observe scope=window names elements with ARIA roles derived from the AX role and subrole (for
+      example a tab-button radio is tab, a secure text field is textbox, a sheet or dialog window is
+      dialog, a menu item with a submenu is menu, a switch checkbox is switch); nameless containers
+      are generic and folded away, and an AX role with no ARIA match gets no role. Toggle roles show
+      checked for value 1 and mixed for value 2 plus checkable; a toggle button shows pressed for
+      value 1; secure fields show protected; a disabled element shows disabled.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestAXRolesToARIA, planned:internal/ax.TestCheckValuesToStates]
+    upstream:
+      - rust/desk/src/ax_roles.rs::ax_roles_map_to_aria_roles
+      - rust/desk/src/ax_roles.rs::check_values_become_checked_or_mixed
+  - id: CAP-MAC-008
+    title: Compact structured nodes
+    behavior: >-
+      Structured nodes from observe (on request instead of the outline) omit empty fields: no empty
+      states list beyond what is set, no null value, shortcut or URL. A link carries its target URL.
+      Numeric values that are whole numbers print without decimals and negative zero prints as 0.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestNodeJSONOmitsEmpty, planned:internal/view.TestLinkCarriesURL, planned:internal/view.TestWholeNumberFormatting]
+    upstream:
+      - rust/desk/src/model.rs::node_json_leaves_out_empty_fields
+      - rust/desk/src/model.rs::a_link_node_carries_its_url
+      - rust/desk/src/model.rs::a_whole_number_prints_without_decimals_and_zero_without_sign
+  - id: CAP-MAC-009
+    title: Focused element falls back to a tree read
+    behavior: >-
+      When the app's direct focused-element query yields nothing that matches the window, the focused
+      element is found by one full tree read of that window (the first node in the focused state), so
+      focus checks before typing and observe's focused marker still work in apps with a weak focus
+      attribute.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestFocusFallsBackToTreeRead]
+    upstream:
+      - rust/desk/src/model.rs::no_focus_match_falls_back_to_a_tree_read
+  - id: CAP-MAC-010
+    title: Press on buttons, by AX action or hit-checked click
+    behavior: >-
+      act press on a button, checkbox, switch or link in the frontmost window runs its AX press action.
+      In a window behind, or when the action is refused, the press clicks the element's center if a
+      hit test at that point lands on the element or one of its ancestors; a control that a hit test
+      shows is covered by something else runs its AX action instead of clicking. When the hit lands
+      directly on the element or its chain, no further ancestry is read.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestPressFrontButtonRunsAction, planned:internal/actions.TestPressBehindClicks, planned:internal/actions.TestPressRefusedActionClicks, planned:internal/actions.TestPressCoveredRunsAction]
+    upstream:
+      - rust/desk/src/press.rs::a_macos_button_in_the_front_window_runs_its_action
+      - rust/desk/src/press.rs::a_macos_button_in_a_window_behind_takes_a_click
+      - rust/desk/src/press.rs::a_macos_button_that_refuses_its_action_takes_a_click
+      - rust/desk/src/press.rs::a_covered_control_runs_its_action
+      - rust/desk/src/press.rs::a_direct_hit_reads_no_ancestry_of_the_hit
+  - id: CAP-MAC-011
+    title: Press selects tabs and tree items, runs menu items directly
+    behavior: >-
+      act press on a tab, option, radio, list item or tree item selects it through accessibility
+      (a tree item is selected even where a hit test would find it). act press on a menu item runs its
+      AX action without opening the menus above it.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestPressSelectsTab, planned:internal/actions.TestPressSelectsTreeItem, planned:internal/actions.TestPressMenuItemWithoutOpening]
+    upstream:
+      - rust/desk/src/press.rs::a_tab_is_selected
+      - rust/desk/src/press.rs::a_macos_tree_item_is_selected
+      - rust/desk/src/press.rs::a_macos_menu_entry_runs_its_action_without_opening_its_menu
+  - id: CAP-MAC-012
+    title: Background press never clicks after a failed action
+    behavior: >-
+      Under background input, act press runs the element's AX action even for controls that would take
+      a click in the foreground. If that action fails or times out, the step ends refused or
+      unconfirmed with the error and no click is sent afterwards, since the action may still land.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestBackgroundPressRunsAction, planned:internal/actions.TestBackgroundPressNoClickAfterFailure]
+    upstream:
+      - rust/desk/src/press.rs::a_background_press_runs_the_action_of_a_control_that_would_take_a_click
+      - rust/desk/src/press.rs::a_background_action_that_fails_is_never_followed_by_a_click
+  - id: CAP-MAC-013
+    title: Auto input escalates only refusals raised before sending
+    behavior: >-
+      In auto input mode a key, type, click, scroll, drag or element action is tried in the background
+      first and retried once in the foreground only when the background refusal is known to precede
+      any delivered input: no target window, the desktop as target, a window that is minimized or
+      whose app is hidden, or a window not among its process's current AX windows (another Space).
+      A background press on macOS is never retried in the foreground, nor is a refusal over twin
+      windows or a locked screen; those surface as the step's error with status refused or
+      unconfirmed.
+    surface: act
+    parity: spec
+    tests: [planned:internal/policy.TestAutoEscalatesPreSendRefusals, planned:internal/policy.TestAutoKeepsPostSendErrors]
+    upstream:
+      - rust/desk/src/auto.rs::a_refusal_raised_before_any_input_goes_to_the_foreground
+      - rust/desk/src/auto.rs::a_refusal_that_may_follow_delivered_input_stays_an_error
+  - id: CAP-MAC-014
+    title: One key-name vocabulary
+    behavior: >-
+      act key takes combinations joined by + with case-insensitive names, ignoring _, - and spaces
+      inside a name: modifier aliases (control, ctl, option, opt, command, super, win, meta map to
+      ctrl, alt, cmd), arrow and paging aliases (ArrowUp, left_arrow, PgDown, Page Down), enter and
+      kp_enter as return, esc, bksp, spacebar, caps_lock, symbol names (minus, parenleft, ...) and
+      f1 to f12 (F01 is f1). fn and menu (as alt) are accepted on macOS; insert and numlock are
+      refused as not a macOS key; f0, f13, printscreen, pause and any other unknown name are refused
+      before anything is sent, as is a trailing empty part such as ctrl+.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestKeyAliases, planned:internal/actions.TestKeyUnknownRefused, planned:internal/actions.TestKeyMacOnlyNames]
+    upstream:
+      - rust/desk/src/keys.rs::combinations_use_the_driver_names_of_each_os
+      - rust/desk/src/keys.rs::every_os_takes_the_same_aliases_and_refuses_a_name_no_driver_knows
+      - rust/desk/src/keys.rs::os_only_keys_pass_on_their_os_and_fail_elsewhere
+  - id: CAP-MAC-015
+    title: Plus and delete keys
+    behavior: >-
+      In act key, ctrl++ and ctrl+plus both mean the plus key; at the HID level plus is sent as
+      shift+= (shift added once). delete, del, forward_delete and fwddelete are the forward-delete key
+      on macOS, while backspace stays backspace.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestPlusKeyAsShiftEquals, planned:internal/actions.TestDeleteIsForwardDelete]
+    upstream:
+      - rust/desk/src/keys.rs::the_plus_key_is_plus_and_the_hid_path_takes_it_as_shift_and_equals
+      - rust/desk/src/keys.rs::delete_is_the_forward_delete_key_on_every_os
+  - id: CAP-MAC-016
+    title: Menu item shortcuts in the outline
+    behavior: >-
+      observe shows a menu item's keyboard shortcut in the same key vocabulary act key takes, built
+      from the AX command character and modifier mask: ctrl, alt and shift as set, cmd unless the
+      no-command bit is set, key lower-cased (S with shift is shift+cmd+s). Empty characters and
+      function-key private-use characters give no shortcut.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/ax.TestMenuShortcutCombo]
+    upstream:
+      - rust/desk/src/keys.rs::mac_menu_shortcuts_become_desk_combinations
+  - id: CAP-MAC-017
+    title: Typing time budget scales with text length
+    behavior: >-
+      A typing call to the driver may take the 30 s base limit plus 40 ms per UTF-16 code unit of the
+      text (6000 characters allow 270 s; a surrogate pair counts twice); every other driver call keeps
+      its 30 s limit. A type step is not cut off for being long.
+    surface: act
+    parity: spec
+    tests: [planned:internal/driver.TestTypeLimitPerUTF16Unit]
+    upstream:
+      - rust/desk/src/driver.rs::a_type_waits_its_driver_s_slowest_time_per_utf16_unit_and_other_calls_their_limit
+      - rust/desk/src/driver.rs::elsewhere_a_type_waits_forty_ms_more_per_unit
+  - id: CAP-MAC-018
+    title: Foreground input yields to a busy user
+    behavior: >-
+      Foreground input (click, drag, scroll, pointer move, key, typing) and bringing a window to the
+      front are refused with nothing sent when the user touched the mouse or keyboard within the last
+      1 s, unless that input is within 0.6 s after fennec-cua's own last foreground input ended
+      (which macOS reports late). Background input is not checked and does not count as own input;
+      bringing a window to the front is checked but does not count as own input either. The refusal
+      says how long ago the user acted and that retrying after they stop is safe.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestUserBusyWindow, planned:internal/driver.TestOnlyForegroundInputIsOwn, planned:internal/driver.TestBringToFrontRefusedWhileBusy]
+    upstream:
+      - rust/desk/src/driver.rs::only_input_within_a_second_and_past_the_lag_of_the_drivers_own_is_the_users
+      - rust/desk/src/driver.rs::only_foreground_input_counts_as_the_drivers_own
+      - rust/desk/src/driver.rs::bring_to_front_refuses_while_the_user_is_busy_and_never_counts_as_input
+  - id: CAP-MAC-019
+    title: Near clicks are spaced so they never become a double click
+    behavior: >-
+      Two single clicks within 16 points of each other are at least 500 ms apart, measured from the end
+      of the previous click; a far click is not delayed. The spacing holds when the first click was
+      cancelled while running and when two near clicks are issued concurrently (the second waits for
+      the first to finish, then the spacing).
+    surface: act
+    parity: spec
+    tests: [planned:internal/driver.TestClickSpacing, planned:internal/driver.TestClickSpacingAfterCancel, planned:internal/driver.TestConcurrentNearClicks]
+    upstream:
+      - rust/desk/src/driver.rs::a_desk_click_near_the_last_one_waits_out_the_spacing_off_linux
+      - rust/desk/src/driver.rs::a_click_near_the_last_one_waits_out_the_spacing
+      - rust/desk/src/driver.rs::a_click_dropped_while_it_runs_still_spaces_the_next_near_one
+      - rust/desk/src/driver.rs::two_near_clicks_at_once_are_spaced_by_the_second_waiting_for_the_first
+  - id: CAP-MAC-020
+    title: Driver replies, errors and restarts
+    behavior: >-
+      Driver replies become results or errors prefixed with the driver tool: a transport refusal, a
+      tool error with its text, a structured reason when given, and the actual foreground window when
+      activation failed; an empty or undecodable reply is an error. When the driver socket is stale or
+      missing because the driver is restarting, a call retries the connection every 250 ms for up to
+      10 s before failing.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestReplyMapping, planned:internal/driver.TestWaitsOutDriverRestart]
+    upstream:
+      - rust/desk/src/driver.rs::replies_become_results_or_errors
+      - rust/desk/src/driver.rs::a_call_waits_out_a_driver_restart_behind_its_stale_socket
+  - id: CAP-MAC-021
+    title: Driver sessions for input and capture
+    behavior: >-
+      The first driver call starts a desktop session; when the driver answers that the session ended,
+      the session is started again and the call resent once. A tool error whose text merely mentions an
+      ended session is not retried. Screen capture runs in its own desktop session, separate from the
+      input session, so captures never disturb input state.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/driver.TestSessionRestartOnEnded, planned:internal/driver.TestNoRetryOnLookalikeError, planned:internal/driver.TestCaptureSessionSeparate]
+    upstream:
+      - rust/desk/src/driver.rs::the_first_call_starts_a_desktop_session_and_an_ended_one_starts_again
+      - rust/desk/src/driver.rs::a_tool_error_that_only_mentions_an_ended_session_is_not_retried
+      - rust/desk/src/driver.rs::a_capture_runs_in_a_desktop_session_of_its_own_apart_from_input
+  - id: CAP-MAC-022
+    title: Accessibility worker recovers from hangs
+    behavior: >-
+      Accessibility calls run in order on one worker that owns the AX state. A call that does not
+      answer within its limit fails with an error naming the limit in ms and warning that an action
+      may still take effect; the worker is replaced by a fresh one, and any number of callers queued
+      behind the same hang cause exactly one replacement. When the backend cannot open (for example no
+      Accessibility permission), each call fails with that reason and opening is retried on the next
+      call.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/ax.TestWorkerOrder, planned:internal/ax.TestWorkerReplacedAfterHang, planned:internal/ax.TestWorkerSingleRestart, planned:internal/ax.TestWorkerOpenFailure]
+    upstream:
+      - rust/desk/src/worker.rs::calls_run_on_one_backend_in_order
+      - rust/desk/src/worker.rs::a_hung_call_leaves_a_fresh_worker_behind
+      - rust/desk/src/worker.rs::callers_queued_behind_one_hang_restart_the_backend_once
+      - rust/desk/src/worker.rs::a_backend_that_fails_to_open_fails_each_call
+  - id: CAP-MAC-023
+    title: Timed-out calls never run late and hold the desk only while running
+    behavior: >-
+      A call that times out while still queued behind a hung call never runs later, and the desk turn
+      it held is released at its timeout. A call that times out while running keeps holding the desk
+      turn until it actually finishes, so no other action interleaves with an action that may still
+      land.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestQueuedTimeoutNeverRuns, planned:internal/daemon.TestRunningTimeoutHoldsTurn]
+    upstream:
+      - rust/desk/src/worker.rs::what_a_hung_call_holds_stays_held_until_the_call_ends
+      - rust/desk/src/worker.rs::a_queued_call_that_times_out_before_it_starts_never_runs
+      - rust/desk/src/worker.rs::what_a_queued_call_holds_frees_when_it_times_out_before_it_starts
+  - id: CAP-MAC-024
+    title: Screen stillness ignores churn and toggles
+    behavior: >-
+      wait until=still splits each capture into 8-pixel blocks. A block change counts only when some
+      pixel moves by more than 24 in a channel. A block that went through three or more contents
+      during the wait (clock, spinner, video) stops counting; one that alternates between two contents
+      (caret) counts only when it shows a third. A change of capture size always counts. The answer
+      reports how many blocks were volatile.
+    surface: wait
+    parity: spec
+    tests: [planned:internal/vision.TestBlockClassification, planned:internal/vision.TestStillWatchCounts]
+    upstream:
+      - rust/desk/src/still.rs::two_contents_toggle_more_churn_and_one_change_stays_quiet
+      - rust/desk/src/still.rs::a_churning_block_and_a_caret_stop_counting_but_a_new_change_and_a_resize_count
+  - id: CAP-MAC-025
+    title: Exactly one daemon per socket
+    behavior: >-
+      The daemon takes an exclusive lock file beside its socket before binding. A second daemon started
+      while the first is still starting, or at the same instant, fails with an error naming the
+      endpoint, leaves no socket behind, and the winner keeps serving.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestSecondDaemonRefusedWhileStarting, planned:internal/daemon.TestConcurrentStartOneWinner]
+    upstream:
+      - rust/desk/src/server.rs::a_daemon_still_starting_keeps_a_second_one_out_before_its_socket_exists
+      - rust/desk/src/server.rs::two_daemons_started_at_once_on_one_endpoint_leave_exactly_one_serving
+  - id: CAP-MAC-026
+    title: Socket mode, atomic bind and path length
+    behavior: >-
+      The daemon socket is mode 0600 by default and 0660 owned by the configured group when shared; the
+      lock file stays 0600. The socket is bound under a temporary name, given its mode, verified to be
+      the socket just bound (a link planted there is refused), and only then renamed into place. An
+      endpoint longer than 101 bytes on macOS fails at start with the limit named.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestSocketModes, planned:internal/daemon.TestBindRefusesPlantedLink, planned:internal/daemon.TestEndpointLengthLimit]
+    upstream:
+      - rust/desk/src/server.rs::a_shared_socket_is_0660_and_owned_by_the_group_and_a_private_one_0600
+      - rust/desk/src/server.rs::a_link_where_the_socket_was_bound_is_refused
+      - rust/desk/src/server.rs::an_endpoint_too_long_for_a_unix_socket_names_the_limit
+  - id: CAP-MAC-027
+    title: Group-shared socket path checks
+    behavior: >-
+      A socket shared with a group (named or numeric; an unknown or malformed group fails start with
+      its name) requires an absolute path with no symlink anywhere on it, a directory owned by the
+      daemon user and writable by no one else, and every directory above owned by root or that user
+      and not writable by others unless sticky. A violation refuses to start and names the directory,
+      its owner and its mode.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestSharedSocketDirChecks, planned:internal/daemon.TestSocketGroupResolution]
+    upstream:
+      - rust/desk/src/server.rs::a_shared_socket_in_a_directory_its_group_can_write_is_refused
+      - rust/desk/src/server.rs::a_shared_socket_under_a_writable_parent_is_refused_unless_the_parent_is_sticky
+      - rust/desk/src/server.rs::a_shared_socket_with_a_link_in_its_path_is_refused
+      - rust/desk/src/server.rs::a_directory_above_owned_by_another_user_is_refused
+      - rust/desk/src/server.rs::a_socket_group_is_a_name_or_a_number_and_an_unknown_one_is_named
+  - id: CAP-MAC-028
+    title: Owner-only controls
+    behavior: >-
+      Safety controls such as stop and resume are answered only for a peer running as the daemon's own
+      user (checked with the peer credentials of the socket); another user, for example a member of a
+      shared socket group, gets an error naming that restriction while ordinary tool calls are still
+      answered for them.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/daemon.TestOwnerOnlyRefusedForOtherUser, planned:internal/daemon.TestOwnerOnlyAnsweredForOwnUser]
+    upstream:
+      - rust/desk/src/server.rs::an_owner_only_call_from_another_user_is_refused_and_the_rest_answered
+      - rust/desk/src/server.rs::an_owner_only_call_over_the_socket_from_this_user_is_answered
+  - id: CAP-MAC-029
+    title: A dropped connection cancels its call
+    behavior: >-
+      When the client connection carrying an in-flight call closes, the call is cancelled promptly
+      (within about a second) and everything it holds is released; a still-open connection never
+      cancels it.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestDisconnectCancelsCall]
+    upstream:
+      - rust/desk/src/server.rs::a_client_that_closes_its_connection_cancels_its_call
+  - id: CAP-MAC-030
+    title: Clear errors for unknown tools, bad arguments and no window
+    behavior: >-
+      An unknown tool name answers an error naming it; arguments of the wrong shape (for example not an
+      object) answer an argument error naming the tool; observe with no focused window answers an empty
+      desktop for scope=desktop but a no-focused-window error for scope=window; a driver failure
+      surfaces as the step's error text rather than a transport failure.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestUnknownToolError, planned:internal/mcpserver.TestArgsNotObject, planned:internal/mcpserver.TestNoFocusedWindowError]
+    upstream:
+      - rust/desk/src/server.rs::the_socket_answers_desk_calls_with_desk_frames
+      - rust/desk/src/server.rs::a_web_call_whose_args_are_not_an_object_is_an_error
+  - id: CAP-MAC-031
+    title: Vision mode gated by allowlist and background input
+    behavior: >-
+      observe vision=true and pixel or index actions from a vision screenshot are refused with a
+      policy error while the app allowlist is not empty, since they see and click the whole screen.
+      Under background input, a vision-mode click is refused as needing the foreground. With no
+      allowlist the scale query answers 1.0 when no capture has been taken and a title-at-point query
+      answers no title.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestVisionRefusedWithAllowlist, planned:internal/policy.TestVisionClickNeedsForeground]
+    upstream:
+      - rust/desk/src/server.rs::the_native_desk_answers_the_computer_verbs_unless_an_app_allowlist_or_background_input_is_set
+excluded:
+  - upstream:
+      - rust/desk/src/press.rs::a_shown_control_that_a_hit_test_finds_takes_a_click
+      - rust/desk/src/press.rs::a_windows_background_press_clicks_in_the_window_and_runs_no_ui_automation_action
+      - rust/desk/src/press.rs::a_linux_menu_entry_takes_a_click_once_it_shows_else_opens_its_menus_and_runs_its_action
+      - rust/desk/src/press.rs::a_windows_tree_item_takes_a_click_where_a_hit_test_finds_it_else_is_selected
+    reason: >-
+      Press planning for Windows (UI Automation) and Linux (AT-SPI) only; the tests run on every
+      platform but assert only those OS branches. The macOS press rules are CAP-MAC-010 to CAP-MAC-012.
+  - upstream:
+      - rust/desk/src/keys.rs::linux_combinations_take_the_keysym_aliases_and_a_plus_key
+      - rust/desk/src/keys.rs::uia_keys_become_desk_combinations
+      - rust/desk/src/keys.rs::windows_characters_map_to_us_layout_keys
+    reason: >-
+      Key handling for Linux keysyms, Windows UI Automation accelerator keys and Windows US-layout
+      typing; no macOS behaviour is asserted. The macOS key vocabulary is CAP-MAC-014 to CAP-MAC-016.
+  - upstream:
+      - rust/desk/src/entry.rs::an_entry_is_named_by_its_desktop_entry_name_when_a_shown_application
+      - rust/desk/src/entry.rs::a_multi_word_name_gives_the_id_of_its_entry_and_a_command_line_or_one_word_none
+      - rust/desk/src/entry.rs::the_entries_are_read_once_until_an_applications_dir_changes
+    reason: >-
+      Resolving launch names through freedesktop .desktop entries is Linux-only; macOS launch resolves
+      app bundles and is covered by the act launch capabilities.
+  - upstream:
+      - rust/desk/src/volatile.rs::two_contents_toggle_more_churn_one_stays_quiet_and_all_last_while_newer_pauses_are_short
+      - rust/desk/src/volatile.rs::an_action_dropped_before_its_settle_lets_the_sampler_run_again
+      - rust/desk/src/volatile.rs::a_block_back_at_its_first_contents_toggles_among_what_it_showed
+    reason: >-
+      The background volatile-region sampler only starts on Linux and samples over X11 MIT-SHM; on
+      macOS the post-action settle uses driver captures and the in-wait block model of CAP-MAC-024.
+  - upstream:
+      - rust/desk/src/server.rs::the_pipe_admits_system_and_its_user_and_a_group_reads_and_writes_without_making_instances
+      - rust/desk/src/server.rs::a_pipe_name_carries_the_sid_of_its_owner_and_so_do_the_pipes_named_after_it
+    reason: >-
+      Windows named-pipe security descriptors and SID-bearing pipe names; macOS uses the unix socket
+      rules of CAP-MAC-026 to CAP-MAC-028.
+  - upstream:
+      - rust/desk/src/server.rs::a_spliced_call_takes_a_client_half_close_as_the_end_of_its_upload_not_a_cancel
+    reason: >-
+      Splicing a raw client byte stream straight to a service plugin is part of shuttle's private desk
+      wire. fennec-cua has no second wire: extensions are reached through MCP JSON-RPC on the daemon's
+      multiplexed connection, where an upload is a message and cancellation is an explicit MCP cancel
+      or a dropped connection (CAP-MAC-029).

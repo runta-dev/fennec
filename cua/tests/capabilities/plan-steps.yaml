@@ -1,0 +1,583 @@
+domain: plan-steps
+summary: How the multi-step executor behind act (and the cua.* script API behind run) validates, targets, waits, verifies and stops, step kind by step kind.
+capabilities:
+  - id: CAP-STP-001
+    title: Malformed steps are refused before any input
+    behavior: >-
+      act validates the whole step list before touching the desktop. A step with zero or more than one
+      operation, an operation whose value is empty (an empty key, click, menu, wait or check target, or
+      close: false), a text field given a number, array or other non-string, or a {{param}} placeholder
+      with no value makes the call fail with a recoverable error naming the step index and the offending
+      field, with zero steps done and no driver or accessibility call made. The same check runs before a
+      flow is saved from steps. An explicit null on an optional text field (such as window) counts as
+      absent and is not an error.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestValidateRejectsBeforeAnyInput, planned:internal/plan.TestNullOptionalFieldIsAbsent]
+    upstream:
+      - 'node/plan/a plan with a malformed step or an unfilled param makes no desk call'
+      - 'node/plan/a step with a non-string value on a text key is refused by key and makes no desk call'
+      - 'node/plan/a null on an optional text key is taken as absent'
+      - 'node/plan/a step whose only op is empty is malformed and makes no desk call'
+  - id: CAP-STP-002
+    title: Checkbox steps reach the wanted state, including tri-state
+    behavior: >-
+      An act step that sets a checkbox, switch or toggle button on or off reads the state first, presses
+      only when it differs, and reads it back afterwards. A tri-state box showing mixed is pressed again
+      until it reads the wanted state (mixed to on to off cycles take two presses). When the press does not
+      change the state, the step fails saying the control is still in its old state, and the step trace
+      records the state found before the press and no claimed state after it.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestCheckReadsBackAndCyclesMixed]
+    upstream:
+      - 'node/plan/a check that does not flip traces the state it found, not the one it wanted'
+      - 'node/plan/a check on a tri-state box acts again past the mixed state to the state it wants'
+  - id: CAP-STP-003
+    title: Menu toggles are read back with their menus open
+    behavior: >-
+      A menu step with a wanted on/off state (for example View > Status Bar on) opens each menu along the
+      path, reads the item's check mark only once the menu is open (a mark read from the closed menu bar is
+      treated as stale on macOS), presses only when the mark differs, and reads the mark again after the
+      press. Running the same step twice presses the item once. When the mark does not flip, the step fails
+      saying the item is still in its old state; when it flips, the trace reports the new state.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestMenuToggleReadsMarkWhileOpen, planned:internal/scenario.TestMenuToggleIdempotent]
+    upstream:
+      - 'node/macmenu/on macOS a menu toggle reads its mark after opening its menus, so a stale closed-menu mark neither skips nor repeats the press'
+      - 'node/menutoggle/a menu toggle reads its state back after the press, which ${flips ? ''took'' : ''did not take''}'
+  - id: CAP-STP-004
+    title: Driver-reported failures fail the step
+    behavior: >-
+      A step is never reported as confirmed on the driver's word alone. A press the driver answers as not
+      performed fails the step with the target named. A set whose target field refuses focus sends no key
+      and no text (so whatever field had focus keeps its contents) and fails. A close step aimed at a
+      dialog that is still listed after the close request fails saying the dialog is still open.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestPressNotDoneFails, planned:internal/plan.TestSetWithoutFocusSendsNothing, planned:internal/plan.TestCloseFailsWhenDialogStays]
+    upstream:
+      - 'node/modal/a close step fails when the dialog it closes stays open'
+      - 'node/plan/a press the desk reports as not done fails the step'
+      - 'node/set/set sends no key when the field takes no focus, so another field keeps its text'
+  - id: CAP-STP-005
+    title: set on text and spin fields verifies the exact value
+    behavior: >-
+      act set selects the field's existing text (cmd+a on macOS), types the value and reads the field back;
+      it passes only when the field then reads exactly the requested value, so text that was appended to or
+      doubled fails with the value actually read. An empty value selects and deletes to clear the field. If
+      the field cannot be read back after typing the step fails rather than passes. A spin button passes
+      when it reads the typed number, optionally followed by a unit such as "pt". A text field nested in a
+      combo box of the same name is one target, so set picks the inner editable field without asking a
+      model to disambiguate.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestSetExactReadBack, planned:internal/plan.TestSetSpinButtonUnit, planned:internal/plan.TestSetNestedComboField]
+    upstream:
+      - 'node/nested/a field named like the combobox it sits in is one target, and set needs no model to pick it'
+      - 'node/set/set passes only when the field reads exactly the value it typed, and an empty value presses delete to clear the field'
+      - 'node/set/set on a spin button passes only when it reads the number it typed, with or without a unit'
+  - id: CAP-STP-006
+    title: Combo boxes and popup lists
+    behavior: >-
+      set on a combo box (popup button) that has no editable text field opens its list and presses the
+      option whose name matches, typing nothing. If the option is already selected, the step succeeds as a
+      no-op without pressing. If no option matches, it fails listing the available options and presses
+      nothing further. A click that opens a popup list leaves the following step, in the same act call or a
+      later one, targeting the dialog that owns the list, whose tree then includes the list entries.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestSetComboPicksOption, planned:internal/scenario.TestPopupListNextStep]
+    upstream:
+      - 'node/combo/set on a combo box without a text field picks the option from its list, does nothing when it is already chosen, and names the options when none matches'
+      - 'node/popup/a click that opens a combo box''s list leaves the next step in the dialog, whose tree holds the list''s entries, also in a new plan'
+  - id: CAP-STP-007
+    title: verify by state and value
+    behavior: >-
+      An act expect (or a standalone verify step) on an element fails when no element matches, whatever
+      state it asks about. A value check passes only on an exact match of the value read; a spin button may
+      carry a unit after its number, but a different number (including a prefix or a decimal that starts
+      with it) fails. On a link the value compared is the link URL from a read, compared exactly
+      (case-sensitive, no normalisation). Naming a role lets the check find a non-control element of that
+      role such as a document body; without a role such elements are not matched.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestVerifyValueExact, planned:internal/plan.TestVerifyLinkURL, planned:internal/plan.TestVerifyRoleOutsideControls]
+    upstream:
+      - 'node/verify/a verify that finds no element fails, whatever state it asks for'
+      - 'node/verify/a verify by value passes only on the value itself, and a spin button may add a unit to its number'
+      - 'node/verify/a verify by value on a link compares the url that a read gives it exactly'
+      - 'node/verify/a verify that names a role reads an element of that role outside the controls, such as a document body, and one without a role still does not'
+  - id: CAP-STP-008
+    title: Visual expectations checked on a screenshot
+    behavior: >-
+      A free-text expect that the accessibility tree cannot settle is checked by capturing the screen and
+      asking the configured model for a JSON yes/no with a reason. A no fails the step with an "expectation
+      not met" error that includes the model's reason; a yes passes. An answer whose verdict is not a real
+      boolean (for example the string "false") fails the expect rather than being guessed.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestVisualExpect, planned:internal/plan.TestVisualExpectNonBooleanFails]
+    upstream:
+      - 'node/verify/an expect the tree does not meet is checked on a screenshot, which fails it with the reason or passes it'
+      - 'node/verify/a screenshot check whose answer is no true or false fails the expect'
+  - id: CAP-STP-009
+    title: Crops on displays left of or above the main display
+    behavior: >-
+      When the desktop spans displays with a negative origin, every crop sent to a model is computed in
+      screenshot pixels relative to the virtual screen's origin, not clamped at zero. A grounded click's
+      point check uses a 640x400 crop centred on the point (and tells the model the point's pixel inside
+      the crop); a control state check crops around the control; when the crop hits the edge of the
+      virtual screen it is narrowed by the clamped amount instead of shifted.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestCropNegativeOrigin]
+    upstream:
+      - 'node/origin/a grounded check on a screen whose origin is left of zero crops around the point instead of clamping it to zero'
+      - 'node/origin/a state check on a screen whose origin is left of zero crops the control from the screen origin, and a crop clamped at the edge narrows by the clamp'
+  - id: CAP-STP-010
+    title: Model credit exhaustion stops the plan without input
+    behavior: >-
+      When the model endpoint answers 402 (credits used up) during any model step of act (grounding a
+      click target, checking a grounded point, or picking an element from a screenshot), the plan stops at
+      once with the credits message as its error, zero steps done, no fallback model call (no text-only
+      pick after a failed screenshot pick) and no click or press sent.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestCreditsStopPlan]
+    upstream:
+      - 'node/credits/a 402 on the grounding of a click ends the plan with the credits message and clicks nothing'
+      - 'node/credits/a 402 on the check of a grounded point ends the plan without a fallback model call or a click'
+      - 'node/credits/a 402 on the screenshot pick of an element ends the plan without falling back to the text pick'
+  - id: CAP-STP-011
+    title: macOS menu navigation survives retitling and changing ids
+    behavior: >-
+      A menu step reads the window together with the app's menu bar (a click step does not ask for it),
+      opens each menu with its accessibility action, and rereads the opened menu before matching the next
+      entry, so an item that the app renames when its menu opens (Wrap to Page / Wrap to Window) matches
+      its current title. If a submenu's element becomes invalid after its parent opens, it is located again
+      in a fresh tree and opened. Every menu the step opened is closed again (Escape) when it ends, and no
+      keyboard shortcut is used in place of the press.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestMenuRereadsAfterOpen, planned:internal/scenario.TestMenuRetitledEntry]
+    upstream:
+      - 'node/retitle/on macOS a menu step rereads the menu after opening it, so an entry that retitled itself matches its new title'
+      - 'node/retitle/on macOS a submenu whose id changes once its parent opens is opened again from a fresh tree, and every opened menu is closed'
+      - 'node/snapshots/a menu step asks for the menu bar and a click step does not'
+  - id: CAP-STP-012
+    title: Menu bar items as click and verify targets on macOS
+    behavior: >-
+      On macOS a click or verify whose target is not in the window tree reads the window again with its
+      menu bar before falling back to any screenshot or model. A target found only in the menu bar is
+      pressed or checked there (a verify that the item is disabled fails when the menu item is enabled,
+      instead of passing on the miss). An exact name match on a menu item wins over a window control whose
+      name merely contains the text (Print beats Print Preview), and the item is pressed through
+      accessibility, not by its shortcut.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestMenuBarFallbackBeforeModel, planned:internal/plan.TestExactMenuItemBeatsContains]
+    upstream:
+      - 'node/snapshots/a click on macOS whose target sits only in the menu bar reads the window again with its menu bar before any model call'
+      - 'node/snapshots/a verify on macOS that finds its target only in the menu bar checks it there, instead of passing on the miss'
+      - 'node/snapshots/a click on macOS that names a menu item exactly takes it over a window button whose name only contains it'
+  - id: CAP-STP-013
+    title: Late and slowly filling dialogs are waited for
+    behavior: >-
+      When a step's target is missing because the previous step opened a window that has not shown yet,
+      act waits for that window and runs the step in it. A dialog that is already in front but whose tree
+      is still empty, or fills in after first showing, is reread until the target appears (within the step's
+      wait budget). A moment with no window in front while a dialog is opening is waited through rather than
+      failed. A click whose first read caught only a bare dialog root reads again and finds its target.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestStepWaitsForLateDialog, planned:internal/scenario.TestSlowDialogFill]
+    upstream:
+      - 'node/slowdialog/a step whose target is missing waits for the window the step before opened, then runs there'
+      - 'node/slowdialog/a step waits until the late window holds its target, as a dialog fills its tree after it shows'
+      - 'node/slowdialog/a step in a dialog that is already in front but still empty waits for its target'
+      - 'node/slowdialog/a step that finds no window in front while a dialog opens waits for it'
+      - 'node/snapshots/a click in a dialog whose controls show after the step read its bare root reads it again and finds the target'
+  - id: CAP-STP-014
+    title: End-of-plan wait for windows the last step opens
+    behavior: >-
+      After the last step, act waits about one second for a window it may have opened (a key that opens a
+      dialog such as cmd+o or cmd+w's save prompt, a typed line ending in Return, Tab or Shift+Tab that
+      raises a validation alert, an arrow key in front of a menu or dialog that opens a submenu or list) and
+      reports that window as the current one. A final step that cannot open anything (plain arrow in a
+      plain window, a shifted letter, text without a newline) skips that wait. A popup that appears late
+      after such a step is in front for the next act call, whose steps then go to it.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestEndWaitOnlyWhenStepCanOpen, planned:internal/scenario.TestLateDialogReportedAtEnd]
+    upstream:
+      - 'node/endwait/a plan that ends with ${JSON.stringify(step)}, which opens no window, skips the end-of-plan wait'
+      - 'node/endwait/a plan that ends with ${JSON.stringify(step)} still waits for the dialog it opens late and reports it'
+      - 'node/endwait/a plan that ends with ${key} in front of a ${start.role} still waits for the ${opened.role} it opens late'
+      - 'node/endwait/a popup that opens late after an arrow in a plain window is in front for a plan that starts after it'
+  - id: CAP-STP-015
+    title: Typing into file choosers
+    behavior: >-
+      A type step whose text ends in a newline, aimed at a save/open panel, recognises the panel by its
+      file name field even when that field lies past the first 1800 characters of the outline, selects the
+      field's text first and submits once the default button is ready; a Return step in such a panel also
+      waits for the button. After a shortcut that opens the panel late (cmd+shift+s), the typed line waits
+      for the panel, including through a moment where no window is in front, and then treats it as a
+      chooser. A large ordinary window that merely contains a "File name" field is typed into as plain text
+      with its single newline and no select-all.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestChooserDetection, planned:internal/scenario.TestTypePathIntoSavePanel]
+    upstream:
+      - 'node/chooser/a typed path finds the file chooser by its name field even when the field sits past the outline''s first 1800 characters'
+      - 'node/chooser/Enter in a file chooser whose name field sits past the outline''s first 1800 characters waits for its button before it submits'
+      - 'node/chooser/a typed line into a large window that is no dialog but holds a File name field goes in as plain typing with one Return'
+      - 'node/snapshots/a typed line after ${shortcut} waits for the file chooser it opens late, and takes it as a chooser'
+      - 'node/snapshots/a typed line after a shortcut keeps waiting while no window is in front, as when the focus is between the app and the chooser it opens'
+  - id: CAP-STP-016
+    title: Unexpected alerts and hidden modals stop the plan
+    behavior: >-
+      act never sends input into a confirmation it did not plan for: a typed line whose first Return
+      raises an overwrite confirmation sends no second Return and fails with the alert as the current
+      window. When a window the plan already vetted is retitled into an alert, the next step reads it again
+      and stops on the alert. When an app has a modal dialog that is open but not visible, any step aimed
+      at the blocked window (or the dialog itself) fails naming the dialog and how to close it, types
+      nothing, and lists the dialog as a hidden modal; a close step aimed at the dialog is still allowed and
+      steps in other apps proceed.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestNoInputIntoUnplannedAlert, planned:internal/plan.TestHiddenModalBlocks]
+    upstream:
+      - 'node/chooser/a typed line whose first Return opens an overwrite confirmation sends no second Return into it and escalates'
+      - 'node/modal/a step in a window whose app holds a modal dialog the screen does not show escalates with its title and types nothing'
+      - 'node/snapshots/a window id the plan vetted names a new window when its title changes, which the step reads again'
+  - id: CAP-STP-017
+    title: Front app that stops answering mid-plan
+    behavior: >-
+      Before each step act checks whether the front window's app still answers accessibility. If it stops
+      answering after a step, act waits up to 2 seconds; when it answers again, or the stale window closes
+      and the window that comes to the front answers, the plan continues. Otherwise it fails within that
+      wait, naming the window and the step after which it hung, with the step index to resume from, and
+      sends no further input; if another app comes to the front meanwhile, that app receives nothing.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestHungFrontAppEscalates, planned:internal/plan.TestHungFrontAppRecovers]
+    upstream:
+      - 'node/hung/a plan whose front app stops answering escalates within the wait, names the step before, and sends no further input'
+      - 'node/hung/a plan goes on when its front app answers again within the wait'
+      - 'node/hung/a plan goes on when the stale front window closes and the window that comes to the front answers'
+      - 'node/hung/a plan whose stale front app exits while another app comes to the front escalates and sends that app nothing'
+  - id: CAP-STP-018
+    title: Windows that do not answer accessibility get no input
+    behavior: >-
+      A step whose window answers no accessibility calls (a listed window whose tree read times out, a
+      window blocked behind an invisible dialog after the last key, a close aimed at a hung window even
+      when its app has no other window) fails as unanswered, sends no press, click, key, type, screenshot or
+      model call, and is not recorded as a no-op success. With no window in front, the error names the front
+      app (and pid) that is not answering, and a wait step's error view carries the same note.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestUnansweredWindowGetsNoInput]
+    upstream:
+      - 'node/frontless/with no window in front, a plan names the front app that is not answering accessibility'
+      - 'node/plan/close on a window that answers no accessibility call escalates even when its app has no other window'
+      - 'node/snapshots/a plan whose last key leaves its app blocked behind a dialog it cannot see escalates instead of passing'
+      - 'node/snapshots/a click in a listed window that no longer answers escalates as unanswered and acts on nothing'
+  - id: CAP-STP-019
+    title: Wait steps pick exactly one window
+    behavior: >-
+      A wait step (act expect window, or the wait tool) for a title takes a window only when exactly one
+      candidate matches; with two or more matches it fails saying how many matched and asking for a more
+      exact name, and focuses none of them. With no window in front, a single matching listed window is
+      focused and the following steps act in it; an alert whose title merely contains the wanted title is
+      never taken. A front window that only changed its title (an unsaved-changes asterisk) is not taken
+      as the new window and needs no model question; the wait keeps going until the real dialog opens.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/plan.TestWaitUniqueWindow, planned:internal/plan.TestWaitIgnoresRetitledFront]
+    upstream:
+      - 'node/frontless/with no window in front, a wait step takes and focuses the one listed window of its title, and the next step acts in it'
+      - 'node/frontless/with no window in front, a wait step does not choose between two windows of its title, and a step without one plan window stops'
+      - 'node/frontless/with no window in front, a wait step never takes an alert that carries its title'
+      - 'node/wait/a wait that several windows behind a known front window match takes none of them'
+      - 'node/wait/a wait asks no model about the front window that only changed its title, and takes the dialog that opens after it'
+  - id: CAP-STP-020
+    title: No front window is not guessed
+    behavior: >-
+      When no window is in front, a step that needs one fails with a "no focused window" error and sends
+      no input; act does not reuse the last window of an earlier call. If the gap is only transient because
+      the previous key is opening a window, the step waits for it and proceeds without querying for an
+      unanswering app.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestNoFrontWindowNoGuess]
+    upstream:
+      - 'node/frontless/a plan does not take the last window of the plan before it when no window is in front'
+      - 'node/frontless/a step that finds no window in front only until the window the key opened shows recovers without asking for an unanswered app'
+  - id: CAP-STP-021
+    title: Accessibility reads are reused within a plan
+    behavior: >-
+      The executor reads trees only when a step needs them: a dialog opened mid-plan is read once before
+      typing into it, a later step in an already-read dialog whose operation needs no target reads nothing
+      new, a wait whose window is already in front takes it without a tree read, and a plan whose only step
+      cannot open anything ends without any tree read. A window list fetched for the start of the plan is
+      reused by the first step only if it is at most 25 ms old.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestTreeReadBudget, planned:internal/plan.TestWindowListReuseWindow]
+    upstream:
+      - 'node/gui_plan/the first step takes the start window list only within 25 ms of its read, however long the start outline took'
+      - 'node/snapshots/a type step into a dialog that opened mid-plan reads the dialog once before typing'
+      - 'node/snapshots/a step in a dialog this plan already read reads no tree when its op needs none'
+      - 'node/snapshots/a wait step whose window is already in front takes it without reading its tree first'
+      - 'node/snapshots/a plan whose last step cannot open anything ends in a plain window without a tree read'
+  - id: CAP-STP-022
+    title: Waiting for a retitle is event driven
+    behavior: >-
+      After a key that changes the front window's title some time later (saving marks the document), the
+      executor waits for the change through the daemon's window-change wait instead of polling the window
+      list, observes the new title exactly once, and lists windows no more than three times after the key.
+    surface: wait
+    parity: spec
+    tests: [planned:internal/plan.TestRetitleWaitIsEventDriven]
+    upstream:
+      - 'node/wait/a key that retitles the window late waits on the desk for the change instead of polling window lists'
+  - id: CAP-STP-023
+    title: Failure view in a stopped plan
+    behavior: >-
+      When act stops, the error's observe view lists the open windows minus desktop-shell windows (Dock,
+      desktop, menu bar extras) and carries the window outline. An outline the accessibility read cut short
+      says the read stopped early and that scrolling or opening the relevant pane brings in the rest; an
+      outline cut only by its text budget points to observe with find or a full window read; a complete
+      outline carries neither note.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestFailureViewNotes, planned:internal/plan.TestFailureViewSkipsShellWindows]
+    upstream:
+      - 'node/outline/an outline cut by the backend says this read missed the rest and narrowing the view brings it in'
+      - 'node/outline/an outline cut only by its text budget points to desk snapshot or find'
+      - 'node/outline/a complete outline gets no cut note'
+      - 'node/shell/windows the desk marks as the desktop shell stay out of the windows an escalation lists'
+  - id: CAP-STP-024
+    title: Stop report for recorded replays
+    behavior: >-
+      When a replayed (recorded) step fails one of its recorded checks (the after-window it expected never
+      appeared within its timeout, the focus is elsewhere, the page is another address or never shows a
+      document, or every fallback of a recorded click misses), the result carries a stop report: the step
+      index, its intent, the reason, and the remaining steps from that one on, with recorded crops and
+      other recording-only payloads stripped. A plan that stops for a reason other than a recorded check
+      carries no stop report.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/plan.TestStopReport]
+    upstream:
+      - 'node/stopped/a missed after stops with the step, its intent, the reason and the steps left'
+      - 'node/stopped/a focus elsewhere stops with a stop report'
+      - 'node/stopped/another page stops a web step with a stop report and keeps the recorded crop out of it'
+      - 'node/stopped/a recorded click whose fallbacks all miss stops as an error with a stop report'
+      - 'node/stopped/a plan that stops on no recorded check carries no stop report'
+      - 'node/web/a page that never shows a document stops the web step with a stop report'
+  - id: CAP-STP-025
+    title: Recorded type steps check the focus first
+    behavior: >-
+      A replayed type step that recorded where it typed (role, name, window kind, DOM id on web pages)
+      types only if the current focus matches; if a sheet or dialog holds the focus, a different field or
+      DOM id is focused, or no focused element can be read, it fails naming both the recorded and the
+      current focus and types nothing. A type step whose recording could not read the focus types without
+      the check.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/plan.TestRecordedTypeFocusCheck]
+    upstream:
+      - 'node/focus/a recorded type step types where the recording typed'
+      - 'node/focus/a recorded type step stops as an error when a sheet holds the focus, and types nothing'
+      - 'node/focus/a recorded type step stops as an error when no focused element can be read'
+      - 'node/focus/a type step whose recording read no focus either types without the check'
+      - 'node/web/a recorded type step stops where the focused field has another DOM id'
+  - id: CAP-STP-026
+    title: Password typing goes only into secure fields and never leaks
+    behavior: >-
+      A type step marked as a password (recorded into a secure field, or with a secure focus requirement)
+      waits briefly for the focus to reach a secure text field and types only there; a focused plain field,
+      even one recorded with the same role and name, makes the step fail without typing. Password text is
+      never read back from the field and never appears in the act result, trace, logs or saved flow.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestPasswordOnlyIntoSecureField, planned:internal/plan.TestPasswordNeverInResult]
+    upstream:
+      - 'node/focus/a recorded password step types only into a focused password field'
+      - 'node/focus/a recorded password step types into a focused password field'
+      - 'node/focus/a password step waits for the focus to reach a password field before it types'
+      - 'node/focus/a password step whose recording read no field types into any focused password field, and only there'
+      - 'node/focus/a password step whose recording read no field stops where the focused field shows its text'
+      - 'node/focus/a password typed into a dialog is not read back and never shows in the result'
+  - id: CAP-STP-027
+    title: Replayed typing into a field that was empty when recorded
+    behavior: >-
+      A replayed type step whose recording typed into an empty field fails, typing nothing, when the field
+      now already holds text (as when a launched app reopened its last document), and says the field is
+      not empty.
+    surface: flow
+    parity: oracle
+    tests: [planned:internal/plan.TestBlankFieldCheck]
+    upstream:
+      - 'node/gui_plan_blank/a step that typed into an empty field stops when its app was launched and reopened its last document'
+  - id: CAP-STP-028
+    title: Element fingerprints are positional only under the same match count
+    behavior: >-
+      A recorded element fingerprint (role, name, parent, position among same-named matches, and match
+      count) selects by position only when the window has exactly as many matches as when it was recorded;
+      if the count changed, the step resolves the target afresh and fails rather than pressing by position.
+      A fingerprint recorded on a later match never falls back to the only remaining match by position;
+      it resolves by name instead. The trace says which method resolved the target.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/plan.TestFingerprintMatchCount]
+    upstream:
+      - 'node/fingerprint/a fingerprint picks its element by position only among as many matches as it was recorded with'
+      - 'node/fingerprint/a fingerprint whose match count changed resolves again instead of taking an element by position'
+      - 'node/fingerprint/a fingerprint recorded past the first of several matches never takes the one match left'
+  - id: CAP-STP-029
+    title: Web steps act only on the recorded page
+    behavior: >-
+      A step recorded on a web page compares the browser's current address with the recorded one,
+      ignoring query, fragment and a trailing slash, and waits up to 3 seconds for it; a different path
+      (for example after a redirect to a login page) fails with both addresses and clicks nothing. The
+      address is read from the same tree the step acts on, including after a reread with the menu bar. A
+      page with no document yet is waited for (up to 10 seconds); a page that never shows one fails saying
+      there is no address.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestWebPageMatch, planned:internal/scenario.TestWebRedirectStops]
+    upstream:
+      - 'node/web/a web step acts on its page whatever the query, fragment or trailing slash'
+      - 'node/web/a web step on a page a redirect moved to another path stops as an error and clicks nothing'
+      - 'node/web/the page check reads the nodes the step acts on, after the menu bar read replaces them'
+      - 'node/web/a page that shows no document yet is waited for'
+  - id: CAP-STP-030
+    title: DOM ids pick among same-named web controls
+    behavior: >-
+      A web step that recorded a DOM id takes the element with that id over others of the same role and
+      name, for click and set alike, and reports DOM-id resolution in the trace. The lookup reads element
+      details for the same-named candidates even past the cap on other reads on long forms (at least 100
+      same-named rows), so the right row is found.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestWebDomID]
+    upstream:
+      - 'node/web/a web step takes the element with its recorded DOM id over another of the same name'
+      - 'node/web/a set step takes the field with its recorded DOM id among fields of the same name'
+      - 'node/web/a DOM id finds a same-named control past the read cap on a long form'
+      - 'node/web/a DOM id finds its row among a hundred same-named controls'
+  - id: CAP-STP-031
+    title: Chromium web tree is switched on for web steps
+    behavior: >-
+      Before a web step, if the browser's web accessibility tree is off, act turns it on for that browser
+      process and leaves switching it back to the daemon's own lifecycle; if it was already on, no switch
+      call is made.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestWebTreeSwitch]
+    upstream:
+      - 'node/web/a browser with its page tree off gets it on for the plan, which leaves turning it off to the daemon'
+      - 'node/web/a browser whose page tree was already on keeps it on'
+  - id: CAP-STP-032
+    title: Launch steps honour policy and open URLs in the browser
+    behavior: >-
+      act launch (or open_url) with a URL, after filling parameters, hands the URL to that browser's
+      running instance and takes the window that shows it. A launch the app allowlist refuses fails with
+      the policy reason and starts nothing; a launch the user declines in confirm mode fails at once with
+      the decline reason, without waiting for a window (well under 2 seconds).
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestLaunchRefusedByPolicy, planned:internal/scenario.TestOpenURLInBrowser]
+    upstream:
+      - 'node/allowlist/an app step the allowlist refuses escalates without starting the app'
+      - 'node/allowlist/an app step whose launch the user declines escalates with the desk''s reason and waits for no window'
+      - 'node/web/an app step with a url opens it in that browser and takes the window that shows it'
+  - id: CAP-STP-033
+    title: Typed text is sent whole and literally
+    behavior: >-
+      A type step sends its full text, including newlines and markup such as a closing tag on its last
+      line, as one typing call so editors that auto-close tags see the text in order; text with
+      backslashes (a Windows-style path) arrives unchanged and its read-back matches the field's value.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestTypeSendsWholeText, planned:internal/scenario.TestTypeBackslashes]
+    upstream:
+      - 'node/gui_plan/a type step sends its whole text in one desk type call, so a closing tag on its last line meets its opener'
+      - 'node/plan/typing a Windows path into a dialog field finds it in the outline, backslashes and all'
+  - id: CAP-STP-034
+    title: Interrupted plans keep their finished steps
+    behavior: >-
+      If an act plan is cancelled or its execution is killed mid-way, the result reports ok false with
+      the number of steps finished and their trace, so the agent knows which input landed and does not
+      resend it.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestCancelKeepsFinishedSteps]
+    upstream:
+      - 'node/term/a plan killed outright leaves the steps it finished as its result'
+  - id: CAP-STP-035
+    title: Repairing a replay updates its flow
+    behavior: >-
+      When a flow replay stops at a step and the agent then runs fixed steps that continue from that point
+      within the repair window (10 minutes, same window or process), the fixed steps are saved back into
+      that flow in place of the failing ones, keeping its parameters with their latest values.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestRepairSavesFixedSteps]
+    upstream:
+      - 'node/gui_plan_blank/a plan that continues a flow from the step it stopped at saves the fixed steps into that flow'
+  - id: CAP-STP-036
+    title: Flow storage is private, versioned and self-contained
+    behavior: >-
+      Plans, saves and reindexes write only inside the configured flows directory (flows, index, pending
+      chain, run log, git history). The directory is mode 0700 and its files 0600, and a directory an
+      older install left group- or world-readable is tightened on the next find or replay. The run log is
+      truncated once it passes 1 MiB. History commits are never signed, so a user's commit-signing setup
+      cannot block or prompt. On macOS without the Command Line Tools, no git binary is run (to avoid the
+      installer prompt) and saving still succeeds.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestStoragePrivate, planned:internal/flows.TestRunLogRotation, planned:internal/flows.TestGitWithoutCLT]
+    upstream:
+      - 'node/clt/on macOS without the Command Line Tools a flow never runs git, which would open their installer'
+      - 'node/gitsign/a flow commit is never signed, so a user signing setup neither prompts nor loses the commit'
+      - 'node/isolation/a plan, a save and a reindex write flows, the index, the pending chain and git only under the test directory'
+      - 'node/isolation/the run log starts over once it passes 1 MiB'
+      - 'node/upgrade/a flows directory an older version left readable by others turns 0700 on a find or a replay'
+  - id: CAP-STP-037
+    title: Plans and scripts cannot reach safety controls
+    behavior: >-
+      No act step kind and no cua.* script function can stop, resume, change the allowlist, confirm mode
+      or other safety settings; the executor and the script bindings only reach desk and model operations,
+      and the daemon offers them no path to the safety layer.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestPlansAndScriptsCannotReachSafety]
+    upstream:
+      - 'node/safety/no gui_plan step and no desk API call reaches the daemon''s safety controls'
+  - id: CAP-STP-038
+    title: Script input helpers and model ask
+    behavior: >-
+      In run, cua.key, cua.type and cua.click pass a background target (window title, pid or app name)
+      to the driver only when the script gives one, and return the driver's note when background input
+      could not be confirmed. cua.model.ask accepts no image, one PNG buffer or a list of them, sends them
+      base64-encoded, and adds each call's token usage per model to the run's usage report.
+    surface: run
+    parity: spec
+    tests: [planned:internal/script.TestInputTargets, planned:internal/script.TestAskImagesAndUsage]
+    upstream:
+      - 'node/desk/ask sends one PNG buffer or a list of them as base64 and meters the usage by model into the run'
+      - 'node/desk/a key or a type that names an app sends the app to the daemon'
+      - 'node/target/the input helpers send a background target only when one is given'
+      - 'node/target/an input helper returns the note of background input the driver could not confirm'
+excluded:
+  - upstream:
+      - 'node/frames/a reply split over several writes arrives whole, and a connection closed mid-frame rejects'
+    reason: >-
+      Tests the length-prefixed framing of shuttle's private socket between its Node script runner and
+      the daemon. fennec-cua runs scripts in-process on goja with the cua.* API as direct Go calls and uses
+      MCP JSON-RPC as its only wire, so there is no such framing to reproduce.

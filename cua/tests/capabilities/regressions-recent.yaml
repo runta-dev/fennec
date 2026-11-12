@@ -1,0 +1,957 @@
+domain: regressions-recent
+summary: Real-app edge cases fixed in shuttle 0.1.40 to 0.1.50 on macOS (terminals, secrets, Chromium, Safari, sheets, Spaces, hung apps, confirm and allowlist, transport) restated as regression capabilities fennec-cua must also handle.
+capabilities:
+  # --- typing focus and secrets -------------------------------------------
+  - id: CAP-RGA-001
+    title: Typing with a focus check waits briefly for focus to arrive
+    behavior: >-
+      An act `type` step that requires a focus condition (a field, or a password field) re-reads the
+      focused element every 100 ms for up to 1 s and types as soon as the condition holds, so a page that
+      moves focus into its field shortly after load (for example 700 ms later) is typed into. If the
+      condition still fails after 1 s nothing is typed and the step stops; a sheet that keeps focus, such
+      as Safari's "Save Password?", still stops the step. When a password step finds a focused element
+      that is not a secure field, the error says it is not a password field and names the role of the
+      window or sheet that holds focus, instead of claiming there is no focus.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTypeFocusWaitPolls, planned:scenario/TypeFocusArrivesLate, planned:scenario/TypeFocusHeldBySheet]
+    upstream: [changelog/0.1.50/1, changelog/0.1.50/7]
+  - id: CAP-RGA-002
+    title: Secret type steps are never echoed or persisted
+    behavior: >-
+      A type step can be marked secret (for a password typed at a terminal prompt such as `read -s`,
+      `sudo` or `ssh`, where no secure field exists); a value typed into a secure field is treated the
+      same. For such steps, error messages, stop reports, escalations and the trace say "the password"
+      and carry no window outline, no intent text and no value; a saved flow and any pending draft keep a
+      parameter in place of the text and never the step's intent, neither in the flow file nor in the
+      flow store's git history; a replay supplies the secret through parameters.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestSecretStepRedaction, planned:internal/flows.TestSecretNotSaved]
+    upstream: [changelog/0.1.48/1, changelog/0.1.49/1, changelog/0.1.40/6, changelog/0.1.41/15]
+  - id: CAP-RGA-003
+    title: A secret line gets its Return only when the terminal did not show it
+    behavior: >-
+      When a secret type step ends in a line break, the password is typed alone first, the window's text
+      is read back, and Return is pressed only if the password does not appear on screen and the screen
+      did not otherwise change while typing. If the prompt was not up yet or the terminal echoes, the
+      step stops before Return so the shell never runs the password as a command. This holds under
+      foreground and background input. A window whose text cannot be read gets its Return unchecked.
+      Scenarios: Terminal with echo on (stop, no Return), a `read -s` prompt (one Return, line accepted),
+      a Safari password field (one Return, no false stop).
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestSecretReturnGate, planned:scenario/TerminalSecretEchoOn, planned:scenario/TerminalSecretReadS, planned:scenario/SafariPasswordReturn]
+    upstream: [changelog/0.1.49/2, changelog/0.1.49/4, changelog/0.1.48/1]
+  # --- terminal typing ------------------------------------------------------
+  - id: CAP-RGA-004
+    title: Terminal read-back compares text exactly
+    behavior: >-
+      Confirming a type into a terminal by reading its screen compares the typed text with its spaces and
+      letter case intact (a screen showing `echohello` or `echo HELLO` does not confirm `echo hello`);
+      only line breaks the terminal inserted to wrap a long line are ignored, and a trailing space or tab
+      in the typed text need not appear (the terminal may trim or expand it).
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTerminalReadbackMatch, planned:scenario/TerminalTrailingSpace]
+    upstream: [changelog/0.1.47/1, changelog/0.1.48/4]
+  - id: CAP-RGA-005
+    title: Partially shown terminal text stops a plan
+    behavior: >-
+      After an unconfirmed type into a recognised terminal, the plan continues with the step marked
+      unconfirmed only when the terminal screen did not change at all (no-echo prompt); a screen that
+      changed without showing the whole text stops the plan with a "did not show" error before any
+      following Return; a screen showing the whole text confirms the step. Recognised terminals: Terminal,
+      iTerm2, Ghostty, WezTerm, kitty, Alacritty, Warp, Hyper and Zed's terminal; others (VS Code's
+      terminal, Tabby, Rio) are treated as ordinary windows.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestTerminalPartialStops, planned:scenario/TerminalPartialType]
+    upstream: [changelog/0.1.46/1]
+  - id: CAP-RGA-006
+    title: Multi-line typing gates each Return on the previous line
+    behavior: >-
+      A type with several lines never presses the Return before a line when the previous line was not
+      confirmed: the call ends with an error naming that line. Leading blank lines (including a bare
+      carriage return) each get their Return first and the screen is read once it settles. Into a
+      terminal, the rest is typed one line at a time; after an unconfirmed line the screen is compared
+      with the read taken before it, once two reads agree within 300 ms of the Return, and the next
+      Return is pressed only if the line shows or the screen did not change (so `read -s pw` followed by
+      the password submits each exactly once). Terminal steps are confirmed line by line. Budget: about
+      86 ms per terminal line; non-terminal windows send the remaining lines in one more call.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestMultilineReturnGate, planned:scenario/TerminalReadSThenPassword]
+    upstream: [changelog/0.1.46/2]
+  - id: CAP-RGA-007
+    title: Long field values are checked at their end before and after typing
+    behavior: >-
+      When a field's tree value is truncated (first 200 characters) and could hide the end where a
+      terminal takes input, the plan reads the end of the field's text once before a background type and
+      once after a type that was not confirmed. Under auto input, a field read only in part never causes
+      the step to be retyped in the foreground.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestTailReadForTruncatedField]
+    upstream: [changelog/0.1.46/2]
+  - id: CAP-RGA-008
+    title: Text into a terminal is typed exactly once
+    behavior: >-
+      A type into a terminal that does not echo (such as a `read -s` prompt) is delivered once: given
+      "abc" the program reads 3 characters, not 6, and the step is reported unconfirmed with retry false
+      and no advice to type again or to use the foreground. Under auto input an unconfirmed terminal type
+      is never retyped in the foreground. Remaining text is only retyped into a native field that shows
+      its old value followed by the start of the text, never into a terminal; a field that took scattered
+      characters or changed without growing is reported unconfirmed instead of retyped.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestNoTerminalRetype, planned:scenario/TerminalReadSOnce, planned:scenario/AutoModeTerminalNoForegroundRetype]
+    upstream: [changelog/0.1.45/1, changelog/0.1.45/2, changelog/0.1.45/3, changelog/0.1.46/4]
+  - id: CAP-RGA-009
+    title: An accessibility insert that the field rewrote is not repeated as keys
+    behavior: >-
+      When text set through accessibility lands but the field transforms it (autocorrect, formatting),
+      the step is reported unconfirmed rather than following up with the same text as key presses, so
+      text is never entered twice.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestInsertRewrittenNotRetyped]
+    upstream: [changelog/0.1.46/5]
+  - id: CAP-RGA-010
+    title: Typed-field settle ends 0.5 s after the field stops changing
+    behavior: >-
+      Read-back after typing waits while the field keeps changing, but a field that changed without
+      growing and then holds still for 0.5 s is answered unconfirmed at that point rather than after the
+      full 2 s window; a field that never takes the text is answered unconfirmed after about 0.7 s.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestTypeSettleTimings]
+    upstream: [changelog/0.1.46/6, changelog/0.1.44/13]
+  - id: CAP-RGA-011
+    title: Terminal type confirmation ignores text already in scrollback
+    behavior: >-
+      A type into a terminal is confirmed only if the screen holds more copies of the text after typing
+      than before, so re-running a command already visible in scrollback (e.g. `git push`) that only
+      partly landed (`git pu`) is not confirmed; if the screen could not be read before typing, the
+      result is unconfirmed and the plan checks the screen itself. Other fields confirm as usual.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTerminalConfirmCountsCopies, planned:scenario/TerminalRepeatCommandPartial]
+    upstream: [changelog/0.1.46/7, changelog/0.1.46/8]
+  - id: CAP-RGA-012
+    title: Batched typing is fast
+    behavior: >-
+      Typing is sent in batches rather than one key at a time: 620 characters into a background Terminal
+      complete in about 1 s (not tens of seconds). The driver keyboard-layout lookup must not crash the
+      driver.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/BackgroundTerminalTypeThroughput]
+    upstream: [changelog/0.1.44/13]
+  # --- Chromium, Safari, launch ------------------------------------------
+  - id: CAP-RGA-013
+    title: Background typing into Chromium apps is paced per character
+    behavior: >-
+      Background typing into a Chromium or Electron app (including a Chrome that has been frontmost
+      before) is paced at about 1 ms per character so every character lands (620 characters, 9 of 9
+      runs); Safari, Terminal and TextEdit keep the default batching. Characters outside the Basic
+      Multilingual Plane (most emoji) that cannot reach such an app in the background make the step fail
+      with a count of what landed; foreground typing carries them.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestChromiumTypePacing, planned:scenario/ChromeBackgroundType620]
+    upstream: [changelog/0.1.44/3]
+  - id: CAP-RGA-014
+    title: Opening a URL hands it to the running app instance
+    behavior: >-
+      Launching an app with URLs or plain (non-option) arguments, such as `launch Safari` with a URL or
+      `open_url`, hands them to the app the way `open -a` does, so a running instance opens the page and
+      no second instance starts; arguments with an option (a Chrome profile flag) start a new instance.
+      Under foreground input the launched app is brought to the front, cold and warm, including a running
+      Safari that was not in front.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/LaunchSafariWithURLRunning, planned:scenario/LaunchSafariWithURLCold]
+    upstream: [changelog/0.1.41/5, changelog/0.1.41/23]
+  - id: CAP-RGA-015
+    title: Clicking a web text field waits for its focus
+    behavior: >-
+      An element click on a web text field waits for the field to take focus (about 100 ms typical)
+      rather than a fixed delay, and a Safari text area is focused so the next typed text lands in it.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/SafariTextAreaClickThenType]
+    upstream: [changelog/0.1.42/28]
+  - id: CAP-RGA-016
+    title: Text ending in a closing tag is typed literally
+    behavior: >-
+      Typed text is delivered literally, so a line ending in a closing tag such as `</text>` arrives as
+      written; protocol framing never strips or rewrites user text.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTypeLiteralClosingTag]
+    upstream: [changelog/0.1.41/23]
+  - id: CAP-RGA-017
+    title: A key shortcut aimed at a disabled control is refused
+    behavior: >-
+      A key equivalent sent to a disabled control is refused with nothing sent rather than reported as
+      delivered.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/KeyEquivalentDisabledControl]
+    upstream: [changelog/0.1.41/23]
+  - id: CAP-RGA-018
+    title: Input aimed at a security or consent prompt is refused
+    behavior: >-
+      Any input (click, hit-checked click, key, type) whose target is a macOS security or consent prompt
+      is refused with a stable code and a statement that nothing was sent; fennec-cua never drives these
+      prompts.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestSecurityPromptRefused, planned:scenario/SecurityPromptRefusal]
+    upstream: [changelog/0.1.50/6]
+  - id: CAP-RGA-019
+    title: Background trailing Return into a single-line field is sent separately
+    behavior: >-
+      A background type whose text ends in a line break, aimed at a single-line field, sends the text and
+      then the Return as a separate key. A background Return into Safari's address bar is a known case
+      that does not navigate; the result must not claim navigation happened.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/BackgroundTypeReturnSingleLine, planned:scenario/SafariAddressBarBackgroundReturn]
+    upstream: [changelog/0.1.50/6]
+  - id: CAP-RGA-020
+    title: Keys work after the driver has been the active app
+    behavior: >-
+      Key presses keep working (no driver crash) after the driver process itself has been the active
+      application.
+    surface: act
+    parity: spec
+    tests: [planned:scenario/KeyAfterDriverActive]
+    upstream: [changelog/0.1.42/28]
+  # --- lock screen ------------------------------------------------------
+  - id: CAP-RGA-021
+    title: Locked-screen input explains where keys go and that unlock is impossible
+    behavior: >-
+      When the screen is locked, a refused action says fennec-cua cannot unlock the Mac (unlock over
+      Screen Sharing or at the machine) and that locked-screen typing reaches only the window focused
+      before the lock, never the lock screen password field. A delivered locked-screen type or key says
+      where it went: the lock screen when aimed at loginwindow, otherwise the key window of the target
+      process as it was before the lock.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestLockedInputMessages]
+    upstream: [changelog/0.1.48/2, changelog/0.1.49/3]
+  # --- plan executor ------------------------------------------------------
+  - id: CAP-RGA-022
+    title: Malformed steps are refused before any input
+    behavior: >-
+      An act plan with a step whose text field has a non-string value (e.g. `{"wait": 2}`), a step whose
+      only op is empty, a step with two ops, or a type with a point and no text is refused with an error
+      naming the step and the key before any step runs; a null on an optional text key counts as absent.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestStepValidation]
+    upstream: [changelog/0.1.48/3, changelog/0.1.42/14, changelog/0.1.41/16]
+  - id: CAP-RGA-023
+    title: Settling steps reuse a fresh window list
+    behavior: >-
+      After a click, menu or close step waits for the window to settle, the next step and the end of the
+      plan reuse the window list that wait read if it is under 25 ms old, shows a front window and no
+      other call intervened, instead of listing windows again.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestSettleListReuse]
+    upstream: [changelog/0.1.44/1]
+  - id: CAP-RGA-024
+    title: A background element click lists windows once
+    behavior: >-
+      A background element click costs one window-list round trip to the driver, and background typing
+      reads its window's fields in small batches (four at a time) rather than all at once.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestBackgroundClickSingleList]
+    upstream: [changelog/0.1.44/7, changelog/0.1.44/8]
+  - id: CAP-RGA-025
+    title: Waits ignore title-only changes and ambiguous matches
+    behavior: >-
+      A wait for a window change does not treat a window that only changed its title (e.g. gaining a `*`
+      after save) as the awaited change and does not consult a model about it. A wait whose title text
+      matches several windows takes none of them unless exactly one title equals the text.
+    surface: wait
+    parity: oracle
+    tests: [planned:internal/plan.TestWaitIgnoresTitleOnly, planned:internal/plan.TestWaitAmbiguousTitle]
+    upstream: [changelog/0.1.44/8, changelog/0.1.42/14, changelog/0.1.40/6]
+  - id: CAP-RGA-026
+    title: Verify by role reaches non-interactive elements
+    behavior: >-
+      An expect/verify that names a role finds elements of that role outside the interactive set, such as
+      a document body.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestVerifyRoleNonInteractive]
+    upstream: [changelog/0.1.44/8]
+  - id: CAP-RGA-027
+    title: Visual state checks crop relative to the screen origin
+    behavior: >-
+      A visual check of a control's state crops the screenshot at the control's position relative to the
+      captured screen's origin, so it is correct on secondary displays and displays left of or above the
+      main one; a visual check whose model answer is not true or false fails.
+    surface: act
+    parity: spec
+    tests: [planned:internal/vision.TestCropRelativeToOrigin, planned:internal/plan.TestVisualCheckNonBoolean]
+    upstream: [changelog/0.1.44/8, changelog/0.1.42/14]
+  - id: CAP-RGA-028
+    title: The flow store survives malformed files and never signs commits
+    behavior: >-
+      A flow file missing its saved time, parameters or steps does not break later saves; flow commits are
+      never signed so no signing prompt opens after a plan; a plan that passes never overwrites a flow
+      saved by name, and its own generated name stays within 40 characters.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestCorruptFlowFile, planned:internal/flows.TestUnsignedCommit, planned:internal/flows.TestAutoSaveNaming]
+    upstream: [changelog/0.1.44/8, changelog/0.1.42/14]
+  - id: CAP-RGA-029
+    title: A Return that opens an overwrite confirmation is not repeated
+    behavior: >-
+      When a typed line's first Return opens an overwrite (replace) confirmation, no second Return is sent
+      into it and the plan stops.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/SaveOverwriteConfirmNoSecondReturn]
+    upstream: [changelog/0.1.42/14]
+  - id: CAP-RGA-030
+    title: A declined menu shortcut stops the plan
+    behavior: >-
+      When a menu step would use the entry's key shortcut and that shortcut is declined (confirm mode or
+      policy), the plan stops instead of pressing the menu entry another way.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestDeclinedShortcutStops]
+    upstream: [changelog/0.1.42/14]
+  - id: CAP-RGA-031
+    title: Password fields are never retyped in the foreground under auto
+    behavior: >-
+      Under auto input, a type into a secure password field that was not confirmed in the background is
+      never typed again in the foreground.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/AutoModePasswordNoRetype]
+    upstream: [changelog/0.1.42/14]
+  - id: CAP-RGA-032
+    title: Recording drafts keep Option characters and short captions
+    behavior: >-
+      In a recording draft, a character typed with Option stays in the step's typed text, the keys F1 to
+      F12 are kept as key steps, and a model caption keeps only its first line, at most 80 characters.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestDraftTypedText, planned:internal/flows.TestDraftCaption]
+    upstream: [changelog/0.1.42/14, changelog/0.1.41/15]
+  - id: CAP-RGA-033
+    title: A menu step finds an entry that retitled itself
+    behavior: >-
+      If a menu entry is not in the tree by the requested title (e.g. TextEdit's Format > Wrap to Page
+      becomes Wrap to Window after use but keeps its old AX title until reopened), the step opens the
+      menus above it once, closes them, re-reads the tree and matches again; a step that matches at once
+      costs nothing extra.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/TextEditRetitledMenuEntry]
+    upstream: [changelog/0.1.42/25]
+  - id: CAP-RGA-034
+    title: Plans stop at an app that stopped answering
+    behavior: >-
+      An app step whose app has only stale windows escalates instead of launching the app again; a step
+      whose front window is stale waits up to 2 s for it to answer and then escalates.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestStaleAppEscalates]
+    upstream: [changelog/0.1.41/8]
+  - id: CAP-RGA-035
+    title: Parameterised replay steps are resolved afresh
+    behavior: >-
+      During replay, a step whose target or window contains a parameter is never pinned by a stored
+      fingerprint or recorded title, so a different value targets a different element; an app step with
+      a title waits for a window of that title rather than any window of the app; in the background a
+      recorded "after" takes the new top-level window of the plan's app that the step opened.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/flows.TestParamStepNotPinned, planned:internal/flows.TestReplayAppTitleWait, planned:internal/flows.TestReplayAfterNewWindow]
+    upstream: [changelog/0.1.41/15]
+  - id: CAP-RGA-036
+    title: A background menu toggle that needs pixels refuses before opening menus
+    behavior: >-
+      A menu toggle whose state can only be read from pixels refuses in the background before it opens
+      any menu, leaving no menu open.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestBackgroundPixelToggleRefuses]
+    upstream: [changelog/0.1.41/15]
+  - id: CAP-RGA-037
+    title: Point input uses whole pixels and works on displays left of or above the main one
+    behavior: >-
+      Point-based input sends integer pixel coordinates, and a press or click at negative desktop
+      coordinates (a display left of or above the main display) is delivered instead of refused.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestNegativeCoordinates, planned:internal/actions.TestWholePixels]
+    upstream: [changelog/0.1.41/12, changelog/0.1.41/15]
+  - id: CAP-RGA-038
+    title: App matching by name first and whole-word titles
+    behavior: >-
+      An app target matches by app name first and window titles by whole words, so `Mail` does not adopt
+      Chrome's "Gmail - Inbox"; after a launch only a new window of a new process, or of that app, is
+      taken. A `+` belongs to its word, so `notepad` does not name `notepad++`.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/view.TestAppMatchWholeWord]
+    upstream: [changelog/0.1.40/6, changelog/0.1.40/9]
+  - id: CAP-RGA-039
+    title: Value checks require equal values
+    behavior: >-
+      An expect by value, and a set on a combo box, spin button or slider, passes only on an equal value;
+      a spin button or slider may add a unit ("12 pt" for 12). An expect that finds no element fails,
+      including expectations of off or disabled state.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestValueEquality, planned:scenario/SliderSetWithUnit]
+    upstream: [changelog/0.1.40/6]
+  - id: CAP-RGA-040
+    title: Close and menu-toggle steps verify their effect
+    behavior: >-
+      A close step fails when its dialog stays open; a menu toggle reads its state back after the press
+      and fails when the press did not take (the pixel path reports a caveat instead).
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/CloseDialogStaysOpen, planned:scenario/MenuToggleReadBack]
+    upstream: [changelog/0.1.40/6]
+  - id: CAP-RGA-041
+    title: Evidence is attributed honestly and grounded points rechecked
+    behavior: >-
+      A later step confirms the step before it only when it reads something that step could change; a
+      recorded click among several equal matches re-resolves when their number changed; a grounded point
+      is checked again right before its click.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestEvidenceAttribution, planned:internal/plan.TestGroundedPointRecheck]
+    upstream: [changelog/0.1.40/6]
+  - id: CAP-RGA-042
+    title: An interrupted plan reports what it already did
+    behavior: >-
+      A plan ended by a timeout or stop answers ok false with the steps done, the trace and an escalation,
+      so a rerun does not repeat steps that acted; a plan killed after acting is never saved as a flow
+      missing those steps; an escalation's step leaves out recorded crops. In the background, saving the
+      escalated chain uses the window the chain left.
+    surface: act
+    parity: spec
+    tests: [planned:internal/plan.TestInterruptedPlanReport, planned:internal/flows.TestNoSaveAfterKill]
+    upstream: [changelog/0.1.40/6, changelog/0.1.40/27]
+  - id: CAP-RGA-043
+    title: Auto-input plans keep the foreground they took
+    behavior: >-
+      After a step of an auto-input plan falls back to the foreground, its later key, type, close, Return
+      and fallback click steps and any foreground retype are delivered in the foreground rather than
+      refused for naming no window.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/plan.TestAutoKeepsForeground, planned:scenario/AutoModeForegroundFollowup]
+    upstream: [changelog/0.1.40/17]
+  # --- input delivery ---------------------------------------------------
+  - id: CAP-RGA-044
+    title: One key-name vocabulary, validated before input
+    behavior: >-
+      Key names come from a single alias table: the plus key is `+`, `delete` is forward Delete, and an
+      unknown name fails before any input is sent (never a partial or first-letter key).
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestKeyNameTable]
+    upstream: [changelog/0.1.41/9]
+  - id: CAP-RGA-045
+    title: Type deadline scales with text length
+    behavior: >-
+      A type call waits as long as the driver may need to type its text rather than a fixed 30 s, so a
+      long text is never left typing on into whatever window comes to the front after the caller gave
+      up.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestTypeDeadlineScales]
+    upstream: [changelog/0.1.41/12]
+  - id: CAP-RGA-046
+    title: Clicks are spaced to avoid accidental double clicks
+    behavior: >-
+      Two separate clicks at the same point are spaced past the double-click interval, including when the
+      earlier click's call was dropped while it ran.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestClickSpacing]
+    upstream: [changelog/0.1.41/12, changelog/0.1.42/11]
+  - id: CAP-RGA-047
+    title: Input is resent only after the driver's own ended-session error
+    behavior: >-
+      A failed driver input restarts the driver session and resends only when the driver returns its own
+      ended-session error; any other failure that merely mentions a session is not resent.
+    surface: act
+    parity: spec
+    tests: [planned:internal/driver.TestResendOnlyOnSessionEnded]
+    upstream: [changelog/0.1.42/11]
+  - id: CAP-RGA-048
+    title: Foreground pointer input with a window brings it to the front
+    behavior: >-
+      A foreground click, scroll or drag that names a window brings that window to the front first, as
+      key and type do, so a covered point does not hit the window on top while reporting success.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/ForegroundClickCoveredWindow]
+    upstream: [changelog/0.1.41/12]
+  - id: CAP-RGA-049
+    title: A window click is refused while another app covers the point
+    behavior: >-
+      A click aimed at a named window that the window cannot take is refused while another app covers the
+      point, instead of falling back to a screen click that lands on the covering (possibly disallowed)
+      app.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/WindowClickCoveredRefused]
+    upstream: [changelog/0.1.42/6]
+  - id: CAP-RGA-050
+    title: Input naming only an app reaches that app's window
+    behavior: >-
+      Key, type and pointer input that names only an app or process reaches that process's window instead
+      of failing with no focused window.
+    surface: act
+    parity: oracle
+    tests: [planned:scenario/KeyByAppOnly]
+    upstream: [changelog/0.1.40/9]
+  - id: CAP-RGA-051
+    title: A trailing newline is typed with its text
+    behavior: >-
+      A type whose text ends in a newline delivers the newline with the text as Return in the same call
+      rather than as a separate delayed key.
+    surface: act
+    parity: oracle
+    tests: [planned:internal/actions.TestTrailingNewlineSameCall]
+    upstream: [changelog/0.1.41/16]
+  - id: CAP-RGA-052
+    title: Partial multi-line type reports lines delivered
+    behavior: >-
+      A type that fails on a later line reports how many lines went in before the failure, and the result
+      marks the step as possibly landed.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestPartialTypeLineCount]
+    upstream: [changelog/0.1.40/21]
+  - id: CAP-RGA-053
+    title: A delivered action survives a failed capture
+    behavior: >-
+      If input landed but the screenshot or read-back that follows fails, the action is still reported as
+      delivered with a note about the capture failure, so agents do not repeat it; a wait or failed launch
+      whose screenshot fails answers as it ran with a reason line.
+    surface: act
+    parity: spec
+    tests: [planned:internal/actions.TestCaptureFailureAfterInput]
+    upstream: [changelog/0.1.40/10, changelog/0.1.40/20]
+  - id: CAP-RGA-054
+    title: Background input reaches an allowed app on another Space
+    behavior: >-
+      With an app allowlist in force, background key and type reach an allowed app whose windows are all
+      on another Space, matching what observe lists for that app.
+    surface: policy
+    parity: oracle
+    tests: [planned:scenario/AllowlistOtherSpaceType]
+    upstream: [changelog/0.1.40/19]
+  # --- observe --------------------------------------------------------
+  - id: CAP-RGA-055
+    title: Value reads have preview, full and tail forms with a truncation flag
+    behavior: >-
+      An element read without full text returns a preview of the first 80 characters (a long terminal
+      therefore needs a full or tail read to see recent lines); a full read returns at most 65,536
+      characters from the start, a tail read the last 65,536, and the result says truncated whenever the
+      text was cut. A Terminal with unlimited scrollback exceeds the limit after about 7,000 lines and the
+      tail read still shows where input lands.
+    surface: observe
+    parity: oracle
+    tests: [planned:internal/view.TestReadPreviewAndTail, planned:scenario/TerminalTailRead]
+    upstream: [changelog/0.1.50/4, changelog/0.1.46/3]
+  - id: CAP-RGA-056
+    title: All refs of one view resolve
+    behavior: >-
+      Every ref handed out by one observe stays resolvable for that view; the ref table is trimmed only
+      when a new snapshot, find or hit test starts, never in the middle of one or during an action.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestRefTableTrimBoundaries]
+    upstream: [changelog/0.1.44/5]
+  - id: CAP-RGA-057
+    title: Links carry their URL
+    behavior: >-
+      Link nodes carry their target URL in an observe with URLs requested and always in an element read,
+      so feed permalinks come from one observe; the text outline omits them by default. An expect by value
+      on a link compares its target.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/WebLinksCarryURL]
+    upstream: [changelog/0.1.41/1]
+  - id: CAP-RGA-058
+    title: Hung apps' windows stay listed as stale
+    behavior: >-
+      A window whose app stops answering stays in the window list with its last frame and a stale flag,
+      also after the accessibility backend restarts; a stale window counts as active only while its app is
+      frontmost; listing windows never waits on a hung frontmost app.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/HungAppStaleWindow]
+    upstream: [changelog/0.1.41/7]
+  - id: CAP-RGA-059
+    title: Window refs are stable across Spaces
+    behavior: >-
+      Window identifiers are derived from the macOS window number, identical on and off the current Space,
+      so a background plan keeps its window when the ref cache fills or the window moves to another
+      Space; sheets and windows without a number get process-scoped ids.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestWindowIDsAreNumbers, planned:scenario/WindowMovesSpace]
+    upstream: [changelog/0.1.41/10]
+  - id: CAP-RGA-060
+    title: Screen text in vision observations is escaped and capped
+    behavior: >-
+      Element labels, values and window titles read from the screen are quoted and escaped in the outline
+      and vision element list, labels capped at 80 characters and values at 60, so page text cannot forge
+      element lines.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/view.TestOutlineEscaping]
+    upstream: [changelog/0.1.42/10]
+  - id: CAP-RGA-061
+    title: Screenshots are returned inline, never written to caller paths
+    behavior: >-
+      Image capture returns bytes in the reply only; no caller-supplied file path is ever written. The
+      CLI saves to a temporary file it chooses, with the extension of the actual encoding.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/mcpserver.TestNoImagePathParameter]
+    upstream: [changelog/0.1.42/4, changelog/0.1.40/24]
+  - id: CAP-RGA-062
+    title: Vision element list and scale follow the latest capture
+    behavior: >-
+      A vision observe that found no elements clears the previous numbered elements; a region click without
+      a session maps through the latest screenshot's scale so it lands where shown.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/vision.TestEmptyStateClearsElements, planned:internal/vision.TestRegionScaleLatest]
+    upstream: [changelog/0.1.41/16, changelog/0.1.40/10, changelog/0.1.40/20]
+  - id: CAP-RGA-063
+    title: Hit test works under a window with an elided long title
+    behavior: >-
+      A point hit test resolves the window even when its long title is elided by the driver.
+    surface: observe
+    parity: oracle
+    tests: [planned:scenario/HitTestLongTitle]
+    upstream: [changelog/0.1.40/9]
+  - id: CAP-RGA-064
+    title: Web tree holds are reference counted
+    behavior: >-
+      Turning a Chromium page tree on is held per caller and released when the last holder releases it;
+      two first holders never leave it on after both release.
+    surface: observe
+    parity: spec
+    tests: [planned:internal/ax.TestWebTreeHoldRefcount]
+    upstream: [changelog/0.1.41/12]
+  # --- scripts ---------------------------------------------------------
+  - id: CAP-RGA-065
+    title: Script key and type calls honour the app target
+    behavior: >-
+      In `run`, `cua` key and type calls pass their app target through to the daemon, so they reach that
+      app rather than the front window.
+    surface: run
+    parity: oracle
+    tests: [planned:internal/script.TestKeyTypePassApp]
+    upstream: [changelog/0.1.44/9]
+  # --- daemon and scheduling ------------------------------------------
+  - id: CAP-RGA-066
+    title: The daemon answers before its model client is ready
+    behavior: >-
+      The daemon binds and serves its socket before building its model client, and a client that starts
+      the daemon polls for it every 10 ms, so the first answer after a cold start is not delayed by
+      model setup.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestListenBeforeModels]
+    upstream: [changelog/0.1.44/2]
+  - id: CAP-RGA-067
+    title: Calls that time out or are stopped while queued never run late
+    behavior: >-
+      An action queued behind a hung accessibility read gives up its turn as soon as its call times out,
+      so other actions are not answered busy while nothing runs; it runs only if its call is still
+      waiting, never after a stop or its own timeout; concurrent timeouts restart the accessibility
+      backend once.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestQueuedTimeoutFreesTurn, planned:internal/daemon.TestNoLateRun]
+    upstream: [changelog/0.1.44/6, changelog/0.1.42/5]
+  - id: CAP-RGA-068
+    title: All input shares one turn with a 15 s busy wait
+    behavior: >-
+      Every input path (act steps, vision actions, launches, scripts) shares one action turn; a plan takes
+      the turn before building its request; a press holds the turn through its click, including a menu
+      item click that outlives its call limit; a call waiting for the turn answers busy after 15 s; an
+      unsupported input mode is refused at once; a stop ends a call still waiting for the turn.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestSingleTurn, planned:internal/daemon.TestBusyAfter15s, planned:internal/daemon.TestStopEndsWaiter]
+    upstream: [changelog/0.1.41/12, changelog/0.1.40/3]
+  - id: CAP-RGA-069
+    title: The daemon is hard to end by accident
+    behavior: >-
+      The daemon runs in its own process group so Ctrl-C or a hangup of an agent terminal does not end
+      it; a failed accept (e.g. at the 256 descriptor limit) is retried; a daemon that dies right after
+      binding reports its exit status to the starting client.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestOwnProcessGroup, planned:internal/daemon.TestAcceptRetry]
+    upstream: [changelog/0.1.40/5]
+  - id: CAP-RGA-070
+    title: Endpoint directory has a fixed mode
+    behavior: >-
+      The daemon creates its endpoint directory with an explicit mode (0755 for a shared group setup)
+      regardless of umask, and accepts the directory it made.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestEndpointDirMode]
+    upstream: [changelog/0.1.41/21]
+  - id: CAP-RGA-071
+    title: A stop ends a running script before a recording
+    behavior: >-
+      Stop ends a running script before it ends a recording in progress.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestStopOrder]
+    upstream: [changelog/0.1.40/27]
+  # --- MCP -------------------------------------------------------------
+  - id: CAP-RGA-072
+    title: Each MCP session is its own caller
+    behavior: >-
+      Each MCP session (stdio or HTTP) is a distinct caller with its own web-tree holds, default vision
+      session and plugin identity, so one client turning a page tree off does not affect another.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestSessionIsCaller]
+    upstream: [changelog/0.1.43/1]
+  - id: CAP-RGA-073
+    title: Tool descriptions state which results sent nothing
+    behavior: >-
+      Server instructions and tool descriptions state which outcomes sent nothing (refused, a confirm
+      dialog pending, busy) and which may have taken effect (stopped by the user, unconfirmed, a type
+      reporting lines typed before its error, a plan's partial trace).
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestDescriptionsStateOutcomes]
+    upstream: [changelog/0.1.43/2]
+  - id: CAP-RGA-074
+    title: Streamable HTTP transport is authenticated and bounded
+    behavior: >-
+      MCP over Streamable HTTP requires a bearer token on every bind including loopback (scheme matched
+      case-insensitively), refuses a non-localhost browser Origin, honours cancellation by request id
+      within its session, closes a connection that sends no headers within 10 s, and caps connections at
+      64.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestHTTPAuth, planned:internal/mcpserver.TestHTTPHeaderTimeout]
+    upstream: [changelog/0.1.40/1, changelog/0.1.41/19]
+  - id: CAP-RGA-075
+    title: MCP images carry their real MIME type
+    behavior: >-
+      An image content item is labelled with the MIME type of its bytes (JPEG, WebP or PNG), including
+      images returned by extension tools.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestImageMimeType]
+    upstream: [changelog/0.1.41/19]
+  - id: CAP-RGA-076
+    title: Malformed tool arguments fail cleanly
+    behavior: >-
+      A tool call whose arguments are not an object fails with a clear error and leaves the connection
+      usable.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestNonObjectArgs]
+    upstream: [changelog/0.1.40/13]
+  - id: CAP-RGA-077
+    title: The bridge does not start a second daemon on a connect error
+    behavior: >-
+      The stdio bridge starts the daemon only when no daemon is listening; any other connect error (a
+      socket served by another user, permission denied) is reported instead of starting a second daemon.
+    surface: mcp
+    parity: spec
+    tests: [planned:internal/mcpserver.TestBridgeConnectErrors]
+    upstream: [changelog/0.1.40/26]
+  # --- policy, confirm, allowlist ---------------------------------------
+  - id: CAP-RGA-078
+    title: The confirm dialog shows exactly what it allows
+    behavior: >-
+      The confirm dialog quotes and escapes any action name that is not a plain word, shows a type or key
+      step's text as an escaped preview preceded by its target window or app, names the window and
+      modifiers of a click or drag, and states how many steps it omits when a list is too long.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestConfirmText]
+    upstream: [changelog/0.1.42/1]
+  - id: CAP-RGA-079
+    title: Confirm opens only once the action holds the turn
+    behavior: >-
+      The confirm dialog opens only after its action holds the input turn, so no other call can type into
+      the dialog or run an allowed action late on a changed screen; after the dialog closes the previously
+      frontmost app is active again whatever the answer; the Allow click is not counted as the user's own
+      input.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestConfirmAfterTurn, planned:scenario/ConfirmRestoresFront]
+    upstream: [changelog/0.1.40/3, changelog/0.1.42/24, changelog/0.1.40/18]
+  - id: CAP-RGA-080
+    title: Recording start asks under confirm mode
+    behavior: >-
+      With confirm mode on, an agent's request to start a recording asks the user first; starting from
+      the app's own menu does not.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestRecordStartConfirm]
+    upstream: [changelog/0.1.42/2]
+  - id: CAP-RGA-081
+    title: The allowlist refuses option arguments on launch
+    behavior: >-
+      Under an app allowlist, launch arguments starting with `-` are refused (they can make a browser run
+      arbitrary programs); URLs and plain arguments pass.
+    surface: policy
+    parity: oracle
+    tests: [planned:internal/policy.TestLaunchOptionArgsRefused]
+    upstream: [changelog/0.1.42/3]
+  - id: CAP-RGA-082
+    title: Allowlist masking uses a window list stable across the capture
+    behavior: >-
+      Screenshots under an allowlist are masked only with a window list that stayed the same across the
+      capture, so a window that opens or moves in between never leaves a blocked app's pixels unmasked.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/policy.TestMaskStableWindowList]
+    upstream: [changelog/0.1.40/11]
+  - id: CAP-RGA-083
+    title: A kill hotkey that cannot register says so
+    behavior: >-
+      When another app holds the configured kill hotkey, the stop control does not claim that hotkey and
+      the user is told how to stop fennec-cua instead.
+    surface: policy
+    parity: spec
+    tests: [planned:internal/hotkey.TestRegisterFailureReported]
+    upstream: [changelog/0.1.42/8]
+  - id: CAP-RGA-084
+    title: Status reports the input mode in use
+    behavior: >-
+      `status` (and the indicator's About line) names the input mode actually used.
+    surface: status
+    parity: spec
+    tests: [planned:internal/daemon.TestStatusInputMode]
+    upstream: [changelog/0.1.41/20]
+  # --- recording -------------------------------------------------------
+  - id: CAP-RGA-085
+    title: Recordings exclude blocked apps in any language and fennec-cua's own input
+    behavior: >-
+      Recording leaves out blocked apps (System Settings, Keychain Access, Passwords) matched by bundle
+      name case-insensitively as well as localized name, and leaves out clicks and keys fennec-cua itself
+      sent, including those of an action that just ended.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestBlockedByBundleName, planned:internal/record.TestOwnInputExcluded]
+    upstream: [changelog/0.1.42/7, changelog/0.1.40/14]
+  - id: CAP-RGA-086
+    title: Only the daemon's own user can record
+    behavior: >-
+      Recording start, note and stop are answered only for the daemon's own user, never a shared-group
+      peer.
+    surface: daemon
+    parity: spec
+    tests: [planned:internal/daemon.TestRecordOwnUserOnly]
+    upstream: [changelog/0.1.41/18]
+  - id: CAP-RGA-087
+    title: Recorded window crops are bound to the clicked process
+    behavior: >-
+      A recorded click's window shot is taken from the clicked process's window, so a same-titled window
+      of another app is never cropped; a click deeper than 16 elements keeps its window and crop.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestCropByPid]
+    upstream: [changelog/0.1.41/18, changelog/0.1.40/22]
+  - id: CAP-RGA-088
+    title: Recording edge cases are handled
+    behavior: >-
+      A daemon told to stop saves the recording in progress; the kill hotkey's own key press is not
+      recorded; input to a windowless process (Spotlight) is skipped; a recording that cannot start says
+      why; draft captions run concurrently so many unnamed clicks do not exceed the draft time limit;
+      secure input already on at start adds no password step; no recording starts while stopped; a
+      non-list `apps` argument is refused.
+    surface: flow
+    parity: spec
+    tests: [planned:internal/record.TestStopSavesRecording, planned:internal/record.TestDraftCaptionsConcurrent]
+    upstream: [changelog/0.1.40/14, changelog/0.1.40/22]
+  # --- models, extensions, packaging ---------------------------------------
+  - id: CAP-RGA-089
+    title: Decide falls back to the likeliest listed option
+    behavior: >-
+      When the model's choice is none of the offered options, decide takes the option with the highest
+      probability, and fails only when the probabilities name none of them.
+    surface: models
+    parity: spec
+    tests: [planned:internal/models.TestDecideFallback]
+    upstream: [changelog/0.1.42/15]
+  - id: CAP-RGA-090
+    title: Service plugins left by a killed daemon are stopped
+    behavior: >-
+      Before a service plugin starts, a copy left on its socket by a killed daemon is terminated (TERM,
+      then KILL after 3 s) so restarts never add copies; scripts and plans end with the daemon and never
+      act through a restarted one; a service whose socket path is too long fails its start naming the
+      service; a plugin whose resource URI duplicates an earlier one is skipped whole.
+    surface: extensions
+    parity: spec
+    tests: [planned:internal/extensions.TestStaleServiceStopped, planned:internal/extensions.TestDuplicateResourceURI]
+    upstream: [changelog/0.1.40/4, changelog/0.1.40/13]
+  - id: CAP-RGA-091
+    title: First run works without a manual restart
+    behavior: >-
+      Once Accessibility and Screen Recording are granted, the first capture shows macOS's one-time screen
+      access alert (owned by Fennec.app as the embedding app) and captures work after Allow, without
+      restarting the daemon; a relaunch after Quit and Reopen brings the daemon back on the default
+      endpoint.
+    surface: packaging
+    parity: spec
+    tests: [planned:scenario/FirstRunCaptureNoRestart]
+    upstream: [changelog/0.1.42/19]
+  - id: CAP-RGA-092
+    title: Permission guidance names Fennec
+    behavior: >-
+      The driver's permission guide names the app that System Settings lists (Fennec), not the driver,
+      and opens away from System Settings' switches and the system access prompt.
+    surface: packaging
+    parity: spec
+    tests: [planned:scenario/PermissionGuideNaming]
+    upstream: [changelog/0.1.42/28]
+excluded:
+  - upstream: [changelog/0.1.48/6, changelog/0.1.47/2]
+    reason: Validation notes that only describe test runs and CI; no behaviour beyond the notes already captured.
+  - upstream: [changelog/0.1.48/5]
+    reason: Driver bump whose only behaviour change is Linux virtual-keyboard and keycode handling; on macOS it states unchanged results.
+  - upstream: [changelog/0.1.40/31]
+    reason: Driver bump whose only change is Windows named-pipe ownership.
+  - upstream: [changelog/0.1.41/13, changelog/0.1.44/12]
+    reason: Windows-only (hung-app press timing, tray menu, install.ps1 PATH handling).
+  - upstream: [changelog/0.1.41/14, changelog/0.1.40/28]
+    reason: Linux-only AT-SPI behaviour (hung tree reads, connect timeouts, snapshot node-cap traversal on the accessibility bus).
+  - upstream: [changelog/0.1.40/25]
+    reason: Applies to Windows and Linux foreground key/type only; macOS already behaved this way and CAP-RGA-050 covers the macOS case.
+  - upstream: [changelog/0.1.41/17, changelog/0.1.40/7, changelog/0.1.40/23]
+    reason: Android-only (UI server lifecycle, rotation, paste, screencap fallback).
+  - upstream: [changelog/0.1.42/16, changelog/0.1.41/22, changelog/0.1.40/15]
+    reason: install.sh installer robustness; fennec-cua ships inside the signed Fennec.app bundle and has no shell installer.
+  - upstream: [changelog/0.1.40/16]
+    reason: Release workflow and rustup pinning; process only.
+  - upstream: [changelog/0.1.42/17]
+    reason: Bundled Node.js and Rust crate security bumps; fennec-cua has no Node runtime and its own Go dependency set.
+  - upstream: [changelog/0.1.41/11]
+    reason: Folded into the protocol; the shuttle desk CLI coerced numeric-looking ids, while fennec-cua takes JSON arguments and refs are typed strings (e12, w3).
