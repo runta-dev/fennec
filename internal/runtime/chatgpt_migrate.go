@@ -45,7 +45,8 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 		return
 	}
 	id := request.Params.ThreadID
-	if _, checked := migrationAttempts.LoadOrStore(filter.codexHome+"\x00"+id, true); checked {
+	key := filter.codexHome + "\x00" + id
+	if _, checked := migrationAttempts.LoadOrStore(key, true); checked {
 		return
 	}
 	if _, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
@@ -53,6 +54,8 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 	}
 	if err := filter.importMacRollout(id); err != nil {
 		fmt.Fprintf(os.Stderr, "fennec: conversation %s stays on the Mac: %v\n", id, err)
+		// An offline Mac or a later local thread may succeed on a later open.
+		time.AfterFunc(30*time.Second, func() { migrationAttempts.Delete(key) })
 	}
 }
 
@@ -88,7 +91,7 @@ func (filter *chatgptPathFilter) importMacRollout(id string) error {
 	}
 	relative := path.Clean(header.Path)
 	name := path.Base(relative)
-	if relative != header.Path || strings.Contains(relative, "..") || !(strings.HasPrefix(relative, "sessions/") || strings.HasPrefix(relative, "archived_sessions/")) || !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, "-"+id+".jsonl") {
+	if relative != header.Path || strings.Contains(relative, "..") || !(strings.HasPrefix(relative, "sessions/") || strings.HasPrefix(relative, "archived_sessions/")) || !localssh.IsCodexRolloutName(name, id) {
 		return fmt.Errorf("unexpected rollout path")
 	}
 	decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1))
@@ -100,7 +103,9 @@ func (filter *chatgptPathFilter) importMacRollout(id string) error {
 	if err != nil || int64(len(data)) != header.Size {
 		return fmt.Errorf("incomplete rollout transfer")
 	}
-	data = filter.cloudRollout(data)
+	if data, err = filter.cloudRolloutFile(name, data); err != nil {
+		return err
+	}
 	destination := filepath.Join(filter.codexHome, filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return err
@@ -126,4 +131,27 @@ func (filter *chatgptPathFilter) cloudRollout(data []byte) []byte {
 		}
 	}
 	return bytes.Join(lines, nil)
+}
+
+// cloudRolloutFile maps working directories in a rollout file, keeping Codex's
+// own zstd compression for .jsonl.zst rollouts.
+func (filter *chatgptPathFilter) cloudRolloutFile(name string, data []byte) ([]byte, error) {
+	if !strings.HasSuffix(name, ".zst") {
+		return filter.cloudRollout(data), nil
+	}
+	decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+	plain, err := decoder.DecodeAll(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid compressed rollout: %w", err)
+	}
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+	if err != nil {
+		return nil, err
+	}
+	defer encoder.Close()
+	return encoder.EncodeAll(filter.cloudRollout(plain), nil), nil
 }

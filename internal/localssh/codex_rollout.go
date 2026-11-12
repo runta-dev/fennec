@@ -35,10 +35,24 @@ var CodexThreadID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 const maxRolloutBytes = 512 << 20
 
+// IsCodexRolloutName reports a rollout file for id: plain or zstd-compressed
+// (.jsonl.zst, which Codex writes for older threads), named after the thread
+// ("-<id>") or as a child thread ("_<id>").
+func IsCodexRolloutName(name, id string) bool {
+	if !strings.HasPrefix(name, "rollout-") {
+		return false
+	}
+	for _, extension := range []string{".jsonl", ".jsonl.zst"} {
+		if strings.HasSuffix(name, "-"+id+extension) || strings.HasSuffix(name, "_"+id+extension) {
+			return true
+		}
+	}
+	return false
+}
+
 // FindCodexRollout returns the rollout path for id under codexHome, searching
 // active then archived sessions.
 func FindCodexRollout(codexHome, id string) (string, error) {
-	suffix := "-" + id + ".jsonl"
 	for _, root := range []string{"sessions", "archived_sessions"} {
 		found := ""
 		filepath.WalkDir(filepath.Join(codexHome, root), func(path string, entry fs.DirEntry, err error) error {
@@ -48,7 +62,7 @@ func FindCodexRollout(codexHome, id string) (string, error) {
 			if entry.Type()&fs.ModeSymlink != 0 {
 				return nil
 			}
-			if !entry.IsDir() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), suffix) {
+			if !entry.IsDir() && IsCodexRolloutName(entry.Name(), id) {
 				found = path
 				return fs.SkipAll
 			}

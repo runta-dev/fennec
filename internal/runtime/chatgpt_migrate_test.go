@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestCloudRolloutMovesWorkingDirectoriesOnly(t *testing.T) {
@@ -51,5 +53,36 @@ func TestMigrationSkipsThreadsAlreadyInTheCloud(t *testing.T) {
 	again.migrateThreads([]byte(`{"id":4,"method":"thread/resume","params":{"threadId":"` + other + `"}}`))
 	if !attempted(id) || !attempted(other) {
 		t.Fatal("attempts not recorded")
+	}
+}
+
+func TestRolloutNamesIncludeCompressedAndChildThreads(t *testing.T) {
+	id := "01a19bbb-61bb-78c0-b816-27926e999fd4"
+	for name, want := range map[string]bool{
+		"rollout-2026-11-02T18-08-31-" + id + ".jsonl.zst":                                      true,
+		"rollout-2026-11-02T18-08-31-" + id + ".jsonl":                                          true,
+		"rollout-2026-11-02T20-43-02-01a19c48-db7e-7d70-aad6-4c5056f146c4_" + id + ".jsonl.zst": true,
+		"rollout-2026-11-02T20-43-02-" + id + "_01a19c48-db7e-7d70-aad6-4c5056f146c4.jsonl.zst": false,
+		"notes-" + id + ".jsonl": false,
+	} {
+		if localssh.IsCodexRolloutName(name, id) != want {
+			t.Fatal(name)
+		}
+	}
+}
+
+func TestCompressedRolloutKeepsCodexFormat(t *testing.T) {
+	filter := &chatgptPathFilter{home: t.TempDir(), device: "1234abcd", paths: map[string]string{}}
+	plain := []byte(`{"type":"session_meta","payload":{"cwd":"/Users/me/p"}}` + "\n")
+	encoder, _ := zstd.NewWriter(nil)
+	compressed := encoder.EncodeAll(plain, nil)
+	got, err := filter.cloudRolloutFile("rollout-x-id.jsonl.zst", compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder, _ := zstd.NewReader(nil)
+	decoded, err := decoder.DecodeAll(got, nil)
+	if err != nil || bytes.Contains(decoded, []byte("/Users/me/p")) || !bytes.Contains(decoded, []byte(".fen")) {
+		t.Fatal(string(decoded), err)
 	}
 }
