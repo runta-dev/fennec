@@ -3,7 +3,9 @@ package runtime
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/localssh"
 	"io"
 	"net"
 	"os"
@@ -157,17 +159,53 @@ func TestRewriteCwdKeepsFileURIForm(t *testing.T) {
 
 func TestRequestsDisableDesktopOnlyMCPServers(t *testing.T) {
 	request := []byte(`{"id":3,"method":"thread/start","params":{"cwd":"/a","config":{"mcp_servers.node_repl":{"command":"/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl","args":["x"],"env":{"K":"V"}},"mcp_servers.team":{"command":"npx"}}}}`)
-	got := string(rewriteMessage(request, true, func(string) (string, bool) { return "", false }))
+	got := string(rewriteMessage(request, disabledDesktopServer, func(string) (string, bool) { return "", false }))
 	if strings.Contains(got, "/Applications/") || !strings.Contains(got, `"mcp_servers.node_repl":{"command":"","enabled":false}`) || !strings.Contains(got, `"command":"npx"`) {
 		t.Fatal(got)
 	}
 	batch := []byte(`{"id":4,"method":"config/batchWrite","params":{"edits":[{"keyPath":"mcp_servers.cua_repl","value":{"command":"/Applications/ChatGPT.app/Contents/MacOS/ChatGPT","args":["mcp"]},"mergeStrategy":"replace"}]}}`)
-	if got := string(rewriteMessage(batch, true, func(string) (string, bool) { return "", false })); !strings.Contains(got, `"value":{"command":"","enabled":false}`) || !strings.Contains(got, `"keyPath":"mcp_servers.cua_repl"`) {
+	if got := string(rewriteMessage(batch, disabledDesktopServer, func(string) (string, bool) { return "", false })); !strings.Contains(got, `"value":{"command":"","enabled":false}`) || !strings.Contains(got, `"keyPath":"mcp_servers.cua_repl"`) {
 		t.Fatal(got)
 	}
 	// Responses to ChatGPT are never altered for MCP commands.
 	response := []byte(`{"id":5,"result":{"command":"/Applications/ChatGPT.app/x"}}`)
 	if got := rewriteCwd(response, func(string) (string, bool) { return "", false }); !bytes.Equal(got, response) {
 		t.Fatal(string(got))
+	}
+}
+
+func TestDesktopMCPServersRunOnTheMacThroughItsAlias(t *testing.T) {
+	filter := &chatgptPathFilter{home: t.TempDir(), device: "1234abcd"}
+	request := []byte(`{"id":7,"method":"thread/start","params":{"config":{"mcp_servers.node_repl":{"command":"/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl","args":["--stdio"],"env":{"NODE_PATH":"/Applications/ChatGPT.app/x"},"startup_timeout_sec":20}}}}`)
+	got := rewriteMessage(request, filter.desktopServer, func(string) (string, bool) { return "", false })
+	var decoded struct {
+		Params struct {
+			Config map[string]struct {
+				Command string   `json:"command"`
+				Args    []string `json:"args"`
+				Timeout int      `json:"startup_timeout_sec"`
+			} `json:"config"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	server := decoded.Params.Config["mcp_servers.node_repl"]
+	if server.Command != "ssh" || server.Timeout != 20 || len(server.Args) != 7 || server.Args[5] != "fennec-device-1234abcd" {
+		t.Fatal(string(got))
+	}
+	encoded, ok := strings.CutPrefix(server.Args[6], localssh.DesktopMCPCommand+" ")
+	if !ok {
+		t.Fatal(server.Args[6])
+	}
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	var spec localssh.DesktopMCPSpec
+	if err != nil || json.Unmarshal(data, &spec) != nil || spec.Name != "node_repl" || spec.Args[0] != "--stdio" || spec.Env["NODE_PATH"] != "/Applications/ChatGPT.app/x" {
+		t.Fatal(spec, err)
+	}
+	// Without a Mac device the server is disabled rather than left to time out.
+	offline := &chatgptPathFilter{home: t.TempDir()}
+	if got := string(rewriteMessage(request, offline.desktopServer, func(string) (string, bool) { return "", false })); !strings.Contains(got, `"mcp_servers.node_repl":{"command":"","enabled":false}`) {
+		t.Fatal(got)
 	}
 }

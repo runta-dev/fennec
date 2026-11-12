@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/localssh"
 	"fmt"
 	"net"
 	"os"
@@ -103,7 +104,7 @@ func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
 }
 
 func (filter *chatgptPathFilter) toCloud(message []byte) []byte {
-	return rewriteMessage(message, true, func(path string) (string, bool) {
+	return rewriteMessage(message, filter.desktopServer, func(path string) (string, bool) {
 		if !filepath.IsAbs(path) || strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
 			return "", false
 		}
@@ -172,15 +173,15 @@ func saveChatGPTPaths(home string, paths map[string]string) {
 // rewriteCwd maps every string field named "cwd" in a JSON message. Messages
 // without such a field, or that are not JSON, are returned unchanged.
 func rewriteCwd(message []byte, mapping func(string) (string, bool)) []byte {
-	return rewriteMessage(message, false, mapping)
+	return rewriteMessage(message, nil, mapping)
 }
 
 // rewriteMessage maps "cwd" fields and, for requests to the cloud, disables MCP
 // servers whose commands are ChatGPT.app executables on the Mac. ChatGPT adds
 // them through per-thread config and config writes; on the cloud computer they
 // cannot start and their startup timeouts stall every other request.
-func rewriteMessage(message []byte, disableDesktop bool, mapping func(string) (string, bool)) []byte {
-	desktop := disableDesktop && (bytes.Contains(message, []byte("/Applications/ChatGPT.app/")) || bytes.Contains(message, []byte("/Applications/Codex.app/")))
+func rewriteMessage(message []byte, replace desktopReplacer, mapping func(string) (string, bool)) []byte {
+	desktop := replace != nil && (bytes.Contains(message, []byte("/Applications/ChatGPT.app/")) || bytes.Contains(message, []byte("/Applications/Codex.app/")))
 	if !desktop && !bytes.Contains(message, []byte(`"cwd"`)) {
 		return message
 	}
@@ -191,18 +192,22 @@ func rewriteMessage(message []byte, disableDesktop bool, mapping func(string) (s
 		return message
 	}
 	changed := false
-	var walk func(any)
-	walk = func(node any) {
+	var walk func(any, string)
+	walk = func(node any, name string) {
 		switch typed := node.(type) {
 		case map[string]any:
 			if command, ok := typed["command"].(string); ok && desktop && desktopOnlyCommand(command) {
+				replacement := replace(strings.TrimPrefix(name, "mcp_servers."), typed)
 				for key := range typed {
 					delete(typed, key)
 				}
-				typed["command"], typed["enabled"] = "", false
+				for key, value := range replacement {
+					typed[key] = value
+				}
 				changed = true
 				return
 			}
+			keyPath, _ := typed["keyPath"].(string)
 			for key, child := range typed {
 				if text, ok := child.(string); ok && key == "cwd" {
 					if mapped, ok := mapURIOrPath(text, mapping); ok && mapped != text {
@@ -211,15 +216,19 @@ func rewriteMessage(message []byte, disableDesktop bool, mapping func(string) (s
 					}
 					continue
 				}
-				walk(child)
+				childName := key
+				if key == "value" && keyPath != "" {
+					childName = keyPath
+				}
+				walk(child, childName)
 			}
 		case []any:
 			for _, child := range typed {
-				walk(child)
+				walk(child, name)
 			}
 		}
 	}
-	walk(value)
+	walk(value, "")
 	if !changed {
 		return message
 	}
@@ -402,4 +411,59 @@ func mapURIOrPath(value string, mapping func(string) (string, bool)) (string, bo
 		return "file://" + mapped, true
 	}
 	return mapping(value)
+}
+
+// desktopReplacer returns the cloud definition for one of ChatGPT.app's MCP
+// servers that runs a Mac executable.
+type desktopReplacer func(name string, server map[string]any) map[string]any
+
+// disabledDesktopServer is ChatGPT's own placeholder for a disabled server.
+func disabledDesktopServer(string, map[string]any) map[string]any {
+	return map[string]any{"command": "", "enabled": false}
+}
+
+// desktopServer runs ChatGPT's desktop MCP servers (node_repl, cua_repl) on
+// the user's Mac through its Fennec SSH alias: they drive that Mac, and their
+// executables exist only there. The original command, arguments and
+// environment travel unchanged; the Mac connector accepts only ChatGPT.app
+// executables and asks for approval. Without an alias the server is disabled
+// so its startup cannot stall other requests.
+func (filter *chatgptPathFilter) desktopServer(name string, server map[string]any) map[string]any {
+	alias := localssh.RegisteredAlias(filter.home, filter.device)
+	if filter.device == "" || alias == "" || name == "" {
+		return disabledDesktopServer(name, server)
+	}
+	spec := localssh.DesktopMCPSpec{Name: name}
+	spec.Command, _ = server["command"].(string)
+	spec.Cwd, _ = server["cwd"].(string)
+	if args, ok := server["args"].([]any); ok {
+		for _, arg := range args {
+			if text, ok := arg.(string); ok {
+				spec.Args = append(spec.Args, text)
+			}
+		}
+	}
+	if env, ok := server["env"].(map[string]any); ok {
+		spec.Env = map[string]string{}
+		for key, value := range env {
+			if text, ok := value.(string); ok {
+				spec.Env[key] = text
+			}
+		}
+	}
+	remote, err := localssh.EncodeDesktopMCP(spec)
+	if err != nil {
+		return disabledDesktopServer(name, server)
+	}
+	replacement := map[string]any{}
+	for key, value := range server {
+		switch key {
+		case "command", "args", "env", "cwd", "env_vars":
+		default:
+			replacement[key] = value
+		}
+	}
+	replacement["command"] = "ssh"
+	replacement["args"] = []any{"-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", alias, remote}
+	return replacement
 }
