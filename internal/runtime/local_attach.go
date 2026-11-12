@@ -68,7 +68,13 @@ func (runtime *LocalRuntime) Attach(ctx context.Context, address, id string, inp
 		if file, ok := output.(*os.File); ok {
 			styled = term.IsTerminal(int(file.Fd())) && os.Getenv("TERM") != "dumb" && !noColor
 		}
-		detachNotice := &detachOutput{output: output, address: address, id: id, styled: styled}
+		detachNotice := &detachOutput{
+			output:         output,
+			address:        address,
+			id:             id,
+			styled:         styled,
+			suppressNotice: os.Getenv("FENNEC_STREAM_MANAGED") == "1",
+		}
 		originalOutput := output
 		output = detachNotice
 		code, err := run("attach", address)

@@ -49,7 +49,7 @@ func scopedPreparationFingerprint(home, token, runtimeID string, inputs any, art
 	var files []string
 	if credentials {
 		kind = "fennec-prepare-v1"
-		files = []string{"providers.json", "logins.json", "plugin-auth.json"}
+		files = []string{"providers.json", "logins.json", "plugin-auth.json", "migrations.json"}
 	}
 	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s", kind, token, runtimeID, data)
 	for _, name := range files {

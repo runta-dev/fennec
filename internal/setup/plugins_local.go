@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 func validateModelPlugins(plugins []ModelPlugin) error {
 	seen := map[string]bool{}
 	for _, plugin := range plugins {
-		if !modelPluginAllowlist[plugin.Package] || !exactVersion.MatchString(plugin.Version) || seen[plugin.Package] {
+		if !isAllowedModelPlugin(plugin.Package) || !exactVersion.MatchString(plugin.Version) || seen[plugin.Package] {
 			return fmt.Errorf("unsupported or duplicate model plugin")
 		}
 		seen[plugin.Package] = true
@@ -24,9 +25,33 @@ func validateModelPlugins(plugins []ModelPlugin) error {
 }
 
 func ReconcileLocalModelPlugins(ctx context.Context, home string, plugins []ModelPlugin) error {
-	return reconcileLocalModelPlugins(ctx, home, plugins, func(ctx context.Context, args ...string) error {
+	added := false
+	err := reconcileLocalModelPlugins(ctx, home, plugins, func(ctx context.Context, args ...string) error {
+		added = true
 		return exec.CommandContext(ctx, "magpie", args...).Run()
 	})
+	if err != nil || !added {
+		return err
+	}
+	// Reload the supervised gateway process when a new plugin was installed so
+	// /v1/models immediately exposes the newly added plugin's models.
+	_ = exec.CommandContext(ctx, "/usr/bin/pkill", "-f", "/magpie serve").Run()
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			break
+		}
+		resp, reqErr := client.Get("http://127.0.0.1:3425/v1/models")
+		if reqErr == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				break
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return nil
 }
 
 func reconcileLocalModelPlugins(ctx context.Context, home string, plugins []ModelPlugin, run func(context.Context, ...string) error) error {

@@ -10,8 +10,78 @@ let entryCoverage = new Map();
 let detectedAgents = [];
 let routeResults = new Map();
 let gatewayModels = [];
+let gatewayCatalogByID = new Map();
 let localGatewayModels = new Map();
 let localGatewayPending = new Set();
+
+const OPENAI_KNOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2a4.4 4.4 0 0 1 4.1 2.8 4.4 4.4 0 0 1 3.7 6.5 4.4 4.4 0 0 1-1.9 6.1 4.4 4.4 0 0 1-5.9 2.2 4.4 4.4 0 0 1-4.1-2.8 4.4 4.4 0 0 1-3.7-6.5 4.4 4.4 0 0 1 1.9-6.1A4.4 4.4 0 0 1 12 3.2Z"/><circle cx="12" cy="12" r="2.3"/></svg>';
+const GENERIC_PROVIDER_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10 2.5 6.5 3.7v7.6L10 17.5l-6.5-3.7V6.2Z"/><path d="M10 10v7.5M10 10 3.5 6.2M10 10l6.5-3.8"/></svg>';
+
+function gatewayProviderIconSpec(provider) {
+  const p = String(provider || '').toLowerCase();
+  const table = {
+    openai: { src: 'icons/openai.svg', mono: true },
+    'openai-codex': { src: 'icons/openai.svg', mono: true },
+    codex: { src: 'icons/codex-color.svg', mono: false },
+    cursor: { src: 'icons/cursor.svg', mono: true },
+    anthropic: { src: 'icons/claude-color.svg', mono: false },
+    claude: { src: 'icons/claude-color.svg', mono: false },
+    google: { src: 'icons/gemini-color.svg', mono: false },
+    gemini: { src: 'icons/gemini-color.svg', mono: false },
+    zai: { src: 'icons/zai.svg', mono: true },
+    zhipu: { src: 'icons/zhipu-color.svg', mono: false },
+    deepseek: { src: 'icons/deepseek-color.svg', mono: false },
+    qwen: { src: 'icons/qwen-color.svg', mono: false },
+    minimax: { src: 'icons/minimax-color.svg', mono: false },
+    mistral: { src: 'icons/mistral-color.svg', mono: false },
+    openrouter: { src: 'icons/openrouter.svg', mono: true },
+    groq: { src: 'icons/groq.svg', mono: true },
+    moonshot: { src: 'icons/moonshot.svg', mono: true },
+    'kimi-code': { src: 'icons/kimi.svg', mono: true },
+    kimi: { src: 'icons/kimi.svg', mono: true },
+    xai: { src: 'icons/xai.svg', mono: true },
+    grok: { src: 'icons/xai.svg', mono: true },
+    devin: { src: 'icons/devin.svg', mono: false },
+    copilot: { src: 'icons/copilot-color.svg', mono: false },
+    'github-copilot': { src: 'icons/copilot-color.svg', mono: false },
+    opencode: { src: 'icons/opencode.svg', mono: true },
+    pi: { src: 'icons/pi.svg', mono: true },
+    magpie: { src: 'icons/magpie.svg', mono: true },
+    group: { src: 'icons/magpie.svg', mono: true },
+    auto: { src: 'icons/magpie.svg', mono: true }
+  };
+  return table[p] || { svg: GENERIC_PROVIDER_SVG };
+}
+
+function describeGatewayModel(id, catalogLookup) {
+  const hit = catalogLookup?.get(id);
+  const [prefix, ...rest] = String(id || '').split('/');
+  const slug = rest.join('/') || String(id || '');
+  const groupFallback = {
+    group: 'ROUTING',
+    auto: 'ROUTING',
+    codex: 'CODEX',
+    openai: 'OPENAI',
+    cursor: 'CURSOR',
+    anthropic: 'ANTHROPIC',
+    claude: 'ANTHROPIC',
+    google: 'GOOGLE GEMINI',
+    'kimi-code': 'KIMI CODE',
+    kimi: 'KIMI CODE',
+    xai: 'XAI',
+    grok: 'XAI',
+    devin: 'DEVIN',
+    zai: 'Z.AI'
+  }[prefix] || (prefix ? prefix.toUpperCase() : 'MODELS');
+  const provider = hit?.provider || (prefix === 'group' || prefix === 'auto' ? 'magpie' : prefix);
+  return {
+    id,
+    name: hit?.name || slug,
+    group: hit?.group || groupFallback,
+    provider,
+    account: hit?.account || ''
+  };
+}
 function loadLocalGatewayModel(agent){if(localGatewayPending.has(agent))return;localGatewayPending.add(agent);send('get-local-model:'+JSON.stringify({agent}));}
 let nativeModelStates = new Map();
 let nativeAccountStates = new Map();
@@ -194,12 +264,12 @@ window.renderAgents = agents => {
       if (enabled) {
         state.textContent = "[[i18n:ui.cloud_computer]]";
       }
-      const labels = {distribution_unsupported:"[[i18n:ui.cloud_setup_for_this_version_is_not_yet_implemented]]", version_detection_failed:"[[i18n:ui.cannot_read_agent_version]]", installation_failed:"[[i18n:ui.agent_version_installation_failed]]", catalog_refresh_failed:"[[i18n:ui.model_catalog_refresh_failed]]", configured:"[[i18n:ui.ready_to_enable]]", model_unavailable:"[[i18n:ui.selected_model_unavailable]]", model_selection_required:"[[i18n:ui.select_a_local_model_first]]", configuration_failed:"[[i18n:ui.model_configuration_failed]]", verification_failed:"[[i18n:ui.model_verification_failed]]", model_query_failed:"[[i18n:ui.cannot_read_local_model]]", local_gateway_not_found:"[[i18n:ui.local_model_gateway_not_found]]"};
-      detail.querySelector('.takeover-status').textContent = activeTakeoverAgents.has(agent.id) ? '' : route && route.status !== 'configured' ? (labels[route.status] || "[[i18n:ui.unable_to_connect_please_try_again]]") : enabled ? "[[i18n:ui.connecting]]" : '';
+      const labels = {model_unavailable:"[[i18n:ui.selected_model_unavailable]]", local_gateway_not_found:"[[i18n:ui.local_model_gateway_not_found]]"};
+      detail.querySelector('.takeover-status').textContent = activeTakeoverAgents.has(agent.id) ? '' : route && route.status !== 'configured' ? (labels[route.status] || '') : enabled ? "[[i18n:ui.connecting]]" : '';
 
       const statusNode = detail.querySelector('.takeover-status');
       if (!activeTakeoverAgents.has(agent.id)) {
-        const recoveryLabels = {model_rate_limited:"[[i18n:ui.model_rate_limited_retrying]]", model_temporarily_unavailable:"[[i18n:ui.model_temporarily_unavailable_retrying]]", model_authentication_required:"[[i18n:ui.model_credentials_expired_sign_in_again]]", model_access_denied:"[[i18n:ui.model_access_denied_check_your_provider_s_limits]]"};
+        const recoveryLabels = {model_authentication_required:"[[i18n:ui.model_credentials_expired_sign_in_again]]", model_access_denied:"[[i18n:ui.model_access_denied_check_your_provider_s_limits]]"};
         if (recoveryLabels[route?.status]) statusNode.textContent = recoveryLabels[route.status];
       }
       const unknown = !takeoverSelectionKnown && agent.cloudSupported && !enabled;
@@ -250,23 +320,49 @@ window.renderAgents = agents => {
         const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(agent.id);
         if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(agent.id))loadLocalGatewayModel(agent.id);
         if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(agent.id))loadNativeModel(agent.id);
-        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>({id,name:id.split('/').slice(1).join('/')})) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
+        const localCatalogLookup=Array.isArray(localModel?.catalog)?new Map(localModel.catalog.map(m=>[m.id,m])):gatewayCatalogByID;
+        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>describeGatewayModel(id,local?localCatalogLookup:(gatewayCatalogByID.size?gatewayCatalogByID:localCatalogLookup))) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
         const current=magpieEnabled ? (local?localModel?.model:route?.model) || '' : native?.model || '';
         const row=document.createElement('div');row.className='agent-model-row';
         const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label',"[[i18n:ui.model]]");
-        for(const model of models){const option=document.createElement('option');option.value=model.id;option.textContent=model.name;select.append(option);}
+        for(const model of models){
+          const option=document.createElement('option');
+          option.value=model.id;
+          option.textContent=model.name;
+          if(magpieEnabled){
+            if(model.group)option.dataset.group=model.group;
+            if(model.account)option.dataset.account=model.account;
+            const spec=gatewayProviderIconSpec(model.provider);
+            if(spec.src){option.dataset.icon=spec.src;if(spec.mono)option.dataset.mono='1';}
+            else if(spec.svg){option.dataset.iconSvg=spec.svg;}
+          }
+          select.append(option);
+        }
         select.value=current;
         const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
         trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
         const label=document.createElement('span');label.className='field-label';label.textContent="[[i18n:ui.model]]";
-        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?"[[i18n:ui.retry]]":'') : models.find(m=>m.id===current)?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
+        const currentEntry=models.find(m=>m.id===current);
+        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?"[[i18n:ui.retry]]":'') : currentEntry?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
         if(local&&localModel?.error)value.textContent="[[i18n:ui.retry]]";
         if(!magpieEnabled && !native && nativeModelRequests.get(agent.id)==='pending')value.classList.add('setting-skeleton');
-        const modelIcon=icon.cloneNode(true);modelIcon.className='model-provider-icon';modelIcon.alt='';
-        const provider=magpieEnabled ? current.split('/')[0] : models.find(m=>m.id===current)?.provider;
-        const providerIcon={codex:'codex-color.svg',openai:'codex-color.svg',anthropic:'claude-color.svg',claude:'claude-color.svg',google:'geminicli-color.svg',xai:'xai.svg','kimi-code':'kimi.svg'}[provider];if(providerIcon)modelIcon.src='icons/'+providerIcon;
+        let modelIconNode;
+        const provider=magpieEnabled ? (currentEntry?.provider || current.split('/')[0]) : currentEntry?.provider;
+        const spec=gatewayProviderIconSpec(provider);
+        if(magpieEnabled && spec.svg){
+          modelIconNode=document.createElement('span');
+          modelIconNode.className='model-provider-svg';
+          modelIconNode.setAttribute('aria-hidden','true');
+          modelIconNode.innerHTML=spec.svg;
+        }else{
+          const modelIcon=icon.cloneNode(true);
+          modelIcon.className='model-provider-icon'+(spec.src&&spec.mono?' is-mono':'');
+          modelIcon.alt='';
+          if(spec.src)modelIcon.src=spec.src;
+          modelIconNode=modelIcon;
+        }
         const chevron=document.createElementNS('http://www.w3.org/2000/svg','svg');chevron.setAttribute('viewBox','0 0 16 16');chevron.innerHTML='<path d="m5 6 3 3 3-3"/>';
-        trigger.append(label,value,modelIcon,chevron);
+        trigger.append(label,value,modelIconNode,chevron);
         trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(agent.id);trigger.disabled=true;}else if(!magpieEnabled && !native){loadNativeModel(agent.id);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
         trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();trigger.click();}};
         select.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:select.value,location:local?'local':'cloud'}));};
@@ -493,19 +589,27 @@ window.renderRuntimes = (rows, message) => {
    list.append(section);
   }
 };
+let currentProfileName = '';
 window.renderProfile = (name, fallback = false) => {
+  currentProfileName = fallback ? '' : (name || '');
   const button = document.querySelector('.header-login');
   if(fallback){button.setAttribute('data-i18n','ui.account');button.textContent='[[i18n:ui.account]]';button.removeAttribute('title');}
   else{button.removeAttribute('data-i18n');button.textContent=name;button.title=name;}
+  const acctEl = document.querySelector('#billing-account-label');
+  if(acctEl){
+    if(currentProfileName){acctEl.removeAttribute('data-i18n');acctEl.textContent=currentProfileName;acctEl.title=currentProfileName;}
+    else{acctEl.setAttribute('data-i18n','ui.account');acctEl.textContent='[[i18n:ui.account]]';acctEl.removeAttribute('title');}
+  }
 };
 window.renderSignedOut = () => {
+  currentProfileName = '';
   window.resetAgentLogin?.();
   authorized = false;
   sessionListConnecting = true;
   visibleSessionCount = 0;
   routeResults.clear();
   takeoverAgents.clear();activeTakeoverAgents.clear();takeoverChanging=false;takeoverSelectionKnown=false;
-  gatewayModels = [];localGatewayModels.clear();localGatewayPending.clear();
+  gatewayModels = [];if(typeof gatewayCatalogByID!=='undefined')gatewayCatalogByID.clear();localGatewayModels.clear();localGatewayPending.clear();
   nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();
   modelSaving = false;
   window.renderBilling({error:"[[i18n:ui.sign_in_first]]"});
@@ -742,8 +846,10 @@ function renderBillingRows(payload,loading){
  const planRow=document.createElement('div');planRow.className='billing-row billing-plan-row';
  const planTitle=document.createElement('span');planTitle.className='billing-field-label';
  const planIcon=document.createElement('span');planIcon.className='billing-field-icon';planIcon.setAttribute('aria-hidden','true');
- planIcon.innerHTML='<svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.2"/><path d="M6.5 8.5h7m-7 3h4.5"/></svg>';
- const planLabel=document.createElement('span');planLabel.textContent="[[i18n:ui.plan]]";
+ planIcon.innerHTML='<svg viewBox="0 0 20 20"><circle cx="10" cy="6.8" r="3.2"/><path d="M4.2 16.8c.7-2.9 3-4.6 5.8-4.6s5.1 1.7 5.8 4.6"/></svg>';
+ const planLabel=document.createElement('span');planLabel.id='billing-account-label';planLabel.className='billing-account-name';
+ if(currentProfileName){planLabel.textContent=currentProfileName;planLabel.title=currentProfileName;}
+ else{planLabel.setAttribute('data-i18n','ui.account');planLabel.textContent="[[i18n:ui.account]]";}
  planTitle.append(planIcon,planLabel);
  const planBadge=document.createElement('span');planBadge.className='billing-plan-badge';planBadge.textContent="[[i18n:ui.pay_as_you_go]]";
  planRow.append(planTitle,planBadge);
@@ -796,6 +902,8 @@ let lastMetricsPayload = { ready: false };
 const METRIC_HISTORY_LEN = 24;
 const cpuHistory = [];
 const memHistory = [];
+const cpuScaleState = { lo: null, hi: null };
+const memScaleState = { lo: null, hi: null };
 let metricsRuntimeKey = '';
 
 function ensureRuntimeMetricsCard() {
@@ -816,21 +924,77 @@ function formatTrafficBytes(bytes) {
  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
  return bytes + ' B';
 }
-function sparklinePaths(samples, width = 112, height = 24) {
- const pts = samples.length >= 2 ? samples : (samples.length === 1 ? [samples[0], samples[0]] : [0, 0]);
+function formatMemoryMiB(mib) {
+ if (typeof mib !== 'number' || !Number.isFinite(mib) || mib < 0) return '0 MB';
+ if (mib >= 1024) return (mib / 1024).toFixed(1) + ' GB';
+ return Math.round(mib) + ' MB';
+}
+function sparklinePaths(samples, opts = {}) {
+ const width = opts.width || 112;
+ const height = opts.height || 24;
+ const fullMax = Math.max(1, Number(opts.fullMax) || 100);
+ const minSpan = Math.max(0.05, Number(opts.minSpan) || 0.4);
+ const scaleState = opts.scaleState || null;
+ const rawPts = samples.length >= 2 ? samples : (samples.length === 1 ? [samples[0], samples[0]] : [0, 0]);
+ const pts = rawPts.map(v => Math.max(0, Math.min(fullMax, Number(v) || 0)));
+ let rawMin = pts[0];
+ let rawMax = pts[0];
+ for (let i = 1; i < pts.length; i++) {
+  if (pts[i] < rawMin) rawMin = pts[i];
+  if (pts[i] > rawMax) rawMax = pts[i];
+ }
+ const span = rawMax - rawMin;
+ const effSpan = Math.max(span, minSpan);
+ const pad = effSpan * 0.35;
+ const mid = (rawMin + rawMax) / 2;
+ let zoomLo = mid - effSpan / 2 - pad;
+ let zoomHi = mid + effSpan / 2 + pad;
+ if (zoomLo < 0) {
+  zoomHi = Math.min(fullMax, Math.max(rawMax + pad, effSpan + pad * 1.4));
+  zoomLo = 0;
+ }
+ if (zoomHi > fullMax) {
+  zoomLo = Math.max(0, zoomLo - (zoomHi - fullMax));
+  zoomHi = fullMax;
+ }
+ const ratio = Math.min(1, span / (fullMax * 0.55));
+ const blend = ratio * ratio * (3 - 2 * ratio);
+ let targetLo = Math.min(rawMin, zoomLo * (1 - blend));
+ let targetHi = Math.max(rawMax, zoomHi * (1 - blend) + fullMax * blend);
+ if (targetHi - targetLo < minSpan) {
+  targetHi = Math.min(fullMax, targetLo + minSpan);
+  if (targetHi - targetLo < minSpan) targetLo = Math.max(0, targetHi - minSpan);
+ }
+ let lo = targetLo;
+ let hi = targetHi;
+ if (scaleState) {
+  if (scaleState.lo === null || scaleState.hi === null) {
+   scaleState.lo = targetLo;
+   scaleState.hi = targetHi;
+  } else {
+   scaleState.lo = targetLo <= scaleState.lo ? targetLo : scaleState.lo + (targetLo - scaleState.lo) * 0.38;
+   scaleState.hi = targetHi >= scaleState.hi ? targetHi : scaleState.hi + (targetHi - scaleState.hi) * 0.38;
+  }
+  lo = Math.min(rawMin, scaleState.lo);
+  hi = Math.max(rawMax, scaleState.hi);
+ }
+ const denom = Math.max(1e-6, hi - lo);
+ const topPad = 2.5;
+ const botPad = 3.5;
+ const usableH = Math.max(4, height - topPad - botPad);
  const step = width / Math.max(1, METRIC_HISTORY_LEN - 1);
  const startX = width - (pts.length - 1) * step;
  const coords = pts.map((val, idx) => {
-  const clamped = Math.max(0, Math.min(100, Number(val) || 0));
+  const norm = Math.max(0, Math.min(1, (val - lo) / denom));
   const x = (startX + idx * step).toFixed(1);
-  const y = (height - 2 - (clamped / 100) * (height - 5)).toFixed(1);
+  const y = (height - botPad - norm * usableH).toFixed(1);
   return [x, y];
  });
  const line = 'M' + coords.map(([x, y]) => x + ',' + y).join(' L');
  const firstX = coords[0][0];
  const lastX = coords[coords.length - 1][0];
  const area = line + ` L${lastX},${height} L${firstX},${height} Z`;
- return { line, area };
+ return { line, area, lo, hi };
 }
 function drawRuntimeMetrics() {
  const card = ensureRuntimeMetricsCard();
@@ -838,10 +1002,10 @@ function drawRuntimeMetrics() {
  const payload = lastMetricsPayload || {};
  const t = token => (typeof translate === 'function' ? translate(token) : token);
  const ready = payload.ready === true;
- const cloudIconSVG = '<svg viewBox="0 0 20 20"><path d="M6.2 14.5h8a3.3 3.3 0 0 0 .4-6.58A4.8 4.8 0 0 0 5.2 6.5a3.6 3.6 0 0 0 1 8Z"/><path d="M7.5 17.5h5M10 14.5v3"/></svg>';
+ const cloudIconSVG = '<svg viewBox="0 0 20 20"><path d="M5.8 15.2h8.6a3.4 3.4 0 0 0 .35-6.78A4.9 4.9 0 0 0 5.1 7.2a3.9 3.9 0 0 0 .7 8Z"/></svg>';
  const cpuIconSVG = '<svg viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="2"/><rect x="8" y="8" width="4" height="4" rx=".5"/><path d="M7 2v3m6-3v3M7 15v3m6-3v3M2 7h3m-3 6h3m10-6h3m-3 6h3"/></svg>';
  const memIconSVG = '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5.5 8v4m3-4v4m3-4v4m3-4v4M6 15v2m4-2v2m4-2v2"/></svg>';
- const netIconSVG = '<svg viewBox="0 0 20 20"><path d="M6 16V4m0 0L3 7m3-3 3 3m5-3v12m0 0-3-3m3 3 3-3"/></svg>';
+ const netIconSVG = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.2"/><path d="M2.8 10h14.4M10 2.8c2.4 2.3 2.4 12.1 0 14.4-2.4-2.3-2.4-12.1 0-14.4Z"/></svg>';
 
  if (!ready) {
   card.dataset.mode = 'inactive';
@@ -927,21 +1091,25 @@ function drawRuntimeMetrics() {
  const minGiB = Math.max(1, Math.round((payload.memory_min_mib || 4096) / 1024));
  const maxGiB = Math.max(minGiB, Math.round((payload.memory_max_mib || 16384) / 1024));
  card.querySelector('#rt-card-title').textContent = t('[[i18n:ui.cloud_computer]]');
- card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU / ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
+ card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU · ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
  card.querySelector('#rt-mem-lbl').textContent = t('[[i18n:ui.memory]]');
  card.querySelector('#rt-net-lbl').textContent = t('[[i18n:ui.network]]');
 
  const cpuNum = typeof payload.cpu_percent === 'number' ? payload.cpu_percent : 0;
  const curMiB = payload.memory_current_mib || payload.memory_min_mib || 4096;
+ const maxMiB = Math.max(curMiB, payload.memory_max_mib || 16384);
+ const usedBytes = Number(payload.memory_used_bytes) || 0;
  const usedMiB = payload.memory_used_mib || 0;
+ const exactUsedMiB = usedBytes > 0 ? usedBytes / 1048576 : usedMiB;
  card.querySelector('#rt-cpu-val').textContent = cpuNum.toFixed(1) + '%';
- card.querySelector('#rt-mem-val').textContent = (usedMiB / 1024).toFixed(1) + ' / ' + (curMiB / 1024).toFixed(1) + 'G';
+ card.querySelector('#rt-mem-val').textContent = formatMemoryMiB(exactUsedMiB);
 
- const cpuPaths = sparklinePaths(cpuHistory);
+ const cpuPaths = sparklinePaths(cpuHistory, { fullMax: 100, minSpan: 0.25, scaleState: cpuScaleState });
  card.querySelector('#rt-cpu-area').setAttribute('d', cpuPaths.area);
  card.querySelector('#rt-cpu-line').setAttribute('d', cpuPaths.line);
 
- const memPaths = sparklinePaths(memHistory);
+ const memFullMax = Math.min(maxMiB, Math.max(curMiB, exactUsedMiB * 1.15));
+ const memPaths = sparklinePaths(memHistory, { fullMax: memFullMax, minSpan: 0.05, scaleState: memScaleState });
  card.querySelector('#rt-mem-area').setAttribute('d', memPaths.area);
  card.querySelector('#rt-mem-line').setAttribute('d', memPaths.line);
 
@@ -964,24 +1132,34 @@ window.renderRuntimeMetrics = payload => {
    metricsRuntimeKey = rtKey;
    cpuHistory.length = 0;
    memHistory.length = 0;
+   cpuScaleState.lo = null;
+   cpuScaleState.hi = null;
+   memScaleState.lo = null;
+   memScaleState.hi = null;
   }
-  if (Array.isArray(lastMetricsPayload.cpu_history) && cpuHistory.length === 0) {
-   cpuHistory.push(...lastMetricsPayload.cpu_history.slice(-METRIC_HISTORY_LEN));
+  if (Array.isArray(lastMetricsPayload.cpu_history) && lastMetricsPayload.cpu_history.length > 0) {
+   cpuHistory.length = 0;
+   cpuHistory.push(...lastMetricsPayload.cpu_history.slice(-METRIC_HISTORY_LEN).map(v => Number(v) || 0));
   } else {
    cpuHistory.push(Number(lastMetricsPayload.cpu_percent) || 0);
    if (cpuHistory.length > METRIC_HISTORY_LEN) cpuHistory.shift();
   }
-  const curMiB = Math.max(1, Number(lastMetricsPayload.memory_current_mib || lastMetricsPayload.memory_min_mib || 4096));
-  const memPct = Math.min(100, ((Number(lastMetricsPayload.memory_used_mib) || 0) / curMiB) * 100);
-  if (Array.isArray(lastMetricsPayload.mem_history) && memHistory.length === 0) {
-   memHistory.push(...lastMetricsPayload.mem_history.slice(-METRIC_HISTORY_LEN));
+  const usedBytes = Number(lastMetricsPayload.memory_used_bytes) || 0;
+  const memSampleMiB = usedBytes > 0 ? usedBytes / 1048576 : (Number(lastMetricsPayload.memory_used_mib) || 0);
+  if (Array.isArray(lastMetricsPayload.mem_history) && lastMetricsPayload.mem_history.length > 0) {
+   memHistory.length = 0;
+   memHistory.push(...lastMetricsPayload.mem_history.slice(-METRIC_HISTORY_LEN).map(v => Number(v) || 0));
   } else {
-   memHistory.push(memPct);
+   memHistory.push(memSampleMiB);
    if (memHistory.length > METRIC_HISTORY_LEN) memHistory.shift();
   }
  } else {
   cpuHistory.length = 0;
   memHistory.length = 0;
+  cpuScaleState.lo = null;
+  cpuScaleState.hi = null;
+  memScaleState.lo = null;
+  memScaleState.hi = null;
  }
  drawRuntimeMetrics();
 };
@@ -1000,7 +1178,13 @@ window.resetNativeAccountViews = () => {modelSaving=false;agentEffortEditing=fal
 window.renderLocalModel = state => {if(!state?.agent)return;localGatewayPending.delete(state.agent);localGatewayModels.set(state.agent,{...localGatewayModels.get(state.agent),...state});window.renderAgents(detectedAgents);};
 window.renderNativeModelFailure = agent => {nativeModelRequests.set(agent,'failed');window.renderAgents(detectedAgents);};
 window.renderNativeModels = state => { if(!state || magpieEnabled || !Array.isArray(state.models))return;nativeModelStates.set(state.agent,state);window.renderAgents(detectedAgents); };
-window.renderModelCatalog = models => { gatewayModels = models; window.renderAgents(detectedAgents); };
+window.renderModelCatalog = (models, catalog) => {
+  gatewayModels = Array.isArray(models) ? models : [];
+  if (Array.isArray(catalog)) {
+    gatewayCatalogByID = new Map(catalog.filter(m => m?.id).map(m => [m.id, m]));
+  }
+  window.renderAgents(detectedAgents);
+};
 
 window.renderModelSaving = busy => {
   modelSaving=busy;
@@ -1028,9 +1212,15 @@ window.renderHerdrSessions = terminals => {
  lastSessionTerminals=terminals.filter(terminal=>!confirmedStoppedSessions.has(terminal.labels?.['fennec.session']));
  terminals=lastSessionTerminals;
  const labels={working:"[[i18n:ui.working]]",blocked:"[[i18n:ui.needs_input]]",idle:"[[i18n:ui.idle]]",error:"[[i18n:ui.errored]]"};
- const readableName=value=>{
+ const readableName=(value,sessionID)=>{
   if(typeof value!=='string')return '';
-  const title=value.trim().replace(/\s*[|·]\s*(?:[a-f0-9]{24,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9][a-f0-9-]{7,63}(?:\.{3}|…))\s*$/i,'').trim();
+  let title=value.trim();
+  if(typeof sessionID==='string' && sessionID){
+   const esc=sessionID.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+   title=title.replace(new RegExp('\\s*[|·]\\s*'+esc+'\\s*$','i'),'').trim();
+   if(title.toLowerCase()===sessionID.toLowerCase())return '';
+  }
+  title=title.replace(/\s*[|·]\s*(?:[a-f0-9]{24,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9][a-f0-9-]{7,63}(?:\.{3}|…))\s*$/i,'').trim();
   return /^(?:[a-f0-9]{24,64}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}|[a-f0-9][a-f0-9-]{7,63}(?:\.{3}|…))$/i.test(title)?'':title;
  };
  const rows=terminals.filter(terminal=>terminal.state==='live').map(terminal=>{
@@ -1038,7 +1228,7 @@ window.renderHerdrSessions = terminals => {
    const group=Object.hasOwn(labels,raw)?raw:'idle';
    const displayStatus=labels[group];
    const sessionID=terminal.labels?.['fennec.session'];
-   const name=readableName(terminal.title)||readableName(terminal.name);
+   const name=readableName(terminal.title,sessionID)||readableName(terminal.name,sessionID);
    return {agent:terminal.labels?.["fennec.agent"] || terminal.agent,name:name||"[[i18n:ui.untitled_session]]",untitled:!name,group,status:raw||'',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
  });
  window.renderRuntimes(rows,'');

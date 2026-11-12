@@ -10,10 +10,11 @@ import (
 // Replace only Herdr's complete, address-specific detach trailer. Keep PTY
 // control sequences and arbitrary output intact, including split writes.
 type detachOutput struct {
-	output      io.Writer
-	address, id string
-	pending     []byte
-	styled      bool
+	output         io.Writer
+	address, id    string
+	pending        []byte
+	styled         bool
+	suppressNotice bool
 }
 
 func (w *detachOutput) Write(data []byte) (int, error) {
@@ -25,12 +26,14 @@ func (w *detachOutput) Write(data []byte) (int, error) {
 			if _, err := w.output.Write(w.pending[:at]); err != nil {
 				return 0, err
 			}
-			message := strings.ReplaceAll(terminalnotice.Detached(w.id, w.styled), "\n", "\r\n")
-			if w.styled {
-				message = "\x1b[2K" + strings.ReplaceAll(message, "\r\n", "\r\n\x1b[2K")
-			}
-			if _, err := io.WriteString(w.output, "\r\n\r\n"+message+"\r\n"); err != nil {
-				return 0, err
+			if !w.suppressNotice {
+				message := strings.ReplaceAll(terminalnotice.Detached(w.id, w.styled), "\n", "\r\n")
+				if w.styled {
+					message = "\x1b[2K" + strings.ReplaceAll(message, "\r\n", "\r\n\x1b[2K")
+				}
+				if _, err := io.WriteString(w.output, "\r\n\r\n"+message+"\r\n"); err != nil {
+					return 0, err
+				}
 			}
 			w.pending = w.pending[at+len(marker):]
 			continue

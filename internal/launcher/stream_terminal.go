@@ -26,10 +26,19 @@ import (
 
 type RemoteExitError struct{ Code int }
 
-type DetachedError struct{}
+type DetachedError struct {
+	SessionID string
+	Silent    bool
+}
 
 func (DetachedError) Error() string { return "detached" }
 func (DetachedError) ExitCode() int { return 0 }
+func (err DetachedError) Notice() string {
+	if err.Silent {
+		return ""
+	}
+	return "\n" + terminalDisconnectMessage(err.SessionID)
+}
 
 func (err RemoteExitError) Error() string {
 	return fmt.Sprintf("remote agent exited with status %d", err.Code)
@@ -306,7 +315,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 		case "exit":
 			if detached.Load() {
-				return DetachedError{}
+				return DetachedError{SessionID: intent.RequestID, Silent: !interactive}
 			}
 			launchprofile.Record("stream.exit", time.Now(), 0)
 			if !confirmed {
@@ -326,7 +335,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 	}
 	if detached.Load() || (confirmed && ctx.Err() != nil) {
-		return DetachedError{}
+		return DetachedError{SessionID: intent.RequestID, Silent: !interactive}
 	}
 	if confirmed && ctx.Err() == nil {
 		return StreamLostError{receipt}

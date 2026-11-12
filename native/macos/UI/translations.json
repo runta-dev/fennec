@@ -2360,20 +2360,20 @@
       "zh-TW": "離線"
     },
     "ui.onboarding_signin_tagline": {
-      "en-GB": "Cloud-resident agents, lightweight local edge connector",
-      "en-US": "Cloud-resident agents, lightweight local edge connector",
-      "ja": "クラウド常駐エージェント、Mac は軽量なエッジコネクタに",
-      "ko": "클라우드 상주 에이전트, 가벼운 로컬 엣지 커넥터",
-      "zh-CN": "云端常驻智能体，本机化作轻量边缘连接器",
-      "zh-TW": "雲端常駐智慧體，本機化作輕量邊緣連線器"
+      "en-GB": "Run your coding agents in the cloud,\nconnected to your Mac",
+      "en-US": "Run your coding agents in the cloud,\nconnected to your Mac",
+      "ja": "コーディングエージェントをクラウドで実行し、Mac と連携",
+      "ko": "코딩 에이전트를 클라우드에서 실행하고 Mac에 연결",
+      "zh-CN": "在云端运行你的编程智能体，连接你的 Mac",
+      "zh-TW": "在雲端執行你的程式設計智慧體，連接你的 Mac"
     },
     "ui.onboarding_story_1_title": {
-      "en-GB": "Agent loops run in the cloud",
-      "en-US": "Agent loops run in the cloud",
-      "ja": "エージェントループをクラウドで実行",
-      "ko": "클라우드에서 실행되는 에이전트 루프",
-      "zh-CN": "智能体循环运行在云端",
-      "zh-TW": "智慧體循環執行於雲端"
+      "en-GB": "Agents stay online in the cloud",
+      "en-US": "Agents stay online in the cloud",
+      "ja": "エージェントはクラウドで常時稼働",
+      "ko": "클라우드에서 상시 실행되는 에이전트",
+      "zh-CN": "智能体常驻云端运行",
+      "zh-TW": "智慧體常駐雲端執行"
     },
     "ui.onboarding_story_1_body": {
       "en-GB": "Close your MacBook or switch networks while long tasks keep running uninterrupted",
@@ -2384,12 +2384,12 @@
       "zh-TW": "闔上電腦或切換網路，長任務依然在雲端持續推進不中斷"
     },
     "ui.onboarding_story_2_title": {
-      "en-GB": "Your Mac as a lightweight edge device",
-      "en-US": "Your Mac as a lightweight edge device",
-      "ja": "Mac は軽量なエッジデバイスに",
-      "ko": "가벼운 엣지 디바이스가 되는 Mac",
-      "zh-CN": "本机只做轻量边缘设备",
-      "zh-TW": "本機只做輕量邊緣設備"
+      "en-GB": "Your Mac acts as an edge connector",
+      "en-US": "Your Mac acts as an edge connector",
+      "ja": "Mac は軽量なエッジコネクタに",
+      "ko": "가벼운 엣지 커넥터로 동작하는 Mac",
+      "zh-CN": "本机化作轻量边缘连接器",
+      "zh-TW": "本機化作輕量邊緣連線器"
     },
     "ui.onboarding_story_2_body": {
       "en-GB": "Zero heavy local CPU or battery drain, bridging local files and tools on demand",
@@ -2422,6 +2422,14 @@
       "ko": "플랜",
       "zh-CN": "套餐",
       "zh-TW": "方案"
+    },
+    "ui.always_on": {
+      "en-GB": "Always on",
+      "en-US": "Always on",
+      "ja": "常時稼働",
+      "ko": "상시 실행",
+      "zh-CN": "常驻在线",
+      "zh-TW": "常駐在線"
     },
     "ui.preparing_cloud_computer": {
       "en-GB": "Setting up your cloud computer…",

@@ -178,6 +178,7 @@ func run() (int, error) {
 		return runtime.Attach(ctx, terminal.Address, request.ID, os.Stdin, os.Stdout, os.Stderr)
 	}
 	if serving {
+		cloudruntime.StartMetricsSampler(ctx)
 		var input io.Reader = os.Stdin
 		if os.Args[1] == "serve-initial" {
 			data, err := base64.StdEncoding.DecodeString(os.Args[2])
@@ -199,7 +200,9 @@ func run() (int, error) {
 			if err != nil {
 				return terminal, nil, err
 			}
-			return terminal, exec.Command(executable, "attach", terminal.Address, request.ID), nil
+			cmd := exec.Command(executable, "attach", terminal.Address, request.ID)
+			cmd.Env = append(os.Environ(), "FENNEC_STREAM_MANAGED=1")
+			return terminal, cmd, nil
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			started := time.Now()
 			terminal, err := runtime.Terminal(ctx, reference.Address, reference.ID)
@@ -207,7 +210,9 @@ func run() (int, error) {
 				return terminal, nil, err
 			}
 			terminal.Timings = map[string]float64{"attach_lookup": float64(time.Since(started).Microseconds()) / 1000}
-			return terminal, exec.Command(executable, "attach", terminal.Address, terminal.ID), nil
+			cmd := exec.Command(executable, "attach", terminal.Address, terminal.ID)
+			cmd.Env = append(os.Environ(), "FENNEC_STREAM_MANAGED=1")
+			return terminal, cmd, nil
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
 		}, runtime.Operation)

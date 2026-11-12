@@ -156,7 +156,11 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	}
 	if magpie {
 		models, _ := json.Marshal(result.Models)
-		if err = emit(map[string]string{"type": "model_catalog", "models": string(models), "runtime_id": runtimeID}); err != nil {
+		catCtx, catCancel := context.WithTimeout(ctx, 2*time.Second)
+		catalog, _ := setup.LocalGatewayCatalog(catCtx, s.home)
+		catCancel()
+		catJSON, _ := json.Marshal(catalog)
+		if err = emit(map[string]string{"type": "model_catalog", "models": string(models), "catalog": string(catJSON), "runtime_id": runtimeID}); err != nil {
 			return true, err
 		}
 	}

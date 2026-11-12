@@ -44,7 +44,7 @@ func gatewayRouteScript(route GatewayRoute, configurationOnly bool) (string, err
 		seen[id] = true
 		script.WriteString("current=$(magpie " + shellQuote(id) + " model 2>/dev/null) || current=\n")
 		script.WriteString("current=${current#* model }\ncurrent=${current#magpie/}\n")
-		script.WriteString("if [ \"$current\" != " + shellQuote(route.Provider+"/"+route.Model) + " ]; then\nmagpie " + shellQuote(id) + " " + shellQuote(route.Provider+"/"+route.Model) + "\nfi\n")
+		script.WriteString("if [ \"$current\" != " + shellQuote(route.Provider+"/"+route.Model) + " ]; then\nmagpie " + shellQuote(id) + " model " + shellQuote(route.Provider+"/"+route.Model) + "\nfi\n")
 	}
 	return script.String(), nil
 }

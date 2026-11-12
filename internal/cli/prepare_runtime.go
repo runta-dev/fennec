@@ -393,7 +393,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}
 	if accounts.CatalogAvailable {
 		data, _ := json.Marshal(accounts.Models)
-		json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data)})
+		catCtx, catCancel := context.WithTimeout(ctx, 2*time.Second)
+		catalog, _ := setup.LocalGatewayCatalog(catCtx, home)
+		catCancel()
+		catJSON, _ := json.Marshal(catalog)
+		json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data), "catalog": string(catJSON)})
 	}
 	results := []setup.RouteResult{}
 	json.NewEncoder(output).Encode(map[string]string{"type": "shared_services_ready", "runtime_id": runtime.ID})
@@ -507,7 +511,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		var models []string
 		if err == nil && json.Unmarshal(raw, &models) == nil {
 			data, _ := json.Marshal(models)
-			json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data)})
+			catCtx, catCancel := context.WithTimeout(ctx, 2*time.Second)
+			catalog, _ := setup.LocalGatewayCatalog(catCtx, home)
+			catCancel()
+			catJSON, _ := json.Marshal(catalog)
+			json.NewEncoder(output).Encode(map[string]string{"type": "model_catalog", "models": string(data), "catalog": string(catJSON)})
 		}
 	}
 	cacheable := fingerprintErr == nil && len(results) > 0

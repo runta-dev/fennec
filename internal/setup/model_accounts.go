@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -180,6 +183,73 @@ func LocalGatewayModels(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return parseGatewayModels(data)
+}
+
+func LocalGatewayCatalog(ctx context.Context, home string) ([]GatewayModelItem, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:3425/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode >= 400 {
+		return nil, fmt.Errorf("model catalog unavailable")
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	return parseGatewayCatalog(data, readMagpieProviderAccounts(home))
+}
+
+func readMagpieProviderAccounts(home string) map[string]string {
+	if home == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".config", "magpie", "logins.json"))
+	if err != nil || len(raw) > 2<<20 {
+		return nil
+	}
+	var entries []struct {
+		Agent   string `json:"agent"`
+		User    string `json:"user"`
+		On      *bool  `json:"on"`
+		Lapsed  bool   `json:"lapsed"`
+		Refused bool   `json:"refused"`
+	}
+	if json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+	aliases := map[string]string{"grok": "xai", "claude": "anthropic", "gemini": "google"}
+	out := map[string]string{}
+	for _, e := range entries {
+		if e.Lapsed || e.Refused || strings.TrimSpace(e.User) == "" {
+			continue
+		}
+		isPlugin := strings.HasPrefix(e.Agent, "plugin:")
+		if !isPlugin {
+			continue
+		}
+		if e.On != nil && !*e.On {
+			continue
+		}
+		key := strings.TrimPrefix(e.Agent, "plugin:")
+		clean := strings.TrimSpace(strings.Split(e.User, "·")[0])
+		if clean == "" {
+			continue
+		}
+		if out[key] == "" {
+			out[key] = clean
+		}
+		if mapped, ok := aliases[key]; ok && out[mapped] == "" {
+			out[mapped] = clean
+		}
+	}
+	return out
 }
 
 func reconcileModelAccounts(ctx context.Context, home string, request ModelAccountsRequest, plugins func(context.Context, string, []ModelPlugin) error, restore func(context.Context, string) error) (ModelAccountsResult, error) {

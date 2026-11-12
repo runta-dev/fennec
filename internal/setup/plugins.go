@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -19,7 +20,25 @@ type ModelPlugin struct {
 	Version string `json:"version"`
 }
 
-var modelPluginAllowlist = map[string]bool{"@magpie-community/opencode-devin-auth": true, "@magpie-community/opencode-grok-auth": true}
+var allowedMagpiePluginPattern = regexp.MustCompile(`^@magpie-community/[a-z0-9][a-z0-9._-]{0,80}$`)
+
+func isAllowedModelPlugin(pkg string) bool {
+	return allowedMagpiePluginPattern.MatchString(pkg)
+}
+
+func splitPluginSpecPackage(spec string) string {
+	spec = strings.TrimSpace(spec)
+	if strings.HasPrefix(spec, "@") {
+		if idx := strings.Index(spec[1:], "@"); idx >= 0 {
+			return spec[:1+idx]
+		}
+		return spec
+	}
+	if idx := strings.Index(spec, "@"); idx >= 0 {
+		return spec[:idx]
+	}
+	return spec
+}
 
 // DesiredModelPlugins reads installation metadata, never plugin credential data.
 // Only explicitly configured model plugins are copied; versions come from the
@@ -43,10 +62,9 @@ func DesiredModelPlugins(home string) ([]ModelPlugin, error) {
 	}
 	wanted := map[string]bool{}
 	for _, entry := range config.Plugins {
-		for pkg := range modelPluginAllowlist {
-			if entry.Spec == pkg || strings.HasPrefix(entry.Spec, pkg+"@") {
-				wanted[pkg] = true
-			}
+		pkg := splitPluginSpecPackage(entry.Spec)
+		if isAllowedModelPlugin(pkg) {
+			wanted[pkg] = true
 		}
 	}
 	found := map[string]string{}

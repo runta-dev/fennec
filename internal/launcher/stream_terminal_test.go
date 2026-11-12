@@ -100,3 +100,102 @@ func testStreamTerminalCleanup(t *testing.T, disconnect bool) {
 		t.Fatalf("error printed before reporting disabled: %q", output)
 	}
 }
+func TestCtrlCDetachPrintsAttachNoticeAfterAltScreenExit(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "fn-stream-detach-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	directory := filepath.Join(home, ".config/fennec/ipc")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("a", 32)
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(directory, "terminal-"+id), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.AcceptUnix()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		dec := json.NewDecoder(conn)
+		enc := json.NewEncoder(conn)
+		var hello terminalstream.Frame
+		if dec.Decode(&hello) != nil {
+			return
+		}
+		_ = enc.Encode(terminalstream.Frame{Type: "receipt", ID: id, Terminal: &cloudruntime.LocalTerminal{ID: id, Agent: "codex", Address: "t1", State: "live"}})
+		_ = enc.Encode(terminalstream.Frame{Type: "data", ID: id, Data: []byte("\x1b[?1049hALT_TUI")})
+		for {
+			var frame terminalstream.Frame
+			if dec.Decode(&frame) != nil {
+				return
+			}
+			if frame.Type == "input" && strings.Contains(string(frame.Data), "\x1c") {
+				_ = enc.Encode(terminalstream.Frame{Type: "exit", ID: id, Code: 0})
+				return
+			}
+		}
+	}()
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, executable, "-test.run=^TestStreamDetachMainChild$")
+	command.Env = append(os.Environ(), "FENNEC_STREAM_DETACH_HOME="+home, "TERM=xterm-256color")
+	terminal, err := pty.Start(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+
+	var collected strings.Builder
+	sentCtrlC := false
+	buf := make([]byte, 1024)
+	for {
+		n, readErr := terminal.Read(buf)
+		if n > 0 {
+			collected.Write(buf[:n])
+			if !sentCtrlC && strings.Contains(collected.String(), "ALT_TUI") {
+				sentCtrlC = true
+				_, _ = terminal.Write([]byte{3}) // Ctrl+C
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("expected exit 0 on Ctrl+C detach, got %v (%q)", err, collected.String())
+	}
+	text := collected.String()
+	resetIdx := strings.Index(text, "\x1b[?1049l")
+	noticeIdx := strings.Index(text, "fen attach "+id)
+	if resetIdx < 0 || noticeIdx < 0 || noticeIdx < resetIdx {
+		t.Fatalf("expected attach notice AFTER ?1049l alt-screen exit, got: %q", text)
+	}
+}
+
+func TestStreamDetachMainChild(t *testing.T) {
+	home := os.Getenv("FENNEC_STREAM_DETACH_HOME")
+	if home == "" {
+		return
+	}
+	id := strings.Repeat("a", 32)
+	plan := LaunchPlan{StreamPath: filepath.Join(home, ".config/fennec/ipc", "terminal-"+id), RuntimeID: "01a1b144-56c1-7fc2-a4ab-cf8d84f8543e", SessionID: id, Agent: "codex", Resume: true}
+	err := ExecuteStream(plan, LaunchIntent{RequestID: id, Agent: "codex"}, home, func() {})
+	if detached, ok := err.(DetachedError); ok {
+		if text := detached.Notice(); text != "" {
+			fmt.Fprintln(os.Stderr, text)
+		}
+		os.Exit(detached.ExitCode())
+	}
+	os.Exit(2)
+}

@@ -81,6 +81,15 @@ func (channel *terminalChannel) start() <-chan struct{} {
 	return done
 }
 
+func (channel *terminalChannel) peekAlive() *terminalstream.Transport {
+	channel.mu.Lock()
+	defer channel.mu.Unlock()
+	if channel.transport != nil && channel.transport.Alive() {
+		return channel.transport
+	}
+	return nil
+}
+
 func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

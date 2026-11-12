@@ -45,6 +45,7 @@ check-ui:
 	node scripts/tests/updater-state.cjs
 	node scripts/tests/developer-mode.cjs
 	node scripts/tests/onboarding-state.cjs
+	node scripts/tests/runtime-metrics.cjs
 
 test-connector: build
 	python3 scripts/tests/relay.py

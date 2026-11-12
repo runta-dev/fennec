@@ -76,6 +76,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var rendererRecoveryTimes: [Date] = []
     private var lastLoginMessage = ""
     private var lastLoginBusy = false
+    private var pendingInteractiveLogin = false
+    private var lastSessionsData: Data?
     private var terminalTransport: TerminalPTY?
     private var terminalGeneration: String?
     private var terminalOutputWindow: TerminalOutputWindow?
@@ -161,7 +163,18 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     @objc private func toggle() {
         if popup.isVisible || popupPresentationID != nil { popupPresentationID = nil; popup.orderOut(nil); return }
         refreshAgents()
-        if authorized, isOnline { loadRuntimes() }
+        if authorized, isOnline { loadRuntimes(); loadMetrics() }
+        let request = UUID()
+        popupPresentationID = request
+        presentPopup(request, remaining: 40)
+    }
+
+    private func showPopupInForeground() {
+        if popup.isVisible {
+            popup.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         let request = UUID()
         popupPresentationID = request
         presentPopup(request, remaining: 40)
@@ -649,18 +662,24 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let isAuthorized = account["status"] as? String == "authorized"
         if isAuthorized != authorized {
             authorized = isAuthorized
-            if !authorized { profileLoaded = false }
+            if !authorized { profileLoaded = false; lastSessionsData = nil }
             render(authorized ? "renderAuthorized" : "renderSignedOut")
-            if authorized, online { loadProfile() }
+            if authorized, online { loadProfile(); loadMetrics() }
+            if authorized, pendingInteractiveLogin {
+                pendingInteractiveLogin = false
+                showPopupInForeground()
+            }
         } else if authorized, online, (reconnected || epochChanged), !profileLoaded {
             loadProfile()
             if epochChanged && visibleRefreshTab == "account" { loadBilling() }
         }
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
+            if pending { pendingInteractiveLogin = true }
             let code = account["user_code"] as? String ?? ""
             let loginErrors = ["authorization_expired":"[[i18n:ui.authorization_expired_sign_in_again]]", "session_expired":"[[i18n:ui.session_expired_sign_in_again]]", "access_denied":"[[i18n:ui.authorization_cancelled]]"]
             let errorCode = account["error"] as? String
+            if errorCode != nil { pendingInteractiveLogin = false }
             let message = pending ? (code.isEmpty ? "[[i18n:ui.connecting_to_runta]]" : "[[i18n:ui.confirm_this_code_in_your_browser]]" + code) : (errorCode.map { loginErrors[$0] ?? "[[i18n:ui.could_not_sign_in_try_again]]" } ?? "")
             renderLogin(message, pending || account["status"] as? String == "restoring")
             let expectedHost = URL(string: activeDashboardURL)?.host ?? "dashboard.runta.com"
@@ -679,7 +698,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             preparationState["status"] = "network_offline"
         }
 	    if runtime["stage"] as? String == "disabled" { preparationState=["stage":"disabled"] }
-        for (kind,field,function) in [("model_catalog","models","renderModelCatalog"),("route_results","results","renderRouteResults"),("provider_catalog","candidates","renderProviderCatalog")] {
+        if let text = events["model_catalog"]?["models"], let data = text.data(using: .utf8), let models = try? JSONSerialization.jsonObject(with: data) {
+            if let catText = events["model_catalog"]?["catalog"], let catData = catText.data(using: .utf8), let catalog = try? JSONSerialization.jsonObject(with: catData) {
+                render("renderModelCatalog", [models, catalog])
+            } else {
+                render("renderModelCatalog", [models])
+            }
+        }
+        for (kind,field,function) in [("route_results","results","renderRouteResults"),("provider_catalog","candidates","renderProviderCatalog")] {
             if let text = events[kind]?[field], let data = text.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) { render(function,[value]) }
         }
         render("renderPreparation", [preparationState])
@@ -691,7 +717,13 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if reconnected, authorized, visibleRefreshTab == "account" { loadBilling(); loadMetrics() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
-        if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] { render("renderHerdrSessions", [terminals]) }
+        if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] {
+            let nextData = try? JSONSerialization.data(withJSONObject: terminals, options: [.sortedKeys])
+            if nextData != lastSessionsData {
+                lastSessionsData = nextData
+                render("renderHerdrSessions", [terminals])
+            }
+        }
         if let upd = state["update"] as? [String:Any] {
             updateState = upd
             render("renderUpdateState", [upd])
@@ -765,7 +797,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             guard let self,self.accountEpoch==epoch else{return}
             guard case .success(let value)=result,let reply=value as? [String:Any],let text=reply["url"] as? String,
                   let url=URL(string:text),url.scheme=="http",url.host=="127.0.0.1" else {done?(false);return}
-            done?(NSWorkspace.shared.open(url))
+            let opened = NSWorkspace.shared.open(url)
+            done?(opened)
         }
     }
     private func mutate(_ method: String, _ params: [String:Any] = [:], done: ((Bool,Any?) -> Void)? = nil) {
@@ -916,8 +949,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 web.evaluateJavaScript("window.animateFox?.(\(String(decoding:data,as:UTF8.self)))", completionHandler:nil)
             }
         case "ready","refresh": lastState = nil; pollState(); refreshAgents(); renderLoginItem()
-        case "login": mutate("account.login")
-	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
+        case "login": pendingInteractiveLogin = true; mutate("account.login")
+	    case "reauthenticate": pendingInteractiveLogin = true; mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics()

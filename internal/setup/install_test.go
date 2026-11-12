@@ -26,7 +26,7 @@ func TestInstallAllowlist(t *testing.T) {
 
 func TestEnsureAgentInstallsLatestOnlyWhenMissing(t *testing.T) {
 	script, err := EnsureAgentScript(Agent{ID: "codex", Version: "latest"})
-	if err != nil || !strings.Contains(script, "if [ -x \"$HOME/.local/fennec/agents/bin/codex\" ]") || !strings.Contains(script, "npm view @openai/codex@latest version") || !strings.Contains(script, "npm install --global --prefix \"$stage\" -- @openai/codex@latest") {
+	if err != nil || !strings.Contains(script, "if [ -x \"$HOME/.local/fennec/agents/bin/codex\" ]") || strings.Contains(script, "npm view") || !strings.Contains(script, "npm install --global --no-audit --no-fund --loglevel=error --prefix \"$stage\" -- @openai/codex@latest") {
 		t.Fatal(err, script)
 	}
 	if strings.Contains(script, "DetectVersions") {

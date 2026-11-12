@@ -26,6 +26,14 @@ func GatewayModels(ctx context.Context, client *ssh.Client) ([]string, error) {
 	return parseGatewayModels(raw)
 }
 
+type GatewayModelItem struct {
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Group    string `json:"group,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Account  string `json:"account,omitempty"`
+}
+
 func parseGatewayModels(raw []byte) ([]string, error) {
 	var response struct {
 		Data []struct {
@@ -42,6 +50,67 @@ func parseGatewayModels(raw []byte) ([]string, error) {
 		}
 	}
 	return result, nil
+}
+
+func parseGatewayCatalog(raw []byte, logins map[string]string) ([]GatewayModelItem, error) {
+	var response struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+			MagpieLabel string `json:"magpie_label"`
+			OwnedBy     string `json:"owned_by"`
+		} `json:"data"`
+	}
+	if len(raw) > 4<<20 || json.Unmarshal(raw, &response) != nil {
+		return nil, fmt.Errorf("invalid model catalog")
+	}
+	items := make([]GatewayModelItem, 0, len(response.Data))
+	for _, entry := range response.Data {
+		if entry.ID == "" {
+			continue
+		}
+		prefix, slug, hasSlash := strings.Cut(entry.ID, "/")
+		if !hasSlash {
+			prefix, slug = "", entry.ID
+		}
+		name := strings.TrimSpace(entry.DisplayName)
+		if name == "" {
+			name = slug
+		}
+		provider := prefix
+		if provider == "group" || provider == "auto" || provider == "" {
+			if entry.OwnedBy != "" {
+				provider = entry.OwnedBy
+			} else {
+				provider = prefix
+			}
+		}
+		group := strings.ToUpper(prefix)
+		if prefix == "group" || prefix == "auto" || strings.HasSuffix(entry.MagpieLabel, "· routing group") {
+			group = "ROUTING"
+			provider = "magpie"
+		} else if idx := strings.LastIndex(entry.MagpieLabel, " · "); idx >= 0 {
+			lbl := strings.TrimSpace(entry.MagpieLabel[idx+len(" · "):])
+			if lbl != "" {
+				group = strings.ToUpper(lbl)
+			}
+		}
+		acct := ""
+		if logins != nil && prefix != "group" && prefix != "auto" {
+			acct = logins[prefix]
+			if acct == "" && entry.OwnedBy != "" {
+				acct = logins[entry.OwnedBy]
+			}
+		}
+		items = append(items, GatewayModelItem{
+			ID:       entry.ID,
+			Name:     name,
+			Group:    group,
+			Provider: provider,
+			Account:  acct,
+		})
+	}
+	return items, nil
 }
 
 type RouteResult struct {

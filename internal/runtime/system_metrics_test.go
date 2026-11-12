@@ -32,7 +32,7 @@ func TestCollectSystemMetricsParsesProcAndDeltaRates(t *testing.T) {
 	if got.CPUPercent < 49.0 || got.CPUPercent > 51.0 {
 		t.Fatalf("expected ~50%% CPU utilization, got %.1f%%", got.CPUPercent)
 	}
-	if got.MemoryCurrentMiB != 4096 || got.MemoryUsedMiB != 1536 {
+	if got.MemoryCurrentMiB != 4096 || got.MemoryUsedMiB != 1536 || got.MemoryUsedBytes != 1536*1024*1024 {
 		t.Fatalf("unexpected memory metrics: %+v", got)
 	}
 	if got.NetRxBytes != 10485760 || got.NetTxBytes != 2097152 || got.NetRxBPS == 0 || got.NetTxBPS == 0 {

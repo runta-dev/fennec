@@ -16,18 +16,63 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
   menu.className = 'choice-menu';
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', select.labels?.[0]?.textContent || '');
+  let lastGroup = '';
   for (const option of select.options) {
+    const group = option.dataset?.group || '';
+    if (group && group !== lastGroup) {
+      lastGroup = group;
+      const header = document.createElement('div');
+      header.className = 'choice-group-header';
+      header.setAttribute('role', 'presentation');
+      header.textContent = group;
+      menu.append(header);
+    }
     const item = document.createElement('button');
     item.type = 'button';
     item.setAttribute('role', 'option');
     item.setAttribute('aria-selected', String(option.selected));
     const text = document.createElement('span');
+    text.className = 'choice-item-label';
     text.textContent = option.textContent;
-    const mark = document.createElement('span');
-    mark.className = 'choice-check';
-    mark.textContent = option.selected ? '✓' : '';
-    mark.setAttribute('aria-hidden', 'true');
-    item.append(text, mark);
+    const iconSrc = option.dataset?.icon || '';
+    const iconSvg = option.dataset?.iconSvg || '';
+    const account = option.dataset?.account || '';
+    if (iconSrc || iconSvg || account) {
+      item.className = 'choice-item-rich';
+      const main = document.createElement('span');
+      main.className = 'choice-item-main';
+      if (iconSvg) {
+        const wrap = document.createElement('span');
+        wrap.className = 'choice-item-icon-wrap';
+        wrap.setAttribute('aria-hidden', 'true');
+        wrap.innerHTML = iconSvg;
+        main.append(wrap);
+      } else if (iconSrc) {
+        const img = document.createElement('img');
+        img.className = 'choice-item-icon' + (option.dataset?.mono === '1' ? ' is-mono' : '');
+        img.src = iconSrc;
+        img.alt = '';
+        main.append(img);
+      }
+      main.append(text);
+      if (account) {
+        const meta = document.createElement('span');
+        meta.className = 'choice-item-account';
+        meta.textContent = account;
+        main.append(meta);
+      }
+      const mark = document.createElement('span');
+      mark.className = 'choice-check';
+      mark.textContent = option.selected ? '✓' : '';
+      mark.setAttribute('aria-hidden', 'true');
+      item.append(main, mark);
+    } else {
+      const mark = document.createElement('span');
+      mark.className = 'choice-check';
+      mark.textContent = option.selected ? '✓' : '';
+      mark.setAttribute('aria-hidden', 'true');
+      item.append(text, mark);
+    }
     item.onclick = () => {
       select.value = option.value;
       select.dispatchEvent(new Event('change', { bubbles: true }));

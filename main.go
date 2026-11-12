@@ -17,6 +17,12 @@ func main() {
 	if err := cli.Run(arguments, os.Stdout); err != nil {
 		var status interface{ ExitCode() int }
 		if errors.As(err, &status) {
+			var noticed interface{ Notice() string }
+			if errors.As(err, &noticed) {
+				if text := noticed.Notice(); text != "" {
+					fmt.Fprintln(os.Stderr, text)
+				}
+			}
 			os.Exit(status.ExitCode())
 		}
 		fmt.Fprintln(os.Stderr, err)

@@ -3,6 +3,7 @@ package runtime
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"math"
 	"os"
 	"runtime"
@@ -15,33 +16,109 @@ import (
 // SystemMetrics reports live CPU utilization, dynamic memory occupancy, and
 // cumulative + instantaneous network traffic from the shared cloud runtime.
 type SystemMetrics struct {
-	CPUPercent       float64 `json:"cpu_percent"`
-	VCPUs            int     `json:"vcpus"`
-	MemoryUsedMiB    uint64  `json:"memory_used_mib"`
-	MemoryCurrentMiB uint64  `json:"memory_current_mib"`
-	MemoryMinMiB     uint64  `json:"memory_min_mib,omitempty"`
-	MemoryMaxMiB     uint64  `json:"memory_max_mib,omitempty"`
-	NetRxBytes       uint64  `json:"net_rx_bytes"`
-	NetTxBytes       uint64  `json:"net_tx_bytes"`
-	NetRxBPS         uint64  `json:"net_rx_bps"`
-	NetTxBPS         uint64  `json:"net_tx_bps"`
-	SampledUnixMS    int64   `json:"sampled_unix_ms"`
+	CPUPercent       float64   `json:"cpu_percent"`
+	VCPUs            int       `json:"vcpus"`
+	MemoryUsedMiB    uint64    `json:"memory_used_mib"`
+	MemoryUsedBytes  uint64    `json:"memory_used_bytes,omitempty"`
+	MemoryCurrentMiB uint64    `json:"memory_current_mib"`
+	MemoryMinMiB     uint64    `json:"memory_min_mib,omitempty"`
+	MemoryMaxMiB     uint64    `json:"memory_max_mib,omitempty"`
+	NetRxBytes       uint64    `json:"net_rx_bytes"`
+	NetTxBytes       uint64    `json:"net_tx_bytes"`
+	NetRxBPS         uint64    `json:"net_rx_bps"`
+	NetTxBPS         uint64    `json:"net_tx_bps"`
+	SampledUnixMS    int64     `json:"sampled_unix_ms"`
+	CPUHistory       []float64 `json:"cpu_history,omitempty"`
+	MemHistory       []float64 `json:"mem_history,omitempty"`
 }
+
+const metricsHistoryCap = 24
 
 type metricsSampleState struct {
-	mu        sync.Mutex
-	at        time.Time
-	cpuTotal  uint64
-	cpuIdle   uint64
-	netRx     uint64
-	netTx     uint64
-	hasSample bool
+	mu         sync.Mutex
+	at         time.Time
+	cpuTotal   uint64
+	cpuIdle    uint64
+	netRx      uint64
+	netTx      uint64
+	hasSample  bool
+	last       SystemMetrics
+	lastAt     time.Time
+	cpuHistory []float64
+	memHistory []float64
 }
 
-var globalMetricsState metricsSampleState
+var (
+	globalMetricsState metricsSampleState
+	samplerMu          sync.Mutex
+	samplerRunning     bool
+)
+
+// StartMetricsSampler continuously samples system metrics at 1 Hz in-process
+// so UI/CLI clients immediately receive a full 24s curve on first open.
+func StartMetricsSampler(ctx context.Context) {
+	samplerMu.Lock()
+	if samplerRunning {
+		samplerMu.Unlock()
+		return
+	}
+	samplerRunning = true
+	samplerMu.Unlock()
+
+	sampleAndRecord(&globalMetricsState)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		defer func() {
+			samplerMu.Lock()
+			samplerRunning = false
+			samplerMu.Unlock()
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sampleAndRecord(&globalMetricsState)
+			}
+		}
+	}()
+}
+
+func sampleAndRecord(state *metricsSampleState) SystemMetrics {
+	m := collectSystemMetricsFromPaths("/proc/stat", "/proc/meminfo", "/proc/net/dev", "/sys/fs/cgroup", state)
+	memMiB := float64(m.MemoryUsedMiB)
+	if m.MemoryUsedBytes > 0 {
+		memMiB = math.Round((float64(m.MemoryUsedBytes)/1048576.0)*1000) / 1000
+	}
+	state.mu.Lock()
+	state.cpuHistory = append(state.cpuHistory, m.CPUPercent)
+	if len(state.cpuHistory) > metricsHistoryCap {
+		state.cpuHistory = state.cpuHistory[len(state.cpuHistory)-metricsHistoryCap:]
+	}
+	state.memHistory = append(state.memHistory, memMiB)
+	if len(state.memHistory) > metricsHistoryCap {
+		state.memHistory = state.memHistory[len(state.memHistory)-metricsHistoryCap:]
+	}
+	m.CPUHistory = append([]float64(nil), state.cpuHistory...)
+	m.MemHistory = append([]float64(nil), state.memHistory...)
+	state.last = m
+	state.lastAt = time.Now()
+	state.mu.Unlock()
+	return m
+}
 
 func CollectSystemMetrics() SystemMetrics {
-	return collectSystemMetricsFromPaths("/proc/stat", "/proc/meminfo", "/proc/net/dev", "/sys/fs/cgroup", &globalMetricsState)
+	globalMetricsState.mu.Lock()
+	if !globalMetricsState.lastAt.IsZero() && time.Since(globalMetricsState.lastAt) <= 1500*time.Millisecond {
+		cached := globalMetricsState.last
+		cached.CPUHistory = append([]float64(nil), globalMetricsState.cpuHistory...)
+		cached.MemHistory = append([]float64(nil), globalMetricsState.memHistory...)
+		globalMetricsState.mu.Unlock()
+		return cached
+	}
+	globalMetricsState.mu.Unlock()
+	return sampleAndRecord(&globalMetricsState)
 }
 
 func collectSystemMetricsFromPaths(procStat, procMeminfo, procNetDev, cgroupDir string, state *metricsSampleState) SystemMetrics {
@@ -115,11 +192,12 @@ func collectSystemMetricsFromPaths(procStat, procMeminfo, procNetDev, cgroupDir 
 		state.mu.Unlock()
 	}
 
-	usedMiB, currentMiB, maxMiB := readMemoryMetrics(procMeminfo, cgroupDir)
+	usedBytes, usedMiB, currentMiB, maxMiB := readMemoryMetrics(procMeminfo, cgroupDir)
 	return SystemMetrics{
-		CPUPercent:       math.Round(cpuPct*10) / 10,
+		CPUPercent:       math.Round(cpuPct*100) / 100,
 		VCPUs:            runtime.NumCPU(),
 		MemoryUsedMiB:    usedMiB,
+		MemoryUsedBytes:  usedBytes,
 		MemoryCurrentMiB: currentMiB,
 		MemoryMaxMiB:     maxMiB,
 		NetRxBytes:       rx1,
@@ -156,7 +234,7 @@ func readProcStatCPU(path string) (total uint64, idle uint64, ok bool) {
 	return 0, 0, false
 }
 
-func readMemoryMetrics(meminfoPath, cgroupDir string) (usedMiB, currentMiB, maxMiB uint64) {
+func readMemoryMetrics(meminfoPath, cgroupDir string) (usedBytes, usedMiB, currentMiB, maxMiB uint64) {
 	var totalKiB, availKiB uint64
 	if raw, err := os.ReadFile(meminfoPath); err == nil {
 		scanner := bufio.NewScanner(bytes.NewReader(raw))
@@ -180,19 +258,22 @@ func readMemoryMetrics(meminfoPath, cgroupDir string) (usedMiB, currentMiB, maxM
 	if totalKiB > 0 {
 		currentMiB = (totalKiB + 512) / 1024
 		if totalKiB > availKiB {
-			usedMiB = (totalKiB - availKiB + 512) / 1024
+			usedKiB := totalKiB - availKiB
+			usedBytes = usedKiB * 1024
+			usedMiB = (usedKiB + 512) / 1024
 		}
 	}
 	if cgroupBytes, ok := readCgroupBytes(cgroupDir + "/memory.current"); ok && cgroupBytes > 0 {
 		cgUsed := (cgroupBytes + (512 << 10)) >> 20
 		if cgUsed > 0 && (usedMiB == 0 || cgUsed < currentMiB) {
+			usedBytes = cgroupBytes
 			usedMiB = cgUsed
 		}
 	}
 	if cgroupMax, ok := readCgroupBytes(cgroupDir + "/memory.max"); ok && cgroupMax > 0 && cgroupMax <= (1<<40) {
 		maxMiB = (cgroupMax + (512 << 10)) >> 20
 	}
-	return usedMiB, currentMiB, maxMiB
+	return usedBytes, usedMiB, currentMiB, maxMiB
 }
 
 func readCgroupBytes(path string) (uint64, bool) {

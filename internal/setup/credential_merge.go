@@ -248,7 +248,7 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 	}
 	names := []string{}
 	for name := range incoming {
-		if name != "providers.json" && name != "logins.json" && name != "plugin-auth.json" {
+		if name != "providers.json" && name != "logins.json" && name != "plugin-auth.json" && name != "migrations.json" {
 			return report, fmt.Errorf("unsupported credential store")
 		}
 		names = append(names, name)
@@ -402,7 +402,7 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 			}
 			for key, value := range source {
 				base := strings.SplitN(key, "#", 2)[0]
-				if base != "devin" && base != "grok" {
+				if !allowedPluginCredentialBase.MatchString(base) {
 					return report, fmt.Errorf("unsupported plugin credential")
 				}
 				digest := credentialHash(legacyCredentialJSON(value))
@@ -422,6 +422,25 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 				}
 				remote[key] = value
 				setLegacy("plugin:"+key, digest)
+			}
+			data, _ = json.Marshal(remote)
+		case "migrations.json":
+			source, ok := parsed.(map[string]any)
+			if !ok {
+				return report, fmt.Errorf("invalid migrations store")
+			}
+			remote := map[string]any{}
+			if exists {
+				if value, err := parseCredentialJSON(previous); err == nil {
+					if m, ok := value.(map[string]any); ok {
+						remote = m
+					}
+				}
+			}
+			for key, value := range source {
+				if allowedPluginCredentialBase.MatchString(key) {
+					remote[key] = value
+				}
 			}
 			data, _ = json.Marshal(remote)
 		default:

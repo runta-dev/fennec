@@ -39,7 +39,7 @@ func TestGatewayReconcileSkipsMatchingModels(t *testing.T) {
 			if matching {
 				current = "magpie/provider/model"
 			}
-			cli := "#!/bin/sh\nif [ \"$2\" = model ]; then printf '%s model %s\\n' \"$1\" " + shellQuote(current) + "; else printf '%s\\n' \"$1\" >> \"$HOME/writes\"; fi\n"
+			cli := "#!/bin/sh\nif [ \"$2\" = model ] && [ $# -eq 2 ]; then printf '%s model %s\\n' \"$1\" " + shellQuote(current) + "; else printf '%s\\n' \"$1\" >> \"$HOME/writes\"; fi\n"
 			os.WriteFile(filepath.Join(bin, "magpie"), []byte(cli), 0700)
 			script, err := GatewayRouteScript(GatewayRoute{Provider: "provider", Model: "model", Agents: []string{"claude", "codex", "pi", "opencode"}})
 			if err != nil {

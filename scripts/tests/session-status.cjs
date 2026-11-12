@@ -35,9 +35,10 @@ context.window.renderHerdrSessions([
  {address:'t20',state:'live',title:'查看本地仓库 | '+ 'a'.repeat(32),labels:{'fennec.session':'a'.repeat(32)}},
  {address:'t21',state:'live',title:'b'.repeat(32),name:'c'.repeat(32)},
  {address:'t22',state:'live',title:'Review | 01a1c322-3cdd-71f1-94e7-851e2468e6ec'},
- {address:'t23',state:'live',title:'Review | customer feedback'}
+ {address:'t23',state:'live',title:'Review | customer feedback'},
+ {address:'t24',state:'live',title:'Greet the user | drum-shadow',labels:{'fennec.session':'drum-shadow'}}
 ]);
-assert.deepEqual(Array.from(rendered,row=>row.name),['查看本地仓库',"[[i18n:ui.untitled_session]]",'Review','Review | customer feedback']);
+assert.deepEqual(Array.from(rendered,row=>row.name),['查看本地仓库',"[[i18n:ui.untitled_session]]",'Review','Review | customer feedback','Greet the user']);
 assert.equal(rendered[0].sessionID,'a'.repeat(32));
 console.log('PASS display titles omit UUID suffixes while action identities and human title content remain intact');
 context.window.renderHerdrSessions([

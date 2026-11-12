@@ -91,7 +91,7 @@ while :; do
  child=$!
  wait "$child"
  child=
- sleep 3
+ sleep 1
 done
 SUPERVISOR
 chmod 700 "$base/magpie-supervisor.sh"

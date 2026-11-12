@@ -22,5 +22,6 @@ func (s *daemonServices) localModel(ctx context.Context, raw json.RawMessage) (a
 		return nil, err
 	}
 	models, _ := setup.LocalGatewayModels(ctx)
-	return map[string]any{"agent": params.Agent, "model": model, "models": models, "location": "local"}, nil
+	catalog, _ := setup.LocalGatewayCatalog(ctx, s.home)
+	return map[string]any{"agent": params.Agent, "model": model, "models": models, "catalog": catalog, "location": "local"}, nil
 }
