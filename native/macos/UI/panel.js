@@ -725,10 +725,20 @@ function renderBillingRows(payload,loading){
  const note=document.createElement('p');note.className='billing-footnote';note.textContent="[[i18n:ui.resource_usage_last_30_days]]";content.append(note);
  const footer=document.createElement('div');footer.className='billing-footer';
  const status=document.createElement('span');status.className='billing-status';
- status.textContent=!loading?(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":'')):'';
+ const webOnly=payload.web_only===true;
+ const offline=payload.offline===true;
+ status.textContent=!loading?(offline?"[[i18n:ui.offline_waiting_for_network]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''))):'';
  const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
- retry.style.visibility=!loading&&(missing||payload.error||payload.stale)?'visible':'hidden';retry.disabled=loading;
- retry.onclick=()=>{window.renderBillingLoading();send('load-billing');};
+ if(webOnly){
+  retry.textContent="[[i18n:ui.open_in_browser]]";
+  retry.style.visibility=!loading?'visible':'hidden';
+  retry.disabled=loading;
+  retry.onclick=()=>send('open-dashboard');
+ }else{
+  retry.style.visibility=!loading&&!offline&&(missing||payload.error||payload.stale)?'visible':'hidden';
+  retry.disabled=loading;
+  retry.onclick=()=>{window.renderBillingLoading();send('load-billing');};
+ }
  footer.append(status,retry);content.append(footer);
 }
 window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);

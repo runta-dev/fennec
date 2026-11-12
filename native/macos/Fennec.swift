@@ -648,6 +648,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let ready = services["broker_ready"] as? Bool == true
 	    sessionServiceReady=ready
         if reconnected, authorized, ready { loadRuntimes() }
+        if reconnected, authorized, visibleRefreshTab == "account" { loadBilling() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] { render("renderHerdrSessions", [terminals]) }
@@ -684,13 +685,22 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func loadBilling() {
         guard authorized, !loadingBilling else { return }
+        guard isOnline else {
+            render("renderBilling", [["offline": true]])
+            return
+        }
         render("renderBillingLoading")
         loadingBilling = true; renderRefreshActivity()
         let epoch = accountEpoch
         control.call("account.billing") { [weak self] result in
             guard let self else { return }; self.loadingBilling = false; self.renderRefreshActivity()
             guard self.accountEpoch == epoch else { return }
-            switch result { case .success(let value): self.render("renderBilling", [value]); case .failure: self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
+            switch result {
+            case .success(let value): self.render("renderBilling", [value])
+            case .failure:
+                if self.isOnline { self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
+                else { self.render("renderBilling", [["offline": true]]) }
+            }
         }
     }
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
@@ -853,6 +863,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling()
+        case "open-dashboard": if let url = URL(string: "https://dashboard.runta.com") { NSWorkspace.shared.open(url) }
         case "retry-runtime": mutate("runtime.retry")
         case "clear-trust": mutate("trust.clear") { [weak self] success,_ in self?.render("renderTrustResult",[success]) }
         case "cancel-session-read": sessionReadRevision += 1

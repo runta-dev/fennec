@@ -2027,6 +2027,14 @@
       "zh-CN": "查看智能体",
       "zh-TW": "查看智慧代理"
     },
+    "ui.view_billing_in_runta_dashboard": {
+      "en-GB": "View balance and usage in Runta Dashboard",
+      "en-US": "View balance and usage in Runta Dashboard",
+      "ja": "Runta ダッシュボードで残高と使用量を確認",
+      "ko": "Runta 대시보드에서 잔액 및 사용량 확인",
+      "zh-CN": "前往 Runta 控制台查看余额与用量",
+      "zh-TW": "前往 Runta 控制台查看餘額與用量"
+    },
     "ui.waiting_for_cloud_takeover": {
       "en-US": "Waiting for cloud takeover",
       "ja": "クラウド実行を待機中",

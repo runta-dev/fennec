@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fennec/internal/launchprofile"
 	"fmt"
 	"io"
@@ -12,6 +13,14 @@ import (
 	"sync"
 	"time"
 )
+
+type httpStatusError struct {
+	status int
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("account HTTP %d", e.status)
+}
 
 func (m *Manager) queryContext(parent context.Context) (context.Context, string, uint64, func(), error) {
 	lifecycle, token, epoch, ok := m.Session()
@@ -38,7 +47,7 @@ func (m *Manager) get(ctx context.Context, token, address string, epoch uint64) 
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		launchprofile.Record("account.http_status."+strconv.Itoa(response.StatusCode), time.Now(), 0)
-		return nil, fmt.Errorf("account HTTP %d", response.StatusCode)
+		return nil, &httpStatusError{status: response.StatusCode}
 	}
 	var result map[string]any
 	if err = json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&result); err != nil {
@@ -79,6 +88,10 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 	defer done()
 	organizations, err := m.get(ctx, token, backend+"/v1/organizations", epoch)
 	if err != nil {
+		var statusErr *httpStatusError
+		if errors.As(err, &statusErr) && statusErr.status == http.StatusForbidden {
+			return map[string]any{"web_only": true}, nil
+		}
 		return nil, err
 	}
 	rows, ok := organizations["data"].([]any)
@@ -118,6 +131,10 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 	wg.Wait()
 	for _, err := range errs {
 		if err != nil {
+			var statusErr *httpStatusError
+			if errors.As(err, &statusErr) && statusErr.status == http.StatusForbidden {
+				return map[string]any{"web_only": true}, nil
+			}
 			return nil, err
 		}
 	}

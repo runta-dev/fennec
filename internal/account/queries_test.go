@@ -103,3 +103,28 @@ func TestLateUnauthorizedResponseCannotSignOutNewLogin(t *testing.T) {
 		t.Fatal("old request invalidated a newer epoch using the same token")
 	}
 }
+
+func TestBillingForbiddenReturnsWebDashboardFallbackInsteadOfRetryError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/organizations" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"id": "org"}}})
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = fmt.Fprint(w, `{}`)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m := New(ctx, &memoryCredentials{token: "private"}, server.URL)
+	if err := m.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	result, err := m.billing(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("expected structured web_only fallback for HTTP 403, got err=%v", err)
+	}
+	if result["web_only"] != true || m.Snapshot().Status != "authorized" {
+		t.Fatalf("unexpected 403 billing result: %+v", result)
+	}
+}
