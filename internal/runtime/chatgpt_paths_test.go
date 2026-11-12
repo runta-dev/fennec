@@ -146,3 +146,11 @@ func readFrame(t *testing.T, reader *bufio.Reader) webSocketFrame {
 		buffer = append(buffer, chunk[:length]...)
 	}
 }
+
+func TestRewriteCwdKeepsFileURIForm(t *testing.T) {
+	message := []byte(`{"params":{"cwd":"file:///Users/a/p","command":["ls"]}}`)
+	got := string(rewriteCwd(message, func(path string) (string, bool) { return "/root/.fen/x", path == "/Users/a/p" }))
+	if !strings.Contains(got, `"cwd":"file:///root/.fen/x"`) {
+		t.Fatal(got)
+	}
+}

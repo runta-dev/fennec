@@ -188,7 +188,7 @@ func rewriteCwd(message []byte, mapping func(string) (string, bool)) []byte {
 		case map[string]any:
 			for key, child := range typed {
 				if text, ok := child.(string); ok && key == "cwd" {
-					if mapped, ok := mapping(text); ok && mapped != text {
+					if mapped, ok := mapURIOrPath(text, mapping); ok && mapped != text {
 						typed[key] = mapped
 						changed = true
 					}
@@ -372,4 +372,17 @@ func encodeWebSocketFrame(opcode byte, payload []byte, masked bool) []byte {
 		frame[start+i] ^= mask[i%4]
 	}
 	return frame
+}
+
+// mapURIOrPath maps a plain absolute path or its file:// URI form, keeping the
+// form the message used.
+func mapURIOrPath(value string, mapping func(string) (string, bool)) (string, bool) {
+	if path, ok := strings.CutPrefix(value, "file://"); ok {
+		mapped, ok := mapping(path)
+		if !ok {
+			return "", false
+		}
+		return "file://" + mapped, true
+	}
+	return mapping(value)
 }
