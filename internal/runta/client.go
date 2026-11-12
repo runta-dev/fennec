@@ -17,6 +17,12 @@ import (
 	"time"
 )
 
+const (
+	SharedRuntimeVCPUs             = 2
+	SharedRuntimeBaselineMemoryMiB = 4096
+	SharedRuntimeMaxMemoryMiB      = 16384
+)
+
 type Runtime struct {
 	Resources   *RuntimeResources `json:"resources"`
 	Secrets     []json.RawMessage `json:"secret_configuration"`
@@ -30,9 +36,14 @@ type Runtime struct {
 	Environment map[string]string `json:"environment_variables"`
 }
 type RuntimeResources struct {
+	Current struct {
+		Memory          uint64 `json:"memory_mib"`
+		ObservedDiskGiB uint32 `json:"observed_disk_gib"`
+	} `json:"current"`
 	Requests struct {
-		Memory uint64 `json:"memory_mib"`
-		VCPUs  uint32 `json:"vcpus"`
+		Memory  uint64 `json:"memory_mib"`
+		VCPUs   uint32 `json:"vcpus"`
+		DiskGiB uint32 `json:"disk_gib"`
 	} `json:"requests"`
 	Limits struct {
 		Memory uint64 `json:"memory_mib"`
@@ -205,8 +216,8 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		"name":                  "Fennec",
 		"environment_variables": map[string]string{"FENNEC_PURPOSE": "shared-v1"},
 		"resources": map[string]any{
-			"requests": map[string]any{"vcpus": 2, "memory_mib": 4096},
-			"limits":   map[string]any{"memory_mib": 4096},
+			"requests": map[string]any{"vcpus": SharedRuntimeVCPUs, "memory_mib": SharedRuntimeBaselineMemoryMiB},
+			"limits":   map[string]any{"memory_mib": SharedRuntimeMaxMemoryMiB},
 		},
 	}
 	var response struct {

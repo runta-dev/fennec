@@ -67,22 +67,38 @@ func TestCreateStableIdempotency(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body.Resources.Requests.VCPUs != 2 || body.Resources.Requests.Memory != 4096 || body.Resources.Limits.Memory != 4096 {
+		if body.Resources.Requests.VCPUs != SharedRuntimeVCPUs || body.Resources.Requests.Memory != SharedRuntimeBaselineMemoryMiB || body.Resources.Limits.Memory != SharedRuntimeMaxMemoryMiB {
 			t.Errorf("wrong default resources: %+v", body.Resources)
 		}
 		keys = append(keys, r.Header.Get("Idempotency-Key"))
-		fmt.Fprint(w, `{"data":{"id":"shared","owner_user_id":"mine","environment_variables":{"FENNEC_PURPOSE":"shared-v1"}}}`)
+		fmt.Fprint(w, `{"data":{"id":"shared","owner_user_id":"mine","environment_variables":{"FENNEC_PURPOSE":"shared-v1"},"resources":{"current":{"memory_mib":4096,"observed_disk_gib":16},"requests":{"vcpus":2,"memory_mib":4096,"disk_gib":16},"limits":{"memory_mib":16384}}}}`)
 	}))
 	defer server.Close()
 	c := Client{Endpoint: server.URL}
 	for i := 0; i < 2; i++ {
-		if _, err := c.EnsureShared(context.Background()); err != nil {
+		got, err := c.EnsureShared(context.Background())
+		if err != nil {
 			t.Fatal(err)
+		}
+		if got.Resources == nil || got.Resources.Current.Memory != 4096 || got.Resources.Requests.Memory != 4096 || got.Resources.Limits.Memory != 16384 {
+			t.Fatalf("unexpected decoded runtime resources: %+v", got.Resources)
 		}
 	}
 	legacy := sha256.Sum256([]byte("fennec/shared-v1/mine"))
 	if len(keys) > 0 && keys[0] == "fennec-"+hex.EncodeToString(legacy[:]) {
 		t.Fatal("new shape reused old creation key")
+	}
+	fixed4gIntent, _ := json.Marshal(map[string]any{
+		"name":                  "Fennec",
+		"environment_variables": map[string]string{"FENNEC_PURPOSE": "shared-v1"},
+		"resources": map[string]any{
+			"requests": map[string]any{"vcpus": 2, "memory_mib": 4096},
+			"limits":   map[string]any{"memory_mib": 4096},
+		},
+	})
+	fixed4gDigest := sha256.Sum256(append([]byte("fennec/shared-v1/mine\x00"), fixed4gIntent...))
+	if len(keys) > 0 && keys[0] == "fennec-"+hex.EncodeToString(fixed4gDigest[:]) {
+		t.Fatal("autoscaling 4g-16g shape collided with fixed 4g idempotency key")
 	}
 	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
 		t.Fatal(keys)

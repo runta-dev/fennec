@@ -167,7 +167,7 @@ a production interception switch.
 
 ## Default cloud computer resources
 
-New Fennec runtimes request 2 vCPUs and 4096 MiB baseline memory, with a 4096 MiB memory limit. Do not rely on the API default machine size. Existing runtimes are reused without deletion; creation defaults alone do not resize them.
+New Fennec runtimes request 2 vCPUs and 4096 MiB (4 GiB) baseline memory with a 16384 MiB (16 GiB) memory limit (`2c(4g-16g)` dynamic memory scaling: idle memory scales back to 4 GiB when there is no workload and bursts up to 16 GiB under load). Do not rely on the API default machine size. Existing runtimes are reused without deletion; creation defaults alone do not resize them.
 
 ## Agent enablement and session workspace scope
 
