@@ -80,6 +80,7 @@
       case 'user_denied':
         return t('[[i18n:ui.audit_decision_user_denied]]');
       case 'user_approved':
+      case 'previously_approved':
         return t('[[i18n:ui.audit_decision_user_approved]]');
       case 'auto_review_approved':
         return t('[[i18n:ui.audit_decision_auto_review_approved]]');

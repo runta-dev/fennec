@@ -117,7 +117,12 @@ func serveDesktopMCP(operation context.Context, session ssh.Session, broker *Bro
 		return true
 	}
 	decision := "auto_sandbox"
-	if requireApproval {
+	// ChatGPT starts these tools for every conversation it opens; one approval
+	// per tool covers the daemon run, and each start is still audited.
+	capability := DesktopMCPCommand + " " + spec.Name
+	if requireApproval && broker.granted(fingerprint, capability) {
+		decision = "previously_approved"
+	} else if requireApproval {
 		approval, cancel := context.WithTimeout(operation, 2*time.Minute)
 		outcome := broker.authorize(approval, approvalRequest{Display: display, Fingerprint: fingerprint, Action: guardian.Action{Kind: "exec", Command: display, Cwd: spec.Cwd, Justification: "ChatGPT on the cloud computer uses its " + spec.Name + " tool on this Mac"}})
 		cancel()
@@ -127,6 +132,7 @@ func serveDesktopMCP(operation context.Context, session ssh.Session, broker *Bro
 			session.Exit(126)
 			return true
 		}
+		broker.grant(fingerprint, capability)
 		decision = outcome.Decision
 	}
 	home, _ := os.UserHomeDir()
