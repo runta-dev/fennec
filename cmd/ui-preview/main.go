@@ -131,7 +131,16 @@ const previewAgents=[
  {id:'kimi',name:'Kimi Code',icon:'kimi.svg',installed:false,cloudSupported:false},
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},
  {id:'opencode',name:'OpenCode',icon:'opencode.svg',installed:false,cloudSupported:false}];
-let previewPrefs={magpie:false,theme:'light',language:'en-US',initialized:true};
+const nowMS=Date.now();
+let previewAuditEntries=[
+ {id:'aud-1',timestamp_ms:nowMS-45000,kind:'exec',command:'cat ~/.ssh/id_ed25519',workdir:'/Users/developer/repos/fennec',sandbox_mode:'workspace',network_allowed:false,decision:'sandbox_blocked',blocked:true,exit_code:1,duration_ms:9,detail:'sandbox-exec: /Users/developer/.ssh/id_ed25519: Operation not permitted'},
+ {id:'aud-2',timestamp_ms:nowMS-240000,kind:'exec',command:'OPENAI_API_KEY=[REDACTED] go test -race ./internal/sandbox',workdir:'/Users/developer/repos/fennec',sandbox_mode:'workspace',network_allowed:false,decision:'auto_sandbox',blocked:false,exit_code:0,duration_ms:142},
+ {id:'aud-3',timestamp_ms:nowMS-1800000,kind:'exec',command:'cp hook.sh .git/hooks/pre-commit',workdir:'/Users/developer/repos/fennec',sandbox_mode:'workspace',network_allowed:false,decision:'sandbox_blocked',blocked:true,exit_code:1,duration_ms:6,detail:'sandbox-exec: .git/hooks/pre-commit: Operation not permitted'},
+ {id:'aud-4',timestamp_ms:nowMS-7200000,kind:'sftp',command:'sftp-server (workspace)',workdir:'/Users/developer/repos/sandbox-demo',sandbox_mode:'workspace',network_allowed:false,decision:'auto_sandbox',blocked:false,exit_code:0,duration_ms:38},
+ {id:'aud-5',timestamp_ms:nowMS-93600000,kind:'tcp_forward',command:'tcp-forward 127.0.0.1:5432',sandbox_mode:'workspace',network_allowed:false,decision:'user_approved',blocked:false,exit_code:0,duration_ms:19}
+];
+const computeAuditSummary=()=>({total_7d:previewAuditEntries.length,today_count:Math.min(previewAuditEntries.length,4),blocked_7d:previewAuditEntries.filter(e=>e.blocked).length,retention_days:7});
+let previewPrefs={magpie:false,theme:'light',language:'en-US',sandbox_mode:'workspace',sandbox_network:false,sandbox_roots:['/Users/developer/repos/sandbox-demo'],effective_sandbox_roots:['/Users/developer/repos/fennec','/Users/developer/repos/sandbox-demo'],audit_summary:computeAuditSummary(),initialized:true};
 let previewUpdate={state:'latest',current:'0.2.11121023',latest:'0.2.11121023'};
 const previewCloud=new Set(['claude','codex','pi']);
 const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id==='codex'?'configured':'credentials_required',model:'codex/gpt-preview'}));
@@ -142,11 +151,14 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(message==='update-check'){previewUpdate={...previewUpdate,state:'checking'};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={state:'ready',current:'0.2.11121023',latest:'0.2.11121230',notes:'### Features\n- Magpie-style background auto updater\n### Improvements\n- Zero-interruption cloud session continuity'};window.renderUpdateState(previewUpdate);},300);}
  if(message==='update-download'){previewUpdate={...previewUpdate,state:'downloading',done:12500000,total:20000000,speed:4200000};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={...previewUpdate,state:'ready'};window.renderUpdateState(previewUpdate);},400);}
  if(message==='update-install'){setTimeout(()=>{previewUpdate={state:'latest',current:previewUpdate.latest||'0.2.11121230'};window.renderUpdateState(previewUpdate);},400);}
+ if(message==='pick-sandbox-root'){queueMicrotask(()=>window.renderPickedSandboxRoot?.('/Users/developer/repos/extra-workspace'));}
+ if(message==='audit-clear'){previewAuditEntries=[];previewPrefs={...previewPrefs,audit_summary:computeAuditSummary()};queueMicrotask(()=>{window.renderAuditLog?.({summary:previewPrefs.audit_summary,entries:[]});window.renderPreferences(previewPrefs);});}
+ if(action==='audit-list'){const flt=p.filter||'all';const rows=previewAuditEntries.filter(e=>flt==='blocked'?e.blocked:flt==='approved'?!e.blocked:true);queueMicrotask(()=>window.renderAuditLog?.({summary:computeAuditSummary(),entries:rows}));}
  if(action==='copy-attach')queueMicrotask(()=>window.renderAttachCopyResult(p.session_id,true));
  if(action==='get-agent-account')queueMicrotask(()=>window.renderNativeAccount({agent:p.agent,location:p.location,status:p.agent==='codex'?'signed_in':'signed_out',accounts:p.agent==='codex'?[{provider:'openai',email:'developer@example.com',subscription:'ChatGPT Pro',auth_type:'oauth'}]:[]}));
  if(action==='get-model' && p.agent!=='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'',models:[{id:'',name:'Default'}]}));
  if(action==='get-model' && p.agent==='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'gpt-preview',effort:'low',models:[{id:'',name:'Default'},{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]}));
- if(action==='settings'){if('auto_update' in p)previewPrefs.no_auto_update=!p.auto_update;if('update_skip' in p)previewPrefs.update_skip=p.update_skip;if('environment' in p){previewPrefs.environment=p.environment;previewPrefs.api_endpoint=p.environment==='integration'?'https://api.runta.xyz':p.environment==='production'?'https://api.runta.com':p.environment;previewPrefs.ssh_host=p.environment==='integration'?'ssh.runta.xyz':'ssh.runta.com';}if('ssh_nodelay' in p)previewPrefs.ssh_nodelay=p.ssh_nodelay;previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
+ if(action==='settings'){if('auto_update' in p)previewPrefs.no_auto_update=!p.auto_update;if('update_skip' in p)previewPrefs.update_skip=p.update_skip;if('environment' in p){previewPrefs.environment=p.environment;previewPrefs.api_endpoint=p.environment==='integration'?'https://api.runta.xyz':p.environment==='production'?'https://api.runta.com':p.environment;previewPrefs.ssh_host=p.environment==='integration'?'ssh.runta.xyz':'ssh.runta.com';}if('ssh_nodelay' in p)previewPrefs.ssh_nodelay=p.ssh_nodelay;if('sandbox_roots' in p){const synced=['/Users/developer/repos/fennec'];previewPrefs.effective_sandbox_roots=[...new Set([...synced,...(p.sandbox_roots||[])])].sort();}previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
  if(action==='toggle-takeover'){const agent=message.slice(colon+1);previewCloud.has(agent)?previewCloud.delete(agent):previewCloud.add(agent);queueMicrotask(()=>window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true}));}
  if(action==='select-model')setTimeout(()=>{window.renderNativeModels({agent:p.agent,model:p.model,effort:p.effort||'low',models:[{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]});window.renderModelSaving(false)},350);
  if(action==='get-local-model')queueMicrotask(()=>window.renderLocalModel({agent:p.agent,model:'codex/gpt-preview',models:['codex/gpt-preview']}));
@@ -168,12 +180,13 @@ window.addEventListener('DOMContentLoaded',()=>{
  window.renderAgents(previewAgents);window.renderRouteResults(previewRoutes());
  window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true});
  window.renderModelCatalog(['codex/gpt-preview']);
- if(params.get('tab')==='preferences')document.querySelector('#settings')?.click();
- else if(params.get('tab'))document.querySelector('[data-tab="'+params.get('tab')+'"]')?.click();
  const scenario=params.get('scenario');
  if(scenario==='offline'){window.renderPreparation({stage:'offline',status:'network_offline'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else if(scenario==='failed'){window.renderPreparation({stage:'failed',status:'runtime_preparation_failed'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else window.renderPreparation({stage:'agents_installed',status:'ready'});
+ if(params.get('tab')==='preferences')document.querySelector('#settings')?.click();
+ else if(params.get('tab')==='audit'){document.querySelector('[data-tab="governance"]')?.click();queueMicrotask(()=>document.querySelector('.governance-audit-section')?.scrollIntoView({block:'start'}));}
+ else if(params.get('tab'))document.querySelector('[data-tab="'+params.get('tab')+'"]')?.click();
  const ob=params.get('onboarding');
  if(ob==='signin'||ob==='setup')window.showOnboardingPreview?.(ob);
 });

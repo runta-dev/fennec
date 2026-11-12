@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/account"
+	"fennec/internal/audit"
 	"fennec/internal/cloudstate"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
+	"fennec/internal/sandbox"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -128,6 +130,13 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	manager := account.New(ctx, credentials, initialEnv.API)
 	network := connectivity.NewMonitor(nil, 2*time.Second)
 	services := newDaemonServices(home, manager, network)
+	auditStore := audit.NewStore(home)
+	auditStore.Prune()
+	services.auditStore = auditStore
+	services.sandboxPolicy = func() sandbox.Policy {
+		prefs := settings.snapshot().(desktopPreferences)
+		return effectiveSandboxPolicy(home, prefs)
+	}
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
 	for name, handler := range services.hookHandlers() {
@@ -137,21 +146,45 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	controller.Settings = func() any {
 		prefs := settings.snapshot().(desktopPreferences)
 		env := runta.ActiveEnvironment(home)
-		return map[string]any{
-			"revision":       prefs.Revision,
-			"magpie":         prefs.Magpie,
-			"no_auto_update": prefs.NoAutoUpdate,
-			"update_skip":    prefs.UpdateSkip,
-			"environment":    env.Name,
-			"api_endpoint":   env.API,
-			"dashboard_url":  env.Dashboard,
-			"ssh_host":       env.SSHHost,
-			"ssh_nodelay":    !prefs.NoSSHNoDelay,
-			"no_ssh_nodelay": prefs.NoSSHNoDelay,
-			"theme":          prefs.Theme,
-			"language":       prefs.Language,
-			"initialized":    prefs.Initialized,
+		effSandbox := effectiveSandboxPolicy(home, prefs)
+		auditRes, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
+		customRoots := prefs.SandboxRoots
+		if customRoots == nil {
+			customRoots = []string{}
 		}
+		return map[string]any{
+			"revision":                prefs.Revision,
+			"magpie":                  prefs.Magpie,
+			"no_auto_update":          prefs.NoAutoUpdate,
+			"update_skip":             prefs.UpdateSkip,
+			"environment":             env.Name,
+			"api_endpoint":            env.API,
+			"dashboard_url":           env.Dashboard,
+			"ssh_host":                env.SSHHost,
+			"ssh_nodelay":             !prefs.NoSSHNoDelay,
+			"no_ssh_nodelay":          prefs.NoSSHNoDelay,
+			"sandbox_mode":            effSandbox.Mode,
+			"sandbox_network":         effSandbox.Network,
+			"sandbox_roots":           customRoots,
+			"effective_sandbox_roots": effSandbox.WritableRoots,
+			"audit_summary":           auditRes.Summary,
+			"theme":                   prefs.Theme,
+			"language":                prefs.Language,
+			"initialized":             prefs.Initialized,
+		}
+	}
+	controller.Additional["audit.list"] = func(_ context.Context, raw json.RawMessage) (any, error) {
+		var opts audit.QueryOptions
+		if len(raw) > 0 && json.Unmarshal(raw, &opts) != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid audit query"}
+		}
+		return auditStore.Query(opts)
+	}
+	controller.Additional["audit.clear"] = func(context.Context, json.RawMessage) (any, error) {
+		if err := auditStore.Clear(); err != nil {
+			return nil, err
+		}
+		return auditStore.Query(audit.QueryOptions{Limit: 1})
 	}
 	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return controller.Settings(), nil }
 	controller.Additional["settings.set"] = func(ctx context.Context, raw json.RawMessage) (any, error) {

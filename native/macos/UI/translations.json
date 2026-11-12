@@ -2430,6 +2430,294 @@
       "ko": "결제 정보를 보려면 다시 로그인하세요",
       "zh-CN": "重新登录以授权读取账单",
       "zh-TW": "重新登入以授權讀取帳單"
+    },
+    "ui.local_sandbox": {
+      "en-GB": "Local sandbox",
+      "en-US": "Local sandbox",
+      "ja": "サンドボックス",
+      "ko": "로컬 샌드박스",
+      "zh-CN": "本机沙箱",
+      "zh-TW": "本機沙盒"
+    },
+    "ui.governance": {
+      "en-GB": "Governance",
+      "en-US": "Governance",
+      "ja": "セキュリティ",
+      "ko": "보안",
+      "zh-CN": "安全",
+      "zh-TW": "安全"
+    },
+    "ui.about_local_sandbox": {
+      "en-GB": "About local sandbox",
+      "en-US": "About local sandbox",
+      "ja": "ローカルサンドボックスについて",
+      "ko": "로컬 샌드박스 정보",
+      "zh-CN": "了解本机沙箱",
+      "zh-TW": "了解本機沙盒"
+    },
+    "ui.local_sandbox_tooltip": {
+      "en-GB": "Protects SSH keys, Keychain, and files outside authorized folders",
+      "en-US": "Protects SSH keys, Keychain, and files outside authorized folders",
+      "ja": "SSH 鍵・キーチェーン・許可されたフォルダ外のファイルを保護します",
+      "ko": "SSH 키, 키체인 및 허용된 폴더 외부의 파일을 보호합니다",
+      "zh-CN": "保护 SSH 密钥、钥匙串与授权目录之外的文件",
+      "zh-TW": "保護 SSH 金鑰、鑰匙圈與授權目錄之外的檔案"
+    },
+    "ui.sandbox_mode_read_only": {
+      "en-GB": "Read-only",
+      "en-US": "Read-only",
+      "ja": "読み取り",
+      "ko": "읽기 전용",
+      "zh-CN": "只读",
+      "zh-TW": "唯讀"
+    },
+    "ui.sandbox_mode_workspace": {
+      "en-GB": "Workspace",
+      "en-US": "Workspace",
+      "ja": "ワークスペース",
+      "ko": "작업 공간",
+      "zh-CN": "工作区",
+      "zh-TW": "工作區"
+    },
+    "ui.sandbox_mode_full": {
+      "en-GB": "Full",
+      "en-US": "Full",
+      "ja": "フル",
+      "ko": "전체",
+      "zh-CN": "完全",
+      "zh-TW": "完全"
+    },
+    "ui.sandbox_network": {
+      "en-GB": "Sandbox network",
+      "en-US": "Sandbox network",
+      "ja": "サンドボックス通信",
+      "ko": "샌드박스 네트워크",
+      "zh-CN": "允许沙箱联网",
+      "zh-TW": "允許沙盒連網"
+    },
+    "ui.writable_folders": {
+      "en-GB": "Writable folders",
+      "en-US": "Writable folders",
+      "ja": "書き込み可能フォルダ",
+      "ko": "쓰기 가능 폴더",
+      "zh-CN": "可写目录",
+      "zh-TW": "可寫目錄"
+    },
+    "ui.add_writable_folder": {
+      "en-GB": "Add writable folder",
+      "en-US": "Add writable folder",
+      "ja": "書き込み可能フォルダを追加",
+      "ko": "쓰기 가능 폴더 추가",
+      "zh-CN": "添加可写目录",
+      "zh-TW": "新增可寫目錄"
+    },
+    "ui.remove_writable_folder": {
+      "en-GB": "Remove folder",
+      "en-US": "Remove folder",
+      "ja": "フォルダを削除",
+      "ko": "폴더 제거",
+      "zh-CN": "移除目录",
+      "zh-TW": "移除目錄"
+    },
+    "ui.synced_project_folders_writable": {
+      "en-GB": "Synced project folders are writable automatically",
+      "en-US": "Synced project folders are writable automatically",
+      "ja": "同期済みプロジェクトフォルダは自動的に書き込み可能です",
+      "ko": "동기화된 프로젝트 폴더는 자동으로 쓰기 가능합니다",
+      "zh-CN": "已同步的项目目录默认可写",
+      "zh-TW": "已同步的專案目錄預設可寫"
+    },
+    "ui.synced_badge": {
+      "en-GB": "Synced",
+      "en-US": "Synced",
+      "ja": "同期",
+      "ko": "동기화됨",
+      "zh-CN": "自动同步",
+      "zh-TW": "自動同步"
+    },
+    "ui.security_audit": {
+      "en-GB": "Security audit",
+      "en-US": "Security audit",
+      "ja": "セキュリティ監査",
+      "ko": "보안 감사",
+      "zh-CN": "安全审计",
+      "zh-TW": "安全稽核"
+    },
+    "ui.audit_7d_retention": {
+      "en-GB": "7-day log",
+      "en-US": "7-day log",
+      "ja": "7日間保持",
+      "ko": "7일 보관",
+      "zh-CN": "保留 7 天",
+      "zh-TW": "保留 7 天"
+    },
+    "ui.audit_summary_blocked": {
+      "en-GB": "blocked",
+      "en-US": "blocked",
+      "ja": "ブロック",
+      "ko": "차단됨",
+      "zh-CN": "已拦截",
+      "zh-TW": "已攔截"
+    },
+    "ui.back_to_settings": {
+      "en-GB": "Back to settings",
+      "en-US": "Back to settings",
+      "ja": "設定に戻る",
+      "ko": "설정으로 돌아가기",
+      "zh-CN": "返回设置",
+      "zh-TW": "返回設定"
+    },
+    "ui.audit_filter_all": {
+      "en-GB": "All",
+      "en-US": "All",
+      "ja": "すべて",
+      "ko": "전체",
+      "zh-CN": "全部",
+      "zh-TW": "全部"
+    },
+    "ui.audit_filter_blocked": {
+      "en-GB": "Blocked",
+      "en-US": "Blocked",
+      "ja": "ブロック済み",
+      "ko": "차단됨",
+      "zh-CN": "已拦截",
+      "zh-TW": "已攔截"
+    },
+    "ui.audit_filter_approved": {
+      "en-GB": "Allowed",
+      "en-US": "Allowed",
+      "ja": "許可済み",
+      "ko": "허용됨",
+      "zh-CN": "已放行",
+      "zh-TW": "已放行"
+    },
+    "ui.audit_clear": {
+      "en-GB": "Clear",
+      "en-US": "Clear",
+      "ja": "消去",
+      "ko": "지우기",
+      "zh-CN": "清空",
+      "zh-TW": "清除"
+    },
+    "ui.audit_empty_all": {
+      "en-GB": "No local commands recorded in the past 7 days",
+      "en-US": "No local commands recorded in the past 7 days",
+      "ja": "過去 7 日間のローカルコマンド記録はありません",
+      "ko": "최근 7일간 기록된 로컬 명령이 없습니다",
+      "zh-CN": "最近 7 天暂无本机命令审计记录",
+      "zh-TW": "最近 7 天暫無本機指令稽核記錄"
+    },
+    "ui.audit_empty_blocked": {
+      "en-GB": "No blocked actions in the past 7 days",
+      "en-US": "No blocked actions in the past 7 days",
+      "ja": "過去 7 日間にブロックされた操作はありません",
+      "ko": "최근 7일간 차단된 작업이 없습니다",
+      "zh-CN": "最近 7 天没有被拦截的操作",
+      "zh-TW": "最近 7 天沒有被攔截的操作"
+    },
+    "ui.audit_decision_seatbelt_blocked": {
+      "en-GB": "Blocked",
+      "en-US": "Blocked",
+      "ja": "ブロック済み",
+      "ko": "차단됨",
+      "zh-CN": "已拦截",
+      "zh-TW": "已攔截"
+    },
+    "ui.audit_decision_user_denied": {
+      "en-GB": "Declined",
+      "en-US": "Declined",
+      "ja": "拒否",
+      "ko": "거부됨",
+      "zh-CN": "已拒绝",
+      "zh-TW": "已拒絕"
+    },
+    "ui.audit_decision_user_approved": {
+      "en-GB": "Allowed",
+      "en-US": "Allowed",
+      "ja": "許可済み",
+      "ko": "허용됨",
+      "zh-CN": "已放行",
+      "zh-TW": "已放行"
+    },
+    "ui.audit_decision_auto_sandbox": {
+      "en-GB": "Allowed",
+      "en-US": "Allowed",
+      "ja": "許可済み",
+      "ko": "허용됨",
+      "zh-CN": "已放行",
+      "zh-TW": "已放行"
+    },
+    "ui.audit_kind_files": {
+      "en-GB": "File access",
+      "en-US": "File access",
+      "ja": "ファイルアクセス",
+      "ko": "파일 접근",
+      "zh-CN": "文件访问",
+      "zh-TW": "檔案存取"
+    },
+    "ui.audit_kind_port": {
+      "en-GB": "Local port",
+      "en-US": "Local port",
+      "ja": "ローカルポート",
+      "ko": "로컬 포트",
+      "zh-CN": "本地端口",
+      "zh-TW": "本機連接埠"
+    },
+    "ui.audit_reason_credentials": {
+      "en-GB": "Protected credentials",
+      "en-US": "Protected credentials",
+      "ja": "保護された認証情報",
+      "ko": "보호된 자격 증명",
+      "zh-CN": "受保护的本机凭据",
+      "zh-TW": "受保護的本機憑證"
+    },
+    "ui.audit_reason_git": {
+      "en-GB": "Protected Git settings",
+      "en-US": "Protected Git settings",
+      "ja": "保護された Git 設定",
+      "ko": "보호된 Git 설정",
+      "zh-CN": "受保护的 Git 配置",
+      "zh-TW": "受保護的 Git 設定"
+    },
+    "ui.audit_reason_network": {
+      "en-GB": "Network disabled",
+      "en-US": "Network disabled",
+      "ja": "ネットワーク無効",
+      "ko": "네트워크 꺼짐",
+      "zh-CN": "联网已关闭",
+      "zh-TW": "連網已關閉"
+    },
+    "ui.audit_reason_readonly": {
+      "en-GB": "Read-only mode",
+      "en-US": "Read-only mode",
+      "ja": "読み取り専用",
+      "ko": "읽기 전용",
+      "zh-CN": "只读模式限制",
+      "zh-TW": "唯讀模式限制"
+    },
+    "ui.audit_reason_outside_workspace": {
+      "en-GB": "Outside writable folders",
+      "en-US": "Outside writable folders",
+      "ja": "書き込み可能フォルダ外",
+      "ko": "쓰기 가능 폴더 외부",
+      "zh-CN": "超出可写目录",
+      "zh-TW": "超出可寫目錄"
+    },
+    "ui.audit_network_on": {
+      "en-GB": "Net on",
+      "en-US": "Net on",
+      "ja": "通信オン",
+      "ko": "네트워크 켜짐",
+      "zh-CN": "联网开启",
+      "zh-TW": "連網開啟"
+    },
+    "ui.audit_network_off": {
+      "en-GB": "Net off",
+      "en-US": "Net off",
+      "ja": "通信オフ",
+      "ko": "네트워크 꺼짐",
+      "zh-CN": "离线隔离",
+      "zh-TW": "離線隔離"
     }
   },
   "version": 1

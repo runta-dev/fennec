@@ -3,6 +3,7 @@ package localssh
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -10,6 +11,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fennec/internal/audit"
+	"fennec/internal/sandbox"
 	"fmt"
 	"io"
 	"net"
@@ -40,6 +43,8 @@ type Decision struct {
 	NeverAsk bool   `json:"never_ask"`
 }
 type Broker struct {
+	Policy     func() sandbox.Policy
+	Audit      *audit.Store
 	mu         sync.Mutex
 	pending    map[string]chan Decision
 	writeMu    sync.Mutex
@@ -57,21 +62,39 @@ func NewBroker(directory string, output io.Writer) *Broker {
 	return &Broker{pending: map[string]chan Decision{}, directory: directory, output: output, active: map[string]context.CancelFunc{}, done: make(chan struct{})}
 }
 
+func (b *Broker) effectivePolicy() sandbox.Policy {
+	if b != nil && b.Policy != nil {
+		return b.Policy()
+	}
+	return sandbox.Policy{Mode: sandbox.ModeFull, Network: true}
+}
+
+func (b *Broker) recordAudit(e audit.Entry) {
+	if b != nil && b.Audit != nil {
+		_ = b.Audit.Record(e)
+	}
+}
+
 func (b *Broker) emit(e Event) {
 	b.writeMu.Lock()
 	defer b.writeMu.Unlock()
 	json.NewEncoder(b.output).Encode(e)
 }
 func (b *Broker) approve(ctx context.Context, command, fingerprint string) bool {
-	return b.approveKind(ctx, command, fingerprint, "")
+	allowed, _ := b.approveWithDecision(ctx, command, fingerprint, "", false)
+	return allowed
 }
 func (b *Broker) approveKind(ctx context.Context, command, fingerprint, kind string) bool {
+	allowed, _ := b.approveWithDecision(ctx, command, fingerprint, kind, false)
+	return allowed
+}
+func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, kind string, forcePrompt bool) (bool, string) {
 	if ctx.Err() != nil {
-		return false
+		return false, "user_denied"
 	}
 	select {
 	case <-b.done:
-		return false
+		return false, "user_denied"
 	default:
 	}
 	b.mu.Lock()
@@ -79,21 +102,21 @@ func (b *Broker) approveKind(ctx context.Context, command, fingerprint, kind str
 	closed := b.closed
 	b.mu.Unlock()
 	if closed {
-		return false
+		return false, "user_denied"
 	}
-	if b.trusted(fingerprint) {
-		return true
+	if !forcePrompt && b.trusted(fingerprint) {
+		return true, "auto_sandbox"
 	}
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
-		return false
+		return false, "user_denied"
 	}
 	id := hex.EncodeToString(raw)
 	ch := make(chan Decision, 1)
 	b.mu.Lock()
 	if len(b.pending) >= 16 || b.closed || generation != b.generation {
 		b.mu.Unlock()
-		return false
+		return false, "user_denied"
 	}
 	b.pending[id] = ch
 	b.mu.Unlock()
@@ -104,18 +127,21 @@ func (b *Broker) approveKind(ctx context.Context, command, fingerprint, kind str
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if generation != b.generation || ctx.Err() != nil {
-			return false
+			return false, "user_denied"
 		}
 		if decision.Allow && decision.NeverAsk {
 			if err := b.rememberLocked(fingerprint); err != nil {
-				return false
+				return false, "user_denied"
 			}
 		}
-		return decision.Allow
+		if decision.Allow {
+			return true, "user_approved"
+		}
+		return false, "user_denied"
 	case <-ctx.Done():
-		return false
+		return false, "user_denied"
 	case <-b.done:
-		return false
+		return false, "user_denied"
 	}
 }
 func (b *Broker) decide(d Decision) {
@@ -194,11 +220,25 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			session.Exit(126)
 			return
 		}
+		policy := broker.effectivePolicy()
+		decisionType := "auto_sandbox"
 		if requireApproval {
 			approval, cancelApproval := context.WithTimeout(operation, 2*time.Minute)
 			defer cancelApproval()
 			io.WriteString(session.Stderr(), "Fennec: waiting for approval on your computer.\n")
-			if !broker.approve(approval, command, crypto.FingerprintSHA256(session.PublicKey())) {
+			allowed, dec := broker.approveWithDecision(approval, command, crypto.FingerprintSHA256(session.PublicKey()), "", false)
+			decisionType = dec
+			if !allowed {
+				broker.recordAudit(audit.Entry{
+					Kind:           "exec",
+					Command:        command,
+					SandboxMode:    sandbox.NormalizeMode(policy.Mode),
+					NetworkAllowed: policy.Network,
+					Decision:       "user_denied",
+					Blocked:        true,
+					ExitCode:       126,
+					Detail:         "Denied or expired during approval prompt",
+				})
 				io.WriteString(session.Stderr(), "Fennec: denied, disconnected or expired.\n")
 				session.Exit(126)
 				return
@@ -209,13 +249,15 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			session.Exit(126)
 			return
 		}
+		home, _ := os.UserHomeDir()
+		started := time.Now()
 		runCtx, cancelRun := context.WithTimeout(operation, 10*time.Minute)
 		defer cancelRun()
-		cmd := exec.CommandContext(runCtx, "/bin/sh", "-c", command)
-		cmd.Dir, _ = os.UserHomeDir()
+		cmd, effectiveMode := sandbox.Command(runCtx, policy, home, "", command)
+		var stderrPreview boundedCapture
 		cmd.Stdin = session
 		cmd.Stdout = session
-		cmd.Stderr = session.Stderr()
+		cmd.Stderr = io.MultiWriter(session.Stderr(), &stderrPreview)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Cancel = func() error {
 			if cmd.Process == nil {
@@ -244,6 +286,24 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 				code = 130
 			}
 		}
+		errSnippet := stderrPreview.String()
+		blocked := false
+		if sandbox.DetectSandboxViolation(effectiveMode, code, errSnippet) {
+			decisionType = "sandbox_blocked"
+			blocked = true
+		}
+		broker.recordAudit(audit.Entry{
+			Kind:           "exec",
+			Command:        command,
+			Workdir:        cmd.Dir,
+			SandboxMode:    effectiveMode,
+			NetworkAllowed: policy.Network || effectiveMode == sandbox.ModeFull,
+			Decision:       decisionType,
+			Blocked:        blocked,
+			ExitCode:       code,
+			DurationMS:     time.Since(started).Milliseconds(),
+			Detail:         errSnippet,
+		})
 		session.Exit(code)
 	}}
 	server.ChannelHandlers = map[string]ssh.ChannelHandler{
@@ -385,4 +445,30 @@ func (b *Broker) clearTrust() error {
 		return nil
 	}
 	return err
+}
+
+type boundedCapture struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (c *boundedCapture) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	const limit = 1024
+	if c.buf.Len() < limit {
+		rem := limit - c.buf.Len()
+		if len(p) > rem {
+			_, _ = c.buf.Write(p[:rem])
+		} else {
+			_, _ = c.buf.Write(p)
+		}
+	}
+	return len(p), nil
+}
+
+func (c *boundedCapture) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.String()
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -149,7 +150,7 @@ func TestSettingsRevisionPreventsStaleRestoration(t *testing.T) {
 	if _, err = s.set(false)(ctx, json.RawMessage(`{"magpie":false}`)); err == nil {
 		t.Fatal("canceled write persisted")
 	}
-	if s.value != same {
+	if !reflect.DeepEqual(s.value, same) {
 		t.Fatal("canceled write changed settings")
 	}
 }

@@ -30,8 +30,8 @@ function syncTabIndicator(){
  const selected=navigation?.querySelector('[data-tab].selected');
  const indicator=navigation?.querySelector('.tab-indicator');
  if(!indicator)return;
- indicator.hidden=!selected;
- if(!selected)return;
+ indicator.hidden=!selected || selected.offsetWidth===0;
+ if(!selected || selected.offsetWidth===0)return;
  indicator.style.width=selected.offsetWidth+'px';
  indicator.style.height=selected.offsetHeight+'px';
  indicator.style.transform=`translate(${selected.offsetLeft}px, ${selected.offsetTop}px)`;
@@ -46,6 +46,7 @@ function tab(name) {
     document.querySelector('#session-output').textContent='';
   }
   if (name === "account") send("load-billing");
+  if (name === "governance") window.onGovernanceTabShown?.();
   document.querySelector('#settings').classList.toggle('active', name === 'preferences');
   document.querySelector('#settings').setAttribute('aria-pressed', String(name === 'preferences'));
   document.querySelectorAll('main>section').forEach(section => section.hidden = section.id !== name);
@@ -560,6 +561,7 @@ window.renderPreferences = value => {
  window.renderMagpiePreference(value.magpie === true);
  window.renderUpdatePreferences?.(value);
  window.renderDeveloperPreferences?.(value);
+ window.renderSandboxPreferences?.(value);
  window.renderAgents(detectedAgents);
  if(['system','light','dark'].includes(value.theme) && appearance.value!==value.theme){appearance.value=value.theme;applyAppearance();}
  if(typeof supportedLanguages!=='undefined' && supportedLanguages.includes(value.language) && language!==value.language){
@@ -568,6 +570,7 @@ window.renderPreferences = value => {
   localize();
   window.rerenderUpdater?.();
   window.rerenderDeveloper?.();
+  window.rerenderSandboxAudit?.();
    window.rerenderRuntimeMetrics?.();
   const trigger=languageSelect.nextElementSibling;
   if(trigger?.classList.contains('choice-trigger')){const label=trigger.querySelector('span');if(label)label.textContent=languageSelect.selectedOptions[0].textContent;}

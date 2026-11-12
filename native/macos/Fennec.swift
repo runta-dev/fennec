@@ -58,6 +58,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var outsideMonitor: Any?
     private var popupPresentationID: UUID?
     private var pageLoaded = false
+    private var pickingSandboxFolder = false
     private var localMonitor: Any?
     private var web: WKWebView!
     private var authorized = false
@@ -73,6 +74,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var lastMetricsPoll = Date.distantPast
     private var discoveringAgents = false
     private var visibleRefreshTab = "agents"
+    private var activeAuditFilter = "all"
     private var rendererRecoveryTimes: [Date] = []
     private var lastLoginMessage = ""
     private var lastLoginBusy = false
@@ -331,6 +333,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     private func dismissPopupIfOutside(_ event: NSEvent) {
+        if pickingSandboxFolder { return }
         guard popup.isVisible || popupPresentationID != nil else { return }
         if event.window === popup { return }
         let point = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? NSEvent.mouseLocation
@@ -633,12 +636,16 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        if preferences["initialized"] as? Bool != true {
 	            render("renderMagpiePreference",[preferences["magpie"] as? Bool ?? false])
 	            render("renderDeveloperPreferences",[preferences])
+	            render("renderSandboxPreferences",[preferences])
 	        }
 	    }
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
 	    }
+        if visibleRefreshTab == "governance" {
+            loadAuditLog()
+        }
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
         let epochChanged = epoch != accountEpoch
@@ -799,9 +806,26 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
+        if action.hasPrefix("audit-list:"),let data=String(action.dropFirst(11)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+            if let filter = params["filter"] as? String, !filter.isEmpty { activeAuditFilter = filter }
+            control.call("audit.list",params) { [weak self] result in
+                if case .success(let value) = result { self?.render("renderAuditLog",[value]) }
+            }
+            return
+        }
+        if action == "audit-clear" {
+            mutate("audit.clear") { [weak self] success,value in
+                if success,let value { self?.render("renderAuditLog",[value]) }
+            }
+            return
+        }
+        if action == "pick-sandbox-root" {
+            pickSandboxFolder()
+            return
+        }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
-        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
-        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else { refreshAgents() }; return }
+        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; renderRefreshActivity(); return }
+        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else if visibleRefreshTab == "governance" { loadAuditLog() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
         for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
@@ -943,6 +967,34 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "login-item:status": renderLoginItem()
         case "login-item:settings": if #available(macOS 13.0, *) { SMAppService.openSystemSettingsLoginItems() }
         default: break
+        }
+    }
+    private func loadAuditLog() {
+        guard controlReady else { return }
+        control.call("audit.list", ["filter": activeAuditFilter, "limit": 100]) { [weak self] result in
+            if case .success(let value) = result { self?.render("renderAuditLog", [value]) }
+        }
+    }
+    private func pickSandboxFolder() {
+        guard !pickingSandboxFolder else { return }
+        pickingSandboxFolder = true
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.showsHiddenFiles = false
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] response in
+            guard let self else { return }
+            self.pickingSandboxFolder = false
+            if self.popup.isVisible {
+                self.popup.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            if response == .OK, let url = panel.url, url.isFileURL {
+                self.render("renderPickedSandboxRoot", [url.path])
+            }
         }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

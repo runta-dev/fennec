@@ -39,7 +39,7 @@ function localize() {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let node;
   while ((node = walker.nextNode())) {
-    if (node.parentElement.closest('script,style,#session-output,#session-terminal,#session-detail-title,#language,#runtime-list,.approval-card pre,.header-login.account-link:not([data-i18n]),.preference-account,.native-account-name[data-identity],.native-subscription')) continue;
+    if (node.parentElement.closest('script,style,#session-output,#session-terminal,#session-detail-title,#language,#runtime-list,.approval-card pre,.header-login.account-link:not([data-i18n]),.preference-account,.native-account-name[data-identity],.native-subscription,.audit-command,.audit-detail-code,.sandbox-root-path')) continue;
     const previous = textSources.get(node);
     const source = previous && node.nodeValue === previous.output ? previous.source : keyedSource(node.nodeValue, node.parentElement.getAttribute('data-i18n'));
     const output = translate(source);
@@ -47,7 +47,7 @@ function localize() {
     textSources.set(node, {source, output});
   }
   document.querySelectorAll('[aria-label],[placeholder],[title]').forEach(element => {
-    if (element.closest('#session-terminal,#session-output,.session-title:not([data-i18n]),.header-login.account-link:not([data-i18n]),.native-account-name[data-identity]')) return;
+    if (element.closest('#session-terminal,#session-output,.session-title:not([data-i18n]),.header-login.account-link:not([data-i18n]),.native-account-name[data-identity],.sandbox-root-path')) return;
     const records = attrSources.get(element) || {};
     for (const attribute of ['aria-label','placeholder','title']) {
       if (!element.hasAttribute(attribute)) continue;
