@@ -463,7 +463,7 @@ capabilities:
       chain the last plan left for its window, and a subsequent find resolves targets in the current front window.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestSaveLastPlanChain]
+    tests: [internal/flows.TestSaveLastPlanChain]
     upstream:
       - "node/background/a fresh background run saves the chain the last plan left at its window and locates in the front window"
 excluded:

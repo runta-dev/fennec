@@ -220,7 +220,7 @@ capabilities:
       polling fallback.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestNoStoreFails]
+    tests: [internal/flows.TestNoStoreFails]
     upstream: [changelog/0.1.6/4]
 
   - id: CAP-RGB-021
@@ -696,7 +696,7 @@ capabilities:
       A stop on a field that already holds text says to continue the flow rather than replay it.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestContinuationSavedIntoFlow]
+    tests: [internal/flows.TestContinuationSavedIntoFlow]
     upstream: [changelog/0.1.28/4]
 
   - id: CAP-RGB-062
@@ -826,7 +826,7 @@ capabilities:
       never saved.
     surface: flow
     parity: oracle
-    tests: [planned:scenario/RecordTextEditDraft, planned:internal/flows.TestDraftParameters]
+    tests: [planned:scenario/RecordTextEditDraft, internal/flows.TestDraftParameters]
     upstream: [changelog/0.1.33/1]
 
   - id: CAP-RGB-074
@@ -838,7 +838,7 @@ capabilities:
       System Settings and fennec-cua's own menu are left out.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestRedactions, planned:internal/record.TestFileMode]
+    tests: [internal/record.TestRedactions, internal/record.TestFileMode]
     upstream: [changelog/0.1.33/2]
 
   - id: CAP-RGB-075
@@ -911,7 +911,7 @@ capabilities:
       and typed run carries the page address and DOM id, and named values are templated in addresses too.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestWebDraft]
+    tests: [internal/flows.TestWebDraft]
     upstream: [changelog/0.1.34/2]
 
   - id: CAP-RGB-082

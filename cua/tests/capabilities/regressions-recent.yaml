@@ -27,7 +27,7 @@ capabilities:
       flow store's git history; a replay supplies the secret through parameters.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestSecretStepRedaction, planned:internal/flows.TestSecretNotSaved]
+    tests: [planned:internal/plan.TestSecretStepRedaction, internal/flows.TestSecretNotSaved]
     upstream: [changelog/0.1.48/1, changelog/0.1.49/1, changelog/0.1.40/6, changelog/0.1.41/15]
   - id: CAP-RGA-003
     title: A secret line gets its Return only when the terminal did not show it
@@ -309,7 +309,7 @@ capabilities:
       saved by name, and its own generated name stays within 40 characters.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestCorruptFlowFile, planned:internal/flows.TestUnsignedCommit, planned:internal/flows.TestAutoSaveNaming]
+    tests: [internal/flows.TestCorruptFlowFile, internal/flows.TestUnsignedCommit, internal/flows.TestAutoSaveNaming]
     upstream: [changelog/0.1.44/8, changelog/0.1.42/14]
   - id: CAP-RGA-029
     title: A Return that opens an overwrite confirmation is not repeated
@@ -345,7 +345,7 @@ capabilities:
       F12 are kept as key steps, and a model caption keeps only its first line, at most 80 characters.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftTypedText, planned:internal/flows.TestDraftCaption]
+    tests: [internal/flows.TestDraftTypedText, internal/flows.TestDraftCaption]
     upstream: [changelog/0.1.42/14, changelog/0.1.41/15]
   - id: CAP-RGA-033
     title: A menu step finds an entry that retitled itself
@@ -376,7 +376,7 @@ capabilities:
       recorded "after" takes the new top-level window of the plan's app that the step opened.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestParamStepNotPinned, planned:internal/flows.TestReplayAppTitleWait, planned:internal/flows.TestReplayAfterNewWindow]
+    tests: [internal/flows.TestParamStepNotPinned, internal/flows.TestReplayAppTitleWait, internal/flows.TestReplayAfterNewWindow]
     upstream: [changelog/0.1.41/15]
   - id: CAP-RGA-036
     title: A background menu toggle that needs pixels refuses before opening menus
@@ -444,7 +444,7 @@ capabilities:
       escalated chain uses the window the chain left.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestInterruptedPlanReport, planned:internal/flows.TestNoSaveAfterKill]
+    tests: [planned:internal/plan.TestInterruptedPlanReport, internal/flows.TestNoSaveAfterKill]
     upstream: [changelog/0.1.40/6, changelog/0.1.40/27]
   - id: CAP-RGA-043
     title: Auto-input plans keep the foreground they took
@@ -859,7 +859,7 @@ capabilities:
       sent, including those of an action that just ended.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestBlockedByBundleName, planned:internal/record.TestOwnInputExcluded]
+    tests: [internal/record.TestBlockedByBundleName, internal/record.TestOwnInputExcluded]
     upstream: [changelog/0.1.42/7, changelog/0.1.40/14]
   - id: CAP-RGA-086
     title: Only the daemon's own user can record
@@ -877,7 +877,7 @@ capabilities:
       of another app is never cropped; a click deeper than 16 elements keeps its window and crop.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestCropByPid]
+    tests: [internal/record.TestCropByPid]
     upstream: [changelog/0.1.41/18, changelog/0.1.40/22]
   - id: CAP-RGA-088
     title: Recording edge cases are handled
@@ -889,7 +889,7 @@ capabilities:
       non-list `apps` argument is refused.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestStopSavesRecording, planned:internal/record.TestDraftCaptionsConcurrent]
+    tests: [internal/record.TestStopSavesRecording, internal/record.TestDraftCaptionsConcurrent]
     upstream: [changelog/0.1.40/14, changelog/0.1.40/22]
   # --- models, extensions, packaging ---------------------------------------
   - id: CAP-RGA-089

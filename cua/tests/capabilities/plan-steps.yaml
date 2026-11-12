@@ -527,7 +527,7 @@ capabilities:
       that flow in place of the failing ones, keeping its parameters with their latest values.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestRepairSavesFixedSteps]
+    tests: [internal/flows.TestRepairSavesFixedSteps]
     upstream:
       - 'node/gui_plan_blank/a plan that continues a flow from the step it stopped at saves the fixed steps into that flow'
   - id: CAP-STP-036
@@ -541,7 +541,7 @@ capabilities:
       installer prompt) and saving still succeeds.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestStoragePrivate, planned:internal/flows.TestRunLogRotation, planned:internal/flows.TestGitWithoutCLT]
+    tests: [internal/flows.TestStoragePrivate, internal/flows.TestRunLogRotation, internal/flows.TestGitWithoutCLT]
     upstream:
       - 'node/clt/on macOS without the Command Line Tools a flow never runs git, which would open their installer'
       - 'node/gitsign/a flow commit is never signed, so a user signing setup neither prompts nor loses the commit'

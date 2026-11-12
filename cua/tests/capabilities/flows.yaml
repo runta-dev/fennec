@@ -15,7 +15,7 @@ capabilities:
       opened after the last window listing still resolves that window by relisting.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestClickKeepsElementWindowAndCrop, planned:internal/record.TestTapReadElementWins, planned:internal/record.TestClickOnRootIsMarked, planned:internal/record.TestClickInNewWindowRelists]
+    tests: [internal/record.TestClickKeepsElementWindowAndCrop, internal/record.TestTapReadElementWins, internal/record.TestClickOnRootIsMarked, internal/record.TestClickInNewWindowRelists]
     upstream:
       - rust/shuttle/src/record.rs::a_click_keeps_the_element_under_it_its_window_and_a_crop_around_it
       - rust/shuttle/src/record.rs::a_click_the_tap_read_keeps_that_element_and_not_what_the_desk_finds_later
@@ -30,7 +30,7 @@ capabilities:
       in a web page stores the page address and, when present, the element's DOM id.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestHoldsWebTreeUntilStop, planned:internal/record.TestWebClickKeepsURLAndDOMID]
+    tests: [internal/record.TestHoldsWebTreeUntilStop, internal/record.TestWebClickKeepsURLAndDOMID]
     upstream:
       - rust/shuttle/src/record.rs::a_recording_holds_the_page_tree_of_each_app_it_keeps_and_lets_go_at_its_end
       - rust/shuttle/src/record.rs::a_click_in_a_web_page_keeps_the_page_address_and_the_dom_id
@@ -45,7 +45,7 @@ capabilities:
       bare skip). A key delivered to a secure field is recorded only as a secret key with no text or code.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestFirstKeyKeepsFocus, planned:internal/record.TestPasswordFieldMarked, planned:internal/record.TestPasswordFocusOwnerApp, planned:internal/record.TestSecureKeyHasNoText]
+    tests: [internal/record.TestFirstKeyKeepsFocus, internal/record.TestPasswordFieldMarked, internal/record.TestPasswordFocusOwnerApp, internal/record.TestSecureKeyHasNoText]
     upstream:
       - rust/shuttle/src/record.rs::the_first_key_of_a_run_keeps_the_field_it_went_to_or_that_none_was_readable
       - rust/shuttle/src/record.rs::a_password_field_clicked_or_focused_is_marked
@@ -62,7 +62,7 @@ capabilities:
       element, text or crop, and is never attributed to the frontmost app; no capture is taken for it.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestBlockedAppsCaseInsensitive, planned:internal/record.TestBlockedInputSkippedBare, planned:internal/record.TestWindowlessProcessSkipped]
+    tests: [internal/record.TestBlockedAppsCaseInsensitive, internal/record.TestBlockedInputSkippedBare, internal/record.TestWindowlessProcessSkipped]
     upstream:
       - rust/shuttle/src/record.rs::the_blocked_apps_match_whatever_the_case
       - rust/shuttle/src/record.rs::input_in_a_blocked_or_unnamed_app_is_skipped_without_details
@@ -76,7 +76,7 @@ capabilities:
       never becomes a step.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestStopWaitsForSave, planned:internal/record.TestKillHotkeyNotRecorded]
+    tests: [internal/record.TestStopWaitsForSave, internal/record.TestKillHotkeyNotRecorded]
     upstream:
       - rust/shuttle/src/record.rs::finishing_waits_until_the_ended_recording_is_saved
       - rust/shuttle/src/record.rs::the_kill_hotkey_that_ends_a_recording_is_no_step_of_it
@@ -89,7 +89,7 @@ capabilities:
       settle is still appended as a final `after` event.
     surface: flow
     parity: spec
-    tests: [planned:internal/record.TestAfterWindowKeptAtStop, planned:internal/record.TestAfterWindowsAndNotesInOrder]
+    tests: [internal/record.TestAfterWindowKeptAtStop, internal/record.TestAfterWindowsAndNotesInOrder]
     upstream:
       - rust/shuttle/src/record.rs::a_window_that_came_after_the_last_input_settled_is_kept_when_the_recording_stops
       - rust/shuttle/src/record.rs::a_new_front_window_after_input_is_kept_with_notes_in_order
@@ -106,7 +106,7 @@ capabilities:
       they belong to, and the step indexes where skipped input left gaps.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftFromRecording]
+    tests: [internal/flows.TestDraftFromRecording]
     upstream:
       - node/draft/a recording becomes gui_plan steps with menus merged, typed values and window titles as params, and the recorded click
   - id: CAP-FLW-008
@@ -118,7 +118,7 @@ capabilities:
       switch step to that app and window before it.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftStartsAtFirstWindow, planned:internal/flows.TestDraftSwitchesAppAndWindow]
+    tests: [internal/flows.TestDraftStartsAtFirstWindow, internal/flows.TestDraftSwitchesAppAndWindow]
     upstream:
       - node/draft/a recording that starts with a click in a window opens its app at that window
       - node/draft/a recording that starts with typing starts at the window it typed into, and a click in another one switches there
@@ -133,7 +133,7 @@ capabilities:
       requires a secure focused field: the one the recording read where it read one, else any secure field.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftPasswordAfterClick, planned:internal/flows.TestDraftPasswordFocusOnly, planned:internal/flows.TestDraftPasswordFieldRequired]
+    tests: [internal/flows.TestDraftPasswordAfterClick, internal/flows.TestDraftPasswordFocusOnly, internal/flows.TestDraftPasswordFieldRequired]
     upstream:
       - node/draft/a click into a password field becomes a click and a secret password step, and the keys after it add none
       - node/draft/a password field that took the focus with no click becomes one secret password step
@@ -147,7 +147,7 @@ capabilities:
       combo (shift+tab, cmd+shift+s), and non-text keys become key steps in the shared key-name vocabulary.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftTypeKeepsFocus, planned:internal/flows.TestDraftNoteKeepsRun, planned:internal/flows.TestDraftShiftAndOption]
+    tests: [internal/flows.TestDraftTypeKeepsFocus, internal/flows.TestDraftNoteKeepsRun, internal/flows.TestDraftShiftAndOption]
     upstream:
       - node/draft/each typed run and password keeps the field the recording typed into, or unverified where it read none
       - node/draft/a note in the middle of typing keeps the run one step with its field
@@ -161,7 +161,7 @@ capabilities:
       recorded) so replay can check it is still on that page; type steps keep the field's DOM id.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftWebPage]
+    tests: [internal/flows.TestDraftWebPage]
     upstream:
       - node/draft/a recording in a web page opens its address and keeps the page and DOM id on each step
   - id: CAP-FLW-012
@@ -172,7 +172,7 @@ capabilities:
       after the first line never enters the plan.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftCaptionFirstLine80]
+    tests: [internal/flows.TestDraftCaptionFirstLine80]
     upstream:
       - node/draft/a model caption keeps its first line and at most 80 characters
   - id: CAP-FLW-013
@@ -183,7 +183,7 @@ capabilities:
       replay clicks the recorded point rather than the crop centre.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestDraftKeepsCropOffset]
+    tests: [internal/flows.TestDraftKeepsCropOffset]
     upstream:
       - node/draft/a click near the screen edge keeps its crop offset for the replay
   # --- replaying recorded steps ---
@@ -252,7 +252,7 @@ capabilities:
       instead of pressing the element through an accessibility action.
     surface: act
     parity: oracle
-    tests: [planned:internal/flows.TestDraftKeepsButtonCountMods, planned:internal/plan.TestModifiedClickClicksCentre]
+    tests: [internal/flows.TestDraftKeepsButtonCountMods, planned:internal/plan.TestModifiedClickClicksCentre]
     upstream:
       - node/draft/a right click, a double click and a click with modifiers keep their button, count and mods
       - node/recorded/a recorded right click, double click or modifier click clicks the element centre with them instead of pressing it
@@ -267,7 +267,7 @@ capabilities:
       later auto saves replace the earlier auto save.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestNamedFlowNotOverwritten, planned:internal/flows.TestSuffixedAutoNameFits, planned:internal/flows.TestRecordedPlanSaves]
+    tests: [internal/flows.TestNamedFlowNotOverwritten, internal/flows.TestSuffixedAutoNameFits, internal/flows.TestRecordedPlanSaves]
     upstream:
       - node/flows/an unnamed chain never overwrites a flow saved by name under its slug, and auto saves still replace each other
       - node/flows/a suffixed auto name stays within the slug length, so it never names the flow it stepped around
@@ -282,7 +282,7 @@ capabilities:
       with only a name names the last chain and merges any params given, and works without git available.
     surface: flow
     parity: spec
-    tests: [planned:internal/flows.TestChainKeepsUntitledWindowPid, planned:internal/flows.TestChainDirtyWhileActing, planned:internal/flows.TestSaveNamesLastChainWithoutGit]
+    tests: [internal/flows.TestChainKeepsUntitledWindowPid, internal/flows.TestChainDirtyWhileActing, internal/flows.TestSaveNamesLastChainWithoutGit]
     upstream:
       - node/flows/a chain that ends in an untitled window keeps that window's process
       - node/flows/a plan marks the chain record dirty before it acts and clears the mark when it ends, so a killed run never chains over its steps
@@ -297,7 +297,7 @@ capabilities:
       directly with the plan or later from the chain record.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestPasswordNotInFlowOrChain, planned:internal/flows.TestStoppedPasswordNotInChain, planned:internal/flows.TestUserAndPasswordDistinctParams]
+    tests: [internal/flows.TestPasswordNotInFlowOrChain, internal/flows.TestStoppedPasswordNotInChain, internal/flows.TestUserAndPasswordDistinctParams]
     upstream:
       - node/flows/a value typed into a password field is never written to a saved flow or the chain record
       - node/flows/the chain record holds no password, neither from a password step that stopped nor typed as a literal
@@ -310,7 +310,7 @@ capabilities:
       steps differ, for example the password step now ends in Return, the plan runs again before it is saved.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestSaveJustRunNoRetype, planned:internal/flows.TestSaveChangedStepsRuns]
+    tests: [internal/flows.TestSaveJustRunNoRetype, internal/flows.TestSaveChangedStepsRuns]
     upstream:
       - node/flows/saving the steps of a plan that just typed a password stores them without typing again
       - node/flows/saving a plan whose password step adds a Return runs it again
@@ -322,7 +322,7 @@ capabilities:
       is templated as `{{param:base}}`, so a replay with another path expects the new file's title.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestBaseTemplating]
+    tests: [internal/flows.TestBaseTemplating]
     upstream:
       - "node/flows/Windows paths: :base takes the file name, and a saved flow templates a title that holds a typed path's file name"
   - id: CAP-FLW-024
@@ -333,7 +333,7 @@ capabilities:
       0.25; otherwise it names no flow and reports the top probability.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestFindThresholds]
+    tests: [internal/flows.TestFindThresholds]
     upstream:
       - node/flows/find names the saved flow the model picks, and no flow under 0.6 or within 0.25 of the runner-up
   - id: CAP-FLW-025
@@ -345,7 +345,7 @@ capabilities:
       still indexed.
     surface: flow
     parity: oracle
-    tests: [planned:internal/flows.TestIndexSkipsMalformed]
+    tests: [internal/flows.TestIndexSkipsMalformed]
     upstream:
       - node/flows/a flow file without saved_at or params stays out of the index, and the flows beside it still index
 excluded: []

@@ -18,6 +18,10 @@ import (
 	"fennec/cua/internal/view"
 )
 
+// driverApp is the bundled cua-driver's process name; its overlay and other
+// windows are never listed, even when another copy of the driver runs.
+const driverApp = "cua-driver"
+
 // Hung-app detection.
 const (
 	MessagingTimeout = 500 * time.Millisecond
@@ -103,7 +107,7 @@ func (d *Desk) Windows(ctx context.Context) ([]view.RawWindow, error) {
 	names := map[int]string{}
 	shown := map[int]map[uint32]ax.Rect{}
 	for i, w := range server {
-		if w.Layer != 0 || w.Alpha <= 0 || skip[w.PID] {
+		if w.Layer != 0 || w.Alpha <= 0 || skip[w.PID] || w.Owner == driverApp {
 			continue
 		}
 		rank[w.ID] = i

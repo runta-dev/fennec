@@ -131,6 +131,8 @@ func serve(ctx context.Context, paths daemon.Paths) error {
 	}
 	if bin != "" {
 		sup := &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger}
+		// The driver's own windows (its overlay) are never an agent's.
+		dk.ExcludePIDs = func() []int { return []int{sup.PID()} }
 		dctx, dcancel := context.WithCancel(ctx)
 		defer func() { dcancel(); sup.Wait() }()
 		go sup.Run(dctx)

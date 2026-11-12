@@ -9,6 +9,7 @@
 //	go run ./cmd/cua-vm grant CLIENT            grant Accessibility and Screen Recording
 //	go run ./cmd/cua-vm test [-tags T] PKG...   build test binaries, run them in the VM's desktop session
 //	go run ./cmd/cua-vm fixture                 build the fixture app and install it in the VM
+//	go run ./cmd/cua-vm push DEST PATH...       copy local files into a VM directory
 package main
 
 import (
@@ -80,6 +81,23 @@ func run(args []string) error {
 		return withSession(ctx, v, func(s *vm.Session) error { return s.GrantTCC(ctx, rest[0]) })
 	case "fixture":
 		return fixture(ctx, v)
+	case "push":
+		// push DEST PATH...: copy local files or directories into DEST.
+		if len(rest) < 2 {
+			return errors.New("push takes a VM directory and local paths")
+		}
+		return withSession(ctx, v, func(s *vm.Session) error {
+			for _, p := range rest[1:] {
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return err
+				}
+				if err := pushDir(ctx, s, filepath.Dir(abs), filepath.Base(abs), rest[0]); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	case "test":
 		return test(ctx, v, rest)
 	}
