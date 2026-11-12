@@ -121,17 +121,11 @@ func TestGatewayHomeLinksRoutingAndUserAccount(t *testing.T) {
 	}
 	config, _ := os.ReadFile(filepath.Join(codexHome, "config.toml"))
 	auth, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
-	if string(config) != "model = 'zai/glm-5.3'\n" || err != nil || string(auth) != `{"account":"user"}` {
+	if !strings.Contains(string(config), "zai/glm-5.3") || err != nil || string(auth) != `{"account":"user"}` {
 		t.Fatalf("config=%q auth=%q err=%v", config, auth, err)
 	}
-	// Codex may rewrite a linked file in place; the next dial restores the link.
-	os.Remove(filepath.Join(codexHome, "config.toml"))
-	os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte("stale"), 0600)
-	if _, _, _, err := codexAppServerEnvironment(home); err != nil {
-		t.Fatal(err)
-	}
-	if target, err := os.Readlink(filepath.Join(codexHome, "config.toml")); err != nil || target != filepath.Join(gateway, "config.toml") {
-		t.Fatal(target, err)
+	if info, err := os.Lstat(filepath.Join(codexHome, "config.toml")); err != nil || !info.Mode().IsRegular() {
+		t.Fatal("ChatGPT config must be its own file", err)
 	}
 	if gatewayAuth, _ := os.ReadFile(filepath.Join(gateway, "auth.json")); string(gatewayAuth) != `{"account":"gateway"}` {
 		t.Fatal("gateway credentials changed")
@@ -147,5 +141,43 @@ func TestGatewayOverridesSelectMagpieWithoutOpenAILogin(t *testing.T) {
 	got := strings.Join(gatewayOverrides(home), " ")
 	if got != `-c model_provider="magpie" -c model_providers.magpie.requires_openai_auth=false` {
 		t.Fatal(got)
+	}
+}
+
+// ChatGPT writes stay in its own config; routing follows the gateway; Mac-only
+// MCP servers are removed from both files without touching anything else.
+func TestChatGPTConfigKeepsDesktopWritesOutOfTheGateway(t *testing.T) {
+	directory := t.TempDir()
+	gateway := filepath.Join(directory, "gateway.toml")
+	chatgpt := filepath.Join(directory, "chatgpt.toml")
+	os.WriteFile(gateway, []byte(`model = "zai/glm-5.3"
+openai_base_url = "http://127.0.0.1:3425/backend-api/codex"
+
+[mcp_servers.node_repl]
+command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
+
+[mcp_servers.team]
+command = "/usr/local/bin/team-mcp"
+`), 0600)
+	os.WriteFile(chatgpt, []byte(`model = "old"
+approval_policy = "never"
+
+[mcp_servers.node_repl]
+command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
+
+[mcp_servers.local_tool]
+command = "npx"
+`), 0600)
+	if err := syncChatGPTConfig(chatgpt, gateway); err != nil {
+		t.Fatal(err)
+	}
+	gatewayData, _ := os.ReadFile(gateway)
+	if strings.Contains(string(gatewayData), "node_repl") || !strings.Contains(string(gatewayData), "team-mcp") {
+		t.Fatal("gateway cleanup wrong:", string(gatewayData))
+	}
+	config, _ := os.ReadFile(chatgpt)
+	text := string(config)
+	if !strings.Contains(text, "zai/glm-5.3") || strings.Contains(text, `"old"`) || !strings.Contains(text, "approval_policy") || strings.Contains(text, "node_repl") || !strings.Contains(text, "local_tool") || !strings.Contains(text, "3425") {
+		t.Fatal("ChatGPT config wrong:", text)
 	}
 }

@@ -67,7 +67,7 @@ func codexAppServerEnvironment(home string) (mode string, env []string, codexHom
 }
 
 // prepareGatewayHome builds the CODEX_HOME for ChatGPT in Magpie mode. Routing
-// and model settings link to the Magpie-routed gateway home shared with Codex
+// and model settings come from the Magpie-routed gateway home shared with Codex
 // CLI, while the ChatGPT identity links to the user's synchronized native
 // account, so ChatGPT shows the same account and limits as on the Mac. The
 // gateway home's own credentials are never read or changed.
@@ -77,7 +77,10 @@ func prepareGatewayHome(home, gateway string) (string, error) {
 		return "", err
 	}
 	links := map[string]string{}
-	for _, name := range []string{"config.toml", "AGENTS.md", "skills", "plugins", "rules", "prompts"} {
+	if err := syncChatGPTConfig(filepath.Join(directory, "config.toml"), filepath.Join(gateway, "config.toml")); err != nil {
+		return "", err
+	}
+	for _, name := range []string{"AGENTS.md", "skills", "plugins", "rules", "prompts"} {
 		links[name] = filepath.Join(gateway, name)
 	}
 	if root, _, err := setup.NativeAccountRoot(home, "codex"); err == nil {

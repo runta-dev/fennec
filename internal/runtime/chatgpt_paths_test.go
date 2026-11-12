@@ -154,3 +154,20 @@ func TestRewriteCwdKeepsFileURIForm(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestRequestsDisableDesktopOnlyMCPServers(t *testing.T) {
+	request := []byte(`{"id":3,"method":"thread/start","params":{"cwd":"/a","config":{"mcp_servers.node_repl":{"command":"/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl","args":["x"],"env":{"K":"V"}},"mcp_servers.team":{"command":"npx"}}}}`)
+	got := string(rewriteMessage(request, true, func(string) (string, bool) { return "", false }))
+	if strings.Contains(got, "/Applications/") || !strings.Contains(got, `"mcp_servers.node_repl":{"command":"","enabled":false}`) || !strings.Contains(got, `"command":"npx"`) {
+		t.Fatal(got)
+	}
+	batch := []byte(`{"id":4,"method":"config/batchWrite","params":{"edits":[{"keyPath":"mcp_servers.cua_repl","value":{"command":"/Applications/ChatGPT.app/Contents/MacOS/ChatGPT","args":["mcp"]},"mergeStrategy":"replace"}]}}`)
+	if got := string(rewriteMessage(batch, true, func(string) (string, bool) { return "", false })); !strings.Contains(got, `"value":{"command":"","enabled":false}`) || !strings.Contains(got, `"keyPath":"mcp_servers.cua_repl"`) {
+		t.Fatal(got)
+	}
+	// Responses to ChatGPT are never altered for MCP commands.
+	response := []byte(`{"id":5,"result":{"command":"/Applications/ChatGPT.app/x"}}`)
+	if got := rewriteCwd(response, func(string) (string, bool) { return "", false }); !bytes.Equal(got, response) {
+		t.Fatal(string(got))
+	}
+}

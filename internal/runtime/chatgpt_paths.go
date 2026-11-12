@@ -103,7 +103,7 @@ func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
 }
 
 func (filter *chatgptPathFilter) toCloud(message []byte) []byte {
-	return rewriteCwd(message, func(path string) (string, bool) {
+	return rewriteMessage(message, true, func(path string) (string, bool) {
 		if !filepath.IsAbs(path) || strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
 			return "", false
 		}
@@ -172,7 +172,16 @@ func saveChatGPTPaths(home string, paths map[string]string) {
 // rewriteCwd maps every string field named "cwd" in a JSON message. Messages
 // without such a field, or that are not JSON, are returned unchanged.
 func rewriteCwd(message []byte, mapping func(string) (string, bool)) []byte {
-	if !bytes.Contains(message, []byte(`"cwd"`)) {
+	return rewriteMessage(message, false, mapping)
+}
+
+// rewriteMessage maps "cwd" fields and, for requests to the cloud, disables MCP
+// servers whose commands are ChatGPT.app executables on the Mac. ChatGPT adds
+// them through per-thread config and config writes; on the cloud computer they
+// cannot start and their startup timeouts stall every other request.
+func rewriteMessage(message []byte, disableDesktop bool, mapping func(string) (string, bool)) []byte {
+	desktop := disableDesktop && (bytes.Contains(message, []byte("/Applications/ChatGPT.app/")) || bytes.Contains(message, []byte("/Applications/Codex.app/")))
+	if !desktop && !bytes.Contains(message, []byte(`"cwd"`)) {
 		return message
 	}
 	decoder := json.NewDecoder(bytes.NewReader(message))
@@ -186,6 +195,14 @@ func rewriteCwd(message []byte, mapping func(string) (string, bool)) []byte {
 	walk = func(node any) {
 		switch typed := node.(type) {
 		case map[string]any:
+			if command, ok := typed["command"].(string); ok && desktop && desktopOnlyCommand(command) {
+				for key := range typed {
+					delete(typed, key)
+				}
+				typed["command"], typed["enabled"] = "", false
+				changed = true
+				return
+			}
 			for key, child := range typed {
 				if text, ok := child.(string); ok && key == "cwd" {
 					if mapped, ok := mapURIOrPath(text, mapping); ok && mapped != text {
