@@ -234,7 +234,7 @@ Unit tests (`go test ./...`) use fakes and never touch the desktop. Anything tha
 tart is a development dependency:
 
 ```sh
-brew install cirruslabs/cli/tart
+# from https://github.com/cirruslabs/tart/releases (not in Homebrew any more)
 go run ./cmd/cua-vm create            # clone the VM; the first run downloads the image
 go run ./cmd/cua-vm up                # boot it headless
 go run ./cmd/cua-vm fixture           # build CUAFixture and install it with its grants
@@ -255,6 +255,6 @@ Read-only checks against the host's own desktop are allowed (`go test -tags axli
 | esbuild | MIT | TypeScript transpiling |
 | gopkg.in/yaml.v3 | MIT, Apache-2.0 | catalog files |
 | golang.org/x/crypto (ssh) | BSD-3-Clause | the test VM tool |
-| tart | Fair Source (free use is capped; check its terms for company use) | development only: the test VM, never shipped |
+| tart | FSL-1.1-ALv2 (internal use permitted; Apache-2.0 after two years) | development only: the test VM, never shipped |
 
 Update the repository's `THIRD_PARTY_NOTICES.md` before the first release.

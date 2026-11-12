@@ -46,7 +46,7 @@ func (v *VM) tart(ctx context.Context, args ...string) (string, error) {
 		bin = "tart"
 	}
 	if _, err := exec.LookPath(bin); err != nil {
-		return "", errors.New("tart is not installed: brew install cirruslabs/cli/tart")
+		return "", errors.New("tart is not installed: get tart.tar.gz from https://github.com/cirruslabs/tart/releases")
 	}
 	var out, errb bytes.Buffer
 	cmd := exec.CommandContext(ctx, bin, args...)

@@ -1,5 +1,5 @@
 // Command cua-vm manages the tart macOS VM that fennec-cua's desktop tests run
-// in. tart is a development dependency: brew install cirruslabs/cli/tart.
+// in. tart is a development dependency: https://github.com/cirruslabs/tart/releases.
 //
 //	go run ./cmd/cua-vm create [-image IMAGE]   clone the VM (first run downloads the image)
 //	go run ./cmd/cua-vm up                      boot it headless and wait for SSH

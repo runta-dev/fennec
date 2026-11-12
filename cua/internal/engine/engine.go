@@ -45,6 +45,8 @@ type Engine struct {
 	// Impl holds tool implementations; a tool without one answers
 	// unavailable.
 	Impl map[string]Tool
+	// RunOff turns the run tool and script plugins off by configuration.
+	RunOff bool
 }
 
 var descriptions = map[string]string{
@@ -84,6 +86,9 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 		return result(nil, &protocol.Error{Code: protocol.ErrStopped, Message: err.Error()})
 	}
 	defer done()
+	if name == protocol.ToolRun && e.RunOff {
+		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "scripts are turned off", Hint: "set run = true under [tools] in fennec-cua's config to turn them back on"})
+	}
 	impl := e.Impl[name]
 	if impl == nil {
 		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: name + " is not available in this build yet"})
@@ -125,6 +130,13 @@ func errorFor(err error) *protocol.Error {
 func TurnError(err error) *protocol.Error { return errorFor(err) }
 
 func result(v any, perr *protocol.Error) mcpserver.Result {
+	if perr != nil && v != nil {
+		// A failure with a report (a run) answers the whole report, so
+		// its logs travel with the error.
+		out := map[string]any{"error": perr, "report": v}
+		data, _ := json.Marshal(out)
+		return mcpserver.Result{Text: string(data), IsError: true, Structured: out}
+	}
 	if perr != nil {
 		data, _ := json.Marshal(map[string]any{"error": perr})
 		return mcpserver.Result{Text: string(data), IsError: true, Structured: map[string]any{"error": perr}}
@@ -148,7 +160,7 @@ func (e *Engine) Status() any {
 			"accessibility":    "unknown",
 			"screen_recording": "unknown",
 		},
-		Run: e.Impl[protocol.ToolRun] != nil,
+		Run: e.Impl[protocol.ToolRun] != nil && !e.RunOff,
 	}
 	if st.Input == "" {
 		st.Input = protocol.InputForeground

@@ -237,6 +237,7 @@ const (
 	ErrScreenLocked     ErrorCode = "screen_locked"
 	ErrNotShown         ErrorCode = "not_shown"   // the text or window did not show after the step
 	ErrUnavailable      ErrorCode = "unavailable" // not available in this build or without the driver
+	ErrRunFailed        ErrorCode = "run_failed"  // the script failed; the report says how
 	ErrInternal         ErrorCode = "internal"
 )
 
@@ -565,11 +566,12 @@ type RunRequest struct {
 
 // Run failure kinds.
 const (
-	RunCompile   = "compile"
+	RunImport    = "import" // the module does not compile or load
 	RunNoMain    = "no_main"
 	RunException = "exception"
 	RunTimeout   = "timeout"
 	RunStopped   = "stopped"
+	RunCrash     = "crash" // an error escaped main after it returned
 )
 
 // RunResult is a run's report; logs survive timeouts and stops.
