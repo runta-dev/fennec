@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -52,12 +53,20 @@ func run() error {
 		return err
 	}
 	root := filepath.Join(home, ".config/fennec")
-	marker, err := os.OpenFile(filepath.Join(root, "launch-profile.enabled"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	markerPath := filepath.Join(root, "launch-profile.enabled")
+	marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
 		return err
 	}
-	marker.Close()
-	defer os.Remove(marker.Name())
+	if err := syscall.Flock(int(marker.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		marker.Close()
+		return fmt.Errorf("another launch profiler is active: %w", err)
+	}
+	defer func() {
+		_ = os.Remove(markerPath)
+		_ = syscall.Flock(int(marker.Fd()), syscall.LOCK_UN)
+		_ = marker.Close()
+	}()
 	identity, err := readDaemonIdentity(root)
 	if err != nil {
 		return err

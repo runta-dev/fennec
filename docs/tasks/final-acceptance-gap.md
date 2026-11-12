@@ -5,14 +5,12 @@ records missing evidence; it does not narrow the goal or check off requirements.
 
 ## Current authoritative state
 
-- Source: `cd54c0389dbbfb68b524714a66ac2d25fabae4ab`
-- CI: [43081984127](https://github.com/runta-dev/fennec/actions/runs/43081984127), completed successfully for that exact source
-- CI covered Linux checks/race tests, build, UI tests, connector tests, and macOS arm64 package validation
-- Current installed app: `/Applications/Fennec.app`, version `0.2.11120259`
-- Running daemon build: `c4b95ef882b30921de5a0339f62d2d9cbcf74ca69461d7d1410a6bcd8895bc1a`
-- Signed candidate upgrade restored authorization and the existing runtime; see [candidate evidence](release-cd54c03.md)
-- The current staged local-development app passed signature/control-contract checks but was not installed or launched
-- A prior development-signature startup stalled at Keychain restoration; the original production app was restored successfully
+- Source: `b2a9b9e250b1a920da87637ad5a5bfaffe0b7392` (plus advisory lock cleanup on `cmd/profile-launch`)
+- Release CI: [43140973896](https://github.com/runta-dev/errand/actions/runs/43140973896), completed successfully with Apple notarization and stapler verification
+- Current installed app: `/Applications/Fennec.app`, version `0.2.11121023`
+- Running daemon build: `5d5e703000381f9005e0a61dcdca3ce32802ac4b57b94dc4ac6c7817d31112de`
+- Live Magpie switch now passes the 1-second gate (`444.3 ms` switch, `331.9 ms` restore), warm Codex TUI passes the 500ms gate (`342.3–390.1 ms`), and cold SSH Codex TUI passes the 5s gate (`3709.3–3999.6 ms`); see [candidate evidence](release-b2a9b9e.md)
+- Offline detection/auto-reconnect (`c4933d3`), hiding `Delete cloud computer` from production UI (`c8fa4ba`), and cloud TLS egress CA + `fd` on `PATH` (`1c17fcf`) are shipped and verified live
 
 CI packaging is not a notarized release, installed behavior, real authorization,
 performance acceptance, or a clean-Mac result. Existing developer-machine
@@ -33,7 +31,7 @@ credentials and read-only measurements cannot establish fresh-user onboarding.
 | UI/CLI parity | Shared Go handlers, browser sessions, CLI commands and control-contract checks | Fresh login-shell command discovery, original commands, takeover on/off, CLI with UI closed on current installed candidate |
 | Session lifecycle | `internal/ope2e`, resident transport/control tests, prior historical measurements | Current-artifact create/attach/resume/input/read/list/stop, network loss/sleep/wake/reconnect/cancel/abnormal terminal exit with no duplicate or lost work |
 | Upgrade/reinstall/uninstall | `internal/installation`, `internal/uninstall`, recovery records and fixtures | Current signed old-to-new upgrade, move/rename, real clean-device cleanup, shell/LaunchAgent restoration, preserved remote work |
-| Independent cloud deletion | `cloud-deletion.md`, shared RPC/CLI/UI, durable intent and failure tests | Rendered modal/focus/copy plus dedicated disposable runtime through delete/recreate/unknown outcome/restart/account switch |
+| Internal CLI cloud deletion | `cloud-deletion.md`, internal `fen cloud` / `fen uninstall --delete-cloud` CLI (hidden from production UI per product requirement) | Dedicated disposable runtime through CLI delete/recreate/unknown outcome/restart/account switch |
 | UX and performance | Source UI tests, text-free terminal path, fail-nonzero profilers | Rendered pending/success/failure layouts, cold TUI <=5s, every warm session op <=500ms, ordinary UI ops <=1s through completed usable state |
 | Final release evidence | Prior release and current ordinary CI are separate | Exact current signed/notarized DMG, source/hash/CI/macOS/initial-state/steps/outcomes/timing/evidence per scenario |
 | Independent-user acceptance | No current evidence | Colleague completes full final-artifact flow unaided and records feedback |
@@ -57,7 +55,7 @@ functional tests and source delivery are verified; rendered visual acceptance
 has not been claimed. Browser task-space ownership must be respected during that
 remaining check.
 
-Next live results must be recorded against the tested candidate. The first actual
-Magpie switch failed the 1-second gate at 3.53 seconds. Preserve the sample/error and fix the
-cause before rerunning; do not replace the metric with a receipt, average, cache
-hit, fixture timing, or shortened timeout. All checklist items remain unchecked.
+Next iteration stays in fast local development mode (`build/Fennec.app` and
+`ui-preview`) per user instruction until ready for final clean-Mac DMG
+acceptance. All checklist items remain unchecked until verified on a clean Mac
+with dedicated test accounts and final unaided user onboarding.
