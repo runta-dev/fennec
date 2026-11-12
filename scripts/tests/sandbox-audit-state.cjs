@@ -47,7 +47,6 @@ const filterButtons = [
 
 const nodes = {
   '#permission-mode': modeSelect,
-  '#audit-summary-badge': makeNode('span'),
   '#audit-clear': makeNode('button'),
   '#audit-count-all': makeNode('span'),
   '#audit-count-blocked': makeNode('span'),
@@ -82,8 +81,9 @@ context.window.renderSandboxPreferences({
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
 assert.equal(modeSelect.value, 'auto');
-assert.equal(nodes['#audit-summary-badge'].textContent, '6 · 1 audit_summary_blocked');
-assert.equal(nodes['#audit-summary-badge'].classList.contains('has-blocked'), true);
+assert.equal(nodes['#audit-count-all'].textContent, '6');
+assert.equal(nodes['#audit-count-blocked'].textContent, '1');
+assert.equal(nodes['#audit-count-approved'].textContent, '5');
 
 // 2. Switching to Full access sends one explicit permission choice.
 modeSelect.value = 'full';

@@ -1,7 +1,6 @@
 // Local macOS Seatbelt sandbox controls and 7-day rolling security audit view.
 (() => {
   const modeSelect = document.querySelector('#permission-mode');
-  const summaryBadge = document.querySelector('#audit-summary-badge');
   const auditClearBtn = document.querySelector('#audit-clear');
   const filterButtons = [...document.querySelectorAll('[data-audit-filter]')];
   const countAllEl = document.querySelector('#audit-count-all');
@@ -105,19 +104,9 @@
   }
 
   function drawSummaryBadge() {
-    if (!summaryBadge) return;
-    summaryBadge.removeAttribute('data-i18n');
+    // Counts live on the filter tabs; retention is stated by the empty state.
     const total = Number(sandboxState.summary?.total_7d || 0);
     const blocked = Number(sandboxState.summary?.blocked_7d || 0);
-    summaryBadge.classList.toggle('has-blocked', blocked > 0);
-    if (total <= 0) {
-      summaryBadge.textContent = t('[[i18n:ui.audit_7d_retention]]');
-    } else if (blocked > 0) {
-      summaryBadge.textContent = total + ' · ' + blocked + ' ' + t('[[i18n:ui.audit_summary_blocked]]');
-    } else {
-      summaryBadge.textContent = total + ' · ' + t('[[i18n:ui.audit_7d_retention]]');
-    }
-
     const approved = Math.max(0, total - blocked);
     if (countAllEl) countAllEl.textContent = String(total);
     if (countBlockedEl) countBlockedEl.textContent = String(blocked);
