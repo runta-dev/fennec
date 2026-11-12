@@ -186,3 +186,26 @@ func TestCodexDesktopTakeoverRestartsChatGPTWithSelectedLocation(t *testing.T) {
 		t.Fatal("local switch kept the bridge URL", url)
 	}
 }
+
+func TestChatGPTBridgeDropsConnectionsFromTheOtherAgentMode(t *testing.T) {
+	bridge := newChatGPTBridge(t.TempDir(), &daemonServices{})
+	gatewayLocal, gatewayRemote := net.Pipe()
+	nativeLocal, nativeRemote := net.Pipe()
+	defer gatewayRemote.Close()
+	defer nativeRemote.Close()
+	bridge.track(gatewayLocal, "gateway")
+	bridge.track(nativeLocal, "native")
+	if closed := bridge.reconcileMode(true); closed != 1 {
+		t.Fatal("closed", closed)
+	}
+	if _, err := nativeLocal.Write([]byte("x")); err == nil {
+		t.Fatal("native connection survived a switch to Magpie")
+	}
+	go gatewayRemote.Read(make([]byte, 1))
+	if _, err := gatewayLocal.Write([]byte("x")); err != nil {
+		t.Fatal("gateway connection was closed", err)
+	}
+	if closed := bridge.reconcileMode(true); closed != 0 {
+		t.Fatal("reconcile is not idempotent", closed)
+	}
+}

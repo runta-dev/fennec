@@ -3,26 +3,65 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fennec/internal/setup"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
 
+// Codex app-server modes follow the cloud Codex CLI: "gateway" uses the Magpie
+// routed ~/.codex configuration, "native" the synchronized native account
+// environment. Each mode has its own CODEX_HOME and therefore its own server.
+const (
+	CodexAppServerGateway = "gateway"
+	CodexAppServerNative  = "native"
+)
+
 // CodexAppServerSocket is the control socket that `codex app-server --listen
-// unix://` and `codex app-server proxy` agree on.
-func CodexAppServerSocket(home string) string {
-	codexHome := os.Getenv("CODEX_HOME")
+// unix://` and `codex app-server proxy` agree on for a CODEX_HOME.
+func CodexAppServerSocket(codexHome string) string {
+	return filepath.Join(codexHome, "app-server-control", "app-server-control.sock")
+}
+
+// codexAppServerEnvironment mirrors how the cloud launches Codex CLI in the
+// current agent mode, so desktop and terminal sessions share configuration.
+func codexAppServerEnvironment(home string) (mode string, env []string, codexHome string, err error) {
+	if setup.NativeAgentMode(home) {
+		env, err = setup.NativeAgentEnvironment(home, "codex")
+		if err != nil {
+			return "", nil, "", err
+		}
+		for _, entry := range env {
+			if value, ok := strings.CutPrefix(entry, "CODEX_HOME="); ok {
+				codexHome = value
+			}
+		}
+		if codexHome == "" {
+			return "", nil, "", fmt.Errorf("native codex home unavailable")
+		}
+		return CodexAppServerNative, env, codexHome, nil
+	}
+	codexHome = os.Getenv("CODEX_HOME")
 	if codexHome == "" {
 		codexHome = filepath.Join(home, ".codex")
 	}
-	return filepath.Join(codexHome, "app-server-control", "app-server-control.sock")
+	return CodexAppServerGateway, os.Environ(), codexHome, nil
 }
+
+// appServerConn reports which mode served the stream.
+type appServerConn struct {
+	net.Conn
+	mode string
+}
+
+func (conn appServerConn) StreamLabel() string { return conn.mode }
 
 // DialCodexAppServer connects to the runtime owner's codex app-server. A running
 // server (including one managed by `codex app-server daemon`) is reused; only a
@@ -30,7 +69,19 @@ func CodexAppServerSocket(home string) string {
 // desktop threads survive terminal-channel reconnects. No version is compared
 // and nothing is installed here.
 func DialCodexAppServer(ctx context.Context, home string) (net.Conn, error) {
-	socket := CodexAppServerSocket(home)
+	mode, env, codexHome, err := codexAppServerEnvironment(home)
+	if err != nil {
+		return nil, err
+	}
+	socket := CodexAppServerSocket(codexHome)
+	conn, err := dialCodexAppServer(ctx, home, socket, env)
+	if err != nil {
+		return nil, err
+	}
+	return appServerConn{Conn: conn, mode: mode}, nil
+}
+
+func dialCodexAppServer(ctx context.Context, home, socket string, env []string) (net.Conn, error) {
 	if conn, err := dialUnix(ctx, socket); err == nil {
 		return conn, nil
 	}
@@ -69,6 +120,7 @@ func DialCodexAppServer(ctx context.Context, home string) (net.Conn, error) {
 	}
 	command := exec.Command(codex, "-c", "features.code_mode_host=true", "app-server", "--listen", "unix://")
 	command.Dir = home
+	command.Env = env
 	command.Stdout, command.Stderr = logFile, logFile
 	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	err = command.Start()

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fennec/internal/agent"
 	"fennec/internal/control"
+	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -56,6 +57,7 @@ type chatgptBridge struct {
 	active   int
 	served   uint64
 	lastErr  string
+	conns    map[net.Conn]string
 }
 
 func newChatGPTBridge(home string, services *daemonServices) *chatgptBridge {
@@ -276,11 +278,13 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	defer cancel()
 	stop := context.AfterFunc(operation, func() { conn.Close() })
 	defer stop()
-	session, err := b.open(operation)
+	session, mode, err := b.open(operation)
 	if err != nil {
 		io.WriteString(conn, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return err
 	}
+	b.track(conn, mode)
+	defer b.track(conn, "")
 	defer session.Close()
 	buffered, _ := reader.Peek(reader.Buffered())
 	pending := append(head, buffered...)
@@ -343,7 +347,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 
 // open waits for the daemon's resident terminal channel, then opens a socket
 // stream on it. It never starts another SSH connection or exec channel.
-func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, error) {
+func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, string, error) {
 	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	var transport *terminalstream.Transport
@@ -360,25 +364,61 @@ func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, erro
 		}
 		select {
 		case <-wait.Done():
-			return nil, fmt.Errorf("cloud runtime channel unavailable")
+			return nil, "", fmt.Errorf("cloud runtime channel unavailable")
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
 	if !transport.Supports(terminalstream.CapabilityCodexAppServer) {
-		return nil, fmt.Errorf("cloud terminal service does not support codex app-server yet")
+		return nil, "", fmt.Errorf("cloud terminal service does not support codex app-server yet")
 	}
 	var nonce [16]byte
 	rand.Read(nonce[:])
 	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	frame, err := session.Next(wait)
 	if err != nil || frame.Type != "receipt" {
 		session.Close()
-		return nil, fmt.Errorf("cloud codex app-server unavailable")
+		return nil, "", fmt.Errorf("cloud codex app-server unavailable")
 	}
-	return session, nil
+	return session, frame.Message, nil
+}
+
+// track records which cloud app-server mode serves a connection; an empty mode
+// forgets it.
+func (b *chatgptBridge) track(conn net.Conn, mode string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.conns == nil {
+		b.conns = map[net.Conn]string{}
+	}
+	if mode == "" {
+		delete(b.conns, conn)
+	} else {
+		b.conns[conn] = mode
+	}
+}
+
+// reconcileMode closes ChatGPT connections served by the other agent mode once
+// the cloud configuration for magpie has been applied. ChatGPT reconnects and
+// the new stream reaches the app-server for the current mode.
+func (b *chatgptBridge) reconcileMode(magpie bool) int {
+	expected := cloudruntime.CodexAppServerNative
+	if magpie {
+		expected = cloudruntime.CodexAppServerGateway
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	closed := 0
+	for conn, mode := range b.conns {
+		if mode != expected {
+			conn.Close()
+			delete(b.conns, conn)
+			closed++
+		}
+	}
+	return closed
 }
 
 func writePrivateJSON(path string, value any) error {

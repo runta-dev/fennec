@@ -280,6 +280,11 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 			}
 			_ = writePublicJSON(filepath.Join(s.home, ".config/fennec/route-results.json"), json.RawMessage(data))
 		}
+		// Route results follow an applied cloud configuration, so the agent mode
+		// on the runtime now matches the Magpie setting.
+		if s.chatgpt != nil {
+			go s.chatgpt.reconcileMode(newDesktopSettings(s.home).value.Magpie)
+		}
 	case "agent_routes":
 		data := json.RawMessage(decodeText(event, "routes"))
 		if json.Valid(data) {

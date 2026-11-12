@@ -195,6 +195,9 @@ window.renderAgents = agents => {
     arrow.innerHTML = chevron;
     head.append(icon, name, state, arrow);
     const desktop = agent.id === 'codex-desktop';
+    // ChatGPT (Codex Desktop) shares Codex's Magpie, account and model settings
+    // for the computer it runs on.
+    const configAgent = desktop ? 'codex' : agent.id;
     if(!agent.cloudSupported || !['codex-desktop','claude','codex','pi'].includes(agent.id)){
       head.disabled=true;
       head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
@@ -218,8 +221,8 @@ window.renderAgents = agents => {
     if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
-      if(expandedAgent && !desktop && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(agent.id);
-      if(expandedAgent && !desktop && !magpieEnabled){loadNativeAccount(agent.id,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(agent.id);}
+      if(expandedAgent && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
+      if(expandedAgent && !magpieEnabled){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(configAgent);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -237,7 +240,7 @@ window.renderAgents = agents => {
       }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 360);
     };
     if (authorized) {
-      const route = routeResults.get(agent.id);
+      const route = routeResults.get(configAgent);
       const toggle=detail.querySelector('.location-segments');
       const enabled=takeoverAgents.has(agent.id);
       if(takeoverSelectionKnown){
@@ -283,8 +286,6 @@ window.renderAgents = agents => {
       statusNode.hidden = !statusNode.textContent;
       if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;if(window.fennecPreparationStage!=='offline')state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
-      // Codex Desktop keeps ChatGPT.app's own account and model settings.
-      if (!desktop) {
       {
         const row=document.createElement('div');row.className='agent-integration-row';
         const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
@@ -292,12 +293,12 @@ window.renderAgents = agents => {
         const info=document.querySelector('#magpie-label')?.parentElement?.querySelector('.setting-info')?.cloneNode(true);
         if(info){const tooltip=info.querySelector('[role="tooltip"]');const button=info.querySelector('.setting-info-button');if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}}
         const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(magpieEnabled));
-        toggle.onclick=()=>send('settings:'+JSON.stringify({magpie:!magpieEnabled}));
+        toggle.onclick=()=>toggleMagpie();
         if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
       }
       if(!magpieEnabled){
-        const location=enabled?'cloud':'local';const key=agent.id+':'+location;const account=nativeAccountStates.get(key);
-        if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(agent.id,location);
+        const location=enabled?'cloud':'local';const key=configAgent+':'+location;const account=nativeAccountStates.get(key);
+        if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(configAgent,location);
         statusNode.hidden=true;statusNode.textContent='';
         const card=document.createElement('div');card.className='native-account-card';card.setAttribute('aria-label',"[[i18n:ui.account]]");
         const entries=account?.status==='signed_in'&&account.accounts?.length?account.accounts:[null];
@@ -313,17 +314,17 @@ window.renderAgents = agents => {
           if(identity){const plan=document.createElement('span');plan.className='native-subscription';plan.textContent=identity.subscription||(identity.auth_type==='api_key'?'API key':'OAuth');accountRow.append(plan);}
           const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label',"[[i18n:ui.refresh_account]]");refresh.title="[[i18n:ui.refresh_account]]";refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
-          refresh.onclick=()=>{loadNativeAccount(agent.id,location,true);refresh.disabled=true;};accountRow.append(refresh);
-          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=agent.id;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;window.configureAgentLoginControl?.(login,!!route);login.onclick=()=>window.startAgentLogin(agent.id);accountRow.append(login);}
+          refresh.onclick=()=>{loadNativeAccount(configAgent,location,true);refresh.disabled=true;};accountRow.append(refresh);
+          if(enabled&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=configAgent;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;window.configureAgentLoginControl?.(login,!!route);login.onclick=()=>window.startAgentLogin(configAgent);accountRow.append(login);}
           card.append(accountRow);
         }
         detail.append(card);
       }
-      if (magpieEnabled || (enabled && ['codex','claude','pi'].includes(agent.id))) {
-        const native=nativeModelStates.get(agent.id);
-        const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(agent.id);
-        if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(agent.id))loadLocalGatewayModel(agent.id);
-        if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(agent.id))loadNativeModel(agent.id);
+      if (magpieEnabled || (enabled && ['codex','claude','pi'].includes(configAgent))) {
+        const native=nativeModelStates.get(configAgent);
+        const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(configAgent);
+        if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(configAgent))loadLocalGatewayModel(configAgent);
+        if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(configAgent))loadNativeModel(configAgent);
         const localCatalogLookup=Array.isArray(localModel?.catalog)?new Map(localModel.catalog.map(m=>[m.id,m])):gatewayCatalogByID;
         const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>describeGatewayModel(id,local?localCatalogLookup:(gatewayCatalogByID.size?gatewayCatalogByID:localCatalogLookup))) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
         const current=magpieEnabled ? (local?localModel?.model:route?.model) || '' : native?.model || '';
@@ -344,12 +345,12 @@ window.renderAgents = agents => {
         }
         select.value=current;
         const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
-        trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(agent.id)!=='failed') || models.length===0;
+        trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(configAgent)!=='failed') || models.length===0;
         const label=document.createElement('span');label.className='field-label';label.textContent="[[i18n:ui.model]]";
         const currentEntry=models.find(m=>m.id===current);
-        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(agent.id)==='failed'?"[[i18n:ui.retry]]":'') : currentEntry?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
+        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(configAgent)==='failed'?"[[i18n:ui.retry]]":'') : currentEntry?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
         if(local&&localModel?.error)value.textContent="[[i18n:ui.retry]]";
-        if(!magpieEnabled && !native && nativeModelRequests.get(agent.id)==='pending')value.classList.add('setting-skeleton');
+        if(!magpieEnabled && !native && nativeModelRequests.get(configAgent)==='pending')value.classList.add('setting-skeleton');
         let modelIconNode;
         const provider=magpieEnabled ? (currentEntry?.provider || current.split('/')[0]) : currentEntry?.provider;
         const spec=gatewayProviderIconSpec(provider);
@@ -367,9 +368,9 @@ window.renderAgents = agents => {
         }
         const chevron=document.createElementNS('http://www.w3.org/2000/svg','svg');chevron.setAttribute('viewBox','0 0 16 16');chevron.innerHTML='<path d="m5 6 3 3 3-3"/>';
         trigger.append(label,value,modelIconNode,chevron);
-        trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(agent.id);trigger.disabled=true;}else if(!magpieEnabled && !native){loadNativeModel(agent.id);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
+        trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(configAgent);trigger.disabled=true;}else if(!magpieEnabled && !native){loadNativeModel(configAgent);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
         trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();trigger.click();}};
-        select.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:select.value,location:local?'local':'cloud'}));};
+        select.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:configAgent,model:select.value,location:local?'local':'cloud'}));};
         row.append(select,trigger);if(magpieEnabled)detail.append(row);
         const selected=models.find(m=>m.id===current);
         if(!magpieEnabled && selected?.efforts?.length){
@@ -380,13 +381,12 @@ window.renderAgents = agents => {
           const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max=String(levels.length-1);slider.step='1';slider.value=String(Math.max(0,levels.indexOf(native.effort||'')));slider.disabled=modelSaving;slider.setAttribute('aria-label','Reasoning effort');slider.setAttribute('aria-valuetext',result.textContent);
           slider.oninput=()=>{result.textContent=levels[Number(slider.value)]||"[[i18n:ui.default]]";slider.setAttribute('aria-valuetext',result.textContent);};
           slider.onpointerdown=()=>{agentEffortEditing=true;};slider.onkeydown=event=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))agentEffortEditing=true;};
-          slider.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:agent.id,model:current,effort:levels[Number(slider.value)]}));};
+          slider.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:configAgent,model:current,effort:levels[Number(slider.value)]}));};
           const track=document.createElement('div');track.className='effort-track';
           const ticks=document.createElement('div');ticks.className='effort-ticks';ticks.setAttribute('aria-hidden','true');
           levels.forEach((_,index)=>{const tick=document.createElement('span');tick.style.left=(index/(levels.length-1)*100)+'%';ticks.append(tick);});
           track.append(ticks,slider);effort.append(caption,track);detail.append(effort);
         }
-      }
       }
 
     }
@@ -691,7 +691,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppea
 const loginItemSwitch = document.querySelector('#launch-at-login');
 let magpieEnabled = false;
 const magpieSwitch = document.querySelector('#magpie-integration');
-if(magpieSwitch) magpieSwitch.onclick=()=>send('settings:'+JSON.stringify({magpie:!magpieEnabled}));
+if(magpieSwitch) magpieSwitch.onclick=()=>toggleMagpie();
 const loginItemApproval = document.querySelector('#login-item-approval');
 window.renderLoginItem = value => {
   if (!loginItemSwitch || !loginItemApproval) return;
@@ -1325,6 +1325,18 @@ window.renderSessionSent = (sessionID,success) => {
 // Moving Codex Desktop restarts ChatGPT.app, which interrupts its running
 // conversations, so every switch asks first.
 function confirmCodexDesktopRestart(toCloud, proceed) {
+  confirmChatGPT({title: "[[i18n:ui.codex_desktop_restart_title]]", body: toCloud ? "[[i18n:ui.codex_desktop_restart_to_cloud]]" : "[[i18n:ui.codex_desktop_restart_to_local]]", action: "[[i18n:ui.restart_chatgpt]]"}, proceed);
+}
+
+// Magpie selects which cloud app-server ChatGPT uses, so changing it while
+// ChatGPT runs on the cloud computer reconnects ChatGPT.
+function toggleMagpie() {
+  const change = () => send('settings:' + JSON.stringify({magpie: !magpieEnabled}));
+  if (!takeoverAgents.has('codex-desktop')) { change(); return; }
+  confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: magpieEnabled ? "[[i18n:ui.chatgpt_reconnect_without_magpie]]" : "[[i18n:ui.chatgpt_reconnect_with_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
+}
+
+function confirmChatGPT(copy, proceed) {
   let dialog = document.querySelector('#codex-desktop-dialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -1333,12 +1345,14 @@ function confirmCodexDesktopRestart(toCloud, proceed) {
     dialog.setAttribute('aria-labelledby', 'codex-desktop-dialog-title');
     dialog.tabIndex = -1;
     dialog.setAttribute('autofocus', '');
-    dialog.innerHTML = '<div class="update-dialog-head"><strong id="codex-desktop-dialog-title">[[i18n:ui.codex_desktop_restart_title]]</strong></div><p class="update-dialog-hint"></p><div class="update-dialog-actions"><button type="button" class="update-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="update-dialog-confirm">[[i18n:ui.restart_chatgpt]]</button></div>';
+    dialog.innerHTML = '<div class="update-dialog-head"><strong id="codex-desktop-dialog-title"></strong></div><p class="update-dialog-hint"></p><div class="update-dialog-actions"><button type="button" class="update-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="update-dialog-confirm"></button></div>';
     document.body.append(dialog);
     dialog.querySelector('.update-dialog-cancel').onclick = () => dialog.close();
   }
-  dialog.querySelector('.update-dialog-hint').textContent = toCloud ? "[[i18n:ui.codex_desktop_restart_to_cloud]]" : "[[i18n:ui.codex_desktop_restart_to_local]]";
+  dialog.querySelector('#codex-desktop-dialog-title').textContent = copy.title;
+  dialog.querySelector('.update-dialog-hint').textContent = copy.body;
   const confirm = dialog.querySelector('.update-dialog-confirm');
+  confirm.textContent = copy.action;
   confirm.onclick = () => { dialog.close(); proceed(); };
   if (!dialog.open) dialog.showModal();
   dialog.focus();
