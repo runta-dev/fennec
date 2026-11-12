@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 )
@@ -99,6 +100,14 @@ func BuildProfile(policy Policy, home string) (profile string, params []string) 
 	// High-priority blocklist: sensitive credentials, SSH keys, Keychains, LaunchAgents, and Fennec IPC/state.
 	for _, protected := range ProtectedPaths(home) {
 		param := addParam("PROTECTED", protected)
+		if mode == ModeEscalated && filepath.Base(protected) == ".ssh" {
+			// An approved escalation may list ~/.ssh and read public material
+			// (public keys, config, known_hosts, authorized_keys); private keys
+			// stay unreadable and nothing in ~/.ssh is writable.
+			fmt.Fprintf(&b, "(deny file-write* (subpath (param %q)))\n", param)
+			fmt.Fprintf(&b, "(deny file-read* (require-all (subpath (param %q)) (require-not (literal (param %q))) (require-not (regex #\"%s\"))))\n", param, param, sshPublicPattern(protected))
+			continue
+		}
 		fmt.Fprintf(&b, "(deny file-read* file-write* (subpath (param %q)))\n", param)
 	}
 	if home != "" && mode != ModeEscalated {
@@ -160,4 +169,9 @@ func chooseWorkdir(policy Policy, home, preferred string) string {
 		}
 	}
 	return os.TempDir()
+}
+
+// sshPublicPattern matches the non-secret files directly inside ~/.ssh.
+func sshPublicPattern(dir string) string {
+	return "^" + regexp.QuoteMeta(dir) + "/([^/]+\\.pub|config[^/]*(/.*)?|known_hosts[^/]*|authorized_keys[^/]*)$"
 }
