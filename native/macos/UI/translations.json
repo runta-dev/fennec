@@ -2503,29 +2503,13 @@
       "zh-CN": "完全访问",
       "zh-TW": "完全存取"
     },
-    "ui.permission_group": {
-      "en-GB": "Permission",
-      "en-US": "Permission",
-      "ja": "権限",
-      "ko": "권한",
-      "zh-CN": "权限",
-      "zh-TW": "權限"
-    },
-    "ui.permission_mode_short": {
-      "en-GB": "Mode",
-      "en-US": "Mode",
-      "ja": "モード",
-      "ko": "모드",
-      "zh-CN": "模式",
-      "zh-TW": "模式"
-    },
     "ui.activity_title": {
-      "en-GB": "Activity · past 7 days",
-      "en-US": "Activity · past 7 days",
-      "ja": "アクティビティ · 過去 7 日間",
-      "ko": "활동 · 최근 7일",
-      "zh-CN": "活动 · 近 7 天",
-      "zh-TW": "活動 · 近 7 天"
+      "en-GB": "Activity",
+      "en-US": "Activity",
+      "ja": "アクティビティ",
+      "ko": "활동",
+      "zh-CN": "活动",
+      "zh-TW": "活動"
     },
     "ui.activity_filter": {
       "en-GB": "Filter activity",
@@ -2536,12 +2520,12 @@
       "zh-TW": "篩選活動"
     },
     "ui.activity_empty": {
-      "en-GB": "No activity yet",
-      "en-US": "No activity yet",
-      "ja": "まだアクティビティはありません",
-      "ko": "아직 활동이 없습니다",
-      "zh-CN": "暂无活动",
-      "zh-TW": "暫無活動"
+      "en-GB": "No activity in the past 7 days",
+      "en-US": "No activity in the past 7 days",
+      "ja": "過去 7 日間のアクティビティはありません",
+      "ko": "최근 7일간 활동이 없습니다",
+      "zh-CN": "近 7 天暂无活动",
+      "zh-TW": "近 7 天暫無活動"
     },
     "ui.activity_empty_blocked": {
       "en-GB": "Nothing blocked",
