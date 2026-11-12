@@ -14,11 +14,16 @@ const (
 	ModeReadOnly  = "read-only"
 	ModeWorkspace = "workspace"
 	ModeFull      = "full"
+
+	PresetAsk  = "ask"
+	PresetAuto = "auto"
+	PresetFull = "full"
 )
 
 // Policy defines the technical boundary applied to commands and file operations
 // arriving on the local Mac edge connector.
 type Policy struct {
+	Approval      string   `json:"approval,omitempty"` // "ask" | "auto" | "never"
 	Mode          string   `json:"mode"`
 	Network       bool     `json:"network"`
 	WritableRoots []string `json:"writable_roots,omitempty"`
@@ -26,9 +31,90 @@ type Policy struct {
 
 func DefaultPolicy() Policy {
 	return Policy{
-		Mode:    ModeWorkspace,
-		Network: false,
+		Approval: PresetAsk,
+		Mode:     ModeWorkspace,
+		Network:  false,
 	}
+}
+
+func ValidPreset(preset string) bool {
+	switch strings.TrimSpace(strings.ToLower(preset)) {
+	case "", PresetAsk, PresetAuto, PresetFull, "ask-for-approval", "approve-for-me", "full-access", "danger-full-access", ModeReadOnly, ModeWorkspace:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizePreset(preset string) string {
+	switch strings.TrimSpace(strings.ToLower(preset)) {
+	case PresetAsk, "ask-for-approval", ModeReadOnly:
+		return PresetAsk
+	case PresetFull, "full-access", "danger-full-access":
+		return PresetFull
+	default:
+		return PresetAuto
+	}
+}
+
+// PolicyForPreset maps the three user-facing Codex-style permission modes
+// ("ask", "auto", "full") onto concrete approval + Seatbelt boundaries.
+func PolicyForPreset(preset string, writableRoots []string) Policy {
+	switch NormalizePreset(preset) {
+	case PresetAsk:
+		return Policy{
+			Approval:      PresetAsk,
+			Mode:          ModeWorkspace,
+			Network:       false,
+			WritableRoots: writableRoots,
+		}
+	case PresetFull:
+		return Policy{
+			Approval:      "never",
+			Mode:          ModeFull,
+			Network:       true,
+			WritableRoots: writableRoots,
+		}
+	default:
+		return Policy{
+			Approval:      PresetAuto,
+			Mode:          ModeWorkspace,
+			Network:       false,
+			WritableRoots: writableRoots,
+		}
+	}
+}
+
+// RequiresPrompt reports whether an edge operation in "Approve for me" ("auto")
+// mode looks potentially unsafe (network access, privilege escalation, or
+// touching protected/outside-workspace paths) and should still ask the user.
+// Seatbelt remains enforced on execution regardless of this heuristic.
+func RequiresPrompt(policy Policy, home, command, kind string) bool {
+	approval := strings.TrimSpace(strings.ToLower(policy.Approval))
+	if approval == "never" || NormalizeMode(policy.Mode) == ModeFull {
+		return false
+	}
+	if approval != PresetAuto {
+		return true
+	}
+	if kind == "tcp_forward" || kind == "hook" {
+		return true
+	}
+	if kind == "sftp" {
+		return false
+	}
+	lower := " " + strings.ToLower(command) + " "
+	for _, token := range []string{
+		" sudo ", " su ", " osascript ", " security ", " launchctl ",
+		" curl ", " wget ", " nc ", " ncat ", " ssh ", " scp ", " rsync ",
+		"/.ssh", "~/.ssh", "/.gnupg", "~/.gnupg", "/.aws", "~/.aws",
+		"keychains", "/.config/fennec", "~/.config/fennec", ".git/hooks", ".git/config",
+	} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidMode(mode string) bool {

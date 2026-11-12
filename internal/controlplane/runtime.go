@@ -185,6 +185,29 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 	return c.runtimeSnapshot(), nil
 }
 
+// RecordEvent updates a published runtime event in place when a lightweight
+// resident-channel mutation (such as single-agent model switching) succeeds
+// without running a full background preparation cycle.
+func (c *Controller) RecordEvent(epoch uint64, event map[string]string) bool {
+	if c == nil || event["type"] == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.runtime.Epoch != epoch {
+		return false
+	}
+	if c.runtime.Events == nil {
+		c.runtime.Events = map[string]map[string]string{}
+	}
+	copied := make(map[string]string, len(event))
+	for k, v := range event {
+		copied[k] = v
+	}
+	c.runtime.Events[event["type"]] = copied
+	return true
+}
+
 // Reconcile coalesces configuration changes that arrive during preparation.
 func (c *Controller) Reconcile(ctx context.Context) (any, error) {
 	c.mu.Lock()

@@ -488,12 +488,18 @@ func SetNativeModel(ctx context.Context, home string, choice NativeModelSelectio
 	if !NativeAgentMode(home) {
 		return state, fmt.Errorf("native mode changed")
 	}
-	state, err = NativeModels(ctx, home, choice.Agent, true)
+	state, err = NativeModels(ctx, home, choice.Agent, false)
 	if err != nil {
 		return state, err
 	}
 	if err = ValidateNativeSelection(choice, state); err != nil {
-		return state, err
+		state, err = NativeModels(ctx, home, choice.Agent, true)
+		if err != nil {
+			return state, err
+		}
+		if err = ValidateNativeSelection(choice, state); err != nil {
+			return state, err
+		}
 	}
 	if err = writeNativeSelection(home, choice); err != nil {
 		return state, err

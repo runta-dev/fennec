@@ -182,6 +182,97 @@ func TestSessionOperations500ms(t *testing.T) {
 			}
 		})
 	}
+	t.Run("model.set", func(t *testing.T) {
+		settingsRaw := checked(t, c, "settings.get", map[string]any{})
+		var prefs struct {
+			Magpie bool `json:"magpie"`
+		}
+		_ = json.Unmarshal(settingsRaw, &prefs)
+		if prefs.Magpie {
+			stRaw := checked(t, c, "state.get", map[string]any{})
+			var full struct {
+				Runtime struct {
+					Events map[string]map[string]string `json:"events"`
+				} `json:"runtime"`
+			}
+			if json.Unmarshal(stRaw, &full) != nil {
+				t.Fatal("cannot decode runtime state for model.set test")
+			}
+			var catalog []string
+			_ = json.Unmarshal([]byte(full.Runtime.Events["model_catalog"]["models"]), &catalog)
+			var routes []struct {
+				Agent  string `json:"agent"`
+				Model  string `json:"model"`
+				Status string `json:"status"`
+			}
+			_ = json.Unmarshal([]byte(full.Runtime.Events["route_results"]["results"]), &routes)
+			orig := ""
+			for _, r := range routes {
+				if r.Agent == "codex" {
+					orig = r.Model
+					break
+				}
+			}
+			alt := ""
+			for _, m := range catalog {
+				if m != "" && m != orig && !strings.HasPrefix(m, "group/") && !strings.HasPrefix(m, "auto/") {
+					alt = m
+					break
+				}
+			}
+			if orig == "" || alt == "" {
+				t.Fatalf("need at least 2 cloud gateway models to profile model.set (orig=%q catalog=%d)", orig, len(catalog))
+			}
+			t.Cleanup(func() {
+				restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancelRestore()
+				_, _, _ = c.call(restoreCtx, "model.set", map[string]any{"agent": "codex", "model": orig, "location": "cloud"})
+			})
+			reply1 := checked(t, c, "model.set", map[string]any{"agent": "codex", "model": alt, "location": "cloud"})
+			var out1 struct {
+				Saved  bool   `json:"saved"`
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(reply1, &out1) != nil || !out1.Saved || out1.Status != "configured" {
+				t.Fatalf("cloud model.set did not confirm configured route: %s", reply1)
+			}
+			reply2 := checked(t, c, "model.set", map[string]any{"agent": "codex", "model": orig, "location": "cloud"})
+			var out2 struct {
+				Saved  bool   `json:"saved"`
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(reply2, &out2) != nil || !out2.Saved || out2.Status != "configured" {
+				t.Fatalf("cloud model.set restore did not confirm configured route: %s", reply2)
+			}
+		} else {
+			mRaw := checked(t, c, "model.get", map[string]any{"agent": "codex"})
+			var state struct {
+				Model  string `json:"model"`
+				Effort string `json:"effort"`
+				Models []struct {
+					ID string `json:"id"`
+				} `json:"models"`
+			}
+			if json.Unmarshal(mRaw, &state) != nil || len(state.Models) == 0 {
+				t.Fatalf("invalid native model.get response: %s", mRaw)
+			}
+			origModel, origEffort := state.Model, state.Effort
+			alt := ""
+			for _, m := range state.Models {
+				if m.ID != origModel {
+					alt = m.ID
+					break
+				}
+			}
+			t.Cleanup(func() {
+				restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancelRestore()
+				_, _, _ = c.call(restoreCtx, "model.set", map[string]any{"agent": "codex", "model": origModel, "effort": origEffort, "location": "cloud"})
+			})
+			checked(t, c, "model.set", map[string]any{"agent": "codex", "model": alt, "location": "cloud"})
+			checked(t, c, "model.set", map[string]any{"agent": "codex", "model": origModel, "effort": origEffort, "location": "cloud"})
+		}
+	})
 	// The fixture is a bounded cat process, not an existing user agent. Its setup
 	// handshake is excluded from hot timings and recorded by cold_ssh above.
 	for sample := 0; sample < 3; sample++ {

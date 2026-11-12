@@ -41,13 +41,14 @@ func TestFenSandboxAndAuditCLICommandsEndToEnd(t *testing.T) {
 	}
 	controller.Settings = func() any {
 		prefs := settings.snapshot().(desktopPreferences)
+		preset := effectivePermissionPreset(prefs)
 		eff := effectiveSandboxPolicy(ipcHome, prefs)
 		res, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
 		return map[string]any{
 			"revision":                prefs.Revision,
+			"permission_mode":         preset,
 			"sandbox_mode":            eff.Mode,
 			"sandbox_network":         eff.Network,
-			"sandbox_roots":           prefs.SandboxRoots,
 			"effective_sandbox_roots": eff.WritableRoots,
 			"audit_summary":           res.Summary,
 			"theme":                   prefs.Theme,
@@ -98,43 +99,30 @@ func TestFenSandboxAndAuditCLICommandsEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	if state["sandbox_mode"] != "workspace" || state["sandbox_network"] != false {
+	if state["permission_mode"] != "auto" || state["sandbox_mode"] != "workspace" || state["sandbox_network"] != false {
 		t.Fatalf("unexpected default sandbox state: %+v", state)
 	}
 
 	out.Reset()
-	if _, err := fenControlCommand([]string{"sandbox", "mode", "read-only"}, &out); err != nil {
-		t.Fatalf("fen sandbox mode failed: %v", err)
-	}
-	out.Reset()
-	if _, err := fenControlCommand([]string{"sandbox", "network", "on"}, &out); err != nil {
-		t.Fatalf("fen sandbox network on failed: %v", err)
-	}
-	out.Reset()
-	if _, err := fenControlCommand([]string{"sandbox", "add-root", workspaceDir}, &out); err != nil {
-		t.Fatalf("fen sandbox add-root failed: %v", err)
+	if _, err := fenControlCommand([]string{"sandbox", "ask"}, &out); err != nil {
+		t.Fatalf("fen sandbox ask failed: %v", err)
 	}
 	if err := json.Unmarshal(out.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	if state["sandbox_mode"] != "read-only" || state["sandbox_network"] != true {
-		t.Fatalf("expected read-only + network=true, got %+v", state)
-	}
-	roots, _ := state["sandbox_roots"].([]any)
-	if len(roots) != 1 {
-		t.Fatalf("expected 1 custom root, got %+v", state["sandbox_roots"])
+	if state["permission_mode"] != "ask" || state["sandbox_mode"] != "workspace" || state["sandbox_network"] != false {
+		t.Fatalf("expected ask preset (workspace + network=false), got %+v", state)
 	}
 
 	out.Reset()
-	if _, err := fenControlCommand([]string{"sandbox", "remove-root", workspaceDir}, &out); err != nil {
-		t.Fatalf("fen sandbox remove-root failed: %v", err)
+	if _, err := fenControlCommand([]string{"sandbox", "full"}, &out); err != nil {
+		t.Fatalf("fen sandbox full failed: %v", err)
 	}
 	if err := json.Unmarshal(out.Bytes(), &state); err != nil {
 		t.Fatal(err)
 	}
-	roots, _ = state["sandbox_roots"].([]any)
-	if len(roots) != 0 {
-		t.Fatalf("expected 0 custom roots after remove, got %+v", roots)
+	if state["permission_mode"] != "full" || state["sandbox_mode"] != "full" || state["sandbox_network"] != true {
+		t.Fatalf("expected full preset (full + network=true), got %+v", state)
 	}
 
 	if err := auditStore.Record(audit.Entry{

@@ -287,7 +287,7 @@ Usage: fen [attach [session-id]]
   fen sessions | launch <agent> [-- <agent arguments>]
   fen stop <session-id> | read <session-id> | send <session-id> <text>
   fen approvals | approve <id> [--always] | deny <id> | trust clear
-  fen sandbox [status | mode <read-only|workspace|full> | network <on|off> | add-root|remove-root <dir>]
+  fen sandbox [status | ask | auto | full]
   fen audit [--blocked | --approved] [--limit <n>] [--clear]
   fen hooks [list|import <file>|remove <name>]
   fen control <method>  (JSON parameters on stdin)

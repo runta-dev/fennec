@@ -146,23 +146,12 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	controller.Settings = func() any {
 		prefs := settings.snapshot().(desktopPreferences)
 		env := runta.ActiveEnvironment(home)
+		preset := effectivePermissionPreset(prefs)
 		effSandbox := effectiveSandboxPolicy(home, prefs)
 		auditRes, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
 		customRoots := prefs.SandboxRoots
 		if customRoots == nil {
 			customRoots = []string{}
-		}
-		autoAccess := false
-		if rawTrust, err := os.ReadFile(filepath.Join(home, ".config/fennec/ssh/trusted_devices.json")); err == nil {
-			var trusted map[string]bool
-			if json.Unmarshal(rawTrust, &trusted) == nil {
-				for _, v := range trusted {
-					if v {
-						autoAccess = true
-						break
-					}
-				}
-			}
 		}
 		return map[string]any{
 			"revision":                prefs.Revision,
@@ -175,11 +164,11 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 			"ssh_host":                env.SSHHost,
 			"ssh_nodelay":             !prefs.NoSSHNoDelay,
 			"no_ssh_nodelay":          prefs.NoSSHNoDelay,
+			"permission_mode":         preset,
 			"sandbox_mode":            effSandbox.Mode,
 			"sandbox_network":         effSandbox.Network,
 			"sandbox_roots":           customRoots,
 			"effective_sandbox_roots": effSandbox.WritableRoots,
-			"auto_access_granted":     autoAccess,
 			"audit_summary":           auditRes.Summary,
 			"theme":                   prefs.Theme,
 			"language":                prefs.Language,
@@ -201,6 +190,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return controller.Settings(), nil }
 	controller.Additional["settings.set"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		prevPreset := effectivePermissionPreset(settings.snapshot().(desktopPreferences))
 		_, err := settings.update(ctx, raw, func() error {
 			env := runta.ActiveEnvironment(home)
 			if manager.Endpoint() != env.API {
@@ -220,6 +210,11 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		})
 		if err != nil {
 			return nil, err
+		}
+		nextPreset := effectivePermissionPreset(settings.snapshot().(desktopPreferences))
+		if nextPreset == sandbox.PresetAsk && prevPreset != sandbox.PresetAsk {
+			_ = os.Remove(filepath.Join(home, ".config/fennec/ssh/trusted_devices.json"))
+			_, _ = services.decide(ctx, json.RawMessage(`{"action":"clear_trust"}`))
 		}
 		return controller.Settings(), nil
 	}

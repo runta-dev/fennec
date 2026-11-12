@@ -944,7 +944,17 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                     else {self.render("renderNativeModelFailure",[params["agent"] as? String ?? ""])}
                 }
             case "select-model:":
-                render("renderModelSaving",[true]); mutate("model.set",params) { [weak self] success,value in if success,let value { self?.render(params["location"] as? String == "local" ? "renderLocalModel" : "renderNativeModels",[value]) }; self?.render("renderModelSaving",[false]) }
+                render("renderModelSaving",[true])
+                mutate("model.set",params) { [weak self] success,value in
+                    if success, let value {
+                        if let reply = value as? [String:Any], let routes = reply["routes"] {
+                            self?.render("renderRouteResults", [routes])
+                        } else {
+                            self?.render(params["location"] as? String == "local" ? "renderLocalModel" : "renderNativeModels",[value])
+                        }
+                    }
+                    self?.render("renderModelSaving",[false])
+                }
             case "launch-agent:":
                 let key = (params["agent"] as? String ?? "") + ":" + (params["directory"] as? String ?? "")
                 let launch: (String) -> Void = { [weak self] requestID in

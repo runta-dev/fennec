@@ -122,25 +122,7 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 				}
 				return map[string]any{"saved": true, "agent": choice.Agent, "model": choice.Model, "location": "local"}, nil
 			}
-			_, _, epoch, ok := s.account.Session()
-			if !ok {
-				return nil, &control.Fault{Code: "login_required", Message: "Sign in first"}
-			}
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if s.epoch != epoch || s.user == "" {
-				return nil, &control.Fault{Code: "not_ready", Message: "Account services are not ready"}
-			}
-			if err := setup.SaveModelPreference(filepath.Join(s.home, ".config/fennec"), s.user, choice.Agent, choice.Model); err != nil {
-				return nil, &control.Fault{Code: "invalid_model", Message: "A valid agent and provider/model are required"}
-			}
-			delete(s.ready, choice.Agent)
-			s.reconcileSelectionLocked()
-			state, err := controller.Reconcile(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"saved": true, "agent": choice.Agent, "model": choice.Model, "preparation": state}, nil
+			return s.setCloudMagpieModel(ctx, controller, choice.Agent, choice.Model)
 		},
 	}
 }

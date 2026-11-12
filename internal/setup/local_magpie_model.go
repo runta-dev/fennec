@@ -76,6 +76,16 @@ func SetLocalMagpieModel(ctx context.Context, home, agentID, model string) error
 	if _, err := ParseAgentModel("Agent model " + model); err != nil || strings.HasPrefix(model, "-") || strings.ContainsAny(model, " \t\r\n\x00") {
 		return fmt.Errorf("choose a valid provider/model")
 	}
+	if handled, fastErr := writeConfiguredMagpieModel(ctx, home, agentID, model); handled {
+		if fastErr != nil {
+			return fastErr
+		}
+		current, err := LocalMagpieModel(ctx, home, agentID)
+		if err != nil || current != model {
+			return fmt.Errorf("model change was not confirmed")
+		}
+		return nil
+	}
 	if _, err := localMagpieCommand(ctx, home, agentID, "model", model); err != nil {
 		return err
 	}

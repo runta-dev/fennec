@@ -8,7 +8,6 @@ import (
 	"fennec/internal/sandbox"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -34,9 +33,9 @@ func fenSandboxCommand(args []string, output io.Writer) error {
 	}
 	project := func(s map[string]any) map[string]any {
 		return map[string]any{
+			"permission_mode":         s["permission_mode"],
 			"sandbox_mode":            s["sandbox_mode"],
 			"sandbox_network":         s["sandbox_network"],
-			"sandbox_roots":           s["sandbox_roots"],
 			"effective_sandbox_roots": s["effective_sandbox_roots"],
 			"seatbelt_available":      sandbox.Available(),
 		}
@@ -51,59 +50,26 @@ func fenSandboxCommand(args []string, output io.Writer) error {
 	}
 
 	switch args[0] {
+	case "ask", "auto", "full", "ask-for-approval", "approve-for-me", "full-access":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: fen sandbox <ask | auto | full>")
+		}
+		var updated map[string]any
+		if err := client.Call(ctx, "settings.set", map[string]any{"permission_mode": sandbox.NormalizePreset(args[0])}, &updated); err != nil {
+			return err
+		}
+		return json.NewEncoder(output).Encode(project(updated))
 	case "mode":
-		if len(args) != 2 || !sandbox.ValidMode(args[1]) && args[1] != "full-access" {
-			return fmt.Errorf("usage: fen sandbox mode <read-only | workspace | full>")
+		if len(args) != 2 || !sandbox.ValidPreset(args[1]) {
+			return fmt.Errorf("usage: fen sandbox mode <ask | auto | full>")
 		}
 		var updated map[string]any
-		if err := client.Call(ctx, "settings.set", map[string]any{"sandbox_mode": args[1]}, &updated); err != nil {
-			return err
-		}
-		return json.NewEncoder(output).Encode(project(updated))
-	case "network":
-		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
-			return fmt.Errorf("usage: fen sandbox network <on | off>")
-		}
-		var updated map[string]any
-		if err := client.Call(ctx, "settings.set", map[string]any{"sandbox_network": args[1] == "on"}, &updated); err != nil {
-			return err
-		}
-		return json.NewEncoder(output).Encode(project(updated))
-	case "add-root", "remove-root":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: fen sandbox %s <directory>", args[0])
-		}
-		absPath, err := filepath.Abs(args[1])
-		if err != nil {
-			return err
-		}
-		norm, err := sandbox.NormalizeRoots([]string{absPath})
-		if err != nil || len(norm) != 1 {
-			return fmt.Errorf("invalid directory: %v", err)
-		}
-		target := norm[0]
-		cur, err := readSettings()
-		if err != nil {
-			return err
-		}
-		roots := []string{}
-		if rawList, ok := cur["sandbox_roots"].([]any); ok {
-			for _, item := range rawList {
-				if str, ok := item.(string); ok && str != target {
-					roots = append(roots, str)
-				}
-			}
-		}
-		if args[0] == "add-root" {
-			roots = append(roots, target)
-		}
-		var updated map[string]any
-		if err := client.Call(ctx, "settings.set", map[string]any{"sandbox_roots": roots}, &updated); err != nil {
+		if err := client.Call(ctx, "settings.set", map[string]any{"permission_mode": sandbox.NormalizePreset(args[1])}, &updated); err != nil {
 			return err
 		}
 		return json.NewEncoder(output).Encode(project(updated))
 	default:
-		return fmt.Errorf("usage: fen sandbox [status | mode <read-only|workspace|full> | network <on|off> | add-root <dir> | remove-root <dir>]")
+		return fmt.Errorf("usage: fen sandbox [status | ask | auto | full]")
 	}
 }
 

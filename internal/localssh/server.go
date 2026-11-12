@@ -104,6 +104,14 @@ func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, 
 	if closed {
 		return false, "user_denied"
 	}
+	policy := b.effectivePolicy()
+	home, _ := os.UserHomeDir()
+	if policy.Approval == "never" {
+		return true, "auto_sandbox"
+	}
+	if !forcePrompt && policy.Approval == sandbox.PresetAuto && !sandbox.RequiresPrompt(policy, home, command, kind) {
+		return true, "auto_sandbox"
+	}
 	if !forcePrompt && b.trusted(fingerprint) {
 		return true, "auto_sandbox"
 	}

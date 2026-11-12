@@ -196,13 +196,58 @@ func ValidateDesiredRoutes(routes []AgentRoute) error {
 }
 
 func ReconcileLocalRoutes(ctx context.Context, home string, routes []AgentRoute) ([]RouteResult, error) {
-	return reconcileRoutesWith(ctx, routes, func(ctx context.Context, script string) error {
+	if err := ValidateDesiredRoutes(routes); err != nil {
+		return nil, err
+	}
+	readFn := func(ctx context.Context, agent string) ([]byte, error) {
+		return readModelWithLock(ctx, home, agent)
+	}
+	writeShell := func(ctx context.Context, script string) error {
 		command := exec.CommandContext(ctx, "/bin/sh", "-s")
 		command.Stdin = strings.NewReader(script)
 		return command.Run()
-	}, func(ctx context.Context, agent string) ([]byte, error) {
-		return readModelWithLock(ctx, home, agent)
-	})
+	}
+	results := make([]RouteResult, 0, len(routes))
+	for _, route := range routes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if route.Problem != "" {
+			results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: route.Problem})
+			continue
+		}
+		current, readErr := readFn(ctx, route.Agent)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+			return nil, readErr
+		}
+		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && actual == route.Model {
+			results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: "configured"})
+			continue
+		}
+		if handled, fastErr := writeConfiguredMagpieModel(ctx, home, route.Agent, route.Model); handled {
+			if fastErr != nil {
+				results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: "configuration_failed"})
+				continue
+			}
+			output, verifyErr := readFn(ctx, route.Agent)
+			actual, parseErr := ParseAgentModel(string(output))
+			st := "configured"
+			if verifyErr != nil || parseErr != nil || actual != route.Model {
+				st = "verification_failed"
+			}
+			results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: st})
+			continue
+		}
+		single, err := reconcileRoutesWith(ctx, []AgentRoute{route}, writeShell, readFn)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, single...)
+	}
+	return results, nil
 }
 
 func reconcileRoutesWith(ctx context.Context, routes []AgentRoute, write func(context.Context, string) error, read func(context.Context, string) ([]byte, error)) ([]RouteResult, error) {

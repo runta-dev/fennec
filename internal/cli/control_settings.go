@@ -31,6 +31,7 @@ type desktopPreferences struct {
 	UpdateSkip     string   `json:"update_skip,omitempty"`
 	Environment    string   `json:"environment,omitempty"`
 	NoSSHNoDelay   bool     `json:"no_ssh_nodelay,omitempty"`
+	PermissionMode string   `json:"permission_mode,omitempty"`
 	SandboxMode    string   `json:"sandbox_mode,omitempty"`
 	SandboxNetwork bool     `json:"sandbox_network,omitempty"`
 	SandboxRoots   []string `json:"sandbox_roots,omitempty"`
@@ -39,8 +40,17 @@ type desktopPreferences struct {
 	Initialized    bool     `json:"initialized"`
 }
 
+func effectivePermissionPreset(prefs desktopPreferences) string {
+	if prefs.PermissionMode != "" {
+		return sandbox.NormalizePreset(prefs.PermissionMode)
+	}
+	if prefs.SandboxMode != "" {
+		return sandbox.NormalizePreset(prefs.SandboxMode)
+	}
+	return sandbox.PresetAuto
+}
+
 func effectiveSandboxPolicy(home string, prefs desktopPreferences) sandbox.Policy {
-	mode := sandbox.NormalizeMode(prefs.SandboxMode)
 	seen := map[string]bool{}
 	roots := []string{}
 	for _, r := range prefs.SandboxRoots {
@@ -58,11 +68,7 @@ func effectiveSandboxPolicy(home string, prefs desktopPreferences) sandbox.Polic
 		}
 	}
 	sort.Strings(roots)
-	return sandbox.Policy{
-		Mode:          mode,
-		Network:       prefs.SandboxNetwork,
-		WritableRoots: roots,
-	}
+	return sandbox.PolicyForPreset(effectivePermissionPreset(prefs), roots)
 }
 
 func newDesktopSettings(home string) *desktopSettings {
@@ -132,6 +138,9 @@ func validDesktop(value desktopPreferences) bool {
 	if !sandbox.ValidMode(value.SandboxMode) || len(value.SandboxRoots) > 64 {
 		return false
 	}
+	if !sandbox.ValidPreset(value.PermissionMode) {
+		return false
+	}
 	if _, err := sandbox.NormalizeRoots(value.SandboxRoots); err != nil {
 		return false
 	}
@@ -174,6 +183,7 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			Environment      *string         `json:"environment"`
 			SSHNoDelay       *bool           `json:"ssh_nodelay"`
 			NoSSHNoDelay     *bool           `json:"no_ssh_nodelay"`
+			PermissionMode   *string         `json:"permission_mode"`
 			SandboxMode      *string         `json:"sandbox_mode"`
 			SandboxNetwork   *bool           `json:"sandbox_network"`
 			SandboxRoots     json.RawMessage `json:"sandbox_roots"`
@@ -224,15 +234,27 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		if request.NoSSHNoDelay != nil && !importing {
 			next.NoSSHNoDelay = *request.NoSSHNoDelay
 		}
+		if request.PermissionMode != nil && !importing {
+			rawPreset := strings.TrimSpace(strings.ToLower(*request.PermissionMode))
+			if !sandbox.ValidPreset(rawPreset) {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported permission mode"}
+			}
+			preset := sandbox.NormalizePreset(rawPreset)
+			next.PermissionMode = preset
+			mapped := sandbox.PolicyForPreset(preset, nil)
+			next.SandboxMode = mapped.Mode
+			next.SandboxNetwork = mapped.Network
+		}
 		if request.SandboxMode != nil && !importing {
 			rawMode := strings.TrimSpace(strings.ToLower(*request.SandboxMode))
-			if rawMode == "full-access" || rawMode == "danger-full-access" {
-				rawMode = sandbox.ModeFull
-			}
-			if !sandbox.ValidMode(rawMode) {
+			if !sandbox.ValidPreset(rawMode) {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported sandbox mode"}
 			}
-			next.SandboxMode = sandbox.NormalizeMode(rawMode)
+			preset := sandbox.NormalizePreset(rawMode)
+			next.PermissionMode = preset
+			mapped := sandbox.PolicyForPreset(preset, nil)
+			next.SandboxMode = mapped.Mode
+			next.SandboxNetwork = mapped.Network
 		}
 		if request.SandboxNetwork != nil && !importing {
 			next.SandboxNetwork = *request.SandboxNetwork

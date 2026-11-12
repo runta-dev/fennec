@@ -448,6 +448,21 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 			if !ok {
 				return report, fmt.Errorf("invalid plugin providers store")
 			}
+			pinnedSpecs := map[string]string{}
+			if manifestRaw, mErr := os.ReadFile(filepath.Join(root, "plugins.json")); mErr == nil && len(manifestRaw) <= 1<<20 {
+				var manifest struct {
+					Plugins []struct {
+						Spec string `json:"spec"`
+					} `json:"plugins"`
+				}
+				if json.Unmarshal(manifestRaw, &manifest) == nil {
+					for _, p := range manifest.Plugins {
+						if pkg := splitPluginSpecPackage(p.Spec); pkg != "" {
+							pinnedSpecs[pkg] = p.Spec
+						}
+					}
+				}
+			}
 			var remoteList []any
 			if exists {
 				if value, err := parseCredentialJSON(previous); err == nil {
@@ -474,6 +489,11 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 				id, _ := srcMap["id"].(string)
 				if id == "" || !allowedPluginCredentialBase.MatchString(id) {
 					continue
+				}
+				if spec, _ := srcMap["spec"].(string); spec != "" {
+					if target := pinnedSpecs[splitPluginSpecPackage(spec)]; target != "" {
+						srcMap["spec"] = target
+					}
 				}
 				seenID[id] = true
 				srcModels, _ := srcMap["models"].([]any)
