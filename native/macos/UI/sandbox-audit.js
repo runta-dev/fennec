@@ -1,7 +1,6 @@
 // Local macOS Seatbelt sandbox controls and 7-day rolling security audit view.
 (() => {
-  const modeGroup = document.querySelector('#sandbox-segments');
-  const modeButtons = [...(modeGroup?.querySelectorAll('[data-permission-mode]') || [])];
+  const modeSelect = document.querySelector('#permission-mode');
   const rootsSection = document.querySelector('#sandbox-roots-section');
   const rootsList = document.querySelector('#sandbox-roots-list');
   const addRootBtn = document.querySelector('#add-sandbox-root');
@@ -14,7 +13,6 @@
   const countApprovedEl = document.querySelector('#audit-count-approved');
   const auditListEl = document.querySelector('#audit-list');
 
-  const MODES = ['ask', 'auto', 'full'];
   const t = token => (typeof translate === 'function' ? translate(token) : token);
 
   let sandboxState = {
@@ -111,11 +109,7 @@
 
   function drawSandboxSettings() {
     const mode = sandboxState.mode;
-    modeButtons.forEach(btn => {
-      const selected = btn.dataset.permissionMode === mode;
-      btn.setAttribute('aria-checked', String(selected));
-      btn.tabIndex = selected ? 0 : -1;
-    });
+    if (modeSelect) modeSelect.value = mode;
     if (rootsSection) {
       rootsSection.classList.toggle('is-inactive', mode === 'full');
     }
@@ -333,20 +327,9 @@
     send('audit-list:' + JSON.stringify({ filter: auditFilter, limit: 100 }));
   }
 
-  modeButtons.forEach((btn, idx) => {
-    btn.onclick = () => selectMode(btn.dataset.permissionMode);
-    btn.onkeydown = event => {
-      let nextIdx;
-      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIdx = (idx + 1) % MODES.length;
-      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIdx = (idx + MODES.length - 1) % MODES.length;
-      else if (event.key === 'Home') nextIdx = 0;
-      else if (event.key === 'End') nextIdx = MODES.length - 1;
-      else return;
-      event.preventDefault();
-      modeButtons[nextIdx]?.click();
-      modeButtons[nextIdx]?.focus?.();
-    };
-  });
+  if (modeSelect) {
+    modeSelect.onchange = () => selectMode(modeSelect.value);
+  }
 
   if (addRootBtn) {
     addRootBtn.onclick = () => {

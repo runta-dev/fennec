@@ -29,6 +29,7 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
     }
     const item = document.createElement('button');
     item.type = 'button';
+    item.dataset.value = option.value;
     item.setAttribute('role', 'option');
     item.setAttribute('aria-selected', String(option.selected));
     const text = document.createElement('span');
@@ -37,7 +38,8 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
     const iconSrc = option.dataset?.icon || '';
     const iconSvg = option.dataset?.iconSvg || '';
     const account = option.dataset?.account || '';
-    if (iconSrc || iconSvg || account) {
+    const description = option.dataset?.description || '';
+    if (iconSrc || iconSvg || account || description) {
       item.className = 'choice-item-rich';
       const main = document.createElement('span');
       main.className = 'choice-item-main';
@@ -54,7 +56,18 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
         img.alt = '';
         main.append(img);
       }
-      main.append(text);
+      if (description) {
+        const copy = document.createElement('span');
+        copy.className = 'choice-item-copy';
+        const label = text;
+        const detail = document.createElement('span');
+        detail.className = 'choice-item-description';
+        detail.textContent = description;
+        copy.append(label, detail);
+        main.append(copy);
+      } else {
+        main.append(text);
+      }
       if (account) {
         const meta = document.createElement('span');
         meta.className = 'choice-item-account';
@@ -94,7 +107,8 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
 for (const select of document.querySelectorAll('.preference-row select')) {
   select.hidden = true;
   const trigger = document.createElement('button');
-  trigger.className = 'choice-trigger';
+  trigger.className = 'choice-trigger' + (select.id === 'permission-mode' ? ' permission-trigger' : '');
+  if (select.id === 'permission-mode') trigger.id = 'permission-trigger';
   trigger.type = 'button';
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
@@ -107,6 +121,20 @@ for (const select of document.querySelectorAll('.preference-row select')) {
     }
   };
   select.after(trigger);
+  if (select.id === 'permission-mode') {
+    const icon = document.createElement('span');
+    icon.className = 'choice-item-icon-wrap';
+    icon.setAttribute('aria-hidden', 'true');
+    const setTriggerState = () => {
+      const selected = select.selectedOptions[0];
+      icon.innerHTML = selected.dataset.iconSvg || '';
+      trigger.classList.toggle('is-full', select.value === 'full');
+      (trigger.querySelector('.field-value') || trigger.querySelector('span')).textContent = selected.textContent;
+    };
+    trigger.prepend(icon);
+    setTriggerState();
+    select.addEventListener('change', setTriggerState);
+  }
   // Labels focus the custom trigger rather than an invisible native control.
   for (const label of select.labels) label.onclick = () => trigger.focus();
 }

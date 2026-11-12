@@ -2496,12 +2496,36 @@
       "zh-TW": "自動核准"
     },
     "ui.sandbox_mode_full": {
-      "en-GB": "Full",
-      "en-US": "Full",
-      "ja": "フル",
-      "ko": "전체",
-      "zh-CN": "完全",
-      "zh-TW": "完全"
+      "en-GB": "Full access",
+      "en-US": "Full access",
+      "ja": "フルアクセス",
+      "ko": "전체 접근",
+      "zh-CN": "完全访问",
+      "zh-TW": "完全存取"
+    },
+    "ui.permission_mode_ask_description": {
+      "en-GB": "Always ask to edit external files and use the internet",
+      "en-US": "Always ask to edit external files and use the internet",
+      "ja": "外部ファイルの編集とインターネット利用は常に確認します",
+      "ko": "외부 파일 편집과 인터넷 사용 시 항상 묻습니다",
+      "zh-CN": "编辑外部文件和联网时始终询问",
+      "zh-TW": "編輯外部檔案和連網時始終詢問"
+    },
+    "ui.permission_mode_auto_description": {
+      "en-GB": "Only ask for actions detected as potentially unsafe",
+      "en-US": "Only ask for actions detected as potentially unsafe",
+      "ja": "危険な可能性がある操作のみ確認します",
+      "ko": "위험할 수 있는 작업만 묻습니다",
+      "zh-CN": "仅在检测到可能不安全时询问",
+      "zh-TW": "僅在偵測到可能不安全時詢問"
+    },
+    "ui.permission_mode_full_description": {
+      "en-GB": "Unrestricted access to the internet and any file on your computer",
+      "en-US": "Unrestricted access to the internet and any file on your computer",
+      "ja": "インターネットとパソコン上のファイルに制限なくアクセスします",
+      "ko": "인터넷과 컴퓨터의 모든 파일에 제한 없이 접근합니다",
+      "zh-CN": "Unrestricted access to the internet and any file on your computer",
+      "zh-TW": "Unrestricted access to the internet and any file on your computer"
     },
     "ui.sandbox_network": {
       "en-GB": "Sandbox network",

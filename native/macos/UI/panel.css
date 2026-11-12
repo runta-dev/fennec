@@ -536,15 +536,21 @@ nav button{padding:3px 7px}
 #governance .preference-row{min-height:40px;padding-top:6px;padding-bottom:6px}
 #governance .card:has(.setting-info){overflow:visible}
 #sandbox-mode-label{white-space:nowrap;flex:none}
-#sandbox-segments{position:relative;isolation:isolate;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;margin-left:auto;padding:2px;gap:2px;border-radius:8px;background:var(--bg)}
-#sandbox-segments::before{content:"";position:absolute;z-index:0;top:2px;bottom:2px;left:2px;width:calc((100% - 8px)/3);border:1px solid var(--line);border-radius:6px;background:var(--card);box-shadow:0 1px 3px #00000014;pointer-events:none;transition:transform .24s cubic-bezier(.23,1,.32,1)}
-#sandbox-segments:has([data-permission-mode=auto][aria-checked=true])::before{transform:translateX(calc(100% + 2px))}
-#sandbox-segments:has([data-permission-mode=full][aria-checked=true])::before{transform:translateX(calc(200% + 4px))}
-#sandbox-segments>button{position:relative;z-index:1;min-width:0;white-space:nowrap;padding:3px 6px;line-height:18px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:11.5px;transition:color .18s ease}
-#sandbox-segments>button:hover{filter:none;color:var(--text)}
-#sandbox-segments>button[aria-checked=true]{background:transparent;border-color:transparent;box-shadow:none;color:var(--text);font-weight:500}
-#sandbox-segments>button:focus:not(:focus-visible){outline:none}
-@media(prefers-reduced-motion:reduce){#sandbox-segments::before,#sandbox-segments>button{transition:none}}
+#permission-trigger{margin-left:auto;flex:0 0 176px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:11.5px}
+#permission-trigger.is-full{color:#b44716;border-color:#f38d2570;background:var(--tint)}
+#permission-trigger .choice-item-icon-wrap{width:13px;height:13px;color:currentColor}
+#permission-trigger .choice-item-icon-wrap svg{width:13px;height:13px}
+#permission-menu{width:272px;padding:6px}
+#permission-menu button.choice-item-rich{align-items:flex-start;height:auto;min-height:46px;padding:7px 8px;border-radius:7px;white-space:normal;text-align:left}
+#permission-menu .choice-item-main{align-items:flex-start}
+#permission-menu .choice-item-icon-wrap{width:15px;height:15px;margin-top:1px}
+#permission-menu .choice-item-copy{display:flex;flex-direction:column;gap:2px}
+#permission-menu .choice-item-description{color:var(--muted);font-size:10.5px;font-weight:400;line-height:1.35}
+#permission-menu .choice-item-icon-wrap,#permission-menu button[data-value=full]{color:#b44716}
+#permission-menu button[data-value=full] .choice-item-description{color:#b44716}
+:root[data-theme=dark] #permission-trigger.is-full,:root[data-theme=dark] #permission-menu .choice-item-icon-wrap,:root[data-theme=dark] #permission-menu button[data-value=full]{color:#f5bc7e}
+:root[data-theme=dark] #permission-menu button[data-value=full] .choice-item-description{color:#f5bc7e}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) #permission-trigger.is-full,:root:not([data-theme=light]) #permission-menu .choice-item-icon-wrap,:root:not([data-theme=light]) #permission-menu button[data-value=full]{color:#f5bc7e}:root:not([data-theme=light]) #permission-menu button[data-value=full] .choice-item-description{color:#f5bc7e}}
 
 .sandbox-roots-section{border-top:1px solid var(--line);padding:7px 12px 9px;transition:opacity .16s ease}
 .sandbox-roots-section.is-inactive{opacity:.52}

@@ -44,7 +44,7 @@ Codex Desktop or Fennec UI
                                   |
                    agent loop, tools, threads, approvals
                                   |
-                       isolated cloud CODEX_HOME
+                         cloud CODEX_HOME
 ```
 
 This is a native harness integration, not terminal emulation. Do not create a
@@ -54,8 +54,17 @@ session type and must not masquerade as a Herdr terminal.
 
 ### Cloud lifecycle
 
-- Give each selected cloud account an immutable, private `CODEX_HOME`. Do not
-  point the daemon at the Mac's `.codex` or a mutable account-selection symlink.
+- Use one managed daemon and one private cloud `CODEX_HOME` for the user's
+  existing shared cloud computer. Do not point the daemon at the Mac's `.codex`
+  or a mutable account-selection symlink.
+- Do not create another daemon or account-specific home when the selected
+  subscription changes. Account selection updates the credential and selected
+  model/provider files inside that one home; the daemon and control socket stay
+  stable.
+- Serialize account switches relative to thread startup and active turns. Do
+  not hot-swap credentials underneath a running inference request or reconnect
+  it to another account. Reconcile or interrupt active work explicitly, then
+  verify the newly selected account before starting a new thread.
 - Start the complete managed Linux package with `codex app-server daemon start`.
   A package is required; the current single npm-installed executable is not
   automatically a complete managed daemon installation. If it is missing,
@@ -69,8 +78,9 @@ session type and must not masquerade as a Herdr terminal.
   turn. Graceful shutdown defaults to 60 seconds and is bounded by configuration;
   reconcile saved threads before resuming them.
 - A daemon shares the environment captured at startup, not per-client
-  environments. Separate cloud account homes rather than attempting to switch
-  credentials underneath a live daemon.
+  environments. Keep account state inside the single cloud home and change it
+  through daemon-safe reconciliation; do not mutate credentials underneath a
+  live client connection without an explicit account-switch operation.
 
 For Fennec's own RPC client, a private Unix socket is sufficient. Do not enable
 Codex remote control merely to proxy that local socket. Do not expose a
@@ -134,6 +144,65 @@ If native pairing is unsupported for our use case, Fennec can still provide its
 own client over the documented app-server protocol. That is a supported harness
 integration, but it is not the original Codex Desktop UI.
 
+### Shim injection for the bundled Desktop binary
+
+The bundled app is executable at
+`/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
+It is Developer ID signed and notarized by OpenAI, so replacing it in place
+would invalidate the bundle seal. Fennec must not modify the installed
+`ChatGPT.app` directly.
+
+A working model already exists locally: `CodexRouter.app` keeps the original
+binary as `codex.real`, installs a small native launcher named `codex`, and
+re-signs the complete application bundle with an ad-hoc signature. Its child
+processes show the launcher forwarding to `codex.real` for unrelated commands
+and launching separate `codex.real app-server` children with model-provider
+overrides. This confirms the operating-system mechanics, but its product
+behavior is not a Fennec implementation.
+
+Fennec's Desktop bridge should use the same mechanics with stricter boundaries:
+
+1. Copy `ChatGPT.app` to a Fennec-owned name such as `Fennec Codex.app` or a
+   versioned staging directory. Never mutate the original bundle.
+2. Rename the original desktop executable to `codex.real` inside the copy.
+3. Install a small Go launcher at the original `codex` path.
+4. For `app-server`, have the launcher either:
+   - `exec` the compatible official `codex app-server proxy --sock
+     /path/to/cloud/codex.sock`, or
+   - speak the app-server protocol directly over the Fennec resident SSH
+     channel and connect it to the cloud Unix socket.
+5. For every other command, `exec` `codex.real` unchanged, preserving argv,
+   cwd, stdio, signals, environment, and exit status.
+6. Preserve required entitlements where possible and re-sign the copied bundle
+   with `codesign --force --deep --sign -`. Ad-hoc signing loses the original
+   notarization ticket and Team ID attribution.
+7. Record the original bundle identity and architecture, verify the copied
+   bundle with `codesign --verify --deep --strict`, and make the bridge
+   idempotently removable.
+
+Cloud sessions must use the single private cloud `CODEX_HOME`, not the Mac
+account-selection root. Selecting another cloud account changes that shared
+home's authorization, not the daemon or Desktop shim path. The launcher and its
+child app-server processes must never receive cloud credentials as arguments or
+environment inherited from an interactive shell.
+
+Tradeoffs to state to users before enabling:
+
+- macOS may treat the modified bundle differently from the notarized original;
+  Gatekeeper, managed-device policy, and future updates must be tested.
+- A ChatGPT/Codex Desktop update replaces the upstream bundle and restores the
+  default binary; the Fennec bridge must detect this and re-stage safely rather
+  than silently mixing launcher and harness versions.
+- The launcher must pin a compatible Codex release and check the app-server
+  protocol before starting a turn. Unknown versions must fail safely to the
+  original local behavior, not guess.
+- The bridge must not permanently rename or delete the user's original app.
+
+This shim path can make the existing Desktop UI talk to the cloud harness. It
+still does not migrate the process state of an already running local
+app-server; new threads start in the cloud daemon, and existing local threads
+remain where they were created.
+
 The hosted Agents API and `codex exec-server` are a separate integration path.
 They are not interchangeable with the local app-server daemon used here.
 
@@ -166,3 +235,9 @@ The local managed-daemon README states the SSH-client intent, experimental
 status, shared-environment limitation, and update/graceful-shutdown behavior.
 The transport implementation supports stdio, Unix sockets, WebSockets, and
 remote-control connections with connection-scoped request routing.
+
+Local evidence for shim mechanics is `CodexRouter.app` version 1.0.10: its
+launcher and `codex.real` pair are both present under `Contents/Resources`,
+the launcher is ad-hoc signed, and the complete modified bundle passes
+`codesign --verify --deep --strict`. This demonstrates bundle replacement and
+re-signing only; Fennec must not reuse its router or provider behavior.

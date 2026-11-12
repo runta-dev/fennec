@@ -23,7 +23,8 @@ function makeNode(tag = 'div', dataset = {}) {
         } else if (force) this.classes.add(name);
         else this.classes.delete(name);
       },
-      contains(name) { return this.classes.has(name); }
+      contains(name) { return this.classes.has(name); },
+      add(name) { this.classes.add(name); }
     },
     append(...nodes) { this.children.push(...nodes); },
     replaceChildren(...nodes) { this.children = [...nodes]; },
@@ -35,13 +36,8 @@ function makeNode(tag = 'div', dataset = {}) {
   };
 }
 
-const modeButtons = [
-  makeNode('button', { permissionMode: 'ask' }),
-  makeNode('button', { permissionMode: 'auto' }),
-  makeNode('button', { permissionMode: 'full' })
-];
-const modeGroup = makeNode('div');
-modeGroup.querySelectorAll = () => modeButtons;
+const modeSelect = makeNode('select');
+modeSelect.value = 'auto';
 
 const filterButtons = [
   makeNode('button', { auditFilter: 'all' }),
@@ -50,7 +46,7 @@ const filterButtons = [
 ];
 
 const nodes = {
-  '#sandbox-segments': modeGroup,
+  '#permission-mode': modeSelect,
   '#sandbox-roots-section': makeNode('div'),
   '#sandbox-roots-list': makeNode('div'),
   '#add-sandbox-root': makeNode('button'),
@@ -92,7 +88,7 @@ context.window.renderSandboxPreferences({
   auto_access_granted: true,
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
-assert.equal(modeButtons[1].attrs['aria-checked'], 'true');
+assert.equal(modeSelect.value, 'auto');
 assert.equal(nodes['#clear-trust'].disabled, false);
 assert.equal(nodes['#clear-trust'].textContent, 'revoke_access');
 
@@ -109,13 +105,15 @@ assert.equal(nodes['#audit-summary-badge'].textContent, '6 · 1 audit_summary_bl
 assert.equal(nodes['#audit-summary-badge'].classList.contains('has-blocked'), true);
 
 // 2. Switching to Full access dims roots without removing rows.
-modeButtons[2].onclick();
+modeSelect.value = 'full';
+modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"full"}');
 assert.equal(nodes['#sandbox-roots-section'].classList.contains('is-inactive'), true);
 assert.equal(nodes['#sandbox-roots-list'].children.length, 2, 'rows remain in place for zero layout shift');
 
 // 3. Switching back to Approve for me re-enables picking/removing custom folders.
-modeButtons[1].onclick();
+modeSelect.value = 'auto';
+modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
 context.window.renderPickedSandboxRoot('/Users/alice/work/another');
 assert.equal(sent.pop(), 'settings:{"sandbox_roots":["/Users/alice/work/another","/Users/alice/work/custom-repo"]}');
@@ -178,10 +176,11 @@ assert.equal(sent.pop(), 'audit-list:{"filter":"blocked","limit":100}');
 nodes['#audit-clear'].onclick();
 assert.equal(sent.pop(), 'audit-clear');
 
-console.log('PASS sandbox segmented modes, custom/synced writable roots, and 7-day security audit timeline');
+console.log('PASS permission select, custom/synced writable roots, and 7-day security audit timeline');
 
 // Legacy state remains visible, while new selections use the three permission presets.
 context.window.renderSandboxPreferences({ sandbox_mode: 'read-only' });
-assert.equal(modeButtons[0].attrs['aria-checked'], 'true');
-modeButtons[1].onclick();
+assert.equal(modeSelect.value, 'ask');
+modeSelect.value = 'auto';
+modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
