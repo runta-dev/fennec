@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/agent"
 	"fennec/internal/audit"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
@@ -517,7 +518,16 @@ func (s *daemonServices) snapshot() any {
 	for k, v := range s.coverage {
 		coverage[k] = v
 	}
-	state := map[string]any{"broker_ready": s.brokerReady, "selection_known": s.config.RuntimeID != "", "selected": append([]string{}, s.config.Selected...), "active": append([]string{}, s.config.Agents...), "connector": status, "approvals": approvals, "coverage": coverage}
+	selected, active := append([]string{}, s.config.Selected...), append([]string{}, s.config.Agents...)
+	if s.chatgpt != nil {
+		if enabled, listening := s.chatgpt.location(); enabled {
+			selected = append(selected, agent.CodexDesktopID)
+			if listening && s.brokerReady {
+				active = append(active, agent.CodexDesktopID)
+			}
+		}
+	}
+	state := map[string]any{"broker_ready": s.brokerReady, "selection_known": s.config.RuntimeID != "", "selected": selected, "active": active, "connector": status, "approvals": approvals, "coverage": coverage}
 	if s.channel != nil {
 		state["sessions"] = s.channel.cachedListing(false)
 	}

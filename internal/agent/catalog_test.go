@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,27 @@ func TestCleanMacKeepsCloudAgentEntryPoints(t *testing.T) {
 		entry, ok := byID[id]
 		if !ok || !entry.Cloud || entry.Installed || entry.Evidence != "" {
 			t.Fatalf("cloud entry %s unavailable or pretends to be installed: %+v", id, entry)
+		}
+	}
+}
+
+func TestPanelListOrdersCodexDesktopFirst(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "ChatGPT.app/Contents/Resources/codex-cli"), 0700)
+	panel := panelList(nil, []string{root})
+	order := []string{}
+	for _, entry := range panel[:5] {
+		order = append(order, entry.ID)
+	}
+	if strings.Join(order, ",") != "codex-desktop,codex,claude,pi,kimi" || !panel[0].Installed || !panel[0].Cloud {
+		t.Fatal(order, panel[0])
+	}
+	if absent := panelList(nil, []string{t.TempDir()}); absent[0].ID != CodexDesktopID || absent[0].Installed {
+		t.Fatal(absent[0])
+	}
+	for _, entry := range PanelCatalog(nil) {
+		if entry.ID == CodexDesktopID {
+			t.Fatal("desktop application leaked into runtime catalog")
 		}
 	}
 }

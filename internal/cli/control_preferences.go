@@ -68,6 +68,9 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 			return s.publicFields("selected", "active", "broker_ready", "selection_known", "coverage"), nil
 		},
 		"takeover.set": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			if desktop, handled, err := s.setCodexDesktop(raw); handled {
+				return desktop, err
+			}
 			result, err := s.setTakeover(ctx, raw)
 			if err != nil {
 				return nil, err

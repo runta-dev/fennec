@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/account"
 	"fennec/internal/terminalstream"
 	"io"
 	"net"
@@ -143,4 +144,45 @@ func TestChatGPTBridgeRelaysWebSocketThroughResidentChannel(t *testing.T) {
 func startTestTransport(ctx context.Context, input io.WriteCloser, output io.ReadCloser) (*terminalstream.Transport, error) {
 	transport := terminalstream.StartPipes(input, output)
 	return transport, transport.Ready(ctx)
+}
+
+func TestCodexDesktopTakeoverRestartsChatGPTWithSelectedLocation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	home := t.TempDir()
+	services := newDaemonServices(home, account.New(ctx, serviceCredentials{}, ""))
+	bridge := newChatGPTBridge(home, services)
+	services.chatgpt = bridge
+	bridge.launchctl = func(context.Context, ...string) error { return nil }
+	restarts := make(chan string, 2)
+	bridge.restartApplication = func(_ context.Context, url string) (bool, error) { restarts <- url; return true, nil }
+	go bridge.run(ctx)
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, enabled := bridge.location(); !enabled && func() bool { bridge.mu.Lock(); defer bridge.mu.Unlock(); return bridge.ctx != nil }() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("bridge did not start")
+		}
+	}
+	if _, handled, _ := services.setCodexDesktop(json.RawMessage(`{"agent":"codex","enabled":true}`)); handled {
+		t.Fatal("CLI agent routed to Codex Desktop")
+	}
+	state, handled, err := services.setCodexDesktop(json.RawMessage(`{"agent":"codex-desktop","enabled":true}`))
+	if !handled || err != nil {
+		t.Fatal(handled, err)
+	}
+	selected, _ := state.(map[string]any)["selected"].([]string)
+	if len(selected) != 1 || selected[0] != "codex-desktop" {
+		t.Fatal(state)
+	}
+	if url := <-restarts; !strings.HasPrefix(url, "ws://127.0.0.1:") {
+		t.Fatal(url)
+	}
+	if _, _, err := services.setCodexDesktop(json.RawMessage(`{"agent":"codex-desktop","enabled":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if url := <-restarts; url != "" {
+		t.Fatal("local switch kept the bridge URL", url)
+	}
 }

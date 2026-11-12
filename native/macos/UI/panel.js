@@ -194,7 +194,8 @@ window.renderAgents = agents => {
     arrow.className = 'chevron';
     arrow.innerHTML = chevron;
     head.append(icon, name, state, arrow);
-    if(!agent.cloudSupported || !['claude','codex','pi'].includes(agent.id)){
+    const desktop = agent.id === 'codex-desktop';
+    if(!agent.cloudSupported || !['codex-desktop','claude','codex','pi'].includes(agent.id)){
       head.disabled=true;
       head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
       head.classList.add('agent-coming-soon');
@@ -217,8 +218,8 @@ window.renderAgents = agents => {
     if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
-      if(expandedAgent && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(agent.id);
-      if(expandedAgent && !magpieEnabled){loadNativeAccount(agent.id,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(agent.id);}
+      if(expandedAgent && !desktop && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(agent.id);
+      if(expandedAgent && !desktop && !magpieEnabled){loadNativeAccount(agent.id,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(agent.id);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -258,8 +259,8 @@ window.renderAgents = agents => {
        const cloud=button.dataset.location==='cloud';
        const selected=cloud===enabled;
        button.setAttribute('aria-checked',String(selected));button.tabIndex=selected?0:-1;
-       button.disabled=takeoverChanging || (!takeoverSelectionKnown && !enabled) || (cloud&&!agent.cloudSupported);
-       button.onclick=()=>{if(cloud!==enabled)send('toggle-takeover:'+agent.id);};
+       button.disabled=takeoverChanging || (!takeoverSelectionKnown && !enabled) || (cloud&&!agent.cloudSupported) || (agent.id==='codex-desktop'&&cloud&&!enabled&&!agent.installed);
+       button.onclick=()=>{if(cloud===enabled)return;if(desktop){confirmCodexDesktopRestart(cloud,()=>send('toggle-takeover:'+agent.id));return;}send('toggle-takeover:'+agent.id);};
        button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const other=choices[1-index];if(!other.disabled){other.click();other.focus();}};
       });
       if (enabled) {
@@ -282,6 +283,8 @@ window.renderAgents = agents => {
       statusNode.hidden = !statusNode.textContent;
       if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;if(window.fennecPreparationStage!=='offline')state.classList.add('loading-shimmer');}
       if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
+      // Codex Desktop keeps ChatGPT.app's own account and model settings.
+      if (!desktop) {
       {
         const row=document.createElement('div');row.className='agent-integration-row';
         const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
@@ -383,6 +386,7 @@ window.renderAgents = agents => {
           levels.forEach((_,index)=>{const tick=document.createElement('span');tick.style.left=(index/(levels.length-1)*100)+'%';ticks.append(tick);});
           track.append(ticks,slider);effort.append(caption,track);detail.append(effort);
         }
+      }
       }
 
     }
@@ -1317,6 +1321,26 @@ window.renderSessionSent = (sessionID,success) => {
  document.querySelector('#session-send-status').textContent=success?"[[i18n:ui.submitted]]":"[[i18n:ui.submission_unconfirmed_inspect_session_before_retrying]]";
  if(success)document.querySelector('#session-input').value='';
 };
+
+// Moving Codex Desktop restarts ChatGPT.app, which interrupts its running
+// conversations, so every switch asks first.
+function confirmCodexDesktopRestart(toCloud, proceed) {
+  let dialog = document.querySelector('#codex-desktop-dialog');
+  if (!dialog) {
+    dialog = document.createElement('dialog');
+    dialog.id = 'codex-desktop-dialog';
+    dialog.className = 'update-dialog';
+    dialog.setAttribute('aria-labelledby', 'codex-desktop-dialog-title');
+    dialog.innerHTML = '<div class="update-dialog-head"><strong id="codex-desktop-dialog-title">[[i18n:ui.codex_desktop_restart_title]]</strong></div><p class="update-dialog-hint"></p><div class="update-dialog-actions"><button type="button" class="update-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="update-dialog-confirm">[[i18n:ui.restart_chatgpt]]</button></div>';
+    document.body.append(dialog);
+    dialog.querySelector('.update-dialog-cancel').onclick = () => dialog.close();
+  }
+  dialog.querySelector('.update-dialog-hint').textContent = toCloud ? "[[i18n:ui.codex_desktop_restart_to_cloud]]" : "[[i18n:ui.codex_desktop_restart_to_local]]";
+  const confirm = dialog.querySelector('.update-dialog-confirm');
+  confirm.onclick = () => { dialog.close(); proceed(); };
+  if (!dialog.open) dialog.showModal();
+  dialog.querySelector('.update-dialog-cancel').focus();
+}
 
 window.renderTakeover = value => {
   takeoverSelectionKnown=value.selectionKnown===true;

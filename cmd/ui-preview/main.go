@@ -125,8 +125,9 @@ func main() {
 
 const bridge = `
 const previewAgents=[
- {id:'claude',name:'Claude Code',icon:'claudecode-color.svg',installed:true,cloudSupported:true},
+ {id:'codex-desktop',name:'Codex Desktop',icon:'codex-color.svg',installed:true,cloudSupported:true},
  {id:'codex',name:'Codex',icon:'codex-color.svg',installed:true,cloudSupported:true},
+ {id:'claude',name:'Claude Code',icon:'claudecode-color.svg',installed:true,cloudSupported:true},
  {id:'pi',name:'Pi',icon:'pi.svg',installed:true,cloudSupported:true},
  {id:'kimi',name:'Kimi Code',icon:'kimi.svg',installed:false,cloudSupported:false},
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},

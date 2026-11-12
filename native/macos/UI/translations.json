@@ -569,6 +569,30 @@
       "zh-CN": "授权码已过期，请重新登录。",
       "zh-TW": "授權碼已過期，請重新登入。"
     },
+    "ui.codex_desktop_restart_title": {
+      "en-GB": "Restart ChatGPT?",
+      "en-US": "Restart ChatGPT?",
+      "ja": "ChatGPT を再起動しますか？",
+      "ko": "ChatGPT를 다시 시작할까요?",
+      "zh-CN": "重启 ChatGPT？",
+      "zh-TW": "重新啟動 ChatGPT？"
+    },
+    "ui.codex_desktop_restart_to_cloud": {
+      "en-GB": "ChatGPT.app will restart to run Codex Desktop on the cloud computer, interrupting every conversation in progress.",
+      "en-US": "ChatGPT.app will restart to run Codex Desktop on the cloud computer, interrupting every conversation in progress.",
+      "ja": "Codex Desktop をクラウドコンピューターで実行します。ChatGPT.app が再起動し、進行中の会話はすべて中断されます。続行しますか？",
+      "ko": "Codex Desktop을 클라우드 컴퓨터에서 실행하기 위해 ChatGPT.app이 다시 시작되며, 진행 중인 모든 대화가 중단됩니다.",
+      "zh-CN": "Codex Desktop 将切换到云电脑运行。ChatGPT.app 会重启，所有正在进行的会话都会中断。是否继续？",
+      "zh-TW": "Codex Desktop 將切換到雲端電腦執行。ChatGPT.app 會重新啟動，所有進行中的對話都會中斷。是否繼續？"
+    },
+    "ui.codex_desktop_restart_to_local": {
+      "en-GB": "ChatGPT.app will restart to run Codex Desktop on this Mac again, interrupting every conversation in progress.",
+      "en-US": "ChatGPT.app will restart to run Codex Desktop on this Mac again, interrupting every conversation in progress.",
+      "ja": "Codex Desktop をこの Mac での実行に戻します。ChatGPT.app が再起動し、進行中の会話はすべて中断されます。続行しますか？",
+      "ko": "Codex Desktop을 이 Mac에서 다시 실행하기 위해 ChatGPT.app이 다시 시작되며, 진행 중인 모든 대화가 중단됩니다.",
+      "zh-CN": "Codex Desktop 将切回本机运行。ChatGPT.app 会重启，所有正在进行的会话都会中断。是否继续？",
+      "zh-TW": "Codex Desktop 將切回本機執行。ChatGPT.app 會重新啟動，所有進行中的對話都會中斷。是否繼續？"
+    },
     "ui.coming_soon": {
       "en-US": "Coming soon",
       "ja": "近日対応予定",
@@ -1473,6 +1497,14 @@
       "ko": "최근 30일 리소스 사용량",
       "zh-CN": "近30天资源用量",
       "zh-TW": "近30天資源用量"
+    },
+    "ui.restart_chatgpt": {
+      "en-GB": "Restart ChatGPT",
+      "en-US": "Restart ChatGPT",
+      "ja": "ChatGPT を再起動",
+      "ko": "ChatGPT 다시 시작",
+      "zh-CN": "重启 ChatGPT",
+      "zh-TW": "重新啟動 ChatGPT"
     },
     "ui.restoring_model_accounts": {
       "en-US": "Restoring model accounts",

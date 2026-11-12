@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 type Agent struct {
@@ -116,3 +117,45 @@ func PanelCatalog(discovered []Agent) []Agent {
 
 // These cloud agents are available even when this Mac has no CLI installation.
 func CloudAgentIDs() []string { return []string{"claude", "codex", "pi"} }
+
+// CodexDesktopID is ChatGPT.app's Codex (bundle com.openai.codex). Its codex
+// app-server can run on the cloud computer through Fennec's loopback bridge.
+// It is a desktop application, never a CLI agent prepared on the runtime.
+const CodexDesktopID = "codex-desktop"
+
+var panelOrder = map[string]int{CodexDesktopID: 0, "codex": 1, "claude": 2, "pi": 3}
+
+// PanelList is the Agents tab: Codex Desktop first, then the CLI catalog with
+// the cloud-capable agents ordered Codex, Claude Code, Pi.
+func PanelList(discovered []Agent) []Agent {
+	home, _ := os.UserHomeDir()
+	return panelList(discovered, []string{"/Applications", filepath.Join(home, "Applications")})
+}
+
+func panelList(discovered []Agent, appRoots []string) []Agent {
+	desktop := Agent{ID: CodexDesktopID, Name: "Codex Desktop", Icon: "codex-color.svg", Cloud: true}
+	if codexDesktopInstalled(appRoots) {
+		desktop.Installed, desktop.Evidence = true, "application"
+	}
+	result := append([]Agent{desktop}, PanelCatalog(discovered)...)
+	sort.SliceStable(result, func(i, j int) bool { return rank(result[i].ID) < rank(result[j].ID) })
+	return result
+}
+
+func rank(id string) int {
+	if value, ok := panelOrder[id]; ok {
+		return value
+	}
+	return len(panelOrder)
+}
+
+func codexDesktopInstalled(roots []string) bool {
+	for _, root := range roots {
+		for _, name := range []string{"ChatGPT.app", "Codex.app"} {
+			if info, err := os.Stat(filepath.Join(root, name, "Contents/Resources/codex-cli")); err == nil && info.IsDir() {
+				return true
+			}
+		}
+	}
+	return false
+}

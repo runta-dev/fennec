@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fennec/internal/agent"
 	"fennec/internal/control"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -42,9 +43,10 @@ type chatgptPreference struct {
 }
 
 type chatgptBridge struct {
-	services  *daemonServices
-	path      string
-	launchctl func(context.Context, ...string) error
+	services           *daemonServices
+	path               string
+	launchctl          func(context.Context, ...string) error
+	restartApplication func(context.Context, string) (bool, error)
 
 	mu       sync.Mutex
 	ctx      context.Context
@@ -59,7 +61,7 @@ type chatgptBridge struct {
 func newChatGPTBridge(home string, services *daemonServices) *chatgptBridge {
 	return &chatgptBridge{services: services, path: filepath.Join(home, ".config/fennec/chatgpt.json"), launchctl: func(ctx context.Context, arguments ...string) error {
 		return exec.CommandContext(ctx, "/bin/launchctl", arguments...).Run()
-	}}
+	}, restartApplication: restartChatGPT}
 }
 
 func (b *chatgptBridge) load() chatgptPreference {
@@ -404,4 +406,66 @@ func writePrivateJSON(path string, value any) error {
 		return err
 	}
 	return os.Rename(file.Name(), path)
+}
+
+// location reports whether Codex Desktop is set to the cloud computer and
+// whether the loopback endpoint is serving.
+func (b *chatgptBridge) location() (enabled, listening bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pref.Enabled, b.listener != nil
+}
+
+// switchLocation is the Agents tab's location switch. The user has already
+// confirmed that a running ChatGPT.app restarts; the restart runs in the
+// background so the switch acknowledges immediately.
+func (b *chatgptBridge) switchLocation(enabled bool) error {
+	b.mu.Lock()
+	if b.ctx == nil {
+		b.mu.Unlock()
+		return &control.Fault{Code: "busy", Message: "Daemon is starting", Retryable: true}
+	}
+	b.pref.Enabled = enabled
+	var err error
+	if enabled {
+		err = b.enableLocked()
+	} else {
+		err = b.disableLocked()
+	}
+	url := ""
+	if enabled {
+		url = b.url()
+	}
+	ctx := b.ctx
+	b.mu.Unlock()
+	if err != nil {
+		return &control.Fault{Code: "chatgpt_bridge_failed", Message: "Unable to update the Codex Desktop location"}
+	}
+	go func() {
+		restart, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		if _, err := b.restartApplication(restart, url); err != nil {
+			b.mu.Lock()
+			b.lastErr = err.Error()
+			b.mu.Unlock()
+		}
+	}()
+	return nil
+}
+
+func (s *daemonServices) setCodexDesktop(raw json.RawMessage) (any, bool, error) {
+	var request struct {
+		Agent   string `json:"agent"`
+		Enabled *bool  `json:"enabled"`
+	}
+	if json.Unmarshal(raw, &request) != nil || request.Agent != agent.CodexDesktopID {
+		return nil, false, nil
+	}
+	if request.Enabled == nil || s.chatgpt == nil {
+		return nil, true, &control.Fault{Code: "invalid_params", Message: "Explicit enabled value required"}
+	}
+	if err := s.chatgpt.switchLocation(*request.Enabled); err != nil {
+		return nil, true, err
+	}
+	return s.snapshot(), true, nil
 }
