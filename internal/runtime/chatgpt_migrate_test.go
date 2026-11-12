@@ -36,13 +36,20 @@ func TestMigrationSkipsThreadsAlreadyInTheCloud(t *testing.T) {
 		t.Fatal(path, err)
 	}
 	// No device: a missing thread is left alone instead of failing the request.
-	filter := &chatgptPathFilter{home: t.TempDir(), codexHome: codexHome, threads: map[string]bool{}}
-	request := []byte(`{"id":1,"method":"thread/resume","params":{"threadId":"` + id + `"}}`)
-	filter.migrateThreads(request)
-	missing := []byte(`{"id":2,"method":"thread/read","params":{"threadId":"01a1c8a1-0000-0000-0000-000000000000"}}`)
-	filter.migrateThreads(missing)
-	filter.migrateThreads(missing)
-	if len(filter.threads) != 2 {
-		t.Fatal(filter.threads)
+	filter := &chatgptPathFilter{home: t.TempDir(), codexHome: codexHome}
+	attempted := func(thread string) bool { _, ok := migrationAttempts.Load(codexHome + "\x00" + thread); return ok }
+	filter.migrateThreads([]byte(`{"id":1,"method":"thread/resume","params":{"threadId":"` + id + `"}}`))
+	other := "01a1c8a1-0000-0000-0000-000000000000"
+	// Sidebar requests naming many threads never start a move.
+	filter.migrateThreads([]byte(`{"id":2,"method":"thread/attachment/list","params":{"threadId":"` + other + `"}}`))
+	if attempted(other) {
+		t.Fatal("sidebar request triggered a migration")
+	}
+	filter.migrateThreads([]byte(`{"id":3,"method":"thread/read","params":{"threadId":"` + other + `"}}`))
+	// A new connection does not retry a thread already checked.
+	again := &chatgptPathFilter{home: t.TempDir(), codexHome: codexHome, device: "1234abcd"}
+	again.migrateThreads([]byte(`{"id":4,"method":"thread/resume","params":{"threadId":"` + other + `"}}`))
+	if !attempted(id) || !attempted(other) {
+		t.Fatal("attempts not recorded")
 	}
 }

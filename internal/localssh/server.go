@@ -62,6 +62,9 @@ type Broker struct {
 	active     map[string]context.CancelFunc
 	done       chan struct{}
 	closeOnce  sync.Once
+	// grants remembers capabilities approved once for this daemon run, keyed by
+	// device fingerprint and capability.
+	grants map[string]bool
 }
 
 func NewBroker(directory string, output io.Writer) *Broker {

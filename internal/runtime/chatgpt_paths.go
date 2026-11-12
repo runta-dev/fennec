@@ -29,7 +29,7 @@ import (
 // rewrites only JSON fields named "cwd" in text messages. Control and binary
 // frames pass through unchanged.
 func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
-	filter := &chatgptPathFilter{Conn: conn, home: home, device: device, paths: loadChatGPTPaths(home), threads: map[string]bool{}}
+	filter := &chatgptPathFilter{Conn: conn, home: home, device: device, paths: loadChatGPTPaths(home)}
 	if served, ok := conn.(interface{ CodexHome() string }); ok {
 		filter.codexHome = served.CodexHome()
 	}
@@ -51,8 +51,6 @@ type chatgptPathFilter struct {
 	paths   map[string]string // cloud directory -> Mac directory
 
 	codexHome string
-	threadsMu sync.Mutex
-	threads   map[string]bool // thread IDs already checked for migration
 
 	writeMu  sync.Mutex
 	inbound  wsStream

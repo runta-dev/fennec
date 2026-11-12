@@ -81,26 +81,34 @@ func serveCodexRollout(operation context.Context, session ssh.Session, broker *B
 		record(decisionForbidden, true, 126, "invalid thread id")
 		return fail(126, "invalid thread id")
 	}
-	decision := "auto_sandbox"
-	if requireApproval {
-		approval, cancel := context.WithTimeout(operation, 2*time.Minute)
-		outcome := broker.authorize(approval, approvalRequest{Display: display, Fingerprint: fingerprint, Action: guardian.Action{Kind: "exec", Command: display, Justification: "ChatGPT on the cloud computer continues a conversation that started on this Mac"}})
-		cancel()
-		if !outcome.Allowed {
-			record(outcome.Decision, true, 126, "Denied or expired during approval prompt")
-			return fail(126, "resuming this conversation in the cloud was not approved")
-		}
-		decision = outcome.Decision
-	}
 	home, _ := os.UserHomeDir()
 	codexHome := os.Getenv("CODEX_HOME")
 	if codexHome == "" {
 		codexHome = filepath.Join(home, ".codex")
 	}
+	// Look up before asking: threads that never existed here need no prompt.
 	path, err := FindCodexRollout(codexHome, id)
 	if err != nil {
-		record(decision, false, 2, "rollout not found")
 		return fail(2, "conversation not found on this Mac")
+	}
+	decision := "auto_sandbox"
+	if requireApproval {
+		// One approval covers resuming any Mac conversation in cloud ChatGPT for
+		// this daemon run; each thread is still recorded in the audit log.
+		if broker.granted(fingerprint, CodexRolloutCommand) {
+			decision = "previously_approved"
+		} else {
+			approval, cancel := context.WithTimeout(operation, 2*time.Minute)
+			prompt := "ChatGPT on the cloud computer: continue conversations from this Mac"
+			outcome := broker.authorize(approval, approvalRequest{Display: prompt, Fingerprint: fingerprint, Action: guardian.Action{Kind: "exec", Command: prompt, Justification: "ChatGPT on the cloud computer continues conversations that started on this Mac"}})
+			cancel()
+			if !outcome.Allowed {
+				record(outcome.Decision, true, 126, "Denied or expired during approval prompt")
+				return fail(126, "resuming this conversation in the cloud was not approved")
+			}
+			broker.grant(fingerprint, CodexRolloutCommand)
+			decision = outcome.Decision
+		}
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -132,4 +140,19 @@ func serveCodexRollout(operation context.Context, session ssh.Session, broker *B
 	record(decision, false, 0, "")
 	session.Exit(0)
 	return true
+}
+
+func (b *Broker) granted(fingerprint, capability string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.grants[fingerprint+"\x00"+capability]
+}
+
+func (b *Broker) grant(fingerprint, capability string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.grants == nil {
+		b.grants = map[string]bool{}
+	}
+	b.grants[fingerprint+"\x00"+capability] = true
 }

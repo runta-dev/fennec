@@ -13,10 +13,19 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
+
+// migratingMethods open or continue one conversation. Sidebar requests such as
+// thread/attachment/list name many threads at once and never trigger a move.
+var migratingMethods = map[string]bool{"thread/resume": true, "thread/read": true, "thread/turns/list": true, "thread/items/list": true, "thread/fork": true, "turn/start": true}
+
+// migrationAttempts holds every thread already checked by this terminal service,
+// across ChatGPT reconnects, keyed by CODEX_HOME and thread ID.
+var migrationAttempts sync.Map
 
 // migrateThreads lazily moves a conversation that started on the Mac to the
 // cloud: a request naming a thread that has no rollout here waits while the
@@ -27,19 +36,16 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 		return
 	}
 	var request struct {
+		Method string `json:"method"`
 		Params struct {
 			ThreadID string `json:"threadId"`
 		} `json:"params"`
 	}
-	if json.Unmarshal(message, &request) != nil || !localssh.CodexThreadID.MatchString(request.Params.ThreadID) {
+	if json.Unmarshal(message, &request) != nil || !migratingMethods[request.Method] || !localssh.CodexThreadID.MatchString(request.Params.ThreadID) {
 		return
 	}
 	id := request.Params.ThreadID
-	filter.threadsMu.Lock()
-	checked := filter.threads[id]
-	filter.threads[id] = true
-	filter.threadsMu.Unlock()
-	if checked {
+	if _, checked := migrationAttempts.LoadOrStore(filter.codexHome+"\x00"+id, true); checked {
 		return
 	}
 	if _, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
