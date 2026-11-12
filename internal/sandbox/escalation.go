@@ -36,9 +36,15 @@ func ForApprovedEscalation(policy Policy) Policy {
 // EscalationHint is appended to stderr when the workspace sandbox appears to
 // have denied a command, so the agent can re-issue it with a justification.
 func EscalationHint(command string) string {
-	return "Fennec: this command was likely blocked by the workspace sandbox (writes outside the project, protected metadata such as .git, or network access).\n" +
-		"Fennec: if it is required, rerun it with a one-sentence justification to request approval:\n" +
-		"Fennec:   " + EscalateCommand + " --reason \"<why this is needed>\" -- " + command + "\n"
+	return "Fennec: this command was likely blocked by the workspace sandbox on the Mac (writes outside the project, protected metadata such as .git, or network access).\n" +
+		"Fennec: if it is required, run this from the cloud computer with a one-sentence justification to request approval on the Mac:\n" +
+		"Fennec:   " + EscalateCommand + " --reason \"<why this is needed>\" -- " + ShellQuote(command) + "\n" +
+		"Fennec: keep the command quoted so it runs unchanged on the Mac.\n"
+}
+
+// ShellQuote returns a POSIX single-quoted word.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // ParseEscalation recognizes the escalation prefix. It returns the inner
@@ -103,6 +109,13 @@ func ParseEscalation(command string) (inner, reason string, escalated bool) {
 		switch {
 		case word == "--":
 			inner = strings.TrimSpace(rest[pos:])
+			// A command passed as one quoted word (the cloud fennec-escalate
+			// form) runs exactly as quoted.
+			if inner != "" && (inner[0] == '\'' || inner[0] == '"') {
+				if segments := shellSegments(inner); quotedWord(inner) && len(segments) == 1 && len(segments[0]) == 1 {
+					inner = segments[0][0]
+				}
+			}
 			reason = strings.Join(strings.Fields(reason), " ")
 			if inner == "" || reason == "" || len(reason) > 512 {
 				return command, "", false
@@ -120,6 +133,15 @@ func ParseEscalation(command string) (inner, reason string, escalated bool) {
 			return command, "", false
 		}
 	}
+}
+
+// quotedWord reports whether s is exactly one quoted shell word.
+func quotedWord(s string) bool {
+	quote := s[0]
+	if quote == '\'' {
+		return strings.Count(s, "'")%2 == 0 && s[len(s)-1] == '\''
+	}
+	return s[len(s)-1] == quote
 }
 
 // IsLikelySandboxDenied ports Codex's is_likely_sandbox_denied heuristic.

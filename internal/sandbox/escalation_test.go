@@ -15,6 +15,9 @@ func TestParseEscalation(t *testing.T) {
 		{`fennec-escalate --reason "push the release branch" -- git push origin main`, "git push origin main", "push the release branch", true},
 		{`fennec-escalate --reason='install deps' -- npm install`, "npm install", "install deps", true},
 		{`  fennec-escalate --reason 'a b'   --   echo "x; y"`, `echo "x; y"`, "a b", true},
+		{`fennec-escalate --reason "list keys" -- 'ls ~/.ssh'`, "ls ~/.ssh", "list keys", true},
+		{`fennec-escalate --reason x -- 'cd a && echo '\''hi'\'''`, "cd a && echo 'hi'", "x", true},
+		{`fennec-escalate --reason x -- 'a' 'b'`, "'a' 'b'", "x", true},
 		{`fennec-escalate -- git push`, "", "", false},                  // reason required
 		{`fennec-escalate --reason "x"`, "", "", false},                 // command required
 		{`fennec-escalate --force --reason x -- ls`, "", "", false},     // unknown option
@@ -68,7 +71,7 @@ func TestSandboxDenialHeuristicMatchesCodex(t *testing.T) {
 	if IsLikelySandboxDenied(127, "command not found") || IsLikelySandboxDenied(2, "usage: ls") {
 		t.Fatal("ordinary failures are not denials")
 	}
-	if !strings.Contains(EscalationHint("git push"), `fennec-escalate --reason "<why this is needed>" -- git push`) {
+	if !strings.Contains(EscalationHint("git push"), `fennec-escalate --reason "<why this is needed>" -- 'git push'`) {
 		t.Fatal("hint must show the exact escalation form")
 	}
 }
@@ -102,5 +105,18 @@ func TestProfilesProtectMetadataAndEscalationKeepsDeniedReads(t *testing.T) {
 	}
 	if NormalizeMode(ModeEscalated) != ModeEscalated || !ValidMode(ModeEscalated) {
 		t.Fatal("escalated mode must normalize to itself")
+	}
+}
+
+func TestEscalationHintRoundTrips(t *testing.T) {
+	for _, command := range []string{"ls ~/.ssh", "echo 'a; b' && touch x", "curl -s https://example.com"} {
+		hint := EscalationHint(command)
+		line := hint[strings.Index(hint, EscalateCommand):]
+		line = line[:strings.IndexByte(line, '\n')]
+		line = strings.Replace(line, "<why this is needed>", "needed", 1)
+		inner, reason, ok := ParseEscalation(line)
+		if !ok || inner != command || reason != "needed" {
+			t.Fatalf("hint for %q does not round-trip: %q %q %v", command, inner, reason, ok)
+		}
 	}
 }

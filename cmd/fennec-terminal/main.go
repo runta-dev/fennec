@@ -37,6 +37,10 @@ type prefixedInput struct {
 }
 
 func run() (int, error) {
+	// ~/.local/bin/fennec-escalate links here; agents run it on the cloud computer.
+	if filepath.Base(os.Args[0]) == "fennec-escalate" {
+		return localssh.RunCloudEscalate(os.Args[1:])
+	}
 	serving, err := serveMode(os.Args[1:])
 	if err != nil {
 		return 1, err
@@ -119,6 +123,10 @@ func run() (int, error) {
 		alias, err := localssh.RegisterAlias(home, request)
 		if err != nil {
 			return 1, err
+		}
+		// Agents request Mac escalation with this command; pairing does not depend on it.
+		if err := localssh.InstallEscalateEntry(home); err != nil {
+			fmt.Fprintln(os.Stderr, "fennec-escalate entry unavailable:", err)
 		}
 		return 0, json.NewEncoder(os.Stdout).Encode(alias)
 	}

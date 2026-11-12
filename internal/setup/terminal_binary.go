@@ -53,6 +53,8 @@ if [ -x "$bin" ] && printf '%%s  %%s\n' '%s' "$bin" | sha256sum -c - >/dev/null 
  mkdir -p "$HOME/.local/fennec/bin"
  chmod 700 "$HOME/.local/fennec/bin"
  ln -sfn "$bin" "$HOME/.local/fennec/bin/fennec-terminal"
+ entry="$HOME/.local/bin/fennec-escalate"
+ if [ ! -e "$entry" ] || [ -L "$entry" ]; then mkdir -p "$HOME/.local/bin"; ln -sfn "$HOME/.local/fennec/bin/fennec-terminal" "$entry"; fi
  printf 'already_installed\n'
 fi
 `, version, version)
@@ -88,6 +90,9 @@ trap - EXIT
 tmp_link="$bin_dir/.terminal-%s"
 ln -s "$root/fennec-terminal" "$tmp_link"
 mv -f "$tmp_link" "$bin_dir/fennec-terminal"
+# Agents request Mac escalation with fennec-escalate; never replace a user's own file.
+entry="$HOME/.local/bin/fennec-escalate"
+if [ ! -e "$entry" ] || [ -L "$entry" ]; then mkdir -p "$HOME/.local/bin"; ln -sfn "$HOME/.local/fennec/bin/fennec-terminal" "$entry"; fi
 `, version, suffix, version, suffix)
 	if _, err := run(installScript, compressed.Bytes()); err != nil {
 		return fmt.Errorf("terminal service upload verification failed: %w", err)

@@ -195,6 +195,10 @@ func main() {
 		{name: "escalate network, approved", cmd: `fennec-escalate --reason "e2e: reach example.com" -- curl -sS -m 8 -o /dev/null -w '%{http_code}' https://example.com`, expect: both(approveOK, approveOK, allowed)},
 		{name: "forced rm in workspace", cmd: "mkdir -p .fennec-e2e-dir && rm -rf .fennec-e2e-dir",
 			expect: both(approveOK, approveOK, expect{ok: false, stderr: "rejected by policy"})},
+		// Agents run fennec-escalate on the cloud computer; it forwards to the Mac.
+		{name: "cloud fennec-escalate write, approved", cloud: `export PATH="$HOME/.local/bin:$PATH"; fennec-escalate --reason "e2e: cloud command" -- 'touch ~/fennec-e2e-cloud' </dev/null; echo "__EXIT=$?"`, expect: both(approveOK, approveOK, allowed)},
+		{name: "cloud fennec-escalate ls ~/.ssh, approved", cloud: `export PATH="$HOME/.local/bin:$PATH"; fennec-escalate --reason "e2e: list ssh keys" -- 'ls ~/.ssh >/dev/null' </dev/null; echo "__EXIT=$?"`,
+			expect: both(expect{ok: false, prompt: true, decision: "approve"}, expect{ok: false, prompt: true, decision: "approve"}, allowed)},
 		{name: "scp from ~/.ssh (SFTP)", cloud: fmt.Sprintf(`timeout 60 scp -q %s:.ssh/known_hosts /tmp/fe2e_kh </dev/null; c=$?; rm -f /tmp/fe2e_kh; echo "__EXIT=$c"`, mac),
 			expect: both(blockedNoHint, blockedNoHint, allowed)},
 		{name: "scp into workspace (SFTP)", cloud: fmt.Sprintf(`echo hi > /tmp/fe2e_up; timeout 60 scp -q /tmp/fe2e_up %s:%s/.fennec-e2e-up </dev/null; echo "__EXIT=$?"`, mac, strings.TrimPrefix(strings.TrimPrefix(workspace, home), "/")),
@@ -249,7 +253,7 @@ func main() {
 			fmt.Printf("%s %-36s exit=%-3d %4.1fs%s%s out=%q err=%q\n", verdict, tc.name, code, time.Since(start).Seconds(), note, reason, stdout, firstErr)
 		}
 	}
-	for _, p := range []string{"fennec-e2e-outside", "fennec-e2e-esc", "fennec-e2e-esc-denied"} {
+	for _, p := range []string{"fennec-e2e-outside", "fennec-e2e-esc", "fennec-e2e-esc-denied", "fennec-e2e-cloud"} {
 		os.Remove(filepath.Join(home, p))
 	}
 	os.Remove(filepath.Join(workspace, ".fennec-e2e-up"))
