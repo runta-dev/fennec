@@ -17,7 +17,7 @@ var allowedPluginCredentialBase = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}
 
 func GatherCredentialPayload(home string) (map[string]string, error) {
 	files := map[string]string{}
-	for _, name := range []string{"providers.json", "logins.json", "plugin-auth.json", "migrations.json"} {
+	for _, name := range []string{"providers.json", "logins.json", "plugin-auth.json", "migrations.json", "plugin-providers.json"} {
 		path := filepath.Join(home, ".config", "magpie", name)
 		info, err := os.Lstat(path)
 		if os.IsNotExist(err) {

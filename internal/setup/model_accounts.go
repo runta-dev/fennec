@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -285,6 +286,9 @@ func reconcileModelAccounts(ctx context.Context, home string, request ModelAccou
 	if err := plugins(ctx, home, request.Plugins); err != nil {
 		return result, err
 	}
+	if home != "" && len(request.Plugins) > 0 {
+		alignPluginProviderSpecsAndReload(ctx, home)
+	}
 	result.Timings["plugins"] = float64(time.Since(started).Microseconds()) / 1000
 	if err := ctx.Err(); err != nil {
 		return result, err
@@ -295,4 +299,73 @@ func reconcileModelAccounts(ctx context.Context, home string, request ModelAccou
 	}
 	result.Timings["identity"] = float64(time.Since(started).Microseconds()) / 1000
 	return result, nil
+}
+
+// alignPluginProviderSpecsAndReload rewrites @latest plugin specs in synced
+// plugin-providers.json to match the exact version pinned in remote plugins.json
+// so Magpie's keepListed(ps, last) matches by (spec + "\x00" + id) and preserves
+// the full vendor model catalog even when cloud egress cannot re-scrape models.
+func alignPluginProviderSpecsAndReload(ctx context.Context, home string) {
+	root := filepath.Join(home, ".config", "magpie")
+	manifestRaw, err := os.ReadFile(filepath.Join(root, "plugins.json"))
+	if err != nil || len(manifestRaw) > 1<<20 {
+		return
+	}
+	var manifest struct {
+		Plugins []struct {
+			Spec string `json:"spec"`
+		} `json:"plugins"`
+	}
+	if json.Unmarshal(manifestRaw, &manifest) != nil {
+		return
+	}
+	specByPkg := map[string]string{}
+	for _, p := range manifest.Plugins {
+		pkg := splitPluginSpecPackage(p.Spec)
+		if pkg != "" {
+			specByPkg[pkg] = p.Spec
+		}
+	}
+	if len(specByPkg) == 0 {
+		return
+	}
+	ppPath := filepath.Join(root, "plugin-providers.json")
+	ppRaw, err := os.ReadFile(ppPath)
+	if err != nil || len(ppRaw) > 8<<20 {
+		return
+	}
+	var entries []map[string]any
+	if json.Unmarshal(ppRaw, &entries) != nil {
+		return
+	}
+	changed := false
+	for _, entry := range entries {
+		spec, _ := entry["spec"].(string)
+		pkg := splitPluginSpecPackage(spec)
+		if target, ok := specByPkg[pkg]; ok && target != "" && spec != target {
+			entry["spec"] = target
+			changed = true
+		}
+	}
+	if changed {
+		_ = exec.CommandContext(ctx, "/usr/bin/pkill", "-f", "/magpie serve").Run()
+		if updated, err := json.Marshal(entries); err == nil {
+			_ = atomicCredential(ppPath, updated)
+		}
+		client := &http.Client{Timeout: 1500 * time.Millisecond}
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			if ctx.Err() != nil {
+				return
+			}
+			resp, reqErr := client.Get("http://127.0.0.1:3425/v1/models")
+			if reqErr == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return
+				}
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+	}
 }

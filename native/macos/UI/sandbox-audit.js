@@ -6,6 +6,7 @@
   const rootsSection = document.querySelector('#sandbox-roots-section');
   const rootsList = document.querySelector('#sandbox-roots-list');
   const addRootBtn = document.querySelector('#add-sandbox-root');
+  const clearTrustBtn = document.querySelector('#clear-trust');
   const summaryBadge = document.querySelector('#audit-summary-badge');
   const auditClearBtn = document.querySelector('#audit-clear');
   const filterButtons = [...document.querySelectorAll('[data-audit-filter]')];
@@ -22,8 +23,11 @@
     network: false,
     customRoots: [],
     effectiveRoots: [],
+    autoAccessGranted: false,
     summary: { total_7d: 0, today_count: 0, blocked_7d: 0, retention_days: 7 }
   };
+  let justRevokedTimer = null;
+  let justRevoked = false;
 
   let auditFilter = 'all';
   let auditEntries = [];
@@ -170,6 +174,26 @@
       }
     }
     drawSummaryBadge();
+    drawAutoAccessButton();
+  }
+
+  function drawAutoAccessButton() {
+    if (!clearTrustBtn) return;
+    clearTrustBtn.removeAttribute('data-i18n');
+    clearTrustBtn.classList.toggle('is-revoked', justRevoked);
+    if (justRevoked) {
+      clearTrustBtn.disabled = true;
+      clearTrustBtn.innerHTML = '<svg class="revoke-check" viewBox="0 0 14 14" aria-hidden="true"><path d="m3 7.2 2.6 2.6L11 4.4"/></svg><span></span>';
+      clearTrustBtn.querySelector('span').textContent = t('[[i18n:ui.access_revoked_short]]');
+      return;
+    }
+    if (sandboxState.autoAccessGranted) {
+      clearTrustBtn.disabled = false;
+      clearTrustBtn.textContent = t('[[i18n:ui.revoke_access]]');
+    } else {
+      clearTrustBtn.disabled = true;
+      clearTrustBtn.textContent = t('[[i18n:ui.ask_each_time]]');
+    }
   }
 
   function drawSummaryBadge() {
@@ -377,9 +401,29 @@
       network: prefs.sandbox_network !== undefined ? Boolean(prefs.sandbox_network) : sandboxState.network,
       customRoots: custom,
       effectiveRoots: effective,
+      autoAccessGranted: prefs.auto_access_granted !== undefined ? Boolean(prefs.auto_access_granted) : sandboxState.autoAccessGranted,
       summary: prefs.audit_summary && typeof prefs.audit_summary === 'object' ? prefs.audit_summary : sandboxState.summary
     };
+    if (sandboxState.autoAccessGranted && justRevoked) {
+      justRevoked = false;
+      clearTimeout(justRevokedTimer);
+    }
     drawSandboxSettings();
+  };
+
+  window.renderAutoAccessRevoked = success => {
+    if (!success) {
+      drawAutoAccessButton();
+      return;
+    }
+    sandboxState = { ...sandboxState, autoAccessGranted: false };
+    justRevoked = true;
+    clearTimeout(justRevokedTimer);
+    drawAutoAccessButton();
+    justRevokedTimer = setTimeout(() => {
+      justRevoked = false;
+      drawAutoAccessButton();
+    }, 1800);
   };
 
   window.renderPickedSandboxRoot = folderPath => {

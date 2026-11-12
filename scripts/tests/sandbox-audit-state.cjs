@@ -30,6 +30,7 @@ function makeNode(tag = 'div', dataset = {}) {
     setAttribute(k, v) { this.attrs[k] = v; },
     getAttribute(k) { return this.attrs[k] ?? null; },
     removeAttribute(k) { delete this.attrs[k]; },
+    querySelector() { return makeNode('span'); },
     focus() {}
   };
 }
@@ -54,6 +55,7 @@ const nodes = {
   '#sandbox-roots-section': makeNode('div'),
   '#sandbox-roots-list': makeNode('div'),
   '#add-sandbox-root': makeNode('button'),
+  '#clear-trust': makeNode('button'),
   '#audit-summary-badge': makeNode('span'),
   '#audit-clear': makeNode('button'),
   '#audit-count-all': makeNode('span'),
@@ -65,9 +67,12 @@ const nodes = {
 const sent = [];
 const tabs = [];
 
+let pendingTimer = null;
 const context = vm.createContext({
   window: {},
   Date,
+  setTimeout: fn => { pendingTimer = fn; return 1; },
+  clearTimeout: () => { pendingTimer = null; },
   document: {
     querySelector: sel => nodes[sel] || null,
     querySelectorAll: sel => (sel === '[data-audit-filter]' ? filterButtons : []),
@@ -86,10 +91,21 @@ context.window.renderSandboxPreferences({
   sandbox_network: false,
   sandbox_roots: ['/Users/alice/work/custom-repo'],
   effective_sandbox_roots: ['/Users/alice/work/custom-repo', '/Users/alice/work/synced-repo'],
+  auto_access_granted: true,
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
 assert.equal(modeButtons[1].attrs['aria-checked'], 'true');
 assert.equal(nodes['#sandbox-network'].attrs['aria-checked'], 'false');
+assert.equal(nodes['#clear-trust'].disabled, false);
+assert.equal(nodes['#clear-trust'].textContent, 'revoke_access');
+
+// Revoking automatic access gives immediate in-place button feedback and disables repeat revoke
+context.window.renderAutoAccessRevoked(true);
+assert.equal(nodes['#clear-trust'].disabled, true);
+assert.equal(nodes['#clear-trust'].classList.contains('is-revoked'), true);
+if (pendingTimer) pendingTimer();
+assert.equal(nodes['#clear-trust'].classList.contains('is-revoked'), false);
+assert.equal(nodes['#clear-trust'].textContent, 'ask_each_time');
 assert.equal(nodes['#sandbox-roots-list'].children.length, 2);
 assert.equal(nodes['#sandbox-roots-list'].children[0].children[0].textContent, '~/work/custom-repo');
 assert.equal(nodes['#audit-summary-badge'].textContent, '6 · 1 audit_summary_blocked');

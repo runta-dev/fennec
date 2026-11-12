@@ -152,6 +152,18 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		if customRoots == nil {
 			customRoots = []string{}
 		}
+		autoAccess := false
+		if rawTrust, err := os.ReadFile(filepath.Join(home, ".config/fennec/ssh/trusted_devices.json")); err == nil {
+			var trusted map[string]bool
+			if json.Unmarshal(rawTrust, &trusted) == nil {
+				for _, v := range trusted {
+					if v {
+						autoAccess = true
+						break
+					}
+				}
+			}
+		}
 		return map[string]any{
 			"revision":                prefs.Revision,
 			"magpie":                  prefs.Magpie,
@@ -167,6 +179,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 			"sandbox_network":         effSandbox.Network,
 			"sandbox_roots":           customRoots,
 			"effective_sandbox_roots": effSandbox.WritableRoots,
+			"auto_access_granted":     autoAccess,
 			"audit_summary":           auditRes.Summary,
 			"theme":                   prefs.Theme,
 			"language":                prefs.Language,

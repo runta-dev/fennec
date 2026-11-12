@@ -248,7 +248,7 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 	}
 	names := []string{}
 	for name := range incoming {
-		if name != "providers.json" && name != "logins.json" && name != "plugin-auth.json" && name != "migrations.json" {
+		if name != "providers.json" && name != "logins.json" && name != "plugin-auth.json" && name != "migrations.json" && name != "plugin-providers.json" {
 			return report, fmt.Errorf("unsupported credential store")
 		}
 		names = append(names, name)
@@ -443,6 +443,59 @@ func ReceiveCredentials(home string, input io.Reader) (CredentialMigrationReport
 				}
 			}
 			data, _ = json.Marshal(remote)
+		case "plugin-providers.json":
+			sourceList, ok := parsed.([]any)
+			if !ok {
+				return report, fmt.Errorf("invalid plugin providers store")
+			}
+			var remoteList []any
+			if exists {
+				if value, err := parseCredentialJSON(previous); err == nil {
+					if s, ok := value.([]any); ok {
+						remoteList = s
+					}
+				}
+			}
+			remoteByID := map[string]map[string]any{}
+			for _, item := range remoteList {
+				if m, ok := item.(map[string]any); ok {
+					if id, _ := m["id"].(string); id != "" {
+						remoteByID[id] = m
+					}
+				}
+			}
+			merged := make([]any, 0, len(sourceList))
+			seenID := map[string]bool{}
+			for _, item := range sourceList {
+				srcMap, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				id, _ := srcMap["id"].(string)
+				if id == "" || !allowedPluginCredentialBase.MatchString(id) {
+					continue
+				}
+				seenID[id] = true
+				srcModels, _ := srcMap["models"].([]any)
+				srcFellBack, _ := srcMap["fellBack"].(bool)
+				if remMap, hasRem := remoteByID[id]; hasRem {
+					remModels, _ := remMap["models"].([]any)
+					remFellBack, _ := remMap["fellBack"].(bool)
+					if srcFellBack && !remFellBack && len(remModels) > len(srcModels) {
+						merged = append(merged, remMap)
+						continue
+					}
+				}
+				merged = append(merged, srcMap)
+			}
+			for _, item := range remoteList {
+				if remMap, ok := item.(map[string]any); ok {
+					if id, _ := remMap["id"].(string); id != "" && !seenID[id] {
+						merged = append(merged, remMap)
+					}
+				}
+			}
+			data, _ = json.Marshal(merged)
 		default:
 			digest := credentialHash(data)
 			if exists {

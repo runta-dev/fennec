@@ -1196,13 +1196,18 @@ window.renderModelSaving = busy => {
 };
 
 document.querySelector('#clear-trust').onclick = () => {
-  document.querySelector('#clear-trust').disabled=true;
+  const btn = document.querySelector('#clear-trust');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
   send('clear-trust');
 };
 window.renderTrustResult = success => {
-  document.querySelector('#clear-trust').disabled=false;
   const notice=document.querySelector('#trust-result');notice.hidden=true;notice.textContent='';
-  showFeedbackToast(success?"[[i18n:ui.automatic_access_revoked]]":"[[i18n:ui.could_not_revoke_access_try_again]]");
+  if (window.renderAutoAccessRevoked) {
+    window.renderAutoAccessRevoked(success);
+  } else {
+    document.querySelector('#clear-trust').disabled = false;
+  }
 };
 
 let lastSessionTerminals=[];

@@ -199,9 +199,14 @@ nav .tab-indicator{position:absolute;left:0;top:0;z-index:0;border:1px solid var
 #agent-list{overflow-anchor:none}
 @media(prefers-reduced-motion:reduce){.agent-fold,.agent-fold.open{transition:none}}
 
-.permission-revoke{margin-left:auto;flex-shrink:0;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--card);box-shadow:0 1px 2px #0000000a;font-size:12px}
-.permission-revoke:hover{background:var(--expanded);filter:none}
-.permission-revoke:active{background:var(--line);box-shadow:none}
+.permission-revoke{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:108px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--card);box-shadow:0 1px 2px #0000000a;font-size:12px;white-space:nowrap;transition:color .16s ease,border-color .16s ease,background-color .16s ease,opacity .16s ease}
+.permission-revoke:hover:not(:disabled){background:var(--expanded);filter:none}
+.permission-revoke:active:not(:disabled){background:var(--line);box-shadow:none}
+.permission-revoke:disabled{background:var(--expanded);box-shadow:none;color:var(--muted);opacity:.85}
+.permission-revoke.is-revoked{color:#3c8a53;border-color:#3c8a5345;background:#3c8a5310;opacity:1}
+:root[data-theme=dark] .permission-revoke.is-revoked{color:#6dbe84;border-color:#6dbe8445;background:#6dbe8414}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .permission-revoke.is-revoked{color:#6dbe84;border-color:#6dbe8445;background:#6dbe8414}}
+.permission-revoke .revoke-check{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 /* Reserve feedback width before the click; neither the row nor its title moves. */
 .session-actions .session-copy{width:56px;min-width:56px;flex:0 0 56px;justify-content:center}

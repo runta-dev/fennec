@@ -2719,6 +2719,22 @@
       "zh-CN": "超出可写目录",
       "zh-TW": "超出可寫目錄"
     },
+    "ui.access_revoked_short": {
+      "en-GB": "Revoked",
+      "en-US": "Revoked",
+      "ja": "取り消し済み",
+      "ko": "철회됨",
+      "zh-CN": "已撤销",
+      "zh-TW": "已撤銷"
+    },
+    "ui.ask_each_time": {
+      "en-GB": "Ask each time",
+      "en-US": "Ask each time",
+      "ja": "毎回確認",
+      "ko": "매번 확인",
+      "zh-CN": "每次询问",
+      "zh-TW": "每次詢問"
+    },
     "ui.audit_network_on": {
       "en-GB": "Net on",
       "en-US": "Net on",

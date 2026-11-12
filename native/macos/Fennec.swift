@@ -1017,6 +1017,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
         panel.showsHiddenFiles = false
+        panel.level = NSWindow.Level(rawValue: popup.level.rawValue + 1)
         NSApp.activate(ignoringOtherApps: true)
         panel.begin { [weak self] response in
             guard let self else { return }
@@ -1029,6 +1030,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 self.render("renderPickedSandboxRoot", [url.path])
             }
         }
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pageLoaded = true

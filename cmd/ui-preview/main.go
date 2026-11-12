@@ -140,7 +140,7 @@ let previewAuditEntries=[
  {id:'aud-5',timestamp_ms:nowMS-93600000,kind:'tcp_forward',command:'tcp-forward 127.0.0.1:5432',sandbox_mode:'workspace',network_allowed:false,decision:'user_approved',blocked:false,exit_code:0,duration_ms:19}
 ];
 const computeAuditSummary=()=>({total_7d:previewAuditEntries.length,today_count:Math.min(previewAuditEntries.length,4),blocked_7d:previewAuditEntries.filter(e=>e.blocked).length,retention_days:7});
-let previewPrefs={magpie:false,theme:'light',language:'en-US',sandbox_mode:'workspace',sandbox_network:false,sandbox_roots:['/Users/developer/repos/sandbox-demo'],effective_sandbox_roots:['/Users/developer/repos/fennec','/Users/developer/repos/sandbox-demo'],audit_summary:computeAuditSummary(),initialized:true};
+let previewPrefs={magpie:false,theme:'light',language:'en-US',sandbox_mode:'workspace',sandbox_network:false,sandbox_roots:['/Users/developer/repos/sandbox-demo'],effective_sandbox_roots:['/Users/developer/repos/fennec','/Users/developer/repos/sandbox-demo'],auto_access_granted:true,audit_summary:computeAuditSummary(),initialized:true};
 let previewUpdate={state:'latest',current:'0.2.11121023',latest:'0.2.11121023'};
 const previewCloud=new Set(['claude','codex','pi']);
 const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id==='codex'?'configured':'credentials_required',model:'codex/gpt-preview'}));
@@ -152,6 +152,7 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(message==='update-download'){previewUpdate={...previewUpdate,state:'downloading',done:12500000,total:20000000,speed:4200000};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={...previewUpdate,state:'ready'};window.renderUpdateState(previewUpdate);},400);}
  if(message==='update-install'){setTimeout(()=>{previewUpdate={state:'latest',current:previewUpdate.latest||'0.2.11121230'};window.renderUpdateState(previewUpdate);},400);}
  if(message==='pick-sandbox-root'){queueMicrotask(()=>window.renderPickedSandboxRoot?.('/Users/developer/repos/extra-workspace'));}
+ if(message==='clear-trust'){previewPrefs={...previewPrefs,auto_access_granted:false};queueMicrotask(()=>{window.renderTrustResult?.(true);window.renderPreferences(previewPrefs);});}
  if(message==='audit-clear'){previewAuditEntries=[];previewPrefs={...previewPrefs,audit_summary:computeAuditSummary()};queueMicrotask(()=>{window.renderAuditLog?.({summary:previewPrefs.audit_summary,entries:[]});window.renderPreferences(previewPrefs);});}
  if(action==='audit-list'){const flt=p.filter||'all';const rows=previewAuditEntries.filter(e=>flt==='blocked'?e.blocked:flt==='approved'?!e.blocked:true);queueMicrotask(()=>window.renderAuditLog?.({summary:computeAuditSummary(),entries:rows}));}
  if(action==='copy-attach')queueMicrotask(()=>window.renderAttachCopyResult(p.session_id,true));
