@@ -138,6 +138,7 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(typeof message!=='string')return;
  const colon=message.indexOf(':');const action=colon<0?message:message.slice(0,colon);let p={};try{p=JSON.parse(message.slice(colon+1))}catch{}
  if(message==='load-billing'){const mode=new URLSearchParams(location.search).get('billing');queueMicrotask(()=>window.renderBilling(mode==='web_only'?{web_only:true}:mode==='offline'?{offline:true}:{currency:'USD',balance:2450,spend:320,cpu:'4.20 vCPU-h',memory:'8.40 GiB-h',disk:'12.00 GiB-h'}));}
+ if(action==='copy-attach')queueMicrotask(()=>window.renderAttachCopyResult(p.session_id,true));
  if(action==='get-agent-account')queueMicrotask(()=>window.renderNativeAccount({agent:p.agent,location:p.location,status:p.agent==='codex'?'signed_in':'signed_out',accounts:p.agent==='codex'?[{provider:'openai',email:'developer@example.com',subscription:'ChatGPT Pro',auth_type:'oauth'}]:[]}));
  if(action==='get-model' && p.agent!=='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'',models:[{id:'',name:'Default'}]}));
  if(action==='get-model' && p.agent==='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'gpt-preview',effort:'low',models:[{id:'',name:'Default'},{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]}));
