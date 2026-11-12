@@ -37,7 +37,7 @@ func cachedSSHConfig(endpoint, id, directory string) *SSHConnectionConfig {
 	if err != nil {
 		return nil
 	}
-	return &SSHConnectionConfig{Address: net.JoinHostPort(host, "22"), HostKey: key, ClientKey: signer.PublicKey(), Config: &ssh.ClientConfig{User: id, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(key), Timeout: 20 * time.Second}}
+	return &SSHConnectionConfig{Address: net.JoinHostPort(host, "22"), HostKey: key, ClientKey: signer.PublicKey(), NoDelay: true, Config: &ssh.ClientConfig{User: id, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(key), Timeout: 20 * time.Second}}
 }
 
 func sameSSHIdentity(a, b *SSHConnectionConfig) bool {

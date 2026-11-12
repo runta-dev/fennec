@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,8 +38,26 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return err
 	}
 	magpie := newDesktopSettings(home).value.Magpie
+	discoveredInstalled := map[string]bool{}
+	for _, item := range agent.PanelCatalog(agent.Discover()) {
+		if item.Cloud && item.Installed {
+			discoveredInstalled[item.ID] = true
+		}
+	}
 	versions := []setup.Agent{}
-	ids := agent.CloudAgentIDs()
+	var ids []string
+	for _, id := range agent.CloudAgentIDs() {
+		if id == "opencode" {
+			continue
+		}
+		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		ids = []string{"claude", "codex", "pi"}
+	}
 	for _, id := range ids {
 		versions = append(versions, setup.Agent{ID: id, Version: "latest"})
 	}
@@ -66,7 +85,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}()
 	var recorded bytes.Buffer
 	output = io.MultiWriter(output, &recorded)
-	client := &runta.Client{Endpoint: "https://api.runta.com", Token: token, SharedAllowed: cloudstate.New(home).Check}
+	env := runta.ActiveEnvironment(home)
+	lifecycleStore := cloudstate.NewScoped(home, env.Key())
+	client := runta.NewClient(home, token)
+	client.SharedAllowed = lifecycleStore.Check
+	client.CreationGeneration = lifecycleStore.Generation
 	emit := func(stage, id, status string) {
 		json.NewEncoder(output).Encode(map[string]string{"type": "runtime_progress", "stage": stage, "runtime_id": id, "status": status})
 	}
@@ -74,7 +97,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	var hint struct {
 		RuntimeID string `json:"runtime_id"`
 	}
-	if data, err := os.ReadFile(filepath.Join(home, ".config/fennec/takeover-preferences.json")); err == nil && len(data) <= 8192 {
+	if data, err := os.ReadFile(runta.TakeoverPreferencesPath(home)); err == nil && len(data) <= 8192 {
 		_ = json.Unmarshal(data, &hint)
 	}
 	var runtime runta.Runtime
@@ -108,7 +131,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return runtime.ID, nil
 	})
 	if err != nil {
-		emit("failed", runtime.ID, err.Error())
+		reason := err.Error()
+		if strings.Contains(reason, "billing_restricted") {
+			reason = "billing_restricted"
+		}
+		emit("failed", runtime.ID, reason)
 		return err
 	}
 	retained := false
@@ -247,45 +274,54 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		}
 	}
 	json.NewEncoder(output).Encode(map[string]string{"type": "connector_ready", "runtime_id": runtime.ID})
+	// Fast ~5s onboarding critical path: verify guest capacity, start Herdr session
+	// daemon, and upload static Go fennec-terminal concurrently. Heavy Node.js +
+	// npm global agent CLI installations are offloaded after the UI workspace unlocks!
 	if !installationReady {
-		emit("checking_resources", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.GuestCapacityScript); err != nil {
-			emit("failed", runtime.ID, "cloud resource allocation has not taken effect")
-			return err
-		}
-		emit("syncing_versions", runtime.ID, "")
-		if err = setup.SyncAgentManifest(ctx, connection, versions); err != nil {
-			emit("failed", runtime.ID, "agent version manifest sync failed")
-			return err
-		}
-		emit("installing_node", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
-			emit("failed", runtime.ID, "Node setup failed")
-			return err
-		}
 		emit("installing_session_service", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.HerdrSetupScript); err != nil {
-			emit("failed", runtime.ID, "session service reconciliation failed")
-			return err
+		type setupStep struct {
+			reason string
+			run    func(context.Context) error
 		}
-		if err = setup.InstallTerminalBinary(ctx, connection, filepath.Join(filepath.Dir(executable), "..", "Resources")); err != nil {
-			emit("failed", runtime.ID, "Go terminal service installation failed")
-			return err
+		coreSteps := []setupStep{
+			{"cloud resource allocation has not taken effect", func(stepCtx context.Context) error {
+				return setup.Exec(stepCtx, connection, setup.GuestCapacityScript)
+			}},
+			{"agent version manifest sync failed", func(stepCtx context.Context) error {
+				return setup.SyncAgentManifest(stepCtx, connection, versions)
+			}},
+			{"session service reconciliation failed", func(stepCtx context.Context) error {
+				return setup.Exec(stepCtx, connection, setup.HerdrSetupScript)
+			}},
+			{"Go terminal service installation failed", func(stepCtx context.Context) error {
+				return setup.InstallTerminalBinary(stepCtx, connection, filepath.Join(filepath.Dir(executable), "..", "Resources"))
+			}},
 		}
-		if installationErr == nil && setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
-			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
+		stepCtx, cancelSteps := context.WithCancel(ctx)
+		var stepWG sync.WaitGroup
+		var stepMu sync.Mutex
+		var firstErr error
+		var firstReason string
+		for _, step := range coreSteps {
+			stepWG.Add(1)
+			go func(st setupStep) {
+				defer stepWG.Done()
+				if runErr := st.run(stepCtx); runErr != nil {
+					stepMu.Lock()
+					if firstErr == nil {
+						firstErr = runErr
+						firstReason = st.reason
+						cancelSteps()
+					}
+					stepMu.Unlock()
+				}
+			}(step)
 		}
-	}
-	// Gateway readiness is independent of the shared terminal installation.
-	// Toggling integration must never re-upload Herdr or fennec-terminal.
-	if magpie {
-		emit("installing_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
-			return err
-		}
-		emit("starting_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
-			return err
+		stepWG.Wait()
+		cancelSteps()
+		if firstErr != nil {
+			emit("failed", runtime.ID, firstReason)
+			return firstErr
 		}
 	}
 	if retained && retain[0].Terminal != nil && resident == nil {
@@ -293,6 +329,16 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		err := startResident(start, fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion))
 		cancel()
 		if err != nil {
+			return err
+		}
+	}
+	if magpie {
+		emit("installing_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
+			return err
+		}
+		emit("starting_magpie", runtime.ID, "")
+		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
 			return err
 		}
 	}
@@ -351,8 +397,42 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}
 	results := []setup.RouteResult{}
 	json.NewEncoder(output).Encode(map[string]string{"type": "shared_services_ready", "runtime_id": runtime.ID})
+	if !magpie {
+		for _, route := range routes {
+			st := "credentials_required"
+			if nativeRequest.NativeProblems[route.Agent] != "" {
+				st = nativeRequest.NativeProblems[route.Agent]
+			}
+			if accounts.NativeReady[route.Agent] {
+				st = "configured"
+			}
+			results = append(results, setup.RouteResult{Agent: route.Agent, Status: st})
+		}
+	}
 	initialResults, _ := json.Marshal(results)
 	json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(initialResults)})
+	// Unlock the main workspace UI right away (~5s end-to-end onboarding!) while
+	// Node.js and missing agent CLIs finish warming up asynchronously below.
+	if !magpie {
+		earlyStatus := "ready"
+		for _, result := range results {
+			if !stablePreparedRoute(result.Status) && result.Status != "credentials_unavailable" {
+				earlyStatus = "agents_need_attention"
+				break
+			}
+		}
+		emit("agents_installed", runtime.ID, earlyStatus)
+	}
+	if !installationReady {
+		if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
+			emit("failed", runtime.ID, "Node setup failed")
+			return err
+		}
+		if installationErr == nil && setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
+			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
+		}
+	}
+	results = nil
 	err = prepareAgentsIndependently(ctx, versions, routes,
 		func(ctx context.Context, a setup.Agent) error {
 			if accounts.AvailableAgents[a.ID] {

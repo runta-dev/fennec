@@ -2,22 +2,21 @@ package setup
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
 func InstallTerminalBinary(ctx context.Context, client *ssh.Client, artifacts string) error {
-	run := func(command string) ([]byte, error) {
+	run := func(command string, stdin []byte) ([]byte, error) {
 		session, err := client.NewSession()
 		if err != nil {
 			return nil, err
@@ -25,9 +24,12 @@ func InstallTerminalBinary(ctx context.Context, client *ssh.Client, artifacts st
 		defer session.Close()
 		stop := context.AfterFunc(ctx, func() { session.Close() })
 		defer stop()
+		if stdin != nil {
+			session.Stdin = bytes.NewReader(stdin)
+		}
 		return session.Output(command)
 	}
-	architecture, err := run("uname -m")
+	architecture, err := run("uname -m", nil)
 	if err != nil {
 		return err
 	}
@@ -44,78 +46,51 @@ func InstallTerminalBinary(ctx context.Context, client *ssh.Client, artifacts st
 	}
 	digest := sha256.Sum256(data)
 	version := hex.EncodeToString(digest[:])
-	transfer, err := sftp.NewClient(client, sftp.UseConcurrentWrites(true))
-	if err != nil {
-		return err
-	}
-	defer transfer.Close()
-	stop := context.AfterFunc(ctx, func() { transfer.Close() })
-	defer stop()
-	home, err := transfer.RealPath(".")
-	if err != nil {
-		return err
-	}
-	root := path.Join(home, ".local/fennec/terminal", version)
-	binary := path.Join(root, "fennec-terminal")
-	installed := false
-	if info, err := transfer.Stat(binary); err == nil && info.Size() == int64(len(data)) && info.Mode().Perm()&0111 != 0 {
-		actual, err := run("sha256sum " + shellQuote(binary))
-		fields := strings.Fields(string(actual))
-		installed = err == nil && len(fields) > 0 && fields[0] == version
+	checkScript := fmt.Sprintf(`set -eu
+root="$HOME/.local/fennec/terminal/%s"
+bin="$root/fennec-terminal"
+if [ -x "$bin" ] && printf '%%s  %%s\n' '%s' "$bin" | sha256sum -c - >/dev/null 2>&1; then
+ mkdir -p "$HOME/.local/fennec/bin"
+ chmod 700 "$HOME/.local/fennec/bin"
+ ln -sfn "$bin" "$HOME/.local/fennec/bin/fennec-terminal"
+ printf 'already_installed\n'
+fi
+`, version, version)
+	if chk, chkErr := run(checkScript, nil); chkErr == nil && strings.Contains(string(chk), "already_installed") {
+		return nil
 	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
 	}
 	suffix := hex.EncodeToString(nonce[:])
-	if !installed {
-		if err := transfer.MkdirAll(root); err != nil {
-			return err
-		}
-		if err := transfer.Chmod(root, 0700); err != nil {
-			return err
-		}
-		staged := path.Join(root, ".upload-"+suffix)
-		file, err := transfer.OpenFile(staged, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-		if err != nil {
-			return err
-		}
-		defer transfer.Remove(staged)
-		_, copyErr := file.ReadFrom(bytes.NewReader(data))
-		closeErr := file.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		actual, err := run("sha256sum " + shellQuote(staged))
-		fields := strings.Fields(string(actual))
-		if err != nil || len(fields) == 0 || fields[0] != version {
-			return fmt.Errorf("terminal service upload verification failed")
-		}
-		if err := transfer.Chmod(staged, 0700); err != nil {
-			return err
-		}
-		if err := transfer.PosixRename(staged, binary); err != nil {
-			return err
-		}
-	}
-	bin := path.Join(home, ".local/fennec/bin")
-	if err := transfer.MkdirAll(bin); err != nil {
+	var compressed bytes.Buffer
+	gz, _ := gzip.NewWriterLevel(&compressed, gzip.BestSpeed)
+	if _, err := gz.Write(data); err != nil {
 		return err
 	}
-	if err := transfer.Chmod(bin, 0700); err != nil {
+	if err := gz.Close(); err != nil {
 		return err
 	}
-	entry := path.Join(bin, "fennec-terminal")
-	if target, err := transfer.ReadLink(entry); err == nil && target == binary {
-		return nil
+	installScript := fmt.Sprintf(`set -eu
+umask 077
+root="$HOME/.local/fennec/terminal/%s"
+bin_dir="$HOME/.local/fennec/bin"
+mkdir -p "$root" "$bin_dir"
+chmod 700 "$root" "$bin_dir"
+staged="$root/.upload-%s"
+trap 'rm -f "$staged"' EXIT
+gzip -dc > "$staged"
+printf '%%s  %%s\n' '%s' "$staged" | sha256sum -c - >/dev/null
+chmod 700 "$staged"
+mv -f "$staged" "$root/fennec-terminal"
+trap - EXIT
+tmp_link="$bin_dir/.terminal-%s"
+ln -s "$root/fennec-terminal" "$tmp_link"
+mv -f "$tmp_link" "$bin_dir/fennec-terminal"
+`, version, suffix, version, suffix)
+	if _, err := run(installScript, compressed.Bytes()); err != nil {
+		return fmt.Errorf("terminal service upload verification failed: %w", err)
 	}
-	link := path.Join(bin, ".terminal-"+suffix)
-	if err := transfer.Symlink(binary, link); err != nil {
-		return err
-	}
-	defer transfer.Remove(link)
-	return transfer.PosixRename(link, entry)
+	return nil
 }

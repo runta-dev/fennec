@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fennec/internal/agent"
 	"fennec/internal/control"
+	"fennec/internal/runta"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,6 +25,8 @@ type desktopPreferences struct {
 	Magpie       bool   `json:"magpie"`
 	NoAutoUpdate bool   `json:"no_auto_update,omitempty"`
 	UpdateSkip   string `json:"update_skip,omitempty"`
+	Environment  string `json:"environment,omitempty"`
+	NoSSHNoDelay bool   `json:"no_ssh_nodelay,omitempty"`
 	Theme        string `json:"theme"`
 	Language     string `json:"language"`
 	Initialized  bool   `json:"initialized"`
@@ -93,6 +96,11 @@ func validDesktop(value desktopPreferences) bool {
 	if len(value.UpdateSkip) > 64 || strings.ContainsAny(value.UpdateSkip, "\x00\r\n ") {
 		return false
 	}
+	if value.Environment != "" {
+		if _, err := runta.ResolveEnvironment(value.Environment); err != nil {
+			return false
+		}
+	}
 	return map[string]bool{"system": true, "light": true, "dark": true}[value.Theme] && map[string]bool{"zh-CN": true, "zh-TW": true, "en-US": true, "en-GB": true, "ja": true, "ko": true}[value.Language]
 }
 func (s *desktopSettings) snapshot() any { s.mu.Lock(); defer s.mu.Unlock(); return s.value }
@@ -103,12 +111,13 @@ func (s *desktopSettings) snapshot() any { s.mu.Lock(); defer s.mu.Unlock(); ret
 func (s *desktopSettings) update(ctx context.Context, raw json.RawMessage, changed func() error) (any, error) {
 	s.changes.Lock()
 	defer s.changes.Unlock()
-	before := s.snapshot().(desktopPreferences).Magpie
+	prev := s.snapshot().(desktopPreferences)
 	value, err := s.set(false)(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
-	if before != value.(desktopPreferences).Magpie {
+	next := value.(desktopPreferences)
+	if changed != nil && (prev.Magpie != next.Magpie || prev.Environment != next.Environment || prev.NoSSHNoDelay != next.NoSSHNoDelay) {
 		if err := changed(); err != nil {
 			return nil, err
 		}
@@ -123,6 +132,9 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			AutoUpdate       *bool   `json:"auto_update"`
 			NoAutoUpdate     *bool   `json:"no_auto_update"`
 			UpdateSkip       *string `json:"update_skip"`
+			Environment      *string `json:"environment"`
+			SSHNoDelay       *bool   `json:"ssh_nodelay"`
+			NoSSHNoDelay     *bool   `json:"no_ssh_nodelay"`
 			Theme            *string `json:"theme"`
 			Language         *string `json:"language"`
 		}
@@ -152,6 +164,23 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		}
 		if request.UpdateSkip != nil && !importing {
 			next.UpdateSkip = strings.TrimSpace(*request.UpdateSkip)
+		}
+		if request.Environment != nil && !importing {
+			resolved, err := runta.ResolveEnvironment(*request.Environment)
+			if err != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid Runta API endpoint"}
+			}
+			if resolved.Name == runta.EnvProduction {
+				next.Environment = ""
+			} else {
+				next.Environment = resolved.Name
+			}
+		}
+		if request.SSHNoDelay != nil && !importing {
+			next.NoSSHNoDelay = !*request.SSHNoDelay
+		}
+		if request.NoSSHNoDelay != nil && !importing {
+			next.NoSSHNoDelay = *request.NoSSHNoDelay
 		}
 		if request.Theme != nil {
 			next.Theme = *request.Theme

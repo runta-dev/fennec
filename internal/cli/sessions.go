@@ -85,11 +85,11 @@ func sessionOperationContext(parent context.Context, input io.Reader, output io.
 	timeout := 90 * time.Second
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	api := &runta.Client{Endpoint: "https://api.runta.com", Token: request.Token}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
+	api := runta.NewClient(home, request.Token)
 	if operation == "launch" && request.CloudWorkspace {
 		return launchMultiplex(ctx, api, filepath.Join(home, ".config", "fennec", "cloud"), request, output)
 	}

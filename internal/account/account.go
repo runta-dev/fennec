@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,6 +39,7 @@ type Manager struct {
 	// authorization responses from restoring credentials after logout.
 	credentials Credentials
 	endpoint    string
+	dashboard   string
 	http        *http.Client
 	parent      context.Context
 	session     context.Context
@@ -49,7 +51,85 @@ type Manager struct {
 }
 
 func New(ctx context.Context, credentials Credentials, endpoint string) *Manager {
-	return &Manager{parent: ctx, credentials: credentials, endpoint: endpoint, http: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, state: Snapshot{Status: "signed_out"}, changed: make(chan struct{})}
+	trimmed := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	return &Manager{
+		parent:      ctx,
+		credentials: credentials,
+		endpoint:    trimmed,
+		dashboard:   deriveDashboardURL(trimmed),
+		http:        &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		state:       Snapshot{Status: "signed_out"},
+		changed:     make(chan struct{}),
+	}
+}
+
+func deriveDashboardURL(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err == nil && parsed.Scheme == "https" && strings.HasPrefix(parsed.Hostname(), "api.") {
+		zone := strings.TrimPrefix(parsed.Hostname(), "api.")
+		if zone != "" {
+			return "https://dashboard." + zone
+		}
+	}
+	return "https://dashboard.runta.com"
+}
+
+func (m *Manager) Endpoint() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.endpoint
+}
+
+func (m *Manager) DashboardURL() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dashboard != "" {
+		return m.dashboard
+	}
+	return deriveDashboardURL(m.endpoint)
+}
+
+// SetEndpoint switches the active Runta API and Dashboard origins and restores
+// any saved credential for that environment under a fresh session epoch.
+func (m *Manager) SetEndpoint(ctx context.Context, endpoint, dashboard string) error {
+	trimmed := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	dash := strings.TrimRight(strings.TrimSpace(dashboard), "/")
+	if dash == "" {
+		dash = deriveDashboardURL(trimmed)
+	}
+	m.credentialsMu.Lock()
+	defer m.credentialsMu.Unlock()
+	m.mu.Lock()
+	if m.endpoint == trimmed && m.dashboard == dash {
+		m.mu.Unlock()
+		return nil
+	}
+	m.endpoint = trimmed
+	m.dashboard = dash
+	_, epoch := m.resetLocked("restoring")
+	m.mu.Unlock()
+
+	token, err := m.credentials.Read(ctx)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.state.Epoch != epoch {
+		return nil
+	}
+	if errors.Is(err, ErrNotFound) || token == "" {
+		m.state.Status = "signed_out"
+		m.notifyLocked()
+		return nil
+	}
+	if err != nil {
+		m.state.Status = "signed_out"
+		m.state.Error = "credentials_unavailable"
+		m.notifyLocked()
+		return err
+	}
+	m.state.Status = "authorized"
+	m.token = token
+	m.notifyLocked()
+	return nil
 }
 func (m *Manager) notifyLocked() {
 	m.revision++
@@ -232,7 +312,10 @@ func (m *Manager) post(ctx context.Context, path string, body any, out any) (int
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", m.endpoint+"/v2/auth/device/"+path, bytes.NewReader(data))
+	m.mu.Lock()
+	endpoint := m.endpoint
+	m.mu.Unlock()
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint+"/v2/auth/device/"+path, bytes.NewReader(data))
 	if err != nil {
 		return 0, err
 	}
@@ -254,10 +337,16 @@ func (m *Manager) authorize(ctx context.Context, epoch uint64) {
 			ExpiresAt  time.Time `json:"expires_at"`
 		} `json:"data"`
 	}
-	status, err := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": "Fennec", "app_url": "https://dashboard.runta.com"}, &authorization)
+	appURL := m.DashboardURL()
+	wantDash, _ := url.Parse(appURL)
+	wantHost := "dashboard.runta.com"
+	if wantDash != nil && wantDash.Host != "" {
+		wantHost = wantDash.Host
+	}
+	status, err := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": "Fennec", "app_url": appURL}, &authorization)
 	data := authorization.Data
 	link, parseErr := url.Parse(data.URL)
-	if err != nil || status < 200 || status >= 300 || data.DeviceCode == "" || data.UserCode == "" || parseErr != nil || link.Scheme != "https" || link.Host != "dashboard.runta.com" || link.User != nil {
+	if err != nil || status < 200 || status >= 300 || data.DeviceCode == "" || data.UserCode == "" || parseErr != nil || link.Scheme != "https" || link.Host != wantHost || link.User != nil {
 		m.fail(epoch, "authorization_failed")
 		return
 	}

@@ -33,6 +33,7 @@ type Runtime struct {
 	Status      string            `json:"status"`
 	Degraded    bool              `json:"degraded"`
 	SSHEnabled  bool              `json:"ssh_enabled"`
+	ErrorCode   string            `json:"error_code"`
 	Environment map[string]string `json:"environment_variables"`
 }
 type RuntimeResources struct {
@@ -51,10 +52,12 @@ type RuntimeResources struct {
 }
 
 type Client struct {
-	SharedAllowed   func(owner string) error
-	Endpoint, Token string
-	HTTP            *http.Client
-	PollInterval    time.Duration
+	SharedAllowed      func(owner string) error
+	CreationGeneration func(owner string) string
+	Endpoint, Token    string
+	HTTP               *http.Client
+	PollInterval       time.Duration
+	NoSSHNoDelay       bool
 }
 type APIError struct{ Status int }
 
@@ -198,8 +201,15 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 	}
 	runtimes := result.runtimes
 	var matches []Runtime
+	var terminalIDs []string
 	for _, r := range runtimes {
 		if r.Owner == user && r.Environment["FENNEC_PURPOSE"] == "shared-v1" {
+			if r.Status == "deleted" || r.Status == "deleting" || r.Status == "error" || r.Status == "failed" || r.Status == "crashed" {
+				if r.ID != "" {
+					terminalIDs = append(terminalIDs, r.ID)
+				}
+				continue
+			}
 			matches = append(matches, r)
 		}
 	}
@@ -210,7 +220,7 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		if matches[0].ID == "" {
 			return Runtime{}, fmt.Errorf("Fennec runtime response is missing identity")
 		}
-		return matches[0], nil
+		return c.reconcileSharedResources(ctx, matches[0], user), nil
 	}
 	body := map[string]any{
 		"name":                  "Fennec",
@@ -227,7 +237,16 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 	if err != nil {
 		return Runtime{}, err
 	}
-	digest := sha256.Sum256(append([]byte("fennec/shared-v1/"+user+"\x00"), encodedIntent...))
+	seed := "fennec/shared-v1/" + user
+	if c.CreationGeneration != nil {
+		if gen := strings.TrimSpace(c.CreationGeneration(user)); gen != "" {
+			seed += "/after-" + gen
+		}
+	}
+	if len(terminalIDs) > 0 {
+		seed += "/skip-" + strings.Join(terminalIDs, ",")
+	}
+	digest := sha256.Sum256(append([]byte(seed+"\x00"), encodedIntent...))
 	err = c.request(ctx, "POST", "/v2/runtimes", body, "fennec-"+hex.EncodeToString(digest[:]), &response)
 	var apiError *APIError
 	if errors.As(err, &apiError) && apiError.Status == http.StatusConflict {
@@ -265,10 +284,7 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 func (c *Client) WaitReady(ctx context.Context, id string, emit func(Runtime)) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	interval := c.PollInterval
-	if interval <= 0 {
-		interval = 2 * time.Second
-	}
+	started := time.Now()
 	for {
 		r, err := c.Get(ctx, id)
 		if err != nil {
@@ -283,11 +299,22 @@ func (c *Client) WaitReady(ctx context.Context, id string, emit func(Runtime)) e
 				return nil
 			}
 		case "failed", "error", "crashed", "unavailable", "deleted", "deleting":
+			if r.ErrorCode == "balance_exhausted" || r.ErrorCode == "billing_restricted" {
+				return fmt.Errorf("billing_restricted: %s", r.ErrorCode)
+			}
 			return fmt.Errorf("runtime %s", r.Status)
 		case "shutdown", "stopped":
 			return fmt.Errorf("runtime stopped; explicit start required")
 		case "paused", "suspended":
 			return fmt.Errorf("runtime paused; explicit resume required")
+		}
+		interval := c.PollInterval
+		if interval <= 0 {
+			if time.Since(started) < 12*time.Second {
+				interval = 300 * time.Millisecond
+			} else {
+				interval = time.Second
+			}
 		}
 		timer := time.NewTimer(interval)
 		select {
@@ -311,4 +338,51 @@ func (c *Client) Resume(ctx context.Context, id string) error {
 		return err
 	}
 	return c.request(ctx, "POST", fmt.Sprintf("/v2/runtimes/%s/resume?expected_revision=%d", url.PathEscape(id), r.Revision), nil, "", nil)
+}
+
+// reconcileSharedResources patches an existing 2-vCPU Fennec runtime (for example
+// a legacy fixed 2c4g or fixed 2c16g machine) to 4 GiB baseline / 16 GiB max
+// dynamic memory scaling so idle memory automatically drops back to 4 GiB.
+func (c *Client) reconcileSharedResources(ctx context.Context, r Runtime, expectedOwner string) Runtime {
+	if r.ID == "" || r.Resources == nil || r.Status == "deleting" || r.Status == "deleted" {
+		return r
+	}
+	if r.Resources.Requests.VCPUs != SharedRuntimeVCPUs {
+		return r
+	}
+	if r.Resources.Requests.Memory == SharedRuntimeBaselineMemoryMiB && r.Resources.Limits.Memory == SharedRuntimeMaxMemoryMiB {
+		return r
+	}
+	rev := r.Revision
+	if rev == 0 {
+		fresh, err := c.Get(ctx, r.ID)
+		if err != nil || fresh.Revision == 0 {
+			return r
+		}
+		r = fresh
+		rev = fresh.Revision
+		if r.Resources != nil && r.Resources.Requests.Memory == SharedRuntimeBaselineMemoryMiB && r.Resources.Limits.Memory == SharedRuntimeMaxMemoryMiB {
+			return r
+		}
+	}
+	patchBody := map[string]any{
+		"resources": map[string]any{
+			"requests": map[string]any{"memory_mib": SharedRuntimeBaselineMemoryMiB},
+			"limits":   map[string]any{"memory_mib": SharedRuntimeMaxMemoryMiB},
+		},
+	}
+	var updated struct {
+		Data Runtime `json:"data"`
+	}
+	err := c.request(ctx, http.MethodPatch, fmt.Sprintf("/v2/runtimes/%s?expected_revision=%d", url.PathEscape(r.ID), rev), patchBody, "", &updated)
+	if err != nil {
+		return r
+	}
+	if updated.Data.ID == r.ID && updated.Data.Owner == expectedOwner {
+		if updated.Data.Environment == nil {
+			updated.Data.Environment = r.Environment
+		}
+		return updated.Data
+	}
+	return r
 }

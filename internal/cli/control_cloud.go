@@ -10,6 +10,7 @@ import (
 	"fennec/internal/cloudstate"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
+	"fennec/internal/runta"
 )
 
 type cloudEpochKey struct{}
@@ -29,7 +30,7 @@ type cloudControl struct {
 
 func installCloudControl(home string, s *daemonServices, c *controlplane.Controller, backend func(string) cloudstate.Backend) *cloudControl {
 	h := &cloudControl{services: s, controller: c, backend: backend}
-	h.flow = &cloudstate.Service{Store: cloudstate.New(home), Build: control.BuildID(), Quiesce: func(ctx context.Context, owner, runtimeID string) error {
+	h.flow = &cloudstate.Service{Store: cloudstate.NewScoped(home, runta.ActiveEnvironment(home).Key()), Build: control.BuildID(), Quiesce: func(ctx context.Context, owner, runtimeID string) error {
 		epoch, ok := ctx.Value(cloudEpochKey{}).(uint64)
 		if !ok {
 			return fmt.Errorf("cloud operation epoch required")
@@ -62,6 +63,9 @@ func (h *cloudControl) session() (context.Context, cloudstate.Backend, uint64, e
 	}
 	return lifecycle, h.backend(token), epoch, nil
 }
+func (h *cloudControl) activeStore() *cloudstate.Store {
+	return cloudstate.NewScoped(h.services.home, runta.ActiveEnvironment(h.services.home).Key())
+}
 func (h *cloudControl) status(ctx context.Context, _ json.RawMessage) (any, error) {
 	lifecycle, api, epoch, err := h.session()
 	if err != nil {
@@ -77,7 +81,7 @@ func (h *cloudControl) status(ctx context.Context, _ json.RawMessage) (any, erro
 			return nil, err
 		}
 	}
-	record, err := h.flow.Store.Read(owner)
+	record, err := h.activeStore().Read(owner)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +132,7 @@ func (h *cloudControl) preview(ctx context.Context, raw json.RawMessage) (any, e
 	if busy {
 		return nil, &control.Fault{Code: "busy", Message: "Cloud deletion is in progress"}
 	}
+	h.flow.Store = h.activeStore()
 	plan, err := h.flow.Preview(ctx, api, request.Runtime)
 	if lifecycle.Err() != nil {
 		return nil, fmt.Errorf("cloud account changed")
@@ -154,6 +159,8 @@ func (h *cloudControl) delete(ctx context.Context, raw json.RawMessage) (any, er
 	if busy {
 		return nil, &control.Fault{Code: "busy", Message: "Cloud deletion is in progress"}
 	}
+	store := h.activeStore()
+	h.flow.Store = store
 	plan, err := h.flow.ValidatePreview(request.Plan, request.Runtime)
 	if err != nil {
 		return nil, err
@@ -176,7 +183,7 @@ func (h *cloudControl) delete(ctx context.Context, raw json.RawMessage) (any, er
 		work, cancel := context.WithTimeout(context.WithValue(lifecycle, cloudEpochKey{}, epoch), 3*time.Minute)
 		defer cancel()
 		_, err := h.flow.Delete(work, api, request.Plan, request.Runtime)
-		record, readErr := h.flow.Store.Read(owner)
+		record, readErr := store.Read(owner)
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if h.job == job {
@@ -211,6 +218,7 @@ func (h *cloudControl) create(ctx context.Context, raw json.RawMessage) (any, er
 	if busy {
 		return nil, fmt.Errorf("cloud deletion is still running")
 	}
+	h.flow.Store = h.activeStore()
 	if err = h.flow.CreateAgain(ctx, api, request.Runtime, request.Request); err != nil {
 		return nil, err
 	}

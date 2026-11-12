@@ -6,6 +6,7 @@ import (
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
+	"fennec/internal/runta"
 	"fennec/internal/sessionid"
 	"fennec/internal/setup"
 	"path/filepath"
@@ -23,6 +24,9 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 	}
 	s.mu.Unlock()
 	return map[string]control.Handler{
+		"runtime.metrics": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			return s.runtimeMetrics(ctx, raw, controller)
+		},
 		"agent.account.get": s.nativeAccount,
 		"agent.login.start": func(ctx context.Context, raw json.RawMessage) (any, error) {
 			return s.nativeLogin(ctx, raw, "start", controller)
@@ -167,7 +171,7 @@ func (s *daemonServices) setTakeover(ctx context.Context, raw json.RawMessage) (
 		delete(s.selected, request.Agent)
 	}
 	s.reconcileSelectionLocked()
-	err := writePublicJSON(filepath.Join(s.home, ".config/fennec/takeover-preferences.json"), map[string]any{"runtime_id": s.config.RuntimeID, "agents": s.config.Selected, "roots": s.config.Roots})
+	err := writePublicJSON(runta.TakeoverPreferencesPath(s.home), map[string]any{"runtime_id": s.config.RuntimeID, "agents": s.config.Selected, "roots": s.config.Roots})
 	if err != nil {
 		if before {
 			s.selected[request.Agent] = true

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/launchprofile"
+	"fennec/internal/runta"
 	"fmt"
 	"io"
 	"os"
@@ -102,7 +103,7 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 		}
 		remote = `"$HOME/.local/fennec/bin/fennec-terminal" start '` + base64.StdEncoding.EncodeToString(payload) + `'`
 	}
-	args := []string{"-tt", "-S", "none", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID + "@ssh.runta.com", remote}
+	args := []string{"-tt", "-S", "none", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
 	if connection != nil {
 		args[2] = connection.control
 	}
@@ -119,6 +120,12 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 		}
 		args[2] = plan.ControlPath
 	}
+	if args[2] == "none" {
+		args = append(args, SSHTransportOptions(home)...)
+	} else {
+		args = append(args, "-o", "ProxyCommand=false")
+	}
+	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@"+runta.ActiveSSHHost(home), remote)
 	command := exec.Command("/usr/bin/ssh", args...)
 	command.Stdin = os.Stdin
 	command.Stdout = output

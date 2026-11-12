@@ -34,6 +34,13 @@ func New(home string) *Store {
 	// reinstall to provision a replacement without a new user decision.
 	return &Store{Directory: filepath.Join(home, ".local/state/fennec-cloud-lifecycle")}
 }
+
+func NewScoped(home, envKey string) *Store {
+	if envKey == "" {
+		return New(home)
+	}
+	return &Store{Directory: filepath.Join(home, ".local/state/fennec-cloud-lifecycle", envKey)}
+}
 func (s *Store) path(owner string) string {
 	sum := sha256.Sum256([]byte(owner))
 	return filepath.Join(s.Directory, hex.EncodeToString(sum[:])+".json")
@@ -131,10 +138,40 @@ func (s *Store) AllowCreation(owner, runtime, request string) error {
 	if !old.Deleted || old.Runtime != runtime || old.Request != request {
 		return fmt.Errorf("confirm cloud deletion before creating another computer")
 	}
+	_ = s.writeGeneration(owner, runtime)
 	if err = os.Remove(s.path(owner)); err != nil {
 		return err
 	}
 	return syncDirectory(s.Directory)
+}
+
+func (s *Store) generationPath(owner string) string {
+	sum := sha256.Sum256([]byte("gen:" + owner))
+	return filepath.Join(s.Directory, hex.EncodeToString(sum[:])+".gen")
+}
+
+func (s *Store) writeGeneration(owner, deletedRuntime string) error {
+	if owner == "" || deletedRuntime == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.Directory, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(s.generationPath(owner), []byte(deletedRuntime), 0600)
+}
+
+// Generation returns the last explicitly deleted runtime ID for owner so the
+// next authorized creation derives a fresh deterministic Idempotency-Key
+// instead of colliding with the deleted runtime's server-side idempotency entry.
+func (s *Store) Generation(owner string) string {
+	if owner == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(s.generationPath(owner))
+	if err != nil || len(raw) > 128 {
+		return ""
+	}
+	return string(raw)
 }
 func (s *Store) write(r Record) error {
 	if err := os.MkdirAll(s.Directory, 0700); err != nil {

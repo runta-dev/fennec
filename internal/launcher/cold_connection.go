@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/launchprofile"
+	"fennec/internal/runta"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,13 +24,14 @@ type ColdConnection struct {
 	known        []byte
 	cancel       context.CancelFunc
 	done         chan struct{}
+	sshHost      string
 }
 
 func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) *ColdConnection {
 	var preference struct {
 		RuntimeID string `json:"runtime_id"`
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".config/fennec/takeover-preferences.json"))
+	data, err := os.ReadFile(runta.TakeoverPreferencesPath(home))
 	if err != nil || len(data) > 8192 || json.Unmarshal(data, &preference) != nil {
 		return nil
 	}
@@ -56,8 +58,11 @@ func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) 
 	if _, err := os.Lstat(control); !os.IsNotExist(err) {
 		return nil
 	}
+	sshHost := runta.ActiveSSHHost(home)
 	connectionCtx, cancel := context.WithCancel(ctx)
-	args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=5", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + knownPath, "-i", filepath.Join(directory, "runtime_key"), preference.RuntimeID + "@ssh.runta.com"}
+	args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=5", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
+	args = append(args, SSHTransportOptions(home)...)
+	args = append(args, "-o", "UserKnownHostsFile="+knownPath, "-i", filepath.Join(directory, "runtime_key"), preference.RuntimeID+"@"+sshHost)
 	command := exec.CommandContext(connectionCtx, "/usr/bin/ssh", args...)
 	started := time.Now()
 	closeProfile, err := attachSSHProfile(command, home, started)
@@ -70,7 +75,7 @@ func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) 
 		cancel()
 		return nil
 	}
-	connection := &ColdConnection{started: started, closeProfile: closeProfile, runtimeID: preference.RuntimeID, control: control, knownPath: knownPath, known: known, cancel: cancel, done: make(chan struct{})}
+	connection := &ColdConnection{started: started, closeProfile: closeProfile, runtimeID: preference.RuntimeID, control: control, knownPath: knownPath, known: known, cancel: cancel, done: make(chan struct{}), sshHost: sshHost}
 	go func() { command.Wait(); close(connection.done) }()
 	return connection
 }
@@ -117,7 +122,11 @@ func (connection *ColdConnection) Close() {
 		<-connection.done
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		exec.CommandContext(ctx, "/usr/bin/ssh", "-S", connection.control, "-O", "exit", connection.runtimeID+"@ssh.runta.com").Run()
+		host := connection.sshHost
+		if host == "" {
+			host = "ssh.runta.com"
+		}
+		exec.CommandContext(ctx, "/usr/bin/ssh", "-S", connection.control, "-O", "exit", connection.runtimeID+"@"+host).Run()
 		if connection.closeProfile != nil {
 			connection.closeProfile()
 		}

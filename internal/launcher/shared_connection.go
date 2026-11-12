@@ -63,8 +63,9 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 		return nil, fmt.Errorf("SSH control directory must be private")
 	}
 	manager := &SharedConnection{ctx: ctx, control: control}
+	home := homeFromCloudDir(directory)
 	controlOperation := func(ctx context.Context, operation string) error {
-		return exec.CommandContext(ctx, "/usr/bin/ssh", "-S", control, "-O", operation, runtimeID+"@ssh.runta.com").Run()
+		return exec.CommandContext(ctx, "/usr/bin/ssh", "-S", control, "-O", operation, runtimeID+"@"+activeSSHHostForCloudDir(directory)).Run()
 	}
 	manager.check = func(ctx context.Context) error {
 		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -77,7 +78,9 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 		controlOperation(stopCtx, "stop")
 	}
 	connect := func(ctx context.Context) error {
-		args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=yes", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com"}
+		args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=yes", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
+		args = append(args, SSHTransportOptions(home)...)
+		args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory))
 		err := exec.CommandContext(ctx, "/usr/bin/ssh", args...).Run()
 		if ctx.Err() != nil {
 			manager.stop()

@@ -86,7 +86,7 @@ func uninstallPreview(ctx context.Context, home, executable string, cloud bool, 
 			if token == "" {
 				return plan, &control.Fault{Code: "login_required", Message: "Sign in to finish deleting the cloud computer"}
 			}
-			client := runta.Client{Endpoint: "https://api.runta.com", Token: token}
+			client := *runta.NewClient(home, token)
 			owner, err := client.CurrentUser(ctx)
 			if err != nil {
 				return plan, uninstallPreviewError(err)
@@ -113,7 +113,7 @@ func uninstallPreview(ctx context.Context, home, executable string, cloud bool, 
 		if token == "" {
 			return plan, &control.Fault{Code: "login_required", Message: "Sign in before deleting the cloud computer"}
 		}
-		client := runta.Client{Endpoint: "https://api.runta.com", Token: token}
+		client := *runta.NewClient(home, token)
 		owner, err := client.CurrentUser(ctx)
 		if err != nil {
 			return plan, uninstallPreviewError(err)
@@ -413,7 +413,11 @@ func uninstallCommand(arguments []string, output io.Writer) error {
 		needsToken = pending.Plan.DeleteCloud && !pending.CloudDeleted
 	}
 	if needsToken {
-		token, err = (account.HelperCredentials{Path: filepath.Join(filepath.Dir(executable), "fennec-credentials")}).Read(ctx)
+		scoped := &account.ScopedCredentials{
+			Base:  account.HelperCredentials{Path: filepath.Join(filepath.Dir(executable), "fennec-credentials")},
+			Scope: func() string { return runta.ActiveEnvironment(home).API },
+		}
+		token, err = scoped.Read(ctx)
 		if err != nil {
 			return fmt.Errorf("sign in before deleting the cloud computer")
 		}

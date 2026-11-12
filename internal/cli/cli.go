@@ -48,6 +48,17 @@ func Run(arguments []string, output io.Writer) error {
 		return callControl(arguments[1:], input, output)
 	case "fen":
 		return fenCommand(arguments[1:], output)
+	case "ssh-dial":
+		if len(arguments) != 3 {
+			return errors.New("usage: ssh-dial <host> <port>")
+		}
+		home, _ := os.UserHomeDir()
+		if arguments[1] != runta.ActiveSSHHost(home) {
+			return fmt.Errorf("refusing unexpected SSH gateway host %q", arguments[1])
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		return runta.DialAndPassSSHFD(ctx, arguments[1], arguments[2], runta.SSHNoDelayEnabled(home), int(os.Stdout.Fd()))
 	case "install-entry":
 		if len(arguments) != 3 {
 			return errors.New("install-entry requires agent and absolute entry path")
@@ -252,7 +263,7 @@ func Run(arguments []string, output io.Writer) error {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 		go func() { io.Copy(io.Discard, decoder.Buffered()); io.Copy(io.Discard, os.Stdin); cancel() }()
-		client := &runta.Client{Endpoint: "https://api.runta.com", Token: input.Token}
+		client := runta.NewClient(home, input.Token)
 		return localssh.Link(ctx, client, input.LinkConfig, func(stage, detail string) {
 			json.NewEncoder(output).Encode(map[string]string{"type": "connector_status", "stage": stage, "detail": detail})
 		})
@@ -270,12 +281,12 @@ func Run(arguments []string, output io.Writer) error {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		client := &runta.Client{Endpoint: "https://api.runta.com", Token: input.Token}
-		user, err := client.CurrentUser(ctx)
+		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
 		}
-		home, err := os.UserHomeDir()
+		client := runta.NewClient(home, input.Token)
+		user, err := client.CurrentUser(ctx)
 		if err != nil {
 			return err
 		}

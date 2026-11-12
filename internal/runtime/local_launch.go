@@ -161,6 +161,13 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	}
 	binary, err := runtime.Lookup(request.Agent)
 	if err != nil {
+		// If background agent warmup is still finishing after fast 5s onboarding,
+		// wait on the per-agent installation flock / install on demand seamlessly.
+		if ensureErr := ensureLocalAgentBinary(ctx, runtime.Home, request.Agent); ensureErr == nil {
+			binary, err = runtime.Lookup(request.Agent)
+		}
+	}
+	if err != nil {
 		return LocalTerminal{}, fmt.Errorf("cloud agent executable missing")
 	}
 	cwd, err := prepareSessionWorkspace(runtime.Home, request)

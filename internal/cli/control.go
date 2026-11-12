@@ -113,7 +113,19 @@ func callControl(arguments []string, input io.Reader, output io.Writer) error {
 }
 
 func newControlApplication(ctx context.Context, home, executable string) (*account.Manager, *daemonServices, *controlplane.Controller) {
-	manager := account.New(ctx, account.HelperCredentials{Path: filepath.Join(filepath.Dir(executable), "fennec-credentials")}, "https://api.runta.com")
+	settings := newDesktopSettings(home)
+	initialEnv := runta.ActiveEnvironment(home)
+	var baseCreds account.Credentials = account.HelperCredentials{Path: filepath.Join(filepath.Dir(executable), "fennec-credentials")}
+	if customFile := os.Getenv("FENNEC_CREDENTIALS_FILE"); customFile != "" && filepath.IsAbs(customFile) {
+		baseCreds = account.FileCredentials{Path: customFile}
+	}
+	credentials := &account.ScopedCredentials{
+		Base: baseCreds,
+		Scope: func() string {
+			return runta.ActiveEnvironment(home).API
+		},
+	}
+	manager := account.New(ctx, credentials, initialEnv.API)
 	network := connectivity.NewMonitor(nil, 2*time.Second)
 	services := newDaemonServices(home, manager, network)
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
@@ -122,11 +134,33 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		controller.Additional[name] = handler
 	}
 	installBrowserTerminal(ctx, services, controller)
-	settings := newDesktopSettings(home)
-	controller.Settings = settings.snapshot
-	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return settings.snapshot(), nil }
+	controller.Settings = func() any {
+		prefs := settings.snapshot().(desktopPreferences)
+		env := runta.ActiveEnvironment(home)
+		return map[string]any{
+			"revision":       prefs.Revision,
+			"magpie":         prefs.Magpie,
+			"no_auto_update": prefs.NoAutoUpdate,
+			"update_skip":    prefs.UpdateSkip,
+			"environment":    env.Name,
+			"api_endpoint":   env.API,
+			"dashboard_url":  env.Dashboard,
+			"ssh_host":       env.SSHHost,
+			"ssh_nodelay":    !prefs.NoSSHNoDelay,
+			"no_ssh_nodelay": prefs.NoSSHNoDelay,
+			"theme":          prefs.Theme,
+			"language":       prefs.Language,
+			"initialized":    prefs.Initialized,
+		}
+	}
+	controller.Additional["settings.get"] = func(context.Context, json.RawMessage) (any, error) { return controller.Settings(), nil }
 	controller.Additional["settings.set"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		return settings.update(ctx, raw, func() error {
+		_, err := settings.update(ctx, raw, func() error {
+			env := runta.ActiveEnvironment(home)
+			if manager.Endpoint() != env.API {
+				services.close()
+				_ = manager.SetEndpoint(ctx, env.API, env.Dashboard)
+			}
 			services.mu.Lock()
 			services.ready = map[string]bool{}
 			services.reconcileSelectionLocked()
@@ -138,6 +172,10 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 			}
 			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
+		return controller.Settings(), nil
 	}
 	controller.Additional["settings.import"] = settings.set(true)
 	for _, operation := range []string{"status", "on", "off", "settings"} {
@@ -160,7 +198,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installUninstallControl(home, executable, manager, services, controller)
 	installUpdateControl(home, executable, settings, network, controller)
 	installCloudControl(home, services, controller, func(token string) cloudstate.Backend {
-		return &runta.Client{Endpoint: "https://api.runta.com", Token: token}
+		return runta.NewClient(home, token)
 	})
 	return manager, services, controller
 }

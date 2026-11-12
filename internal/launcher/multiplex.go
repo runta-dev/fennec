@@ -28,5 +28,8 @@ func LaunchSSHArgs(directory, runtimeID, sessionID string) ([]string, error) {
 	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
 		return nil, fmt.Errorf("SSH control directory must be private")
 	}
-	return []string{"-T", "-S", control, "-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com", "sh -s"}, nil
+	args := []string{"-T", "-S", control, "-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
+	args = append(args, SSHTransportOptions(homeFromCloudDir(directory))...)
+	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory), "sh -s")
+	return args, nil
 }

@@ -24,7 +24,10 @@ func AttachArgs(runtimeID, address, sessionID, directory string) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	return []string{"ssh", "-tt", "-S", control, "-o", "ControlMaster=no", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "UserKnownHostsFile=" + filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID + "@ssh.runta.com", remote}, nil
+	args := []string{"ssh", "-tt", "-S", control, "-o", "ControlMaster=no", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
+	args = append(args, SSHTransportOptions(homeFromCloudDir(directory))...)
+	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory), remote)
+	return args, nil
 }
 func Attach(runtimeID, address, sessionID, directory string) error {
 	_, err := AttachArgs(runtimeID, address, sessionID, directory)

@@ -138,7 +138,7 @@ const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id
 window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(typeof message!=='string')return;
  const colon=message.indexOf(':');const action=colon<0?message:message.slice(0,colon);let p={};try{p=JSON.parse(message.slice(colon+1))}catch{}
- if(message==='load-billing'){const mode=new URLSearchParams(location.search).get('billing');queueMicrotask(()=>window.renderBilling(mode==='web_only'?{web_only:true}:mode==='offline'?{offline:true}:{currency:'USD',balance:2450,spend:320,cpu:'4.20 vCPU-h',memory:'8.40 GiB-h',disk:'12.00 GiB-h'}));}
+ if(message==='load-billing'){const q=new URLSearchParams(location.search);const mode=q.get('billing');const rt=q.get('rt');queueMicrotask(()=>{window.renderBilling(mode==='reauth'?{reauth_required:true}:mode==='web_only'?{web_only:true}:mode==='offline'?{offline:true}:{currency:'USD',balance:5000,spend:0,cpu:'0.00 vCPU-h',memory:'0.00 GiB-h',disk:'0.00 GiB-h'});window.renderRuntimeMetrics(rt==='not_created'?{ready:false,status:'not_created'}:rt==='billing_restricted'?{ready:false,status:'billing_restricted'}:{ready:mode!=='offline',cpu_percent:8.4,vcpus:2,memory_used_mib:382,memory_current_mib:4096,memory_min_mib:4096,memory_max_mib:16384,net_tx_bytes:977531,net_rx_bytes:465975553,net_tx_bps:18432,net_rx_bps:65536});});}
  if(message==='update-check'){previewUpdate={...previewUpdate,state:'checking'};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={state:'ready',current:'0.2.11121023',latest:'0.2.11121230',notes:'### Features\n- Magpie-style background auto updater\n### Improvements\n- Zero-interruption cloud session continuity'};window.renderUpdateState(previewUpdate);},300);}
  if(message==='update-download'){previewUpdate={...previewUpdate,state:'downloading',done:12500000,total:20000000,speed:4200000};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={...previewUpdate,state:'ready'};window.renderUpdateState(previewUpdate);},400);}
  if(message==='update-install'){setTimeout(()=>{previewUpdate={state:'latest',current:previewUpdate.latest||'0.2.11121230'};window.renderUpdateState(previewUpdate);},400);}
@@ -146,7 +146,7 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(action==='get-agent-account')queueMicrotask(()=>window.renderNativeAccount({agent:p.agent,location:p.location,status:p.agent==='codex'?'signed_in':'signed_out',accounts:p.agent==='codex'?[{provider:'openai',email:'developer@example.com',subscription:'ChatGPT Pro',auth_type:'oauth'}]:[]}));
  if(action==='get-model' && p.agent!=='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'',models:[{id:'',name:'Default'}]}));
  if(action==='get-model' && p.agent==='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'gpt-preview',effort:'low',models:[{id:'',name:'Default'},{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]}));
- if(action==='settings'){if('auto_update' in p)previewPrefs.no_auto_update=!p.auto_update;if('update_skip' in p)previewPrefs.update_skip=p.update_skip;previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
+ if(action==='settings'){if('auto_update' in p)previewPrefs.no_auto_update=!p.auto_update;if('update_skip' in p)previewPrefs.update_skip=p.update_skip;if('environment' in p){previewPrefs.environment=p.environment;previewPrefs.api_endpoint=p.environment==='integration'?'https://api.runta.xyz':p.environment==='production'?'https://api.runta.com':p.environment;previewPrefs.ssh_host=p.environment==='integration'?'ssh.runta.xyz':'ssh.runta.com';}if('ssh_nodelay' in p)previewPrefs.ssh_nodelay=p.ssh_nodelay;previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
  if(action==='toggle-takeover'){const agent=message.slice(colon+1);previewCloud.has(agent)?previewCloud.delete(agent):previewCloud.add(agent);queueMicrotask(()=>window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true}));}
  if(action==='select-model')setTimeout(()=>{window.renderNativeModels({agent:p.agent,model:p.model,effort:p.effort||'low',models:[{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]});window.renderModelSaving(false)},350);
  if(action==='get-local-model')queueMicrotask(()=>window.renderLocalModel({agent:p.agent,model:'codex/gpt-preview',models:['codex/gpt-preview']}));
@@ -157,6 +157,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  const params=new URLSearchParams(location.search);
  if(params.get('lang'))previewPrefs.language=params.get('lang');
  if(params.get('theme'))previewPrefs.theme=params.get('theme');
+ if(params.get('env'))previewPrefs.environment=params.get('env');
  window.renderPreferences(previewPrefs);window.renderAuthorized();
  window.renderAppVersion('Fennec 0.2.11121023');
  const updateMode=params.get('update');
@@ -173,5 +174,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  if(scenario==='offline'){window.renderPreparation({stage:'offline',status:'network_offline'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else if(scenario==='failed'){window.renderPreparation({stage:'failed',status:'runtime_preparation_failed'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else window.renderPreparation({stage:'agents_installed',status:'ready'});
+ const ob=params.get('onboarding');
+ if(ob==='signin'||ob==='setup')window.showOnboardingPreview?.(ob);
 });
 `

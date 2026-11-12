@@ -67,8 +67,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			method = "settings.get"
 			break
 		}
-		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie" && args[1] != "auto-update") {
-			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off | auto-update on|off]")
+		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie" && args[1] != "auto-update" && args[1] != "env" && args[1] != "environment" && args[1] != "ssh-nodelay") {
+			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off | auto-update on|off | env <production|integration|url> | ssh-nodelay on|off]")
 		}
 		method = "settings.set"
 		if args[1] == "auto-update" {
@@ -76,6 +76,17 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 				return true, fmt.Errorf("usage: fen settings auto-update on|off")
 			}
 			params["auto_update"] = args[2] == "on"
+			break
+		}
+		if args[1] == "env" || args[1] == "environment" {
+			params["environment"] = args[2]
+			break
+		}
+		if args[1] == "ssh-nodelay" {
+			if args[2] != "on" && args[2] != "off" {
+				return true, fmt.Errorf("usage: fen settings ssh-nodelay on|off")
+			}
+			params["ssh_nodelay"] = args[2] == "on"
 			break
 		}
 		params[args[1]] = args[2]
@@ -118,6 +129,11 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			return true, fmt.Errorf("usage: fen billing")
 		}
 		method = "account.billing"
+	case "metrics":
+		if len(args) != 1 {
+			return true, fmt.Errorf("usage: fen metrics")
+		}
+		method = "runtime.metrics"
 	case "runtime":
 		if len(args) != 2 || (args[1] != "status" && args[1] != "ensure" && args[1] != "retry") {
 			return true, fmt.Errorf("usage: fen runtime status|ensure|retry")

@@ -11,35 +11,39 @@ case "$(uname -m)" in
  aarch64|arm64) arch=arm64; fd_arch=aarch64; sum=25ba95dfb96871fa2ef977f11f95ea90818c8fa15c0f2110771db08d4ba423be; fd_sum=4e8e596646d047d904f2c5ca74b39dccc69978b6e1fb101094e534b0b59c1bb0 ;;
  *) echo 'unsupported runtime architecture' >&2; exit 69 ;;
 esac
-if [ ! -x "$base/node/bin/node" ] || [ "$("$base/node/bin/node" --version)" != v22.22.0 ]; then
- work=$(mktemp -d "$base/node-download.XXXXXX")
- trap 'rm -rf "$work"' EXIT
- curl --fail --location --retry 2 --max-time 180 "https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$arch.tar.gz" -o "$work/node.tar.gz"
- printf '%s  %s\n' "$sum" "$work/node.tar.gz" | sha256sum -c -
- tar -xzf "$work/node.tar.gz" -C "$work"
- test ! -e "$base/node" || mv "$base/node" "$base/node.previous.$(date +%s)"
- mv "$work/node-v22.22.0-linux-$arch" "$base/node"
- "$base/node/bin/node" --version
- rm -rf "$work"
- trap - EXIT
-fi
-if ! command -v fd >/dev/null 2>&1; then
- if command -v fdfind >/dev/null 2>&1; then
-  ln -sfn "$(command -v fdfind)" "$HOME/.local/bin/fd"
- elif [ -x "$HOME/.pi/agent/bin/fd" ]; then
-  ln -sfn "$HOME/.pi/agent/bin/fd" "$HOME/.local/bin/fd"
- else
-  fd_work=$(mktemp -d "$base/fd-download.XXXXXX")
-  trap 'rm -rf "$fd_work"' EXIT
-  curl --fail --location --retry 2 --max-time 120 "https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-$fd_arch-unknown-linux-musl.tar.gz" -o "$fd_work/fd.tar.gz"
-  printf '%s  %s\n' "$fd_sum" "$fd_work/fd.tar.gz" | sha256sum -c -
-  tar -xzf "$fd_work/fd.tar.gz" -C "$fd_work"
-  chmod 755 "$fd_work/fd-v10.2.0-$fd_arch-unknown-linux-musl/fd"
-  mv "$fd_work/fd-v10.2.0-$fd_arch-unknown-linux-musl/fd" "$HOME/.local/bin/fd"
-  rm -rf "$fd_work"
-  trap - EXIT
+(
+ if [ ! -x "$base/node/bin/node" ] || [ "$("$base/node/bin/node" --version)" != v22.22.0 ]; then
+  work=$(mktemp -d "$base/node-download.XXXXXX")
+  trap 'rm -rf "$work"' EXIT
+  curl --fail --silent --show-error --location --retry 2 --max-time 180 "https://nodejs.org/dist/v22.22.0/node-v22.22.0-linux-$arch.tar.gz" -o "$work/node.tar.gz"
+  printf '%s  %s\n' "$sum" "$work/node.tar.gz" | sha256sum -c - >/dev/null
+  tar -xzf "$work/node.tar.gz" -C "$work"
+  test ! -e "$base/node" || mv "$base/node" "$base/node.previous.$(date +%s)"
+  mv "$work/node-v22.22.0-linux-$arch" "$base/node"
+  "$base/node/bin/node" --version >/dev/null
  fi
-fi
+) &
+node_pid=$!
+(
+ if ! command -v fd >/dev/null 2>&1; then
+  if command -v fdfind >/dev/null 2>&1; then
+   ln -sfn "$(command -v fdfind)" "$HOME/.local/bin/fd"
+  elif [ -x "$HOME/.pi/agent/bin/fd" ]; then
+   ln -sfn "$HOME/.pi/agent/bin/fd" "$HOME/.local/bin/fd"
+  else
+   fd_work=$(mktemp -d "$base/fd-download.XXXXXX")
+   trap 'rm -rf "$fd_work"' EXIT
+   curl --fail --silent --show-error --location --retry 2 --max-time 120 "https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-$fd_arch-unknown-linux-musl.tar.gz" -o "$fd_work/fd.tar.gz"
+   printf '%s  %s\n' "$fd_sum" "$fd_work/fd.tar.gz" | sha256sum -c - >/dev/null
+   tar -xzf "$fd_work/fd.tar.gz" -C "$fd_work"
+   chmod 755 "$fd_work/fd-v10.2.0-$fd_arch-unknown-linux-musl/fd"
+   mv "$fd_work/fd-v10.2.0-$fd_arch-unknown-linux-musl/fd" "$HOME/.local/bin/fd"
+  fi
+ fi
+) &
+fd_pid=$!
+wait "$node_pid"
+wait "$fd_pid"
 command -v fd >/dev/null
 `
 

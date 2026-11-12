@@ -4,6 +4,7 @@ import (
 	"context"
 	"fennec/internal/connectivity"
 	"fennec/internal/launcher"
+	"fennec/internal/runta"
 	"fennec/internal/terminalstream"
 	"golang.org/x/crypto/ssh"
 	"os/exec"
@@ -121,7 +122,7 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 				control, err = channel.shared.Get(operation)
 				if err == nil {
 					directory := filepath.Join(channel.home, ".config/fennec/cloud")
-					command := exec.CommandContext(channel.ctx, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), channel.runtimeID+"@ssh.runta.com", `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
+					command := exec.CommandContext(channel.ctx, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), channel.runtimeID+"@"+runta.ActiveSSHHost(channel.home), `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
 					transport, err = terminalstream.Start(command)
 				}
 			}

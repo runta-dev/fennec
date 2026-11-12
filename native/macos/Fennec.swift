@@ -8,6 +8,20 @@ final class PopupPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { orderOut(nil) }
 }
 
+final class PanelWebView: WKWebView {
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        if event.modifierFlags.contains(.control) {
+            menu.removeAllItems()
+            return
+        }
+        menu.items.removeAll { item in
+            let id = item.identifier?.rawValue ?? ""
+            return id.contains("Reload") || id.contains("Back") || id.contains("Forward") || id.contains("OpenLink") || id.contains("Download")
+        }
+    }
+}
+
 final class PermissionScroller: NSScroller {
     override class var isCompatibleWithOverlayScrollers: Bool { true }
 
@@ -49,11 +63,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var authorized = false
     private var isOnline = true
     private var profileLoaded = false
+    private var activeDashboardURL = "https://dashboard.runta.com"
     private var updateState: [String:Any] = [:]
     private var preparationState: [String:String] = [:]
     private var takeoverAgents = Set<String>()
     private var loadingRuntimes = false
     private var loadingBilling = false
+    private var loadingMetrics = false
+    private var lastMetricsPoll = Date.distantPast
     private var discoveringAgents = false
     private var visibleRefreshTab = "agents"
     private var rendererRecoveryTimes: [Date] = []
@@ -348,7 +365,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "fennec")
-        web = WKWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 390), configuration: configuration)
+        web = PanelWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 390), configuration: configuration)
         web.navigationDelegate = self
         let controller = NSViewController()
         controller.view = web
@@ -593,6 +610,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func pollState() {
         guard controlReady,!stateLoading else { return }
+        if popup.isVisible, authorized, isOnline, visibleRefreshTab == "account", Date().timeIntervalSince(lastMetricsPoll) >= 3.0 {
+            loadMetrics()
+        }
         stateLoading = true
 	    let revision = viewRevision
         control.call("state.get") { [weak self] result in
@@ -608,13 +628,20 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func applyState(_ state: [String:Any]) {
-	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool != true {render("renderMagpiePreference",[preferences["magpie"] as? Bool ?? false])}
+	    if let preferences=state["settings"] as? [String:Any] {
+	        if let dash=preferences["dashboard_url"] as? String, !dash.isEmpty { activeDashboardURL = dash }
+	        if preferences["initialized"] as? Bool != true {
+	            render("renderMagpiePreference",[preferences["magpie"] as? Bool ?? false])
+	            render("renderDeveloperPreferences",[preferences])
+	        }
+	    }
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
 	    }
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
+        let epochChanged = epoch != accountEpoch
         if epoch != accountEpoch { accountEpoch = epoch; profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews") }
         let online = state["online"] as? Bool ?? true
         let reconnected = online && !isOnline
@@ -625,8 +652,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             if !authorized { profileLoaded = false }
             render(authorized ? "renderAuthorized" : "renderSignedOut")
             if authorized, online { loadProfile() }
-        } else if authorized, reconnected, !profileLoaded {
+        } else if authorized, online, (reconnected || epochChanged), !profileLoaded {
             loadProfile()
+            if epochChanged && visibleRefreshTab == "account" { loadBilling() }
         }
         if !authorized {
             let pending = account["status"] as? String == "authorizing"
@@ -635,8 +663,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let errorCode = account["error"] as? String
             let message = pending ? (code.isEmpty ? "[[i18n:ui.connecting_to_runta]]" : "[[i18n:ui.confirm_this_code_in_your_browser]]" + code) : (errorCode.map { loginErrors[$0] ?? "[[i18n:ui.could_not_sign_in_try_again]]" } ?? "")
             renderLogin(message, pending || account["status"] as? String == "restoring")
+            let expectedHost = URL(string: activeDashboardURL)?.host ?? "dashboard.runta.com"
             if pending, let link = account["verification_url"] as? String, link != openedLoginURL,
-               let url = URL(string: link), url.scheme == "https", url.host == "dashboard.runta.com" {
+               let url = URL(string: link), url.scheme == "https", url.host == expectedHost {
                 openedLoginURL = link; NSWorkspace.shared.open(url)
             }
         }
@@ -659,7 +688,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let ready = services["broker_ready"] as? Bool == true
 	    sessionServiceReady=ready
         if reconnected, authorized, ready { loadRuntimes() }
-        if reconnected, authorized, visibleRefreshTab == "account" { loadBilling() }
+        if reconnected, authorized, visibleRefreshTab == "account" { loadBilling(); loadMetrics() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] { render("renderHerdrSessions", [terminals]) }
@@ -718,6 +747,18 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
         }
     }
+    private func loadMetrics() {
+        guard authorized, isOnline, !loadingMetrics else { return }
+        loadingMetrics = true
+        lastMetricsPoll = Date()
+        let epoch = accountEpoch
+        control.call("runtime.metrics") { [weak self] result in
+            guard let self else { return }
+            self.loadingMetrics = false
+            guard self.accountEpoch == epoch, case .success(let value) = result else { return }
+            self.render("renderRuntimeMetrics", [value])
+        }
+    }
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
         let epoch=accountEpoch
         control.call("sessions.browser",params) { [weak self] result in
@@ -758,9 +799,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
-        if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true) {NSWorkspace.shared.open(url);return}
+        if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
-        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
+        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
         for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
@@ -878,12 +919,22 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "login": mutate("account.login")
 	    case "reauthenticate": mutate("account.login",["reauthenticate":true])
         case "logout": mutate("account.logout")
-        case "load-billing": loadBilling()
-        case "open-dashboard": if let url = URL(string: "https://dashboard.runta.com") { NSWorkspace.shared.open(url) }
+        case "load-billing": loadBilling(); loadMetrics()
+        case "load-metrics": loadMetrics()
+        case "open-dashboard": if let url = URL(string: activeDashboardURL), url.scheme == "https" { NSWorkspace.shared.open(url) }
         case "update-check": mutate("update.check") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }
         case "update-download": mutate("update.download") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }
         case "update-install": mutate("update.install") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.render("renderUpdateInstallFailed") } }
-        case "retry-runtime": mutate("runtime.retry")
+        case "retry-runtime":
+            control.call("cloud.status") { [weak self] res in
+                guard let self else { return }
+                if case .success(let val) = res, let st = val as? [String:Any], st["can_create"] as? Bool == true,
+                   let rt = st["runtime_id"] as? String, let req = st["request_id"] as? String, !rt.isEmpty, !req.isEmpty {
+                    self.mutate("cloud.create", ["confirm_runtime": rt, "request_id": req])
+                } else {
+                    self.mutate("runtime.retry")
+                }
+            }
         case "clear-trust": mutate("trust.clear") { [weak self] success,_ in self?.render("renderTrustResult",[success]) }
         case "cancel-session-read": sessionReadRevision += 1
         case "quit": quitApp()

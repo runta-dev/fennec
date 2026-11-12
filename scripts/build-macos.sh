@@ -49,7 +49,7 @@ cp "$helper" "$app/Contents/MacOS/fennec-credentials"
 mkdir -p "$app/Contents/Resources"
 go run ./cmd/fennec-terminal protocol-version > "$app/Contents/Resources/terminal-protocol-version"
 for remote_arch in amd64 arm64; do
-  CGO_ENABLED=0 GOOS=linux GOARCH="$remote_arch" go build -trimpath -o "$app/Contents/Resources/fennec-terminal-linux-$remote_arch" ./cmd/fennec-terminal
+  CGO_ENABLED=0 GOOS=linux GOARCH="$remote_arch" go build -trimpath -ldflags="-s -w" -o "$app/Contents/Resources/fennec-terminal-linux-$remote_arch" ./cmd/fennec-terminal
 done
 if [ -n "${FENNEC_DAEMON_BINARY:-}" ]; then
   test -f "$FENNEC_DAEMON_BINARY"

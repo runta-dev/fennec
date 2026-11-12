@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/runta"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"os"
@@ -129,7 +130,7 @@ func TestSessionOperations500ms(t *testing.T) {
 		t.Fatal(err)
 	}
 	cloud := filepath.Join(home, ".config/fennec/cloud")
-	sshArgs := []string{"-T", "-S", "none", "-o", "ControlMaster=no", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + filepath.Join(cloud, "known_hosts"), "-i", filepath.Join(cloud, "runtime_key"), state.Runtime.ID + "@ssh.runta.com"}
+	sshArgs := []string{"-T", "-S", "none", "-o", "ControlMaster=no", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + filepath.Join(cloud, "known_hosts"), "-i", filepath.Join(cloud, "runtime_key"), state.Runtime.ID + "@" + runta.ActiveSSHHost(home)}
 	ssh := func(script string) *exec.Cmd {
 		return exec.CommandContext(ctx, "/usr/bin/ssh", append(append([]string{}, sshArgs...), script)...)
 	}

@@ -10,12 +10,15 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 type httpStatusError struct {
-	status int
+	status     int
+	code       string
+	authReason string
 }
 
 func (e *httpStatusError) Error() string {
@@ -47,10 +50,23 @@ func (m *Manager) get(ctx context.Context, token, address string, epoch uint64) 
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		launchprofile.Record("account.http_status."+strconv.Itoa(response.StatusCode), time.Now(), 0)
-		return nil, &httpStatusError{status: response.StatusCode}
+		var envelope struct {
+			Error struct {
+				Code                string `json:"code"`
+				AuthorizationReason string `json:"authorization_reason"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope)
+		return nil, &httpStatusError{
+			status:     response.StatusCode,
+			code:       envelope.Error.Code,
+			authReason: envelope.Error.AuthorizationReason,
+		}
 	}
 	var result map[string]any
-	if err = json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&result); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 4<<20))
+	decoder.UseNumber()
+	if err = decoder.Decode(&result); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -61,7 +77,7 @@ func (m *Manager) Profile(parent context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	defer done()
-	result, err := m.get(ctx, token, m.endpoint+"/v2/me", epoch)
+	result, err := m.get(ctx, token, m.Endpoint()+"/v2/me", epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -78,43 +94,134 @@ func (m *Manager) Profile(parent context.Context) (map[string]any, error) {
 	return public, nil
 }
 func (m *Manager) Billing(ctx context.Context) (map[string]any, error) {
-	return m.billing(ctx, "https://backend.runta.com")
+	return m.billing(ctx, m.Endpoint())
 }
-func (m *Manager) billing(parent context.Context, backend string) (map[string]any, error) {
+
+func parseMinorUnits(value any) (int64, bool) {
+	switch v := value.(type) {
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return n, true
+		}
+		if f, err := v.Float64(); err == nil {
+			return int64(f), true
+		}
+	case float64:
+		return int64(v), true
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	}
+	return 0, false
+}
+
+func classifyBillingHTTPFailure(err error) (map[string]any, bool) {
+	var statusErr *httpStatusError
+	if !errors.As(err, &statusErr) {
+		return nil, false
+	}
+	if statusErr.status == http.StatusForbidden {
+		if statusErr.authReason == "required_scope_missing" {
+			return map[string]any{"reauth_required": true}, true
+		}
+		return map[string]any{"web_only": true}, true
+	}
+	if statusErr.status == http.StatusNotFound {
+		return map[string]any{"web_only": true}, true
+	}
+	return nil, false
+}
+
+func (m *Manager) resolveBillingOrganization(ctx context.Context, token, endpoint string, epoch uint64) (string, map[string]any, error) {
+	meResp, err := m.get(ctx, token, endpoint+"/v2/me", epoch)
+	if err == nil {
+		me, _ := meResp["data"].(map[string]any)
+		if me == nil {
+			me = meResp
+		}
+		role, _ := me["role"].(string)
+		if rawScopes, hasScopes := me["scopes"].([]any); hasScopes && len(rawScopes) > 0 {
+			hasBillingScope := false
+			for _, item := range rawScopes {
+				if s, ok := item.(string); ok && s == "billing:read" {
+					hasBillingScope = true
+					break
+				}
+			}
+			if !hasBillingScope {
+				if role == "developer" {
+					return "", map[string]any{"web_only": true}, nil
+				}
+				return "", map[string]any{"reauth_required": true}, nil
+			}
+		}
+		if role == "developer" {
+			return "", map[string]any{"web_only": true}, nil
+		}
+		if orgID, _ := me["organization_id"].(string); strings.TrimSpace(orgID) != "" {
+			return strings.TrimSpace(orgID), nil, nil
+		}
+	} else if fallback, ok := classifyBillingHTTPFailure(err); ok {
+		return "", fallback, nil
+	}
+
+	organizations, err := m.get(ctx, token, endpoint+"/v2/organizations", epoch)
+	if err != nil {
+		if fallback, ok := classifyBillingHTTPFailure(err); ok {
+			return "", fallback, nil
+		}
+		return "", nil, err
+	}
+	rows, ok := organizations["data"].([]any)
+	if !ok || len(rows) == 0 {
+		launchprofile.Record("billing.organization_count.0", time.Now(), 0)
+		return "", nil, fmt.Errorf("one billing organization required")
+	}
+	for _, item := range rows {
+		org, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if org["current"] == true {
+			if id, _ := org["id"].(string); id != "" {
+				return id, nil, nil
+			}
+		}
+	}
+	if len(rows) == 1 {
+		if org, ok := rows[0].(map[string]any); ok {
+			if id, _ := org["id"].(string); id != "" {
+				return id, nil, nil
+			}
+		}
+	}
+	launchprofile.Record("billing.organization_count."+strconv.Itoa(len(rows)), time.Now(), 0)
+	return "", nil, fmt.Errorf("one billing organization required")
+}
+
+func (m *Manager) billing(parent context.Context, apiOrigin string) (map[string]any, error) {
 	ctx, token, epoch, done, err := m.queryContext(parent)
 	if err != nil {
 		return nil, err
 	}
 	defer done()
-	organizations, err := m.get(ctx, token, backend+"/v1/organizations", epoch)
+	endpoint := strings.TrimRight(strings.TrimSpace(apiOrigin), "/")
+	id, fallback, err := m.resolveBillingOrganization(ctx, token, endpoint, epoch)
 	if err != nil {
-		var statusErr *httpStatusError
-		if errors.As(err, &statusErr) && statusErr.status == http.StatusForbidden {
-			return map[string]any{"web_only": true}, nil
-		}
 		return nil, err
 	}
-	rows, ok := organizations["data"].([]any)
-	if !ok || len(rows) != 1 {
-		launchprofile.Record("billing.organization_count."+strconv.Itoa(len(rows)), time.Now(), 0)
-		return nil, fmt.Errorf("one billing organization required")
+	if fallback != nil {
+		return fallback, nil
 	}
-	org, ok := rows[0].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid billing organization")
-	}
-	id, ok := org["id"].(string)
-	if !ok || id == "" {
-		return nil, fmt.Errorf("missing billing organization")
-	}
-	base := backend + "/v1/organizations/" + url.PathEscape(id)
-	paths := []string{"/billing/account", "/billing", "/billing/usage?window=30d"}
+	base := endpoint + "/v2/organizations/" + url.PathEscape(id)
+	paths := []string{"/billing/account", "/billing/usage?window=30d"}
 	results := make([]map[string]any, len(paths))
 	errs := make([]error, len(paths))
 	var wg sync.WaitGroup
 	for i, path := range paths {
 		wg.Add(1)
-		go func() {
+		go func(i int, path string) {
 			defer wg.Done()
 			response, err := m.get(ctx, token, base+path, epoch)
 			if err != nil {
@@ -126,44 +233,50 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 			if !valid {
 				errs[i] = fmt.Errorf("invalid billing response")
 			}
-		}()
+		}(i, path)
 	}
 	wg.Wait()
 	for _, err := range errs {
 		if err != nil {
-			var statusErr *httpStatusError
-			if errors.As(err, &statusErr) && statusErr.status == http.StatusForbidden {
-				return map[string]any{"web_only": true}, nil
+			if fallback, ok := classifyBillingHTTPFailure(err); ok {
+				return fallback, nil
 			}
 			return nil, err
 		}
 	}
-	account, billing, usage := results[0], results[1], results[2]
-	balance, _ := billing["credit_balance"].(map[string]any)
+	account, usage := results[0], results[1]
+	balance, _ := account["credit_balance"].(map[string]any)
 	currency, _ := account["currency"].(string)
 	if currency == "" {
 		currency = "USD"
 	}
 	result := map[string]any{"currency": currency, "stale": balance["freshness"] == "stale" || usage["freshness"] == "stale"}
+	if accessState, _ := account["access_state"].(string); accessState != "" {
+		result["access_state"] = accessState
+	}
+	if reason, _ := account["restriction_reason"].(string); reason != "" {
+		result["restriction_reason"] = reason
+	}
 	if balance["freshness"] != "unavailable" {
-		if amount, ok := balance["amount_minor"].(float64); ok {
+		if amount, ok := parseMinorUnits(balance["amount_minor"]); ok {
 			result["balance"] = amount
 		}
 	}
 	if usage["freshness"] != "unavailable" {
 		if breakdown, ok := usage["breakdown"].([]any); ok {
-			total := float64(0)
+			var total int64
 			for _, row := range breakdown {
 				if item, ok := row.(map[string]any); ok {
-					amount, _ := item["amount_minor"].(float64)
-					total += amount
+					if amount, ok := parseMinorUnits(item["amount_minor"]); ok {
+						total += amount
+					}
 				}
 			}
 			result["spend"] = total
 		}
 		quantities, _ := usage["quantities"].([]any)
 		for _, measure := range []struct{ field, metric, unit string }{{"cpu", "vcpu_hours", "vCPU-h"}, {"memory", "memory_gib_hours", "GiB-h"}, {"disk", "disk_gib_hours", "GiB-h"}} {
-			total, found := float64(0), false
+			total := float64(0)
 			for _, row := range quantities {
 				item, ok := row.(map[string]any)
 				if !ok {
@@ -179,11 +292,11 @@ func (m *Manager) billing(parent context.Context, backend string) (map[string]an
 					continue
 				}
 				total += quantity
-				found = true
 			}
-			if found {
-				result[measure.field] = fmt.Sprintf("%.2f %s", total, measure.unit)
-			}
+			// When freshness is fresh or stale, an omitted metric row represents 0.00
+			// billable usage rather than missing data. Only freshness=="unavailable"
+			// leaves the field unset.
+			result[measure.field] = fmt.Sprintf("%.2f %s", total, measure.unit)
 		}
 	}
 	return result, nil

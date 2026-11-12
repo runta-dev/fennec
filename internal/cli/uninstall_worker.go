@@ -173,11 +173,15 @@ func runUninstallWorker(path string) error {
 			if record.CloudDeleted {
 				return nil
 			}
-			token, err := credentials.Read(ctx)
+			scoped := &account.ScopedCredentials{
+				Base:  credentials,
+				Scope: func() string { return runta.ActiveEnvironment(home).API },
+			}
+			token, err := scoped.Read(ctx)
 			if err != nil {
 				return &control.Fault{Code: "login_required", Message: "Sign in before deleting the cloud computer"}
 			}
-			return (&runta.Client{Endpoint: "https://api.runta.com", Token: token}).DeleteOwnedShared(ctx, target.ID, target.Owner, target.Revision)
+			return runta.NewClient(home, token).DeleteOwnedShared(ctx, target.ID, target.Owner, target.Revision)
 		},
 		DisableLogin: func(ctx context.Context) error {
 			binary := filepath.Join(plan.Local.App, "Contents/MacOS/Fennec")

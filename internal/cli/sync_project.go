@@ -41,7 +41,11 @@ func syncProject(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	api := &runta.Client{Endpoint: "https://api.runta.com", Token: request.Token}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	api := runta.NewClient(home, request.Token)
 	user, err := api.CurrentUser(ctx)
 	if err != nil {
 		return err
@@ -55,10 +59,6 @@ func syncProject(input io.Reader, output io.Writer) error {
 	}
 	if computer.Status != "running" || computer.Degraded {
 		return fmt.Errorf("cloud computer not ready")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
 	}
 	identity := filepath.Join(home, ".config/fennec/cloud")
 	client, err := api.Connect(ctx, request.RuntimeID, identity)

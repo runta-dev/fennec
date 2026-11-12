@@ -51,6 +51,9 @@ func (o LocalOperation) Validate() error {
 	if o.Kind == "model_catalog" {
 		return nil
 	}
+	if o.Kind == "system_metrics" {
+		return nil
+	}
 	if o.Kind == "model_accounts" && o.Accounts != nil {
 		return setup.ValidateModelAccountsRequest(*o.Accounts)
 	}
@@ -77,6 +80,9 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "system_metrics" {
+		return json.Marshal(CollectSystemMetrics())
 	}
 	if o.Kind == "reconfigure_runtime" {
 		result, err := setup.ReconfigureRuntime(ctx, r.Home, *o.Configuration)

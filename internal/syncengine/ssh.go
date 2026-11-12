@@ -1,6 +1,7 @@
 package syncengine
 
 import (
+	"fennec/internal/runta"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func ConfigureSSH(directory, runtimeID, identity, knownHosts string) (string, er
 		return "", err
 	}
 	config := filepath.Join(directory, "config")
-	text := "Host fennec-cloud\n  HostName ssh.runta.com\n  User " + runtimeID + "\n  IdentityFile " + key + "\n  UserKnownHostsFile " + hosts + "\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n  ForwardAgent no\n  ControlMaster no\n  ControlPath none\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n"
+	text := "Host fennec-cloud\n  HostName " + runta.ActiveSSHHost() + "\n  IPQoS ef\n  User " + runtimeID + "\n  IdentityFile " + key + "\n  UserKnownHostsFile " + hosts + "\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n  ForwardAgent no\n  ControlMaster no\n  ControlPath none\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n"
 	if err = os.WriteFile(config, []byte(text), 0600); err != nil {
 		return "", err
 	}

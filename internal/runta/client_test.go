@@ -104,6 +104,51 @@ func TestCreateStableIdempotency(t *testing.T) {
 		t.Fatal(keys)
 	}
 }
+
+func TestEnsureSharedReconciles2c16gOrFixed2c4gToDynamic4g16g(t *testing.T) {
+	patches := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v2/me":
+			fmt.Fprint(w, `{"data":{"user_id":"mine"}}`)
+		case r.Method == "GET" && r.URL.Path == "/v2/runtimes":
+			fmt.Fprint(w, `{"data":[{"id":"rt-1","owner_user_id":"mine","revision":5,"status":"running","environment_variables":{"FENNEC_PURPOSE":"shared-v1"},"resources":{"current":{"memory_mib":16384,"observed_disk_gib":16},"requests":{"vcpus":2,"memory_mib":16384,"disk_gib":16},"limits":{"memory_mib":16384}}}],"pagination":{"has_more":false}}`)
+		case r.Method == "PATCH" && r.URL.Path == "/v2/runtimes/rt-1":
+			patches++
+			if r.URL.Query().Get("expected_revision") != "5" {
+				t.Fatalf("expected revision 5, got %s", r.URL.RawQuery)
+			}
+			var body struct {
+				Resources struct {
+					Requests struct {
+						Memory uint64 `json:"memory_mib"`
+					} `json:"requests"`
+					Limits struct {
+						Memory uint64 `json:"memory_mib"`
+					} `json:"limits"`
+				} `json:"resources"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Resources.Requests.Memory != 4096 || body.Resources.Limits.Memory != 16384 {
+				t.Fatalf("unexpected patch resources: %+v", body.Resources)
+			}
+			fmt.Fprint(w, `{"data":{"id":"rt-1","owner_user_id":"mine","revision":6,"status":"running","environment_variables":{"FENNEC_PURPOSE":"shared-v1"},"resources":{"current":{"memory_mib":4096,"observed_disk_gib":16},"requests":{"vcpus":2,"memory_mib":4096,"disk_gib":16},"limits":{"memory_mib":16384}}}}`)
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	c := Client{Endpoint: server.URL}
+	got, err := c.EnsureShared(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patches != 1 || got.Resources == nil || got.Resources.Requests.Memory != 4096 || got.Resources.Limits.Memory != 16384 {
+		t.Fatalf("expected 2c16g patched down to 2c(4g-16g), patches=%d got=%+v", patches, got.Resources)
+	}
+}
 func TestReadyRequiresSSHAndHealthyRuntime(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

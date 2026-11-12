@@ -159,7 +159,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 	}
 	scope := sha256.Sum256([]byte(config.RuntimeID + "\x00" + config.Device))
 	journal := &launcher.LaunchJournal{Directory: filepath.Join(home, ".config/fennec/launch-journal", hex.EncodeToString(scope[:16]))}
-	api := &runta.Client{Endpoint: "https://api.runta.com", Token: config.Token}
+	api := runta.NewClient(home, config.Token)
 	shared, err := launcher.NewSharedConnection(ctx, filepath.Join(home, ".config/fennec/cloud"), config.RuntimeID, func(operation context.Context) error {
 		_, err := api.PrepareOwnedSSH(operation, config.RuntimeID, filepath.Join(home, ".config/fennec/cloud"))
 		return err

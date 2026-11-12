@@ -33,6 +33,13 @@ type daemonServices struct {
 	nativeAccountMu                            sync.Mutex
 	nativeAccountCache                         map[string]cachedNativeAccount
 	nativeAccountPending                       map[string]chan struct{}
+	metricsAPIMu                               sync.Mutex
+	metricsRuntimeID                           string
+	metricsAPIAt                               time.Time
+	metricsMinMiB                              uint64
+	metricsCurMiB                              uint64
+	metricsMaxMiB                              uint64
+	metricsVCPUs                               int
 	channel                                    *terminalChannel
 	initializeMu                               sync.Mutex
 	user                                       string
@@ -232,7 +239,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 			Agents    []string `json:"agents"`
 			Roots     []string `json:"roots"`
 		}
-		if data, err := os.ReadFile(filepath.Join(s.home, ".config/fennec/takeover-preferences.json")); err == nil && json.Unmarshal(data, &saved) == nil && saved.RuntimeID == runtimeID {
+		if data, err := os.ReadFile(runta.TakeoverPreferencesPath(s.home)); err == nil && json.Unmarshal(data, &saved) == nil && saved.RuntimeID == runtimeID {
 			for _, id := range saved.Agents {
 				if launcher.Supported[id] {
 					s.selected[id] = true
@@ -442,7 +449,7 @@ func (s *daemonServices) startLinkLocked() {
 					return
 				}
 			}
-			_ = localssh.Link(ctx, &runta.Client{Endpoint: "https://api.runta.com", Token: token}, config, func(stage, detail string) {
+			_ = localssh.Link(ctx, runta.NewClient(s.home, token), config, func(stage, detail string) {
 				s.mu.Lock()
 				defer s.mu.Unlock()
 				if s.epoch != epoch || ctx.Err() != nil {

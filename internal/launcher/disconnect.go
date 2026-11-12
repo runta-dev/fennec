@@ -47,7 +47,7 @@ func (w *sshDiagnostics) Write(data []byte) (int, error) {
 }
 func (w *sshDiagnostics) line(line string) {
 	lower := strings.ToLower(line)
-	if strings.Contains(lower, "timeout, server ") || strings.Contains(lower, "broken pipe") || strings.Contains(lower, "connection reset by peer") || strings.Contains(lower, "connection to ssh.runta.com closed") || strings.Contains(lower, "connection closed by") || strings.Contains(lower, "connection timed out") || strings.Contains(lower, "operation timed out") || strings.Contains(lower, "connection refused") || strings.Contains(lower, "no route to host") {
+	if strings.Contains(lower, "timeout, server ") || strings.Contains(lower, "broken pipe") || strings.Contains(lower, "connection reset by peer") || (strings.Contains(lower, "connection to ssh.") && strings.Contains(lower, " closed")) || strings.Contains(lower, "connection closed by") || strings.Contains(lower, "connection timed out") || strings.Contains(lower, "operation timed out") || strings.Contains(lower, "connection refused") || strings.Contains(lower, "no route to host") {
 		if !w.disconnected {
 			io.WriteString(w.writer, "\r"+strings.ReplaceAll(terminalDisconnectMessage(w.sessionID), "\n", "\r\n")+"\r\n")
 			w.disconnected = true

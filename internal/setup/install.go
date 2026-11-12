@@ -64,26 +64,34 @@ mkdir -p "$HOME/.local/fennec/agents" "$HOME/.local/bin" "$HOME/.local/fennec/in
 exec 9>"$HOME/.local/fennec/install-locks/` + id + `.lock"
 flock -w 180 9 || { echo 'Agent installation is busy; retry preparation' >&2; exit 75; }
 requested=` + requested + `
-version=$requested
-if [ "$requested" = latest ]; then
- version=$(npm view ` + pkg + `@latest version)
-fi
-printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 binary="$HOME/.local/fennec/agents/bin/` + id + `"
-if [ -x "$binary" ]; then
+if [ "$requested" != latest ]; then
+ printf '%s\n' "$requested" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+ if [ -x "$binary" ]; then
+  actual=$("$binary" --version 2>/dev/null) || actual=
+  if printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?'"$requested"'([[:space:]]|$)'; then
+   ln -sfn "$binary" "$HOME/.local/bin/` + id + `"
+   exit 0
+  fi
+ fi
+elif [ -x "$binary" ]; then
  actual=$("$binary" --version 2>/dev/null) || actual=
- if printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?'"$version"'([[:space:]]|$)'; then
+ if printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?[0-9]+\.[0-9]+\.[0-9]+'; then
   ln -sfn "$binary" "$HOME/.local/bin/` + id + `"
   exit 0
  fi
 fi
 # Install in a fresh prefix so npm failure cannot damage the active version.
 mkdir -p "$HOME/.local/fennec/agent-versions" "$HOME/.local/fennec/agents/bin"
-stage=$(mktemp -d "$HOME/.local/fennec/agent-versions/` + id + `-$version.XXXXXX")
+stage=$(mktemp -d "$HOME/.local/fennec/agent-versions/` + id + `-$requested.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT HUP INT TERM
-npm install --global --prefix "$stage" -- ` + pkg + `@` + requested + `
+npm install --global --no-audit --no-fund --loglevel=error --prefix "$stage" -- ` + pkg + `@` + requested + `
 actual=$("$stage/bin/` + id + `" --version)
-printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?'"$version"'([[:space:]]|$)'
+if [ "$requested" != latest ]; then
+ printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?'"$requested"'([[:space:]]|$)'
+else
+ printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?[0-9]+\.[0-9]+\.[0-9]+'
+fi
 # Keep the verified prefix: existing processes may still use older installations.
 trap - EXIT HUP INT TERM
 source="$stage/bin/` + id + `"

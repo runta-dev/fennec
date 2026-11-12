@@ -26,6 +26,8 @@ check-ui:
 	node --check native/macos/UI/panel.js
 	node --check native/macos/UI/agent-login.js
 	node --check native/macos/UI/updater.js
+	node --check native/macos/UI/developer.js
+	node --check native/macos/UI/onboarding.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js
@@ -41,6 +43,8 @@ check-ui:
 	node scripts/tests/takeover-state.cjs
 	node scripts/tests/fox-motion.cjs
 	node scripts/tests/updater-state.cjs
+	node scripts/tests/developer-mode.cjs
+	node scripts/tests/onboarding-state.cjs
 
 test-connector: build
 	python3 scripts/tests/relay.py

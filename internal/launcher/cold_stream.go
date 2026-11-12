@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/runta"
 	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -52,7 +53,7 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	directory := filepath.Join(home, ".config/fennec/cloud")
 	lifecycle, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", "-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@ssh.runta.com", remote)
+	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", "-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@"+runta.ActiveSSHHost(home), remote)
 	var transport *terminalstream.Transport
 	var session *terminalstream.Session
 	if opening.HookBridge {

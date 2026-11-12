@@ -2238,6 +2238,198 @@
       "ko": "검증 중…",
       "zh-CN": "正在校验…",
       "zh-TW": "正在驗證…"
+    },
+    "ui.apply": {
+      "en-GB": "Apply",
+      "en-US": "Apply",
+      "ja": "適用",
+      "ko": "적용",
+      "zh-CN": "应用",
+      "zh-TW": "套用"
+    },
+    "ui.custom": {
+      "en-GB": "Custom",
+      "en-US": "Custom",
+      "ja": "カスタム",
+      "ko": "사용자 지정",
+      "zh-CN": "自定义",
+      "zh-TW": "自訂"
+    },
+    "ui.developer_options": {
+      "en-GB": "Developer options",
+      "en-US": "Developer options",
+      "ja": "開発者オプション",
+      "ko": "개발자 옵션",
+      "zh-CN": "开发者选项",
+      "zh-TW": "開發者選項"
+    },
+    "ui.environment": {
+      "en-GB": "Environment",
+      "en-US": "Environment",
+      "ja": "環境",
+      "ko": "환경",
+      "zh-CN": "连接环境",
+      "zh-TW": "連線環境"
+    },
+    "ui.add_credits_in_runta_to_create_cloud_computer": {
+      "en-GB": "Add credits in Runta to create your cloud computer",
+      "en-US": "Add credits in Runta to create your cloud computer",
+      "ja": "クラウドコンピュータを作成するには Runta でクレジットを追加してください",
+      "ko": "클라우드 컴퓨터를 만들려면 Runta에서 크레딧을 충전하세요",
+      "zh-CN": "充值后即可创建云电脑",
+      "zh-TW": "儲值後即可建立雲端電腦"
+    },
+    "ui.cloud_agent_loop": {
+      "en-GB": "Cloud · Agent loop",
+      "en-US": "Cloud · Agent loop",
+      "ja": "クラウド · エージェント実行",
+      "ko": "클라우드 · 에이전트 루프",
+      "zh-CN": "云电脑 · 智能体常驻",
+      "zh-TW": "雲端電腦 · 智慧體常駐"
+    },
+    "ui.cloud_computer": {
+      "en-GB": "Cloud computer",
+      "en-US": "Cloud computer",
+      "ja": "クラウドコンピュータ",
+      "ko": "클라우드 컴퓨터",
+      "zh-CN": "云电脑",
+      "zh-TW": "雲端電腦"
+    },
+    "ui.cloud_computer_ready": {
+      "en-GB": "Cloud computer ready",
+      "en-US": "Cloud computer ready",
+      "ja": "クラウドコンピュータの準備完了",
+      "ko": "클라우드 컴퓨터 준비 완료",
+      "zh-CN": "云电脑准备就绪",
+      "zh-TW": "雲端電腦準備就緒"
+    },
+    "ui.create": {
+      "en-GB": "Create",
+      "en-US": "Create",
+      "ja": "作成",
+      "ko": "생성",
+      "zh-CN": "创建",
+      "zh-TW": "建立"
+    },
+    "ui.creating": {
+      "en-GB": "Creating…",
+      "en-US": "Creating…",
+      "ja": "作成中…",
+      "ko": "생성 중…",
+      "zh-CN": "正在创建…",
+      "zh-TW": "正在建立…"
+    },
+    "ui.edge_connector": {
+      "en-GB": "This Mac · Edge connector",
+      "en-US": "This Mac · Edge connector",
+      "ja": "この Mac · エッジ接続",
+      "ko": "이 Mac · 엣지 커넥터",
+      "zh-CN": "本机 Mac · 边缘连接器",
+      "zh-TW": "本機 Mac · 邊緣連線器"
+    },
+    "ui.network": {
+      "en-GB": "Network",
+      "en-US": "Network",
+      "ja": "ネットワーク",
+      "ko": "네트워크",
+      "zh-CN": "网络流量",
+      "zh-TW": "網路流量"
+    },
+    "ui.no_cloud_computer_created_yet": {
+      "en-GB": "No cloud computer created yet",
+      "en-US": "No cloud computer created yet",
+      "ja": "クラウドコンピュータはまだ作成されていません",
+      "ko": "아직 생성된 클라우드 컴퓨터가 없습니다",
+      "zh-CN": "尚未创建云电脑",
+      "zh-TW": "尚未建立雲端電腦"
+    },
+    "ui.not_created": {
+      "en-GB": "Not created",
+      "en-US": "Not created",
+      "ja": "未作成",
+      "ko": "미생성",
+      "zh-CN": "未创建",
+      "zh-TW": "未建立"
+    },
+    "ui.offline": {
+      "en-GB": "Offline",
+      "en-US": "Offline",
+      "ja": "オフライン",
+      "ko": "오프라인",
+      "zh-CN": "离线",
+      "zh-TW": "離線"
+    },
+    "ui.onboarding_signin_tagline": {
+      "en-GB": "Cloud-resident agents, lightweight local edge connector",
+      "en-US": "Cloud-resident agents, lightweight local edge connector",
+      "ja": "クラウド常駐エージェント、Mac は軽量なエッジコネクタに",
+      "ko": "클라우드 상주 에이전트, 가벼운 로컬 엣지 커넥터",
+      "zh-CN": "云端常驻智能体，本机化作轻量边缘连接器",
+      "zh-TW": "雲端常駐智慧體，本機化作輕量邊緣連線器"
+    },
+    "ui.onboarding_story_1_title": {
+      "en-GB": "Agent loops run in the cloud",
+      "en-US": "Agent loops run in the cloud",
+      "ja": "エージェントループをクラウドで実行",
+      "ko": "클라우드에서 실행되는 에이전트 루프",
+      "zh-CN": "智能体循环运行在云端",
+      "zh-TW": "智慧體循環執行於雲端"
+    },
+    "ui.onboarding_story_1_body": {
+      "en-GB": "Close your MacBook or switch networks while long tasks keep running uninterrupted",
+      "en-US": "Close your MacBook or switch networks while long tasks keep running uninterrupted",
+      "ja": "Mac を閉じてもネットワークを切り替えても、タスクは止まらず進み続けます",
+      "ko": "MacBook을 닫거나 네트워크를 전환해도 작업이 중단 없이 계속 진행됩니다",
+      "zh-CN": "合上电脑或切换网络，长任务依然在云端持续推进不中断",
+      "zh-TW": "闔上電腦或切換網路，長任務依然在雲端持續推進不中斷"
+    },
+    "ui.onboarding_story_2_title": {
+      "en-GB": "Your Mac as a lightweight edge device",
+      "en-US": "Your Mac as a lightweight edge device",
+      "ja": "Mac は軽量なエッジデバイスに",
+      "ko": "가벼운 엣지 디바이스가 되는 Mac",
+      "zh-CN": "本机只做轻量边缘设备",
+      "zh-TW": "本機只做輕量邊緣設備"
+    },
+    "ui.onboarding_story_2_body": {
+      "en-GB": "Zero heavy local CPU or battery drain, bridging local files and tools on demand",
+      "en-US": "Zero heavy local CPU or battery drain, bridging local files and tools on demand",
+      "ja": "ローカルの CPU やバッテリーを消費せず、必要な時だけファイルやツールに安全に接続",
+      "ko": "로컬 CPU와 배터리 소모 없이 필요할 때만 로컬 파일과 도구를 안전하게 연결합니다",
+      "zh-CN": "告别本地风扇狂转与电量消耗，按需安全桥接本机文件与工具",
+      "zh-TW": "告別本機風扇狂轉與電量消耗，按需安全橋接本機檔案與工具"
+    },
+    "ui.onboarding_story_3_title": {
+      "en-GB": "Always online, instant response",
+      "en-US": "Always online, instant response",
+      "ja": "常時オンライン、瞬時に応答",
+      "ko": "언제나 온라인, 즉각적인 응답",
+      "zh-CN": "随时保持在线，毫秒级响应",
+      "zh-TW": "隨時保持在線，毫秒級回應"
+    },
+    "ui.onboarding_story_3_body": {
+      "en-GB": "Launch from your terminal as usual and reattach to live sessions anytime",
+      "en-US": "Launch from your terminal as usual and reattach to live sessions anytime",
+      "ja": "いつものターミナルから起動し、いつでも実行中のセッションに再接続できます",
+      "ko": "평소처럼 터미널에서 실행하고 언제든 실행 중인 세션에 다시 연결하세요",
+      "zh-CN": "像平时一样在终端启动，随时随地无缝接管与恢复在线会话",
+      "zh-TW": "像平時一樣在終端啟動，隨時隨地無縫接管與恢復在線工作階段"
+    },
+    "ui.preparing_cloud_computer": {
+      "en-GB": "Setting up your cloud computer…",
+      "en-US": "Setting up your cloud computer…",
+      "ja": "クラウドコンピュータをセットアップ中…",
+      "ko": "클라우드 컴퓨터를 설정하는 중…",
+      "zh-CN": "正在准备你的云电脑…",
+      "zh-TW": "正在準備你的雲端電腦…"
+    },
+    "ui.sign_in_again_to_enable_billing_access": {
+      "en-GB": "Sign in again to authorize billing access",
+      "en-US": "Sign in again to authorize billing access",
+      "ja": "請求情報を表示するには再サインインしてください",
+      "ko": "결제 정보를 보려면 다시 로그인하세요",
+      "zh-CN": "重新登录以授权读取账单",
+      "zh-TW": "重新登入以授權讀取帳單"
     }
   },
   "version": 1

@@ -507,6 +507,7 @@ window.renderSignedOut = () => {
   nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();
   modelSaving = false;
   window.renderBilling({error:"[[i18n:ui.sign_in_first]]"});
+  window.renderRuntimeMetrics?.({ready:false});
   userMenu.hidden = true;
   document.querySelector('#runtime-panel').hidden = true;
   document.querySelector('#runtime-list').replaceChildren();
@@ -558,6 +559,7 @@ window.renderPreferences = value => {
 
  window.renderMagpiePreference(value.magpie === true);
  window.renderUpdatePreferences?.(value);
+ window.renderDeveloperPreferences?.(value);
  window.renderAgents(detectedAgents);
  if(['system','light','dark'].includes(value.theme) && appearance.value!==value.theme){appearance.value=value.theme;applyAppearance();}
  if(typeof supportedLanguages!=='undefined' && supportedLanguages.includes(value.language) && language!==value.language){
@@ -565,6 +567,8 @@ window.renderPreferences = value => {
   try{localStorage.setItem('language',language);}catch(_){}
   localize();
   window.rerenderUpdater?.();
+  window.rerenderDeveloper?.();
+   window.rerenderRuntimeMetrics?.();
   const trigger=languageSelect.nextElementSibling;
   if(trigger?.classList.contains('choice-trigger')){const label=trigger.querySelector('span');if(label)label.textContent=languageSelect.selectedOptions[0].textContent;}
  }
@@ -668,6 +672,32 @@ window.renderPreparation = state => {
     indicator.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="progress-track" cx="10" cy="10" r="7.5"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5"/></svg>';
   }
   row.append(title, indicator); panel.append(row);
+  if (!needsAction && !isOffline) {
+    const stageWeights = {
+      allocating: 14,
+      starting: 26,
+      connecting: 38,
+      checking_resources: 48,
+      syncing_versions: 54,
+      installing_node: 64,
+      installing_session_service: 72,
+      installing_magpie: 76,
+      starting_magpie: 80,
+      migrating_credentials: 86,
+      installing_claude: 92,
+      installing_codex: 94,
+      installing_pi: 96
+    };
+    const pct = stageWeights[state.stage] || 30;
+    const bar = document.createElement('div');
+    bar.className = 'preparation-progress';
+    const fill = document.createElement('div');
+    fill.className = 'preparation-progress-fill';
+    if (fill.style) fill.style.width = pct + '%';
+    else fill.setAttribute?.('style', 'width:' + pct + '%');
+    bar.append(fill);
+    panel.append(bar);
+  }
   if (isOffline) {
     const detail = document.createElement('p');
     detail.textContent = "[[i18n:ui.reconnects_automatically_when_back_online]]";
@@ -727,11 +757,17 @@ function renderBillingRows(payload,loading){
  const note=document.createElement('p');note.className='billing-footnote';note.textContent="[[i18n:ui.resource_usage_last_30_days]]";content.append(note);
  const footer=document.createElement('div');footer.className='billing-footer';
  const status=document.createElement('span');status.className='billing-status';
+ const reauthRequired=payload.reauth_required===true;
  const webOnly=payload.web_only===true;
  const offline=payload.offline===true;
- status.textContent=!loading?(offline?"[[i18n:ui.offline_waiting_for_network]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''))):'';
+ status.textContent=!loading?(offline?"[[i18n:ui.offline_waiting_for_network]]":reauthRequired?"[[i18n:ui.sign_in_again_to_enable_billing_access]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''))):'';
  const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
- if(webOnly){
+ if(reauthRequired){
+  retry.textContent="[[i18n:ui.sign_in]]";
+  retry.style.visibility=!loading?'visible':'hidden';
+  retry.disabled=loading;
+  retry.onclick=()=>send('reauthenticate');
+ }else if(webOnly){
   retry.textContent="[[i18n:ui.open_in_browser]]";
   retry.style.visibility=!loading?'visible':'hidden';
   retry.disabled=loading;
@@ -745,6 +781,122 @@ function renderBillingRows(payload,loading){
 }
 window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);
 window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(payload,false);};
+
+let lastMetricsPayload = { ready: false };
+function ensureRuntimeMetricsCard() {
+ let card = document.querySelector('#runtime-metrics-card');
+ if (card) return card;
+ const accountSection = document.querySelector('#account');
+ if (!accountSection) return null;
+ card = document.createElement('div');
+ card.id = 'runtime-metrics-card';
+ card.className = 'card runtime-metrics-card';
+ accountSection.prepend(card);
+ return card;
+}
+function formatTrafficBytes(bytes) {
+ if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '0 B';
+ if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+ if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+ if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
+ return bytes + ' B';
+}
+function drawRuntimeMetrics() {
+ const card = ensureRuntimeMetricsCard();
+ if (!card) return;
+ const payload = lastMetricsPayload || {};
+ const t = token => (typeof translate === 'function' ? translate(token) : token);
+ card.replaceChildren();
+ const head = document.createElement('div');
+ head.className = 'runtime-metrics-head';
+ const title = document.createElement('span');
+ title.className = 'runtime-metrics-title';
+ title.textContent = t('[[i18n:ui.cloud_computer]]');
+ const spec = document.createElement('span');
+ spec.className = 'runtime-metrics-spec';
+ const ready = payload.ready === true;
+ if (!ready) {
+  spec.classList.add('is-inactive');
+  const st = payload.status || 'not_created';
+  spec.textContent = st === 'creating'
+   ? t('[[i18n:ui.creating]]')
+   : st === 'offline'
+    ? t('[[i18n:ui.offline]]')
+    : t('[[i18n:ui.not_created]]');
+  head.append(title, spec);
+  const emptyRow = document.createElement('div');
+  emptyRow.className = 'runtime-metrics-empty';
+  const msg = document.createElement('span');
+  msg.textContent = st === 'billing_restricted'
+   ? t('[[i18n:ui.add_credits_in_runta_to_create_cloud_computer]]')
+   : st === 'creating'
+    ? t('[[i18n:ui.preparing_cloud_computer]]')
+    : st === 'offline'
+     ? t('[[i18n:ui.offline_waiting_for_network]]')
+     : t('[[i18n:ui.no_cloud_computer_created_yet]]');
+  emptyRow.append(msg);
+  if (st !== 'creating' && st !== 'offline') {
+   const btn = document.createElement('button');
+   btn.type = 'button';
+   btn.className = 'version-action';
+   if (st === 'billing_restricted') {
+    btn.textContent = t('[[i18n:ui.open_in_browser]]');
+    btn.onclick = () => send('open-dashboard');
+   } else {
+    btn.textContent = t('[[i18n:ui.create]]');
+    btn.onclick = () => {
+     lastMetricsPayload = { ready: false, status: 'creating' };
+     drawRuntimeMetrics();
+     send('retry-runtime');
+    };
+   }
+   emptyRow.append(btn);
+  }
+  card.append(head, emptyRow);
+  return;
+ }
+
+ const vcpus = payload.vcpus || 2;
+ const minGiB = Math.max(1, Math.round((payload.memory_min_mib || 4096) / 1024));
+ const maxGiB = Math.max(minGiB, Math.round((payload.memory_max_mib || 16384) / 1024));
+ spec.textContent = vcpus + ' vCPU · ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
+ head.append(title, spec);
+
+ const grid = document.createElement('div');
+ grid.className = 'runtime-metrics-grid';
+ const cpuVal = ready ? (typeof payload.cpu_percent === 'number' ? payload.cpu_percent.toFixed(1) : '0.0') + '%' : '—';
+ const memVal = ready
+  ? ((payload.memory_used_mib || 0) / 1024).toFixed(1) + ' / ' + ((payload.memory_current_mib || payload.memory_min_mib || 4096) / 1024).toFixed(1) + ' GiB'
+  : '—';
+ const upTotal = formatTrafficBytes(payload.net_tx_bytes || 0);
+ const downTotal = formatTrafficBytes(payload.net_rx_bytes || 0);
+ const netVal = ready ? '↑ ' + upTotal + ' · ↓ ' + downTotal : '—';
+ const netTip = ready && (payload.net_tx_bps > 0 || payload.net_rx_bps > 0)
+  ? netVal + ' (' + formatTrafficBytes(payload.net_tx_bps || 0) + '/s ↑ · ' + formatTrafficBytes(payload.net_rx_bps || 0) + '/s ↓)'
+  : (ready ? netVal : '');
+
+ for (const [label, val, tip] of [
+  ['CPU', cpuVal, ''],
+  [t('[[i18n:ui.memory]]'), memVal, ''],
+  [t('[[i18n:ui.network]]'), netVal, netTip]
+ ]) {
+  const cell = document.createElement('div');
+  cell.className = 'runtime-metric-cell';
+  const lbl = document.createElement('span');
+  lbl.className = 'runtime-metric-label';
+  lbl.textContent = label;
+  const strong = document.createElement('strong');
+  strong.className = 'runtime-metric-value';
+  strong.textContent = val;
+  if (tip) strong.title = tip;
+  cell.append(lbl, strong);
+  grid.append(cell);
+ }
+ card.append(head, grid);
+}
+window.renderRuntimeMetrics = payload => { lastMetricsPayload = payload || { ready: false }; drawRuntimeMetrics(); };
+window.rerenderRuntimeMetrics = drawRuntimeMetrics;
+drawRuntimeMetrics();
 
 window.renderRouteResults = results => {
   const previous=routeResults;
