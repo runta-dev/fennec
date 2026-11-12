@@ -28,6 +28,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	method := ""
 	params := map[string]any{}
 	switch args[0] {
+	case "update":
+		return true, fenUpdateCommand(args[1:], output)
 	case "cloud":
 		return true, fenCloudCommand(args[1:], output)
 	case "hooks":
@@ -65,10 +67,17 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			method = "settings.get"
 			break
 		}
-		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie") {
-			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off]")
+		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie" && args[1] != "auto-update") {
+			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off | auto-update on|off]")
 		}
 		method = "settings.set"
+		if args[1] == "auto-update" {
+			if args[2] != "on" && args[2] != "off" {
+				return true, fmt.Errorf("usage: fen settings auto-update on|off")
+			}
+			params["auto_update"] = args[2] == "on"
+			break
+		}
 		params[args[1]] = args[2]
 		if args[1] == "magpie" {
 			if args[2] != "on" && args[2] != "off" {
@@ -245,6 +254,7 @@ const fenControlHelp = `Fennec — one daemon, UI and CLI clients
 Usage: fen [attach [session-id]]
 	fen start
 	fen install [--check] [--replace] [--destination <app-path>]
+	fen update [status | check | auto [on|off]]
   fen daemon start|stop|status
   fen login [--reauth]
   fen status | logout | agents | account | billing
@@ -259,7 +269,7 @@ Usage: fen [attach [session-id]]
   fen approvals | approve <id> [--always] | deny <id> | trust clear
   fen hooks [list|import <file>|remove <name>]
   fen control <method>  (JSON parameters on stdin)
-  fen settings [theme|language <value> | magpie on|off]
+  fen settings [theme|language <value> | magpie on|off | auto-update on|off]
   fen login-item status|on|off|settings
 
 Picker: ↑/↓ j/k select · enter attach · x kill · r refresh · esc quit

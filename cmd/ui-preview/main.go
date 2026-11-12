@@ -111,7 +111,7 @@ func main() {
 			http.Error(w, "UI source unavailable", 500)
 			return
 		}
-		html := strings.Replace(string(raw), "<head>", `<head><script src="/preview-bridge.js"></script><style>html{background:#dedfe4;min-height:100vh;padding:20px;display:flex;justify-content:center}body{width:440px;max-width:calc(100vw - 40px);height:600px;border:1px solid #bdbec5;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px #0002}</style>`, 1)
+		html := strings.Replace(string(raw), "<head>", `<head><script src="/preview-bridge.js"></script><style>html{background:#dedfe4;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center}body{width:440px;max-width:calc(100vw - 40px);height:390px;border:1px solid #bdbec5;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #0002}</style>`, 1)
 		html = strings.Replace(html, "script-src 'self';", "script-src 'self'; connect-src 'self';", 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, html)
@@ -132,17 +132,21 @@ const previewAgents=[
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},
  {id:'opencode',name:'OpenCode',icon:'opencode.svg',installed:false,cloudSupported:false}];
 let previewPrefs={magpie:false,theme:'light',language:'en-US',initialized:true};
+let previewUpdate={state:'latest',current:'0.2.11121023',latest:'0.2.11121023'};
 const previewCloud=new Set(['claude','codex','pi']);
 const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id==='codex'?'configured':'credentials_required',model:'codex/gpt-preview'}));
 window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(typeof message!=='string')return;
  const colon=message.indexOf(':');const action=colon<0?message:message.slice(0,colon);let p={};try{p=JSON.parse(message.slice(colon+1))}catch{}
  if(message==='load-billing'){const mode=new URLSearchParams(location.search).get('billing');queueMicrotask(()=>window.renderBilling(mode==='web_only'?{web_only:true}:mode==='offline'?{offline:true}:{currency:'USD',balance:2450,spend:320,cpu:'4.20 vCPU-h',memory:'8.40 GiB-h',disk:'12.00 GiB-h'}));}
+ if(message==='update-check'){previewUpdate={...previewUpdate,state:'checking'};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={state:'ready',current:'0.2.11121023',latest:'0.2.11121230',notes:'### Features\n- Magpie-style background auto updater\n### Improvements\n- Zero-interruption cloud session continuity'};window.renderUpdateState(previewUpdate);},300);}
+ if(message==='update-download'){previewUpdate={...previewUpdate,state:'downloading',done:12500000,total:20000000,speed:4200000};queueMicrotask(()=>window.renderUpdateState(previewUpdate));setTimeout(()=>{previewUpdate={...previewUpdate,state:'ready'};window.renderUpdateState(previewUpdate);},400);}
+ if(message==='update-install'){setTimeout(()=>{previewUpdate={state:'latest',current:previewUpdate.latest||'0.2.11121230'};window.renderUpdateState(previewUpdate);},400);}
  if(action==='copy-attach')queueMicrotask(()=>window.renderAttachCopyResult(p.session_id,true));
  if(action==='get-agent-account')queueMicrotask(()=>window.renderNativeAccount({agent:p.agent,location:p.location,status:p.agent==='codex'?'signed_in':'signed_out',accounts:p.agent==='codex'?[{provider:'openai',email:'developer@example.com',subscription:'ChatGPT Pro',auth_type:'oauth'}]:[]}));
  if(action==='get-model' && p.agent!=='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'',models:[{id:'',name:'Default'}]}));
  if(action==='get-model' && p.agent==='codex')queueMicrotask(()=>window.renderNativeModels({agent:p.agent,model:'gpt-preview',effort:'low',models:[{id:'',name:'Default'},{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]}));
- if(action==='settings'){previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
+ if(action==='settings'){if('auto_update' in p)previewPrefs.no_auto_update=!p.auto_update;if('update_skip' in p)previewPrefs.update_skip=p.update_skip;previewPrefs={...previewPrefs,...p};queueMicrotask(()=>window.renderPreferences(previewPrefs));}
  if(action==='toggle-takeover'){const agent=message.slice(colon+1);previewCloud.has(agent)?previewCloud.delete(agent):previewCloud.add(agent);queueMicrotask(()=>window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true}));}
  if(action==='select-model')setTimeout(()=>{window.renderNativeModels({agent:p.agent,model:p.model,effort:p.effort||'low',models:[{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]});window.renderModelSaving(false)},350);
  if(action==='get-local-model')queueMicrotask(()=>window.renderLocalModel({agent:p.agent,model:'codex/gpt-preview',models:['codex/gpt-preview']}));
@@ -152,11 +156,19 @@ window.addEventListener('DOMContentLoaded',()=>{
  document.title='Fennec development preview';
  const params=new URLSearchParams(location.search);
  if(params.get('lang'))previewPrefs.language=params.get('lang');
+ if(params.get('theme'))previewPrefs.theme=params.get('theme');
  window.renderPreferences(previewPrefs);window.renderAuthorized();
+ window.renderAppVersion('Fennec 0.2.11121023');
+ const updateMode=params.get('update');
+ if(updateMode==='ready')previewUpdate={state:'ready',current:'0.2.11121023',latest:'0.2.11121230',notes:'### Features\n- Magpie-style quiet update pill and automatic background staging\n- CLI control via \x60fen update\x60 and \x60fen settings auto-update\x60\n### Improvements\n- Cloud agent sessions stay alive across restarts'};
+ else if(updateMode==='downloading')previewUpdate={state:'downloading',current:'0.2.11121023',latest:'0.2.11121230',done:12400000,total:20000000,speed:4200000};
+ window.renderUpdateState(previewUpdate);
  document.querySelector('.header-login').textContent='Development preview';
  window.renderAgents(previewAgents);window.renderRouteResults(previewRoutes());
  window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true});
  window.renderModelCatalog(['codex/gpt-preview']);
+ if(params.get('tab')==='preferences')document.querySelector('#settings')?.click();
+ else if(params.get('tab'))document.querySelector('[data-tab="'+params.get('tab')+'"]')?.click();
  const scenario=params.get('scenario');
  if(scenario==='offline'){window.renderPreparation({stage:'offline',status:'network_offline'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else if(scenario==='failed'){window.renderPreparation({stage:'failed',status:'runtime_preparation_failed'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}

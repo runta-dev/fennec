@@ -72,6 +72,9 @@ func serveControl(arguments []string) error {
 	// cannot create duplicate system authorization prompts.
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
 		controller.Start(ctx)
+		if controller.UpdateState != nil {
+			startControlUpdater(ctx, controller)
+		}
 		startTrashWatcher(ctx, cancel, home, os.Args[0])
 		go func() {
 			defer launchprofile.Begin("account.restore")()
@@ -155,6 +158,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		return value, nil
 	}
 	installUninstallControl(home, executable, manager, services, controller)
+	installUpdateControl(home, executable, settings, network, controller)
 	installCloudControl(home, services, controller, func(token string) cloudstate.Backend {
 		return &runta.Client{Endpoint: "https://api.runta.com", Token: token}
 	})

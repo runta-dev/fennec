@@ -21,6 +21,7 @@ type Controller struct {
 	Additional         map[string]control.Handler
 	Services           func() any
 	Settings           func() any
+	UpdateState        func() any
 	PreparationBlocked func() bool
 	UninstallState     func() any
 	LoginAllowed       func() bool
@@ -62,6 +63,9 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			}
 			if c.UninstallState != nil {
 				state["uninstall"] = c.UninstallState()
+			}
+			if c.UpdateState != nil {
+				state["update"] = c.UpdateState()
 			}
 			return state, nil
 		},

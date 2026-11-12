@@ -557,12 +557,14 @@ window.renderMagpiePreference = enabled => {
 window.renderPreferences = value => {
 
  window.renderMagpiePreference(value.magpie === true);
+ window.renderUpdatePreferences?.(value);
  window.renderAgents(detectedAgents);
  if(['system','light','dark'].includes(value.theme) && appearance.value!==value.theme){appearance.value=value.theme;applyAppearance();}
  if(typeof supportedLanguages!=='undefined' && supportedLanguages.includes(value.language) && language!==value.language){
   language=value.language;languageSelect.value=language;
   try{localStorage.setItem('language',language);}catch(_){}
   localize();
+  window.rerenderUpdater?.();
   const trigger=languageSelect.nextElementSibling;
   if(trigger?.classList.contains('choice-trigger')){const label=trigger.querySelector('span');if(label)label.textContent=languageSelect.selectedOptions[0].textContent;}
  }

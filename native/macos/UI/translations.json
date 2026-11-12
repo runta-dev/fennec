@@ -2062,6 +2062,182 @@
       "ko": "작업 중",
       "zh-CN": "正在工作",
       "zh-TW": "正在工作"
+    },
+    "ui.automatic_updates": {
+      "en-GB": "Automatic updates",
+      "en-US": "Automatic updates",
+      "ja": "自動アップデート",
+      "ko": "자동 업데이트",
+      "zh-CN": "自动更新",
+      "zh-TW": "自動更新"
+    },
+    "ui.automatic_updates_off": {
+      "en-GB": "Automatic updates off",
+      "en-US": "Automatic updates off",
+      "ja": "自動アップデートはオフ",
+      "ko": "자동 업데이트 꺼짐",
+      "zh-CN": "自动更新已关闭",
+      "zh-TW": "自動更新已關閉"
+    },
+    "ui.check": {
+      "en-GB": "Check",
+      "en-US": "Check",
+      "ja": "確認",
+      "ko": "확인",
+      "zh-CN": "检查更新",
+      "zh-TW": "檢查更新"
+    },
+    "ui.checking_for_updates": {
+      "en-GB": "Checking for updates…",
+      "en-US": "Checking for updates…",
+      "ja": "アップデートを確認中…",
+      "ko": "업데이트 확인 중…",
+      "zh-CN": "正在检查更新…",
+      "zh-TW": "正在檢查更新…"
+    },
+    "ui.checking_signature": {
+      "en-GB": "Checking signature…",
+      "en-US": "Checking signature…",
+      "ja": "署名を確認中…",
+      "ko": "서명 확인 중…",
+      "zh-CN": "正在校验签名…",
+      "zh-TW": "正在驗證簽章…"
+    },
+    "ui.download": {
+      "en-GB": "Download",
+      "en-US": "Download",
+      "ja": "ダウンロード",
+      "ko": "다운로드",
+      "zh-CN": "下载",
+      "zh-TW": "下載"
+    },
+    "ui.downloading": {
+      "en-GB": "Downloading…",
+      "en-US": "Downloading…",
+      "ja": "ダウンロード中…",
+      "ko": "다운로드 중…",
+      "zh-CN": "正在下载…",
+      "zh-TW": "正在下載…"
+    },
+    "ui.hide_update_until_next_version": {
+      "en-GB": "Hide until the next version",
+      "en-US": "Hide until the next version",
+      "ja": "次のバージョンまで非表示",
+      "ko": "다음 버전까지 숨기기",
+      "zh-CN": "在此版本下隐藏",
+      "zh-TW": "在此版本下隱藏"
+    },
+    "ui.reconnecting": {
+      "en-GB": "Reconnecting…",
+      "en-US": "Reconnecting…",
+      "ja": "再接続中…",
+      "ko": "재연결 중…",
+      "zh-CN": "正在重连…",
+      "zh-TW": "正在重新連線…"
+    },
+    "ui.release_notes": {
+      "en-GB": "Release notes",
+      "en-US": "Release notes",
+      "ja": "リリースノート",
+      "ko": "릴리스 노트",
+      "zh-CN": "更新说明",
+      "zh-TW": "更新說明"
+    },
+    "ui.restart_to_update": {
+      "en-GB": "Restart to update",
+      "en-US": "Restart to update",
+      "ja": "再起動してアップデート",
+      "ko": "재시작하여 업데이트",
+      "zh-CN": "重启以更新",
+      "zh-TW": "重新啟動以更新"
+    },
+    "ui.restarting": {
+      "en-GB": "Restarting…",
+      "en-US": "Restarting…",
+      "ja": "再起動中…",
+      "ko": "재시작 중…",
+      "zh-CN": "正在重启…",
+      "zh-TW": "正在重新啟動…"
+    },
+    "ui.unpacking": {
+      "en-GB": "Unpacking…",
+      "en-US": "Unpacking…",
+      "ja": "展開中…",
+      "ko": "압축 해제 중…",
+      "zh-CN": "正在解压…",
+      "zh-TW": "正在解壓縮…"
+    },
+    "ui.up_to_date": {
+      "en-GB": "Up to date",
+      "en-US": "Up to date",
+      "ja": "最新です",
+      "ko": "최신 버전입니다",
+      "zh-CN": "已是最新",
+      "zh-TW": "已是最新"
+    },
+    "ui.update": {
+      "en-GB": "Update",
+      "en-US": "Update",
+      "ja": "アップデート",
+      "ko": "업데이트",
+      "zh-CN": "更新",
+      "zh-TW": "更新"
+    },
+    "ui.update_available": {
+      "en-GB": "Available",
+      "en-US": "Available",
+      "ja": "利用可能",
+      "ko": "사용 가능",
+      "zh-CN": "有新版本",
+      "zh-TW": "有新版本"
+    },
+    "ui.update_check_failed": {
+      "en-GB": "Could not check for updates",
+      "en-US": "Could not check for updates",
+      "ja": "アップデートを確認できませんでした",
+      "ko": "업데이트를 확인할 수 없습니다",
+      "zh-CN": "暂时无法检查更新",
+      "zh-TW": "暫時無法檢查更新"
+    },
+    "ui.update_download_failed": {
+      "en-GB": "Could not download update",
+      "en-US": "Could not download update",
+      "ja": "アップデートをダウンロードできませんでした",
+      "ko": "업데이트를 다운로드할 수 없습니다",
+      "zh-CN": "下载更新失败",
+      "zh-TW": "下載更新失敗"
+    },
+    "ui.update_failed": {
+      "en-GB": "Update failed",
+      "en-US": "Update failed",
+      "ja": "アップデート失敗",
+      "ko": "업데이트 실패",
+      "zh-CN": "更新失败",
+      "zh-TW": "更新失敗"
+    },
+    "ui.update_keeps_sessions": {
+      "en-GB": "Cloud sessions keep running across the restart",
+      "en-US": "Cloud sessions keep running across the restart",
+      "ja": "再起動中もクラウドセッションは継続します",
+      "ko": "재시작 중에도 클라우드 세션은 계속 실행됩니다",
+      "zh-CN": "云端会话在重启期间继续运行，不会中断",
+      "zh-TW": "雲端工作階段在重新啟動期間繼續執行，不會中斷"
+    },
+    "ui.update_ready": {
+      "en-GB": "Ready to update",
+      "en-US": "Ready to update",
+      "ja": "アップデート準備完了",
+      "ko": "업데이트 준비 완료",
+      "zh-CN": "已下载就绪",
+      "zh-TW": "已下載就緒"
+    },
+    "ui.verifying": {
+      "en-GB": "Verifying…",
+      "en-US": "Verifying…",
+      "ja": "検証中…",
+      "ko": "검증 중…",
+      "zh-CN": "正在校验…",
+      "zh-TW": "正在驗證…"
     }
   },
   "version": 1

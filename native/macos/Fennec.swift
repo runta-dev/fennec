@@ -49,6 +49,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var authorized = false
     private var isOnline = true
     private var profileLoaded = false
+    private var updateState: [String:Any] = [:]
     private var preparationState: [String:String] = [:]
     private var takeoverAgents = Set<String>()
     private var loadingRuntimes = false
@@ -160,6 +161,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let label = NSMenuItem(title: "Fennec \(version)", action: nil, keyEquivalent: "")
             label.isEnabled = false
             menu.addItem(label)
+            if updateState["state"] as? String == "ready", let latest = updateState["latest"] as? String, !latest.isEmpty {
+                let updateTitle = L10n.text("ui.restart_to_update", language: nativeLanguage) + " (\(latest))"
+                let updateItem = NSMenuItem(title: updateTitle, action: #selector(installReadyUpdateFromMenu), keyEquivalent: "")
+                updateItem.target = self
+                menu.addItem(updateItem)
+            }
             menu.addItem(.separator())
             for (title, action) in [("Restart", #selector(restartApp)), ("Exit", #selector(quitApp))] {
                 let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -252,6 +259,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
         foxAnimationTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @objc private func installReadyUpdateFromMenu() {
+        mutate("update.install")
     }
 
     @objc private func restartApp() {
@@ -652,6 +663,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] { render("renderHerdrSessions", [terminals]) }
+        if let upd = state["update"] as? [String:Any] {
+            updateState = upd
+            render("renderUpdateState", [upd])
+        }
         approvals = (services["approvals"] as? [[String:Any]] ?? []).map { row in row.reduce(into: [String:String]()) { result, pair in if let value = pair.value as? String { result[pair.key] = value } } }
         renderApprovals()
     }
@@ -743,6 +758,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
+        if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true) {NSWorkspace.shared.open(url);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
@@ -864,6 +880,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling()
         case "open-dashboard": if let url = URL(string: "https://dashboard.runta.com") { NSWorkspace.shared.open(url) }
+        case "update-check": mutate("update.check") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }
+        case "update-download": mutate("update.download") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }
+        case "update-install": mutate("update.install") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.render("renderUpdateInstallFailed") } }
         case "retry-runtime": mutate("runtime.retry")
         case "clear-trust": mutate("trust.clear") { [weak self] success,_ in self?.render("renderTrustResult",[success]) }
         case "cancel-session-read": sessionReadRevision += 1
@@ -881,7 +900,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if popup.isVisible { web.evaluateJavaScript("window.requestFoxMotion?.()", completionHandler:nil) }
 	    authorized = false
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.2.0"
-        if let data = try? JSONSerialization.data(withJSONObject:["Fennec " + version]) { webView.evaluateJavaScript("document.querySelector('.settings-version').textContent = \(String(decoding:data,as:UTF8.self))[0]",completionHandler:nil) }
+        render("renderAppVersion", ["Fennec " + version])
         importPreferences();lastState = nil; pollState(); refreshAgents(); renderLoginItem()
     }
 	private func importPreferences() {

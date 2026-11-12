@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -19,11 +20,13 @@ type desktopSettings struct {
 	value   desktopPreferences
 }
 type desktopPreferences struct {
-	Revision    uint64 `json:"revision"`
-	Magpie      bool   `json:"magpie"`
-	Theme       string `json:"theme"`
-	Language    string `json:"language"`
-	Initialized bool   `json:"initialized"`
+	Revision     uint64 `json:"revision"`
+	Magpie       bool   `json:"magpie"`
+	NoAutoUpdate bool   `json:"no_auto_update,omitempty"`
+	UpdateSkip   string `json:"update_skip,omitempty"`
+	Theme        string `json:"theme"`
+	Language     string `json:"language"`
+	Initialized  bool   `json:"initialized"`
 }
 
 func newDesktopSettings(home string) *desktopSettings {
@@ -87,6 +90,9 @@ func initializeDesktopPreferences(path string, value desktopPreferences) error {
 	return err
 }
 func validDesktop(value desktopPreferences) bool {
+	if len(value.UpdateSkip) > 64 || strings.ContainsAny(value.UpdateSkip, "\x00\r\n ") {
+		return false
+	}
 	return map[string]bool{"system": true, "light": true, "dark": true}[value.Theme] && map[string]bool{"zh-CN": true, "zh-TW": true, "en-US": true, "en-GB": true, "ja": true, "ko": true}[value.Language]
 }
 func (s *desktopSettings) snapshot() any { s.mu.Lock(); defer s.mu.Unlock(); return s.value }
@@ -114,6 +120,9 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		var request struct {
 			ExpectedRevision *uint64 `json:"expected_revision"`
 			Magpie           *bool   `json:"magpie"`
+			AutoUpdate       *bool   `json:"auto_update"`
+			NoAutoUpdate     *bool   `json:"no_auto_update"`
+			UpdateSkip       *string `json:"update_skip"`
 			Theme            *string `json:"theme"`
 			Language         *string `json:"language"`
 		}
@@ -134,6 +143,15 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		next := s.value
 		if request.Magpie != nil && !importing {
 			next.Magpie = *request.Magpie
+		}
+		if request.AutoUpdate != nil && !importing {
+			next.NoAutoUpdate = !*request.AutoUpdate
+		}
+		if request.NoAutoUpdate != nil && !importing {
+			next.NoAutoUpdate = *request.NoAutoUpdate
+		}
+		if request.UpdateSkip != nil && !importing {
+			next.UpdateSkip = strings.TrimSpace(*request.UpdateSkip)
 		}
 		if request.Theme != nil {
 			next.Theme = *request.Theme

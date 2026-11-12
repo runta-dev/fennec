@@ -18,6 +18,7 @@ Additional Agent SVGs copied from Magpie at revision
 `xai.svg`, `geminicli-color.svg`, `cursor.svg`, `copilot-color.svg`.
 Detection behavior references `internal/agent/agent.go` (Detected/binAt),
 `kimi.go`, `devin.go` and `grok.go`; Fennec uses its own metadata-only detector.
+Auto-updater background staging, non-`.app` payload staging, and quiet header pill interaction in `internal/updater/` and `native/macos/UI/updater.js` are adapted from Magpie's updater design under the MIT license.
 
 ## xterm.js terminal renderer
 
