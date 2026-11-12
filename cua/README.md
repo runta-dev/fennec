@@ -227,7 +227,26 @@ Each entry of `tests/capabilities/*.yaml` (`CAP-XXX-001`) states a behaviour in 
 
 ---
 
-## 6. Third-party components
+## 6. Development
+
+Unit tests (`go test ./...`) use fakes and never touch the desktop. Anything that sends input runs in a tart macOS VM, never on a developer's own desktop: tests click, type and steal focus hundreds of times, need a clean, repeatable state, and run shuttle and fennec-cua side by side.
+
+tart is a development dependency:
+
+```sh
+brew install cirruslabs/cli/tart
+go run ./cmd/cua-vm create            # clone the VM; the first run downloads the image
+go run ./cmd/cua-vm up                # boot it headless
+go run ./cmd/cua-vm fixture           # build CUAFixture and install it with its grants
+go run ./cmd/cua-vm test -tags axlive ./internal/desk -- -test.run TestLive
+go run ./cmd/cua-vm down
+```
+
+`cua-vm test` cross-builds test binaries on the host, copies them into the VM and runs them in its desktop session, where the accessibility API reaches the windows. Grants (`cua-vm grant`) edit the VM's TCC database, which needs SIP disabled in the VM.
+
+Read-only checks against the host's own desktop are allowed (`go test -tags axlive ./internal/ax ./internal/desk`): they list windows and read trees, and send nothing.
+
+## 7. Third-party components
 
 | Component | License | Use |
 |---|---|---|
@@ -235,5 +254,7 @@ Each entry of `tests/capabilities/*.yaml` (`CAP-XXX-001`) states a behaviour in 
 | goja | MIT | script engine |
 | esbuild | MIT | TypeScript transpiling |
 | gopkg.in/yaml.v3 | MIT, Apache-2.0 | catalog files |
+| golang.org/x/crypto (ssh) | BSD-3-Clause | the test VM tool |
+| tart | Fair Source (free use is capped; check its terms for company use) | development only: the test VM, never shipped |
 
 Update the repository's `THIRD_PARTY_NOTICES.md` before the first release.
