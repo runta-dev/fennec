@@ -42,6 +42,9 @@ failure messages in `internal/guardian` reproduce text from
 `codex-rs/prompts/src/model_messages/guardian.rs`. Permission-mode semantics,
 protected metadata names, the dangerous-command rule and the sandbox-denial
 heuristic in `internal/sandbox` are reimplemented in Go from `codex-rs`.
+The Responses API request shape, guardian headers and ChatGPT token refresh in
+`internal/guardian/responses.go` follow `codex-rs/core/src/client.rs`,
+`codex-rs/codex-api` and `codex-rs/login`.
 
 ## klauspost/compress
 

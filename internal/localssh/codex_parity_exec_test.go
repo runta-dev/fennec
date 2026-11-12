@@ -85,15 +85,10 @@ func startConnector(t *testing.T, broker *Broker) func(command string) (int, str
 }
 
 func countingReviewer(t *testing.T, outcome string, calls *atomic.Int32) *guardian.Reviewer {
-	r := &guardian.Reviewer{Home: t.TempDir(), Locate: func(string, string) (string, error) { return "/usr/bin/true", nil }}
-	r.Run = func(_ context.Context, _ string, args []string, _ []byte) ([]byte, error) {
+	r := &guardian.Reviewer{Home: t.TempDir()}
+	r.Respond = func(context.Context, string, string, string) (string, error) {
 		calls.Add(1)
-		for i, arg := range args {
-			if arg == "-o" {
-				os.WriteFile(args[i+1], []byte(outcome), 0o600)
-			}
-		}
-		return nil, nil
+		return outcome, nil
 	}
 	return r
 }

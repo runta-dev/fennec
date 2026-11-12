@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -31,18 +29,12 @@ func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); retur
 
 func reviewer(t *testing.T, outcome string, unavailable bool) *guardian.Reviewer {
 	t.Helper()
-	r := &guardian.Reviewer{Home: t.TempDir(), Locate: func(string, string) (string, error) { return "/usr/bin/true", nil }}
-	r.Run = func(_ context.Context, _ string, args []string, _ []byte) ([]byte, error) {
-		if unavailable {
-			return []byte("ERROR: Not logged in. Run codex login"), errors.New("exit status 1")
-		}
-		for i, arg := range args {
-			if arg == "-o" {
-				os.WriteFile(args[i+1], []byte(outcome), 0o600)
-			}
-		}
-		return nil, nil
+	r := &guardian.Reviewer{Home: t.TempDir()}
+	if unavailable {
+		// No local Codex sign-in: the reviewer reports unavailable.
+		return r
 	}
+	r.Respond = func(context.Context, string, string, string) (string, error) { return outcome, nil }
 	return r
 }
 

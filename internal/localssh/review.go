@@ -2,6 +2,9 @@ package localssh
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
 
 	"fennec/internal/guardian"
 	"fennec/internal/sandbox"
@@ -43,7 +46,10 @@ func (b *Broker) authorize(ctx context.Context, request approvalRequest) approva
 		return approvalOutcome{Allowed: true, Decision: "auto_sandbox"}
 	}
 	if policy.Approval == sandbox.PresetAuto && b.Reviewer != nil && !b.breakerTripped(request.Fingerprint) {
+		started := time.Now()
 		result := b.Reviewer.Review(ctx, request.Action)
+		// Private diagnostics only (daemon log), never product UI.
+		fmt.Fprintf(os.Stderr, "fennec auto-review: verdict=%d in %s\n", result.Verdict, time.Since(started).Round(time.Millisecond))
 		switch result.Verdict {
 		case guardian.Approved:
 			b.recordReview(request.Fingerprint, false)

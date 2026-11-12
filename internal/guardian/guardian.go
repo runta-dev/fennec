@@ -1,22 +1,20 @@
 // Package guardian ports Codex auto-review ("Approve for me") to Fennec's
-// local connector. Reviews run on this Mac through the user's own Codex CLI
-// (`codex exec`, read-only sandbox, low reasoning effort, the dedicated
-// `codex-auto-review` model when available) with Codex's verbatim reviewer
-// policy and strict JSON output contract.
+// local connector. Like Codex's guardian sub-thread it calls the Responses API
+// directly with the user's local Codex sign-in: the dedicated
+// `codex-auto-review` model, low reasoning effort, Codex's verbatim reviewer
+// policy and its JSON output contract.
 package guardian
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +54,9 @@ const (
 	// DefaultTimeout matches Codex's [auto_review] timeout_ms default.
 	DefaultTimeout = 90 * time.Second
 	maxAttempts    = 3
+	// unavailableBackoff is how long a signed-out or out-of-usage local Codex
+	// is skipped before review is tried again.
+	unavailableBackoff = 5 * time.Minute
 )
 
 // Instructions is the reviewer's base instructions, assembled like Codex's
@@ -103,20 +104,20 @@ type Result struct {
 	Message string
 }
 
-// Reviewer runs reviews through the local Codex CLI.
+// Reviewer runs reviews against the Responses API with the local Codex sign-in.
 type Reviewer struct {
-	Home string
-	// SearchPath lists executable directories (agent.ExecutableSearchPath).
-	SearchPath      string
+	Home            string
 	DeniedReadPaths []string
 	Timeout         time.Duration
-	// Run executes codex; tests replace it.
-	Run func(ctx context.Context, executable string, args []string, stdin []byte) (stderr []byte, err error)
-	// Locate finds the user's original Codex executable; tests replace it.
-	Locate func(home, searchPath string) (string, error)
+	// BaseURL, RefreshURL and HTTPClient override endpoints in tests.
+	BaseURL    string
+	RefreshURL string
+	HTTPClient *http.Client
+	// Respond replaces the Responses API call in tests.
+	Respond func(ctx context.Context, model, instructions, prompt string) (string, error)
 
 	mu       sync.Mutex
-	noReview bool // the dedicated reviewer model is unavailable; use the account default
+	fallback string // account default model once the dedicated reviewer model is missing
 }
 
 // RejectionMessage is Codex's render_guardian_rejection text.
@@ -133,16 +134,16 @@ func FailureMessage(cause string) string {
 }
 
 // Review assesses one action. It never returns an error: failures fail closed
-// as Denied, except an unavailable local Codex (user prompt fallback) and a
-// timeout (Codex TimedOut semantics).
+// as Denied, except an unusable local Codex sign-in (user prompt fallback) and
+// a timeout (Codex TimedOut semantics).
 func (r *Reviewer) Review(ctx context.Context, action Action) Result {
-	locate := r.Locate
-	if locate == nil {
-		locate = LocalCodex
-	}
-	executable, err := locate(r.Home, r.SearchPath)
-	if err != nil {
+	if localCodexUnavailable(r.Home) {
 		return Result{Verdict: Unavailable}
+	}
+	if r.Respond == nil {
+		if _, err := loadCodexAuth(r.Home); err != nil {
+			return Result{Verdict: Unavailable}
+		}
 	}
 	timeout := r.Timeout
 	if timeout <= 0 {
@@ -150,28 +151,12 @@ func (r *Reviewer) Review(ctx context.Context, action Action) Result {
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	dir, err := os.MkdirTemp("", "fennec-auto-review-")
-	if err != nil {
-		return failed("review workspace unavailable")
+	respond := r.Respond
+	if respond == nil {
+		respond = r.respond
 	}
-	defer os.RemoveAll(dir)
-	instructions := filepath.Join(dir, "instructions.md")
-	schema := filepath.Join(dir, "schema.json")
-	output := filepath.Join(dir, "assessment.json")
-	if os.WriteFile(instructions, []byte(Instructions()), 0o600) != nil || os.WriteFile(schema, []byte(outputSchema), 0o600) != nil {
-		return failed("review workspace unavailable")
-	}
-	cwd := action.Cwd
-	if info, statErr := os.Stat(cwd); cwd == "" || statErr != nil || !info.IsDir() {
-		cwd = r.Home
-	}
-	prompt := []byte(RequestMessage(action, r.DeniedReadPaths))
-	run := r.Run
-	if run == nil {
-		run = func(ctx context.Context, executable string, args []string, stdin []byte) ([]byte, error) {
-			return runCodex(ctx, executable, args, stdin, r.SearchPath)
-		}
-	}
+	instructions := Instructions()
+	prompt := RequestMessage(action, r.DeniedReadPaths)
 	var lastErr string
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
@@ -183,31 +168,19 @@ func (r *Reviewer) Review(ctx context.Context, action Action) Result {
 		if ctx.Err() != nil {
 			break
 		}
-		os.Remove(output)
-		args := []string{"exec", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-			"--sandbox", "read-only", "--color", "never", "-C", cwd,
-			"-c", "model_instructions_file=" + strconv.Quote(instructions),
-			"-c", `model_reasoning_effort="low"`,
-			"-c", `approval_policy="never"`,
-			"--output-schema", schema, "-o", output}
 		r.mu.Lock()
-		useDedicated := !r.noReview
-		r.mu.Unlock()
-		if useDedicated {
-			args = append(args, "-m", defaultModel)
+		model := defaultModel
+		if r.fallback != "" {
+			model = r.fallback
 		}
-		args = append(args, "-")
-		stderr, runErr := run(ctx, executable, args, prompt)
+		r.mu.Unlock()
+		text, err := respond(ctx, model, instructions, prompt)
 		if ctx.Err() != nil {
 			break
 		}
-		if runErr == nil {
-			data, readErr := os.ReadFile(output)
-			if readErr != nil {
-				lastErr = "reviewer produced no assessment"
-				continue
-			}
-			assessment, parseErr := ParseAssessment(data)
+		switch {
+		case err == nil:
+			assessment, parseErr := ParseAssessment([]byte(text))
 			if parseErr != nil {
 				lastErr = parseErr.Error()
 				continue
@@ -216,25 +189,28 @@ func (r *Reviewer) Review(ctx context.Context, action Action) Result {
 				return Result{Verdict: Approved, Assessment: assessment}
 			}
 			return Result{Verdict: Denied, Assessment: assessment, Message: RejectionMessage(assessment.Rationale)}
-		}
-		text := strings.ToLower(string(stderr))
-		// No usable local Codex account (signed out or out of usage): the user
-		// chose to be asked instead of failing closed in that case.
-		for _, marker := range []string{"not logged in", "codex login", "unauthorized", "usage limit", "purchase more credits", "insufficient_quota"} {
-			if strings.Contains(text, marker) {
+		case errors.Is(err, errUnavailable):
+			markLocalCodexUnavailable(r.Home)
+			return Result{Verdict: Unavailable}
+		case errors.Is(err, errModelNotFound) && model == defaultModel:
+			// Codex falls back to the parent model when the dedicated reviewer
+			// model is not in the catalog; Fennec uses the Codex default model.
+			fallback := codexDefaultModel(r.Home)
+			if fallback == "" {
+				markLocalCodexUnavailable(r.Home)
 				return Result{Verdict: Unavailable}
 			}
-		}
-		if useDedicated && strings.Contains(text, "model") {
-			// Codex falls back to the parent model when the dedicated reviewer
-			// model is not in the account's catalog.
 			r.mu.Lock()
-			r.noReview = true
+			r.fallback = fallback
 			r.mu.Unlock()
-		}
-		lastErr = firstLine(string(stderr))
-		if lastErr == "" {
-			lastErr = runErr.Error()
+			lastErr = err.Error()
+		default:
+			lastErr = err.Error()
+			var retryable retryableError
+			if !errors.As(err, &retryable) && !errors.Is(err, errModelNotFound) {
+				// Codex does not retry auth, bad-request or policy errors.
+				return failed(lastErr)
+			}
 		}
 	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -246,30 +222,49 @@ func (r *Reviewer) Review(ctx context.Context, action Action) Result {
 	return failed(lastErr)
 }
 
+// codexDefaultModel reads the top-level model from the local Codex config.
+func codexDefaultModel(home string) string {
+	file, err := os.Open(filepath.Join(codexHome(home), "config.toml"))
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "[") {
+			return ""
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if ok && strings.TrimSpace(key) == "model" {
+			return strings.Trim(strings.TrimSpace(value), "\"'")
+		}
+	}
+	return ""
+}
+
 func failed(cause string) Result {
 	return Result{Verdict: Denied, Message: FailureMessage(cause)}
 }
 
-func firstLine(text string) string {
-	// Codex prints a banner first; prefer its ERROR lines.
-	for _, line := range strings.Split(text, "\n") {
-		if line = strings.TrimSpace(line); strings.HasPrefix(line, "ERROR:") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "ERROR:"))
-			if len(line) > 240 {
-				line = line[:240]
-			}
-			return line
-		}
-	}
-	for _, line := range strings.Split(text, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			if len(line) > 240 {
-				line = line[:240]
-			}
-			return line
-		}
-	}
-	return ""
+// A signed-out or out-of-usage local Codex is remembered per user home for
+// unavailableBackoff, across reviewer instances and connector restarts, so
+// requests go straight to the user instead of waiting on a doomed review.
+var (
+	unavailableMu    sync.Mutex
+	unavailableUntil = map[string]time.Time{}
+)
+
+func localCodexUnavailable(home string) bool {
+	unavailableMu.Lock()
+	defer unavailableMu.Unlock()
+	return time.Now().Before(unavailableUntil[home])
+}
+
+func markLocalCodexUnavailable(home string) {
+	unavailableMu.Lock()
+	defer unavailableMu.Unlock()
+	unavailableUntil[home] = time.Now().Add(unavailableBackoff)
 }
 
 // RequestMessage reproduces Codex's per-review user message layout. Fennec has
@@ -341,62 +336,4 @@ func ParseAssessment(data []byte) (Assessment, error) {
 		a.UserAuthorization = "unknown"
 	}
 	return a, nil
-}
-
-// LocalCodex finds the user's own Codex CLI, never Fennec's takeover entry.
-func LocalCodex(home, searchPath string) (string, error) {
-	for _, dir := range filepath.SplitList(searchPath) {
-		if !filepath.IsAbs(dir) {
-			continue
-		}
-		candidate := filepath.Join(dir, "codex")
-		if data, err := os.ReadFile(candidate + ".fennec-original.json"); err == nil {
-			var original struct {
-				Target string `json:"target"`
-			}
-			if json.Unmarshal(data, &original) == nil && executableFile(original.Target) {
-				return original.Target, nil
-			}
-			continue
-		}
-		if !executableFile(candidate) || filepath.Dir(candidate) == filepath.Join(home, ".local/share/fennec/shims") {
-			continue
-		}
-		file, err := os.Open(candidate)
-		if err != nil {
-			continue
-		}
-		header := make([]byte, 128)
-		n, _ := io.ReadFull(file, header)
-		file.Close()
-		if bytes.Contains(header[:n], []byte("# Fennec managed")) {
-			continue
-		}
-		return candidate, nil
-	}
-	return "", os.ErrNotExist
-}
-
-func executableFile(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0
-}
-
-func runCodex(ctx context.Context, executable string, args []string, stdin []byte, searchPath string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, executable, args...)
-	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Stdout = io.Discard
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	env := []string{}
-	for _, entry := range os.Environ() {
-		if strings.HasPrefix(entry, "FENNEC_") || strings.HasPrefix(entry, "PATH=") {
-			continue
-		}
-		env = append(env, entry)
-	}
-	cmd.Env = append(env, "PATH="+searchPath+string(os.PathListSeparator)+"/usr/bin:/bin:/usr/sbin:/sbin")
-	cmd.WaitDelay = time.Second
-	err := cmd.Run()
-	return stderr.Bytes(), err
 }

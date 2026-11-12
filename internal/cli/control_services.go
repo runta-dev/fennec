@@ -416,8 +416,8 @@ func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 		permissions := localssh.NewBroker(filepath.Join(s.home, ".config/fennec/ssh"), events)
 		permissions.Audit = s.auditStore
 		permissions.Policy = s.sandboxPolicy
-		// "Approve for me" uses Codex auto-review through the user's local Codex.
-		permissions.Reviewer = &guardian.Reviewer{Home: s.home, SearchPath: agent.ExecutableSearchPath(s.home), DeniedReadPaths: sandbox.ProtectedPaths(s.home)}
+		// "Approve for me" calls Codex auto-review on the Responses API with the local Codex sign-in.
+		permissions.Reviewer = &guardian.Reviewer{Home: s.home, DeniedReadPaths: sandbox.ProtectedPaths(s.home)}
 		s.mu.Lock()
 		s.permissions = permissions
 		s.mu.Unlock()
