@@ -131,6 +131,7 @@ func (filter *chatgptPathFilter) cloudPath(path string) (string, bool) {
 }
 
 func (filter *chatgptPathFilter) toMac(message []byte) []byte {
+	filter.noteCloudThreads(message)
 	return rewriteCwd(message, func(path string) (string, bool) {
 		filter.pathsMu.Lock()
 		defer filter.pathsMu.Unlock()

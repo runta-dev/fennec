@@ -260,12 +260,16 @@ func dialUnix(ctx context.Context, path string) (net.Conn, error) {
 // OpenAI login, as the Mac's Magpie configuration does. The gateway home keeps
 // routing Codex CLI through openai_base_url; only ChatGPT's server gets these
 // options, so ChatGPT.app does not gate sends on the ChatGPT plan's Codex usage.
+//
+// ChatGPT Apps are off here: through Magpie their 244 connector tools are sent
+// in full with every request (about 82k input tokens, roughly nine seconds per
+// turn on GLM), where Codex CLI in the cloud sends about 10k.
 func gatewayOverrides(codexHome string) []string {
 	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
 	if err != nil || !strings.Contains(string(data), "[model_providers.magpie]") {
 		return nil
 	}
-	return []string{"-c", `model_provider="magpie"`, "-c", "model_providers.magpie.requires_openai_auth=false"}
+	return []string{"-c", `model_provider="magpie"`, "-c", "model_providers.magpie.requires_openai_auth=false", "-c", "features.apps=false"}
 }
 
 // stopAppServers ends the app-server processes serving codexHome, which only

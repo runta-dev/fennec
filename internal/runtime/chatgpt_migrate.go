@@ -51,6 +51,8 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 	// deleted in the cloud moves again from the Mac on its next open.
 	if cached, ok := migrationAttempts.Load(key); ok {
 		switch value := cached.(type) {
+		case cloudThread:
+			return
 		case string:
 			if _, err := os.Stat(value); err == nil {
 				return
@@ -224,4 +226,38 @@ func (filter *chatgptPathFilter) adoptProvider(path string) error {
 		}
 	}
 	return writeFileAtomic(path, updated)
+}
+
+// cloudThread marks a thread the cloud app-server reported itself, created or
+// loaded here, so no request for it waits on a lookup on the Mac. New threads
+// have no rollout file until their first turn; without this every first turn
+// paid an SSH round trip to the Mac.
+type cloudThread struct{}
+
+// noteCloudThreads records thread IDs from app-server replies and
+// notifications (thread/start, thread/resume, thread/started, ...).
+func (filter *chatgptPathFilter) noteCloudThreads(message []byte) {
+	if filter.codexHome == "" || !bytes.Contains(message, []byte(`"thread":{`)) {
+		return
+	}
+	var envelope struct {
+		Result struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
+		} `json:"result"`
+		Params struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
+		} `json:"params"`
+	}
+	if json.Unmarshal(message, &envelope) != nil {
+		return
+	}
+	for _, id := range []string{envelope.Result.Thread.ID, envelope.Params.Thread.ID} {
+		if localssh.CodexThreadID.MatchString(id) {
+			migrationAttempts.Store(filter.codexHome+"\x00"+id, cloudThread{})
+		}
+	}
 }

@@ -124,3 +124,19 @@ func TestDeletedCloudThreadMovesAgain(t *testing.T) {
 		t.Fatal("missing cloud file was not attempted again", value)
 	}
 }
+
+func TestThreadsReportedByTheCloudSkipMacLookup(t *testing.T) {
+	codexHome := t.TempDir()
+	id := "01a1d0dc-f357-7d12-ab10-3f68cdb1d374"
+	filter := &chatgptPathFilter{home: t.TempDir(), codexHome: codexHome, device: "1234abcd"}
+	filter.noteCloudThreads([]byte(`{"id":2,"result":{"thread":{"id":"` + id + `","cwd":"/x"}}}`))
+	if value, _ := migrationAttempts.Load(codexHome + "\x00" + id); value != (cloudThread{}) {
+		t.Fatal("new cloud thread not recorded", value)
+	}
+	// With the thread known, its first turn never contacts the Mac (no SSH
+	// would be reachable here; a lookup would record a failed attempt).
+	filter.migrateThreads([]byte(`{"id":3,"method":"turn/start","params":{"threadId":"` + id + `"}}`))
+	if value, _ := migrationAttempts.Load(codexHome + "\x00" + id); value != (cloudThread{}) {
+		t.Fatal("first turn looked up the Mac", value)
+	}
+}

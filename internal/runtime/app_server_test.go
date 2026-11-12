@@ -139,7 +139,7 @@ func TestGatewayOverridesSelectMagpieWithoutOpenAILogin(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = 'zai/glm-5.3'\n\n[model_providers.magpie]\nrequires_openai_auth = true\n"), 0600)
 	got := strings.Join(gatewayOverrides(home), " ")
-	if got != `-c model_provider="magpie" -c model_providers.magpie.requires_openai_auth=false` {
+	if got != `-c model_provider="magpie" -c model_providers.magpie.requires_openai_auth=false -c features.apps=false` {
 		t.Fatal(got)
 	}
 }
