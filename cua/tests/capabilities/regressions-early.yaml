@@ -41,7 +41,7 @@ capabilities:
       file or a named environment variable. The key never reaches a script run or plugin environment.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestSingleEndpointKeySource, planned:internal/script.TestNoModelKeyInRun]
+    tests: [internal/models.TestSingleEndpointKeySource, planned:internal/script.TestNoModelKeyInRun]
     upstream: [changelog/0.1.0/3]
 
   - id: CAP-RGB-005
@@ -145,7 +145,7 @@ capabilities:
       an answer from another build fails naming it. The driver overlay switch has no effect on macOS.
     surface: policy
     parity: spec
-    tests: [planned:internal/hotkey.TestOffRegistersNone, planned:internal/models.TestDecideBuildPin]
+    tests: [planned:internal/hotkey.TestOffRegistersNone, internal/models.TestDecideBuildPin]
     upstream: [changelog/0.1.3/3]
 
   - id: CAP-RGB-014
@@ -651,7 +651,7 @@ capabilities:
       names the URL that answered after redirects; credentials, query and fragment are stripped.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestErrorNamesRedactedURL]
+    tests: [internal/models.TestErrorNamesRedactedURL]
     upstream: [changelog/0.1.26/3]
 
   - id: CAP-RGB-058
@@ -750,7 +750,7 @@ capabilities:
       that gets it stops with that error and no fallback model calls.
     surface: models
     parity: oracle
-    tests: [planned:internal/models.Test402Message, planned:internal/plan.Test402StopsPlan]
+    tests: [internal/models.Test402Message, planned:internal/plan.Test402StopsPlan]
     upstream: [changelog/0.1.30/3]
 
   - id: CAP-RGB-067

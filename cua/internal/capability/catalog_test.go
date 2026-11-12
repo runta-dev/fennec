@@ -90,3 +90,19 @@ func TestUnknownFieldFailsLoad(t *testing.T) {
 		t.Error("unknown field accepted")
 	}
 }
+
+func TestCheckTestsFindsMissingFunctions(t *testing.T) {
+	root := t.TempDir()
+	pkg := filepath.Join(root, "internal", "view")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "a_test.go"), []byte("package view\nfunc TestHere(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := Catalog{Files: []File{{Capabilities: []Capability{{ID: "CAP-X-001", Tests: []string{"internal/view.TestHere", "internal/view.TestGone", "planned:internal/view.TestLater"}}}}}}
+	got := CheckTests(c, root)
+	if len(got) != 1 || !strings.Contains(got[0], "TestGone") {
+		t.Errorf("problems %v", got)
+	}
+}

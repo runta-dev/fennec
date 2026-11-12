@@ -3,6 +3,7 @@
 //
 //	go run ./cmd/cua-upstream inventory [-all]   print the inventory as TSV
 //	go run ./cmd/cua-upstream coverage           check tests/capabilities
+//	go run ./cmd/cua-upstream promote ID...      mark written tests (planned:ID to ID)
 //
 // SHUTTLE_CHECKOUT points at an existing checkout of the pinned commit;
 // otherwise one is fetched into the user cache directory.
@@ -33,6 +34,14 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if args[0] == "promote" {
+		n, err := capability.Promote(filepath.Join(root, "tests", "capabilities"), root, args[1:])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("promoted %d entries\n", n)
+		return nil
+	}
 	items, err := load(root)
 	if err != nil {
 		return err
@@ -54,6 +63,7 @@ func run(args []string) error {
 			return err
 		}
 		r := capability.Check(c, items)
+		r.Problems = append(r.Problems, capability.CheckTests(c, root)...)
 		for _, p := range r.Problems {
 			fmt.Println("problem:", p)
 		}
@@ -66,7 +76,9 @@ func run(args []string) error {
 				macOS++
 			}
 		}
-		fmt.Printf("capabilities %d (planned %d); macOS items %d: covered %d, excluded %d, missing %d; problems %d\n",
+		written, planned, done := capability.Progress(c)
+		fmt.Printf("tests written %d, planned %d; capabilities fully tested %d of %d\n", written, planned, done, r.Capabilities)
+		fmt.Printf("capabilities %d (still planned %d); macOS items %d: covered %d, excluded %d, missing %d; problems %d\n",
 			r.Capabilities, r.Planned, macOS, r.Covered, r.Excluded, len(r.Missing), len(r.Problems))
 		if !r.OK() {
 			return fmt.Errorf("catalog incomplete")

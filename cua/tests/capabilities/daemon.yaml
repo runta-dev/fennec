@@ -14,7 +14,7 @@ capabilities:
       decisions endpoint sends exactly {model, state, questions}.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestRequestBodies, planned:internal/models.TestStateParts]
+    tests: [internal/models.TestRequestBodies, internal/models.TestStateParts]
     upstream:
       - rust/models/src/chat.rs::a_state_becomes_text_and_png_parts
       - rust/models/src/chat.rs::a_png_part_serializes_as_a_data_url
@@ -32,7 +32,7 @@ capabilities:
       JSON object, no message text or the wrong JSON type is an error.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestDecideAnswers, planned:internal/models.TestDecideBadReplies]
+    tests: [internal/models.TestDecideAnswers, internal/models.TestDecideBadReplies]
     upstream:
       - rust/models/src/decide.rs::a_chat_reply_becomes_one_answer_per_question
       - rust/models/src/decide.rs::a_missing_or_partial_answer_is_an_error
@@ -49,7 +49,7 @@ capabilities:
       (input, output, cached) read from either the chat or the decisions field names.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestDecideVerifyModel, planned:internal/models.TestDecideOverChat]
+    tests: [internal/models.TestDecideVerifyModel, internal/models.TestDecideOverChat]
     upstream:
       - rust/models/tests/providers.rs::decide_on_the_decisions_endpoint_asks_verify_for_an_image_and_keeps_the_build
       - rust/models/tests/providers.rs::decide_over_chat_asks_for_the_same_json_without_a_key
@@ -63,7 +63,7 @@ capabilities:
       refused at load.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestBuildPattern]
+    tests: [internal/models.TestBuildPattern]
     upstream:
       - rust/models/src/lib.rs::a_build_pattern_takes_any_digits_where_it_says_hash_and_nothing_else
       - rust/models/tests/providers.rs::with_a_decide_build_pattern_only_a_matching_build_answers
@@ -77,7 +77,7 @@ capabilities:
       with an error naming the target, and a reply with no pair is an error naming the target.
     surface: models
     parity: oracle
-    tests: [planned:internal/models.TestGroundPoint, planned:internal/models.TestGroundRetina]
+    tests: [internal/models.TestGroundPoint, internal/models.TestGroundRetina]
     upstream:
       - rust/models/src/lib.rs::a_point_lands_in_desk_coordinates_whatever_the_screenshot_size
       - rust/models/src/lib.rs::the_1000_edge_is_the_last_pixel_and_beyond_1000_is_refused
@@ -94,7 +94,7 @@ capabilities:
       model arguments from a script are refused as invalid arguments.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestErrorNamesEndpoint, planned:internal/models.TestPaymentRequired]
+    tests: [internal/models.TestErrorNamesEndpoint, internal/models.TestPaymentRequired]
     upstream:
       - rust/models/src/lib.rs::an_error_names_the_endpoint_without_its_credentials_query_or_fragment
       - rust/models/tests/providers.rs::an_error_status_names_the_endpoint_that_answered_it_after_a_redirect

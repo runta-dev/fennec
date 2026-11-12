@@ -899,7 +899,7 @@ capabilities:
       probability, and fails only when the probabilities name none of them.
     surface: models
     parity: spec
-    tests: [planned:internal/models.TestDecideFallback]
+    tests: [internal/models.TestDecideFallback]
     upstream: [changelog/0.1.42/15]
   - id: CAP-RGA-090
     title: Service plugins left by a killed daemon are stopped
