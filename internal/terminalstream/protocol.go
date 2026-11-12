@@ -30,15 +30,30 @@ type Frame struct {
 	Bytes             int                          `json:"bytes,omitempty"`
 	Code              int                          `json:"code,omitempty"`
 	Message           string                       `json:"message,omitempty"`
+	Target            string                       `json:"target,omitempty"`
 }
 
 const Window = 65536
 const Chunk = 16384
 const ProtocolVersion = 7
 
+// SocketCodexAppServer is the only remote socket a "socket" stream may open:
+// the runtime owner's codex app-server control socket. Peers advertise it as
+// CapabilityCodexAppServer so older remote services are never asked for it.
+const (
+	SocketCodexAppServer     = "codex-app-server"
+	CapabilityCodexAppServer = "codex_app_server"
+)
+
 func (frame Frame) validateOpen() error {
 	if !regexp.MustCompile(`^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$`).MatchString(frame.ID) {
 		return fmt.Errorf("invalid stream identity")
+	}
+	if frame.Type == "socket" {
+		if frame.Target == SocketCodexAppServer {
+			return nil
+		}
+		return fmt.Errorf("invalid socket target")
 	}
 	if frame.Type == "operation" && frame.Operation != nil {
 		return frame.Operation.Validate()

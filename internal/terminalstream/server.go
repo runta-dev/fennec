@@ -10,6 +10,7 @@ import (
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -26,6 +27,10 @@ type Attacher func(context.Context, cloudruntime.LocalTerminal) (cloudruntime.Lo
 type Stopper func(context.Context, cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error)
 type Operator func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error)
 
+// SocketDialer opens the named remote socket for a "socket" stream. Only
+// targets accepted by Frame.validateOpen reach it.
+type SocketDialer func(context.Context, string) (net.Conn, error)
+
 type serverSession struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -34,24 +39,30 @@ type serverSession struct {
 	mu            sync.Mutex
 	inputWriteMu  sync.Mutex
 	file          *os.File
+	conn          net.Conn
 	closed        bool
 	inputBudget   int
 	rows, columns uint16
 }
 
 func Serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, attachers ...Attacher) error {
-	return serve(ctx, input, output, start, nil, nil, attachers...)
+	return serve(ctx, input, output, start, nil, nil, nil, attachers...)
 }
 
 func ServeWithStop(ctx context.Context, input io.Reader, output io.Writer, start Starter, attach Attacher, stop Stopper) error {
-	return serve(ctx, input, output, start, stop, nil, attach)
+	return serve(ctx, input, output, start, stop, nil, nil, attach)
 }
 
 func ServeWithOperations(ctx context.Context, input io.Reader, output io.Writer, start Starter, attach Attacher, stop Stopper, operate Operator) error {
-	return serve(ctx, input, output, start, stop, operate, attach)
+	return serve(ctx, input, output, start, stop, operate, nil, attach)
 }
 
-func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, stopSession Stopper, operate Operator, attachers ...Attacher) error {
+// ServeWithSockets additionally relays byte streams to whitelisted remote sockets.
+func ServeWithSockets(ctx context.Context, input io.Reader, output io.Writer, start Starter, attach Attacher, stop Stopper, operate Operator, dial SocketDialer) error {
+	return serve(ctx, input, output, start, stop, operate, dial, attach)
+}
+
+func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, stopSession Stopper, operate Operator, dial SocketDialer, attachers ...Attacher) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if closer, ok := input.(io.Closer); ok {
@@ -98,6 +109,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 	if operate != nil {
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics")
 	}
+	if dial != nil {
+		capabilities = append(capabilities, CapabilityCodexAppServer)
+	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
 	}
@@ -120,8 +134,8 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			}
 			continue
 		}
-		if frame.Type == "launch" || frame.Type == "attach" || frame.Type == "stop" || frame.Type == "operation" {
-			if frame.validateOpen() != nil || (frame.Type == "attach" && len(attachers) == 0) || (frame.Type == "stop" && stopSession == nil) || (frame.Type == "operation" && operate == nil) {
+		if frame.Type == "launch" || frame.Type == "attach" || frame.Type == "stop" || frame.Type == "operation" || frame.Type == "socket" {
+			if frame.validateOpen() != nil || (frame.Type == "socket" && dial == nil) || (frame.Type == "attach" && len(attachers) == 0) || (frame.Type == "stop" && stopSession == nil) || (frame.Type == "operation" && operate == nil) {
 				return fmt.Errorf("invalid terminal launch")
 			}
 			sessionsMu.Lock()
@@ -149,6 +163,10 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					delete(sessions, frame.ID)
 					sessionsMu.Unlock()
 				}()
+				if frame.Type == "socket" {
+					session.relaySocket(frame, dial, emit)
+					return
+				}
 				var terminal cloudruntime.LocalTerminal
 				var command *exec.Cmd
 				var err error
@@ -408,6 +426,13 @@ func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
 func (session *serverSession) write(data []byte) error {
 	session.inputWriteMu.Lock()
 	defer session.inputWriteMu.Unlock()
+	session.mu.Lock()
+	conn := session.conn
+	session.mu.Unlock()
+	if conn != nil {
+		_, err := conn.Write(data)
+		return err
+	}
 	for len(data) > 0 && session.ctx.Err() == nil {
 		poll := []unix.PollFd{{Fd: int32(session.file.Fd()), Events: unix.POLLOUT}}
 		if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
@@ -431,4 +456,49 @@ func (session *serverSession) write(data []byte) error {
 		return session.ctx.Err()
 	}
 	return nil
+}
+
+// relaySocket carries raw bytes between a whitelisted remote socket and the
+// stream. Output obeys the same credit window as a PTY; input reuses the
+// session input budget, so one busy socket cannot starve other streams.
+func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit func(Frame) error) {
+	conn, err := dial(session.ctx, frame.Target)
+	if err != nil {
+		emit(Frame{Type: "error", ID: frame.ID, Message: "remote socket unavailable"})
+		return
+	}
+	session.mu.Lock()
+	session.conn = conn
+	session.mu.Unlock()
+	stop := context.AfterFunc(session.ctx, func() { session.window.close(); conn.Close() })
+	defer stop()
+	if emit(Frame{Type: "receipt", ID: frame.ID}) != nil {
+		session.cancel()
+		return
+	}
+	inputDone := make(chan struct{})
+	go func() { defer close(inputDone); session.pumpInput(frame.ID, emit) }()
+	buffer := make([]byte, Chunk)
+	for {
+		count := session.window.take(Chunk)
+		if count == 0 {
+			break
+		}
+		length, err := conn.Read(buffer[:count])
+		if length < count {
+			session.window.add(count - length)
+		}
+		if length > 0 {
+			if emit(Frame{Type: "data", ID: frame.ID, Data: append([]byte(nil), buffer[:length]...)}) != nil {
+				break
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	session.cancel()
+	conn.Close()
+	<-inputDone
+	emit(Frame{Type: "exit", ID: frame.ID})
 }

@@ -76,6 +76,7 @@ type daemonServices struct {
 	trustWait                                  chan bool
 	permissions                                *localssh.Broker
 	hookLeases                                 map[string]hookLease
+	chatgpt                                    *chatgptBridge
 }
 
 func newDaemonServices(home string, account *account.Manager, monitors ...*connectivity.Monitor) *daemonServices {

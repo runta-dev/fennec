@@ -71,6 +71,12 @@ func start(command *exec.Cmd, initial *Frame) (*Transport, error) {
 	return startTransport(input, output, command.Wait, command.Process.Kill, initial), nil
 }
 
+// StartPipes runs the protocol over an in-process byte stream. Closing the
+// transport closes both pipes.
+func StartPipes(input io.WriteCloser, output io.ReadCloser) *Transport {
+	return startTransport(input, output, func() error { return nil }, func() error { output.Close(); return input.Close() }, nil)
+}
+
 // StartSSH opens the resident protocol channel on an existing authenticated
 // connection. Closing this transport closes only its channel, not the shared
 // SSH client or any other sessions using it.

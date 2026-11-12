@@ -78,6 +78,7 @@ func serveControl(arguments []string) error {
 			startControlUpdater(ctx, controller)
 		}
 		startTrashWatcher(ctx, cancel, home, os.Args[0])
+		go services.chatgpt.run(ctx)
 		go func() {
 			defer launchprofile.Begin("account.restore")()
 			restore, cancel := context.WithTimeout(ctx, 120*time.Second)
@@ -139,6 +140,10 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
+	services.chatgpt = newChatGPTBridge(home, services)
+	for method, handler := range services.chatgpt.handlers() {
+		controller.Additional[method] = handler
+	}
 	for name, handler := range services.hookHandlers() {
 		controller.Additional[name] = handler
 	}

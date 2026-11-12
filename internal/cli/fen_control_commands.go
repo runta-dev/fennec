@@ -143,6 +143,19 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			return true, fmt.Errorf("usage: fen runtime status|ensure|retry")
 		}
 		method = "runtime." + args[1]
+	case "chatgpt":
+		if len(args) == 2 && args[1] == "open" {
+			return true, chatgptOpen(output)
+		}
+		if len(args) == 1 || len(args) == 2 && args[1] == "status" {
+			method = "chatgpt.get"
+			break
+		}
+		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
+			return true, fmt.Errorf("usage: fen chatgpt [status|on|off|open]")
+		}
+		method = "chatgpt.set"
+		params = map[string]any{"enabled": args[1] == "on"}
 	case "takeover":
 		if len(args) == 1 {
 			method = "takeover.get"
@@ -280,6 +293,7 @@ Usage: fen [attach [session-id]]
   fen status | logout | agents | account | billing
   fen runtime status|ensure|retry
   fen takeover [agent on|off]
+  fen chatgpt [status|on|off|open]  (run ChatGPT.app's codex app-server in the cloud)
   fen model <agent> [model|default] [effort]
   fen agent login <agent> [session-id] [--json]
   fen agent account <agent> [local|cloud]

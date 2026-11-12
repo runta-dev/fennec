@@ -12,6 +12,7 @@ import (
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -195,7 +196,7 @@ func run() (int, error) {
 		if err != nil {
 			return 1, err
 		}
-		return 0, terminalstream.ServeWithOperations(ctx, input, os.Stdout, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+		return 0, terminalstream.ServeWithSockets(ctx, input, os.Stdout, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			terminal, err := runtime.Launch(ctx, request)
 			if err != nil {
 				return terminal, nil, err
@@ -215,7 +216,12 @@ func run() (int, error) {
 			return terminal, cmd, nil
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
-		}, runtime.Operation)
+		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+			if target != terminalstream.SocketCodexAppServer {
+				return nil, fmt.Errorf("unsupported socket target")
+			}
+			return cloudruntime.DialCodexAppServer(ctx, home)
+		})
 	}
 	if len(os.Args) == 4 && os.Args[1] == "attach" {
 		return runtime.Attach(ctx, os.Args[2], os.Args[3], os.Stdin, os.Stdout, os.Stderr)
