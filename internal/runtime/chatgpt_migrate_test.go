@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -107,5 +108,19 @@ func TestMagpieModeAdoptsProviderForResumedThreads(t *testing.T) {
 	native := &chatgptPathFilter{}
 	if got := native.adoptRolloutProvider(plain); !bytes.Equal(got, plain) {
 		t.Fatal(string(got))
+	}
+}
+
+func TestDeletedCloudThreadMovesAgain(t *testing.T) {
+	codexHome := t.TempDir()
+	id := "01a19bbb-61bb-78c0-b816-27926e999fd4"
+	key := codexHome + "\x00" + id
+	migrationAttempts.Store(key, filepath.Join(codexHome, "sessions/gone.jsonl"))
+	filter := &chatgptPathFilter{home: t.TempDir(), codexHome: codexHome}
+	filter.migrateThreads([]byte(`{"id":1,"method":"thread/resume","params":{"threadId":"` + id + `"}}`))
+	if value, _ := migrationAttempts.Load(key); value == nil {
+		t.Fatal("no attempt recorded")
+	} else if _, failed := value.(time.Time); !failed {
+		t.Fatal("missing cloud file was not attempted again", value)
 	}
 }

@@ -23,8 +23,9 @@ import (
 // thread/attachment/list name many threads at once and never trigger a move.
 var migratingMethods = map[string]bool{"thread/resume": true, "thread/read": true, "thread/turns/list": true, "thread/items/list": true, "thread/fork": true, "turn/start": true}
 
-// migrationAttempts holds every thread already checked by this terminal service,
-// across ChatGPT reconnects, keyed by CODEX_HOME and thread ID.
+// migrationAttempts remembers, across ChatGPT reconnects, the cloud rollout path
+// of each handled thread (string) or the time of a failed move (time.Time),
+// keyed by CODEX_HOME and thread ID.
 var migrationAttempts sync.Map
 
 // migrateThreads lazily moves a conversation that started on the Mac to the
@@ -46,19 +47,35 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 	}
 	id := request.Params.ThreadID
 	key := filter.codexHome + "\x00" + id
-	if _, checked := migrationAttempts.LoadOrStore(key, true); checked {
-		return
+	// A rollout already handled is skipped while its file exists; a thread
+	// deleted in the cloud moves again from the Mac on its next open.
+	if cached, ok := migrationAttempts.Load(key); ok {
+		switch value := cached.(type) {
+		case string:
+			if _, err := os.Stat(value); err == nil {
+				return
+			}
+		case time.Time:
+			if time.Since(value) < 30*time.Second {
+				return
+			}
+		}
 	}
 	if path, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
 		if err := filter.adoptProvider(path); err != nil {
 			fmt.Fprintf(os.Stderr, "fennec: conversation %s keeps its provider: %v\n", id, err)
 		}
+		migrationAttempts.Store(key, path)
 		return
 	}
 	if err := filter.importMacRollout(id); err != nil {
 		fmt.Fprintf(os.Stderr, "fennec: conversation %s stays on the Mac: %v\n", id, err)
 		// An offline Mac or a later local thread may succeed on a later open.
-		time.AfterFunc(30*time.Second, func() { migrationAttempts.Delete(key) })
+		migrationAttempts.Store(key, time.Now())
+		return
+	}
+	if path, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
+		migrationAttempts.Store(key, path)
 	}
 }
 
