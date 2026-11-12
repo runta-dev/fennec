@@ -2447,13 +2447,13 @@
       "zh-CN": "重新登录以授权读取账单",
       "zh-TW": "重新登入以授權讀取帳單"
     },
-    "ui.local_sandbox": {
-      "en-GB": "Local sandbox",
-      "en-US": "Local sandbox",
-      "ja": "サンドボックス",
-      "ko": "로컬 샌드박스",
-      "zh-CN": "本机沙箱",
-      "zh-TW": "本機沙盒"
+    "ui.permission_mode": {
+      "en-GB": "Permission mode",
+      "en-US": "Permission mode",
+      "ja": "権限モード",
+      "ko": "권한 모드",
+      "zh-CN": "权限模式",
+      "zh-TW": "權限模式"
     },
     "ui.governance": {
       "en-GB": "Governance",
@@ -2463,21 +2463,21 @@
       "zh-CN": "安全",
       "zh-TW": "安全"
     },
-    "ui.about_local_sandbox": {
-      "en-GB": "About local sandbox",
-      "en-US": "About local sandbox",
-      "ja": "ローカルサンドボックスについて",
-      "ko": "로컬 샌드박스 정보",
-      "zh-CN": "了解本机沙箱",
-      "zh-TW": "了解本機沙盒"
+    "ui.about_permission_mode": {
+      "en-GB": "About permission mode",
+      "en-US": "About permission mode",
+      "ja": "権限モードについて",
+      "ko": "권한 모드 정보",
+      "zh-CN": "了解权限模式",
+      "zh-TW": "了解權限模式"
     },
-    "ui.local_sandbox_tooltip": {
-      "en-GB": "Protects SSH keys, Keychain, and files outside authorized folders",
-      "en-US": "Protects SSH keys, Keychain, and files outside authorized folders",
-      "ja": "SSH 鍵・キーチェーン・許可されたフォルダ外のファイルを保護します",
-      "ko": "SSH 키, 키체인 및 허용된 폴더 외부의 파일을 보호합니다",
-      "zh-CN": "保护 SSH 密钥、钥匙串与授权目录之外的文件",
-      "zh-TW": "保護 SSH 金鑰、鑰匙圈與授權目錄之外的檔案"
+    "ui.permission_mode_tooltip": {
+      "en-GB": "Writable folders follow the projects you launch and credentials stay protected",
+      "en-US": "Writable folders follow the projects you launch and credentials stay protected",
+      "ja": "書き込み可能フォルダは起動したプロジェクトに従い、認証情報は保護されたままです",
+      "ko": "쓰기 가능 폴더는 실행한 프로젝트를 따르고 자격 증명은 보호됩니다",
+      "zh-CN": "可写目录跟随启动的项目，凭据保持受保护",
+      "zh-TW": "可寫目錄跟隨啟動的專案，憑證保持受保護"
     },
     "ui.sandbox_mode_ask": {
       "en-GB": "Ask for approval",

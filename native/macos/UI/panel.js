@@ -1195,21 +1195,6 @@ window.renderModelSaving = busy => {
   if(!busy)window.renderAgents(detectedAgents);
 };
 
-document.querySelector('#clear-trust').onclick = () => {
-  const btn = document.querySelector('#clear-trust');
-  if (!btn || btn.disabled) return;
-  btn.disabled = true;
-  send('clear-trust');
-};
-window.renderTrustResult = success => {
-  const notice=document.querySelector('#trust-result');notice.hidden=true;notice.textContent='';
-  if (window.renderAutoAccessRevoked) {
-    window.renderAutoAccessRevoked(success);
-  } else {
-    document.querySelector('#clear-trust').disabled = false;
-  }
-};
-
 let lastSessionTerminals=[];
 const confirmedStoppedSessions=new Set();
 window.renderSessionStopped = sessionID => {

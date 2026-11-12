@@ -1,10 +1,6 @@
 // Local macOS Seatbelt sandbox controls and 7-day rolling security audit view.
 (() => {
   const modeSelect = document.querySelector('#permission-mode');
-  const rootsSection = document.querySelector('#sandbox-roots-section');
-  const rootsList = document.querySelector('#sandbox-roots-list');
-  const addRootBtn = document.querySelector('#add-sandbox-root');
-  const clearTrustBtn = document.querySelector('#clear-trust');
   const summaryBadge = document.querySelector('#audit-summary-badge');
   const auditClearBtn = document.querySelector('#audit-clear');
   const filterButtons = [...document.querySelectorAll('[data-audit-filter]')];
@@ -17,14 +13,8 @@
 
   let sandboxState = {
     mode: 'auto',
-    customRoots: [],
-    effectiveRoots: [],
-    autoAccessGranted: false,
     summary: { total_7d: 0, today_count: 0, blocked_7d: 0, retention_days: 7 }
   };
-  let justRevokedTimer = null;
-  let justRevoked = false;
-
   let auditFilter = 'all';
   let auditEntries = [];
   const expandedIds = new Set();
@@ -110,74 +100,7 @@
   function drawSandboxSettings() {
     const mode = sandboxState.mode;
     if (modeSelect) modeSelect.value = mode;
-    if (rootsSection) {
-      rootsSection.classList.toggle('is-inactive', mode === 'full');
-    }
-    if (addRootBtn) {
-      addRootBtn.disabled = mode === 'full';
-    }
-    if (rootsList) {
-      const customSet = new Set(sandboxState.customRoots);
-      const allRoots = sandboxState.effectiveRoots.length > 0
-        ? sandboxState.effectiveRoots
-        : sandboxState.customRoots;
-      if (allRoots.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'sandbox-roots-empty';
-        empty.textContent = t('[[i18n:ui.synced_project_folders_writable]]');
-        rootsList.replaceChildren(empty);
-      } else {
-        const nodes = allRoots.map(rootPath => {
-          const row = document.createElement('div');
-          row.className = 'sandbox-root-row';
-          const pathEl = document.createElement('code');
-          pathEl.className = 'sandbox-root-path';
-          pathEl.textContent = compactHomePath(rootPath);
-          pathEl.title = rootPath;
-          row.append(pathEl);
-          if (customSet.has(rootPath)) {
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'sandbox-root-remove';
-            const removeText = t('[[i18n:ui.remove_writable_folder]]');
-            removeBtn.setAttribute('aria-label', removeText);
-            removeBtn.title = removeText;
-            removeBtn.disabled = mode === 'full';
-            removeBtn.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3 3 9"/></svg>';
-            removeBtn.onclick = () => removeCustomRoot(rootPath);
-            row.append(removeBtn);
-          } else {
-            const tag = document.createElement('span');
-            tag.className = 'sandbox-root-tag';
-            tag.textContent = t('[[i18n:ui.synced_badge]]');
-            row.append(tag);
-          }
-          return row;
-        });
-        rootsList.replaceChildren(...nodes);
-      }
-    }
     drawSummaryBadge();
-    drawAutoAccessButton();
-  }
-
-  function drawAutoAccessButton() {
-    if (!clearTrustBtn) return;
-    clearTrustBtn.removeAttribute('data-i18n');
-    clearTrustBtn.classList.toggle('is-revoked', justRevoked);
-    if (justRevoked) {
-      clearTrustBtn.disabled = true;
-      clearTrustBtn.innerHTML = '<svg class="revoke-check" viewBox="0 0 14 14" aria-hidden="true"><path d="m3 7.2 2.6 2.6L11 4.4"/></svg><span></span>';
-      clearTrustBtn.querySelector('span').textContent = t('[[i18n:ui.access_revoked_short]]');
-      return;
-    }
-    if (sandboxState.autoAccessGranted) {
-      clearTrustBtn.disabled = false;
-      clearTrustBtn.textContent = t('[[i18n:ui.revoke_access]]');
-    } else {
-      clearTrustBtn.disabled = true;
-      clearTrustBtn.textContent = t('[[i18n:ui.ask_each_time]]');
-    }
   }
 
   function drawSummaryBadge() {
@@ -315,27 +238,12 @@
     send('settings:' + JSON.stringify({ permission_mode: normalized }));
   }
 
-  function removeCustomRoot(target) {
-    const nextCustom = sandboxState.customRoots.filter(r => r !== target);
-    const nextEffective = sandboxState.effectiveRoots.filter(r => r !== target || !sandboxState.customRoots.includes(r));
-    sandboxState = { ...sandboxState, customRoots: nextCustom, effectiveRoots: nextEffective };
-    drawSandboxSettings();
-    send('settings:' + JSON.stringify({ sandbox_roots: nextCustom }));
-  }
-
   function requestAuditLog() {
     send('audit-list:' + JSON.stringify({ filter: auditFilter, limit: 100 }));
   }
 
   if (modeSelect) {
     modeSelect.onchange = () => selectMode(modeSelect.value);
-  }
-
-  if (addRootBtn) {
-    addRootBtn.onclick = () => {
-      if (sandboxState.mode === 'full') return;
-      send('pick-sandbox-root');
-    };
   }
 
   if (auditClearBtn) {
@@ -357,51 +265,13 @@
 
   window.renderSandboxPreferences = prefs => {
     if (!prefs || typeof prefs !== 'object') return;
-    const custom = Array.isArray(prefs.sandbox_roots) ? prefs.sandbox_roots.filter(Boolean) : sandboxState.customRoots;
-    const effective = Array.isArray(prefs.effective_sandbox_roots) ? prefs.effective_sandbox_roots.filter(Boolean) : custom;
     sandboxState = {
       mode: prefs.permission_mode !== undefined
         ? normalizeMode(prefs.permission_mode)
         : prefs.sandbox_mode !== undefined ? normalizeMode(prefs.sandbox_mode) : sandboxState.mode,
-      customRoots: custom,
-      effectiveRoots: effective,
-      autoAccessGranted: prefs.auto_access_granted !== undefined ? Boolean(prefs.auto_access_granted) : sandboxState.autoAccessGranted,
       summary: prefs.audit_summary && typeof prefs.audit_summary === 'object' ? prefs.audit_summary : sandboxState.summary
     };
-    if (sandboxState.autoAccessGranted && justRevoked) {
-      justRevoked = false;
-      clearTimeout(justRevokedTimer);
-    }
     drawSandboxSettings();
-  };
-
-  window.renderAutoAccessRevoked = success => {
-    if (!success) {
-      drawAutoAccessButton();
-      return;
-    }
-    sandboxState = { ...sandboxState, autoAccessGranted: false };
-    justRevoked = true;
-    clearTimeout(justRevokedTimer);
-    drawAutoAccessButton();
-    justRevokedTimer = setTimeout(() => {
-      justRevoked = false;
-      drawAutoAccessButton();
-    }, 1800);
-  };
-
-  window.renderPickedSandboxRoot = folderPath => {
-    const cleaned = String(folderPath || '').trim();
-    if (!cleaned || cleaned === '/') return;
-    const nextCustom = sandboxState.customRoots.includes(cleaned)
-      ? sandboxState.customRoots
-      : [...sandboxState.customRoots, cleaned].sort();
-    const nextEffective = sandboxState.effectiveRoots.includes(cleaned)
-      ? sandboxState.effectiveRoots
-      : [...sandboxState.effectiveRoots, cleaned].sort();
-    sandboxState = { ...sandboxState, customRoots: nextCustom, effectiveRoots: nextEffective };
-    drawSandboxSettings();
-    send('settings:' + JSON.stringify({ sandbox_roots: nextCustom }));
   };
 
   window.renderAuditLog = payload => {

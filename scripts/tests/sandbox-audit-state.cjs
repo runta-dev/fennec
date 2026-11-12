@@ -47,10 +47,6 @@ const filterButtons = [
 
 const nodes = {
   '#permission-mode': modeSelect,
-  '#sandbox-roots-section': makeNode('div'),
-  '#sandbox-roots-list': makeNode('div'),
-  '#add-sandbox-root': makeNode('button'),
-  '#clear-trust': makeNode('button'),
   '#audit-summary-badge': makeNode('span'),
   '#audit-clear': makeNode('button'),
   '#audit-count-all': makeNode('span'),
@@ -80,43 +76,24 @@ const context = vm.createContext({
 
 vm.runInContext(source, context);
 
-// 1. Render initial preferences with Approve for me, 1 synced + 1 custom root, and 7-day summary.
+// 1. Render initial preferences with Approve for me and a 7-day summary.
 context.window.renderSandboxPreferences({
   permission_mode: 'auto',
-  sandbox_roots: ['/Users/alice/work/custom-repo'],
-  effective_sandbox_roots: ['/Users/alice/work/custom-repo', '/Users/alice/work/synced-repo'],
-  auto_access_granted: true,
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
 assert.equal(modeSelect.value, 'auto');
-assert.equal(nodes['#clear-trust'].disabled, false);
-assert.equal(nodes['#clear-trust'].textContent, 'revoke_access');
-
-// Revoking automatic access gives immediate in-place button feedback and disables repeat revoke
-context.window.renderAutoAccessRevoked(true);
-assert.equal(nodes['#clear-trust'].disabled, true);
-assert.equal(nodes['#clear-trust'].classList.contains('is-revoked'), true);
-if (pendingTimer) pendingTimer();
-assert.equal(nodes['#clear-trust'].classList.contains('is-revoked'), false);
-assert.equal(nodes['#clear-trust'].textContent, 'ask_each_time');
-assert.equal(nodes['#sandbox-roots-list'].children.length, 2);
-assert.equal(nodes['#sandbox-roots-list'].children[0].children[0].textContent, '~/work/custom-repo');
 assert.equal(nodes['#audit-summary-badge'].textContent, '6 · 1 audit_summary_blocked');
 assert.equal(nodes['#audit-summary-badge'].classList.contains('has-blocked'), true);
 
-// 2. Switching to Full access dims roots without removing rows.
+// 2. Switching to Full access sends one explicit permission choice.
 modeSelect.value = 'full';
 modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"full"}');
-assert.equal(nodes['#sandbox-roots-section'].classList.contains('is-inactive'), true);
-assert.equal(nodes['#sandbox-roots-list'].children.length, 2, 'rows remain in place for zero layout shift');
 
-// 3. Switching back to Approve for me re-enables picking/removing custom folders.
+// 3. Switching back to Approve for me.
 modeSelect.value = 'auto';
 modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
-context.window.renderPickedSandboxRoot('/Users/alice/work/another');
-assert.equal(sent.pop(), 'settings:{"sandbox_roots":["/Users/alice/work/another","/Users/alice/work/custom-repo"]}');
 
 // 4. Selecting the Governance tab loads 7-day audit entries, expands detail, filters, and clears.
 context.window.onGovernanceTabShown();

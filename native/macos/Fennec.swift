@@ -58,7 +58,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var outsideMonitor: Any?
     private var popupPresentationID: UUID?
     private var pageLoaded = false
-    private var pickingSandboxFolder = false
     private var localMonitor: Any?
     private var web: WKWebView!
     private var authorized = false
@@ -346,7 +345,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     private func dismissPopupIfOutside(_ event: NSEvent) {
-        if pickingSandboxFolder { return }
         guard popup.isVisible || popupPresentationID != nil else { return }
         if event.window === popup { return }
         let point = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? NSEvent.mouseLocation
@@ -852,10 +850,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
             return
         }
-        if action == "pick-sandbox-root" {
-            pickSandboxFolder()
-            return
-        }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else if visibleRefreshTab == "governance" { loadAuditLog() } else { refreshAgents() }; return }
@@ -1002,7 +996,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                     self.mutate("runtime.retry")
                 }
             }
-        case "clear-trust": mutate("trust.clear") { [weak self] success,_ in self?.render("renderTrustResult",[success]) }
         case "cancel-session-read": sessionReadRevision += 1
         case "quit": quitApp()
         case "login-item:on": setLoginItem(true)
@@ -1017,31 +1010,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         control.call("audit.list", ["filter": activeAuditFilter, "limit": 100]) { [weak self] result in
             if case .success(let value) = result { self?.render("renderAuditLog", [value]) }
         }
-    }
-    private func pickSandboxFolder() {
-        guard !pickingSandboxFolder else { return }
-        pickingSandboxFolder = true
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-        panel.showsHiddenFiles = false
-        panel.level = NSWindow.Level(rawValue: popup.level.rawValue + 1)
-        NSApp.activate(ignoringOtherApps: true)
-        panel.begin { [weak self] response in
-            guard let self else { return }
-            self.pickingSandboxFolder = false
-            if self.popup.isVisible {
-                self.popup.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            if response == .OK, let url = panel.url, url.isFileURL {
-                self.render("renderPickedSandboxRoot", [url.path])
-            }
-        }
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pageLoaded = true

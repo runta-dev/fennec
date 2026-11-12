@@ -146,6 +146,9 @@ integration, but it is not the original Codex Desktop UI.
 
 ### Shim injection for the bundled Desktop binary
 
+Approved approach: copy and re-sign. The Fennec-staged application is named
+`ChatGPT with Fennec.app`.
+
 The bundled app is executable at
 `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
 It is Developer ID signed and notarized by OpenAI, so replacing it in place
@@ -160,10 +163,11 @@ and launching separate `codex.real app-server` children with model-provider
 overrides. This confirms the operating-system mechanics, but its product
 behavior is not a Fennec implementation.
 
-Fennec's Desktop bridge should use the same mechanics with stricter boundaries:
+Fennec's Desktop bridge uses this approved path:
 
 1. Copy `ChatGPT.app` to a Fennec-owned name such as `Fennec Codex.app` or a
    versioned staging directory. Never mutate the original bundle.
+1. Name the Fennec-staged bundle `ChatGPT with Fennec.app` exactly.
 2. Rename the original desktop executable to `codex.real` inside the copy.
 3. Install a small Go launcher at the original `codex` path.
 4. For `app-server`, have the launcher either:
@@ -179,6 +183,21 @@ Fennec's Desktop bridge should use the same mechanics with stricter boundaries:
 7. Record the original bundle identity and architecture, verify the copied
    bundle with `codesign --verify --deep --strict`, and make the bridge
    idempotently removable.
+
+The user keeps the original `ChatGPT.app` untouched and may continue using it
+normally. `ChatGPT with Fennec.app` appears in LaunchServices after opening
+once. Do not force-pin it to the Dock or modify the user's Dock; rely on
+`NSWorkspace.openApplication` and the user's own choice to keep it there.
+
+Updater behavior:
+
+- The original `ChatGPT.app` continues auto-updating normally and remains
+  unaffected by the Fennec bridge.
+- `ChatGPT with Fennec.app` must NOT auto-update. Fennec owns its lifecycle:
+  detects upstream version changes, re-copies from the new original, re-applies
+  the shim, and re-signs before replacing its own staged bundle.
+- Remove `ChatGPT with Fennec.app` entirely to restore the default experience;
+  the original app and its sessions are never touched.
 
 Cloud sessions must use the single private cloud `CODEX_HOME`, not the Mac
 account-selection root. Selecting another cloud account changes that shared
