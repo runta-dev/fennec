@@ -569,6 +569,30 @@
       "zh-CN": "授权码已过期，请重新登录。",
       "zh-TW": "授權碼已過期，請重新登入。"
     },
+    "ui.chatgpt_reconnect_title": {
+      "en-GB": "Reconnect ChatGPT?",
+      "en-US": "Reconnect ChatGPT?",
+      "ja": "ChatGPT を再接続しますか？",
+      "ko": "ChatGPT를 다시 연결할까요?",
+      "zh-CN": "重新连接 ChatGPT？",
+      "zh-TW": "重新連線 ChatGPT？"
+    },
+    "ui.chatgpt_reconnect_with_magpie": {
+      "en-GB": "ChatGPT will reconnect to the cloud computer through Magpie, interrupting every conversation in progress",
+      "en-US": "ChatGPT will reconnect to the cloud computer through Magpie, interrupting every conversation in progress",
+      "ja": "ChatGPT は Magpie 経由でクラウドコンピューターに再接続し、進行中の会話はすべて中断されます",
+      "ko": "ChatGPT가 Magpie를 통해 클라우드 컴퓨터에 다시 연결되며, 진행 중인 모든 대화가 중단됩니다",
+      "zh-CN": "ChatGPT 将通过 Magpie 重新连接云电脑，所有正在进行的会话都会中断，是否继续？",
+      "zh-TW": "ChatGPT 將透過 Magpie 重新連線雲端電腦，所有進行中的對話都會中斷，是否繼續？"
+    },
+    "ui.chatgpt_reconnect_without_magpie": {
+      "en-GB": "ChatGPT will reconnect to the cloud computer without Magpie, interrupting every conversation in progress",
+      "en-US": "ChatGPT will reconnect to the cloud computer without Magpie, interrupting every conversation in progress",
+      "ja": "ChatGPT は Magpie を使わずにクラウドコンピューターに再接続し、進行中の会話はすべて中断されます",
+      "ko": "ChatGPT가 Magpie 없이 클라우드 컴퓨터에 다시 연결되며, 진행 중인 모든 대화가 중단됩니다",
+      "zh-CN": "ChatGPT 将不经过 Magpie 重新连接云电脑，所有正在进行的会话都会中断，是否继续？",
+      "zh-TW": "ChatGPT 將不經過 Magpie 重新連線雲端電腦，所有進行中的對話都會中斷，是否繼續？"
+    },
     "ui.codex_desktop_restart_title": {
       "en-GB": "Restart ChatGPT?",
       "en-US": "Restart ChatGPT?",
@@ -1497,6 +1521,14 @@
       "ko": "최근 30일 리소스 사용량",
       "zh-CN": "近30天资源用量",
       "zh-TW": "近30天資源用量"
+    },
+    "ui.reconnect_chatgpt": {
+      "en-GB": "Reconnect ChatGPT",
+      "en-US": "Reconnect ChatGPT",
+      "ja": "ChatGPT を再接続",
+      "ko": "ChatGPT 다시 연결",
+      "zh-CN": "重新连接 ChatGPT",
+      "zh-TW": "重新連線 ChatGPT"
     },
     "ui.restart_chatgpt": {
       "en-GB": "Restart ChatGPT",

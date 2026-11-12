@@ -114,3 +114,33 @@ func TestServerWithoutDialerDoesNotAdvertiseSockets(t *testing.T) {
 		t.Fatal("socket capability advertised without a dialer")
 	}
 }
+
+type labeledConn struct{ net.Conn }
+
+func (labeledConn) StreamLabel() string { return "native" }
+
+func TestSocketReceiptReportsServedMode(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(context.Context, string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go io.Copy(io.Discard, remote)
+		return labeledConn{local}, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("e", 32), Target: SocketCodexAppServer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" || frame.Message != "native" {
+		t.Fatal(frame, err)
+	}
+}

@@ -474,7 +474,11 @@ func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit f
 	session.mu.Unlock()
 	stop := context.AfterFunc(session.ctx, func() { session.window.close(); conn.Close() })
 	defer stop()
-	if emit(Frame{Type: "receipt", ID: frame.ID}) != nil {
+	receipt := Frame{Type: "receipt", ID: frame.ID}
+	if labeled, ok := conn.(interface{ StreamLabel() string }); ok {
+		receipt.Message = labeled.StreamLabel()
+	}
+	if emit(receipt) != nil {
 		session.cancel()
 		return
 	}

@@ -150,3 +150,9 @@ func ensureCloudSearchTools(home string) {
 		return
 	}
 }
+
+// NativeAgentEnvironment is the environment ExecNativeAgent would use; the
+// cloud codex app-server reuses it so desktop and terminal sessions match.
+func NativeAgentEnvironment(home, agent string) ([]string, error) {
+	return nativeAgentEnvironment(home, agent)
+}
