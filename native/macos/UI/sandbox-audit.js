@@ -1,11 +1,8 @@
 // Local macOS Seatbelt sandbox controls and 7-day rolling security audit view.
 (() => {
   const modeSelect = document.querySelector('#permission-mode');
-  const auditClearBtn = document.querySelector('#audit-clear');
-  const filterButtons = [...document.querySelectorAll('[data-audit-filter]')];
-  const countAllEl = document.querySelector('#audit-count-all');
-  const countBlockedEl = document.querySelector('#audit-count-blocked');
-  const countApprovedEl = document.querySelector('#audit-count-approved');
+  const auditHead = document.querySelector('#audit-head');
+  const filterSelect = document.querySelector('#audit-filter');
   const auditListEl = document.querySelector('#audit-list');
 
   const t = token => (typeof translate === 'function' ? translate(token) : token);
@@ -104,38 +101,25 @@
   }
 
   function drawSummaryBadge() {
-    // Counts live on the filter tabs; retention is stated by the empty state.
+    // Counts appear as quiet metadata inside the filter menu.
     const total = Number(sandboxState.summary?.total_7d || 0);
     const blocked = Number(sandboxState.summary?.blocked_7d || 0);
-    const approved = Math.max(0, total - blocked);
-    if (countAllEl) countAllEl.textContent = String(total);
-    if (countBlockedEl) countBlockedEl.textContent = String(blocked);
-    if (countApprovedEl) countApprovedEl.textContent = String(approved);
+    const counts = { all: total, blocked, approved: Math.max(0, total - blocked) };
+    for (const option of filterSelect?.options || []) option.dataset.account = String(counts[option.value] ?? '');
+    // The filter only appears once there is something to filter; visibility keeps the header height fixed.
+    auditHead?.classList.toggle('is-empty', total === 0 && auditFilter === 'all');
   }
 
   function drawAuditView() {
-    filterButtons.forEach(btn => {
-      const selected = btn.dataset.auditFilter === auditFilter;
-      btn.setAttribute('aria-selected', String(selected));
-      btn.classList.toggle('selected', selected);
-    });
-    const total = Number(sandboxState.summary?.total_7d || 0);
-    if (auditClearBtn) {
-      auditClearBtn.disabled = total === 0 && auditEntries.length === 0;
-    }
+    if (filterSelect && filterSelect.value !== auditFilter) filterSelect.value = auditFilter;
+    drawSummaryBadge();
     if (!auditListEl) return;
     if (!Array.isArray(auditEntries) || auditEntries.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'runtime-empty audit-empty';
-      const icon = document.createElement('span');
-      icon.className = 'runtime-empty-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="m12 3 7.5 3.2v5.6c0 5-7.5 9.2-7.5 9.2S4.5 16.8 4.5 11.8V6.2Z"/><path d="m8.8 12.2 2.2 2.2 4.4-4.4"/></svg>';
-      const text = document.createElement('span');
-      text.textContent = auditFilter === 'blocked'
-        ? t('[[i18n:ui.audit_empty_blocked]]')
-        : t('[[i18n:ui.audit_empty_all]]');
-      empty.append(icon, text);
+      empty.className = 'audit-empty-row';
+      empty.textContent = auditFilter === 'blocked'
+        ? t('[[i18n:ui.activity_empty_blocked]]')
+        : auditFilter === 'approved' ? t('[[i18n:ui.activity_empty_allowed]]') : t('[[i18n:ui.activity_empty]]');
       auditListEl.replaceChildren(empty);
       return;
     }
@@ -217,7 +201,16 @@
       }
       return item;
     });
-    auditListEl.replaceChildren(...rows);
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.id = 'audit-clear';
+    clear.className = 'audit-clear-row';
+    clear.textContent = t('[[i18n:ui.activity_clear]]');
+    clear.onclick = () => {
+      expandedIds.clear();
+      send('audit-clear');
+    };
+    auditListEl.replaceChildren(...rows, clear);
   }
 
   function selectMode(nextMode) {
@@ -236,22 +229,15 @@
     modeSelect.onchange = () => selectMode(modeSelect.value);
   }
 
-  if (auditClearBtn) {
-    auditClearBtn.onclick = () => {
-      expandedIds.clear();
-      send('audit-clear');
-    };
-  }
-
-  filterButtons.forEach(btn => {
-    btn.onclick = () => {
-      const next = btn.dataset.auditFilter || 'all';
+  if (filterSelect) {
+    filterSelect.onchange = () => {
+      const next = filterSelect.value || 'all';
       if (auditFilter === next) return;
       auditFilter = next;
       drawAuditView();
       requestAuditLog();
     };
-  });
+  }
 
   window.renderSandboxPreferences = prefs => {
     if (!prefs || typeof prefs !== 'object') return;

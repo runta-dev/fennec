@@ -122,19 +122,21 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
   menu.style.top = (rect.bottom + bounds.height + 8 <= innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - bounds.height - 4)) + 'px';
   menu.querySelector('[aria-selected=true]')?.focus();
 }
-for (const select of document.querySelectorAll('.preference-row select')) {
+for (const select of document.querySelectorAll('.preference-row select, select[data-choice-menu]')) {
   const permission = select.id === 'permission-mode';
   select.hidden = true;
   if (permission) for (const option of select.options) option.dataset.iconSvg = PERMISSION_ICONS[option.value] || '';
   const trigger = document.createElement('button');
-  trigger.className = 'choice-trigger' + (permission ? ' permission-trigger' : '');
+  trigger.className = 'choice-trigger' + (permission ? ' permission-trigger' : '') + (select.dataset?.triggerClass ? ' ' + select.dataset.triggerClass : '');
   if (permission) trigger.id = 'permission-trigger';
   trigger.type = 'button';
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.innerHTML = '<span class="field-value"></span><svg class="choice-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>';
   const value = trigger.querySelector('.field-value');
-  value.textContent = select.selectedOptions[0].textContent;
+  value.textContent = optionCopy(select.selectedOptions[0]);
+  // Programmatic value changes (e.g. state reset) keep the trigger label in sync.
+  select.addEventListener('change', () => { if (select.selectedOptions[0]) value.textContent = optionCopy(select.selectedOptions[0]); });
   trigger.onclick = () => openChoiceMenu(select, trigger);
   trigger.onkeydown = event => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

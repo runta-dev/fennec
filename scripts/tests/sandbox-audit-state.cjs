@@ -39,18 +39,16 @@ function makeNode(tag = 'div', dataset = {}) {
 const modeSelect = makeNode('select');
 modeSelect.value = 'auto';
 
-const filterButtons = [
-  makeNode('button', { auditFilter: 'all' }),
-  makeNode('button', { auditFilter: 'blocked' }),
-  makeNode('button', { auditFilter: 'approved' })
-];
+const filterSelect = makeNode('select');
+filterSelect.value = 'all';
+filterSelect.options = ['all', 'blocked', 'approved'].map(value => ({ value, dataset: {} }));
+const auditHead = makeNode('div');
+auditHead.classList.add('is-empty');
 
 const nodes = {
   '#permission-mode': modeSelect,
-  '#audit-clear': makeNode('button'),
-  '#audit-count-all': makeNode('span'),
-  '#audit-count-blocked': makeNode('span'),
-  '#audit-count-approved': makeNode('span'),
+  '#audit-head': auditHead,
+  '#audit-filter': filterSelect,
   '#audit-list': makeNode('div')
 };
 
@@ -65,7 +63,7 @@ const context = vm.createContext({
   clearTimeout: () => { pendingTimer = null; },
   document: {
     querySelector: sel => nodes[sel] || null,
-    querySelectorAll: sel => (sel === '[data-audit-filter]' ? filterButtons : []),
+    querySelectorAll: () => [],
     createElement: tag => makeNode(tag)
   },
   translate: s => s.replace(/^\[\[i18n:ui\.([a-z0-9_]+)\]\]$/, '$1'),
@@ -81,9 +79,8 @@ context.window.renderSandboxPreferences({
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
 assert.equal(modeSelect.value, 'auto');
-assert.equal(nodes['#audit-count-all'].textContent, '6');
-assert.equal(nodes['#audit-count-blocked'].textContent, '1');
-assert.equal(nodes['#audit-count-approved'].textContent, '5');
+assert.deepEqual(filterSelect.options.map(option => option.dataset.account), ['6', '1', '5']);
+assert.equal(auditHead.classList.contains('is-empty'), false, 'filter appears once there is activity');
 
 // 2. Switching to Full access sends one explicit permission choice.
 modeSelect.value = 'full';
@@ -133,8 +130,9 @@ context.window.renderAuditLog({
     }
   ]
 });
-assert.equal(nodes['#audit-list'].children.length, 2);
-assert.equal(nodes['#audit-clear'].disabled, false);
+assert.equal(nodes['#audit-list'].children.length, 3, 'two entries plus the Clear activity row');
+const clearRow = nodes['#audit-list'].children[2];
+assert.equal(clearRow.className, 'audit-clear-row');
 
 // Short blocked entry explains itself inline without raw sandbox-exec stderr dump
 const blockedMeta = nodes['#audit-list'].children[0].children[0].children[1].children[1].children[0].textContent;
@@ -146,12 +144,24 @@ assert.equal(nodes['#audit-list'].children[1].children.length, 2, 'clicking long
 assert.ok(nodes['#audit-list'].children[1].children[1].children[0].textContent.includes('••••'), 'redacted token uses clean mask');
 
 // Filter to blocked
-filterButtons[1].onclick();
+filterSelect.value = 'blocked';
+filterSelect.onchange();
 assert.equal(sent.pop(), 'audit-list:{"filter":"blocked","limit":100}');
 
 // Clear log
-nodes['#audit-clear'].onclick();
+clearRow.onclick();
 assert.equal(sent.pop(), 'audit-clear');
+
+// Empty activity is a single quiet row with no Clear action, and the filter hides on the unfiltered view.
+context.window.renderAuditLog({ summary: { total_7d: 0, blocked_7d: 0, retention_days: 7 }, entries: [] });
+assert.equal(nodes['#audit-list'].children.length, 1);
+assert.equal(nodes['#audit-list'].children[0].className, 'audit-empty-row');
+assert.equal(nodes['#audit-list'].children[0].textContent, 'activity_empty_blocked', 'blocked filter keeps its own empty copy');
+filterSelect.value = 'all';
+filterSelect.onchange();
+context.window.renderAuditLog({ summary: { total_7d: 0, blocked_7d: 0, retention_days: 7 }, entries: [] });
+assert.equal(nodes['#audit-list'].children[0].textContent, 'activity_empty');
+assert.equal(auditHead.classList.contains('is-empty'), true);
 
 console.log('PASS permission select, custom/synced writable roots, and 7-day security audit timeline');
 

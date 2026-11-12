@@ -2503,6 +2503,70 @@
       "zh-CN": "完全访问",
       "zh-TW": "完全存取"
     },
+    "ui.permission_group": {
+      "en-GB": "Permission",
+      "en-US": "Permission",
+      "ja": "権限",
+      "ko": "권한",
+      "zh-CN": "权限",
+      "zh-TW": "權限"
+    },
+    "ui.permission_mode_short": {
+      "en-GB": "Mode",
+      "en-US": "Mode",
+      "ja": "モード",
+      "ko": "모드",
+      "zh-CN": "模式",
+      "zh-TW": "模式"
+    },
+    "ui.activity_title": {
+      "en-GB": "Activity · past 7 days",
+      "en-US": "Activity · past 7 days",
+      "ja": "アクティビティ · 過去 7 日間",
+      "ko": "활동 · 최근 7일",
+      "zh-CN": "活动 · 近 7 天",
+      "zh-TW": "活動 · 近 7 天"
+    },
+    "ui.activity_filter": {
+      "en-GB": "Filter activity",
+      "en-US": "Filter activity",
+      "ja": "アクティビティを絞り込む",
+      "ko": "활동 필터",
+      "zh-CN": "筛选活动",
+      "zh-TW": "篩選活動"
+    },
+    "ui.activity_empty": {
+      "en-GB": "No activity yet",
+      "en-US": "No activity yet",
+      "ja": "まだアクティビティはありません",
+      "ko": "아직 활동이 없습니다",
+      "zh-CN": "暂无活动",
+      "zh-TW": "暫無活動"
+    },
+    "ui.activity_empty_blocked": {
+      "en-GB": "Nothing blocked",
+      "en-US": "Nothing blocked",
+      "ja": "ブロックされた操作はありません",
+      "ko": "차단된 작업이 없습니다",
+      "zh-CN": "没有拦截记录",
+      "zh-TW": "沒有攔截記錄"
+    },
+    "ui.activity_empty_allowed": {
+      "en-GB": "Nothing allowed",
+      "en-US": "Nothing allowed",
+      "ja": "許可された操作はありません",
+      "ko": "허용된 작업이 없습니다",
+      "zh-CN": "没有放行记录",
+      "zh-TW": "沒有放行記錄"
+    },
+    "ui.activity_clear": {
+      "en-GB": "Clear activity",
+      "en-US": "Clear activity",
+      "ja": "アクティビティを消去",
+      "ko": "활동 지우기",
+      "zh-CN": "清空活动",
+      "zh-TW": "清除活動"
+    },
     "ui.permission_menu_title": {
       "en-GB": "How should agent actions be approved?",
       "en-US": "How should agent actions be approved?",
