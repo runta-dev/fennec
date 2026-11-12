@@ -8,8 +8,10 @@ import (
 
 	"fennec/cua/internal/flows"
 	"fennec/cua/internal/models"
+	"fennec/cua/internal/policy"
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/record"
+	"fennec/cua/internal/sched"
 )
 
 // PlanOptions say why the flow tool runs a plan.
@@ -39,6 +41,9 @@ type Flows struct {
 	// Run runs plans; until the plan executor sets it, flow run and saves
 	// that must run answer unavailable.
 	Run PlanRunner
+	// Gate asks before an agent starts a recording in confirm mode; nil
+	// asks nothing.
+	Gate *policy.Gate
 }
 
 // FlowTool answers the flow tool: saved flows and recordings.
@@ -50,7 +55,7 @@ func FlowTool(f *Flows) Tool {
 		}
 		switch req.Op {
 		case protocol.FlowRecordStart, protocol.FlowRecordNote, protocol.FlowRecordStop:
-			return f.recording(ctx, req)
+			return f.recording(ctx, call, req)
 		case protocol.FlowSave, protocol.FlowList, protocol.FlowShow, protocol.FlowRun, protocol.FlowDelete:
 		default:
 			return nil, &protocol.Error{Code: protocol.ErrInvalid, Message: "op " + quote(req.Op) + " is not save, list, show, run, delete, record_start, record_note or record_stop"}
@@ -85,12 +90,40 @@ func FlowTool(f *Flows) Tool {
 	}
 }
 
-func (f *Flows) recording(ctx context.Context, req protocol.FlowRequest) (any, *protocol.Error) {
+// notOwner refuses a recording control to a peer that is not the
+// daemon's own user, such as a member of a shared socket group.
+func notOwner() *protocol.Error {
+	return &protocol.Error{Code: protocol.ErrNotAllowed, Message: "recording is answered only for the daemon's own user; this connection runs as another user", Hint: "start, note and stop recordings from the user's own session or Fennec's menu"}
+}
+
+func (f *Flows) recording(ctx context.Context, call *Call, req protocol.FlowRequest) (any, *protocol.Error) {
+	if !PeerIsOwner(ctx) {
+		return nil, notOwner()
+	}
 	if f.Recorder == nil {
 		return nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "recording is not available in this build"}
 	}
 	switch req.Op {
 	case protocol.FlowRecordStart:
+		// An agent's recording asks in confirm mode, and only once it holds
+		// the desk turn: a busy desk answers busy without a question, and a
+		// stop while waiting or asking starts nothing.
+		if call != nil && call.Turn != nil {
+			release, err := call.Turn(ctx)
+			if err != nil {
+				return nil, TurnError(err)
+			}
+			defer release()
+		}
+		if perr := f.Gate.AskRecord(ctx, true); perr != nil {
+			if ctx.Err() != nil {
+				return nil, errorFor(sched.Cause(ctx))
+			}
+			return nil, perr
+		}
+		if ctx.Err() != nil {
+			return nil, errorFor(sched.Cause(ctx))
+		}
 		id, err := f.Recorder.Start(req.Apps)
 		if err != nil {
 			return nil, flowError(err)

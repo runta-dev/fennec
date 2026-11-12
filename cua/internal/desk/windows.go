@@ -6,11 +6,8 @@ package desk
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"os"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -18,40 +15,39 @@ import (
 	"fennec/cua/internal/view"
 )
 
-// driverApp is the bundled cua-driver's process name; its overlay and other
-// windows are never listed, even when another copy of the driver runs.
-const driverApp = "cua-driver"
-
-// Hung-app detection.
-const (
-	MessagingTimeout = 500 * time.Millisecond
-	missFraction     = 0.9
-	hungAfter        = 2 * time.Second
-	launchGrace      = 10 * time.Second
-	hungSkip         = 10 * time.Second
-)
+// MessagingTimeout bounds every accessibility read of an app.
+const MessagingTimeout = ax.MessagingTimeout
 
 // Desk reads the macOS desktop.
 type Desk struct {
 	// ExcludePIDs hides processes whose windows agents must never see, such
 	// as fennec-cua itself and its driver.
 	ExcludePIDs func() []int
+	// DriverPath is the bundled cua-driver's binary. When set, windows of
+	// the process at that canonical path are never listed; when empty the
+	// driver is recognised by its process name.
+	DriverPath string
+	// OtherSpaces lists windows on other Spaces (marked Space "other");
+	// the view shows them only under background or auto input.
+	OtherSpaces bool
 
+	hung ax.Hung[view.RawWindow]
 	mu   sync.Mutex
-	apps map[int]*appState
-	now  func() time.Time
-}
-
-type appState struct {
-	firstSeen time.Time
-	missSince time.Time // zero when the last read answered
-	skipUntil time.Time
-	hung      bool
-	last      []view.RawWindow
+	// lastActive is each app's window key that was active at its last
+	// answer, for choosing which stale window is active.
+	lastActive map[int]string
+	now        func() time.Time
 }
 
 // New returns a desk.
-func New() *Desk { return &Desk{apps: map[int]*appState{}, now: time.Now} }
+func New() *Desk { return &Desk{now: time.Now, OtherSpaces: true} }
+
+func (d *Desk) clock() time.Time {
+	if d.now == nil {
+		return time.Now()
+	}
+	return d.now()
+}
 
 func (d *Desk) excluded() map[int]bool {
 	m := map[int]bool{os.Getpid(): true}
@@ -63,13 +59,15 @@ func (d *Desk) excluded() map[int]bool {
 	return m
 }
 
-// toDesk converts AX points to desktop coordinates (main display pixels).
-func toDesk(r ax.Rect, scale float64) *[4]int {
-	if r.W <= 0 && r.H <= 0 {
-		return nil
-	}
-	return &[4]int{int(math.Round(r.X * scale)), int(math.Round(r.Y * scale)), int(math.Round(r.W * scale)), int(math.Round(r.H * scale))}
+// skipper hides excluded processes and the driver's windows.
+func (d *Desk) skipper() func(ax.ServerWindow) bool {
+	skip := d.excluded()
+	drv := ax.DriverFilter{Path: d.DriverPath}
+	return func(w ax.ServerWindow) bool { return skip[w.PID] || drv.Is(w) }
 }
+
+// toDesk converts AX points to desktop coordinates (main display pixels).
+func toDesk(r ax.Rect, scale float64) *[4]int { return ax.ToDesk(r, scale) }
 
 func str(v any) string {
 	s, _ := v.(string)
@@ -92,44 +90,28 @@ func frame(pos, size any) (ax.Rect, bool) {
 
 var windowAttrs = []string{"AXRole", "AXSubrole", "AXTitle", "AXPosition", "AXSize", "AXMinimized", "AXMain", "AXFocused", "AXChildren", "AXModal"}
 
-// Windows lists top-level windows and sheets, front to back.
+// Windows lists top-level windows and sheets, front to back, then windows
+// on other Spaces.
 func (d *Desk) Windows(ctx context.Context) ([]view.RawWindow, error) {
 	server, err := ax.ServerWindows(true)
 	if err != nil {
 		return nil, err
 	}
 	scale := ax.BackingScale()
-	skip := d.excluded()
-	// Z-order rank and app order from the window server.
-	rank := map[uint32]int{}
-	var pids []int
-	seenPID := map[int]bool{}
-	names := map[int]string{}
-	shown := map[int]map[uint32]ax.Rect{}
-	for i, w := range server {
-		if w.Layer != 0 || w.Alpha <= 0 || skip[w.PID] || w.Owner == driverApp {
-			continue
-		}
-		rank[w.ID] = i
-		if shown[w.PID] == nil {
-			shown[w.PID] = map[uint32]ax.Rect{}
-		}
-		shown[w.PID][w.ID] = w.Bounds
-		if !seenPID[w.PID] {
-			seenPID[w.PID] = true
-			pids = append(pids, w.PID)
-			names[w.PID] = w.Owner
-		}
+	skip := d.skipper()
+	l := ax.ListApps(server, skip)
+	frontPID := ax.FrontmostPID()
+	if frontPID == 0 {
+		frontPID = focusedPID()
 	}
-	frontPID := focusedPID()
 	// Apps answer independently; a slow one must not hold up the rest.
-	per := make([][]view.RawWindow, len(pids))
+	per := make([][]view.RawWindow, len(l.PIDs))
 	var wg sync.WaitGroup
-	for i, pid := range pids {
+	for i, pid := range l.PIDs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			per[i] = d.appWindows(pid, names[pid], pid == frontPID, scale, shown[pid])
+			per[i] = d.appWindows(pid, l.Names[pid], pid == frontPID, scale, l.Shown[pid])
 		}()
 	}
 	wg.Wait()
@@ -140,8 +122,53 @@ func (d *Desk) Windows(ctx context.Context) ([]view.RawWindow, error) {
 	for _, ws := range per {
 		out = append(out, ws...)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return order(out[i], rank) < order(out[j], rank) })
+	sort.SliceStable(out, func(i, j int) bool { return order(out[i], l.Rank) < order(out[j], l.Rank) })
+	d.markStaleActive(out, frontPID)
+	if d.OtherSpaces {
+		listed := map[uint32]bool{}
+		for _, w := range out {
+			if id, ok := ax.WindowNumber(w.Key); ok {
+				listed[id] = true
+			}
+		}
+		others, err := ax.OtherSpaceWindows(listed, skip)
+		if err == nil {
+			out = append(out, otherSpaceWindows(others, scale)...)
+		}
+	}
 	return out, nil
+}
+
+// otherSpaceWindows lists windows the window server places on another
+// Space; accessibility does not reach them there, so they carry no handle.
+func otherSpaceWindows(ws []ax.ServerWindow, scale float64) []view.RawWindow {
+	out := make([]view.RawWindow, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, view.RawWindow{
+			Key:    ax.WindowKey(w.ID),
+			App:    w.Owner,
+			PID:    w.PID,
+			Title:  w.Title,
+			Role:   view.WindowRole("", false),
+			Bounds: ax.ToDesk(w.Bounds, scale),
+			Space:  "other",
+		})
+	}
+	return out
+}
+
+// markStaleActive reports one stale window of the frontmost app active when
+// no answering window is.
+func (d *Desk) markStaleActive(ws []view.RawWindow, frontPID int) {
+	d.mu.Lock()
+	cands := make([]ax.StaleCandidate, len(ws))
+	for i, w := range ws {
+		cands[i] = ax.StaleCandidate{PID: w.PID, Stale: w.Stale, Active: w.Active, WasActive: w.Stale && w.Key != "" && d.lastActive[w.PID] == w.Key}
+	}
+	d.mu.Unlock()
+	if i := ax.StaleActive(cands, frontPID); i >= 0 {
+		ws[i].Active = true
+	}
 }
 
 // order sorts by window server rank; sheets follow their owner.
@@ -159,55 +186,38 @@ func order(w view.RawWindow, rank map[uint32]int) float64 {
 	return 1e9 + bump
 }
 
-func serverID(key string) (uint32, bool) {
-	if len(key) < 4 || key[:3] != "cg:" {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(key[3:], 10, 32)
-	return uint32(n), err == nil
-}
+func serverID(key string) (uint32, bool) { return ax.WindowNumber(key) }
 
 // appWindows reads one app's windows, with hung-app bookkeeping.
 func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, shown map[uint32]ax.Rect) []view.RawWindow {
-	now := d.now()
-	d.mu.Lock()
-	st := d.apps[pid]
-	if st == nil {
-		st = &appState{firstSeen: now}
-		d.apps[pid] = st
+	now := d.clock()
+	if last, skipping := d.hung.Skipping(pid, now); skipping {
+		return staleCopy(last)
 	}
-	if now.Before(st.skipUntil) {
-		last := staleCopy(st.last)
-		d.mu.Unlock()
-		return last
-	}
-	d.mu.Unlock()
-
 	app := ax.App(pid)
 	defer app.Release()
 	app.SetTimeout(MessagingTimeout.Seconds())
-	start := d.now()
+	start := d.clock()
 	attrs, err := app.Attrs([]string{"AXWindows", "AXFocusedWindow", "AXTitle"})
-	took := d.now().Sub(start)
+	took := d.clock().Sub(start)
 	var list []any
 	if err == nil {
 		list, _ = attrs[0].([]any)
 	}
-	if len(list) == 0 && took >= time.Duration(float64(MessagingTimeout)*missFraction) {
-		return d.miss(pid, st, now)
+	if ax.IsMiss(took, len(list) > 0) {
+		return staleCopy(d.hung.Miss(pid, now))
 	}
-	d.mu.Lock()
-	st.missSince = time.Time{}
-	st.hung = false
-	d.mu.Unlock()
-	if title := str(attrs[2]); title != "" && err == nil {
-		name = title
+	if err == nil {
+		if title := str(attrs[2]); title != "" {
+			name = title
+		}
 	}
 	var focused *ax.Element
 	if err == nil {
 		focused, _ = attrs[1].(*ax.Element)
 	}
 	var out []view.RawWindow
+	active := ""
 	for _, item := range list {
 		el, ok := item.(*ax.Element)
 		if !ok {
@@ -220,11 +230,20 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 		w := view.RawWindow{Handle: el, App: name, PID: pid, Title: str(v[2])}
 		r, hasFrame := frame(v[3], v[4])
 		minimized := boolean(v[5])
-		if id, ok := el.WindowID(); ok && onScreen(shown, id, r, hasFrame) {
-			w.Key = "cg:" + strconv.FormatUint(uint64(id), 10)
-		} else if minimized {
-			w.Key = fmt.Sprintf("ax:%d:%x", pid, el.Hash())
-		} else {
+		id, hasID := el.WindowID()
+		onScreen := false
+		if hasID {
+			if b, listed := shown[id]; listed {
+				onScreen = ax.FrameShown([]ax.Rect{b}, r, hasFrame)
+			}
+		}
+		switch ax.Unseen(onScreen, minimized, false) {
+		case "":
+			w.Key = ax.WindowKey(id)
+		case ax.UnseenMinimized:
+			w.Key = ax.ProcessScopedKey(pid, el.Hash())
+			w.Hidden = "minimized"
+		default:
 			// Not on this Space's screen and not minimized: the desktop,
 			// status items and other surfaces that are not windows.
 			continue
@@ -233,10 +252,10 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 		if hasFrame {
 			w.Bounds = toDesk(r, scale)
 		}
-		if minimized {
-			w.Hidden = "minimized"
-		}
 		w.Active = frontmost && focused != nil && focused.Equal(el)
+		if focused != nil && focused.Equal(el) {
+			active = w.Key
+		}
 		out = append(out, w)
 		// Sheets hang on the window as children.
 		kids, _ := v[8].([]any)
@@ -251,7 +270,7 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 			}
 			s := view.RawWindow{
 				Handle:   sheet,
-				Key:      fmt.Sprintf("ax:%d:%x", pid, sheet.Hash()),
+				Key:      ax.ProcessScopedKey(pid, sheet.Hash()),
 				App:      name,
 				PID:      pid,
 				Title:    str(sv[1]),
@@ -265,25 +284,16 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 			out = append(out, s)
 		}
 	}
+	d.hung.Answer(pid, now, out)
 	d.mu.Lock()
-	st.last = out
+	if d.lastActive == nil {
+		d.lastActive = map[int]string{}
+	}
+	if active != "" {
+		d.lastActive[pid] = active
+	}
 	d.mu.Unlock()
 	return out
-}
-
-// miss records an app that did not answer in time and returns its last
-// known windows, flagged stale.
-func (d *Desk) miss(pid int, st *appState, now time.Time) []view.RawWindow {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if st.missSince.IsZero() {
-		st.missSince = now
-	}
-	if st.hung || (now.Sub(st.missSince) >= hungAfter && now.Sub(st.firstSeen) >= launchGrace) {
-		st.hung = true
-		st.skipUntil = now.Add(hungSkip)
-	}
-	return staleCopy(st.last)
 }
 
 func staleCopy(ws []view.RawWindow) []view.RawWindow {
@@ -296,7 +306,8 @@ func staleCopy(ws []view.RawWindow) []view.RawWindow {
 	return out
 }
 
-// focusedPID is the frontmost app's pid, from the system-wide element.
+// focusedPID is the frontmost app's pid from the system-wide element; a
+// fallback when the process manager does not answer.
 func focusedPID() int {
 	sys := ax.SystemWide()
 	defer sys.Release()
@@ -312,20 +323,4 @@ func focusedPID() int {
 	defer app.Release()
 	pid, _ := app.PID()
 	return pid
-}
-
-// onScreen reports whether an AX window is one of its process's on-screen
-// window-server windows: its id is listed and its frame matches within 1
-// point on every edge. A window whose frame could not be read counts as
-// shown when its id is listed.
-func onScreen(shown map[uint32]ax.Rect, id uint32, r ax.Rect, hasFrame bool) bool {
-	b, ok := shown[id]
-	if !ok {
-		return false
-	}
-	if !hasFrame {
-		return true
-	}
-	near := func(a, b float64) bool { return a-b <= 1 && b-a <= 1 }
-	return near(r.X, b.X) && near(r.Y, b.Y) && near(r.W, b.W) && near(r.H, b.H)
 }

@@ -39,14 +39,25 @@ func (t *Turn) OnActing(f func(bool)) {
 	t.mu.Unlock()
 }
 
+// Bound is how long Acquire waits before answering busy.
+func (t *Turn) Bound() time.Duration {
+	if t.Busy == 0 {
+		return DefaultBusy
+	}
+	return t.Busy
+}
+
+// Acting reports whether any holder has the turn.
+func (t *Turn) Acting() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.acting > 0
+}
+
 // Acquire takes the turn for owner and returns its release. It fails with
 // ErrBusy after the bound, or with ctx's error when ctx ends first.
 func (t *Turn) Acquire(ctx context.Context, owner string) (release func(), err error) {
-	bound := t.Busy
-	if bound == 0 {
-		bound = DefaultBusy
-	}
-	timer := time.NewTimer(bound)
+	timer := time.NewTimer(t.Bound())
 	defer timer.Stop()
 	for {
 		t.mu.Lock()

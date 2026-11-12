@@ -5,15 +5,10 @@ package desk
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"fennec/cua/internal/ax"
 	"fennec/cua/internal/view"
 )
-
-// Window server layers at or above this are system chrome (menu bar, Dock,
-// overlays) rather than app windows.
-const chromeLayer = 102
 
 // At reads the element at a desktop point, its ancestors innermost first,
 // its window, and the window on top at the point when that is another one.
@@ -56,7 +51,7 @@ func (d *Desk) At(ctx context.Context, x, y int) (*view.RawNode, []view.RawNode,
 			pid, _ := parent.PID()
 			w := view.RawWindow{Handle: parent, PID: pid, Title: pn.Name, Role: view.WindowRole(str(pv[aSubrole]), role == "AXSheet")}
 			if id, ok := parent.WindowID(); ok {
-				w.Key = "cg:" + strconv.FormatUint(uint64(id), 10)
+				w.Key = ax.WindowKey(id)
 			}
 			win = &w
 			break
@@ -74,63 +69,82 @@ func (d *Desk) coverAt(px, py float64, win *view.RawWindow) *view.RawWindow {
 	if err != nil {
 		return nil
 	}
+	// Only normal app windows can cover another; system chrome on higher
+	// layers (menu bar, Dock) never does.
+	apps := server[:0:0]
 	for _, w := range server {
-		if w.Layer >= chromeLayer || w.Alpha <= 0 || w.Layer != 0 {
-			continue
+		if w.Layer == 0 {
+			apps = append(apps, w)
 		}
-		b := w.Bounds
-		if px < b.X || py < b.Y || px >= b.X+b.W || py >= b.Y+b.H {
-			continue
-		}
-		if win != nil {
-			if id, ok := serverID(win.Key); ok && id == w.ID {
-				return nil
-			}
-			if win.Key == "" && w.PID == win.PID {
-				return nil
-			}
-		}
-		return &view.RawWindow{Key: "cg:" + strconv.FormatUint(uint64(w.ID), 10), PID: w.PID, App: w.Owner, Title: w.Title}
 	}
-	return nil
+	w, ok := ax.TopWindowAt(apps, px, py, d.excluded())
+	if !ok {
+		return nil
+	}
+	if win != nil {
+		if id, ok := serverID(win.Key); ok && id == w.ID {
+			return nil
+		}
+		if win.Key == "" && w.PID == win.PID {
+			return nil
+		}
+	}
+	return &view.RawWindow{Key: ax.WindowKey(w.ID), PID: w.PID, App: w.Owner, Title: w.Title}
 }
 
 // Focused returns the element with the keyboard focus in an app. When the
-// app's focus attribute yields nothing, one tree read of its focused window
-// finds the first focused node.
+// app's focus attribute yields nothing in its focused window, one tree read
+// of that window finds the first focused node.
 func (d *Desk) Focused(ctx context.Context, pid int) (*view.RawNode, error) {
 	app := ax.App(pid)
 	defer app.Release()
 	app.SetTimeout(MessagingTimeout.Seconds())
 	scale := ax.BackingScale()
-	if v, err := app.Attr("AXFocusedUIElement"); err == nil {
-		if el, ok := v.(*ax.Element); ok {
-			if attrs, err := el.Attrs(nodeAttrs); err == nil {
-				n := node(el, attrs, scale, view.TreeOptions{Web: true})
-				return &n, nil
-			}
-		}
+	var win *ax.Element
+	if v, err := app.Attr("AXFocusedWindow"); err == nil {
+		win, _ = v.(*ax.Element)
 	}
-	v, err := app.Attr("AXFocusedWindow")
-	if err != nil {
+	n, ok, err := ax.FocusedElement(ax.FocusSource[view.RawNode]{
+		Direct: func() (view.RawNode, bool) {
+			v, err := app.Attr("AXFocusedUIElement")
+			if err != nil {
+				return view.RawNode{}, false
+			}
+			el, ok := v.(*ax.Element)
+			if !ok {
+				return view.RawNode{}, false
+			}
+			attrs, err := el.Attrs(nodeAttrs)
+			if err != nil {
+				return view.RawNode{}, false
+			}
+			return node(el, attrs, scale, view.TreeOptions{Web: true}), true
+		},
+		InWindow: func(n view.RawNode) bool {
+			el, _ := n.Handle.(*ax.Element)
+			if win == nil || el == nil {
+				return true // nothing to match against: trust the app
+			}
+			w, err := el.Attr("AXWindow")
+			if err != nil {
+				return true // no window attribute (a menu): trust the app
+			}
+			we, ok := w.(*ax.Element)
+			return !ok || we.Equal(win)
+		},
+		Tree: func() ([]view.RawNode, error) {
+			if win == nil {
+				return nil, errors.New("no focused window")
+			}
+			t, err := d.Tree(ctx, view.RawWindow{Handle: win, PID: pid}, view.TreeOptions{Web: true})
+			return t.Nodes, err
+		},
+		Focused: func(n view.RawNode) bool { return n.HasState("focused") },
+	})
+	if err != nil || !ok {
 		return nil, err
 	}
-	win, ok := v.(*ax.Element)
-	if !ok {
-		return nil, errors.New("no focused window")
-	}
-	t, err := d.Tree(ctx, view.RawWindow{Handle: win, PID: pid}, view.TreeOptions{Web: true})
-	if err != nil {
-		return nil, err
-	}
-	for i := range t.Nodes {
-		for _, s := range t.Nodes[i].States {
-			if s == "focused" {
-				return &t.Nodes[i], nil
-			}
-		}
-	}
-	return nil, nil
+	return &n, nil
 }
 
 var _ view.Source = (*Desk)(nil)

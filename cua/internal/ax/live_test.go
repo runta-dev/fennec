@@ -58,3 +58,17 @@ func TestLiveReadOnly(t *testing.T) {
 		t.Errorf("no AX window maps to window server id %d", front.ID)
 	}
 }
+
+func TestLiveSpacesReadOnly(t *testing.T) {
+	if resolveSpaces(SpaceLookup) == nil {
+		t.Skip("the Space calls are missing on this system")
+	}
+	ws, err := OtherSpaceWindows(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range ws {
+		t.Logf("other Space: %d %q of %s", w.ID, w.Title, w.Owner)
+	}
+	t.Logf("front pid %d", FrontmostPID())
+}

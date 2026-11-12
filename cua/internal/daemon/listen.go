@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -68,8 +67,10 @@ func (p Paths) Check() error {
 // ErrRunning means another daemon holds the lock.
 var ErrRunning = errors.New("another fennec-cua daemon is already serving")
 
-// lock takes an exclusive lock on path for the life of the process.
-func lock(path string) (*os.File, error) {
+// lock takes an exclusive lock on path for the life of the process; the
+// error of a loser names the endpoint the winner serves. The lock file is
+// 0600 whatever the umask or an earlier mode.
+func lock(path, endpoint string) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
@@ -77,17 +78,26 @@ func lock(path string) (*os.File, error) {
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = f.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, fmt.Errorf("%w at %s", ErrRunning, filepath.Dir(path))
+			return nil, fmt.Errorf("%w on %s", ErrRunning, endpoint)
 		}
+		return nil, err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return f, nil
 }
 
+// beforeVerify runs between binding and checking the bound file (tests
+// plant a link there).
+var beforeVerify func(tmp string)
+
 // listen binds a unix socket at path atomically: it binds a temporary name,
-// sets mode, checks the file is the socket it just bound (not a planted link)
-// and renames it into place.
-func listen(path string, mode os.FileMode) (*net.UnixListener, error) {
+// gives it to group gid (unless gid is negative), sets mode, checks the file
+// is the socket it just bound (not a planted link) and renames it into
+// place.
+func listen(path string, mode os.FileMode, gid int) (*net.UnixListener, error) {
 	tmp := path + ".t"
 	_ = os.Remove(tmp)
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: tmp, Net: "unix"})
@@ -97,13 +107,30 @@ func listen(path string, mode os.FileMode) (*net.UnixListener, error) {
 	ln.SetUnlinkOnClose(false)
 	fail := func(err error) (*net.UnixListener, error) {
 		_ = ln.Close()
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) // a link itself, never what it points to
 		return nil, err
+	}
+	if beforeVerify != nil {
+		beforeVerify(tmp)
+	}
+	// Lstat first: chmod and chown follow links, so a link planted at tmp
+	// is refused before anything acts on its target.
+	fi, err := os.Lstat(tmp)
+	if err != nil {
+		return fail(err)
+	}
+	if fi.Mode()&os.ModeSocket == 0 {
+		return fail(fmt.Errorf("%s is not the socket just bound", tmp))
+	}
+	if gid >= 0 {
+		if err := os.Lchown(tmp, -1, gid); err != nil {
+			return fail(fmt.Errorf("give %s to group %d: %w", tmp, gid, err))
+		}
 	}
 	if err := os.Chmod(tmp, mode); err != nil {
 		return fail(err)
 	}
-	fi, err := os.Lstat(tmp)
+	fi, err = os.Lstat(tmp)
 	if err != nil {
 		return fail(err)
 	}
@@ -136,10 +163,4 @@ func peerUID(conn *net.UnixConn) (uint32, error) {
 		return 0, err
 	}
 	return uid, cerr
-}
-
-// sameUser reports whether conn's peer runs as this process's user.
-func sameUser(conn *net.UnixConn) bool {
-	uid, err := peerUID(conn)
-	return err == nil && uid == uint32(syscall.Getuid())
 }

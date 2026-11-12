@@ -185,7 +185,7 @@ capabilities:
       and the script's own actions continue unaffected.
     surface: daemon
     parity: oracle
-    tests: [planned:internal/daemon.TestTurnBusyBound, planned:internal/daemon.TestRunsNeverInterleave]
+    tests: [internal/daemon.TestTurnBusyBound, internal/daemon.TestRunsNeverInterleave]
     upstream:
       - rust/shuttle/src/daemon.rs::a_computer_act_is_an_action_that_holds_the_turn
       - rust/shuttle/src/daemon.rs::two_runs_at_once_never_interleave_their_actions
@@ -200,7 +200,7 @@ capabilities:
       in flight and returns to false after a run is dropped or an action is ended by a stop.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestRunIDsUnique, planned:internal/daemon.TestRunReleasesHolds, planned:internal/daemon.TestActingState]
+    tests: [internal/daemon.TestRunIDsUnique, internal/daemon.TestRunReleasesHolds, internal/daemon.TestActingState]
     upstream:
       - rust/shuttle/src/daemon.rs::each_daemon_names_its_runs_apart_from_any_earlier_daemon
       - rust/shuttle/src/daemon.rs::a_run_lets_go_of_its_desk_holds_when_it_ends_or_is_dropped
@@ -217,7 +217,7 @@ capabilities:
       connection mid-call cancels that call the same way.
     surface: mcp
     parity: oracle
-    tests: [planned:internal/mcpserver.TestCancelRunning, planned:internal/mcpserver.TestCancelQueued, planned:internal/mcpserver.TestHTTPCancelPerSession, planned:internal/daemon.TestDisconnectCancels]
+    tests: [internal/mcpserver.TestCancelRunning, internal/mcpserver.TestCancelQueued, internal/mcpserver.TestHTTPCancelPerSession, internal/daemon.TestDisconnectCancels]
     upstream:
       - rust/shuttle/src/daemon.rs::an_mcp_cancel_ends_the_run_it_names_long_before_the_run_would_end
       - rust/shuttle/src/daemon.rs::a_closed_connection_kills_its_run_with_its_children_and_frees_the_turn
@@ -251,7 +251,7 @@ capabilities:
       reachable only from the CLI and Fennec's UI.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestOwnerOnlyControls, planned:internal/mcpserver.TestNoToolReachesSafety]
+    tests: [planned:internal/policy.TestOwnerOnlyControls, internal/mcpserver.TestNoToolReachesSafety]
     upstream:
       - rust/shuttle/src/daemon.rs::the_stop_resume_and_recording_are_kept_to_the_daemons_own_user
       - rust/shuttle/src/tools.rs::no_mcp_tool_reaches_the_safety_controls
@@ -313,7 +313,7 @@ capabilities:
       strings is refused as invalid arguments and starts nothing.
     surface: flow
     parity: spec
-    tests: [planned:internal/daemon.TestRecordStartConfirm, planned:internal/daemon.TestRecordStartStop, planned:internal/daemon.TestRecordStartArgs]
+    tests: [internal/daemon.TestRecordStartConfirm, internal/daemon.TestRecordStartStop, internal/daemon.TestRecordStartArgs]
     upstream:
       - rust/shuttle/src/daemon.rs::the_menu_starts_no_recording_while_stopped
       - rust/shuttle/src/daemon.rs::record_start_asks_under_confirm_and_a_no_starts_nothing
@@ -392,7 +392,7 @@ capabilities:
       access.
     surface: mcp
     parity: oracle
-    tests: [planned:internal/mcpserver.TestInitialize, planned:internal/mcpserver.TestProtocolVersion]
+    tests: [internal/mcpserver.TestInitialize, internal/mcpserver.TestProtocolVersion]
     upstream:
       - rust/shuttle/src/mcp.rs::initialize_lists_the_built_in_tools_and_status_runs
       - rust/shuttle/src/mcp.rs::unlisted_protocol_version_gets_the_newest
@@ -406,7 +406,7 @@ capabilities:
       one of the six tools.
     surface: mcp
     parity: oracle
-    tests: [planned:internal/mcpserver.TestResultContent, planned:internal/mcpserver.TestJSONRPCErrors, planned:internal/mcpserver.TestVerbCoverage]
+    tests: [internal/mcpserver.TestResultContent, internal/mcpserver.TestJSONRPCErrors, internal/mcpserver.TestVerbCoverage]
     upstream:
       - rust/shuttle/src/mcp.rs::desk_and_screenshot_go_to_the_daemon
       - rust/shuttle/src/mcp.rs::bad_requests_get_json_rpc_errors
@@ -421,7 +421,7 @@ capabilities:
       and each part is cut to 32 characters.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestAgentPerSession, planned:internal/mcpserver.TestAgentID]
+    tests: [internal/mcpserver.TestAgentPerSession, internal/mcpserver.TestAgentID]
     upstream:
       - rust/shuttle/src/mcp.rs::each_mcp_session_calls_the_daemon_as_its_own_agent
       - rust/shuttle/src/mcp.rs::an_agent_id_keeps_letters_digits_and_cuts_each_part
@@ -435,7 +435,7 @@ capabilities:
       over 8 MiB 413. initialize issues an Mcp-Session-Id per session.
     surface: mcp
     parity: oracle
-    tests: [planned:internal/mcpserver.TestHTTPRequests, planned:internal/mcpserver.TestHTTPChecks]
+    tests: [internal/mcpserver.TestHTTPRequests, internal/mcpserver.TestHTTPChecks]
     upstream:
       - rust/shuttle/src/http.rs::a_request_gets_its_json_reply_and_a_notification_gets_202
       - rust/shuttle/src/http.rs::path_method_origin_and_body_are_checked
@@ -448,7 +448,7 @@ capabilities:
       variable.
     surface: mcp
     parity: oracle
-    tests: [planned:internal/mcpserver.TestHTTPToken]
+    tests: [internal/mcpserver.TestHTTPToken]
     upstream:
       - rust/shuttle/src/http.rs::the_token_is_required_on_every_request
       - rust/shuttle/src/http.rs::a_bind_without_a_token_is_refused_even_on_loopback
@@ -460,7 +460,7 @@ capabilities:
       further requests on it.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestHTTPHeaderTimeout, planned:internal/mcpserver.TestHTTPRefusalCloses]
+    tests: [internal/mcpserver.TestHTTPHeaderTimeout, internal/mcpserver.TestHTTPRefusalCloses]
     upstream:
       - rust/shuttle/src/http.rs::a_client_that_never_finishes_its_header_is_closed
       - rust/shuttle/src/http.rs::a_refused_request_closes_its_kept_alive_connection
@@ -477,7 +477,7 @@ capabilities:
       client closes stdin while the daemon keeps running, and only one daemon runs.
     surface: packaging
     parity: spec
-    tests: [planned:cmd/fennec-cua.TestBridgeStartsThroughApp, planned:cmd/fennec-cua.TestBridgeDetachedStdio, planned:cmd/fennec-cua.TestDaemonEarlyExit]
+    tests: [cmd/fennec-cua.TestBridgeStartsThroughApp, cmd/fennec-cua.TestBridgeDetachedStdio, cmd/fennec-cua.TestDaemonEarlyExit]
     upstream:
       - rust/shuttle/src/proxy.rs::only_a_macos_binary_inside_an_app_bundle_starts_through_its_app
       - rust/shuttle/src/proxy.rs::a_started_daemon_that_exits_before_it_answers_names_its_exit
@@ -492,7 +492,7 @@ capabilities:
       embedded mode, starts nothing and leaves no socket behind.
     surface: daemon
     parity: spec
-    tests: [planned:internal/mcpserver.TestNoResend, planned:cmd/fennec-cua.TestEmbeddedNoDaemon]
+    tests: [internal/mcpserver.TestNoResend, cmd/fennec-cua.TestEmbeddedNoDaemon]
     upstream:
       - rust/shuttle/src/proxy.rs::a_call_the_daemon_dropped_is_an_error_and_never_sent_again
       - rust/shuttle/src/proxy.rs::an_embedded_mcp_with_no_daemon_fails_at_once_and_starts_nothing
@@ -508,7 +508,7 @@ capabilities:
       driver process.
     surface: daemon
     parity: spec
-    tests: [planned:internal/driver.TestDriverRestart, planned:internal/driver.TestDriverBackoff, planned:internal/driver.TestDriverStartFails]
+    tests: [internal/driver.TestDriverRestart, internal/driver.TestDriverBackoff, internal/driver.TestDriverStartFails]
     upstream:
       - rust/shuttle/src/driver.rs::no_bundled_driver_starts_nothing
       - rust/shuttle/src/driver.rs::the_driver_listens_on_its_own_socket_comes_back_after_it_dies_and_stops_with_the_daemon
@@ -524,7 +524,7 @@ capabilities:
       at that path are left alone.
     surface: daemon
     parity: spec
-    tests: [planned:internal/driver.TestDriverStop, planned:internal/driver.TestDriverStale, planned:internal/driver.TestStaleSocketOnly]
+    tests: [internal/driver.TestDriverStop, internal/driver.TestDriverStale, internal/driver.TestStaleSocketOnly]
     upstream:
       - rust/shuttle/src/driver.rs::a_stop_the_driver_never_answers_still_leaves_no_driver
       - rust/shuttle/src/driver.rs::a_stop_while_the_driver_restarts_leaves_no_half_started_driver
@@ -541,7 +541,7 @@ capabilities:
       the system's one-time screen capture consent alert; with embedded mode the driver is told so.
     surface: daemon
     parity: spec
-    tests: [planned:internal/driver.TestDriverArgs, planned:internal/driver.TestDriverEnv]
+    tests: [internal/driver.TestDriverArgs, internal/driver.TestDriverEnv]
     upstream:
       - rust/shuttle/src/driver.rs::the_driver_draws_its_cursor_and_glides_it_in_one_millisecond
       - rust/shuttle/src/driver.rs::with_the_overlay_off_the_driver_starts_without_its_cursor_except_on_macos
@@ -672,7 +672,7 @@ capabilities:
       spacing means no hotkey (but "off" as a key in a combination is an error).
     surface: policy
     parity: spec
-    tests: [planned:internal/hotkey.TestParse]
+    tests: [internal/hotkey.TestParse]
     upstream:
       - rust/shuttle/src/hotkey.rs::the_default_and_spelled_out_combinations_parse_and_a_bare_or_unknown_key_does_not
       - rust/shuttle/src/hotkey.rs::off_in_any_case_or_spacing_is_no_hotkey_on_either_os
@@ -695,7 +695,7 @@ capabilities:
       (png, jpg, webp) with the exact bytes; invalid base64 is an error.
     surface: daemon
     parity: spec
-    tests: [planned:cmd/fennec-cua.TestDoArgs, planned:cmd/fennec-cua.TestSaveCapture]
+    tests: [cmd/fennec-cua.TestDoArgs, cmd/fennec-cua.TestSaveCapture]
     upstream:
       - rust/shuttle/src/cli.rs::cli_arguments_are_json_or_pairs_with_json_values
       - rust/shuttle/src/cli.rs::a_screenshot_lands_in_a_file_named_by_its_format

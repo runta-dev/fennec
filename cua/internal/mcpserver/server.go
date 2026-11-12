@@ -6,11 +6,13 @@ package mcpserver
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -81,6 +83,8 @@ type Info struct {
 	// FixedID, when set, replaces the generated agent id part after the
 	// prefix (the HTTP session id).
 	FixedID string
+	// MaxMessage bounds one message on a stream; zero means MaxMessage.
+	MaxMessage int
 }
 
 type message struct {
@@ -121,19 +125,27 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler, info Info) 
 			}
 		}
 	}()
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64*1024), MaxMessage)
+	limit := info.MaxMessage
+	if limit <= 0 {
+		limit = MaxMessage
+	}
+	br := bufio.NewReaderSize(r, 64*1024)
 	var wg sync.WaitGroup
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
+	var err error
+	for {
+		raw, tooLong, rerr := readLine(br, limit)
+		if tooLong {
+			out <- fail(nil, CodeInvalidRequest, fmt.Sprintf("message refused: it exceeds the %d MiB limit", limit>>20))
+		} else if line := bytes.TrimSpace(raw); len(line) > 0 {
+			if p := s.dispatch(ctx, line, &wg); p != nil {
+				out <- p
+			}
 		}
-		if p := s.dispatch(ctx, []byte(line), &wg); p != nil {
-			out <- p
+		if rerr != nil {
+			err = rerr
+			break
 		}
 	}
-	err := sc.Err()
 	cancel()
 	wg.Wait()
 	close(out)
@@ -142,6 +154,30 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler, info Info) 
 		err = nil
 	}
 	return err
+}
+
+// readLine reads one '\n'-terminated line of at most limit bytes (the
+// newline excluded). A longer line is consumed to its end and reported
+// tooLong without being kept, so a huge message never grows memory past the
+// limit. err is the read error that ended the stream, if any.
+func readLine(br *bufio.Reader, limit int) (line []byte, tooLong bool, err error) {
+	for {
+		chunk, rerr := br.ReadSlice('\n')
+		if !tooLong {
+			if len(line)+len(chunk) > limit+1 {
+				tooLong, line = true, nil
+			} else {
+				line = append(line, chunk...)
+			}
+		}
+		if rerr == bufio.ErrBufferFull {
+			continue
+		}
+		if !tooLong && len(bytes.TrimSuffix(line, []byte("\n"))) > limit {
+			tooLong, line = true, nil
+		}
+		return line, tooLong, rerr
+	}
 }
 
 type pending struct {
@@ -288,7 +324,7 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 		return fail(m.ID, CodeInvalidParams, "unknown tool: "+p.Name)
 	}
 	if args := strings.TrimSpace(string(p.Arguments)); args != "" && args != "null" && !strings.HasPrefix(args, "{") {
-		return fail(m.ID, CodeInvalidParams, "arguments must be an object")
+		return fail(m.ID, CodeInvalidParams, "invalid arguments for "+p.Name+": arguments must be a JSON object")
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	key := string(m.ID)
@@ -320,7 +356,11 @@ func content(r Result) map[string]any {
 		blocks = append(blocks, map[string]any{"type": "text", "text": r.Text})
 	}
 	for _, img := range r.Images {
-		blocks = append(blocks, map[string]any{"type": "image", "data": img.Data, "mimeType": img.MIMEType})
+		mime := img.MIMEType
+		if sniffed := sniffBase64(img.Data); sniffed != "" {
+			mime = sniffed
+		}
+		blocks = append(blocks, map[string]any{"type": "image", "data": img.Data, "mimeType": mime})
 	}
 	out := map[string]any{"content": blocks, "isError": r.IsError}
 	if r.Structured != nil {

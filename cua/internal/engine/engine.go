@@ -35,6 +35,13 @@ type Call struct {
 	Session *mcpserver.Session
 	// Turn takes the desk turn for this caller; tools that send input call it.
 	Turn func(ctx context.Context) (release func(), err error)
+
+	// acquire takes the turn as a given owner (a run's own id); nil for
+	// calls made outside Engine.Call.
+	acquire func(ctx context.Context, owner string) (func(), error)
+	// holds collects what a run holds on the desk; nil outside a run.
+	holds *holds
+	runID string
 }
 
 // Engine implements mcpserver.Handler.
@@ -57,13 +64,17 @@ type Engine struct {
 	// Admit is the input policy's check before every tool but status, such
 	// as refusing calls while a confirm dialog is open; nil admits all.
 	Admit func(tool string) *protocol.Error
+
+	// runs names each run; its nonce is drawn once per engine, that is
+	// once per daemon.
+	runs sched.RunIDs
 }
 
 var descriptions = map[string]string{
 	protocol.ToolObserve: "See the desktop: the front window's outline with element refs (default), the window list (scope desktop), one element's value (scope element), what is at a point (scope point), a semantic find, or a capture (image). vision: true returns a screenshot with numbered elements.",
-	protocol.ToolAct:     "Do one or more steps (press, set, click, type, key, scroll, drag, menu, focus, close, launch, wait, or expect alone), each optionally with expect. Stops at the first surprise and answers the trace, what changed and the current view. An unconfirmed step was sent but not proven: check before resending.",
+	protocol.ToolAct:     "Do one or more steps (press, set, click, type, key, scroll, drag, menu, focus, close, launch, wait, or expect alone), each optionally with expect. Stops at the first surprise and answers the trace, what changed and the current view. Outcomes: refused, declined and busy (another agent holds the desktop, or a confirm dialog is pending) sent nothing and are safe to retry; stopped (the user stopped fennec-cua), unconfirmed (sent but not proven), a type step's error after lines it reports as typed, and a stopped plan's partial trace may have taken effect, so observe before resending. In a macOS Qt app with no accessibility focus, background typing into a search field may land in another field: scroll the list instead, or use input foreground.",
 	protocol.ToolWait:    "Wait until a window appears or goes, an element appears, a value matches, the window list changes, or the screen is still.",
-	protocol.ToolRun:     "Run a TypeScript or JavaScript module whose main(params) uses the cua API; answers its result, logs and model usage.",
+	protocol.ToolRun:     "Run a TypeScript or JavaScript module whose main(params) uses the cua API; answers its result, logs and model usage. A run that fails or is stopped may already have acted: its report lists what it did.",
 	protocol.ToolFlow:    "Saved flows (save, list with query, show, run, delete) and recordings of the user's input (record_start, record_note, record_stop) that become a draft plan.",
 	protocol.ToolStatus:  "Version, permissions, input mode, whether the user stopped fennec-cua, and the policy in force.",
 }
@@ -107,9 +118,13 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 	if name == protocol.ToolRun && e.RunOff {
 		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "scripts are turned off", Hint: "set run = true under [tools] in fennec-cua's config to turn them back on"})
 	}
-	call := &Call{Session: s, Turn: func(ctx context.Context) (func(), error) {
-		release, err := e.Turn.Acquire(ctx, e.owner(s))
+	acquire := func(ctx context.Context, owner string) (func(), error) {
+		release, err := e.Turn.Acquire(ctx, owner)
 		if err != nil {
+			if ctx.Err() != nil {
+				// A stop while waiting answers stopped, not a bare cancel.
+				return nil, sched.Cause(ctx)
+			}
 			return nil, err
 		}
 		if err := guard.Valid(); err != nil {
@@ -117,6 +132,9 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 			return nil, err
 		}
 		return release, nil
+	}
+	call := &Call{Session: s, acquire: acquire, Turn: func(ctx context.Context) (func(), error) {
+		return acquire(ctx, e.owner(s))
 	}}
 	if res, ok := e.callExtension(gctx, call, name, args); ok {
 		return res
@@ -205,5 +223,5 @@ func grant(ok bool) string {
 
 // Instructions is the initialize text agents read first.
 var Instructions = strings.TrimSpace(`
-fennec-cua drives this Mac's desktop. Start with observe: it answers the front window's outline, where each element has a ref such as e12. Then act with steps that name targets by ref, by selector (button "Save", textbox "Name" in sheet "Export") or, last, by point. Every act step reports confirmed, unconfirmed (sent but not proven: read back before resending) or refused (nothing sent). Add expect to a step to have it checked. If a call answers stopped, the user halted fennec-cua: wait for them to resume.
+fennec-cua drives this Mac's desktop. Start with observe: it answers the front window's outline, where each element has a ref such as e12. Then act with steps that name targets by ref, by selector (button "Save", textbox "Name" in sheet "Export") or, last, by point. Every act step reports confirmed, unconfirmed (sent but not proven: read back before resending) or refused (nothing sent). Add expect to a step to have it checked. Refused, declined and busy answers (another agent acting, or a confirm dialog pending) sent nothing: retrying is safe. Stopped, unconfirmed, a type error after the lines it reports as typed, and a plan.s partial trace may have taken effect: observe before resending. If a call answers stopped, the user halted fennec-cua: wait for them to resume.
 `)

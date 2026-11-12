@@ -64,6 +64,9 @@ type bgClick struct {
 type Request struct {
 	Window string
 	Input  string
+	// WholeText sends a type step's text, line breaks included, in one
+	// typing call instead of line by line with Return keys between.
+	WholeText bool
 }
 
 func (x *Executor) now() time.Time {

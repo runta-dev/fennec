@@ -27,7 +27,7 @@ capabilities:
       it there), while an unknown title fails with the ordinary not-found error that does not mention Spaces.
     surface: observe
     parity: oracle
-    tests: [planned:internal/ax.TestUnseenClassification, internal/view.TestOtherSpaceWindowsListedInBackground, internal/view.TestOutlineOfOtherSpaceWindowRefused]
+    tests: [internal/ax.TestUnseenClassification, internal/view.TestOtherSpaceWindowsListedInBackground, internal/view.TestOutlineOfOtherSpaceWindowRefused]
     upstream:
       - rust/desk/src/desk.rs::a_window_is_unseen_on_another_space_and_on_macos_also_off_screen
       - rust/desk/src/desk.rs::background_input_lists_a_window_on_another_space_and_foreground_input_does_not
@@ -320,7 +320,7 @@ capabilities:
       while the running action completes intact.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestConcurrentTypingSerialised, planned:internal/daemon.TestBusyTimeout, planned:internal/daemon.TestElementClickHoldsTurn]
+    tests: [internal/daemon.TestConcurrentTypingSerialised, internal/daemon.TestBusyTimeout, internal/daemon.TestElementClickHoldsTurn]
     upstream:
       - rust/desk/src/desk.rs::two_typing_calls_at_once_type_one_after_the_other
       - rust/desk/src/desk.rs::an_action_waits_a_bounded_time_for_a_running_one_then_says_the_desk_is_busy
@@ -353,7 +353,7 @@ capabilities:
       On macOS a foreground click on a covered point of a named window goes to that window.
     surface: act
     parity: oracle
-    tests: [internal/actions.TestForegroundPointerRaiseRules, planned:internal/ax.TestListedTopLevelByNumberOrTitle]
+    tests: [internal/actions.TestForegroundPointerRaiseRules, internal/ax.TestListedTopLevelByNumberOrTitle]
     upstream:
       - rust/desk/src/desk.rs::a_foreground_click_where_no_window_is_does_not_raise_the_named_one
       - rust/desk/src/desk.rs::a_same_app_window_on_top_is_raised_past_unless_the_desk_does_not_list_it
@@ -372,7 +372,7 @@ capabilities:
       (no read at scale 1).
     surface: act
     parity: spec
-    tests: [internal/actions.TestClickTargetsTopWindow, internal/actions.TestClickDesktopFallbacks, planned:internal/driver.TestWindowStateReadReuse]
+    tests: [internal/actions.TestClickTargetsTopWindow, internal/actions.TestClickDesktopFallbacks, internal/driver.TestWindowStateReadReuse]
     upstream:
       - rust/desk/src/desk.rs::a_macos_click_targets_the_top_window_under_the_point_in_its_pixels
       - rust/desk/src/desk.rs::a_macos_window_click_without_a_windowserver_connection_goes_to_the_desktop
@@ -524,7 +524,7 @@ capabilities:
       then decoding a capture reproduces its pixels bit for bit.
     surface: observe
     parity: spec
-    tests: [internal/vision.TestCropScalesAndClamps, internal/vision.TestPNGRoundTrip, planned:internal/driver.TestCaptureSessionSeparate]
+    tests: [internal/vision.TestCropScalesAndClamps, internal/vision.TestPNGRoundTrip, internal/driver.TestCaptureSessionSeparate]
     upstream:
       - rust/desk-core/src/shot.rs::a_crop_scales_screen_pixels_to_the_screenshot
       - rust/desk-core/src/shot.rs::crop_cuts_an_rgb_rectangle
@@ -645,7 +645,7 @@ capabilities:
       the allowlist judges the full picture. A pid-less outline still reads all apps.
     surface: observe
     parity: spec
-    tests: [planned:internal/ax.TestPidScopedReads]
+    tests: [internal/ax.TestPidScopedReads]
     upstream:
       - rust/desk/src/desk.rs::a_call_that_names_a_process_reads_only_that_apps_windows
       - rust/desk/src/desk.rs::with_an_allowlist_a_call_that_names_a_process_still_reads_every_window
@@ -660,7 +660,7 @@ capabilities:
       original state is recorded once. An app outside the allowlist is refused and its tree is left alone.
     surface: observe
     parity: spec
-    tests: [planned:internal/ax.TestWebTreeHolders, planned:internal/ax.TestWebTreeConcurrentFirstHolds]
+    tests: [internal/ax.TestWebTreeHolders, internal/ax.TestWebTreeConcurrentFirstHolds]
     upstream:
       - rust/desk/src/desk.rs::a_page_tree_stays_on_while_anyone_holds_it_and_goes_off_with_the_last_hold
 
@@ -692,7 +692,7 @@ capabilities:
       cancelled early releases the desk at once for the next call.
     surface: wait
     parity: spec
-    tests: [planned:internal/ax.TestWindowFingerprintPolling, planned:internal/daemon.TestCancelledWaitFreesDesk]
+    tests: [internal/ax.TestWindowFingerprintPolling, internal/daemon.TestCancelledWaitFreesDesk]
     upstream:
       - rust/desk/src/desk.rs::a_wait_ended_early_frees_the_desk_at_once
       - rust/desk/src/desk.rs::a_hint_change_right_after_a_slow_list_reads_the_list_at_once
@@ -737,7 +737,7 @@ capabilities:
       before anything runs.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestArgumentDefaults]
+    tests: [internal/mcpserver.TestArgumentDefaults]
     upstream:
       - rust/desk-core/src/args.rs::a_call_without_args_takes_every_default
 
@@ -748,7 +748,7 @@ capabilities:
       without allocating for it or crashing.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestOversizedMessageRefused]
+    tests: [internal/mcpserver.TestOversizedMessageRefused]
     upstream:
       - rust/desk-core/src/wire.rs::an_oversized_frame_is_refused
 

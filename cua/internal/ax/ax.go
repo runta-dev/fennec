@@ -349,17 +349,6 @@ func ElementAt(x, y float64) (*Element, error) {
 	return wrap(ref), nil
 }
 
-// Point, Size and Rect are AX geometry in points.
-type (
-	Point struct{ X, Y float64 }
-	Size  struct{ W, H float64 }
-	Rect  struct{ X, Y, W, H float64 }
-	Range struct{ Location, Length int }
-)
-
-// URL is a CFURL's absolute string.
-type URL string
-
 // convert turns a borrowed CF value into Go: string, bool, float64, Point,
 // Size, Rect, Range, URL, *Element, []any, or nil.
 func convert(v C.CFTypeRef) any {
@@ -411,18 +400,6 @@ func convert(v C.CFTypeRef) any {
 		}
 	}
 	return nil
-}
-
-// ServerWindow is one entry of the window server's list.
-type ServerWindow struct {
-	ID       uint32
-	PID      int
-	Owner    string
-	Title    string
-	Layer    int
-	Alpha    float64
-	OnScreen bool
-	Bounds   Rect // points, top-left origin
 }
 
 // ServerWindows lists windows front to back. onScreen limits it to the

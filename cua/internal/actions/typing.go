@@ -139,6 +139,9 @@ func (c *stepCtx) typeText(ctx context.Context) policy.Attempt {
 		lines = lines[:len(lines)-1]
 		lines[len(lines)-1] += "\n"
 	}
+	if c.req.WholeText && !secret {
+		lines = []string{body}
+	}
 	total := utf8.RuneCountInString(body)
 	landed := 0
 	allConfirmed, terminal := true, false

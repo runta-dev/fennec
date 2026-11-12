@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"fennec/cua/internal/ax"
@@ -178,36 +177,8 @@ func valueString(v any) (string, bool) {
 	return "", false
 }
 
-// shortcut renders a menu item's key equivalent. AXMenuItemCmdModifiers is
-// a mask where command is implied unless bit 3 is set: 1 shift, 2 option,
-// 4 control, 8 no command.
-func shortcut(char string, mods any) string {
-	if char == "" {
-		return ""
-	}
-	m := 0
-	if f, ok := mods.(float64); ok {
-		m = int(f)
-	}
-	var parts []string
-	if m&4 != 0 {
-		parts = append(parts, "ctrl")
-	}
-	if m&2 != 0 {
-		parts = append(parts, "alt")
-	}
-	if m&1 != 0 {
-		parts = append(parts, "shift")
-	}
-	if m&8 == 0 {
-		parts = append(parts, "cmd")
-	}
-	key := strings.ToLower(char)
-	if key == " " {
-		key = "space"
-	}
-	return strings.Join(append(parts, key), "+")
-}
+// shortcut renders a menu item's key equivalent; see ax.MenuShortcut.
+func shortcut(char string, mods any) string { return ax.MenuShortcut(char, mods) }
 
 // Read reads one element; full returns up to MaxText characters of its value
 // (from the end with tail) and reports whether it was cut.

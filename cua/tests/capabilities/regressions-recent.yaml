@@ -492,7 +492,7 @@ capabilities:
       ended-session error; any other failure that merely mentions a session is not resent.
     surface: act
     parity: spec
-    tests: [planned:internal/driver.TestResendOnlyOnSessionEnded]
+    tests: [internal/driver.TestResendOnlyOnSessionEnded]
     upstream: [changelog/0.1.42/11]
   - id: CAP-RGA-048
     title: Foreground pointer input with a window brings it to the front
@@ -609,7 +609,7 @@ capabilities:
       Space; sheets and windows without a number get process-scoped ids.
     surface: observe
     parity: spec
-    tests: [planned:internal/ax.TestWindowIDsAreNumbers, planned:scenario/WindowMovesSpace]
+    tests: [internal/ax.TestWindowIDsAreNumbers, planned:scenario/WindowMovesSpace]
     upstream: [changelog/0.1.41/10]
   - id: CAP-RGA-060
     title: Screen text in vision observations is escaped and capped
@@ -628,7 +628,7 @@ capabilities:
       CLI saves to a temporary file it chooses, with the extension of the actual encoding.
     surface: observe
     parity: spec
-    tests: [planned:internal/mcpserver.TestNoImagePathParameter]
+    tests: [internal/mcpserver.TestNoImagePathParameter]
     upstream: [changelog/0.1.42/4, changelog/0.1.40/24]
   - id: CAP-RGA-062
     title: Vision element list and scale follow the latest capture
@@ -654,7 +654,7 @@ capabilities:
       two first holders never leave it on after both release.
     surface: observe
     parity: spec
-    tests: [planned:internal/ax.TestWebTreeHoldRefcount]
+    tests: [internal/ax.TestWebTreeHoldRefcount]
     upstream: [changelog/0.1.41/12]
   # --- scripts ---------------------------------------------------------
   - id: CAP-RGA-065
@@ -675,7 +675,7 @@ capabilities:
       model setup.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestListenBeforeModels]
+    tests: [internal/daemon.TestListenBeforeModels]
     upstream: [changelog/0.1.44/2]
   - id: CAP-RGA-067
     title: Calls that time out or are stopped while queued never run late
@@ -686,7 +686,7 @@ capabilities:
       backend once.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestQueuedTimeoutFreesTurn, planned:internal/daemon.TestNoLateRun]
+    tests: [internal/daemon.TestQueuedTimeoutFreesTurn, internal/daemon.TestNoLateRun]
     upstream: [changelog/0.1.44/6, changelog/0.1.42/5]
   - id: CAP-RGA-068
     title: All input shares one turn with a 15 s busy wait
@@ -697,7 +697,7 @@ capabilities:
       unsupported input mode is refused at once; a stop ends a call still waiting for the turn.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestSingleTurn, planned:internal/daemon.TestBusyAfter15s, planned:internal/daemon.TestStopEndsWaiter]
+    tests: [internal/daemon.TestSingleTurn, internal/daemon.TestBusyAfter15s, internal/daemon.TestStopEndsWaiter]
     upstream: [changelog/0.1.41/12, changelog/0.1.40/3]
   - id: CAP-RGA-069
     title: The daemon is hard to end by accident
@@ -707,7 +707,7 @@ capabilities:
       binding reports its exit status to the starting client.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestOwnProcessGroup, planned:internal/daemon.TestAcceptRetry]
+    tests: [internal/daemon.TestOwnProcessGroup, internal/daemon.TestAcceptRetry]
     upstream: [changelog/0.1.40/5]
   - id: CAP-RGA-070
     title: Endpoint directory has a fixed mode
@@ -716,7 +716,7 @@ capabilities:
       regardless of umask, and accepts the directory it made.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestEndpointDirMode]
+    tests: [internal/daemon.TestEndpointDirMode]
     upstream: [changelog/0.1.41/21]
   - id: CAP-RGA-071
     title: A stop ends a running script before a recording
@@ -734,7 +734,7 @@ capabilities:
       session and plugin identity, so one client turning a page tree off does not affect another.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestSessionIsCaller]
+    tests: [internal/mcpserver.TestSessionIsCaller]
     upstream: [changelog/0.1.43/1]
   - id: CAP-RGA-073
     title: Tool descriptions state which results sent nothing
@@ -744,7 +744,7 @@ capabilities:
       reporting lines typed before its error, a plan's partial trace).
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestDescriptionsStateOutcomes]
+    tests: [internal/mcpserver.TestDescriptionsStateOutcomes]
     upstream: [changelog/0.1.43/2]
   - id: CAP-RGA-074
     title: Streamable HTTP transport is authenticated and bounded
@@ -755,7 +755,7 @@ capabilities:
       64.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestHTTPAuth, planned:internal/mcpserver.TestHTTPHeaderTimeout]
+    tests: [internal/mcpserver.TestHTTPAuth, internal/mcpserver.TestHTTPHeaderTimeout]
     upstream: [changelog/0.1.40/1, changelog/0.1.41/19]
   - id: CAP-RGA-075
     title: MCP images carry their real MIME type
@@ -764,7 +764,7 @@ capabilities:
       images returned by extension tools.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestImageMimeType]
+    tests: [internal/mcpserver.TestImageMimeType]
     upstream: [changelog/0.1.41/19]
   - id: CAP-RGA-076
     title: Malformed tool arguments fail cleanly
@@ -773,7 +773,7 @@ capabilities:
       usable.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestNonObjectArgs]
+    tests: [internal/mcpserver.TestNonObjectArgs]
     upstream: [changelog/0.1.40/13]
   - id: CAP-RGA-077
     title: The bridge does not start a second daemon on a connect error
@@ -782,7 +782,7 @@ capabilities:
       socket served by another user, permission denied) is reported instead of starting a second daemon.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestBridgeConnectErrors]
+    tests: [internal/mcpserver.TestBridgeConnectErrors]
     upstream: [changelog/0.1.40/26]
   # --- policy, confirm, allowlist ---------------------------------------
   - id: CAP-RGA-078
@@ -840,7 +840,7 @@ capabilities:
       the user is told how to stop fennec-cua instead.
     surface: policy
     parity: spec
-    tests: [planned:internal/hotkey.TestRegisterFailureReported]
+    tests: [internal/hotkey.TestRegisterFailureReported]
     upstream: [changelog/0.1.42/8]
   - id: CAP-RGA-084
     title: Status reports the input mode in use
@@ -848,7 +848,7 @@ capabilities:
       `status` (and the indicator's About line) names the input mode actually used.
     surface: status
     parity: spec
-    tests: [planned:internal/daemon.TestStatusInputMode]
+    tests: [internal/daemon.TestStatusInputMode]
     upstream: [changelog/0.1.41/20]
   # --- recording -------------------------------------------------------
   - id: CAP-RGA-085
@@ -868,7 +868,7 @@ capabilities:
       peer.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestRecordOwnUserOnly]
+    tests: [internal/daemon.TestRecordOwnUserOnly]
     upstream: [changelog/0.1.41/18]
   - id: CAP-RGA-087
     title: Recorded window crops are bound to the clicked process

@@ -114,3 +114,39 @@ func TestStopCancelsAndRefusesUntilResume(t *testing.T) {
 	}
 	done2()
 }
+
+func TestQueueRunsInOrderAndNeverLate(t *testing.T) {
+	var q Queue
+	var mu sync.Mutex
+	var order []int
+	block := make(chan struct{})
+	go func() { _, _ = q.Do(context.Background(), func() { <-block }) }()
+	time.Sleep(10 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	gaveUp := make(chan error, 1)
+	go func() {
+		_, err := q.Do(ctx, func() { mu.Lock(); order = append(order, -1); mu.Unlock() })
+		gaveUp <- err
+	}()
+	var wg sync.WaitGroup
+	for i := 1; i <= 3; i++ {
+		time.Sleep(5 * time.Millisecond)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = q.Do(context.Background(), func() { mu.Lock(); order = append(order, i); mu.Unlock() })
+		}()
+	}
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	if err := <-gaveUp; !errors.Is(err, context.Canceled) {
+		t.Errorf("gave up with %v", err)
+	}
+	close(block)
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 3 || order[0] != 1 || order[1] != 2 || order[2] != 3 {
+		t.Errorf("order %v", order)
+	}
+}

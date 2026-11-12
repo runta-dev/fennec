@@ -199,7 +199,7 @@ capabilities:
       showed.
     surface: daemon
     parity: spec
-    tests: [internal/vision.TestCallersGetOwnDefaultSession, planned:internal/driver.TestEndedSessionRestartsOnce]
+    tests: [internal/vision.TestCallersGetOwnDefaultSession, internal/driver.TestEndedSessionRestartsOnce]
     upstream:
       - rust/desk/src/computer.rs::callers_without_a_session_get_their_own_and_an_ended_default_starts_again
       - rust/desk/src/computer.rs::a_session_the_driver_ended_starts_again_and_its_click_lands_where_the_screenshot_showed
@@ -377,7 +377,7 @@ capabilities:
       waiting answers busy; it proceeds as soon as the turn is free.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestVisionActWaitsForSharedTurn, planned:internal/daemon.TestVisionActBusyAfterTurnWait]
+    tests: [internal/daemon.TestVisionActWaitsForSharedTurn, internal/daemon.TestVisionActBusyAfterTurnWait]
     upstream:
       - rust/desk/src/computer.rs::a_computer_action_waits_while_a_desk_action_holds_the_shared_turn
       - rust/desk/src/computer.rs::an_action_takes_the_input_turn_before_any_driver_call
@@ -392,7 +392,7 @@ capabilities:
       never resent and fails as possibly delivered.
     surface: daemon
     parity: spec
-    tests: [planned:internal/driver.TestRequestWaitsForRestartingDriver, planned:internal/driver.TestReadRetriedOnceAfterEmptyReply, planned:internal/driver.TestInputNeverRetried]
+    tests: [internal/driver.TestRequestWaitsForRestartingDriver, internal/driver.TestReadRetriedOnceAfterEmptyReply, internal/driver.TestInputNeverRetried]
     upstream:
       - rust/desk/src/computer.rs::a_request_waits_for_a_driver_that_is_restarting
       - rust/desk/src/computer.rs::a_read_is_retried_once_after_an_empty_reply
@@ -405,7 +405,7 @@ capabilities:
       read by the app as a double click; a click farther away goes at once.
     surface: act
     parity: spec
-    tests: [planned:internal/driver.TestNearbyClickWaitsOutDoubleClickTime]
+    tests: [internal/driver.TestNearbyClickWaitsOutDoubleClickTime]
     upstream:
       - rust/desk/src/computer.rs::a_click_near_the_last_one_waits_out_the_double_click_time
   - id: CAP-VIS-026
@@ -416,7 +416,7 @@ capabilities:
       driver call.
     surface: mcp
     parity: spec
-    tests: [planned:internal/mcpserver.TestNonObjectArgsRejected]
+    tests: [internal/mcpserver.TestNonObjectArgsRejected]
     upstream:
       - rust/desk/src/computer.rs::a_computer_call_whose_args_are_not_an_object_is_an_error
 excluded:

@@ -18,19 +18,24 @@ type Models interface {
 
 // RunTool runs scripts. The run holds the desk turn until it ends, so two
 // runs never interleave their actions, while the run's own steps pass as the
-// same caller.
+// run. Each run has an owner id unique across daemon restarts, and whatever
+// its steps hold (Call.Hold) is let go when it ends.
 func (e *Engine) RunTool(models Models) Tool {
 	return func(ctx context.Context, call *Call, args json.RawMessage) (any, *protocol.Error) {
 		var req protocol.RunRequest
 		if perr := Decode(args, &req); perr != nil {
 			return nil, perr
 		}
-		release, err := call.Turn(ctx)
+		// The run takes the turn under its own id: its steps re-enter it,
+		// while any other call, even from the same session, waits.
+		rc, turn := e.runCall(call)
+		release, err := turn(ctx)
 		if err != nil {
 			return nil, TurnError(err)
 		}
 		defer release()
-		host := &runHost{e: e, call: call, models: models}
+		defer rc.holds.releaseAll()
+		host := &runHost{e: e, call: rc, models: models}
 		report := script.Run(ctx, host, req)
 		if report.Error != nil {
 			code := protocol.ErrRunFailed
