@@ -331,7 +331,7 @@ capabilities:
       working.
     surface: run
     parity: oracle
-    tests: [planned:internal/script.TestRunTurnedOff]
+    tests: [internal/script.TestRunTurnedOff]
     upstream:
       - rust/shuttle/src/daemon.rs::script_run_turned_off_answers_how_to_turn_it_on
       - rust/shuttle/src/daemon.rs::with_script_run_off_a_plugin_answers_how_to_turn_it_on
@@ -345,7 +345,7 @@ capabilities:
       input goes to the foreground or the background.
     surface: run
     parity: oracle
-    tests: [planned:internal/script.TestRunResult, planned:internal/script.TestRunUsage, planned:internal/script.TestRunInputMode]
+    tests: [internal/script.TestRunResult, internal/script.TestRunUsage, internal/script.TestRunInputMode]
     upstream:
       - rust/shuttle/src/daemon.rs::script_run_goes_to_the_runner
       - rust/shuttle/src/runner.rs::a_script_main_returns_its_value_with_the_logs_and_the_desk_api_at_hand
@@ -362,7 +362,7 @@ capabilities:
       refused before running.
     surface: run
     parity: oracle
-    tests: [planned:internal/script.TestRunErrorKinds, planned:internal/script.TestRunTimeoutKeepsLogs]
+    tests: [internal/script.TestRunErrorKinds, internal/script.TestRunTimeoutKeepsLogs]
     upstream:
       - rust/shuttle/src/daemon.rs::a_run_whose_report_carries_an_error_is_an_error_with_the_whole_report
       - rust/shuttle/src/runner.rs::a_throwing_script_reports_its_error_and_a_slow_one_the_timeout_with_its_logs

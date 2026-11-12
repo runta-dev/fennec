@@ -664,7 +664,7 @@ capabilities:
       app rather than the front window.
     surface: run
     parity: oracle
-    tests: [planned:internal/script.TestKeyTypePassApp]
+    tests: [internal/script.TestKeyTypePassApp]
     upstream: [changelog/0.1.44/9]
   # --- daemon and scheduling ------------------------------------------
   - id: CAP-RGA-066

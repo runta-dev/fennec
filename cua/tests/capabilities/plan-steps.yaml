@@ -568,7 +568,7 @@ capabilities:
       base64-encoded, and adds each call's token usage per model to the run's usage report.
     surface: run
     parity: spec
-    tests: [planned:internal/script.TestInputTargets, planned:internal/script.TestAskImagesAndUsage]
+    tests: [internal/script.TestInputTargets, internal/script.TestAskImagesAndUsage]
     upstream:
       - 'node/desk/ask sends one PNG buffer or a list of them as base64 and meters the usage by model into the run'
       - 'node/desk/a key or a type that names an app sends the app to the daemon'
