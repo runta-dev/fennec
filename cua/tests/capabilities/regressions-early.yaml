@@ -67,7 +67,7 @@ capabilities:
       the screen at most three times.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestNoEndWaitForInPlaceKeys, internal/ax.TestSkipsDriverWindows]
+    tests: [internal/plan.TestNoEndWaitForInPlaceKeys, internal/ax.TestSkipsDriverWindows]
     upstream: [changelog/0.1.0/5]
 
   - id: CAP-RGB-007
@@ -109,7 +109,7 @@ capabilities:
       The daemon's plan run log starts over once it exceeds 1 MiB, so it never grows without bound.
     surface: daemon
     parity: spec
-    tests: [planned:internal/plan.TestRunLogRotatesAt1MiB]
+    tests: [internal/plan.TestRunLogRotatesAt1MiB]
     upstream: [changelog/0.1.2/3]
 
   - id: CAP-RGB-011
@@ -362,7 +362,7 @@ capabilities:
       the foreground, keeping that foreground for later key, type, close and Return steps (0.1.40).
     surface: policy
     parity: oracle
-    tests: [planned:scenario/AutoFallsBackOnRefusal, planned:internal/plan.TestAutoKeepsForeground]
+    tests: [planned:scenario/AutoFallsBackOnRefusal, internal/plan.TestAutoKeepsForeground]
     upstream: [changelog/0.1.11/1]
 
   - id: CAP-RGB-033
@@ -448,7 +448,7 @@ capabilities:
       check path, the probabilities and the element hit.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestGroundRefusesRoot, planned:internal/plan.TestGroundThresholds, planned:scenario/GroundUnderOtherWindowRefused]
+    tests: [internal/plan.TestGroundRefusesRoot, internal/plan.TestGroundThresholds, planned:scenario/GroundUnderOtherWindowRefused]
     upstream: [changelog/0.1.13/6]
 
   - id: CAP-RGB-040
@@ -459,7 +459,7 @@ capabilities:
       tree reads empty.
     surface: wait
     parity: oracle
-    tests: [planned:internal/plan.TestWaitFrontSkipsTree, planned:scenario/WaitAlertStops]
+    tests: [internal/plan.TestWaitFrontSkipsTree, planned:scenario/WaitAlertStops]
     upstream: [changelog/0.1.14/1]
 
   - id: CAP-RGB-041
@@ -493,7 +493,7 @@ capabilities:
       of its own still stops at no focused window.
     surface: wait
     parity: spec
-    tests: [planned:internal/plan.TestNoFrontWindowAdoptsUniqueTitle]
+    tests: [internal/plan.TestNoFrontWindowAdoptsUniqueTitle]
     upstream: [changelog/0.1.15/1]
 
   - id: CAP-RGB-044
@@ -750,7 +750,7 @@ capabilities:
       that gets it stops with that error and no fallback model calls.
     surface: models
     parity: oracle
-    tests: [internal/models.Test402Message, planned:internal/plan.Test402StopsPlan]
+    tests: [internal/models.Test402Message, internal/plan.Test402StopsPlan]
     upstream: [changelog/0.1.30/3]
 
   - id: CAP-RGB-067
@@ -861,7 +861,7 @@ capabilities:
       carry the expected focus, re-read every 100 ms for up to 1 s, stopping the plan when focus is elsewhere.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestRecordedClickFallbackOrder, planned:scenario/TypeFocusMismatchStops]
+    tests: [internal/plan.TestRecordedClickFallbackOrder, planned:scenario/TypeFocusMismatchStops]
     upstream: [changelog/0.1.33/4]
 
   - id: CAP-RGB-077
@@ -901,7 +901,7 @@ capabilities:
       agent can take over from there.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestStopRecord]
+    tests: [internal/plan.TestStopRecord]
     upstream: [changelog/0.1.34/1]
 
   - id: CAP-RGB-081
@@ -957,7 +957,7 @@ capabilities:
       `caveats` in the result while the plan still passes; the vision path of a menu toggle carries a caveat too.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestCaveatsForUnreadActions]
+    tests: [internal/plan.TestCaveatsForUnreadActions]
     upstream: [changelog/0.1.35/4]
 
   - id: CAP-RGB-086

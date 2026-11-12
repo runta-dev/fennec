@@ -12,7 +12,7 @@ capabilities:
       result names the window the plan settled on.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestAppStepReusesRunningAppWindow, planned:internal/plan.TestAppStepPrefersOwningAppOverTitleMention]
+    tests: [internal/plan.TestAppStepReusesRunningAppWindow, internal/plan.TestAppStepPrefersOwningAppOverTitleMention]
     upstream:
       - "node/appstep/an app step finds a running app by the app its windows name, whatever their titles"
       - "node/appstep/an app step for a name that is no package still takes a window whose title contains it"
@@ -26,7 +26,7 @@ capabilities:
       launched app's window.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestAppStepTakesLaunchedWindow, planned:internal/plan.TestAppStepIgnoresRetitledForeignWindow]
+    tests: [internal/plan.TestAppStepTakesLaunchedWindow, internal/plan.TestAppStepIgnoresRetitledForeignWindow]
     upstream:
       - "node/appstep/an app step takes the window a launch raised, whatever its app and title are called"
       - "node/appstep/an app step after a launch takes a new window of the launched app, never a window another app retitled meanwhile"
@@ -38,7 +38,7 @@ capabilities:
       or the app was already running with an active window, no extra focus call is made.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestAppStepFocusesBackgroundLaunch]
+    tests: [internal/plan.TestAppStepFocusesBackgroundLaunch]
     upstream:
       - "node/appstep/an app step brings a window it launched in the background to the front, even when the window reads active"
       - "node/appstep/an app step leaves an active window as it is when the launch stays in front or the app was already open"
@@ -53,7 +53,7 @@ capabilities:
       Safari does not block launching Safari Technology Preview for a URL.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestAppStepEscalatesOnStaleApp, planned:internal/plan.TestAppStepURLStaleMatchNotPrefix]
+    tests: [internal/plan.TestAppStepEscalatesOnStaleApp, internal/plan.TestAppStepURLStaleMatchNotPrefix]
     upstream:
       - "node/appstep/an app step escalates at once on a listed window whose app stopped answering, and never launches another instance"
       - "node/appstep/an app step escalates instead of launching when the front window of the app answers no window list"
@@ -72,7 +72,7 @@ capabilities:
       for a loose description that only shares a word.
     surface: act
     parity: oracle
-    tests: [internal/view.TestResolvePrefersShowing, internal/view.TestResolveListItems, planned:internal/plan.TestShowingWithoutFramePressedWithoutModel]
+    tests: [internal/view.TestResolvePrefersShowing, internal/view.TestResolveListItems, internal/plan.TestShowingWithoutFramePressedWithoutModel]
     upstream:
       - "node/action/a shown match in a tree without bounds, as GTK 4 gives, is clicked without a model pick"
       - "node/resolve/a click takes no element that does not show, even by its exact name"
@@ -106,7 +106,7 @@ capabilities:
       whose name it mentions.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestModelPickMargin, planned:internal/plan.TestModelPickRejectsMismatch]
+    tests: [internal/plan.TestModelPickMargin, internal/plan.TestModelPickRejectsMismatch]
     upstream:
       - "node/resolve/a click whose jev pick has a close runner-up escalates as ambiguous instead of pressing the pick"
       - "node/resolve/a click that names a link takes a link, never the row cell whose name the target contains"
@@ -122,7 +122,7 @@ capabilities:
       an element was found, and reports none when the name alone resolved the target.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestScreenshotPickFirst, planned:internal/plan.TestServedModelCallsReported]
+    tests: [internal/plan.TestScreenshotPickFirst, internal/plan.TestServedModelCallsReported]
     upstream:
       - "node/resolve/a jev pick looks at the screenshot first, so of two links of the same name it takes the one the verify model places in the row"
       - "node/resolve/a jev pick on the screenshot that fails falls back to the pick on the text"
@@ -137,7 +137,7 @@ capabilities:
       first occurrence instead of treating the duplicates as ambiguous.
     surface: act
     parity: spec
-    tests: [internal/view.TestUnnamedControlInheritsLabel, planned:internal/plan.TestMenuRepeatedBarTakesFirst]
+    tests: [internal/view.TestUnnamedControlInheritsLabel, internal/plan.TestMenuRepeatedBarTakesFirst]
     upstream:
       - "node/resolve/an unnamed control takes its own description, else the name, else the description, of the ancestors that hold only it, so LibreOffice's sidebar tab buttons read as their decks"
       - "node/resolve/a menu step takes a menu bar entry that several menu bars repeat from the first of them"
@@ -153,7 +153,7 @@ capabilities:
       score plus the element under the point; a click that passes no stage is refused and nothing is clicked.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestGroundedCheckLadder, planned:internal/plan.TestGroundedCheckTrace]
+    tests: [internal/plan.TestGroundedCheckLadder, internal/plan.TestGroundedCheckTrace]
     upstream:
       - "node/resolve/a grounded click is taken when jev sees the target at the point in a crop, and without that answer when jev says the element under it is the target; the run log keeps the check and its score"
       - "node/resolve/a grounded click the 640x400 crop refuses is checked on the small element's crop scaled up, then on the screen with a ring at the point, unless DESK_FULL_CHECK=off; the run log keeps each score and the path"
@@ -183,7 +183,7 @@ capabilities:
       so a window that appears over it during the check receives no click.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestGroundedPointRefusals, planned:internal/plan.TestGroundedPointRecheckedBeforeClick]
+    tests: [internal/plan.TestGroundedPointRefusals, internal/plan.TestGroundedPointRecheckedBeforeClick]
     upstream:
       - "node/resolve/a grounded point with no accessible element under it is refused before any check, and the trace says so"
       - "node/resolve/a grounded point whose element is a window or document root, belongs to another process, or has no known process is refused before any check"
@@ -204,7 +204,7 @@ capabilities:
       does not fail later steps; later input goes to the foreground.
     surface: policy
     parity: oracle
-    tests: [planned:internal/plan.TestAutoMatchesBackground, planned:internal/plan.TestAutoForegroundFallback, planned:internal/plan.TestMenuStepBackgroundRefused]
+    tests: [internal/plan.TestAutoMatchesBackground, internal/plan.TestAutoForegroundFallback, internal/plan.TestMenuStepBackgroundRefused]
     upstream:
       - "node/auto/an auto plan sends the same desk calls as a background plan when nothing falls back"
       - "node/auto/typing that did not land and left the front alone runs once in the foreground under auto, and escalates under background"
@@ -221,7 +221,7 @@ capabilities:
       64 KiB) could be compared before or after typing.
     surface: policy
     parity: spec
-    tests: [planned:internal/plan.TestAutoNoRetypeWhenUnprovable]
+    tests: [internal/plan.TestAutoNoRetypeWhenUnprovable]
     upstream:
       - "node/auto/typing that landed in part is never typed again in the foreground"
       - "node/auto/a field auto cannot read is never typed into again in the foreground"
@@ -241,7 +241,7 @@ capabilities:
       collects several notes, it keeps the first unless a later note says the target is a terminal.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestUnconfirmedStepReadBack, planned:internal/plan.TestUnconfirmedNoteKept]
+    tests: [internal/plan.TestUnconfirmedStepReadBack, internal/plan.TestUnconfirmedNoteKept]
     upstream:
       - "node/auto/a background note left open before a later step took the foreground still fails the plan"
       - "node/auto/a step keeps the first note it heard unless a later one names a terminal"
@@ -259,7 +259,7 @@ capabilities:
       The same holds in background and auto modes.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestTerminalEchoOutcomes]
+    tests: [internal/plan.TestTerminalEchoOutcomes]
     upstream:
       - "node/auto/typing a terminal does not show is never typed again in the foreground, and the plan goes on with the step unverified"
       - "node/auto/typing a terminal shows in part stops the plan before its next key"
@@ -274,7 +274,7 @@ capabilities:
       changed inner spacing or letter case, which count as "did not show" and stop the plan before Return.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestTerminalEchoComparison]
+    tests: [internal/plan.TestTerminalEchoComparison]
     upstream:
       - "node/auto/terminal confirmation takes a typed trailing space or tab the terminal trimmed"
       - "node/auto/terminal confirmation takes echoed whitespace-only text and lines"
@@ -288,7 +288,7 @@ capabilities:
       the next key, and no change lets the plan go on with the step unconfirmed.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestTerminalLongScreenReadBack]
+    tests: [internal/plan.TestTerminalLongScreenReadBack]
     upstream:
       - "node/auto/typing a long terminal screen shows in part at its end stops the plan before its next key"
       - "node/auto/typing a long terminal screen does not show goes on unverified"
@@ -308,7 +308,7 @@ capabilities:
       line, then all remaining lines in one call with no read in between, and no separate Return keys.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestMultiLineTerminalTyping, planned:internal/plan.TestMultiLineFieldTyping]
+    tests: [internal/plan.TestMultiLineTerminalTyping, internal/plan.TestMultiLineFieldTyping]
     upstream:
       - "node/auto/a background type of several lines sends each Return once when a terminal line that does not echo leaves its own screen unchanged"
       - "node/auto/a background type of several lines into a window that is not a terminal sends the lines after the first in one call with no read between"
@@ -326,7 +326,7 @@ capabilities:
       that names the line number out of the total and states that the previous line and its Return were sent.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestMultiLineTerminalOutcome]
+    tests: [internal/plan.TestMultiLineTerminalOutcome]
     upstream:
       - "node/auto/a terminal step whose lines the driver confirmed is confirmed though a Return between them was not"
       - "node/auto/a terminal note on a later line replaces a Return note the step heard before it"
@@ -344,7 +344,7 @@ capabilities:
       with an error that omits the password.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestSecretStepValidation, planned:internal/plan.TestSecretNeverLeaks, planned:internal/plan.TestSecretEchoBlocksReturn]
+    tests: [internal/plan.TestSecretStepValidation, internal/plan.TestSecretNeverLeaks, internal/plan.TestSecretEchoBlocksReturn]
     upstream:
       - "node/auto/a secret step never shows its text, and a password the terminal echoed stops before its Return"
       - "node/auto/a foreground secret step reads the window back before its Return, as a foreground type reply names no terminal"
@@ -362,7 +362,7 @@ capabilities:
       stops the plan with no input sent.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestBackgroundTargetsPlanWindow, planned:internal/plan.TestBackgroundWindowIdentity]
+    tests: [internal/plan.TestBackgroundTargetsPlanWindow, internal/plan.TestBackgroundWindowIdentity]
     upstream:
       - "node/background/a background plan types into its app window behind the front one, names it on every input and fronts nothing"
       - "node/background/a background plan with no app or wait step has no target and says so"
@@ -379,7 +379,7 @@ capabilities:
       the plan window's own dialog and leaves another document's dialog open.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestBackgroundDialogOwnership, planned:internal/plan.TestBackgroundSheetInput]
+    tests: [internal/plan.TestBackgroundDialogOwnership, internal/plan.TestBackgroundSheetInput]
     upstream:
       - "node/background/a dialog the OS says the plan window owns becomes the target, and a window of the same app it does not own never does"
       - "node/background/input to a macOS sheet goes to the window it hangs on, which owns its pixels"
@@ -394,7 +394,7 @@ capabilities:
       steps do not run.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestBackgroundFrontStealFails]
+    tests: [internal/plan.TestBackgroundFrontStealFails]
     upstream:
       - "node/background/an app that brings itself to the front during a step fails that step with the reason"
       - "node/background/the plan window coming to the front over the user's other window of the same app fails the step"
@@ -407,7 +407,7 @@ capabilities:
       of a window's fields that carry no value in the snapshot runs with at most four reads in flight.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestBackgroundNoScreenReads, planned:internal/plan.TestBackgroundFieldReadConcurrency]
+    tests: [internal/plan.TestBackgroundNoScreenReads, planned:internal/plan.TestBackgroundFieldReadConcurrency]
     upstream:
       - "node/background/a background type reads the unvalued fields of its window four at a time"
       - "node/background/an element that is not in the tree is not looked for on the screen in the background"
@@ -436,7 +436,7 @@ capabilities:
       step the driver could not confirm; a matching window that was already in front before the step does not.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestRecordedAfterWindow, planned:internal/plan.TestRecordedAfterConfirms]
+    tests: [internal/plan.TestRecordedAfterWindow, internal/plan.TestRecordedAfterConfirms]
     upstream:
       - "node/background/a recorded after names a new window of the app, which the background plan then takes as its target"
       - "node/background/a recorded after takes the one window of the app with that exact title over a longer title listed first, and no window when two titles only contain it"
@@ -452,7 +452,7 @@ capabilities:
       later input is sent.
     surface: wait
     parity: oracle
-    tests: [planned:internal/plan.TestWaitTitleExactOverContains]
+    tests: [internal/plan.TestWaitTitleExactOverContains]
     upstream:
       - "node/background/a background wait whose text several windows contain takes none of them"
       - "node/background/a background wait takes the one window whose title is exactly the text over others that contain it"

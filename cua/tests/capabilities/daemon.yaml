@@ -376,7 +376,7 @@ capabilities:
       steps it already completed, so the agent knows what may have taken effect.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestPlanTimeoutReportsDone, planned:internal/plan.TestPlanNoHiddenEnv]
+    tests: [internal/plan.TestPlanTimeoutReportsDone, internal/plan.TestPlanNoHiddenEnv]
     upstream:
       - rust/shuttle/src/runner.rs::a_plan_stopped_at_its_timeout_reports_the_steps_it_left
       - rust/shuttle/src/runner.rs::a_plan_runs_the_runtime_plan_executor_with_the_daemon_socket_and_no_hidden_variables

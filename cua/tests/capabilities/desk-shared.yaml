@@ -558,7 +558,7 @@ capabilities:
       the front, since a macOS launch stays in the background, and the trace records how it was focused.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestLaunchStepFrontsWindow]
+    tests: [internal/plan.TestLaunchStepFrontsWindow]
     upstream:
       - rust/desk/src/desk.rs::a_plan_focuses_a_window_it_launched_on_a_macos_desk_only
 

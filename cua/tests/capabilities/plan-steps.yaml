@@ -13,7 +13,7 @@ capabilities:
       absent and is not an error.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestValidateRejectsBeforeAnyInput, planned:internal/plan.TestNullOptionalFieldIsAbsent]
+    tests: [internal/plan.TestValidateRejectsBeforeAnyInput, internal/plan.TestNullOptionalFieldIsAbsent]
     upstream:
       - 'node/plan/a plan with a malformed step or an unfilled param makes no desk call'
       - 'node/plan/a step with a non-string value on a text key is refused by key and makes no desk call'
@@ -29,7 +29,7 @@ capabilities:
       records the state found before the press and no claimed state after it.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestCheckReadsBackAndCyclesMixed]
+    tests: [internal/plan.TestCheckReadsBackAndCyclesMixed]
     upstream:
       - 'node/plan/a check that does not flip traces the state it found, not the one it wanted'
       - 'node/plan/a check on a tri-state box acts again past the mixed state to the state it wants'
@@ -43,7 +43,7 @@ capabilities:
       saying the item is still in its old state; when it flips, the trace reports the new state.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestMenuToggleReadsMarkWhileOpen, planned:internal/scenario.TestMenuToggleIdempotent]
+    tests: [internal/plan.TestMenuToggleReadsMarkWhileOpen, planned:internal/scenario.TestMenuToggleIdempotent]
     upstream:
       - 'node/macmenu/on macOS a menu toggle reads its mark after opening its menus, so a stale closed-menu mark neither skips nor repeats the press'
       - 'node/menutoggle/a menu toggle reads its state back after the press, which ${flips ? ''took'' : ''did not take''}'
@@ -56,7 +56,7 @@ capabilities:
       dialog that is still listed after the close request fails saying the dialog is still open.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestPressNotDoneFails, planned:internal/plan.TestSetWithoutFocusSendsNothing, planned:internal/plan.TestCloseFailsWhenDialogStays]
+    tests: [internal/plan.TestPressNotDoneFails, internal/plan.TestSetWithoutFocusSendsNothing, internal/plan.TestCloseFailsWhenDialogStays]
     upstream:
       - 'node/modal/a close step fails when the dialog it closes stays open'
       - 'node/plan/a press the desk reports as not done fails the step'
@@ -73,7 +73,7 @@ capabilities:
       model to disambiguate.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestSetExactReadBack, planned:internal/plan.TestSetSpinButtonUnit, planned:internal/plan.TestSetNestedComboField]
+    tests: [internal/plan.TestSetExactReadBack, internal/plan.TestSetSpinButtonUnit, internal/plan.TestSetNestedComboField]
     upstream:
       - 'node/nested/a field named like the combobox it sits in is one target, and set needs no model to pick it'
       - 'node/set/set passes only when the field reads exactly the value it typed, and an empty value presses delete to clear the field'
@@ -88,7 +88,7 @@ capabilities:
       later one, targeting the dialog that owns the list, whose tree then includes the list entries.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestSetComboPicksOption, planned:internal/scenario.TestPopupListNextStep]
+    tests: [internal/plan.TestSetComboPicksOption, planned:internal/scenario.TestPopupListNextStep]
     upstream:
       - 'node/combo/set on a combo box without a text field picks the option from its list, does nothing when it is already chosen, and names the options when none matches'
       - 'node/popup/a click that opens a combo box''s list leaves the next step in the dialog, whose tree holds the list''s entries, also in a new plan'
@@ -103,7 +103,7 @@ capabilities:
       role such as a document body; without a role such elements are not matched.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestVerifyValueExact, planned:internal/plan.TestVerifyLinkURL, planned:internal/plan.TestVerifyRoleOutsideControls]
+    tests: [internal/plan.TestVerifyValueExact, internal/plan.TestVerifyLinkURL, internal/plan.TestVerifyRoleOutsideControls]
     upstream:
       - 'node/verify/a verify that finds no element fails, whatever state it asks for'
       - 'node/verify/a verify by value passes only on the value itself, and a spin button may add a unit to its number'
@@ -118,7 +118,7 @@ capabilities:
       boolean (for example the string "false") fails the expect rather than being guessed.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestVisualExpect, planned:internal/plan.TestVisualExpectNonBooleanFails]
+    tests: [internal/plan.TestVisualExpect, internal/plan.TestVisualExpectNonBooleanFails]
     upstream:
       - 'node/verify/an expect the tree does not meet is checked on a screenshot, which fails it with the reason or passes it'
       - 'node/verify/a screenshot check whose answer is no true or false fails the expect'
@@ -132,7 +132,7 @@ capabilities:
       virtual screen it is narrowed by the clamped amount instead of shifted.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestCropNegativeOrigin]
+    tests: [internal/plan.TestCropNegativeOrigin]
     upstream:
       - 'node/origin/a grounded check on a screen whose origin is left of zero crops around the point instead of clamping it to zero'
       - 'node/origin/a state check on a screen whose origin is left of zero crops the control from the screen origin, and a crop clamped at the edge narrows by the clamp'
@@ -145,7 +145,7 @@ capabilities:
       pick after a failed screenshot pick) and no click or press sent.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestCreditsStopPlan]
+    tests: [internal/plan.TestCreditsStopPlan]
     upstream:
       - 'node/credits/a 402 on the grounding of a click ends the plan with the credits message and clicks nothing'
       - 'node/credits/a 402 on the check of a grounded point ends the plan without a fallback model call or a click'
@@ -161,7 +161,7 @@ capabilities:
       keyboard shortcut is used in place of the press.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestMenuRereadsAfterOpen, planned:internal/scenario.TestMenuRetitledEntry]
+    tests: [internal/plan.TestMenuRereadsAfterOpen, planned:internal/scenario.TestMenuRetitledEntry]
     upstream:
       - 'node/retitle/on macOS a menu step rereads the menu after opening it, so an entry that retitled itself matches its new title'
       - 'node/retitle/on macOS a submenu whose id changes once its parent opens is opened again from a fresh tree, and every opened menu is closed'
@@ -177,7 +177,7 @@ capabilities:
       accessibility, not by its shortcut.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestMenuBarFallbackBeforeModel, planned:internal/plan.TestExactMenuItemBeatsContains]
+    tests: [internal/plan.TestMenuBarFallbackBeforeModel, internal/plan.TestExactMenuItemBeatsContains]
     upstream:
       - 'node/snapshots/a click on macOS whose target sits only in the menu bar reads the window again with its menu bar before any model call'
       - 'node/snapshots/a verify on macOS that finds its target only in the menu bar checks it there, instead of passing on the miss'
@@ -192,7 +192,7 @@ capabilities:
       failed. A click whose first read caught only a bare dialog root reads again and finds its target.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestStepWaitsForLateDialog, planned:internal/scenario.TestSlowDialogFill]
+    tests: [internal/plan.TestStepWaitsForLateDialog, planned:internal/scenario.TestSlowDialogFill]
     upstream:
       - 'node/slowdialog/a step whose target is missing waits for the window the step before opened, then runs there'
       - 'node/slowdialog/a step waits until the late window holds its target, as a dialog fills its tree after it shows'
@@ -210,7 +210,7 @@ capabilities:
       after such a step is in front for the next act call, whose steps then go to it.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestEndWaitOnlyWhenStepCanOpen, planned:internal/scenario.TestLateDialogReportedAtEnd]
+    tests: [internal/plan.TestEndWaitOnlyWhenStepCanOpen, planned:internal/scenario.TestLateDialogReportedAtEnd]
     upstream:
       - 'node/endwait/a plan that ends with ${JSON.stringify(step)}, which opens no window, skips the end-of-plan wait'
       - 'node/endwait/a plan that ends with ${JSON.stringify(step)} still waits for the dialog it opens late and reports it'
@@ -247,7 +247,7 @@ capabilities:
       steps in other apps proceed.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestNoInputIntoUnplannedAlert, planned:internal/plan.TestHiddenModalBlocks]
+    tests: [planned:internal/plan.TestNoInputIntoUnplannedAlert, internal/plan.TestHiddenModalBlocks]
     upstream:
       - 'node/chooser/a typed line whose first Return opens an overwrite confirmation sends no second Return into it and escalates'
       - 'node/modal/a step in a window whose app holds a modal dialog the screen does not show escalates with its title and types nothing'
@@ -262,7 +262,7 @@ capabilities:
       sends no further input; if another app comes to the front meanwhile, that app receives nothing.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestHungFrontAppEscalates, planned:internal/plan.TestHungFrontAppRecovers]
+    tests: [internal/plan.TestHungFrontAppEscalates, internal/plan.TestHungFrontAppRecovers]
     upstream:
       - 'node/hung/a plan whose front app stops answering escalates within the wait, names the step before, and sends no further input'
       - 'node/hung/a plan goes on when its front app answers again within the wait'
@@ -278,7 +278,7 @@ capabilities:
       app (and pid) that is not answering, and a wait step's error view carries the same note.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestUnansweredWindowGetsNoInput]
+    tests: [internal/plan.TestUnansweredWindowGetsNoInput]
     upstream:
       - 'node/frontless/with no window in front, a plan names the front app that is not answering accessibility'
       - 'node/plan/close on a window that answers no accessibility call escalates even when its app has no other window'
@@ -295,7 +295,7 @@ capabilities:
       as the new window and needs no model question; the wait keeps going until the real dialog opens.
     surface: wait
     parity: oracle
-    tests: [planned:internal/plan.TestWaitUniqueWindow, planned:internal/plan.TestWaitIgnoresRetitledFront]
+    tests: [internal/plan.TestWaitUniqueWindow, internal/plan.TestWaitIgnoresRetitledFront]
     upstream:
       - 'node/frontless/with no window in front, a wait step takes and focuses the one listed window of its title, and the next step acts in it'
       - 'node/frontless/with no window in front, a wait step does not choose between two windows of its title, and a step without one plan window stops'
@@ -311,7 +311,7 @@ capabilities:
       unanswering app.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestNoFrontWindowNoGuess]
+    tests: [internal/plan.TestNoFrontWindowNoGuess]
     upstream:
       - 'node/frontless/a plan does not take the last window of the plan before it when no window is in front'
       - 'node/frontless/a step that finds no window in front only until the window the key opened shows recovers without asking for an unanswered app'
@@ -353,7 +353,7 @@ capabilities:
       outline carries neither note.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestFailureViewNotes, planned:internal/plan.TestFailureViewSkipsShellWindows]
+    tests: [internal/plan.TestFailureViewNotes, internal/plan.TestFailureViewSkipsShellWindows]
     upstream:
       - 'node/outline/an outline cut by the backend says this read missed the rest and narrowing the view brings it in'
       - 'node/outline/an outline cut only by its text budget points to desk snapshot or find'
@@ -370,7 +370,7 @@ capabilities:
       carries no stop report.
     surface: flow
     parity: oracle
-    tests: [planned:internal/plan.TestStopReport]
+    tests: [internal/plan.TestStopReport]
     upstream:
       - 'node/stopped/a missed after stops with the step, its intent, the reason and the steps left'
       - 'node/stopped/a focus elsewhere stops with a stop report'
@@ -388,7 +388,7 @@ capabilities:
       the check.
     surface: flow
     parity: oracle
-    tests: [planned:internal/plan.TestRecordedTypeFocusCheck]
+    tests: [internal/plan.TestRecordedTypeFocusCheck]
     upstream:
       - 'node/focus/a recorded type step types where the recording typed'
       - 'node/focus/a recorded type step stops as an error when a sheet holds the focus, and types nothing'
@@ -404,7 +404,7 @@ capabilities:
       never read back from the field and never appears in the act result, trace, logs or saved flow.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestPasswordOnlyIntoSecureField, planned:internal/plan.TestPasswordNeverInResult]
+    tests: [internal/plan.TestPasswordOnlyIntoSecureField, internal/plan.TestPasswordNeverInResult]
     upstream:
       - 'node/focus/a recorded password step types only into a focused password field'
       - 'node/focus/a recorded password step types into a focused password field'
@@ -433,7 +433,7 @@ capabilities:
       it resolves by name instead. The trace says which method resolved the target.
     surface: flow
     parity: spec
-    tests: [planned:internal/plan.TestFingerprintMatchCount]
+    tests: [internal/plan.TestFingerprintMatchCount]
     upstream:
       - 'node/fingerprint/a fingerprint picks its element by position only among as many matches as it was recorded with'
       - 'node/fingerprint/a fingerprint whose match count changed resolves again instead of taking an element by position'
@@ -449,7 +449,7 @@ capabilities:
       there is no address.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestWebPageMatch, planned:internal/scenario.TestWebRedirectStops]
+    tests: [internal/plan.TestWebPageMatch, planned:internal/scenario.TestWebRedirectStops]
     upstream:
       - 'node/web/a web step acts on its page whatever the query, fragment or trailing slash'
       - 'node/web/a web step on a page a redirect moved to another path stops as an error and clicks nothing'
@@ -464,7 +464,7 @@ capabilities:
       same-named rows), so the right row is found.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestWebDomID]
+    tests: [internal/plan.TestWebDomID]
     upstream:
       - 'node/web/a web step takes the element with its recorded DOM id over another of the same name'
       - 'node/web/a set step takes the field with its recorded DOM id among fields of the same name'
@@ -478,7 +478,7 @@ capabilities:
       call is made.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestWebTreeSwitch]
+    tests: [internal/plan.TestWebTreeSwitch]
     upstream:
       - 'node/web/a browser with its page tree off gets it on for the plan, which leaves turning it off to the daemon'
       - 'node/web/a browser whose page tree was already on keeps it on'
@@ -491,7 +491,7 @@ capabilities:
       the decline reason, without waiting for a window (well under 2 seconds).
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestLaunchRefusedByPolicy, planned:internal/scenario.TestOpenURLInBrowser]
+    tests: [internal/plan.TestLaunchRefusedByPolicy, planned:internal/scenario.TestOpenURLInBrowser]
     upstream:
       - 'node/allowlist/an app step the allowlist refuses escalates without starting the app'
       - 'node/allowlist/an app step whose launch the user declines escalates with the desk''s reason and waits for no window'
@@ -504,7 +504,7 @@ capabilities:
       backslashes (a Windows-style path) arrives unchanged and its read-back matches the field's value.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestTypeSendsWholeText, planned:internal/scenario.TestTypeBackslashes]
+    tests: [internal/plan.TestTypeSendsWholeText, planned:internal/scenario.TestTypeBackslashes]
     upstream:
       - 'node/gui_plan/a type step sends its whole text in one desk type call, so a closing tag on its last line meets its opener'
       - 'node/plan/typing a Windows path into a dialog field finds it in the outline, backslashes and all'
@@ -516,7 +516,7 @@ capabilities:
       resend it.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestCancelKeepsFinishedSteps]
+    tests: [internal/plan.TestCancelKeepsFinishedSteps]
     upstream:
       - 'node/term/a plan killed outright leaves the steps it finished as its result'
   - id: CAP-STP-035

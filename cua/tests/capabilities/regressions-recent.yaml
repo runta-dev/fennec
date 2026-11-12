@@ -27,7 +27,7 @@ capabilities:
       flow store's git history; a replay supplies the secret through parameters.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestSecretStepRedaction, internal/flows.TestSecretNotSaved]
+    tests: [internal/plan.TestSecretStepRedaction, internal/flows.TestSecretNotSaved]
     upstream: [changelog/0.1.48/1, changelog/0.1.49/1, changelog/0.1.40/6, changelog/0.1.41/15]
   - id: CAP-RGA-003
     title: A secret line gets its Return only when the terminal did not show it
@@ -41,7 +41,7 @@ capabilities:
       a Safari password field (one Return, no false stop).
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestSecretReturnGate, planned:scenario/TerminalSecretEchoOn, planned:scenario/TerminalSecretReadS, planned:scenario/SafariPasswordReturn]
+    tests: [internal/plan.TestSecretReturnGate, planned:scenario/TerminalSecretEchoOn, planned:scenario/TerminalSecretReadS, planned:scenario/SafariPasswordReturn]
     upstream: [changelog/0.1.49/2, changelog/0.1.49/4, changelog/0.1.48/1]
   # --- terminal typing ------------------------------------------------------
   - id: CAP-RGA-004
@@ -66,7 +66,7 @@ capabilities:
       terminal, Tabby, Rio) are treated as ordinary windows.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestTerminalPartialStops, planned:scenario/TerminalPartialType]
+    tests: [internal/plan.TestTerminalPartialStops, planned:scenario/TerminalPartialType]
     upstream: [changelog/0.1.46/1]
   - id: CAP-RGA-006
     title: Multi-line typing gates each Return on the previous line
@@ -81,7 +81,7 @@ capabilities:
       86 ms per terminal line; non-terminal windows send the remaining lines in one more call.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestMultilineReturnGate, planned:scenario/TerminalReadSThenPassword]
+    tests: [internal/plan.TestMultilineReturnGate, planned:scenario/TerminalReadSThenPassword]
     upstream: [changelog/0.1.46/2]
   - id: CAP-RGA-007
     title: Long field values are checked at their end before and after typing
@@ -251,7 +251,7 @@ capabilities:
       naming the step and the key before any step runs; a null on an optional text key counts as absent.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestStepValidation]
+    tests: [internal/plan.TestStepValidation]
     upstream: [changelog/0.1.48/3, changelog/0.1.42/14, changelog/0.1.41/16]
   - id: CAP-RGA-023
     title: Settling steps reuse a fresh window list
@@ -280,7 +280,7 @@ capabilities:
       matches several windows takes none of them unless exactly one title equals the text.
     surface: wait
     parity: oracle
-    tests: [planned:internal/plan.TestWaitIgnoresTitleOnly, planned:internal/plan.TestWaitAmbiguousTitle]
+    tests: [internal/plan.TestWaitIgnoresTitleOnly, internal/plan.TestWaitAmbiguousTitle]
     upstream: [changelog/0.1.44/8, changelog/0.1.42/14, changelog/0.1.40/6]
   - id: CAP-RGA-026
     title: Verify by role reaches non-interactive elements
@@ -289,7 +289,7 @@ capabilities:
       a document body.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestVerifyRoleNonInteractive]
+    tests: [internal/plan.TestVerifyRoleNonInteractive]
     upstream: [changelog/0.1.44/8]
   - id: CAP-RGA-027
     title: Visual state checks crop relative to the screen origin
@@ -299,7 +299,7 @@ capabilities:
       main one; a visual check whose model answer is not true or false fails.
     surface: act
     parity: spec
-    tests: [internal/vision.TestCropRelativeToOrigin, planned:internal/plan.TestVisualCheckNonBoolean]
+    tests: [internal/vision.TestCropRelativeToOrigin, internal/plan.TestVisualCheckNonBoolean]
     upstream: [changelog/0.1.44/8, changelog/0.1.42/14]
   - id: CAP-RGA-028
     title: The flow store survives malformed files and never signs commits
@@ -327,7 +327,7 @@ capabilities:
       policy), the plan stops instead of pressing the menu entry another way.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestDeclinedShortcutStops]
+    tests: [internal/plan.TestDeclinedShortcutStops]
     upstream: [changelog/0.1.42/14]
   - id: CAP-RGA-031
     title: Password fields are never retyped in the foreground under auto
@@ -365,7 +365,7 @@ capabilities:
       whose front window is stale waits up to 2 s for it to answer and then escalates.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestStaleAppEscalates]
+    tests: [internal/plan.TestStaleAppEscalates]
     upstream: [changelog/0.1.41/8]
   - id: CAP-RGA-035
     title: Parameterised replay steps are resolved afresh
@@ -414,7 +414,7 @@ capabilities:
       including expectations of off or disabled state.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestValueEquality, planned:scenario/SliderSetWithUnit]
+    tests: [internal/plan.TestValueEquality, planned:scenario/SliderSetWithUnit]
     upstream: [changelog/0.1.40/6]
   - id: CAP-RGA-040
     title: Close and menu-toggle steps verify their effect
@@ -433,7 +433,7 @@ capabilities:
       is checked again right before its click.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestEvidenceAttribution, planned:internal/plan.TestGroundedPointRecheck]
+    tests: [internal/plan.TestEvidenceAttribution, internal/plan.TestGroundedPointRecheck]
     upstream: [changelog/0.1.40/6]
   - id: CAP-RGA-042
     title: An interrupted plan reports what it already did
@@ -444,7 +444,7 @@ capabilities:
       escalated chain uses the window the chain left.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestInterruptedPlanReport, internal/flows.TestNoSaveAfterKill]
+    tests: [internal/plan.TestInterruptedPlanReport, internal/flows.TestNoSaveAfterKill]
     upstream: [changelog/0.1.40/6, changelog/0.1.40/27]
   - id: CAP-RGA-043
     title: Auto-input plans keep the foreground they took
@@ -454,7 +454,7 @@ capabilities:
       refused for naming no window.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestAutoKeepsForeground, planned:scenario/AutoModeForegroundFollowup]
+    tests: [internal/plan.TestAutoKeepsForeground, planned:scenario/AutoModeForegroundFollowup]
     upstream: [changelog/0.1.40/17]
   # --- input delivery ---------------------------------------------------
   - id: CAP-RGA-044

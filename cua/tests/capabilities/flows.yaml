@@ -197,7 +197,7 @@ capabilities:
       model call; the trace reports how=crop.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestRecordedCropFindsMovedTarget, planned:internal/plan.TestRecordedCropScale, planned:internal/plan.TestRecordedCropEdgeOffset, planned:internal/plan.TestRecordedCropFractionalOffset]
+    tests: [internal/plan.TestRecordedCropFindsMovedTarget, internal/plan.TestRecordedCropScale, internal/plan.TestRecordedCropEdgeOffset, internal/plan.TestRecordedCropFractionalOffset]
     upstream:
       - node/recorded/a recorded click with no element under it finds its recorded crop where the layout moved it, with no model call
       - node/recorded/a recorded crop taken at twice the desk scale matches a screen at desk scale
@@ -212,7 +212,7 @@ capabilities:
       no recorded block still refuses a grounded point on a content root and clicks nothing.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestChangedTargetSkipsCrop, planned:internal/plan.TestCaseChangeSkipsCrop, planned:internal/plan.TestUnrecordedRefusesRootGround]
+    tests: [internal/plan.TestChangedTargetSkipsCrop, internal/plan.TestCaseChangeSkipsCrop, internal/plan.TestUnrecordedRefusesRootGround]
     upstream:
       - node/recorded/a recorded click whose target a parameter changed skips the crop and the point, and grounding may land on the content root
       - node/recorded/a target a parameter changed only in case is no recorded target, and skips the crop
@@ -226,7 +226,7 @@ capabilities:
       found (crop score, where grounding pointed), with the plan step reported without its recorded block.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestRecordedPointLast, planned:internal/plan.TestRecordedPointWrongSizeStops]
+    tests: [internal/plan.TestRecordedPointLast, internal/plan.TestRecordedPointWrongSizeStops]
     upstream:
       - node/recorded/a recorded click takes its recorded point last, and only in a window of the recorded size
       - node/recorded/a recorded point in a window of another size is no fallback, and the step escalates with what each fallback found
@@ -239,7 +239,7 @@ capabilities:
       front one does not count and is never focused to make the step pass.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestAfterWindowMissingStops, planned:internal/plan.TestAfterWindowComes, planned:internal/plan.TestAfterWindowBehindNotFocused]
+    tests: [internal/plan.TestAfterWindowMissingStops, internal/plan.TestAfterWindowComes, internal/plan.TestAfterWindowBehindNotFocused]
     upstream:
       - node/recorded/a step whose recorded after-window does not come stops the plan as an error
       - node/recorded/a step whose recorded after-window comes passes
@@ -252,7 +252,7 @@ capabilities:
       instead of pressing the element through an accessibility action.
     surface: act
     parity: oracle
-    tests: [internal/flows.TestDraftKeepsButtonCountMods, planned:internal/plan.TestModifiedClickClicksCentre]
+    tests: [internal/flows.TestDraftKeepsButtonCountMods, internal/plan.TestModifiedClickClicksCentre]
     upstream:
       - node/draft/a right click, a double click and a click with modifiers keep their button, count and mods
       - node/recorded/a recorded right click, double click or modifier click clicks the element centre with them instead of pressing it
