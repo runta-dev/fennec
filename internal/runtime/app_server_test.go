@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,6 +34,8 @@ func TestDialCodexAppServerReusesGatewaySocket(t *testing.T) {
 	home := appServerHome(t, false)
 	socket := CodexAppServerSocket(filepath.Join(home, ".local/fennec/chatgpt/codex"))
 	os.MkdirAll(filepath.Dir(socket), 0700)
+	// The running server was started with the current (empty) option set.
+	os.WriteFile(filepath.Join(filepath.Dir(socket), "fennec-app-server.args"), nil, 0600)
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)
@@ -132,5 +135,17 @@ func TestGatewayHomeLinksRoutingAndUserAccount(t *testing.T) {
 	}
 	if gatewayAuth, _ := os.ReadFile(filepath.Join(gateway, "auth.json")); string(gatewayAuth) != `{"account":"gateway"}` {
 		t.Fatal("gateway credentials changed")
+	}
+}
+
+func TestGatewayOverridesSelectMagpieWithoutOpenAILogin(t *testing.T) {
+	home := t.TempDir()
+	if overrides := gatewayOverrides(home); overrides != nil {
+		t.Fatal("overrides without a Magpie provider", overrides)
+	}
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = 'zai/glm-5.3'\n\n[model_providers.magpie]\nrequires_openai_auth = true\n"), 0600)
+	got := strings.Join(gatewayOverrides(home), " ")
+	if got != `-c model_provider="magpie" -c model_providers.magpie.requires_openai_auth=false` {
+		t.Fatal(got)
 	}
 }

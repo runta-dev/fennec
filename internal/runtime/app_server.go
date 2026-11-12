@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -135,19 +136,35 @@ func DialCodexAppServer(ctx context.Context, home string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	var overrides []string
+	managed := mode == CodexAppServerGateway
+	if managed {
+		overrides = gatewayOverrides(codexHome)
+	}
 	socket := CodexAppServerSocket(codexHome)
-	conn, err := dialCodexAppServer(ctx, home, socket, env)
+	conn, err := dialCodexAppServer(ctx, home, socket, env, overrides, managed)
 	if err != nil {
 		return nil, err
 	}
 	return appServerConn{Conn: conn, mode: mode}, nil
 }
 
-func dialCodexAppServer(ctx context.Context, home, socket string, env []string) (net.Conn, error) {
-	if conn, err := dialUnix(ctx, socket); err == nil {
-		return conn, nil
-	}
+func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides []string, managed bool) (net.Conn, error) {
 	directory := filepath.Dir(socket)
+	signaturePath := filepath.Join(directory, "fennec-app-server.args")
+	signature := strings.Join(overrides, "\n")
+	current := func() bool {
+		if !managed {
+			return true
+		}
+		data, err := os.ReadFile(signaturePath)
+		return err == nil && string(data) == signature
+	}
+	if current() {
+		if conn, err := dialUnix(ctx, socket); err == nil {
+			return conn, nil
+		}
+	}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
 	}
@@ -170,7 +187,14 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env []string) 
 	}
 	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
 	if conn, err := dialUnix(ctx, socket); err == nil {
-		return conn, nil
+		if current() {
+			return conn, nil
+		}
+		// Fennec owns this CODEX_HOME; restart its server with the new options.
+		conn.Close()
+		if err := stopAppServers(ctx, filepath.Dir(directory), socket); err != nil {
+			return nil, err
+		}
 	}
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -180,7 +204,8 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env []string) 
 	if err != nil {
 		return nil, err
 	}
-	command := exec.Command(codex, "-c", "features.code_mode_host=true", "app-server", "--listen", "unix://")
+	arguments := append([]string{"-c", "features.code_mode_host=true"}, overrides...)
+	command := exec.Command(codex, append(arguments, "app-server", "--listen", "unix://")...)
 	command.Dir = home
 	command.Env = env
 	command.Stdout, command.Stderr = logFile, logFile
@@ -189,6 +214,11 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env []string) 
 	logFile.Close()
 	if err != nil {
 		return nil, err
+	}
+	if managed {
+		if err := os.WriteFile(signaturePath, []byte(signature), 0600); err != nil {
+			return nil, err
+		}
 	}
 	exited := make(chan struct{})
 	go func() { command.Wait(); close(exited) }()
@@ -218,4 +248,65 @@ func dialUnix(ctx context.Context, path string) (net.Conn, error) {
 	defer cancel()
 	var dialer net.Dialer
 	return dialer.DialContext(attempt, "unix", path)
+}
+
+// gatewayOverrides makes ChatGPT use Magpie as its model provider without an
+// OpenAI login, as the Mac's Magpie configuration does. The gateway home keeps
+// routing Codex CLI through openai_base_url; only ChatGPT's server gets these
+// options, so ChatGPT.app does not gate sends on the ChatGPT plan's Codex usage.
+func gatewayOverrides(codexHome string) []string {
+	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil || !strings.Contains(string(data), "[model_providers.magpie]") {
+		return nil
+	}
+	return []string{"-c", `model_provider="magpie"`, "-c", "model_providers.magpie.requires_openai_auth=false"}
+}
+
+// stopAppServers ends the app-server processes serving codexHome, which only
+// Fennec starts in its own ChatGPT home, and waits for the socket to close.
+func stopAppServers(ctx context.Context, codexHome, socket string) error {
+	entries, _ := os.ReadDir("/proc")
+	var pids []int
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		command, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
+		if err != nil || !strings.Contains(string(command), "app-server\x00--listen") {
+			continue
+		}
+		environment, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "environ"))
+		if err != nil {
+			continue
+		}
+		for _, variable := range strings.Split(string(environment), "\x00") {
+			if variable == "CODEX_HOME="+codexHome {
+				pids = append(pids, pid)
+				break
+			}
+		}
+	}
+	for _, pid := range pids {
+		syscall.Kill(pid, syscall.SIGTERM)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		conn, err := dialUnix(ctx, socket)
+		if err != nil {
+			return nil
+		}
+		conn.Close()
+		if time.Now().After(deadline) {
+			for _, pid := range pids {
+				syscall.Kill(pid, syscall.SIGKILL)
+			}
+			return fmt.Errorf("previous ChatGPT app-server did not stop")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
