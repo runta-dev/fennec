@@ -114,7 +114,7 @@ capabilities:
       but never echoes the line, so a secret pasted under a wrong key does not print.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestConfigDefaults, planned:internal/daemon.TestConfigStrict]
+    tests: [internal/daemon.TestConfigDefaults, internal/daemon.TestConfigStrict]
     upstream:
       - rust/models/tests/config.rs::a_missing_file_is_openrouter_with_its_key_variable
       - rust/models/tests/config.rs::a_file_overrides_some_fields_and_unknown_fields_are_refused
@@ -129,7 +129,7 @@ capabilities:
       or debug output.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestConfigKey, planned:internal/daemon.TestConfigKeyFileMode]
+    tests: [internal/daemon.TestConfigKey, internal/daemon.TestConfigKeyFileMode]
     upstream:
       - rust/models/tests/config.rs::the_key_comes_from_the_file_else_from_its_variable
       - rust/models/tests/config.rs::a_file_with_a_key_must_be_owner_only_and_the_key_never_prints
@@ -145,7 +145,7 @@ capabilities:
       mode instead of input) and non-boolean overlay values are refused naming the key and line.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestConfigSafetyTables]
+    tests: [internal/daemon.TestConfigSafetyTables]
     upstream:
       - rust/models/tests/config.rs::the_safety_and_tools_tables_load_and_default_to_every_app_and_script_run_on
       - rust/models/tests/config.rs::the_driver_table_turns_the_overlay_off_and_defaults_to_on
@@ -158,7 +158,7 @@ capabilities:
       saying to remove it, and other daemon keys such as a raw socket mode are refused as unknown.
     surface: daemon
     parity: spec
-    tests: [planned:internal/daemon.TestConfigSocketGroup]
+    tests: [internal/daemon.TestConfigSocketGroup]
     upstream:
       - rust/models/tests/config.rs::a_daemon_section_names_the_socket_group_and_an_empty_one_is_refused
   - id: CAP-DMN-011
@@ -169,7 +169,7 @@ capabilities:
       line, while stop and resume from the CLI or Fennec UI keep working.
     surface: policy
     parity: oracle
-    tests: [planned:internal/daemon.TestBrokenConfigFailsClosed]
+    tests: [internal/daemon.TestBrokenConfigFailsClosed]
     upstream:
       - rust/shuttle/src/daemon.rs::a_broken_config_fails_every_call_but_stop_since_the_safety_controls_are_in_it
 

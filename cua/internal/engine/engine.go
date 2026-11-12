@@ -45,6 +45,10 @@ type Engine struct {
 	// Impl holds tool implementations; a tool without one answers
 	// unavailable.
 	Impl map[string]Tool
+	// Broken is the configuration's load error: while set, every tool
+	// but status answers it (stop and resume work through the control
+	// socket regardless).
+	Broken error
 	// RunOff turns the run tool and script plugins off by configuration.
 	RunOff bool
 }
@@ -80,6 +84,9 @@ func (e *Engine) Tools(*mcpserver.Session) []mcpserver.Tool {
 func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, args json.RawMessage) mcpserver.Result {
 	if name == protocol.ToolStatus {
 		return result(e.Status(), nil)
+	}
+	if e.Broken != nil {
+		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "the configuration does not load: " + e.Broken.Error(), Hint: "fix the file; fennec-cua stays closed until it loads"})
 	}
 	gctx, guard, done, err := e.Stopper.Guard(ctx)
 	if err != nil {
