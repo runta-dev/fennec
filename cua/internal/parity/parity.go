@@ -116,6 +116,10 @@ func side(ctx context.Context, fx Fixture, s Scenario, d Driver, c *mcpclient.Cl
 	return sd
 }
 
+// Judge compares two sides of one scenario as Run does: harness errors,
+// success, failure class, then the final fixture state.
+func Judge(f, s Side) (bool, string) { return agree(f, s) }
+
 func agree(f, s Side) (bool, string) {
 	switch {
 	case f.Err != "" || s.Err != "":

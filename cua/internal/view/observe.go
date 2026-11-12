@@ -294,6 +294,20 @@ func (o *Observer) point(ctx context.Context, walk *Walk, res *protocol.ObserveR
 	if err != nil {
 		return nil, internal(err)
 	}
+	if req.Window != "" {
+		// The asked window's element answers, and a window of another
+		// app on top there is named as covering it.
+		asked, err := o.Window(listed, req.Window, 0)
+		if err != nil {
+			return nil, err
+		}
+		if in, ok := o.Source.(PointInWindow); ok && (win == nil || win.PID != asked.PID) {
+			n, pth, w, cov, err := in.AtIn(ctx, asked, x, y)
+			if err == nil && w != nil && w.PID == asked.PID {
+				node, path, win, covered = n, pth, w, cov
+			}
+		}
+	}
 	if win == nil {
 		w, err := WindowAt(listed, x, y)
 		if err != nil {

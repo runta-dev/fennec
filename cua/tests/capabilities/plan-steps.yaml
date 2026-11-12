@@ -43,7 +43,7 @@ capabilities:
       saying the item is still in its old state; when it flips, the trace reports the new state.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestMenuToggleReadsMarkWhileOpen, planned:internal/scenario.TestMenuToggleIdempotent]
+    tests: [internal/plan.TestMenuToggleReadsMarkWhileOpen, internal/scenario.TestMenuToggleIdempotent]
     upstream:
       - 'node/macmenu/on macOS a menu toggle reads its mark after opening its menus, so a stale closed-menu mark neither skips nor repeats the press'
       - 'node/menutoggle/a menu toggle reads its state back after the press, which ${flips ? ''took'' : ''did not take''}'
@@ -88,7 +88,7 @@ capabilities:
       later one, targeting the dialog that owns the list, whose tree then includes the list entries.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestSetComboPicksOption, planned:internal/scenario.TestPopupListNextStep]
+    tests: [internal/plan.TestSetComboPicksOption, internal/scenario.TestPopupListNextStep]
     upstream:
       - 'node/combo/set on a combo box without a text field picks the option from its list, does nothing when it is already chosen, and names the options when none matches'
       - 'node/popup/a click that opens a combo box''s list leaves the next step in the dialog, whose tree holds the list''s entries, also in a new plan'
@@ -161,7 +161,7 @@ capabilities:
       keyboard shortcut is used in place of the press.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestMenuRereadsAfterOpen, planned:internal/scenario.TestMenuRetitledEntry]
+    tests: [internal/plan.TestMenuRereadsAfterOpen, internal/scenario.TestMenuRetitledEntry]
     upstream:
       - 'node/retitle/on macOS a menu step rereads the menu after opening it, so an entry that retitled itself matches its new title'
       - 'node/retitle/on macOS a submenu whose id changes once its parent opens is opened again from a fresh tree, and every opened menu is closed'
@@ -192,7 +192,7 @@ capabilities:
       failed. A click whose first read caught only a bare dialog root reads again and finds its target.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestStepWaitsForLateDialog, planned:internal/scenario.TestSlowDialogFill]
+    tests: [internal/plan.TestStepWaitsForLateDialog, internal/scenario.TestSlowDialogFill]
     upstream:
       - 'node/slowdialog/a step whose target is missing waits for the window the step before opened, then runs there'
       - 'node/slowdialog/a step waits until the late window holds its target, as a dialog fills its tree after it shows'
@@ -210,7 +210,7 @@ capabilities:
       after such a step is in front for the next act call, whose steps then go to it.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestEndWaitOnlyWhenStepCanOpen, planned:internal/scenario.TestLateDialogReportedAtEnd]
+    tests: [internal/plan.TestEndWaitOnlyWhenStepCanOpen, internal/scenario.TestLateDialogReportedAtEnd]
     upstream:
       - 'node/endwait/a plan that ends with ${JSON.stringify(step)}, which opens no window, skips the end-of-plan wait'
       - 'node/endwait/a plan that ends with ${JSON.stringify(step)} still waits for the dialog it opens late and reports it'
@@ -228,7 +228,7 @@ capabilities:
       with its single newline and no select-all.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestChooserDetection, planned:internal/scenario.TestTypePathIntoSavePanel]
+    tests: [internal/plan.TestChooserDetection, internal/scenario.TestTypePathIntoSavePanel]
     upstream:
       - 'node/chooser/a typed path finds the file chooser by its name field even when the field sits past the outline''s first 1800 characters'
       - 'node/chooser/Enter in a file chooser whose name field sits past the outline''s first 1800 characters waits for its button before it submits'
@@ -247,7 +247,7 @@ capabilities:
       steps in other apps proceed.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestNoInputIntoUnplannedAlert, internal/plan.TestHiddenModalBlocks]
+    tests: [internal/plan.TestNoInputIntoUnplannedAlert, internal/plan.TestHiddenModalBlocks]
     upstream:
       - 'node/chooser/a typed line whose first Return opens an overwrite confirmation sends no second Return into it and escalates'
       - 'node/modal/a step in a window whose app holds a modal dialog the screen does not show escalates with its title and types nothing'
@@ -325,7 +325,7 @@ capabilities:
       reused by the first step only if it is at most 25 ms old.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestTreeReadBudget, planned:internal/plan.TestWindowListReuseWindow]
+    tests: [internal/plan.TestTreeReadBudget, internal/plan.TestWindowListReuseWindow]
     upstream:
       - 'node/gui_plan/the first step takes the start window list only within 25 ms of its read, however long the start outline took'
       - 'node/snapshots/a type step into a dialog that opened mid-plan reads the dialog once before typing'
@@ -340,7 +340,7 @@ capabilities:
       list, observes the new title exactly once, and lists windows no more than three times after the key.
     surface: wait
     parity: spec
-    tests: [planned:internal/plan.TestRetitleWaitIsEventDriven]
+    tests: [internal/plan.TestRetitleWaitIsEventDriven]
     upstream:
       - 'node/wait/a key that retitles the window late waits on the desk for the change instead of polling window lists'
   - id: CAP-STP-023
@@ -420,7 +420,7 @@ capabilities:
       not empty.
     surface: flow
     parity: oracle
-    tests: [planned:internal/plan.TestBlankFieldCheck]
+    tests: [internal/plan.TestBlankFieldCheck]
     upstream:
       - 'node/gui_plan_blank/a step that typed into an empty field stops when its app was launched and reopened its last document'
   - id: CAP-STP-028
@@ -449,7 +449,7 @@ capabilities:
       there is no address.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestWebPageMatch, planned:internal/scenario.TestWebRedirectStops]
+    tests: [internal/plan.TestWebPageMatch, internal/scenario.TestWebRedirectStops]
     upstream:
       - 'node/web/a web step acts on its page whatever the query, fragment or trailing slash'
       - 'node/web/a web step on a page a redirect moved to another path stops as an error and clicks nothing'
@@ -491,7 +491,7 @@ capabilities:
       the decline reason, without waiting for a window (well under 2 seconds).
     surface: act
     parity: oracle
-    tests: [internal/plan.TestLaunchRefusedByPolicy, planned:internal/scenario.TestOpenURLInBrowser]
+    tests: [internal/plan.TestLaunchRefusedByPolicy, internal/scenario.TestOpenURLInBrowser]
     upstream:
       - 'node/allowlist/an app step the allowlist refuses escalates without starting the app'
       - 'node/allowlist/an app step whose launch the user declines escalates with the desk''s reason and waits for no window'
@@ -504,7 +504,7 @@ capabilities:
       backslashes (a Windows-style path) arrives unchanged and its read-back matches the field's value.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestTypeSendsWholeText, planned:internal/scenario.TestTypeBackslashes]
+    tests: [internal/plan.TestTypeSendsWholeText, internal/scenario.TestTypeBackslashes]
     upstream:
       - 'node/gui_plan/a type step sends its whole text in one desk type call, so a closing tag on its last line meets its opener'
       - 'node/plan/typing a Windows path into a dialog field finds it in the outline, backslashes and all'

@@ -48,3 +48,11 @@ func TestToDeskScalesAndRounds(t *testing.T) {
 		t.Error("empty rect has bounds")
 	}
 }
+
+// An AppKit text link gives its AXURL as a string (found live: the
+// fixture's "Fennec Docs" link carried no URL).
+func TestURLOfString(t *testing.T) {
+	if urlOf("https://example.com/a") != "https://example.com/a" || urlOf(ax.URL("u")) != "u" || urlOf(3.0) != "" {
+		t.Fatal("urlOf")
+	}
+}

@@ -101,6 +101,11 @@ func (r *planRun) setText(ctx context.Context, i int, s protocol.Step, mode stri
 	}
 	before, _ := r.list(ctx)
 	res := r.send(ctx, i, s, r.request(mode))
+	if res.Status == protocol.StatusRefused && (n.Role == "spinbutton" || n.Role == "slider") && !r.background(mode) && r.stepTo(ctx, n, want) {
+		// The value could not be written (nothing was sent); the
+		// control's increment and decrement actions reached it.
+		res = okResult(fmt.Sprintf("%s reads %q, stepped by its increment and decrement actions", describeNode(n), want))
+	}
 	if res.Status == protocol.StatusUnconfirmed && res.Error == nil {
 		got := ""
 		if now, _, err := r.e.X.B.Read(ctx, n.Handle, true, false); err == nil && now.Value != nil {
@@ -121,6 +126,12 @@ func (r *planRun) setText(ctx context.Context, i int, s protocol.Step, mode stri
 		case ValueEquals(n.Role, got, want):
 			res.Status, res.OK, res.Retry = protocol.StatusConfirmed, true, nil
 			res.Evidence = fmt.Sprintf("%s reads %q", describeNode(n), got)
+			res.Notes = nil
+		case (n.Role == "spinbutton" || n.Role == "slider") && r.stepTo(ctx, n, want):
+			// The control took no written value; its own increment and
+			// decrement actions walked it to the wanted one.
+			res.Status, res.OK, res.Retry = protocol.StatusConfirmed, true, nil
+			res.Evidence = fmt.Sprintf("%s reads %q, stepped by its increment and decrement actions", describeNode(n), want)
 			res.Notes = nil
 		default:
 			perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s reads %q after set, not %q", describeNode(n), view.Clip(got, 80, false), want), Hint: "read the field before setting it again"}
@@ -203,6 +214,13 @@ func (r *planRun) pickOption(ctx context.Context, i int, s protocol.Step, mode s
 	return protocol.StepResult{OK: true, Status: protocol.StatusUnconfirmed, Evidence: fmt.Sprintf("pressed the option %q", want)}, nil
 }
 
+// Menu step timing: how long an opened menu settles before its entries
+// are pressed or read, and how long a toggle's mark may take to flip.
+const (
+	MenuSettle   = 120 * time.Millisecond
+	MenuReadBack = time.Second
+)
+
 // menuToggle runs a menu step on macOS: it opens each menu along the path
 // by its accessibility action, rereading the opened menu before matching
 // the next entry (an entry may retitle itself as its menu opens), reads a
@@ -235,6 +253,16 @@ func (r *planRun) menuToggle(ctx context.Context, i int, s protocol.Step, mode s
 		w = frontOf(listed)
 	}
 	if w == nil {
+		// A window that is still coming to the front is waited for, as
+		// for any other step.
+		if st := r.awaitFront(ctx); st != nil {
+			return refused(st.err), st, true
+		}
+		if listed, err = r.list(ctx); err == nil {
+			w = frontOf(listed)
+		}
+	}
+	if w == nil {
 		perr := noFront(listed)
 		return refused(perr), &stop{err: perr}, true
 	}
@@ -256,66 +284,125 @@ func (r *planRun) menuToggle(ctx context.Context, i int, s protocol.Step, mode s
 	end := r.acting()
 	defer end()
 	opened := 0
+	var openers []view.Handle // the entries pressed to open a menu, outermost first
+	// closeMenus cancels each menu the step opened, innermost first, by
+	// its accessibility action: an Escape key does not always reach a menu
+	// AppKit opened for accessibility, and a menu left open swallows every
+	// later press. A menu that cannot be found gets an Escape.
 	closeMenus := func() {
-		for k := 0; k < opened; k++ {
+		if opened == 0 {
+			return
+		}
+		var nodes []view.RawNode
+		if snap, err := r.snapshot(ctx, *w, view.TreeOptions{Menus: true}); err == nil {
+			nodes = snap.Tree.Nodes
+		}
+		for k := len(openers) - 1; k >= 0; k-- {
+			if m := childMenu(r.e.X.B, nodes, openers[k]); m != nil && r.e.X.B.Perform(ctx, m, "AXCancel") == nil {
+				continue
+			}
 			_, _ = r.e.X.B.Driver(ctx, "press_key", map[string]any{"key": "escape", "scope": "desktop", "delivery_mode": protocol.InputForeground})
 		}
-		opened = 0
+		opened, openers = 0, nil
 	}
-	var prev view.Handle
-	var item view.RawNode
-	for k, name := range path {
-		var found *view.RawNode
-		for try := 0; try < 2 && found == nil; try++ {
-			snap, err := r.snapshot(ctx, *w, view.TreeOptions{Menus: true})
-			if err != nil {
-				closeMenus()
-				perr := &protocol.Error{Code: protocol.ErrNotResponding, Message: err.Error()}
-				return refused(perr), &stop{err: perr}, true
+	// openPath opens each menu along the path, rereading the opened menu
+	// before matching the next entry, and answers the last entry as its
+	// open menu shows it. AppKit validates a menu (check marks, titles)
+	// as it opens, and a press sent before the menu is up can be lost, so
+	// each open settles first.
+	openPath := func() (view.RawNode, *protocol.Error) {
+		var prev view.Handle
+		for k, name := range path {
+			var found *view.RawNode
+			for try := 0; try < 2 && found == nil; try++ {
+				snap, err := r.snapshot(ctx, *w, view.TreeOptions{Menus: true})
+				if err != nil {
+					return view.RawNode{}, &protocol.Error{Code: protocol.ErrNotResponding, Message: err.Error()}
+				}
+				found = menuEntry(r.e.X.B, snap.Tree.Nodes, prev, name)
 			}
-			found = menuEntry(r.e.X.B, snap.Tree.Nodes, prev, name)
+			if found == nil {
+				return view.RawNode{}, &protocol.Error{Code: protocol.ErrTargetNotFound, Message: fmt.Sprintf("no menu item %q in %s's menus; nothing was pressed", strings.Join(path[:k+1], " > "), orStr(w.App, "the app")), Hint: "observe with menus: true"}
+			}
+			if k == len(path)-1 {
+				return *found, nil
+			}
+			if err := r.e.X.B.Perform(ctx, found.Handle, "AXPress"); err != nil {
+				return view.RawNode{}, &protocol.Error{Code: protocol.ErrUnavailable, Message: fmt.Sprintf("opening the menu %q failed: %v", name, err)}
+			}
+			opened++
+			openers = append(openers, found.Handle)
+			prev = found.Handle
+			if err := r.e.sleep(ctx, MenuSettle); err != nil {
+				return view.RawNode{}, engineErr(err)
+			}
 		}
-		if found == nil {
-			closeMenus()
-			perr := &protocol.Error{Code: protocol.ErrTargetNotFound, Message: fmt.Sprintf("no menu item %q in %s's menus; nothing was pressed", strings.Join(path[:k+1], " > "), orStr(w.App, "the app")), Hint: "observe with menus: true"}
-			return refused(perr), &stop{err: perr}, true
-		}
-		if k == len(path)-1 {
-			item = *found
-			break
-		}
-		if err := r.e.X.B.Perform(ctx, found.Handle, "AXPress"); err != nil {
-			closeMenus()
-			perr := &protocol.Error{Code: protocol.ErrUnavailable, Message: fmt.Sprintf("opening the menu %q failed: %v", name, err)}
-			return refused(perr), &stop{err: perr}, true
-		}
-		opened++
-		prev = found.Handle
+		return view.RawNode{}, &protocol.Error{Code: protocol.ErrInvalid, Message: "a menu step names a path such as \"View > Status Bar\""}
+	}
+	item, perr := openPath()
+	if perr != nil {
+		closeMenus()
+		return refused(perr), &stop{err: perr}, true
 	}
 	if want != nil && item.HasState("checked") == *want {
 		closeMenus()
 		return okResult(fmt.Sprintf("%s is already %s", s.Menu, onOff(*want))), nil, true
 	}
+	// The entry is pressed with its menus closed again: on macOS 26 a
+	// press sent into an open menu is often lost, while a validated entry
+	// takes its accessibility action from the closed menu bar.
+	closeMenus()
+	if err := r.e.sleep(ctx, MenuSettle); err != nil {
+		perr := engineErr(err)
+		return refused(perr), &stop{err: perr}, true
+	}
 	if err := r.e.X.B.Perform(ctx, item.Handle, "AXPress"); err != nil {
-		closeMenus()
 		perr := &protocol.Error{Code: protocol.ErrUnavailable, Message: fmt.Sprintf("the menu item %q failed: %v; nothing happened", s.Menu, err)}
 		return refused(perr), &stop{err: perr}, true
 	}
 	r.e.policy().Activity.Own()
-	opened = 0
 	if want == nil {
 		res := okResult("ran " + s.Menu + " by its accessibility action")
 		return res, nil, true
 	}
-	if n, _, err := r.e.X.B.Read(ctx, item.Handle, false, false); err == nil {
-		if n.HasState("checked") == *want {
-			return okResult(fmt.Sprintf("%s reads %s", s.Menu, onOff(*want))), nil, true
+	// The pressed item's mark reads as it was until its menu is validated
+	// again: open the menus once more and read it there, for up to
+	// MenuReadBack while the app applies the command.
+	deadline := r.e.now().Add(MenuReadBack)
+	readOK := false
+	for {
+		if err := r.e.sleep(ctx, MenuSettle); err != nil {
+			break
 		}
+		got, perr := openPath()
+		r.e.policy().Activity.Own()
+		closeMenus()
+		if perr == nil {
+			readOK = true
+			if got.HasState("checked") == *want {
+				return okResult(fmt.Sprintf("%s reads %s", s.Menu, onOff(*want))), nil, true
+			}
+		}
+		if !r.e.now().Before(deadline) {
+			break
+		}
+	}
+	if readOK {
 		perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s is still %s after the press", s.Menu, onOff(!*want))}
 		return protocol.StepResult{Status: protocol.StatusUnconfirmed, Evidence: "pressed " + s.Menu, Error: perr}, &stop{err: perr}, true
 	}
-	perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s could not be read back as %s", s.Menu, onOff(*want))}
+	perr = &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s could not be read back as %s", s.Menu, onOff(*want))}
 	return protocol.StepResult{Status: protocol.StatusUnconfirmed, Evidence: "pressed " + s.Menu, Error: perr}, &stop{err: perr}, true
+}
+
+// childMenu is the menu an entry opens: its child of role menu.
+func childMenu(b actions.Backend, nodes []view.RawNode, opener view.Handle) view.Handle {
+	for _, n := range nodes {
+		if n.Role == "menu" && n.Parent >= 0 && n.Parent < len(nodes) && b.Same(nodes[n.Parent].Handle, opener) {
+			return n.Handle
+		}
+	}
+	return nil
 }
 
 // menuEntry finds the first menu entry of that name under prev (anywhere
@@ -560,3 +647,44 @@ func (r *planRun) readUntil(ctx context.Context, n view.RawNode, want string) (s
 		}
 	}
 }
+
+// stepTo walks a spin button or slider that refuses a written value to a
+// number by its AXIncrement and AXDecrement actions, reading it after each
+// step; it stops when a step changes nothing or passes the number.
+func (r *planRun) stepTo(ctx context.Context, n view.RawNode, want string) bool {
+	target, ok := view.NumberOf(want)
+	if !ok {
+		return false
+	}
+	read := func() (float64, string, bool) {
+		now, _, err := r.e.X.B.Read(ctx, n.Handle, true, false)
+		if err != nil || now.Value == nil {
+			return 0, "", false
+		}
+		f, ok := view.NumberOf(*now.Value)
+		return f, *now.Value, ok
+	}
+	cur, text, ok := read()
+	for k := 0; ok && k < maxSteps; k++ {
+		if ValueEquals(n.Role, text, want) {
+			return true
+		}
+		action, up := "AXIncrement", cur < target
+		if !up {
+			action = "AXDecrement"
+		}
+		if r.e.X.B.Perform(ctx, n.Handle, action) != nil {
+			return false
+		}
+		r.e.policy().Activity.Own()
+		next, nextText, ok2 := read()
+		if !ok2 || next == cur || (up && next > target) || (!up && next < target) {
+			return ok2 && ValueEquals(n.Role, nextText, want)
+		}
+		cur, text = next, nextText
+	}
+	return ok && ValueEquals(n.Role, text, want)
+}
+
+// maxSteps bounds the increment and decrement actions of one set.
+const maxSteps = 200

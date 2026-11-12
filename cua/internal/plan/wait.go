@@ -690,6 +690,7 @@ func (e *Executor) WaitTool() engine.Tool {
 			return nil, &protocol.Error{Code: protocol.ErrInvalid, Message: "wait needs a condition: window_opens, window_gone, front, exists, gone, reads, looks, still or changed"}
 		}
 		start := e.now()
+		e.dropLists()
 		r := &planRun{e: e, call: call, input: e.policy().Input, res: &protocol.ActResult{}}
 		before, err := r.list(ctx)
 		if err != nil {

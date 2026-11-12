@@ -92,3 +92,9 @@ const (
 	PreviewChars = 80
 	MaxText      = 65536
 )
+
+// PointInWindow is a Source that hit-tests a point within one window's app,
+// even where another app's window lies on top.
+type PointInWindow interface {
+	AtIn(ctx context.Context, w RawWindow, x, y int) (node *RawNode, path []RawNode, window *RawWindow, covered *RawWindow, err error)
+}

@@ -190,10 +190,11 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		sup     *driver.Supervisor
 	)
 	if bin != "" {
-		client = &driver.Client{Socket: paths.Driver, Activity: pol.Activity}
+		// A result the driver marks isError is an error for every caller.
+		client = &driver.Client{Socket: paths.Driver, Activity: pol.Activity, ToolErrors: true}
 		defer client.Close()
 		service = vision.NewService(vision.DriverCapturer{Client: client}, windowID(observer.Refs))
-		imager = visionImager{service}
+		imager = visionImager{s: service, allow: pol.Allow}
 		dk.DriverPath = bin
 		sup = &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger, Embedded: cli.Embedded(), Foreground: input == protocol.InputForeground, OverlayOff: !cfg.Driver.Overlay}
 		// The driver's own windows (its overlay) are never an agent's.
@@ -203,7 +204,9 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	}
 
 	// The act tool shares the observer's refs, so refs from observe resolve.
-	executor := &actions.Executor{B: desk.NewActions(dk, client), Refs: observer.Refs, Policy: pol}
+	// Its backend shares one fresh window list between the plan and the
+	// actions executor (actions.Lists).
+	executor := &actions.Executor{B: actions.Watch(desk.NewActions(dk, client), &actions.Lists{}), Refs: observer.Refs, Policy: pol}
 	acting := &record.Acting{}
 	webTree := &ax.WebTree{Get: ax.WebTreeOn, Set: ax.SetWebTree}
 	var held sync.Map // pids whose page tree plans turned on
@@ -221,9 +224,31 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 			return on, err
 		},
 	}
+	// Waits for a window change read the full list only when the cheap
+	// fingerprint of the on-screen windows moves (or now and then).
+	px.WindowChange = func(ctx context.Context, limit time.Duration, list func(context.Context) (bool, error)) (bool, error) {
+		return ax.WindowPoll{Fingerprint: func() (uint64, bool) {
+			ws, err := ax.ServerWindows(true)
+			if err != nil {
+				return 0, false
+			}
+			return ax.Fingerprint(ws), true
+		}, List: list}.Run(ctx, limit)
+	}
 	if service != nil {
 		px.Screen = screen{c: service.Capturer}
 		px.Sessions = service.Sessions
+		px.WindowImage = func(ctx context.Context, pid int, key string) (int, int, error) {
+			id, ok := cgID(key)
+			if !ok {
+				return 0, 0, errors.New("the window has no window server id")
+			}
+			c, err := service.Capturer.Window(ctx, "plan", pid, id)
+			if err != nil {
+				return 0, 0, err
+			}
+			return c.W, c.H, nil
+		}
 	}
 
 	// Flows live beside the configuration; recordings beside the daemon.
@@ -257,6 +282,16 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 			return c.PNG, nil
 		}},
 	}
+	// A stop ends every call in flight (a running script among them) and then
+	// a recording in progress, keeping what it recorded.
+	halt := &policy.Halt{Recording: func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := recorder.Finish(ctx); err != nil {
+			logger.Printf("recording at stop: %v", err)
+		}
+	}}
+	stopper.OnState(halt.OnState)
 	fl := &engine.Flows{Store: store, Chains: chains, Recorder: recorder, Run: px.Run, Gate: pol.Gate}
 
 	eng := &engine.Engine{
@@ -435,10 +470,13 @@ func (s screen) Shot(ctx context.Context) (*plan.Shot, error) {
 }
 
 // visionImager adapts vision.Service to the engine's observe hook.
-type visionImager struct{ s *vision.Service }
+type visionImager struct {
+	s     *vision.Service
+	allow policy.Allowlist
+}
 
 func (v visionImager) Observe(ctx context.Context, agent string, req protocol.ObserveRequest, base engine.Observer) (*protocol.ObserveResult, error) {
-	return v.s.Observe(ctx, agent, req, base)
+	return maskedObserve(ctx, v.s, v.allow, agent, req, base)
 }
 
 // windowID resolves a window ref to its window server id.

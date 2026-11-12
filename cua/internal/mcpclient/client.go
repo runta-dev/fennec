@@ -72,7 +72,12 @@ func (r ToolResult) Text() string {
 
 // Start runs the command and initialises a session.
 func Start(ctx context.Context, name string, args ...string) (*Client, error) {
-	cmd := exec.Command(name, args...)
+	return StartCommand(ctx, exec.Command(name, args...))
+}
+
+// StartCommand runs a prepared command (its environment, directory and
+// stderr as the caller set them) and initialises a session on its stdio.
+func StartCommand(ctx context.Context, cmd *exec.Cmd) (*Client, error) {
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

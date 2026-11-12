@@ -251,7 +251,7 @@ capabilities:
       reachable only from the CLI and Fennec's UI.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestOwnerOnlyControls, internal/mcpserver.TestNoToolReachesSafety]
+    tests: [internal/policy.TestOwnerOnlyControls, internal/mcpserver.TestNoToolReachesSafety]
     upstream:
       - rust/shuttle/src/daemon.rs::the_stop_resume_and_recording_are_kept_to_the_daemons_own_user
       - rust/shuttle/src/tools.rs::no_mcp_tool_reaches_the_safety_controls
@@ -683,7 +683,7 @@ capabilities:
       valid 18-point template image so it follows the menu-bar appearance.
     surface: packaging
     parity: spec
-    tests: [planned:internal/policy.TestIndicatorIcons]
+    tests: [internal/policy.TestIndicatorIcons]
     upstream:
       - rust/shuttle/src/mac.rs::each_state_has_an_18_point_template_icon
   - id: CAP-DMN-045

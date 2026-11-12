@@ -2,6 +2,7 @@ package view
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +109,28 @@ func TestShowing(t *testing.T) {
 		if got := Showing(c.n); got != c.want {
 			t.Errorf("Showing(%+v) = %v", c.n, got)
 		}
+	}
+}
+
+// A live menu item reports its check mark only as AXMenuItemMarkChar; read
+// as AXValue alone, View > Show Status Bar never read as on.
+func TestMenuMarkStates(t *testing.T) {
+	for mark, want := range map[string]string{"": "", "✓": "checked", "•": "checked", "-": "mixed"} {
+		got := strings.Join(MenuMarkStates(mark), ",")
+		if got != want {
+			t.Errorf("mark %q: %q, want %q", mark, got, want)
+		}
+	}
+}
+
+// A slider refuses a string value; the set writes the number it reads.
+func TestNumberOf(t *testing.T) {
+	for in, want := range map[string]float64{"14": 14, " 14 pt": 14, "-2.5": -2.5, "30%": 30} {
+		if got, ok := NumberOf(in); !ok || got != want {
+			t.Errorf("%q: %v %v", in, got, ok)
+		}
+	}
+	if _, ok := NumberOf("Blue"); ok {
+		t.Error("Blue is no number")
 	}
 }

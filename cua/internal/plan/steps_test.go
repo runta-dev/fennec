@@ -41,7 +41,7 @@ func TestMenuRereadsAfterOpen(t *testing.T) {
 		}
 	}
 	mustPass(t, r.run(protocol.Step{Menu: "View > Wrap to Window"}))
-	if strings.Join(r.d.Performs, ",") != "view:AXPress,item:AXPress" || len(keyCalls(r.d)) != 0 {
+	if presses(r.d) != "view:AXPress,item:AXPress" || len(keyCalls(r.d)) != 0 {
 		t.Fatalf("%v %s", r.d.Performs, r.d)
 	}
 	// A path that ends nowhere closes every menu it opened.
@@ -49,7 +49,7 @@ func TestMenuRereadsAfterOpen(t *testing.T) {
 	viewMenu(r, "Wrap to Page")
 	res := r.run(protocol.Step{Menu: "View > Zoom"})
 	mustStop(t, res, 0, protocol.ErrTargetNotFound)
-	if escapes(r.d) != 1 || strings.Join(r.d.Performs, ",") != "view:AXPress" {
+	if menusClosed(r.d) != 1 || presses(r.d) != "view:AXPress" {
 		t.Fatalf("%v %s", r.d.Performs, r.d)
 	}
 }

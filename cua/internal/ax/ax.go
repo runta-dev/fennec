@@ -53,6 +53,15 @@ static AXError setBool(AXUIElementRef e, const char *name, int v) {
 	return err;
 }
 
+static AXError setNumber(AXUIElementRef e, const char *name, double v) {
+	CFStringRef a = cfstr(name);
+	CFNumberRef n = CFNumberCreate(NULL, kCFNumberDoubleType, &v);
+	AXError err = AXUIElementSetAttributeValue(e, a, n);
+	CFRelease(n);
+	CFRelease(a);
+	return err;
+}
+
 static AXError setString(AXUIElementRef e, const char *name, const char *v) {
 	CFStringRef a = cfstr(name);
 	CFStringRef s = cfstr(v);
@@ -452,3 +461,20 @@ func ServerWindows(onScreen bool) ([]ServerWindow, error) {
 // BackingScale is the main display's pixels per point; desktop coordinates
 // are AX points times this.
 func BackingScale() float64 { return float64(C.backingScale()) }
+
+// SetNumber sets a numeric attribute such as a slider's AXValue.
+func (e *Element) SetNumber(name string, v float64) error {
+	c := C.CString(name)
+	defer C.free(unsafe.Pointer(c))
+	return axErr(C.setNumber(e.ref, c, C.double(v)))
+}
+
+// ElementAtIn is the element of this application element's app at a point
+// in AX points, even where another app's window lies on top.
+func (e *Element) ElementAtIn(x, y float64) (*Element, error) {
+	var ref C.AXUIElementRef
+	if err := axErr(C.AXUIElementCopyElementAtPosition(e.ref, C.float(x), C.float(y), &ref)); err != nil {
+		return nil, err
+	}
+	return wrap(ref), nil
+}

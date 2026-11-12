@@ -289,7 +289,7 @@ func TestMenuStepBackgroundRefused(t *testing.T) {
 	menus(r, "cg:2")
 	res = r.run(protocol.Step{Launch: "Mail"}, protocol.Step{Menu: "File > New"})
 	mustPass(t, res)
-	if strings.Join(r.d.Raised, ",") != "cg:2" || strings.Join(r.d.Performs, ",") != "file:AXPress,new:AXPress" {
+	if strings.Join(r.d.Raised, ",") != "cg:2" || presses(r.d) != "file:AXPress,new:AXPress" {
 		t.Fatalf("%v %v", r.d.Raised, r.d.Performs)
 	}
 }

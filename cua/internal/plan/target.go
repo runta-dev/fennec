@@ -110,6 +110,9 @@ func (r *planRun) resolve(ctx context.Context, i int, s protocol.Step, kind, mod
 			if listed, err := r.list(ctx); err == nil {
 				if f := frontOf(listed); f != nil && f.Key != w.Key && (r.win == nil || f.PID == r.win.PID) {
 					w = *f
+					// A window that just came to the front may still fill
+					// its tree: it gets a wait of its own.
+					deadline = r.e.now().Add(LateWait)
 				}
 			}
 		}
@@ -297,7 +300,33 @@ func (r *planRun) windowNamed(ws []view.RawWindow, name string, pid int) (*view.
 	if err != nil {
 		return nil, engineErr(err)
 	}
+	if r.background(r.input) {
+		if perr := twinTitles(ws, w); perr != nil {
+			return nil, perr
+		}
+	}
 	return &w, nil
+}
+
+// twinTitles refuses, for background input, a title that two windows of
+// the picked window's app share: shown twins, or twins on different
+// Spaces. From behind, nothing tells which one the user means, and the
+// active one is no hint. A minimized twin of a shown window is no rival.
+func twinTitles(ws []view.RawWindow, picked view.RawWindow) *protocol.Error {
+	var twins []view.RawWindow
+	for _, w := range ws {
+		if w.PID == picked.PID && w.Title == picked.Title && w.Hidden == "" {
+			twins = append(twins, w)
+		}
+	}
+	if len(twins) < 2 {
+		return nil
+	}
+	return &protocol.Error{
+		Code:    protocol.ErrTargetAmbiguous,
+		Message: fmt.Sprintf("%d windows of %s are titled %q, so background input cannot tell which one is meant; nothing was sent", len(twins), orStr(picked.App, "the app"), picked.Title),
+		Hint:    "name the window by ref, or give the input in the foreground",
+	}
 }
 
 func refLike(s string) bool {

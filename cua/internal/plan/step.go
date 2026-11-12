@@ -21,7 +21,24 @@ func (r *planRun) step(ctx context.Context, i int) (protocol.StepResult, *stop) 
 	kind, _ := s.Kind()
 	start := r.e.now()
 	r.lastBefore, _ = r.list(ctx)
-	res, st := r.dispatch(ctx, i, s, kind)
+	pressed := r.pressed
+	r.pressed = nil
+	var res protocol.StepResult
+	var st *stop
+	if mode, perr := r.mode(s); perr == nil {
+		st = r.vet(ctx, s, kind, mode)
+	}
+	if st != nil {
+		res = refused(st.err)
+	} else {
+		res, st = r.dispatchAfter(ctx, i, s, kind, pressed)
+	}
+	if st == nil && (kind == "launch" || kind == "wait") && r.win != nil {
+		r.known[r.win.Title] = true
+	}
+	if st == nil && kind == "key" && shortcut(s.Key) {
+		r.pressed = frontOf(r.lastBefore)
+	}
 	if st == nil && s.Expect != nil && kind != "wait" {
 		res, st = r.expectAfter(ctx, i, s, res)
 	}
@@ -121,7 +138,9 @@ func (r *planRun) act(ctx context.Context, i int, s protocol.Step, kind, mode st
 		perr := &protocol.Error{Code: protocol.ErrWindowNotFound, Message: fmt.Sprintf("the plan's window %q is gone, and background input never takes another window of that title for it; nothing was sent", r.gone), Hint: "name the window with a wait step"}
 		return refused(perr), &stop{err: perr}
 	}
-	if bg && r.win == nil && !ownWindow(s) && r.req.Window == "" && needsWindow(kind) {
+	// Under auto input a menu step needs no plan window: it takes the
+	// foreground and runs in the front app's menu bar.
+	if bg && r.win == nil && !ownWindow(s) && r.req.Window == "" && needsWindow(kind) && !(kind == "menu" && mode == protocol.InputAuto) {
 		perr := &protocol.Error{Code: protocol.ErrWindowNotFound, Message: "a background plan has no target window for this " + kind + "; nothing was sent", Hint: "start the plan with a launch step, or name the window with a wait step"}
 		return refused(perr), &stop{err: perr}
 	}
@@ -137,7 +156,12 @@ func (r *planRun) act(ctx context.Context, i int, s protocol.Step, kind, mode st
 	}
 	if kind == "menu" && bg {
 		if mode != protocol.InputAuto {
-			perr := &protocol.Error{Code: protocol.ErrUnavailable, Message: fmt.Sprintf("the macOS menu bar belongs to the front app, so background input cannot run %q; nothing was sent", s.Menu), Hint: "use the foreground or auto input mode, or a key shortcut"}
+			msg := fmt.Sprintf("the macOS menu bar belongs to the front app, so background input cannot run %q; nothing was sent", s.Menu)
+			if s.Value != nil {
+				// A toggle's mark shows only in its open menu, on screen.
+				msg = fmt.Sprintf("the state of %q shows only in its open menu, which needs a look at the screen: %s; no menu was opened", s.Menu, noPixels)
+			}
+			perr := &protocol.Error{Code: protocol.ErrUnavailable, Message: msg, Hint: "use the foreground or auto input mode, or a key shortcut"}
 			return refused(perr), &stop{err: perr}
 		}
 		if st := r.takeForeground(ctx); st != nil {
@@ -172,6 +196,15 @@ func (r *planRun) act(ctx context.Context, i int, s protocol.Step, kind, mode st
 			s.Click, s.Press = s.Press, nil
 			kind = "click"
 		}
+		if got.clickCentre && bg && r.e.WindowImage != nil {
+			at, st := r.imagePoint(ctx, s, *t, *s.Click.Point)
+			if st != nil {
+				res := refused(st.err)
+				res.Served, res.Notes = served, notes
+				return res, st
+			}
+			s.Click = at
+		}
 	}
 	if kind == "set" && isBool(s.Value) {
 		res, st := r.toggle(ctx, i, s, mode)
@@ -188,15 +221,32 @@ func (r *planRun) act(ctx context.Context, i int, s protocol.Step, kind, mode st
 	}
 	if kind == "menu" {
 		if res, st, done := r.menuToggle(ctx, i, s, mode); done {
+			if res.Input == "" && r.e.policy().Input != protocol.InputForeground && !r.background(mode) {
+				// A menu step of a background or auto plan ran in front.
+				res.Input = protocol.InputForeground
+			}
 			return res, st
 		}
 	}
 	if kind == "type" {
+		if st := r.blankCheck(ctx, s); st != nil {
+			return refused(st.err), st
+		}
 		if w := r.typingWindow(ctx, s); w != nil && terminalApp(w.App) {
 			return r.terminalType(ctx, i, s, mode, *w)
 		}
+		if strings.HasSuffix(*s.Type, "\n") && !s.Secret {
+			if res, st, done := r.chooserType(ctx, i, s, mode); done {
+				return res, st
+			}
+		}
 		if mode == protocol.InputAuto && !r.fg {
 			return r.autoType(ctx, i, s)
+		}
+	}
+	if kind == "key" {
+		if res, st, done := r.chooserReturn(ctx, i, s, mode); done {
+			return res, st
 		}
 	}
 	before, _ := r.list(ctx)
@@ -204,7 +254,18 @@ func (r *planRun) act(ctx context.Context, i int, s protocol.Step, kind, mode st
 	if kind == "type" && !s.Secret {
 		q.WholeText = true
 	}
+	// Background typing is read back from the window's fields.
+	var tw *view.RawWindow
+	var was windowTexts
+	if kind == "type" && bg && !s.Secret {
+		if tw = r.typingWindow(ctx, s); tw != nil {
+			was = r.texts(ctx, *tw)
+		}
+	}
 	res := r.send(ctx, i, s, q)
+	if tw != nil && res.Status == protocol.StatusUnconfirmed && res.Error == nil && res.Input != protocol.InputForeground {
+		readBackTyped(&res, was, r.texts(ctx, *tw), s, tw.Title)
+	}
 	res.Served = append(served, res.Served...)
 	res.Notes = append(notes, res.Notes...)
 	if how != "" && (res.How == "" || res.How == "click" || res.How == "press" || res.How == "hit") {
@@ -263,6 +324,11 @@ func (r *planRun) judge(ctx context.Context, i int, s protocol.Step, kind, mode 
 		return res, &stop{err: perr, recorded: recorded}
 	}
 	after, _ := r.list(ctx)
+	if frontOf(after) == nil || (mode == protocol.InputAuto && res.Input == protocol.InputForeground) {
+		// A settle with no front window, or a step that fell back to the
+		// foreground, hands no list on: the next step lists again.
+		r.e.dropLists()
+	}
 	if r.background(mode) && res.Input != protocol.InputForeground {
 		if st := r.frontSteal(before, after); st != nil {
 			res.OK = false
@@ -435,6 +501,18 @@ func (r *planRun) readBack(i int, s protocol.Step, kind string, res protocol.Ste
 	if !res.OK {
 		return
 	}
+	if kind == "type" && res.Status == protocol.StatusConfirmed {
+		// Text read back in the field proves the click before it that
+		// put the focus there.
+		var keep []pendingStep
+		for _, p := range r.pending {
+			if p.index < i && p.index < len(r.steps) && r.steps[p.index].Click != nil {
+				continue
+			}
+			keep = append(keep, p)
+		}
+		r.pending = keep
+	}
 	reads := kind == "set" || kind == "menu" && s.Value != nil
 	if e := s.Expect; e != nil {
 		reads = reads || e.Reads != nil || e.Looks != "" || e.Gone != nil || e.WindowOpens != "" || e.WindowGone != ""
@@ -458,12 +536,16 @@ func (r *planRun) readBack(i int, s protocol.Step, kind string, res protocol.Ste
 	r.axOnly = ax
 }
 
-// openNotes fails a plan that leaves a step sent but not confirmed.
+// openNotes fails a plan that leaves background input sent but not
+// confirmed: from behind, nothing else shows whether it landed. A
+// foreground step the driver could not confirm stays unconfirmed (its
+// retry false) and is named in the caveats, as the screen it acted on is
+// the user's to see.
 func (r *planRun) openNotes() *stop {
-	if len(r.pending) == 0 {
+	p, ok := r.firstBackground()
+	if !ok {
 		return nil
 	}
-	p := r.pending[0]
 	return &stop{err: &protocol.Error{
 		Code:    protocol.ErrNotShown,
 		Message: fmt.Sprintf("step %d was sent but not confirmed, and no later step read it back: %s", p.index, p.note),
@@ -471,14 +553,24 @@ func (r *planRun) openNotes() *stop {
 	}}
 }
 
-func (r *planRun) firstOpen() int {
-	if len(r.pending) == 0 {
-		return -1
+func (r *planRun) firstBackground() (pendingStep, bool) {
+	for _, p := range r.pending {
+		if p.background {
+			return p, true
+		}
 	}
-	return r.pending[0].index
+	return pendingStep{}, false
 }
 
-// caveats are steps proven only by an accessibility action's reply.
+func (r *planRun) firstOpen() int {
+	if p, ok := r.firstBackground(); ok {
+		return p.index
+	}
+	return -1
+}
+
+// caveats are steps proven only by an accessibility action's reply, and
+// foreground steps sent without proof that no later step read back.
 func (r *planRun) caveats() []protocol.Caveat {
 	if !r.res.OK {
 		return nil
@@ -486,6 +578,11 @@ func (r *planRun) caveats() []protocol.Caveat {
 	var out []protocol.Caveat
 	for _, i := range r.axOnly {
 		out = append(out, protocol.Caveat{Step: i, Note: "proven only by the accessibility action's reply; no later step read its effect back"})
+	}
+	for _, p := range r.pending {
+		if !p.background {
+			out = append(out, protocol.Caveat{Step: p.index, Note: "sent but not confirmed: " + p.note + "; check its effect before sending it again"})
+		}
 	}
 	return out
 }

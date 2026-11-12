@@ -109,7 +109,10 @@ func (r *planRun) terminalType(ctx context.Context, i int, s protocol.Step, mode
 		}
 		typed += len([]rune(line))
 		after, readable2 := r.screen(ctx, w.PID)
-		shown := got.Status == protocol.StatusConfirmed && !s.Secret
+		// The driver confirms a line it finds anywhere on the screen,
+		// an old copy in scrollback included: with both screens read,
+		// only a new copy counts.
+		shown := got.Status == protocol.StatusConfirmed && !s.Secret && !(readable && readable2 && strings.TrimRight(line, " \t") != "")
 		if s.Secret {
 			switch {
 			case !readable || !readable2:
@@ -169,7 +172,11 @@ func (r *planRun) autoType(ctx context.Context, i int, s protocol.Step) (protoco
 	w := r.typingWindow(ctx, s)
 	before, _ := r.list(ctx)
 	var f0 *view.RawNode
+	var was windowTexts
 	if w != nil {
+		if !s.Secret {
+			was = r.texts(ctx, *w)
+		}
 		f0, _ = r.e.X.B.Focused(ctx, w.PID)
 	}
 	q := r.request(protocol.InputAuto)
@@ -181,12 +188,25 @@ func (r *planRun) autoType(ctx context.Context, i int, s protocol.Step) (protoco
 	if res.Status != protocol.StatusUnconfirmed || res.Error != nil || res.Input == protocol.InputForeground {
 		return r.judge(ctx, i, s, "type", protocol.InputAuto, res, before)
 	}
+	var now windowTexts
+	if w != nil && !s.Secret {
+		now = r.texts(ctx, *w)
+		readBackTyped(&res, was, now, s, w.Title)
+		if res.Status == protocol.StatusConfirmed {
+			return r.judge(ctx, i, s, "type", protocol.InputAuto, res, before)
+		}
+	}
 	after, _ := r.list(ctx)
 	var f1 *view.RawNode
 	if w != nil {
 		f1, _ = r.e.X.B.Focused(ctx, w.PID)
 	}
-	if why := unprovable(r, ctx, f0, f1, before, after); why != "" {
+	why := unprovable(r, ctx, f0, f1, before, after)
+	if why == "" && !s.Secret && (!was.whole() || !now.whole()) {
+		// A field read only in part may hide text that landed at its end.
+		why = "a field of the window was read only in part"
+	}
+	if why != "" {
 		perr := &protocol.Error{Code: protocol.ErrNotShown, Message: "the typed text did not show, and " + why + ", so it was not typed again", Hint: "read the field before typing again"}
 		res.Error = perr
 		return res, &stop{err: perr}
@@ -198,7 +218,10 @@ func (r *planRun) autoType(ctx context.Context, i int, s protocol.Step) (protoco
 	q.WholeText = !s.Secret
 	again := r.send(ctx, i, s, q)
 	again.Notes = append([]string{"the background typing left the field unchanged, so it was typed once more in the foreground"}, again.Notes...)
-	return r.judge(ctx, i, s, "type", protocol.InputForeground, again, after)
+	out, st := r.judge(ctx, i, s, "type", protocol.InputForeground, again, after)
+	// A step that fell back to the foreground hands no list on.
+	r.e.dropLists()
+	return out, st
 }
 
 // unprovable says why a read-back cannot prove that background typing left

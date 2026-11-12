@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"fennec/cua/internal/policy"
 )
 
 // Endpoint modes.
@@ -121,13 +123,8 @@ var ownUID = func() uint32 { return uint32(os.Getuid()) }
 
 // OwnerOnly decides whether a safety control (stop, resume, recording) may
 // be answered for a peer running as uid peer: only the daemon's own user
-// may, never a member of a shared socket group.
-func OwnerOnly(peer, own uint32) error {
-	if peer == own {
-		return nil
-	}
-	return fmt.Errorf("stop, resume and recording are answered only for the daemon's own user (uid %d); this connection runs as uid %d", own, peer)
-}
+// may, never a member of a shared socket group (policy.OwnerOnly).
+func OwnerOnly(peer, own uint32) error { return policy.OwnerOnly(peer, own) }
 
 // DetachedAttr is how a client starts the daemon: in a session and process
 // group of its own, so Ctrl-C or a hangup in the agent's terminal never

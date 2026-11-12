@@ -117,6 +117,13 @@ var (
 
 func axFailure(e element, err error, what string) policy.Attempt {
 	code := axCode(err)
+	if code == AXCannotComplete && (what == "the press action" || strings.HasPrefix(what, "the menu item")) {
+		// An app that opens a modal dialog from the action does not
+		// answer until the dialog closes: the press counts as done,
+		// unproven, and is never followed by a click or sent again.
+		return unconfirmed(fmt.Sprintf("pressed %s by its accessibility action; the app did not answer in time, as when it opens a modal dialog", e.describe()), nil,
+			"the app did not answer the press in time; observe before pressing again")
+	}
 	if code == AXCannotComplete {
 		return unconfirmed("", &protocol.Error{
 			Code:    protocol.ErrNotResponding,

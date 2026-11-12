@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"fennec/cua/internal/driver"
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/view"
 )
@@ -98,7 +99,7 @@ func (r *planRun) appStep(ctx context.Context, i int, s protocol.Step, mode stri
 		return refused(perr), &stop{err: perr}
 	}
 	var rep launchReply
-	_ = json.Unmarshal(raw, &rep)
+	_ = json.Unmarshal(driver.Payload(raw), &rep)
 	var got *view.RawWindow
 	deadline := r.e.now().Add(LaunchWait)
 	for {

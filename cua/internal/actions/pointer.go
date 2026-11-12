@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"fennec/cua/internal/policy"
 	"fennec/cua/internal/protocol"
@@ -225,7 +226,13 @@ func (c *stepCtx) elementClick(ctx context.Context, e element) policy.Attempt {
 		}
 		if cl.err == nil {
 			c.own()
-			return withHow(confirmedOr(cl, "clicked "+e.describe()+" after a hit test found it on top"), "hit")
+			a := confirmedOr(cl, "clicked "+e.describe()+" after a hit test found it on top")
+			if a.Result.Status != protocol.StatusConfirmed && c.focusLands(ctx, e) {
+				// The driver cannot see a text field take the click; the
+				// keyboard focus moving into it proves it.
+				a = confirmed("clicked " + e.describe() + " after a hit test found it on top; it holds the keyboard focus")
+			}
+			return withHow(a, "hit")
 		}
 		if cl.sent {
 			return failed(cl, "the hit-checked click")
@@ -467,6 +474,11 @@ func (c *stepCtx) backgroundPointClick(ctx context.Context, named *view.RawWindo
 		return refuse(perr, policy.ReasonTwins)
 	}
 	a := c.clickWindow(ctx, *w, px, py, btn, n, nil)
+	if a.Result.Status != protocol.StatusRefused {
+		// A later background type checks that the focus is in a field
+		// holding this point.
+		c.rememberClick(*w, px, py, nil)
+	}
 	if note != "" && a.Result.Status != protocol.StatusRefused {
 		a.Result.Status = protocol.StatusUnconfirmed
 		a.Result.Notes = append(a.Result.Notes, note)
@@ -498,7 +510,7 @@ func (c *stepCtx) foregroundPointClick(ctx context.Context, named *view.RawWindo
 		return refuse(securityError(*win), policy.ReasonPolicy)
 	}
 	if named != nil {
-		return c.namedPointClick(ctx, *named, listed, px, py, btn, n)
+		return c.namedPointClick(ctx, *named, listed, px, py, btn, n, win)
 	}
 	top, topErr := view.WindowAt(listed, px, py)
 	switch {
@@ -567,11 +579,18 @@ func orApp(app string) string {
 // window is raised only when the point lies inside it and another listed
 // window is on top there, and the click waits up to FrontWait for the cover
 // to leave. A same-app window that is untitled counts as the target's own.
-func (c *stepCtx) namedPointClick(ctx context.Context, w view.RawWindow, listed []view.RawWindow, px, py int, btn string, n int) policy.Attempt {
+func (c *stepCtx) namedPointClick(ctx context.Context, w view.RawWindow, listed []view.RawWindow, px, py int, btn string, n int, hit *view.RawWindow) policy.Attempt {
 	if !inside(w.Bounds, px, py) {
 		return c.clickDesktop(ctx, px, py, btn, n)
 	}
 	cover := coverAt(listed, w, px, py)
+	if cover == nil && hit != nil && hit.PID != w.PID {
+		// The window list holds no cover, but the system-wide hit test
+		// finds another app's window on top: a floating panel or an
+		// accessory app's window, which raising w does not move. The
+		// click goes to w behind it, never onto it.
+		return c.coveredClick(ctx, w, hit.App, px, py, btn, n)
+	}
 	if cover == nil {
 		// Nothing covers the point: the driver's foreground click fronts
 		// the window for the click itself.
@@ -827,3 +846,27 @@ func (x *Executor) markCenter(b *[4]int) {
 		x.markClick(cx, cy)
 	}
 }
+
+// focusLands polls briefly for the clicked field to hold its app's keyboard
+// focus.
+func (c *stepCtx) focusLands(ctx context.Context, e element) bool {
+	deadline := time.Now().Add(focusLandWait)
+	for {
+		if f, err := c.x.B.Focused(ctx, e.win.PID); err == nil && f != nil {
+			if c.x.B.Same(f.Handle, e.h) || (f.Bounds != nil && e.node.Bounds != nil && *f.Bounds == *e.node.Bounds) {
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(30 * time.Millisecond):
+		}
+	}
+}
+
+// focusLandWait bounds the wait for a clicked field to take the focus.
+const focusLandWait = 300 * time.Millisecond

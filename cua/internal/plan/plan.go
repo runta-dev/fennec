@@ -95,9 +95,19 @@ type Executor struct {
 	Observer engine.Observer
 	// WebTree turns a browser's page tree on and says whether it was on.
 	WebTree func(ctx context.Context, pid int) (wasOn bool, err error)
-	Log     func(format string, args ...any)
-	Now     func() time.Time
-	Sleep   func(ctx context.Context, d time.Duration) error
+	// WindowChange is the daemon's window-change wait: it calls list each time
+	// the on-screen windows may have changed (an accessibility observer or
+	// a cheap window fingerprint), until list reports the wait is over or
+	// limit passes, and reports whether list ended it. nil polls the window
+	// list every Poll.
+	WindowChange func(ctx context.Context, limit time.Duration, list func(context.Context) (bool, error)) (bool, error)
+	// WindowImage captures one window of process pid (by window key) and
+	// answers the image's size in pixels; a background click with a button,
+	// count or modifiers aims in those pixels. nil aims in desktop units.
+	WindowImage func(ctx context.Context, pid int, key string) (w, h int, err error)
+	Log         func(format string, args ...any)
+	Now         func() time.Time
+	Sleep       func(ctx context.Context, d time.Duration) error
 }
 
 func (e *Executor) now() time.Time {
@@ -170,7 +180,19 @@ type planRun struct {
 	report     bool             // stopped on a recorded check
 	unsaved    bool             // a target only vision found
 	lastBefore []view.RawWindow // the window list before the current step
-	timeout    time.Duration
+	// known are the titles the plan expects in front: those listed at the
+	// start and those a launch or wait step took. vetted are the front
+	// windows (by key, pid and title) the plan has read; kept is the tree
+	// the current step's vetting read, which serves the step's first read.
+	known  map[string]bool
+	vetted map[string]bool
+	kept   *keptTree
+	// pressed is the front window when the step before sent a shortcut,
+	// which may open a window late.
+	pressed *view.RawWindow
+	// late is pressed for the step after the shortcut.
+	late    *view.RawWindow
+	timeout time.Duration
 }
 
 type pendingStep struct {
@@ -225,11 +247,17 @@ func (e *Executor) Run(ctx context.Context, call *engine.Call, req protocol.ActR
 	}
 	defer release()
 
+	// A list kept from another call never serves this one.
+	e.dropLists()
 	r := &planRun{e: e, call: call, req: req, opt: opt, raw: req.Steps, steps: steps, input: input, timeout: timeout,
-		res: &protocol.ActResult{OK: true, Steps: []protocol.StepResult{}}}
+		res:   &protocol.ActResult{OK: true, Steps: []protocol.StepResult{}},
+		known: map[string]bool{}, vetted: map[string]bool{}}
 	if listed, err := r.list(ctx); err == nil {
 		if f := frontOf(listed); f != nil {
 			r.startFront = *f
+		}
+		for _, w := range listed {
+			r.known[w.Title] = true
 		}
 		r.adoptStart(listed)
 	}
@@ -626,4 +654,12 @@ func scrubSecrets(err *protocol.Error, steps []protocol.Step) *protocol.Error {
 		e.Hint = strings.ReplaceAll(e.Hint, secret, "the password")
 	}
 	return e
+}
+
+// dropLists forgets the window list shared with the actions executor, so
+// the next listing reads the desktop.
+func (e *Executor) dropLists() {
+	if l := actions.ListsOf(e.X.B); l != nil {
+		l.Drop()
+	}
 }

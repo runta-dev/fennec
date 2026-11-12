@@ -603,3 +603,14 @@ func (c *Client) connect(ctx context.Context, l *lane) error {
 		}
 	}
 }
+
+// Payload is a reply's structuredContent, where the driver puts its result
+// fields (effect, delivered_chars, focused, elements, pid, ...); a reply
+// without one is returned as it is.
+func Payload(raw json.RawMessage) json.RawMessage {
+	var r toolResult
+	if json.Unmarshal(raw, &r) == nil && len(r.Structured) > 0 && string(r.Structured) != "null" {
+		return r.Structured
+	}
+	return raw
+}

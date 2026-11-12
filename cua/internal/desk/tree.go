@@ -18,7 +18,7 @@ var nodeAttrs = []string{
 	"AXRole", "AXSubrole", "AXRoleDescription", "AXTitle", "AXDescription", "AXValue",
 	"AXFocused", "AXSelected", "AXExpanded", "AXEnabled", "AXPosition", "AXSize",
 	"AXChildren", "AXHelp", "AXPlaceholderValue", "AXURL", "AXDOMIdentifier",
-	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers",
+	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemMarkChar",
 }
 
 const (
@@ -41,6 +41,7 @@ const (
 	aDOMID
 	aCmdChar
 	aCmdMods
+	aMarkChar
 )
 
 // ErrStale is a read aimed at a window whose app is not answering.
@@ -131,6 +132,9 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 		n.Value = &val
 	}
 	n.States = view.States(role, sub, v[aValue], boolean(v[aFocused]), boolean(v[aSelected]), boolean(v[aExpanded]), enabled(v[aEnabled]))
+	if role == "AXMenuItem" {
+		n.States = append(n.States, view.MenuMarkStates(str(v[aMarkChar]))...)
+	}
 	if r, ok := frame(v[aPosition], v[aSize]); ok {
 		n.Bounds = toDesk(r, scale)
 		// A menu item has a frame only while its menu is open: then it is
@@ -139,11 +143,15 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 			n.States = append(n.States, "showing")
 		}
 	}
-	if u, ok := v[aURL].(ax.URL); ok && (opts.URLs || n.Role == "link") {
+	if u := urlOf(v[aURL]); u != "" && (opts.URLs || n.Role == "link") {
 		n.URL = string(u)
 	}
 	if opts.Web {
 		n.DOMID = str(v[aDOMID])
+		// A web area's AXURL is the address of the page it shows.
+		if u := urlOf(v[aURL]); u != "" && role == "AXWebArea" {
+			n.Page = string(u)
+		}
 	}
 	n.Keys = shortcut(str(v[aCmdChar]), v[aCmdMods])
 	return n
@@ -216,4 +224,16 @@ func (d *Desk) Read(ctx context.Context, h view.Handle, full, tail bool) (view.R
 		n.Value = &s
 	}
 	return n, cut, nil
+}
+
+// urlOf reads AXURL, which apps give as a URL or, as AppKit's text links
+// do, as a plain string.
+func urlOf(v any) string {
+	switch u := v.(type) {
+	case ax.URL:
+		return string(u)
+	case string:
+		return u
+	}
+	return ""
 }

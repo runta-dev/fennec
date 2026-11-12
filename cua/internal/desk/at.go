@@ -19,6 +19,26 @@ func (d *Desk) At(ctx context.Context, x, y int) (*view.RawNode, []view.RawNode,
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	return d.hitFrom(el, px, py, scale)
+}
+
+// AtIn reads the element of window w's app at a desktop point, even where
+// another app's window lies on top, which it then names as covering.
+func (d *Desk) AtIn(ctx context.Context, w view.RawWindow, x, y int) (*view.RawNode, []view.RawNode, *view.RawWindow, *view.RawWindow, error) {
+	scale := ax.BackingScale()
+	px, py := float64(x)/scale, float64(y)/scale
+	app := ax.App(w.PID)
+	defer app.Release()
+	el, err := app.ElementAtIn(px, py)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return d.hitFrom(el, px, py, scale)
+}
+
+// hitFrom reads a hit element, its ancestors up to its window, and the
+// window on top at the point when that is another one.
+func (d *Desk) hitFrom(el *ax.Element, px, py, scale float64) (*view.RawNode, []view.RawNode, *view.RawWindow, *view.RawWindow, error) {
 	v, err := el.Attrs(nodeAttrs)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -50,6 +70,9 @@ func (d *Desk) At(ctx context.Context, x, y int) (*view.RawNode, []view.RawNode,
 		if role == "AXWindow" || role == "AXSheet" {
 			pid, _ := parent.PID()
 			w := view.RawWindow{Handle: parent, PID: pid, Title: pn.Name, Role: view.WindowRole(str(pv[aSubrole]), role == "AXSheet")}
+			// The app's name decides policy on the window (security
+			// prompts, the allowlist).
+			w.App = appName(pid)
 			if id, ok := parent.WindowID(); ok {
 				w.Key = ax.WindowKey(id)
 			}
@@ -69,11 +92,12 @@ func (d *Desk) coverAt(px, py float64, win *view.RawWindow) *view.RawWindow {
 	if err != nil {
 		return nil
 	}
-	// Only normal app windows can cover another; system chrome on higher
-	// layers (menu bar, Dock) never does.
+	// App windows cover another, floating panels and modal panels
+	// included (layers below the Dock's); system chrome on the Dock's layer
+	// and above (Dock, menu bar, Notification Center) never does.
 	apps := server[:0:0]
 	for _, w := range server {
-		if w.Layer == 0 {
+		if w.Layer >= 0 && w.Layer < dockLayer {
 			apps = append(apps, w)
 		}
 	}
@@ -148,3 +172,20 @@ func (d *Desk) Focused(ctx context.Context, pid int) (*view.RawNode, error) {
 }
 
 var _ view.Source = (*Desk)(nil)
+
+// dockLayer is the Dock's window server layer (kCGDockWindowLevel); app,
+// floating and modal panel windows sit below it.
+const dockLayer = 20
+
+// appName is the name of the app with pid, as its accessibility element
+// gives it.
+func appName(pid int) string {
+	app := ax.App(pid)
+	defer app.Release()
+	v, err := app.Attr("AXTitle")
+	if err != nil {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}

@@ -236,3 +236,107 @@ func (s *Session) GrantTCC(ctx context.Context, client string) error {
 	_, err := s.Output(ctx, "sudo killall tccd || true")
 	return err
 }
+
+// Clone makes a copy-on-write clone of the VM (or an OCI image) named src
+// as v. It fails when v already exists.
+func (v *VM) Clone(ctx context.Context, src string) error {
+	_, err := v.tart(ctx, "clone", src, v.Name)
+	return err
+}
+
+// Delete removes the VM. A running VM is stopped first.
+func (v *VM) Delete(ctx context.Context) error {
+	if running, _ := v.running(ctx); running {
+		_ = v.Stop(ctx)
+	}
+	_, err := v.tart(ctx, "delete", v.Name)
+	return err
+}
+
+// SetDisplay sets the VM's display, such as "1920x1080px". It takes effect
+// at the next boot.
+func (v *VM) SetDisplay(ctx context.Context, display string) error {
+	_, err := v.tart(ctx, "set", v.Name, "--display", display)
+	return err
+}
+
+// ExecCommand is the host command line that runs command in the VM through
+// tart exec, with stdin attached when interactive. A child process started
+// from it, such as an MCP server on stdio, runs inside the VM while its
+// pipes stay on the host.
+func (v *VM) ExecCommand(interactive bool, command string) (string, []string) {
+	args := []string{"exec"}
+	if interactive {
+		args = append(args, "-i")
+	}
+	return v.bin(), append(args, v.Name, "/bin/sh", "-c", command)
+}
+
+// GrantUserTCC grants a per-user TCC service to a client in the VM user's
+// own TCC database: the services the system database does not hold, such as
+// Automation (kTCCServiceAppleEvents, with target as the receiving app's
+// bundle id), Contacts (kTCCServiceAddressBook) and Reminders. client is a
+// bundle id or an absolute executable path; target is empty for services
+// without one. Like GrantTCC it needs SIP disabled.
+func (s *Session) GrantUserTCC(ctx context.Context, service, client, target string) error {
+	typ := 0
+	if strings.HasPrefix(client, "/") {
+		typ = 1
+	}
+	if target == "" {
+		target = "UNUSED"
+	}
+	q := func(x string) string { return "'" + strings.ReplaceAll(x, "'", "''") + "'" }
+	sql := fmt.Sprintf("INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier_type, indirect_object_identifier, flags) VALUES (%s, %s, %d, 2, 3, 1, 0, %s, 0);",
+		q(service), q(client), typ, q(target))
+	db := `"$HOME/Library/Application Support/com.apple.TCC/TCC.db"`
+	if _, err := s.Output(ctx, "sudo sqlite3 "+db+" "+Quote(sql)); err != nil {
+		return err
+	}
+	_, err := s.Output(ctx, "killall tccd || true")
+	return err
+}
+
+// ApproveScreenCapture stops macOS 15 and later from asking, about once a
+// month, whether a client may keep capturing the screen without the system
+// picker: a modal alert that would cover the desktop in the middle of a
+// test. clients are executable paths or bundle ids; their next alert is
+// moved to the year 2100.
+func (s *Session) ApproveScreenCapture(ctx context.Context, clients ...string) error {
+	plist := `"$HOME/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"`
+	var b strings.Builder
+	b.WriteString(`mkdir -p "$HOME/Library/Group Containers/group.com.apple.replayd"`)
+	for _, c := range clients {
+		k := ":" + strings.ReplaceAll(c, ":", `\:`)
+		fmt.Fprintf(&b, "; /usr/libexec/PlistBuddy -c %s %s 2>/dev/null", Quote("Delete "+k), plist)
+		fmt.Fprintf(&b, "; /usr/libexec/PlistBuddy -c %s -c %s -c %s -c %s -c %s %s",
+			Quote("Add "+k+" dict"),
+			Quote("Add "+k+`:kScreenCaptureApprovalLastAlerted date "Fri Jan 1 00:00:00 UTC 2100"`),
+			Quote("Add "+k+`:kScreenCapturePrivacyHintDate date "Fri Jan 1 00:00:00 UTC 2100"`),
+			Quote("Add "+k+":kScreenCapturePrivacyHintPolicy integer 2592000"),
+			Quote("Add "+k+":kScreenCaptureApprovalLastUsed date \""+time.Now().UTC().Format("Mon Jan 2 15:04:05 UTC 2006")+"\""),
+			plist)
+	}
+	_, err := s.Output(ctx, b.String())
+	return err
+}
+
+// Shutdown shuts the guest down from inside, so apps, preferences and the
+// page cache are saved, and waits until the VM has stopped. tart stop may
+// end the VM before that.
+func (v *VM) Shutdown(ctx context.Context) error {
+	s := &Session{vm: v}
+	_ = s.Run(ctx, "sudo shutdown -h now", nil, io.Discard, io.Discard)
+	deadline := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(deadline) {
+		if running, err := v.running(ctx); err == nil && !running {
+			return nil
+		}
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return v.Stop(ctx)
+}

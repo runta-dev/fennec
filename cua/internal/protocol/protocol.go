@@ -449,7 +449,7 @@ type Expect struct {
 	TimeoutMs int    `json:"timeout_ms,omitempty"`
 }
 
-// Recorded is a recording's evidence for one click.
+// Recorded is a recording's evidence for one click, or for one type step.
 type Recorded struct {
 	Text   string      `json:"text"`
 	Crop   string      `json:"crop,omitempty"` // base64 PNG around the point
@@ -461,6 +461,10 @@ type Recorded struct {
 	// Element fingerprints the clicked element among same-named ones.
 	Nth int `json:"nth,omitempty"`
 	Of  int `json:"of,omitempty"`
+	// Blank marks a type step whose recording typed into an empty field:
+	// the replay types nothing when that field (the step's into, else the
+	// focused field) already holds text.
+	Blank bool `json:"blank,omitempty"`
 }
 
 // Step statuses.

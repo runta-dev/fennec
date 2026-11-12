@@ -20,7 +20,7 @@ capabilities:
       shuttle's desk, screenshot, gui_plan, script_run and status tools, which first only listed and then ran.
     surface: mcp
     parity: spec
-    tests: [internal/mcpserver.TestToolsListSchemas, planned:scenario/EveryToolAnswers]
+    tests: [internal/mcpserver.TestToolsListSchemas, internal/scenario.TestEveryToolAnswers]
     upstream: [changelog/0.0.1/2, changelog/0.1.0/2]
 
   - id: CAP-RGB-003
@@ -55,7 +55,7 @@ capabilities:
       can be switched off. When the config fails to load, every call except status fails with the load error.
     surface: policy
     parity: oracle
-    tests: [planned:scenario/StopEndsRunInFlight, planned:scenario/AllowlistBlackout, internal/policy.TestConfirmModes, internal/policy.TestBadConfigFailsAllButStatus]
+    tests: [internal/scenario.TestStopEndsRunInFlight, internal/scenario.TestAllowlistBlackout, internal/policy.TestConfirmModes, internal/policy.TestBadConfigFailsAllButStatus]
     upstream: [changelog/0.1.0/4]
 
   - id: CAP-RGB-006
@@ -100,7 +100,7 @@ capabilities:
       Upstream measured a macOS plan 38 to 71 ms faster; fennec-cua must not regress below that.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestReusesWindowListWithoutAction, planned:internal/plan.TestRetryNoCapture]
+    tests: [internal/plan.TestReusesWindowListWithoutAction, internal/plan.TestRetryNoCapture]
     upstream: [changelog/0.1.2/2, changelog/0.1.37/7]
 
   - id: CAP-RGB-010
@@ -123,7 +123,7 @@ capabilities:
       and a block returning to an earlier content (a caret) counts only with new contents.
     surface: wait
     parity: oracle
-    tests: [internal/vision.TestStillnessVolatileBlocks, planned:scenario/DragBothEndsAllowlisted, planned:scenario/ScrollAtPoint]
+    tests: [internal/vision.TestStillnessVolatileBlocks, internal/scenario.TestDragBothEndsAllowlisted, internal/scenario.TestScrollAtPoint]
     upstream: [changelog/0.1.3/1]
 
   - id: CAP-RGB-012
@@ -199,7 +199,7 @@ capabilities:
       active window among equal titles, and the step trace records how the focus ended.
     surface: act
     parity: oracle
-    tests: [planned:scenario/LaunchFrontsWindow, planned:scenario/FastRelaunchFronts]
+    tests: [internal/scenario.TestLaunchFrontsWindow, internal/scenario.TestFastRelaunchFronts]
     upstream: [changelog/0.1.6/2, changelog/0.1.6/8]
 
   - id: CAP-RGB-019
@@ -232,7 +232,7 @@ capabilities:
       after the press is the 0.1.40 form of this behaviour; on the vision path a caveat is attached instead.
     surface: act
     parity: oracle
-    tests: [planned:scenario/MenuToggleIdempotent, planned:scenario/MenuToggleAfterLaunch]
+    tests: [internal/scenario.TestMenuToggleIdempotent, internal/scenario.TestMenuToggleAfterLaunch]
     upstream: [changelog/0.1.7/3]
 
   - id: CAP-RGB-022
@@ -243,7 +243,7 @@ capabilities:
       windows.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/WindowShotNoPointer, internal/driver.TestLockedScreenRefusal]
+    tests: [internal/scenario.TestWindowShotNoPointer, internal/driver.TestLockedScreenRefusal]
     upstream: [changelog/0.1.8/5]
 
   - id: CAP-RGB-023
@@ -256,7 +256,7 @@ capabilities:
       `unconfirmed` and must not be resent.
     surface: policy
     parity: oracle
-    tests: [planned:scenario/BackgroundTypeNoFocusSteal, planned:scenario/BackgroundPressCovered]
+    tests: [internal/scenario.TestBackgroundTypeNoFocusSteal, internal/scenario.TestBackgroundPressCovered]
     upstream: [changelog/0.1.9/1]
 
   - id: CAP-RGB-024
@@ -267,7 +267,7 @@ capabilities:
       Screen size is reported in pixels on Retina.
     surface: act
     parity: oracle
-    tests: [planned:scenario/ClickAfterStillLandsOnPoint, internal/vision.TestRetinaScreenPixels]
+    tests: [internal/scenario.TestClickAfterStillLandsOnPoint, internal/vision.TestRetinaScreenPixels]
     upstream: [changelog/0.1.9/2]
 
   - id: CAP-RGB-025
@@ -305,7 +305,7 @@ capabilities:
       the chain left.
     surface: act
     parity: oracle
-    tests: [planned:scenario/BackgroundPlanSaveSheet, planned:scenario/BackgroundPlanRefusesTwinTitles]
+    tests: [internal/scenario.TestBackgroundPlanSaveSheet, internal/scenario.TestBackgroundPlanRefusesTwinTitles]
     upstream: [changelog/0.1.10/1]
 
   - id: CAP-RGB-028
@@ -317,7 +317,7 @@ capabilities:
       An element whose app refuses its press action gets a hit-checked click at its centre.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/VisionIndexClick, internal/vision.TestScaleFallbackByWidth]
+    tests: [internal/scenario.TestVisionIndexClick, internal/vision.TestScaleFallbackByWidth]
     upstream: [changelog/0.1.10/2]
 
   - id: CAP-RGB-029
@@ -338,7 +338,7 @@ capabilities:
       on a VM); astral characters such as emoji and background typing keep the driver's default pacing.
     surface: act
     parity: spec
-    tests: [planned:scenario/ForegroundTypingPace]
+    tests: [internal/scenario.TestForegroundTypingPace]
     upstream: [changelog/0.1.10/4]
 
   - id: CAP-RGB-031
@@ -362,7 +362,7 @@ capabilities:
       the foreground, keeping that foreground for later key, type, close and Return steps (0.1.40).
     surface: policy
     parity: oracle
-    tests: [planned:scenario/AutoFallsBackOnRefusal, internal/plan.TestAutoKeepsForeground]
+    tests: [internal/scenario.TestAutoFallsBackOnRefusal, internal/plan.TestAutoKeepsForeground]
     upstream: [changelog/0.1.11/1]
 
   - id: CAP-RGB-033
@@ -373,7 +373,7 @@ capabilities:
       mode, and it redraws only on state changes.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestIndicatorStates]
+    tests: [internal/policy.TestIndicatorStates]
     upstream: [changelog/0.1.11/2]
 
   - id: CAP-RGB-034
@@ -386,7 +386,7 @@ capabilities:
       and window or point observation of an other-Space window fails with a clear on-another-Space error.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/OtherSpaceWindowListed, planned:scenario/OtherSpaceTwinRefused]
+    tests: [internal/scenario.TestOtherSpaceWindowListed, internal/scenario.TestOtherSpaceTwinRefused]
     upstream: [changelog/0.1.11/3]
 
   - id: CAP-RGB-035
@@ -396,7 +396,7 @@ capabilities:
       0.5-0.6 s on a GPU-less VM, because the overlay repaints only around its cursors.
     surface: act
     parity: spec
-    tests: [planned:scenario/BackgroundInputLatencyWithOverlay]
+    tests: [internal/scenario.TestBackgroundInputLatencyWithOverlay]
     upstream: [changelog/0.1.12/2]
 
   - id: CAP-RGB-036
@@ -408,7 +408,7 @@ capabilities:
       (Electron, Chromium, Qt) carries a note that its pixels may be stale.
     surface: act
     parity: oracle
-    tests: [planned:scenario/KittyBackgroundType, internal/actions.TestBlankReadbackUnconfirmed]
+    tests: [internal/scenario.TestKittyBackgroundType, internal/actions.TestBlankReadbackUnconfirmed]
     upstream: [changelog/0.1.13/1]
 
   - id: CAP-RGB-037
@@ -434,7 +434,7 @@ capabilities:
       repeated.
     surface: act
     parity: oracle
-    tests: [planned:scenario/TextFieldClickFocuses, planned:scenario/TextFieldCoveredRefused]
+    tests: [internal/scenario.TestTextFieldClickFocuses, internal/scenario.TestTextFieldCoveredRefused]
     upstream: [changelog/0.1.13/5]
 
   - id: CAP-RGB-039
@@ -448,7 +448,7 @@ capabilities:
       check path, the probabilities and the element hit.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestGroundRefusesRoot, internal/plan.TestGroundThresholds, planned:scenario/GroundUnderOtherWindowRefused]
+    tests: [internal/plan.TestGroundRefusesRoot, internal/plan.TestGroundThresholds, internal/scenario.TestGroundUnderOtherWindowRefused]
     upstream: [changelog/0.1.13/6]
 
   - id: CAP-RGB-040
@@ -459,7 +459,7 @@ capabilities:
       tree reads empty.
     surface: wait
     parity: oracle
-    tests: [internal/plan.TestWaitFrontSkipsTree, planned:scenario/WaitAlertStops]
+    tests: [internal/plan.TestWaitFrontSkipsTree, internal/scenario.TestWaitAlertStops]
     upstream: [changelog/0.1.14/1]
 
   - id: CAP-RGB-041
@@ -470,7 +470,7 @@ capabilities:
       the driver refuses, both errors are returned and nothing is clicked.
     surface: act
     parity: oracle
-    tests: [planned:scenario/PressRefusedFallsBackVerified]
+    tests: [internal/scenario.TestPressRefusedFallsBackVerified]
     upstream: [changelog/0.1.14/2]
 
   - id: CAP-RGB-042
@@ -481,7 +481,7 @@ capabilities:
       pid.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/PointCoveredByOtherWindow]
+    tests: [internal/scenario.TestPointCoveredByOtherWindow]
     upstream: [changelog/0.1.14/3]
 
   - id: CAP-RGB-043
@@ -503,7 +503,7 @@ capabilities:
       coordinates), and the background gate enumerates windows without a Space snapshot.
     surface: act
     parity: spec
-    tests: [planned:scenario/ClickOnNegativeOriginDisplay]
+    tests: [internal/scenario.TestClickOnNegativeOriginDisplay]
     upstream: [changelog/0.1.16/1]
 
   - id: CAP-RGB-045
@@ -516,7 +516,7 @@ capabilities:
       both count as shown, and twins across Spaces are refused.
     surface: observe
     parity: oracle
-    tests: [internal/view.TestPickShownOverHiddenTwin, planned:scenario/HiddenTwinWindow]
+    tests: [internal/view.TestPickShownOverHiddenTwin, internal/scenario.TestHiddenTwinWindow]
     upstream: [changelog/0.1.16/2, changelog/0.1.16/4]
 
   - id: CAP-RGB-046
@@ -527,7 +527,7 @@ capabilities:
       name the window. The window is picked like focus, within the allowlist.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/WindowShotSecondDisplay]
+    tests: [internal/scenario.TestWindowShotSecondDisplay]
     upstream: [changelog/0.1.16/3]
 
   - id: CAP-RGB-047
@@ -562,7 +562,7 @@ capabilities:
       window, coordinates are desktop coordinates.
     surface: act
     parity: oracle
-    tests: [planned:scenario/ClickInWindowImagePixels, planned:scenario/ClickAfterWideWindowShot]
+    tests: [internal/scenario.TestClickInWindowImagePixels, internal/scenario.TestClickAfterWideWindowShot]
     upstream: [changelog/0.1.17/3, changelog/0.1.17/4]
 
   - id: CAP-RGB-050
@@ -572,7 +572,7 @@ capabilities:
       allowlist judges that window's app; with no app window there it fails with a no-app-window error.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/PointWithoutWindowSecondDisplay]
+    tests: [internal/scenario.TestPointWithoutWindowSecondDisplay]
     upstream: [changelog/0.1.17/5]
 
   - id: CAP-RGB-051
@@ -582,7 +582,7 @@ capabilities:
       first and refuses when it cannot, instead of going to the frontmost app.
     surface: act
     parity: oracle
-    tests: [planned:scenario/ForegroundKeyFrontsNamedWindow]
+    tests: [internal/scenario.TestForegroundKeyFrontsNamedWindow]
     upstream: [changelog/0.1.19/1]
 
   - id: CAP-RGB-052
@@ -594,7 +594,7 @@ capabilities:
       layout instead of capturing again.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/WindowOrderAcrossApps, internal/vision.TestReuseProvenScale]
+    tests: [internal/scenario.TestWindowOrderAcrossApps, internal/vision.TestReuseProvenScale]
     upstream: [changelog/0.1.21/1]
 
   - id: CAP-RGB-053
@@ -606,7 +606,7 @@ capabilities:
       in background too. An element in a window behind gets a click, which fronts its window.
     surface: act
     parity: oracle
-    tests: [planned:scenario/PressOpensModalNoDoubleClick, planned:scenario/PressWebUserActivation]
+    tests: [internal/scenario.TestPressOpensModalNoDoubleClick, internal/scenario.TestPressWebUserActivation]
     upstream: [changelog/0.1.21/2]
 
   - id: CAP-RGB-054
@@ -618,7 +618,7 @@ capabilities:
       the result is unconfirmed naming the covering app or the unchecked point.
     surface: act
     parity: oracle
-    tests: [planned:scenario/SystemSettingsSidebarClick, planned:scenario/FloatingPanelCoversPoint]
+    tests: [internal/scenario.TestSystemSettingsSidebarClick, internal/scenario.TestFloatingPanelCoversPoint]
     upstream: [changelog/0.1.21/3]
 
   - id: CAP-RGB-055
@@ -628,7 +628,7 @@ capabilities:
       that read it (WeChat on two displays) are not off by the window origin.
     surface: act
     parity: spec
-    tests: [planned:scenario/BackgroundClickWindowLocation]
+    tests: [internal/scenario.TestBackgroundClickWindowLocation]
     upstream: [changelog/0.1.23/1]
 
   - id: CAP-RGB-056
@@ -641,7 +641,7 @@ capabilities:
       as unchecked.
     surface: act
     parity: oracle
-    tests: [internal/actions.TestCoverFallbackWindowList, planned:scenario/QtWindowForegroundClick]
+    tests: [internal/actions.TestCoverFallbackWindowList, internal/scenario.TestQtWindowForegroundClick]
     upstream: [changelog/0.1.23/2]
 
   - id: CAP-RGB-057
@@ -661,7 +661,7 @@ capabilities:
       it keyboard focus, so typing next goes into it, on the main and on a second display.
     surface: act
     parity: oracle
-    tests: [planned:scenario/BackgroundClickFocusesQtField]
+    tests: [internal/scenario.TestBackgroundClickFocusesQtField]
     upstream: [changelog/0.1.28/1]
 
   - id: CAP-RGB-059
@@ -674,7 +674,7 @@ capabilities:
       unverified focus, and is then reported unconfirmed.
     surface: act
     parity: oracle
-    tests: [planned:scenario/BackgroundTypeWrongFocusRefused, internal/actions.TestUnverifiedFocusOptIn]
+    tests: [internal/scenario.TestBackgroundTypeWrongFocusRefused, internal/actions.TestUnverifiedFocusOptIn]
     upstream: [changelog/0.1.28/2]
 
   - id: CAP-RGB-060
@@ -728,7 +728,7 @@ capabilities:
       wakes a display that is off or refuses with display_asleep.
     surface: act
     parity: oracle
-    tests: [planned:scenario/QtBackgroundTypeKeepsField, internal/driver.TestDisplayAsleep]
+    tests: [internal/scenario.TestQtBackgroundTypeKeepsField, internal/driver.TestDisplayAsleep]
     upstream: [changelog/0.1.30/1]
 
   - id: CAP-RGB-065
@@ -739,7 +739,7 @@ capabilities:
       clicks and every other action still refuse, and a driver without support refuses before sending.
     surface: policy
     parity: oracle
-    tests: [planned:scenario/LockedScreenType, internal/policy.TestLockedChordRefused]
+    tests: [internal/scenario.TestLockedScreenType, internal/policy.TestLockedChordRefused]
     upstream: [changelog/0.1.30/2]
 
   - id: CAP-RGB-066
@@ -792,7 +792,7 @@ capabilities:
       that process's window rather than failing for want of a focused window.
     surface: act
     parity: oracle
-    tests: [planned:scenario/AppTargetNoWindowRefused, internal/policy.TestAutoNoForegroundWithoutWindow]
+    tests: [internal/scenario.TestAppTargetNoWindowRefused, internal/policy.TestAutoNoForegroundWithoutWindow]
     upstream: [changelog/0.1.31/1, changelog/0.1.31/2]
 
   - id: CAP-RGB-071
@@ -803,7 +803,7 @@ capabilities:
       messages, at no extra cost.
     surface: act
     parity: oracle
-    tests: [planned:scenario/LongChromeTitleTarget]
+    tests: [internal/scenario.TestLongChromeTitleTarget]
     upstream: [changelog/0.1.32/1]
 
   - id: CAP-RGB-072
@@ -813,7 +813,7 @@ capabilities:
       Chrome hands to its running instance (a profile and a URL in a new window).
     surface: act
     parity: oracle
-    tests: [planned:scenario/LaunchChromeProfileArgs]
+    tests: [internal/scenario.TestLaunchChromeProfileArgs]
     upstream: [changelog/0.1.32/2]
 
   - id: CAP-RGB-073
@@ -826,7 +826,7 @@ capabilities:
       never saved.
     surface: flow
     parity: oracle
-    tests: [planned:scenario/RecordTextEditDraft, internal/flows.TestDraftParameters]
+    tests: [internal/scenario.TestRecordTextEditDraft, internal/flows.TestDraftParameters]
     upstream: [changelog/0.1.33/1]
 
   - id: CAP-RGB-074
@@ -849,7 +849,7 @@ capabilities:
       name does not end ok with the alert still open.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/TextEditReplaceAlertOnSheet]
+    tests: [internal/scenario.TestTextEditReplaceAlertOnSheet]
     upstream: [changelog/0.1.33/3]
 
   - id: CAP-RGB-076
@@ -861,7 +861,7 @@ capabilities:
       carry the expected focus, re-read every 100 ms for up to 1 s, stopping the plan when focus is elsewhere.
     surface: act
     parity: oracle
-    tests: [internal/plan.TestRecordedClickFallbackOrder, planned:scenario/TypeFocusMismatchStops]
+    tests: [internal/plan.TestRecordedClickFallbackOrder, internal/scenario.TestTypeFocusMismatchStops]
     upstream: [changelog/0.1.33/4]
 
   - id: CAP-RGB-077
@@ -922,7 +922,7 @@ capabilities:
       page tree on for each browser it records and restores it at the end.
     surface: flow
     parity: oracle
-    tests: [planned:scenario/RecordChromePage, planned:scenario/RecordSafariPage]
+    tests: [internal/scenario.TestRecordChromePage, internal/scenario.TestRecordSafariPage]
     upstream: [changelog/0.1.34/3]
 
   - id: CAP-RGB-083
@@ -934,7 +934,7 @@ capabilities:
       after. Element observation returns a node's page address and DOM id, and the web-tree switch can be set.
     surface: act
     parity: oracle
-    tests: [planned:scenario/WebStepPageMismatchStops, planned:scenario/WebStepDomIdPreferred]
+    tests: [internal/scenario.TestWebStepPageMismatchStops, internal/scenario.TestWebStepDomIdPreferred]
     upstream: [changelog/0.1.34/4]
 
   - id: CAP-RGB-084
@@ -947,7 +947,7 @@ capabilities:
       checked.
     surface: policy
     parity: oracle
-    tests: [internal/policy.TestYieldWindow, planned:scenario/YieldToUserMouse, planned:scenario/OwnTypingNotUser]
+    tests: [internal/policy.TestYieldWindow, internal/scenario.TestYieldToUserMouse, internal/scenario.TestOwnTypingNotUser]
     upstream: [changelog/0.1.35/1, changelog/0.1.37/2]
 
   - id: CAP-RGB-085

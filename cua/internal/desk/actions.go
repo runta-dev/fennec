@@ -91,6 +91,15 @@ func (a *Actions) SetValue(ctx context.Context, h view.Handle, value string) err
 	if err != nil {
 		return err
 	}
+	// A slider or stepper holds a number and refuses a string
+	// (kAXErrorIllegalArgument): write the number it parses to.
+	if cur, err := el.Attr("AXValue"); err == nil {
+		if _, numeric := cur.(float64); numeric {
+			if f, ok := view.NumberOf(value); ok {
+				return axFailure(el.SetNumber("AXValue", f), "AXValue")
+			}
+		}
+	}
 	return axFailure(el.SetString("AXValue", value), "AXValue")
 }
 
@@ -263,7 +272,7 @@ func (a *Actions) HitClick(ctx context.Context, w view.RawWindow, n view.RawNode
 		return nil, err
 	}
 	var st windowState
-	if err := json.Unmarshal(raw, &st); err != nil {
+	if err := json.Unmarshal(driver.Payload(raw), &st); err != nil {
 		return nil, hitRefusal("the window state did not decode")
 	}
 	scale := ax.BackingScale()

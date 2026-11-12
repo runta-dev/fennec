@@ -438,7 +438,6 @@ func unseen(w *view.RawWindow) bool {
 const (
 	unseenTyped = "the window is not on screen (another Space, minimized or hidden), so the text cannot be read back and may have landed even if an image looks unchanged: do not type it again, and have the user confirm the text before Return or Send"
 	unseenInput = "the window is not on screen (another Space, minimized or hidden), so the input cannot be read back and may have landed even if an image looks unchanged: do not resend it; confirm its effect by a trustworthy read-back or by asking the user"
-	twinNote    = "a window with the same title is on another Space; the input went to the one the title picks, and the app may not repaint an unseen window, so do not send it again"
 )
 
 // spaceTwins counts a window's same-titled twins of its app here and on
@@ -479,7 +478,9 @@ func (c *stepCtx) twins(ctx context.Context, w *view.RawWindow) (note string, pe
 		if same && c.kind == "type" {
 			return "", &protocol.Error{Code: protocol.ErrTargetAmbiguous, Message: fmt.Sprintf("two windows titled %q, one on another Space, cannot be told apart; nothing was typed", w.Title), Hint: "name the window by its ref"}
 		}
-		return twinNote, nil
+		// From behind nothing tells which of the two the user means: the
+		// title is refused naming both Spaces (CAP-RGB-034).
+		return "", &protocol.Error{Code: protocol.ErrTargetAmbiguous, Message: fmt.Sprintf("two windows titled %q, one on this Space and one on another, cannot be told apart; nothing was sent", w.Title), Hint: "name the window by its ref"}
 	}
 	return "", nil
 }

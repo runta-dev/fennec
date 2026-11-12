@@ -304,3 +304,28 @@ func Showing(n RawNode) bool {
 	}
 	return !menuRoles[n.Role]
 }
+
+// MenuMarkStates reads a menu item's mark character (AXMenuItemMarkChar):
+// a check mark or a bullet is checked, a dash mixed, none unchecked.
+// Menu items carry no AXValue, so the mark is their only toggle state.
+func MenuMarkStates(mark string) []string {
+	switch strings.TrimSpace(mark) {
+	case "":
+		return nil
+	case "-", "–", "‒", "—":
+		return []string{"mixed"}
+	}
+	return []string{"checked"}
+}
+
+// NumberOf reads the number a value string starts with, as "14" or
+// "14 pt": the number a slider or stepper is set to.
+func NumberOf(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	end := 0
+	for end < len(s) && (s[end] >= '0' && s[end] <= '9' || s[end] == '.' || (end == 0 && (s[end] == '-' || s[end] == '+'))) {
+		end++
+	}
+	f, err := strconv.ParseFloat(s[:end], 64)
+	return f, err == nil
+}

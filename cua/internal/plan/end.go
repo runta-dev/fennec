@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"strings"
+	"time"
 
 	"fennec/cua/internal/actions"
 	"fennec/cua/internal/protocol"
@@ -71,16 +72,13 @@ func (r *planRun) endWait(ctx context.Context) bool {
 	if !canOpen(last, kind, frontOf(before)) {
 		return true
 	}
-	ww := actions.WindowWait{List: r.e.X.B.Windows, Filter: func(ws []view.RawWindow) []view.RawWindow {
-		return r.e.policy().Allow.Filter(view.ListWindows(ws, r.e.policy().Input))
-	}, Now: r.e.now, Sleep: r.e.sleep}
 	now, err := r.list(ctx)
 	if err != nil {
 		return true
 	}
 	opened := newWindows(before, now)
 	if len(opened) == 0 {
-		changedNow, ws, err := ww.Wait(ctx, now, EndWait)
+		changedNow, ws, err := r.windowChange(ctx, now, EndWait)
 		if err != nil || !changedNow {
 			return true
 		}
@@ -150,4 +148,42 @@ func canOpen(s protocol.Step, kind string, front *view.RawWindow) bool {
 		return false
 	}
 	return false
+}
+
+// windowChange waits up to limit for the window list to differ from base
+// (a window opened or closed, the front or a title changed) and answers
+// the list that differs, or the last one read. It waits on the daemon's
+// window-change wait when there is one, which reads the list only when the
+// windows may have changed; otherwise it polls the list.
+func (r *planRun) windowChange(ctx context.Context, base []view.RawWindow, limit time.Duration) (bool, []view.RawWindow, error) {
+	if r.e.WindowChange == nil {
+		ww := actions.WindowWait{List: r.e.X.B.Windows, Filter: func(ws []view.RawWindow) []view.RawWindow {
+			return r.e.policy().Allow.Filter(view.ListWindows(ws, r.e.policy().Input))
+		}, Now: r.e.now, Sleep: r.e.sleep}
+		return ww.Wait(ctx, base, limit)
+	}
+	last := base
+	done, err := r.e.WindowChange(ctx, limit, func(ctx context.Context) (bool, error) {
+		ws, err := r.list(ctx)
+		if err != nil {
+			return false, err
+		}
+		last = ws
+		return !sameWindows(base, ws), nil
+	})
+	return done, last, err
+}
+
+// sameWindows says whether two lists show the same windows, titles and
+// front window in the same order.
+func sameWindows(a, b []view.RawWindow) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Key != b[i].Key || a[i].Title != b[i].Title || a[i].Active != b[i].Active {
+			return false
+		}
+	}
+	return true
 }

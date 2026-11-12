@@ -79,13 +79,14 @@ func TestTitleTwinsAcrossSpacesRefused(t *testing.T) {
 	if !strings.Contains(r.Error.Message, "2 windows titled \"Doc\" are on this Space and 2 on other Spaces") || len(d.Calls) != 0 {
 		t.Fatalf("%+v", r.Error)
 	}
-	// One on each side: the input goes to the one the title picks, with a note.
+	// One on each side is refused too, as shuttle 0.1.50 does live
+	// (CAP-RGB-034): nothing tells which one is meant.
 	d = scene()
 	d.Win("cg:30", "Pages", "Doc", 300, [4]int{0, 700, 300, 300}, false)
 	d.Win("cg:31", "Pages", "Doc", 300, [4]int{0, 700, 300, 310}, false).Space = "other"
 	r = newRig(t, d, protocol.InputBackground).step(protocol.Step{Key: "return", Window: "Doc"})
-	wantStatus(t, r, protocol.StatusUnconfirmed)
-	if !notesHave(r, "do not send it again") || d.Calls[0].Arg("window_id") != "30" {
+	wantCode(t, r, protocol.ErrTargetAmbiguous)
+	if len(d.Calls) != 0 {
 		t.Fatalf("%+v %s", r, d)
 	}
 	// Typing to twins that cannot be told apart is refused.

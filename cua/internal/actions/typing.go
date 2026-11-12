@@ -440,6 +440,14 @@ func (c *stepCtx) readback(ctx context.Context, pid int, before *string, text st
 	changed := start
 	for {
 		f, err := c.focused(ctx, pid, ReadbackPoll*5)
+		if err != nil && ctx.Err() == nil && c.x.now().Sub(start) < ReadbackMax {
+			// A slow read (a web page's tree) is read again within the
+			// read-back budget rather than given up at once.
+			if c.x.sleep(ctx, ReadbackPoll) != nil {
+				return unconfirmed(evidence, nil, nonEmpty(adv)...)
+			}
+			continue
+		}
 		if err != nil {
 			return unconfirmed(evidence, nil, nonEmpty("the text was delivered, but reading the field back failed ("+err.Error()+"); do not type it again", adv)...)
 		}
@@ -449,6 +457,13 @@ func (c *stepCtx) readback(ctx context.Context, pid int, before *string, text st
 		}
 		if want != "" && strings.Contains(v, want) {
 			return confirmed(fmt.Sprintf("%s; the field reads %q", evidence, view.Clip(v, 40, true)))
+		}
+		if f != nil && (f.HasState("protected") || masked(v)) && v != orig {
+			// A password field reads back as mask characters: its growth
+			// by the typed length is the proof, and it is never quoted.
+			if utf8.RuneCountInString(v)-utf8.RuneCountInString(orig) == utf8.RuneCountInString(want) {
+				return confirmed(fmt.Sprintf("%s; the password field grew by %d characters", evidence, utf8.RuneCountInString(want)))
+			}
 		}
 		now := c.x.now()
 		if v != prev {
@@ -480,4 +495,18 @@ func (c *stepCtx) shows(ctx context.Context, pid int, text string) bool {
 	}
 	f, err := c.focused(ctx, pid, SettleBudget)
 	return err == nil && f != nil && f.Value != nil && !f.HasState("protected") && strings.Contains(*f.Value, text)
+}
+
+// masked says whether a value is all mask characters, as a password field
+// reads back.
+func masked(v string) bool {
+	if v == "" {
+		return false
+	}
+	for _, r := range v {
+		if r != '•' && r != '●' && r != '*' {
+			return false
+		}
+	}
+	return true
 }

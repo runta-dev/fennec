@@ -87,7 +87,7 @@ capabilities:
       foreground input, never hand their list on; the next step lists again.
     surface: act
     parity: spec
-    tests: [planned:internal/plan.TestSettleWindowListReuse]
+    tests: [internal/plan.TestSettleWindowListReuse]
     upstream:
       - "node/action/the step after a click, and the end of the plan, take the window list the click settled on instead of listing the windows again"
       - "node/action/the step after a settle lists the windows again when another daemon call came after the settle"
@@ -407,7 +407,7 @@ capabilities:
       of a window's fields that carry no value in the snapshot runs with at most four reads in flight.
     surface: act
     parity: spec
-    tests: [internal/plan.TestBackgroundNoScreenReads, planned:internal/plan.TestBackgroundFieldReadConcurrency]
+    tests: [internal/plan.TestBackgroundNoScreenReads, internal/plan.TestBackgroundFieldReadConcurrency]
     upstream:
       - "node/background/a background type reads the unvalued fields of its window four at a time"
       - "node/background/an element that is not in the tree is not looked for on the screen in the background"
@@ -421,7 +421,7 @@ capabilities:
       own app (by pid) even when another app has a window with the same title.
     surface: act
     parity: oracle
-    tests: [planned:internal/plan.TestBackgroundClickImagePixels]
+    tests: [internal/plan.TestBackgroundClickImagePixels]
     upstream:
       - "node/background/a background click with a button, count or modifiers goes into the plan window in its image pixels, not to the covering window"
       - "node/background/a background click with a count takes the image scale from the window of its own app when another app has a window of that title"

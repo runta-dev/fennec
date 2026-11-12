@@ -118,7 +118,7 @@ type Transcript struct {
 	InputTokens  int    `json:"input_tokens"`
 	OutputTokens int    `json:"output_tokens"`
 	Final        string `json:"final"`
-	Stop         string `json:"stop"` // done, max_turns, timeout, model_error
+	Stop         string `json:"stop"` // done, max_turns, timeout, context_overflow, model_error, backend_error
 }
 
 // AgentOptions bound a run.
@@ -126,6 +126,9 @@ type AgentOptions struct {
 	MaxTurns int
 	// KeepImages is how many of the latest screenshots stay in context.
 	KeepImages int
+	// Instructions are the MCP server's own instructions from its
+	// initialize result; MCP hosts add them to the system prompt.
+	Instructions string
 }
 
 const systemPrompt = `You operate a macOS computer through the tools you are given. Complete the user's task on that computer, then reply with a short final message that starts with DONE, or with FAIL and the reason if the task cannot be done. Look before you act, check that each action had the effect you wanted, and do not ask the user questions: nobody will answer.`
@@ -156,7 +159,11 @@ func Run(ctx context.Context, m Model, backend *mcpclient.Client, task string, o
 		}
 		tools = append(tools, t)
 	}
-	msgs := []chatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: task}}
+	system := systemPrompt
+	if opt.Instructions != "" {
+		system += "\n\nInstructions from the tool server:\n" + opt.Instructions
+	}
+	msgs := []chatMessage{{Role: "system", Content: system}, {Role: "user", Content: task}}
 	for tr.Turns < opt.MaxTurns {
 		if ctx.Err() != nil {
 			tr.Stop = "timeout"
@@ -164,11 +171,15 @@ func Run(ctx context.Context, m Model, backend *mcpclient.Client, task string, o
 		}
 		tr.Turns++
 		start := time.Now()
-		resp, err := m.chat(ctx, trimImages(msgs, opt.KeepImages), tools)
+		resp, err := m.chatRetry(ctx, trimImages(msgs, opt.KeepImages), tools)
 		if err != nil {
-			if ctx.Err() != nil {
+			switch {
+			case ctx.Err() != nil:
 				tr.Stop = "timeout"
-			} else {
+			case contextOverflow(err):
+				// The conversation outgrew the model: the run's own doing.
+				tr.Stop, tr.Final = "context_overflow", err.Error()
+			default:
 				tr.Stop, tr.Final = "model_error", err.Error()
 			}
 			return tr
@@ -246,4 +257,36 @@ func clip(s string, n int) string {
 		return s
 	}
 	return s[:n] + fmt.Sprintf("… (%d more bytes)", len(s)-n)
+}
+
+// modelRetryDelays are the waits between attempts of one model call; a
+// gateway hiccup should not end a run.
+var modelRetryDelays = []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second}
+
+// chatRetry calls the model, retrying failures other than a conversation
+// that is too long for it.
+func (m Model) chatRetry(ctx context.Context, msgs []chatMessage, tools []chatTool) (*chatResponse, error) {
+	for i := 0; ; i++ {
+		resp, err := m.chat(ctx, msgs, tools)
+		if err == nil || ctx.Err() != nil || contextOverflow(err) || i == len(modelRetryDelays) {
+			return resp, err
+		}
+		select {
+		case <-time.After(modelRetryDelays[i]):
+		case <-ctx.Done():
+			return nil, err
+		}
+	}
+}
+
+// contextOverflow reports whether a model error says the request is longer
+// than the model's context window.
+func contextOverflow(err error) bool {
+	s := strings.ToLower(err.Error())
+	for _, k := range []string{"context length", "context_length", "maximum context", "too many tokens", "prompt is too long", "context window", "input is too long", "exceeds the context"} {
+		if strings.Contains(s, k) {
+			return true
+		}
+	}
+	return false
 }

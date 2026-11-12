@@ -149,7 +149,7 @@ func (r Reply) Advice() string {
 
 func parseReply(raw json.RawMessage) Reply {
 	var r Reply
-	_ = json.Unmarshal(raw, &r)
+	_ = json.Unmarshal(driver.Payload(raw), &r)
 	return r
 }
 
@@ -167,10 +167,29 @@ type call struct {
 // or any other failure may have landed and is never resent.
 func driverCall(ctx context.Context, b Backend, tool string, args map[string]any) call {
 	raw, err := b.Driver(ctx, tool, args)
-	return classify(raw, err)
+	c := classify(raw, err)
+	if !c.sent && c.reply.Code == contextMissing && args["window_id"] != nil {
+		// Input aimed at a window's own pixels needs the driver to have
+		// read that window in this session; it refused before sending,
+		// so read the window and send once more.
+		if _, rerr := b.Driver(ctx, "get_window_state", map[string]any{"pid": args["pid"], "window_id": args["window_id"]}); rerr == nil {
+			raw, err = b.Driver(ctx, tool, args)
+			c = classify(raw, err)
+		}
+	}
+	return c
 }
 
+// contextMissing is the driver's refusal of window-pixel input for a window
+// it has not read in this session; nothing was sent.
+const contextMissing = "screenshot_context_missing"
+
 func classify(raw json.RawMessage, err error) call {
+	if err == nil && isErrorReply(raw) {
+		// A result the driver marks as an error failed, whatever its
+		// fields say; it is classified like a returned error.
+		err = &driver.Error{Message: replyText(raw), Result: raw}
+	}
 	if err == nil {
 		r := parseReply(raw)
 		c := call{reply: r, sent: true}
@@ -197,6 +216,8 @@ func classify(raw json.RawMessage, err error) call {
 		case de.Transport && !strings.Contains(de.Message, "may have been sent") && !strings.HasPrefix(de.Message, "no reply"):
 			// Connecting or writing failed: the request never left.
 			c.sent = false
+		case c.reply.Code == contextMissing:
+			c.sent = false
 		case strings.Contains(de.Message, "nothing was sent") || strings.Contains(de.Message, "No fallback input was sent"):
 			c.sent = false
 		}
@@ -212,4 +233,32 @@ func refusalMessage(r Reply) string {
 		return r.Summary
 	}
 	return "refused: " + r.RefusalCode()
+}
+
+// isErrorReply says whether a driver result is marked isError.
+func isErrorReply(raw json.RawMessage) bool {
+	var r struct {
+		IsError bool `json:"isError"`
+	}
+	return json.Unmarshal(raw, &r) == nil && r.IsError
+}
+
+// replyText joins a driver result's text blocks.
+func replyText(raw json.RawMessage) string {
+	var r struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	_ = json.Unmarshal(raw, &r)
+	var parts []string
+	for _, c := range r.Content {
+		if c.Text != "" {
+			parts = append(parts, c.Text)
+		}
+	}
+	if len(parts) == 0 {
+		return "the driver answered an error without a reason"
+	}
+	return strings.Join(parts, "\n")
 }

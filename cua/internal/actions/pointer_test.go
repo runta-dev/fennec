@@ -101,8 +101,10 @@ func TestBackgroundPressNoClickAfterFailure(t *testing.T) {
 	d := scene()
 	d.PerformErr["trash:AXPress"] = timedOut
 	r := newRig(t, d, protocol.InputBackground).step(protocol.Step{Press: tgt(`button "Trash"`), Window: "Downloads"})
+	// A press the app does not answer counts as done, unproven: never
+	// clicked after, never resent.
 	wantStatus(t, r, protocol.StatusUnconfirmed)
-	if r.OK || !retryFalse(r) || len(d.Calls) != 0 {
+	if !retryFalse(r) || len(d.Calls) != 0 {
 		t.Fatalf("%+v %s", r, d)
 	}
 	d = scene()

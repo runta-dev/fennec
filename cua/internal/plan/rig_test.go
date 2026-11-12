@@ -70,6 +70,10 @@ type desk struct {
 	screen    *string
 	screenPID int
 	trees     int
+	// onRead runs before each element read, outside the desk's lock; cut
+	// marks elements whose reads report a cut value.
+	onRead func(id string, full, tail bool)
+	cut    map[string]bool
 }
 
 func (d *desk) Perform(ctx context.Context, h view.Handle, action string) error {
@@ -154,7 +158,12 @@ func (d *desk) Read(ctx context.Context, h view.Handle, full, tail bool) (view.R
 		}
 		return view.RawNode{Handle: "screen", Role: "textarea", Value: &v}, false, nil
 	}
-	return d.Desk.Read(ctx, h, full, tail)
+	id, _ := h.(string)
+	if d.onRead != nil {
+		d.onRead(id, full, tail)
+	}
+	n, cut, err := d.Desk.Read(ctx, h, full, tail)
+	return n, cut || d.cut[id], err
 }
 
 func (d *desk) setScreen(s string) {
@@ -271,13 +280,14 @@ func (o *fakeObserver) Observe(ctx context.Context, req protocol.ObserveRequest)
 }
 
 type rig struct {
-	t   *testing.T
-	d   *desk
-	p   *policy.Policy
-	x   *actions.Executor
-	e   *Executor
-	clk *clock2
-	m   *fakeModels
+	t     *testing.T
+	d     *desk
+	lists *actions.Lists
+	p     *policy.Policy
+	x     *actions.Executor
+	e     *Executor
+	clk   *clock2
+	m     *fakeModels
 }
 
 // newRig makes an executor over an empty fake desktop with the policy and
@@ -292,9 +302,10 @@ func newRig(t *testing.T, cfg policy.Config) *rig {
 	p.Activity.Idle = func() time.Duration { return time.Hour }
 	p.Activity.Now = clk.now
 	d := &desk{Desk: fakedesk.New()}
-	x := &actions.Executor{B: d, Refs: view.NewRegistry(0), Policy: p, Now: clk.now, Sleep: clk.sleep}
+	lists := &actions.Lists{Now: clk.now}
+	x := &actions.Executor{B: actions.Watch(d, lists), Refs: view.NewRegistry(0), Policy: p, Now: clk.now, Sleep: clk.sleep}
 	e := &Executor{X: x, Now: clk.now, Sleep: clk.sleep}
-	return &rig{t: t, d: d, p: p, x: x, e: e, clk: clk}
+	return &rig{t: t, d: d, lists: lists, p: p, x: x, e: e, clk: clk}
 }
 
 // notes adds TextEdit's "Notes" window (cg:1, pid 100) in front with a
