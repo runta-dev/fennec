@@ -1336,8 +1336,16 @@ function toggleMagpie() {
   confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: magpieEnabled ? "[[i18n:ui.chatgpt_reconnect_without_magpie]]" : "[[i18n:ui.chatgpt_reconnect_with_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
 }
 
+// Closing a modal dialog returns focus to its opener, which WebKit paints as
+// keyboard focus. Keep that ring only when the keyboard opened the dialog.
+let chatgptDialogPointer = false;
+document.addEventListener('pointerdown', () => { chatgptDialogPointer = true; }, true);
+document.addEventListener('keydown', () => { chatgptDialogPointer = false; }, true);
+
 function confirmChatGPT(copy, proceed) {
   let dialog = document.querySelector('#codex-desktop-dialog');
+  const opener = document.activeElement;
+  const pointer = chatgptDialogPointer;
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'codex-desktop-dialog';
@@ -1349,6 +1357,7 @@ function confirmChatGPT(copy, proceed) {
     document.body.append(dialog);
     dialog.querySelector('.update-dialog-cancel').onclick = () => dialog.close();
   }
+  dialog.onclose = () => { if (pointer && opener && opener !== document.body) requestAnimationFrame(() => { if (document.activeElement === opener) opener.blur(); }); };
   dialog.querySelector('#codex-desktop-dialog-title').textContent = copy.title;
   dialog.querySelector('.update-dialog-hint').textContent = copy.body;
   const confirm = dialog.querySelector('.update-dialog-confirm');
