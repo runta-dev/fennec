@@ -215,6 +215,12 @@ window.renderAgents = agents => {
       <div class="takeover"><span class="takeover-name">[[i18n:ui.run_location]]</span><div class="location-segments" role="radiogroup" aria-label="[[i18n:ui.run_location]]"><button type="button" role="radio" data-location="local" aria-checked="true" disabled>[[i18n:ui.this_mac]]</button><button type="button" role="radio" data-location="cloud" aria-checked="false" disabled>[[i18n:ui.cloud_computer]]</button></div></div>
       <div class="takeover-status">[[i18n:ui.sign_in_for_cloud_takeover]]</div>
 `;
+    if (desktop) {
+      const description = document.createElement('p');
+      description.className = 'agent-description';
+      description.textContent = "[[i18n:ui.chatgpt_codex_desktop_description]]";
+      detail.prepend(description);
+    }
     if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
@@ -1331,6 +1337,8 @@ function confirmCodexDesktopRestart(toCloud, proceed) {
     dialog.id = 'codex-desktop-dialog';
     dialog.className = 'update-dialog';
     dialog.setAttribute('aria-labelledby', 'codex-desktop-dialog-title');
+    dialog.tabIndex = -1;
+    dialog.setAttribute('autofocus', '');
     dialog.innerHTML = '<div class="update-dialog-head"><strong id="codex-desktop-dialog-title">[[i18n:ui.codex_desktop_restart_title]]</strong></div><p class="update-dialog-hint"></p><div class="update-dialog-actions"><button type="button" class="update-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="update-dialog-confirm">[[i18n:ui.restart_chatgpt]]</button></div>';
     document.body.append(dialog);
     dialog.querySelector('.update-dialog-cancel').onclick = () => dialog.close();
@@ -1339,7 +1347,7 @@ function confirmCodexDesktopRestart(toCloud, proceed) {
   const confirm = dialog.querySelector('.update-dialog-confirm');
   confirm.onclick = () => { dialog.close(); proceed(); };
   if (!dialog.open) dialog.showModal();
-  dialog.querySelector('.update-dialog-cancel').focus();
+  dialog.focus();
 }
 
 window.renderTakeover = value => {

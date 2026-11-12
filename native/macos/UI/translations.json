@@ -569,6 +569,14 @@
       "zh-CN": "授权码已过期，请重新登录。",
       "zh-TW": "授權碼已過期，請重新登入。"
     },
+    "ui.chatgpt_codex_desktop_description": {
+      "en-GB": "Runs Codex Desktop in ChatGPT.app on the selected computer",
+      "en-US": "Runs Codex Desktop in ChatGPT.app on the selected computer",
+      "ja": "ChatGPT.app の Codex Desktop を選択したコンピューターで実行します",
+      "ko": "ChatGPT.app의 Codex Desktop을 선택한 컴퓨터에서 실행합니다",
+      "zh-CN": "在所选电脑上运行 ChatGPT.app 中的 Codex Desktop",
+      "zh-TW": "在所選電腦上執行 ChatGPT.app 中的 Codex Desktop"
+    },
     "ui.codex_desktop_restart_title": {
       "en-GB": "Restart ChatGPT?",
       "en-US": "Restart ChatGPT?",
