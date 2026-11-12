@@ -226,3 +226,21 @@ func (c *Client) Close() error {
 	}
 	return err
 }
+
+// ToolDef is one tool as tools/list describes it.
+type ToolDef struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+}
+
+// ToolDefs lists the server's tools with their schemas.
+func (c *Client) ToolDefs(ctx context.Context) ([]ToolDef, error) {
+	var r struct {
+		Tools []ToolDef `json:"tools"`
+	}
+	if err := c.Call(ctx, "tools/list", map[string]any{}, &r); err != nil {
+		return nil, err
+	}
+	return r.Tools, nil
+}
