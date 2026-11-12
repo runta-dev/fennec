@@ -54,6 +54,15 @@ func localMagpieCommand(ctx context.Context, home, agentID string, args ...strin
 	return output.String(), nil
 }
 func LocalMagpieModel(ctx context.Context, home, agentID string) (string, error) {
+	if !map[string]bool{"codex": true, "claude": true, "pi": true}[agentID] {
+		return "", fmt.Errorf("unsupported agent")
+	}
+	if LocalMagpieBinary(home) == "" {
+		return "", fmt.Errorf("Magpie is not installed")
+	}
+	if model, ok := readConfiguredMagpieModel(home, agentID); ok {
+		return model, nil
+	}
 	output, err := localMagpieCommand(ctx, home, agentID, "model")
 	if err != nil {
 		return "", err

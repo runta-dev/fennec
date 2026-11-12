@@ -51,6 +51,11 @@ func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
 			routes = append(routes, route)
 			continue
 		}
+		if model, ok := readConfiguredMagpieModel(home, agent.ID); ok {
+			route.Model = model
+			routes = append(routes, route)
+			continue
+		}
 		step, cancel := context.WithTimeout(ctx, 5*time.Second)
 		cmd := exec.CommandContext(step, filepath.Clean(binary), agent.ID, "model")
 		cmd.WaitDelay = time.Second

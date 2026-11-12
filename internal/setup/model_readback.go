@@ -42,5 +42,8 @@ func readModelWithLock(ctx context.Context, home, agent string) ([]byte, error) 
 		case <-timer.C:
 		}
 	}
+	if output, ok := readConfiguredMagpieModelOutput(home, agent); ok {
+		return output, nil
+	}
 	return exec.CommandContext(ctx, "magpie", agent, "model").Output()
 }

@@ -3,13 +3,70 @@ package setup
 import (
 	"context"
 	"fmt"
-
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var (
+	nativeSourceEnvMu          sync.Mutex
+	nativeSourceEnvFingerprint string
+	nativeSourceEnvExpires     time.Time
+	nativeSourceEnvValues      map[string]string
+)
+
+func shellStartupFingerprint(keys []string, shell string) string {
+	var b strings.Builder
+	home := os.Getenv("HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	zdot := os.Getenv("ZDOTDIR")
+	b.WriteString(home)
+	b.WriteByte(0)
+	b.WriteString(shell)
+	b.WriteByte(0)
+	for _, key := range keys {
+		b.WriteString(key)
+		b.WriteByte('=')
+		b.WriteString(os.Getenv(key))
+		b.WriteByte(0)
+	}
+	paths := []string{shell}
+	for _, dir := range []string{home, zdot} {
+		if dir == "" {
+			continue
+		}
+		for _, name := range []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", ".bashrc", ".bash_profile", ".bash_login", ".profile"} {
+			paths = append(paths, filepath.Join(dir, name))
+		}
+	}
+	for _, p := range paths {
+		b.WriteString(p)
+		if info, err := os.Stat(p); err == nil {
+			b.WriteByte(':')
+			b.WriteString(strconv.FormatInt(info.Size(), 10))
+			b.WriteByte(':')
+			b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 10))
+		} else {
+			b.WriteString(":missing")
+		}
+		b.WriteByte(0)
+	}
+	return b.String()
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
 
 // A LaunchAgent does not inherit interactive shell API keys or custom config
 // roots. Read only this fixed allowlist; never print it or execute credential
@@ -29,6 +86,15 @@ func nativeSourceEnvironment(ctx context.Context) map[string]string {
 	if !filepath.IsAbs(shell) {
 		return result
 	}
+	fingerprint := shellStartupFingerprint(keys, shell)
+	now := time.Now()
+	nativeSourceEnvMu.Lock()
+	if fingerprint == nativeSourceEnvFingerprint && now.Before(nativeSourceEnvExpires) && nativeSourceEnvValues != nil {
+		cached := copyStringMap(nativeSourceEnvValues)
+		nativeSourceEnvMu.Unlock()
+		return cached
+	}
+	nativeSourceEnvMu.Unlock()
 	var script strings.Builder
 	script.WriteString("printf '\\0'; printf '%s\\0'")
 	for _, key := range keys {
@@ -57,6 +123,11 @@ func nativeSourceEnvironment(ctx context.Context) map[string]string {
 			result[key] = value
 		}
 	}
+	nativeSourceEnvMu.Lock()
+	nativeSourceEnvFingerprint = fingerprint
+	nativeSourceEnvExpires = time.Now().Add(5 * time.Minute)
+	nativeSourceEnvValues = copyStringMap(result)
+	nativeSourceEnvMu.Unlock()
 	return result
 }
 
