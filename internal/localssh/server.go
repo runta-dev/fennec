@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fennec/internal/audit"
+	"fennec/internal/guardian"
 	"fennec/internal/sandbox"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -33,6 +35,7 @@ type Event struct {
 	ID          string `json:"id,omitempty"`
 	Command     string `json:"command,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	Reason      string `json:"reason,omitempty"`
 	Address     string `json:"address,omitempty"`
 	ExitCode    int    `json:"exit_code,omitempty"`
 }
@@ -43,7 +46,10 @@ type Decision struct {
 	NeverAsk bool   `json:"never_ask"`
 }
 type Broker struct {
-	Policy     func() sandbox.Policy
+	Policy func() sandbox.Policy
+	// Reviewer runs Codex auto-review for "Approve for me".
+	Reviewer   *guardian.Reviewer
+	breaker    map[string]*breakerState
 	Audit      *audit.Store
 	mu         sync.Mutex
 	pending    map[string]chan Decision
@@ -81,14 +87,18 @@ func (b *Broker) emit(e Event) {
 	json.NewEncoder(b.output).Encode(e)
 }
 func (b *Broker) approve(ctx context.Context, command, fingerprint string) bool {
-	allowed, _ := b.approveWithDecision(ctx, command, fingerprint, "", false)
-	return allowed
+	return b.authorize(ctx, approvalRequest{Display: command, Fingerprint: fingerprint, Action: guardian.Action{Kind: "exec", Command: command}}).Allowed
 }
 func (b *Broker) approveKind(ctx context.Context, command, fingerprint, kind string) bool {
-	allowed, _ := b.approveWithDecision(ctx, command, fingerprint, kind, false)
-	return allowed
+	action := guardian.Action{Kind: "exec", Command: command}
+	if kind == "hook" {
+		action = guardian.Action{Kind: "permissions", Command: command, Justification: command}
+	}
+	return b.authorize(ctx, approvalRequest{Display: command, Kind: kind, Fingerprint: fingerprint, Action: action}).Allowed
 }
-func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, kind string, forcePrompt bool) (bool, string) {
+
+// approveWithDecision asks the user. Reviewer routing happens in authorize.
+func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, kind, reason string) (bool, string) {
 	if ctx.Err() != nil {
 		return false, "user_denied"
 	}
@@ -109,10 +119,8 @@ func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, 
 	if policy.Approval == "never" {
 		return true, "auto_sandbox"
 	}
-	if !forcePrompt && policy.Approval == sandbox.PresetAuto && !sandbox.RequiresPrompt(policy, home, command, kind) {
-		return true, "auto_sandbox"
-	}
-	if !forcePrompt && b.trusted(fingerprint) {
+	_ = home
+	if b.trusted(fingerprint) {
 		return true, "auto_sandbox"
 	}
 	raw := make([]byte, 16)
@@ -129,7 +137,7 @@ func (b *Broker) approveWithDecision(ctx context.Context, command, fingerprint, 
 	b.pending[id] = ch
 	b.mu.Unlock()
 	defer func() { b.mu.Lock(); delete(b.pending, id); b.mu.Unlock(); b.emit(Event{Type: "dismiss", ID: id}) }()
-	b.emit(Event{Type: "approval", ID: id, Command: command, Fingerprint: fingerprint, Kind: kind})
+	b.emit(Event{Type: "approval", ID: id, Command: command, Fingerprint: fingerprint, Kind: kind, Reason: reason})
 	select {
 	case decision := <-ch:
 		b.mu.Lock()
@@ -230,38 +238,72 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		}
 		policy := broker.effectivePolicy()
 		decisionType := "auto_sandbox"
+		fingerprint := crypto.FingerprintSHA256(session.PublicKey())
+		home, _ := os.UserHomeDir()
+		// Codex parity: ordinary commands run in the workspace sandbox without
+		// review; an explicit escalation request or a dangerous command is
+		// reviewed; Full access forbids dangerous commands instead of asking.
+		inner, reason, escalated := sandbox.ParseEscalation(command)
+		full := policy.Approval == "never"
+		onRequest := policy.Approval == sandbox.PresetAsk || policy.Approval == sandbox.PresetAuto
+		dangerous := sandbox.IsDangerousCommand(inner)
+		runPolicy := policy
+		rationale := ""
+		refuse := func(decision, message, detail string) {
+			broker.recordAudit(audit.Entry{
+				Kind:           "exec",
+				Command:        inner,
+				SandboxMode:    sandbox.NormalizeMode(policy.Mode),
+				NetworkAllowed: policy.Network,
+				Decision:       decision,
+				Blocked:        true,
+				ExitCode:       126,
+				Detail:         detail,
+			})
+			io.WriteString(session.Stderr(), message)
+			session.Exit(126)
+		}
 		if requireApproval {
-			approval, cancelApproval := context.WithTimeout(operation, 2*time.Minute)
-			defer cancelApproval()
-			io.WriteString(session.Stderr(), "Fennec: waiting for approval on your computer.\n")
-			allowed, dec := broker.approveWithDecision(approval, command, crypto.FingerprintSHA256(session.PublicKey()), "", false)
-			decisionType = dec
-			if !allowed {
-				broker.recordAudit(audit.Entry{
-					Kind:           "exec",
-					Command:        command,
-					SandboxMode:    sandbox.NormalizeMode(policy.Mode),
-					NetworkAllowed: policy.Network,
-					Decision:       "user_denied",
-					Blocked:        true,
-					ExitCode:       126,
-					Detail:         "Denied or expired during approval prompt",
-				})
-				io.WriteString(session.Stderr(), "Fennec: denied, disconnected or expired.\n")
-				session.Exit(126)
+			switch {
+			case full && dangerous:
+				refuse(decisionForbidden, "Fennec: this command was rejected by policy: forced deletion is not allowed without review in Full access.\n", "Dangerous command forbidden in Full access")
 				return
+			case !full && (escalated || dangerous || !sandbox.Available() || !onRequest):
+				approval, cancelApproval := context.WithTimeout(operation, 2*time.Minute)
+				defer cancelApproval()
+				if policy.Approval != sandbox.PresetAuto || broker.Reviewer == nil {
+					io.WriteString(session.Stderr(), "Fennec: waiting for approval on your computer.\n")
+				}
+				outcome := broker.authorize(approval, approvalRequest{Display: inner, Fingerprint: fingerprint, Action: guardian.Action{Kind: "exec", Command: inner, Cwd: home, Justification: reason}})
+				decisionType = outcome.Decision
+				rationale = outcome.Rationale
+				if !outcome.Allowed {
+					message := "Fennec: denied, disconnected or expired.\n"
+					if outcome.Message != "" {
+						message = "Fennec: " + strings.ReplaceAll(strings.TrimRight(outcome.Message, "\n"), "\n", "\nFennec: ") + "\n"
+					}
+					detail := "Denied or expired during approval prompt"
+					if outcome.Rationale != "" {
+						detail = outcome.Rationale
+					}
+					refuse(outcome.Decision, message, detail)
+					return
+				}
+				if escalated {
+					runPolicy = sandbox.ForApprovedEscalation(policy)
+				}
 			}
 		}
+		command = inner
 		// Approval never overrides pairing revoked while the prompt was open.
 		if !paired(session.PublicKey()) {
 			session.Exit(126)
 			return
 		}
-		home, _ := os.UserHomeDir()
 		started := time.Now()
 		runCtx, cancelRun := context.WithTimeout(operation, 10*time.Minute)
 		defer cancelRun()
-		cmd, effectiveMode := sandbox.Command(runCtx, policy, home, "", command)
+		cmd, effectiveMode := sandbox.Command(runCtx, runPolicy, home, "", command)
 		var stderrPreview boundedCapture
 		cmd.Stdin = session
 		cmd.Stdout = session
@@ -300,17 +342,26 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			decisionType = "sandbox_blocked"
 			blocked = true
 		}
+		// Codex returns a sandbox denial to the agent, which may re-request the
+		// command with escalation; tell the agent how over this transport.
+		if !escalated && !full && effectiveMode == sandbox.ModeWorkspace && sandbox.IsLikelySandboxDenied(code, errSnippet) {
+			io.WriteString(session.Stderr(), sandbox.EscalationHint(command))
+		}
+		detail := errSnippet
+		if rationale != "" {
+			detail = strings.TrimSpace(rationale + "\n" + errSnippet)
+		}
 		broker.recordAudit(audit.Entry{
 			Kind:           "exec",
 			Command:        command,
 			Workdir:        cmd.Dir,
 			SandboxMode:    effectiveMode,
-			NetworkAllowed: policy.Network || effectiveMode == sandbox.ModeFull,
+			NetworkAllowed: runPolicy.Network || effectiveMode == sandbox.ModeFull,
 			Decision:       decisionType,
 			Blocked:        blocked,
 			ExitCode:       code,
 			DurationMS:     time.Since(started).Milliseconds(),
-			Detail:         errSnippet,
+			Detail:         detail,
 		})
 		session.Exit(code)
 	}}

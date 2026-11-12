@@ -11,6 +11,7 @@ import (
 	"fennec/internal/audit"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
+	"fennec/internal/guardian"
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
 	"fennec/internal/runta"
@@ -410,6 +411,8 @@ func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 		permissions := localssh.NewBroker(filepath.Join(s.home, ".config/fennec/ssh"), events)
 		permissions.Audit = s.auditStore
 		permissions.Policy = s.sandboxPolicy
+		// "Approve for me" uses Codex auto-review through the user's local Codex.
+		permissions.Reviewer = &guardian.Reviewer{Home: s.home, SearchPath: agent.ExecutableSearchPath(s.home), DeniedReadPaths: sandbox.ProtectedPaths(s.home)}
 		s.mu.Lock()
 		s.permissions = permissions
 		s.mu.Unlock()

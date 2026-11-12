@@ -558,6 +558,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let title = NSTextField(labelWithString: permissionText(request["kind"] == "hook" ? "permission.hookTitle" : "permission.title"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
         stack.addArrangedSubview(title)
+        // Codex shows the agent's escalation justification as the question.
+        if let reason = request["reason"], !reason.isEmpty, request["kind"] != "hook" {
+            let reasonLabel = NSTextField(wrappingLabelWithString: reason)
+            reasonLabel.font = .systemFont(ofSize: 12)
+            reasonLabel.preferredMaxLayoutWidth = innerWidth
+            stack.addArrangedSubview(reasonLabel)
+            reasonLabel.widthAnchor.constraint(equalToConstant: innerWidth).isActive = true
+        }
         let scroll = NSScrollView()
         scroll.verticalScroller = PermissionScroller()
         scroll.scrollerStyle = .overlay

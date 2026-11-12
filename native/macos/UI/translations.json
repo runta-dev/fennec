@@ -2583,6 +2583,38 @@
       "zh-CN": "清空活动",
       "zh-TW": "清除活動"
     },
+    "ui.audit_decision_auto_review_approved": {
+      "en-GB": "Approved by auto-review",
+      "en-US": "Approved by auto-review",
+      "ja": "自動レビューで承認",
+      "ko": "자동 검토로 허용됨",
+      "zh-CN": "自动审查已放行",
+      "zh-TW": "自動審查已放行"
+    },
+    "ui.audit_decision_auto_review_denied": {
+      "en-GB": "Denied by auto-review",
+      "en-US": "Denied by auto-review",
+      "ja": "自動レビューで拒否",
+      "ko": "자동 검토로 거부됨",
+      "zh-CN": "自动审查已拒绝",
+      "zh-TW": "自動審查已拒絕"
+    },
+    "ui.audit_decision_auto_review_timeout": {
+      "en-GB": "Auto-review timed out",
+      "en-US": "Auto-review timed out",
+      "ja": "自動レビューがタイムアウト",
+      "ko": "자동 검토 시간 초과",
+      "zh-CN": "自动审查超时",
+      "zh-TW": "自動審查逾時"
+    },
+    "ui.audit_decision_policy_forbidden": {
+      "en-GB": "Blocked in Full access",
+      "en-US": "Blocked in Full access",
+      "ja": "フルアクセスでブロック",
+      "ko": "전체 접근에서 차단됨",
+      "zh-CN": "完全访问模式下已拦截",
+      "zh-TW": "完全存取模式下已攔截"
+    },
     "ui.permission_menu_title": {
       "en-GB": "How should agent actions be approved?",
       "en-US": "How should agent actions be approved?",

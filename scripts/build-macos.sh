@@ -88,7 +88,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 mkdir -p "$app/Contents/Resources/licenses"
-cp docs/licenses/magpie-MIT.txt "$app/Contents/Resources/licenses/"
+cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt "$app/Contents/Resources/licenses/"
 /bin/chmod -R -P a+rX,go-w "$app"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same

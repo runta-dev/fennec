@@ -25,3 +25,20 @@ Auto-updater background staging, non-`.app` payload staging, and quiet header pi
 - `@xterm/xterm` 5.5.0, MIT; license: `native/macos/UI/vendor/xterm-LICENSE`.
 - `@xterm/addon-fit` 0.10.0, MIT; license: `native/macos/UI/vendor/addon-fit-LICENSE`.
 - Distributed locally in the app; no CDN scripts are loaded.
+
+## OpenAI Codex
+
+Source: https://github.com/openai/codex
+Revision: c0cc9fc
+License: Apache License 2.0, reproduced in `docs/licenses/codex-Apache-2.0.txt`.
+Copyright 2025 OpenAI.
+
+Copied unchanged into `internal/guardian/prompts/`:
+- `policy_template.md` and `policy.md` from `codex-rs/prompts/templates/guardian/`
+
+The auto-review output contract, review request layout, rejection, timeout and
+failure messages in `internal/guardian` reproduce text from
+`codex-rs/ext/guardian-reviewer`, `codex-rs/guardian-context` and
+`codex-rs/prompts/src/model_messages/guardian.rs`. Permission-mode semantics,
+protected metadata names, the dangerous-command rule and the sandbox-denial
+heuristic in `internal/sandbox` are reimplemented in Go from `codex-rs`.

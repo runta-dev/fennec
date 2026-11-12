@@ -3,6 +3,7 @@ package localssh
 import (
 	"context"
 	"fennec/internal/audit"
+	"fennec/internal/guardian"
 	"fennec/internal/sandbox"
 	"fmt"
 	"io"
@@ -48,11 +49,13 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 		policy := broker.effectivePolicy()
 		mode := sandbox.NormalizeMode(policy.Mode)
 		decisionType := "auto_sandbox"
-		forcePrompt := mode != sandbox.ModeFull && !policy.Network
-		if approval {
+		// Codex parity: network access outside Full access is a reviewed
+		// network request (user or auto-review); Full access never asks.
+		if approval && mode != sandbox.ModeFull && !policy.Network {
 			prompt, done := context.WithTimeout(ctx, 2*time.Minute)
-			allowed, dec := broker.approveWithDecision(prompt, desc, ssh.FingerprintSHA256(key), "tcp_forward", forcePrompt)
-			decisionType = dec
+			outcome := broker.authorize(prompt, approvalRequest{Display: desc, Kind: "tcp_forward", Fingerprint: ssh.FingerprintSHA256(key), Action: guardian.Action{Kind: "network", Host: target.Host, Port: int(target.Port), Command: desc}})
+			allowed := outcome.Allowed
+			decisionType = outcome.Decision
 			done()
 			if !allowed {
 				broker.recordAudit(audit.Entry{
@@ -60,7 +63,7 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 					Command:        desc,
 					SandboxMode:    mode,
 					NetworkAllowed: policy.Network,
-					Decision:       "user_denied",
+					Decision:       decisionType,
 					Blocked:        true,
 					ExitCode:       126,
 					Detail:         "Forwarding denied",

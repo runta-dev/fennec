@@ -59,7 +59,7 @@
   }
 
   function inferBlockReason(entry) {
-    if (entry.decision === 'user_denied') return '';
+    if (['user_denied', 'auto_review_denied', 'auto_review_timeout', 'policy_forbidden'].includes(entry.decision)) return '';
     const hay = (String(entry.command || '') + ' ' + String(entry.detail || '')).toLowerCase();
     if (/(\.ssh|\.gnupg|\.aws|\.azure|\.kube|keychains|gcloud|\.config\/fennec|\.config\/gh)/.test(hay)) {
       return t('[[i18n:ui.audit_reason_credentials]]');
@@ -81,6 +81,14 @@
         return t('[[i18n:ui.audit_decision_user_denied]]');
       case 'user_approved':
         return t('[[i18n:ui.audit_decision_user_approved]]');
+      case 'auto_review_approved':
+        return t('[[i18n:ui.audit_decision_auto_review_approved]]');
+      case 'auto_review_denied':
+        return t('[[i18n:ui.audit_decision_auto_review_denied]]');
+      case 'auto_review_timeout':
+        return t('[[i18n:ui.audit_decision_auto_review_timeout]]');
+      case 'policy_forbidden':
+        return t('[[i18n:ui.audit_decision_policy_forbidden]]');
       default:
         return t('[[i18n:ui.audit_decision_auto_sandbox]]');
     }
