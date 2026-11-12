@@ -162,7 +162,7 @@
       const top = document.createElement('div');
       top.className = 'audit-entry-top';
       const cmd = document.createElement(titleInfo.code ? 'code' : 'span');
-      cmd.className = titleInfo.code ? 'audit-command' : 'audit-action-title';
+      cmd.className = (titleInfo.code ? 'audit-command' : 'audit-action-title') + (isExpanded ? ' is-expanded' : '');
       cmd.textContent = titleInfo.text;
       const timeEl = document.createElement('span');
       timeEl.className = 'audit-time';
@@ -197,16 +197,7 @@
       }
       item.append(head);
 
-      if (isExpanded) {
-        const detail = document.createElement('div');
-        detail.className = 'audit-entry-detail';
-
-        const fullCmd = document.createElement('pre');
-        fullCmd.className = 'audit-detail-code';
-        fullCmd.textContent = titleInfo.text;
-        detail.append(fullCmd);
-        item.append(detail);
-      }
+      // Expanded rows show the full command in place, wrapped in the title column.
       return item;
     });
     const clear = document.createElement('button');

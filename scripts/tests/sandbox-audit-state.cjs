@@ -140,8 +140,10 @@ assert.ok(!blockedMeta.includes('sandbox-exec') && !blockedMeta.includes('ms'), 
 
 // Long command row expands full redacted command cleanly without exit code or stderr dump
 nodes['#audit-list'].children[1].children[0].onclick();
-assert.equal(nodes['#audit-list'].children[1].children.length, 2, 'clicking long command row expands full command');
-assert.ok(nodes['#audit-list'].children[1].children[1].children[0].textContent.includes('••••'), 'redacted token uses clean mask');
+const expandedCommand = nodes['#audit-list'].children[1].children[0].children[1].children[0].children[0];
+assert.equal(nodes['#audit-list'].children[1].children.length, 1, 'expansion stays in the row without a detail panel');
+assert.ok(expandedCommand.className.includes('is-expanded'), 'clicking long command row wraps the full command in place');
+assert.ok(expandedCommand.textContent.includes('••••'), 'redacted token uses clean mask');
 
 // Filter to blocked
 filterSelect.value = 'blocked';

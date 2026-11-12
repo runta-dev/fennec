@@ -118,7 +118,11 @@ function openChoiceMenu(select, trigger, { optimistic = true } = {}) {
   const rect = trigger.getBoundingClientRect();
   menu.style.minWidth = Math.max(rect.width, 170) + 'px';
   const bounds = menu.getBoundingClientRect();
-  menu.style.left = Math.max(10, Math.min(rect.right - bounds.width, innerWidth - bounds.width - 10)) + 'px';
+  // Anchor the menu's right edge to the trigger's right edge so a width
+  // change after measurement cannot shift it; clamp to the left edge only when
+  // the menu would overflow it.
+  menu.style.right = Math.max(10, innerWidth - rect.right) + 'px';
+  if (menu.getBoundingClientRect().left < 10) { menu.style.right = 'auto'; menu.style.left = '10px'; }
   menu.style.top = (rect.bottom + bounds.height + 8 <= innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - bounds.height - 4)) + 'px';
   menu.querySelector('[aria-selected=true]')?.focus();
 }
