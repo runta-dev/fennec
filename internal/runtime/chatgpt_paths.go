@@ -1,0 +1,375 @@
+package runtime
+
+import (
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+)
+
+// ChatGPT.app sends its Mac project directory as every thread's cwd. On the
+// cloud computer that path does not exist, so commands fail and the agent
+// believes it runs on the Mac. NewChatGPTPathFilter gives each Mac directory
+// the same cloud session workspace a Fennec CLI launch gets: ~/.fen/<id> with
+// the Fennec AGENTS.md naming the Mac directory and SSH alias. Requests carry
+// the cloud directory; responses show the Mac directory again so ChatGPT keeps
+// its project grouping.
+//
+// The filter understands the app-server WebSocket stream: it removes the zstd
+// compression offer from the upgrade request so messages stay readable, and
+// rewrites only JSON fields named "cwd" in text messages. Control and binary
+// frames pass through unchanged.
+func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
+	filter := &chatgptPathFilter{Conn: conn, home: home, device: device, paths: loadChatGPTPaths(home)}
+	filter.inbound.server = false
+	filter.outbound.server = true
+	return filter
+}
+
+const (
+	chatgptCompressionHeader = "x-codex-app-server-compression"
+	chatgptMessageLimit      = 128 << 20
+)
+
+type chatgptPathFilter struct {
+	net.Conn
+	home, device string
+
+	pathsMu sync.Mutex
+	paths   map[string]string // cloud directory -> Mac directory
+
+	writeMu  sync.Mutex
+	inbound  wsStream
+	readMu   sync.Mutex
+	outbound wsStream
+	pending  []byte
+}
+
+func (filter *chatgptPathFilter) StreamLabel() string {
+	if labeled, ok := filter.Conn.(interface{ StreamLabel() string }); ok {
+		return labeled.StreamLabel()
+	}
+	return ""
+}
+
+// Write receives client bytes (ChatGPT -> app-server).
+func (filter *chatgptPathFilter) Write(data []byte) (int, error) {
+	filter.writeMu.Lock()
+	defer filter.writeMu.Unlock()
+	output, err := filter.inbound.feed(data, filter.toCloud)
+	if err != nil {
+		return 0, err
+	}
+	if len(output) > 0 {
+		if _, err := filter.Conn.Write(output); err != nil {
+			return 0, err
+		}
+	}
+	return len(data), nil
+}
+
+// Read returns server bytes (app-server -> ChatGPT).
+func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
+	filter.readMu.Lock()
+	defer filter.readMu.Unlock()
+	buffer := make([]byte, 32<<10)
+	for len(filter.pending) == 0 {
+		length, err := filter.Conn.Read(buffer)
+		if length > 0 {
+			output, feedErr := filter.outbound.feed(buffer[:length], filter.toMac)
+			if feedErr != nil {
+				return 0, feedErr
+			}
+			filter.pending = append(filter.pending, output...)
+		}
+		if err != nil {
+			if len(filter.pending) > 0 {
+				break
+			}
+			return 0, err
+		}
+	}
+	count := copy(data, filter.pending)
+	filter.pending = filter.pending[count:]
+	return count, nil
+}
+
+func (filter *chatgptPathFilter) toCloud(message []byte) []byte {
+	return rewriteCwd(message, func(path string) (string, bool) {
+		if !filepath.IsAbs(path) || strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
+			return "", false
+		}
+		cloud, err := filter.workspace(path)
+		return cloud, err == nil
+	})
+}
+
+func (filter *chatgptPathFilter) toMac(message []byte) []byte {
+	return rewriteCwd(message, func(path string) (string, bool) {
+		filter.pathsMu.Lock()
+		defer filter.pathsMu.Unlock()
+		mac, ok := filter.paths[path]
+		return mac, ok
+	})
+}
+
+// workspace prepares the cloud session directory for a Mac directory. The ID
+// is derived from the Mac path, so reopening a thread reuses its directory.
+func (filter *chatgptPathFilter) workspace(mac string) (string, error) {
+	digest := sha256.Sum256([]byte(mac))
+	request := LocalLaunch{ID: hex.EncodeToString(digest[:16]), Agent: "codex", LocalDirectory: mac, Device: filter.device}
+	cloud := filepath.Join(filter.home, ".fen", request.ID)
+	if _, err := prepareSessionWorkspace(filter.home, request); err != nil {
+		// An earlier prompt (for example another device alias) is preserved.
+		if info, statErr := os.Lstat(cloud); statErr != nil || !info.IsDir() {
+			return "", err
+		}
+	}
+	filter.pathsMu.Lock()
+	defer filter.pathsMu.Unlock()
+	if filter.paths[cloud] != mac {
+		filter.paths[cloud] = mac
+		saveChatGPTPaths(filter.home, filter.paths)
+	}
+	return cloud, nil
+}
+
+func chatgptPathsFile(home string) string {
+	return filepath.Join(home, ".local/fennec/chatgpt/paths.json")
+}
+
+func loadChatGPTPaths(home string) map[string]string {
+	paths := map[string]string{}
+	if data, err := os.ReadFile(chatgptPathsFile(home)); err == nil {
+		json.Unmarshal(data, &paths)
+	}
+	return paths
+}
+
+func saveChatGPTPaths(home string, paths map[string]string) {
+	path := chatgptPathsFile(home)
+	if os.MkdirAll(filepath.Dir(path), 0700) != nil {
+		return
+	}
+	data, err := json.Marshal(paths)
+	if err != nil {
+		return
+	}
+	temporary := path + ".tmp"
+	if os.WriteFile(temporary, data, 0600) == nil {
+		os.Rename(temporary, path)
+	}
+}
+
+// rewriteCwd maps every string field named "cwd" in a JSON message. Messages
+// without such a field, or that are not JSON, are returned unchanged.
+func rewriteCwd(message []byte, mapping func(string) (string, bool)) []byte {
+	if !bytes.Contains(message, []byte(`"cwd"`)) {
+		return message
+	}
+	decoder := json.NewDecoder(bytes.NewReader(message))
+	decoder.UseNumber()
+	var value any
+	if decoder.Decode(&value) != nil {
+		return message
+	}
+	changed := false
+	var walk func(any)
+	walk = func(node any) {
+		switch typed := node.(type) {
+		case map[string]any:
+			for key, child := range typed {
+				if text, ok := child.(string); ok && key == "cwd" {
+					if mapped, ok := mapping(text); ok && mapped != text {
+						typed[key] = mapped
+						changed = true
+					}
+					continue
+				}
+				walk(child)
+			}
+		case []any:
+			for _, child := range typed {
+				walk(child)
+			}
+		}
+	}
+	walk(value)
+	if !changed {
+		return message
+	}
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
+	encoder.SetEscapeHTML(false)
+	if encoder.Encode(value) != nil {
+		return message
+	}
+	return bytes.TrimSuffix(output.Bytes(), []byte("\n"))
+}
+
+// wsStream incrementally parses one direction of an HTTP-upgraded WebSocket
+// connection and re-emits it with text messages transformed.
+type wsStream struct {
+	server     bool // frames from the server are unmasked; client frames are masked
+	headDone   bool
+	buffer     []byte
+	message    []byte
+	messageOp  byte
+	collecting bool
+}
+
+func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte, error) {
+	stream.buffer = append(stream.buffer, data...)
+	var output []byte
+	if !stream.headDone {
+		end := bytes.Index(stream.buffer, []byte("\r\n\r\n"))
+		if end < 0 {
+			if len(stream.buffer) > 64<<10 {
+				return nil, fmt.Errorf("oversized app-server handshake")
+			}
+			return nil, nil
+		}
+		head := stream.buffer[:end+4]
+		if !stream.server {
+			head = dropHeader(head, chatgptCompressionHeader)
+		}
+		output = append(output, head...)
+		stream.buffer = stream.buffer[end+4:]
+		stream.headDone = true
+	}
+	for {
+		frame, size, err := parseWebSocketFrame(stream.buffer)
+		if err != nil {
+			return nil, err
+		}
+		if size == 0 {
+			break
+		}
+		stream.buffer = stream.buffer[size:]
+		switch {
+		case frame.opcode >= 0x8: // control frames may interleave fragments
+			output = append(output, frame.raw...)
+		case frame.opcode == 0x1 || (frame.opcode == 0x0 && stream.collecting && stream.messageOp == 0x1):
+			if frame.opcode == 0x1 {
+				stream.message, stream.messageOp, stream.collecting = nil, 0x1, true
+			}
+			stream.message = append(stream.message, frame.payload...)
+			if len(stream.message) > chatgptMessageLimit {
+				return nil, fmt.Errorf("app-server message too large")
+			}
+			if frame.fin {
+				output = append(output, encodeWebSocketFrame(0x1, transform(stream.message), !stream.server)...)
+				stream.message, stream.collecting = nil, false
+			}
+		default: // binary messages and their continuations pass through
+			if frame.opcode != 0x0 {
+				stream.messageOp, stream.collecting = frame.opcode, !frame.fin
+			} else if frame.fin {
+				stream.collecting = false
+			}
+			output = append(output, frame.raw...)
+		}
+	}
+	return output, nil
+}
+
+func dropHeader(head []byte, name string) []byte {
+	lines := bytes.Split(head, []byte("\r\n"))
+	kept := lines[:0]
+	for _, line := range lines {
+		if key, _, ok := bytes.Cut(line, []byte(":")); ok && strings.EqualFold(strings.TrimSpace(string(key)), name) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return bytes.Join(kept, []byte("\r\n"))
+}
+
+type webSocketFrame struct {
+	fin     bool
+	opcode  byte
+	payload []byte // unmasked
+	raw     []byte
+}
+
+// parseWebSocketFrame returns size 0 when the buffer holds no complete frame.
+func parseWebSocketFrame(buffer []byte) (webSocketFrame, int, error) {
+	if len(buffer) < 2 {
+		return webSocketFrame{}, 0, nil
+	}
+	header := 2
+	length := uint64(buffer[1] & 0x7f)
+	switch length {
+	case 126:
+		if len(buffer) < 4 {
+			return webSocketFrame{}, 0, nil
+		}
+		length, header = uint64(binary.BigEndian.Uint16(buffer[2:4])), 4
+	case 127:
+		if len(buffer) < 10 {
+			return webSocketFrame{}, 0, nil
+		}
+		length, header = binary.BigEndian.Uint64(buffer[2:10]), 10
+	}
+	if length > chatgptMessageLimit {
+		return webSocketFrame{}, 0, fmt.Errorf("app-server frame too large")
+	}
+	masked := buffer[1]&0x80 != 0
+	var mask []byte
+	if masked {
+		if len(buffer) < header+4 {
+			return webSocketFrame{}, 0, nil
+		}
+		mask = buffer[header : header+4]
+		header += 4
+	}
+	size := header + int(length)
+	if len(buffer) < size {
+		return webSocketFrame{}, 0, nil
+	}
+	payload := append([]byte(nil), buffer[header:size]...)
+	for i := range payload {
+		if masked {
+			payload[i] ^= mask[i%4]
+		}
+	}
+	return webSocketFrame{fin: buffer[0]&0x80 != 0, opcode: buffer[0] & 0x0f, payload: payload, raw: append([]byte(nil), buffer[:size]...)}, size, nil
+}
+
+func encodeWebSocketFrame(opcode byte, payload []byte, masked bool) []byte {
+	frame := []byte{0x80 | opcode}
+	maskBit := byte(0)
+	if masked {
+		maskBit = 0x80
+	}
+	switch length := len(payload); {
+	case length < 126:
+		frame = append(frame, maskBit|byte(length))
+	case length < 1<<16:
+		frame = append(frame, maskBit|126)
+		frame = binary.BigEndian.AppendUint16(frame, uint16(length))
+	default:
+		frame = append(frame, maskBit|127)
+		frame = binary.BigEndian.AppendUint64(frame, uint64(length))
+	}
+	if !masked {
+		return append(frame, payload...)
+	}
+	mask := make([]byte, 4)
+	rand.Read(mask)
+	frame = append(frame, mask...)
+	start := len(frame)
+	frame = append(frame, payload...)
+	for i := range payload {
+		frame[start+i] ^= mask[i%4]
+	}
+	return frame
+}

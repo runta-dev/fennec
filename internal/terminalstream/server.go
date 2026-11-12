@@ -33,6 +33,15 @@ type Operator func(context.Context, cloudruntime.LocalOperation) (json.RawMessag
 // targets accepted by Frame.validateOpen reach it.
 type SocketDialer func(context.Context, string) (net.Conn, error)
 
+type socketDeviceKey struct{}
+
+// SocketDevice is the Mac device ID the client sent when opening a socket
+// stream, or empty for clients that did not send one.
+func SocketDevice(ctx context.Context) string {
+	device, _ := ctx.Value(socketDeviceKey{}).(string)
+	return device
+}
+
 type serverSession struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -464,7 +473,7 @@ func (session *serverSession) write(data []byte) error {
 // stream. Output obeys the same credit window as a PTY; input reuses the
 // session input budget, so one busy socket cannot starve other streams.
 func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit func(Frame) error) {
-	conn, err := dial(session.ctx, frame.Target)
+	conn, err := dial(context.WithValue(session.ctx, socketDeviceKey{}, frame.Message), frame.Target)
 	if err != nil {
 		emit(Frame{Type: "error", ID: frame.ID, Message: "remote socket unavailable"})
 		return

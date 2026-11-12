@@ -220,7 +220,11 @@ func run() (int, error) {
 			if target != terminalstream.SocketCodexAppServer {
 				return nil, fmt.Errorf("unsupported socket target")
 			}
-			return cloudruntime.DialCodexAppServer(ctx, home)
+			conn, err := cloudruntime.DialCodexAppServer(ctx, home)
+			if err != nil {
+				return nil, err
+			}
+			return cloudruntime.NewChatGPTPathFilter(conn, home, terminalstream.SocketDevice(ctx)), nil
 		})
 	}
 	if len(os.Args) == 4 && os.Args[1] == "attach" {

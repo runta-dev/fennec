@@ -50,7 +50,7 @@ func (frame Frame) validateOpen() error {
 		return fmt.Errorf("invalid stream identity")
 	}
 	if frame.Type == "socket" {
-		if frame.Target == SocketCodexAppServer {
+		if frame.Target == SocketCodexAppServer && (frame.Message == "" || regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(frame.Message)) {
 			return nil
 		}
 		return fmt.Errorf("invalid socket target")
