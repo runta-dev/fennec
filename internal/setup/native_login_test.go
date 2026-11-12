@@ -100,8 +100,35 @@ func main(){if os.Getenv("OPENAI_API_KEY")!=""{os.Exit(3)};h:=os.Getenv("CODEX_H
 	}
 	t.Setenv("PATH", fixture)
 	t.Setenv("OPENAI_API_KEY", "must-not-be-forwarded")
+	t.Setenv("NODE_EXTRA_CA_CERTS", "/custom/egress-ca.crt")
+	t.Setenv("SSL_CERT_FILE", "/custom/ca-bundle.crt")
 	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".pi/agent/bin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".pi/agent/bin/fd"), []byte("#!/bin/sh\necho fd 10.2.0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	plan := NativeLogin{ID: "login-test", Agent: "codex"}
+	if err := PrepareNativeLogin(context.Background(), home, plan); err != nil {
+		t.Fatal(err)
+	}
+	_, loginEnv, err := NativeLoginCommand(home, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := "\n" + strings.Join(loginEnv, "\n") + "\n"
+	for _, required := range []string{"\nNODE_EXTRA_CA_CERTS=/custom/egress-ca.crt\n", "\nSSL_CERT_FILE=/custom/ca-bundle.crt\n"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("missing system TLS variable %q in %q", required, joined)
+		}
+	}
+	if strings.Contains(joined, "OPENAI_API_KEY=") {
+		t.Fatalf("provider API key leaked into native login environment: %q", joined)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local/bin/fd")); err != nil {
+		t.Fatalf("expected ~/.local/bin/fd symlink to be created: %v", err)
+	}
 	if err := RunNativeLogin(context.Background(), home, plan, strings.NewReader(""), io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}

@@ -32,6 +32,7 @@ func ExecNativeAgent(home, agent string, args []string) error {
 	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true}[agent] {
 		return fmt.Errorf("unsupported native agent")
 	}
+	ensureCloudSearchTools(home)
 	binary, err := exec.LookPath(agent)
 	if err != nil {
 		return fmt.Errorf("native agent binary missing")
@@ -87,5 +88,65 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 	case "opencode":
 		env = append(env, "XDG_CONFIG_HOME="+filepath.Join(root, "opencode/config"), "XDG_DATA_HOME="+filepath.Join(root, "opencode/data"))
 	}
+	env = ensureDefaultSystemCerts(env)
 	return env, nil
+}
+
+func ensureDefaultSystemCerts(env []string) []string {
+	has := map[string]bool{}
+	for _, entry := range env {
+		key, val, ok := strings.Cut(entry, "=")
+		if ok && val != "" {
+			has[key] = true
+		}
+	}
+	if !has["NODE_EXTRA_CA_CERTS"] {
+		if info, err := os.Stat("/usr/local/share/ca-certificates/runta-egress.crt"); err == nil && info.Mode().IsRegular() {
+			env = append(env, "NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/runta-egress.crt")
+		}
+	}
+	if !has["SSL_CERT_FILE"] {
+		if info, err := os.Stat("/etc/ssl/certs/ca-certificates.crt"); err == nil && info.Mode().IsRegular() {
+			env = append(env, "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt")
+		}
+	}
+	return env
+}
+
+// ensureCloudSearchTools exposes an existing system or Pi-bundled fd binary in
+// ~/.local/bin/fd so isolated agent homes/PI_CODING_AGENT_DIR find fd on PATH.
+func ensureCloudSearchTools(home string) {
+	if !filepath.IsAbs(home) {
+		return
+	}
+	localBin := filepath.Join(home, ".local/bin")
+	target := filepath.Join(localBin, "fd")
+	if info, err := os.Stat(target); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+		return
+	}
+	if path, err := exec.LookPath("fd"); err == nil && path != "" {
+		return
+	}
+	candidates := []string{}
+	if fdfind, err := exec.LookPath("fdfind"); err == nil && fdfind != "" {
+		candidates = append(candidates, fdfind)
+	}
+	candidates = append(candidates, filepath.Join(home, ".pi/agent/bin/fd"))
+	for _, candidate := range candidates {
+		info, err := os.Lstat(candidate)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+			continue
+		}
+		if os.MkdirAll(localBin, 0755) != nil {
+			return
+		}
+		tmp := fmt.Sprintf("%s.tmp.%d", target, os.Getpid())
+		_ = os.Remove(tmp)
+		if os.Symlink(candidate, tmp) == nil {
+			if os.Rename(tmp, target) != nil {
+				_ = os.Remove(tmp)
+			}
+		}
+		return
+	}
 }

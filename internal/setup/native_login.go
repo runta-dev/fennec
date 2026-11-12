@@ -8,11 +8,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"fennec/internal/sessionid"
 )
+
+var nativeLoginSystemEnvKeys = []string{
+	"NODE_EXTRA_CA_CERTS",
+	"NODE_USE_SYSTEM_CA",
+	"SSL_CERT_FILE",
+	"SSL_CERT_DIR",
+	"CURL_CA_BUNDLE",
+	"GIT_SSL_CAINFO",
+	"REQUESTS_CA_BUNDLE",
+	"PIP_CERT",
+	"AWS_CA_BUNDLE",
+	"GRPC_DEFAULT_SSL_ROOTS_FILE_PATH",
+	"HTTP_PROXY",
+	"HTTPS_PROXY",
+	"NO_PROXY",
+	"ALL_PROXY",
+	"http_proxy",
+	"https_proxy",
+	"no_proxy",
+	"all_proxy",
+	"TZ",
+}
 
 type NativeLogin struct {
 	ID      string    `json:"id"`
@@ -169,8 +192,23 @@ func NativeLoginCommand(home string, plan NativeLogin) ([]string, []string, erro
 	if time.Since(stored.Created) > 20*time.Minute {
 		return nil, nil, fmt.Errorf("login expired; start again")
 	}
+	ensureCloudSearchTools(home)
 	args := map[string][]string{"codex": {"login", "--device-auth"}, "claude": {"auth", "login", "--claudeai"}, "pi": {"--no-extensions", "--no-skills", "--no-context-files", "--no-session", "--no-tools"}}[plan.Agent]
-	env := []string{"HOME=" + root, "PATH=" + os.Getenv("PATH"), "TERM=xterm-256color", "LANG=C.UTF-8"}
+	pathParts := []string{
+		filepath.Join(home, ".local/fennec/node/bin"),
+		filepath.Join(home, ".local/fennec/agents/bin"),
+		filepath.Join(home, ".local/bin"),
+	}
+	if currentPath := os.Getenv("PATH"); currentPath != "" {
+		pathParts = append(pathParts, currentPath)
+	}
+	env := []string{"HOME=" + root, "PATH=" + strings.Join(pathParts, string(os.PathListSeparator)), "TERM=xterm-256color", "LANG=C.UTF-8"}
+	for _, key := range nativeLoginSystemEnvKeys {
+		if value := os.Getenv(key); value != "" && !strings.ContainsRune(value, 0) {
+			env = append(env, key+"="+value)
+		}
+	}
+	env = ensureDefaultSystemCerts(env)
 	switch plan.Agent {
 	case "codex":
 		env = append(env, "CODEX_HOME="+filepath.Join(root, "codex"))
