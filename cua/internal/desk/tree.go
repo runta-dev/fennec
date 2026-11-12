@@ -133,6 +133,11 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 	n.States = view.States(role, sub, v[aValue], boolean(v[aFocused]), boolean(v[aSelected]), boolean(v[aExpanded]), enabled(v[aEnabled]))
 	if r, ok := frame(v[aPosition], v[aSize]); ok {
 		n.Bounds = toDesk(r, scale)
+		// A menu item has a frame only while its menu is open: then it is
+		// showing, and a closed menu's items stay hidden from matching.
+		if role == "AXMenuItem" && r.W > 0 && r.H > 0 && !n.HasState("showing") {
+			n.States = append(n.States, "showing")
+		}
 	}
 	if u, ok := v[aURL].(ax.URL); ok && (opts.URLs || n.Role == "link") {
 		n.URL = string(u)

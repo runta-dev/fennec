@@ -141,37 +141,29 @@ func (r *planRun) pickOption(ctx context.Context, i int, s protocol.Step, mode s
 	if view.Norm(view.StripObjects(n.Name)) == view.Norm(want) || (n.Value != nil && view.Norm(*n.Value) == view.Norm(want)) {
 		return okResult(fmt.Sprintf("%s already shows %q", describeNode(n), want)), nil
 	}
-	open := r.send(ctx, i, protocol.Step{Press: s.Set, Input: s.Input}, r.request(mode))
+	// Press the element already resolved, by its ref: the selector again
+	// could pick a label that shares the name.
+	openTarget := s.Set
+	if e.Ref != "" {
+		openTarget = &protocol.Target{Ref: e.Ref}
+	}
+	open := r.send(ctx, i, protocol.Step{Press: openTarget, Input: s.Input}, r.request(mode))
 	if !open.OK && open.Status == protocol.StatusRefused {
 		return open, &stop{err: open.Error}
 	}
-	listed, _ := r.list(ctx)
 	var options []string
 	var hit *protocol.Target
-	wins := []view.RawWindow{}
-	if w := byKey(listed, e.WindowKey); w != nil {
-		wins = append(wins, *w)
-	}
-	if f := frontOf(listed); f != nil && f.Key != e.WindowKey {
-		wins = append(wins, *f)
-	}
-	for _, w := range wins {
-		snap, err := r.snapshot(ctx, w, view.TreeOptions{})
-		if err != nil {
-			continue
-		}
-		for k, o := range snap.Tree.Nodes {
-			if o.Role != "option" && o.Role != "menuitem" && o.Role != "listitem" {
-				continue
-			}
-			name := view.StripObjects(o.Name)
-			options = append(options, quote(name))
-			if hit == nil && view.Norm(name) == view.Norm(want) {
-				hit = &protocol.Target{Ref: snap.Refs[k]}
-			}
-		}
-		if hit != nil {
+	// The list opens asynchronously (a macOS popup's menu appears some tens
+	// of milliseconds after its press): read until options show, up to 1 s.
+	deadline := time.Now().Add(optionWait)
+	for {
+		options, hit = r.readOptions(ctx, e, want)
+		if len(options) > 0 || time.Now().After(deadline) || ctx.Err() != nil {
 			break
+		}
+		select {
+		case <-time.After(optionPoll):
+		case <-ctx.Done():
 		}
 	}
 	if hit == nil {
@@ -452,4 +444,49 @@ func (r *planRun) popup(ctx context.Context, n view.RawNode, e view.Entry) bool 
 		}
 	}
 	return at >= 0
+}
+
+// How long pickOption waits for an opened list to show its options.
+const (
+	optionWait = time.Second
+	optionPoll = 100 * time.Millisecond
+)
+
+// readOptions lists the options an opened popup or combo box shows, in the
+// element's window and then in the front window (a list can open as a
+// window of its own), and the ref of the one named want.
+func (r *planRun) readOptions(ctx context.Context, e view.Entry, want string) ([]string, *protocol.Target) {
+	listed, _ := r.list(ctx)
+	wins := []view.RawWindow{}
+	if w := byKey(listed, e.WindowKey); w != nil {
+		wins = append(wins, *w)
+	}
+	if f := frontOf(listed); f != nil && f.Key != e.WindowKey {
+		wins = append(wins, *f)
+	}
+	var options []string
+	var hit *protocol.Target
+	for _, w := range wins {
+		snap, err := r.snapshot(ctx, w, view.TreeOptions{})
+		if err != nil {
+			continue
+		}
+		for k, o := range snap.Tree.Nodes {
+			if o.Role != "option" && o.Role != "menuitem" && o.Role != "listitem" {
+				continue
+			}
+			if o.Role == "menuitem" && !view.Showing(o) {
+				continue // an item of a closed menu, such as the menu bar's
+			}
+			name := view.StripObjects(o.Name)
+			options = append(options, quote(name))
+			if hit == nil && view.Norm(name) == view.Norm(want) {
+				hit = &protocol.Target{Ref: snap.Refs[k]}
+			}
+		}
+		if hit != nil {
+			break
+		}
+	}
+	return options, hit
 }
