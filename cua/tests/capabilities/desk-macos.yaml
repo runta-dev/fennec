@@ -13,7 +13,7 @@ capabilities:
       observe.
     surface: observe
     parity: spec
-    tests: [planned:internal/ax.TestWindowIDStableAcrossSpaces, planned:internal/view.TestIDCacheEvictsAtCapKeepingListedWindows]
+    tests: [planned:internal/ax.TestWindowIDStableAcrossSpaces, internal/view.TestIDCacheEvictsAtCapKeepingListedWindows]
     upstream:
       - rust/desk/src/ax.rs::ids_of_a_walk_that_crosses_the_cap_resolve_and_the_next_walk_keeps_only_window_ids
       - rust/desk/src/ax.rs::a_window_listed_on_this_space_and_then_off_it_has_one_id
@@ -115,7 +115,7 @@ capabilities:
       Numeric values that are whole numbers print without decimals and negative zero prints as 0.
     surface: observe
     parity: spec
-    tests: [planned:internal/view.TestNodeJSONOmitsEmpty, planned:internal/view.TestLinkCarriesURL, planned:internal/view.TestWholeNumberFormatting]
+    tests: [internal/view.TestNodeJSONOmitsEmpty, internal/view.TestLinkCarriesURL, internal/view.TestWholeNumberFormatting]
     upstream:
       - rust/desk/src/model.rs::node_json_leaves_out_empty_fields
       - rust/desk/src/model.rs::a_link_node_carries_its_url

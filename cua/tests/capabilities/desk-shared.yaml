@@ -11,7 +11,7 @@ capabilities:
       the app is busy or hung, without touching it.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestWindowListFields, planned:internal/view.TestStaleWindowListedNotActedOn]
+    tests: [internal/view.TestWindowListFields, internal/view.TestStaleWindowListedNotActedOn]
     upstream:
       - rust/desk/src/desk.rs::a_window_names_its_app_when_the_backend_knows_it
       - rust/desk/src/desk.rs::a_window_kept_from_an_earlier_list_is_listed_but_never_acted_on
@@ -27,7 +27,7 @@ capabilities:
       it there), while an unknown title fails with the ordinary not-found error that does not mention Spaces.
     surface: observe
     parity: oracle
-    tests: [planned:internal/ax.TestUnseenClassification, planned:internal/view.TestOtherSpaceWindowsListedInBackground, planned:internal/view.TestOutlineOfOtherSpaceWindowRefused]
+    tests: [planned:internal/ax.TestUnseenClassification, internal/view.TestOtherSpaceWindowsListedInBackground, internal/view.TestOutlineOfOtherSpaceWindowRefused]
     upstream:
       - rust/desk/src/desk.rs::a_window_is_unseen_on_another_space_and_on_macos_also_off_screen
       - rust/desk/src/desk.rs::background_input_lists_a_window_on_another_space_and_foreground_input_does_not
@@ -159,7 +159,7 @@ capabilities:
       blank name, or a different suffix such as "notepad" for "notepad++".
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestAppTargetWithoutWindowRefused, planned:internal/view.TestAppNameMatching]
+    tests: [planned:internal/actions.TestAppTargetWithoutWindowRefused, internal/view.TestAppNameMatching]
     upstream:
       - rust/desk/src/desk.rs::input_naming_an_app_goes_to_that_app_or_nowhere
       - rust/desk/src/desk.rs::a_name_matches_the_start_or_end_of_app_words_never_a_short_fragment
@@ -442,7 +442,7 @@ capabilities:
       are held.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestPressActionOrClick, planned:internal/view.TestRefsSurviveIdCapEviction]
+    tests: [planned:internal/actions.TestPressActionOrClick, internal/view.TestRefsSurviveIdCapEviction]
     upstream:
       - rust/desk/src/desk.rs::a_press_click_goes_through_the_driver
       - rust/desk/src/desk.rs::a_macos_press_resolves_an_id_of_the_snapshot_that_crossed_the_id_cap
@@ -459,7 +459,7 @@ capabilities:
       focus and close of one of two same-titled windows act on the active one.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestWindowPickTiers, planned:internal/view.TestWindowPickEqualTitles, planned:internal/view.TestStaleTitleFallback, planned:internal/actions.TestFocusCloseActiveTwin]
+    tests: [internal/view.TestWindowPickTiers, internal/view.TestWindowPickEqualTitles, internal/view.TestStaleTitleFallback, planned:internal/actions.TestFocusCloseActiveTwin]
     upstream:
       - rust/desk-core/src/window.rs::among_equal_titles_none_active_the_newest_shown_window_wins_and_a_lone_hidden_one_still_counts
       - rust/desk-core/src/window.rs::a_window_is_picked_by_exact_then_trimmed_then_contained_title
@@ -477,7 +477,7 @@ capabilities:
       hit test reports the full title of the window under the point.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestElidedTitlesMatchByNumber]
+    tests: [internal/view.TestElidedTitlesMatchByNumber]
     upstream:
       - rust/desk/src/desk.rs::input_names_a_window_by_its_whole_accessibility_title_where_the_driver_lists_it_elided
       - rust/desk/src/desk.rs::at_a_point_reads_the_window_the_driver_lists_there_by_its_number_not_its_elided_title
@@ -570,7 +570,7 @@ capabilities:
       and a quoted value after a colon. Quoting caps names at the outline's character budget.
     surface: observe
     parity: spec
-    tests: [planned:internal/view.TestOutlineLineFormat, planned:internal/view.TestQuoteEscapesAndCuts]
+    tests: [internal/view.TestOutlineLineFormat, internal/view.TestQuoteEscapesAndCuts]
     upstream:
       - rust/desk/src/desk.rs::the_outline_shows_states_shortcuts_ids_and_values
       - rust/desk-core/src/text.rs::quoting_cuts_and_escapes
@@ -583,7 +583,7 @@ capabilities:
       element read.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestMenusOnlyWhenAsked, planned:internal/view.TestLinkUrlsWhenAsked]
+    tests: [internal/view.TestMenusOnlyWhenAsked, internal/view.TestLinkUrlsWhenAsked]
     upstream:
       - rust/desk/src/desk.rs::a_snapshot_takes_the_menu_bar_only_when_asked_and_find_always_searches_it
       - rust/desk/src/desk.rs::snapshot_and_find_read_link_urls_only_when_asked_and_read_always_does
@@ -597,7 +597,7 @@ capabilities:
       matches nothing.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestNameNormalisation, planned:internal/view.TestFindExactBeforeContained]
+    tests: [internal/view.TestNameNormalisation, internal/view.TestFindExactBeforeContained]
     upstream:
       - rust/desk-core/src/text.rs::names_compare_without_label_punctuation
       - rust/desk-core/src/text.rs::names_match_exactly_before_they_match_contained
@@ -613,7 +613,7 @@ capabilities:
       DOM id where exposed; a plain read gives neither.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestReadPreviewAndFullText, planned:internal/view.TestTailClipWholeCharacters, planned:internal/view.TestReadWebUrlDomId]
+    tests: [internal/view.TestReadPreviewAndFullText, internal/view.TestTailClipWholeCharacters, internal/view.TestReadWebUrlDomId]
     upstream:
       - rust/desk/src/desk.rs::a_text_read_keeps_its_head_or_with_tail_its_end_and_says_when_it_was_cut
       - rust/desk/src/desk.rs::a_read_without_text_previews_eighty_characters_of_the_value_and_the_whole_name
@@ -630,7 +630,7 @@ capabilities:
       is refused by the allowlist. When another window covers the point the answer names it (title, pid).
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestPointHitTopWindow, planned:internal/view.TestPointHitCover]
+    tests: [internal/view.TestPointHitTopWindow, internal/view.TestPointHitCover]
     upstream:
       - rust/desk/src/desk.rs::at_names_the_process_of_the_element_under_the_point
       - rust/desk/src/desk.rs::at_without_a_window_reads_the_top_window_at_the_point_not_the_front_one

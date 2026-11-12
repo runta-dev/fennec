@@ -72,7 +72,7 @@ capabilities:
       for a loose description that only shares a word.
     surface: act
     parity: oracle
-    tests: [planned:internal/view.TestResolvePrefersShowing, planned:internal/view.TestResolveListItems, planned:internal/plan.TestShowingWithoutFramePressedWithoutModel]
+    tests: [internal/view.TestResolvePrefersShowing, internal/view.TestResolveListItems, planned:internal/plan.TestShowingWithoutFramePressedWithoutModel]
     upstream:
       - "node/action/a shown match in a tree without bounds, as GTK 4 gives, is clicked without a model pick"
       - "node/resolve/a click takes no element that does not show, even by its exact name"
@@ -137,7 +137,7 @@ capabilities:
       first occurrence instead of treating the duplicates as ambiguous.
     surface: act
     parity: spec
-    tests: [planned:internal/view.TestUnnamedControlInheritsLabel, planned:internal/plan.TestMenuRepeatedBarTakesFirst]
+    tests: [internal/view.TestUnnamedControlInheritsLabel, planned:internal/plan.TestMenuRepeatedBarTakesFirst]
     upstream:
       - "node/resolve/an unnamed control takes its own description, else the name, else the description, of the ancestors that hold only it, so LibreOffice's sidebar tab buttons read as their decks"
       - "node/resolve/a menu step takes a menu bar entry that several menu bars repeat from the first of them"

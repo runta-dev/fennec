@@ -24,11 +24,14 @@ import (
 	"time"
 
 	"fennec/cua/internal/daemon"
+	"fennec/cua/internal/desk"
 	"fennec/cua/internal/driver"
 	"fennec/cua/internal/engine"
 	"fennec/cua/internal/macos"
 	"fennec/cua/internal/mcpserver"
+	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/sched"
+	"fennec/cua/internal/view"
 )
 
 func main() {
@@ -90,7 +93,15 @@ func serve(ctx context.Context, paths daemon.Paths) error {
 	logger := log.New(io.MultiWriter(logFile, os.Stderr), "fennec-cua ", log.LstdFlags|log.Lmicroseconds)
 
 	stopper := &sched.Stopper{}
-	eng := &engine.Engine{Turn: &sched.Turn{}, Stopper: stopper, Platform: platform{}, Input: "foreground"}
+	input := "foreground"
+	observer := &view.Observer{Source: desk.New(), Refs: view.NewRegistry(view.MaxRefs), Input: input}
+	eng := &engine.Engine{
+		Turn:     &sched.Turn{},
+		Stopper:  stopper,
+		Platform: platform{},
+		Input:    input,
+		Impl:     map[string]engine.Tool{protocol.ToolObserve: engine.ObserveTool(observer)},
+	}
 	if bin := driverBin(); bin != "" {
 		sup := &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger}
 		dctx, dcancel := context.WithCancel(ctx)

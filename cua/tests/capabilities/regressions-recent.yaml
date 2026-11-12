@@ -404,7 +404,7 @@ capabilities:
       taken. A `+` belongs to its word, so `notepad` does not name `notepad++`.
     surface: act
     parity: oracle
-    tests: [planned:internal/view.TestAppMatchWholeWord]
+    tests: [internal/view.TestAppMatchWholeWord]
     upstream: [changelog/0.1.40/6, changelog/0.1.40/9]
   - id: CAP-RGA-039
     title: Value checks require equal values
@@ -570,7 +570,7 @@ capabilities:
       tail read still shows where input lands.
     surface: observe
     parity: oracle
-    tests: [planned:internal/view.TestReadPreviewAndTail, planned:scenario/TerminalTailRead]
+    tests: [internal/view.TestReadPreviewAndTail, planned:scenario/TerminalTailRead]
     upstream: [changelog/0.1.50/4, changelog/0.1.46/3]
   - id: CAP-RGA-056
     title: All refs of one view resolve
@@ -579,7 +579,7 @@ capabilities:
       when a new snapshot, find or hit test starts, never in the middle of one or during an action.
     surface: observe
     parity: spec
-    tests: [planned:internal/view.TestRefTableTrimBoundaries]
+    tests: [internal/view.TestRefTableTrimBoundaries]
     upstream: [changelog/0.1.44/5]
   - id: CAP-RGA-057
     title: Links carry their URL
@@ -619,7 +619,7 @@ capabilities:
       element lines.
     surface: observe
     parity: spec
-    tests: [planned:internal/view.TestOutlineEscaping]
+    tests: [internal/view.TestOutlineEscaping]
     upstream: [changelog/0.1.42/10]
   - id: CAP-RGA-061
     title: Screenshots are returned inline, never written to caller paths
