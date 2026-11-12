@@ -28,6 +28,10 @@ import (
 // limit.
 const DesktopMCPCommand = "fennec-desktop-mcp"
 
+// DecisionChatGPTCloud audits requests covered by the user moving ChatGPT to
+// the cloud computer.
+const DecisionChatGPTCloud = "chatgpt_cloud"
+
 // DesktopMCPSpec is the MCP server definition ChatGPT registered, carried
 // unchanged from the cloud request.
 type DesktopMCPSpec struct {
@@ -120,7 +124,9 @@ func serveDesktopMCP(operation context.Context, session ssh.Session, broker *Bro
 	// ChatGPT starts these tools for every conversation it opens; one approval
 	// per tool covers the daemon run, and each start is still audited.
 	capability := DesktopMCPCommand + " " + spec.Name
-	if requireApproval && broker.granted(fingerprint, capability) {
+	if requireApproval && broker.Preapproved != nil && broker.Preapproved(DesktopMCPCommand) {
+		decision = DecisionChatGPTCloud
+	} else if requireApproval && broker.granted(fingerprint, capability) {
 		decision = "previously_approved"
 	} else if requireApproval {
 		approval, cancel := context.WithTimeout(operation, 2*time.Minute)

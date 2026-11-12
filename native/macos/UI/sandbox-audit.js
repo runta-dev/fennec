@@ -79,6 +79,8 @@
         return t('[[i18n:ui.audit_decision_seatbelt_blocked]]');
       case 'user_denied':
         return t('[[i18n:ui.audit_decision_user_denied]]');
+      case 'chatgpt_cloud':
+        return t('[[i18n:ui.audit_decision_chatgpt_cloud]]');
       case 'user_approved':
       case 'previously_approved':
         return t('[[i18n:ui.audit_decision_user_approved]]');

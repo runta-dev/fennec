@@ -62,6 +62,10 @@ type Broker struct {
 	active     map[string]context.CancelFunc
 	done       chan struct{}
 	closeOnce  sync.Once
+	// Preapproved reports capabilities the user already approved elsewhere, such
+	// as moving ChatGPT to the cloud computer, which covers ChatGPT's own desktop
+	// tools and continuing its Mac conversations.
+	Preapproved func(capability string) bool
 	// grants remembers capabilities approved once for this daemon run, keyed by
 	// device fingerprint and capability.
 	grants map[string]bool

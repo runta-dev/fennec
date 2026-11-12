@@ -416,6 +416,16 @@ func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 		permissions := localssh.NewBroker(filepath.Join(s.home, ".config/fennec/ssh"), events)
 		permissions.Audit = s.auditStore
 		permissions.Policy = s.sandboxPolicy
+		// Moving ChatGPT to the cloud computer (confirmed in the Agents tab) covers
+		// its desktop tools and continuing Mac conversations; both stay limited to
+		// ChatGPT.app executables and single rollouts, and every use is audited.
+		permissions.Preapproved = func(capability string) bool {
+			if s.chatgpt == nil {
+				return false
+			}
+			enabled, _ := s.chatgpt.location()
+			return enabled && (capability == localssh.DesktopMCPCommand || capability == localssh.CodexRolloutCommand)
+		}
 		// "Approve for me" calls Codex auto-review on the Responses API with the local Codex sign-in.
 		permissions.Reviewer = &guardian.Reviewer{Home: s.home, DeniedReadPaths: sandbox.ProtectedPaths(s.home)}
 		s.mu.Lock()

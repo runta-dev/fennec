@@ -95,7 +95,9 @@ func serveCodexRollout(operation context.Context, session ssh.Session, broker *B
 	if requireApproval {
 		// One approval covers resuming any Mac conversation in cloud ChatGPT for
 		// this daemon run; each thread is still recorded in the audit log.
-		if broker.granted(fingerprint, CodexRolloutCommand) {
+		if broker.Preapproved != nil && broker.Preapproved(CodexRolloutCommand) {
+			decision = DecisionChatGPTCloud
+		} else if broker.granted(fingerprint, CodexRolloutCommand) {
 			decision = "previously_approved"
 		} else {
 			approval, cancel := context.WithTimeout(operation, 2*time.Minute)

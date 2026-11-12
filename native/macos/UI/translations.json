@@ -2823,6 +2823,14 @@
       "zh-CN": "已拒绝",
       "zh-TW": "已拒絕"
     },
+    "ui.audit_decision_chatgpt_cloud": {
+      "en-GB": "Allowed for ChatGPT in the cloud",
+      "en-US": "Allowed for ChatGPT in the cloud",
+      "ja": "クラウドの ChatGPT に許可",
+      "ko": "클라우드 ChatGPT에 허용됨",
+      "zh-CN": "已允许（云端 ChatGPT）",
+      "zh-TW": "已允許（雲端 ChatGPT）"
+    },
     "ui.audit_decision_user_approved": {
       "en-GB": "Allowed",
       "en-US": "Allowed",
