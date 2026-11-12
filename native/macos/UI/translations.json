@@ -2280,12 +2280,12 @@
       "zh-TW": "儲值後即可建立雲端電腦"
     },
     "ui.cloud_agent_loop": {
-      "en-GB": "Cloud · Agent loop",
-      "en-US": "Cloud · Agent loop",
-      "ja": "クラウド · エージェント実行",
-      "ko": "클라우드 · 에이전트 루프",
-      "zh-CN": "云电脑 · 智能体常驻",
-      "zh-TW": "雲端電腦 · 智慧體常駐"
+      "en-GB": "Cloud agent loop",
+      "en-US": "Cloud agent loop",
+      "ja": "クラウドエージェント",
+      "ko": "클라우드 에이전트 루프",
+      "zh-CN": "云端智能体循环",
+      "zh-TW": "雲端智慧體循環"
     },
     "ui.cloud_computer": {
       "en-GB": "Cloud computer",
@@ -2320,12 +2320,12 @@
       "zh-TW": "正在建立…"
     },
     "ui.edge_connector": {
-      "en-GB": "This Mac · Edge connector",
-      "en-US": "This Mac · Edge connector",
-      "ja": "この Mac · エッジ接続",
-      "ko": "이 Mac · 엣지 커넥터",
-      "zh-CN": "本机 Mac · 边缘连接器",
-      "zh-TW": "本機 Mac · 邊緣連線器"
+      "en-GB": "Mac edge connector",
+      "en-US": "Mac edge connector",
+      "ja": "Mac エッジコネクタ",
+      "ko": "Mac 엣지 커넥터",
+      "zh-CN": "本机边缘连接器",
+      "zh-TW": "本機邊緣連線器"
     },
     "ui.network": {
       "en-GB": "Network",
@@ -2414,6 +2414,14 @@
       "ko": "평소처럼 터미널에서 실행하고 언제든 실행 중인 세션에 다시 연결하세요",
       "zh-CN": "像平时一样在终端启动，随时随地无缝接管与恢复在线会话",
       "zh-TW": "像平時一樣在終端啟動，隨時隨地無縫接管與恢復在線工作階段"
+    },
+    "ui.plan": {
+      "en-GB": "Plan",
+      "en-US": "Plan",
+      "ja": "プラン",
+      "ko": "플랜",
+      "zh-CN": "套餐",
+      "zh-TW": "方案"
     },
     "ui.preparing_cloud_computer": {
       "en-GB": "Setting up your cloud computer…",

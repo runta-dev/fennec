@@ -30,12 +30,13 @@ function syncTabIndicator(){
  const selected=navigation?.querySelector('[data-tab].selected');
  const indicator=navigation?.querySelector('.tab-indicator');
  if(!indicator)return;
- indicator.hidden=!selected;
- if(!selected)return;
+ if(!selected||selected.offsetWidth===0){indicator.hidden=true;return;}
+ indicator.hidden=false;
  indicator.style.width=selected.offsetWidth+'px';
  indicator.style.height=selected.offsetHeight+'px';
  indicator.style.transform=`translate(${selected.offsetLeft}px, ${selected.offsetTop}px)`;
 }
+window.syncTabIndicator=syncTabIndicator;
 
 function tab(name) {
   send("visible-tab:" + name);
@@ -54,6 +55,7 @@ function tab(name) {
     button.setAttribute('aria-selected', String(button.dataset.tab === name));
   });
   syncTabIndicator();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(syncTabIndicator);
 }
 const tabNavigation=document.querySelector('nav');
 const tabIndicator=document.createElement('span');tabIndicator.className='tab-indicator';tabIndicator.setAttribute('aria-hidden','true');
@@ -735,6 +737,17 @@ const billingFields = [
 function renderBillingRows(payload,loading){
  const content=document.querySelector('#billing-content');content.replaceChildren();
  content.setAttribute('aria-busy',String(loading));
+ const planHeader=document.querySelector('.billing-card>.billing-plan');
+ if(planHeader)planHeader.hidden=true;
+ const planRow=document.createElement('div');planRow.className='billing-row billing-plan-row';
+ const planTitle=document.createElement('span');planTitle.className='billing-field-label';
+ const planIcon=document.createElement('span');planIcon.className='billing-field-icon';planIcon.setAttribute('aria-hidden','true');
+ planIcon.innerHTML='<svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2.2"/><path d="M6.5 8.5h7m-7 3h4.5"/></svg>';
+ const planLabel=document.createElement('span');planLabel.textContent="[[i18n:ui.plan]]";
+ planTitle.append(planIcon,planLabel);
+ const planBadge=document.createElement('span');planBadge.className='billing-plan-badge';planBadge.textContent="[[i18n:ui.pay_as_you_go]]";
+ planRow.append(planTitle,planBadge);
+ content.append(planRow);
  const resources=document.createElement('div');resources.className='billing-resources';
  let missing=false;
  for(const [key,label,path] of billingFields){
@@ -754,35 +767,37 @@ function renderBillingRows(payload,loading){
   if(money)content.append(row);else resources.append(row);
  }
  content.append(resources);
- const note=document.createElement('p');note.className='billing-footnote';note.textContent="[[i18n:ui.resource_usage_last_30_days]]";content.append(note);
- const footer=document.createElement('div');footer.className='billing-footer';
- const status=document.createElement('span');status.className='billing-status';
  const reauthRequired=payload.reauth_required===true;
  const webOnly=payload.web_only===true;
  const offline=payload.offline===true;
- status.textContent=!loading?(offline?"[[i18n:ui.offline_waiting_for_network]]":reauthRequired?"[[i18n:ui.sign_in_again_to_enable_billing_access]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''))):'';
- const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
- if(reauthRequired){
-  retry.textContent="[[i18n:ui.sign_in]]";
-  retry.style.visibility=!loading?'visible':'hidden';
-  retry.disabled=loading;
-  retry.onclick=()=>send('reauthenticate');
- }else if(webOnly){
-  retry.textContent="[[i18n:ui.open_in_browser]]";
-  retry.style.visibility=!loading?'visible':'hidden';
-  retry.disabled=loading;
-  retry.onclick=()=>send('open-dashboard');
- }else{
-  retry.style.visibility=!loading&&!offline&&(missing||payload.error||payload.stale)?'visible':'hidden';
-  retry.disabled=loading;
-  retry.onclick=()=>{window.renderBillingLoading();send('load-billing');};
+ const showFooter=!loading&&(reauthRequired||webOnly||offline||missing||payload.error||payload.stale);
+ if(showFooter){
+  const footer=document.createElement('div');footer.className='billing-footer';
+  const status=document.createElement('span');status.className='billing-status';
+  status.textContent=offline?"[[i18n:ui.offline_waiting_for_network]]":reauthRequired?"[[i18n:ui.sign_in_again_to_enable_billing_access]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''));
+  const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
+  if(reauthRequired){
+   retry.textContent="[[i18n:ui.sign_in]]";
+   retry.onclick=()=>send('reauthenticate');
+  }else if(webOnly){
+   retry.textContent="[[i18n:ui.open_in_browser]]";
+   retry.onclick=()=>send('open-dashboard');
+  }else{
+   retry.style.visibility=!offline?'visible':'hidden';
+   retry.onclick=()=>{window.renderBillingLoading();send('load-billing');};
+  }
+  footer.append(status,retry);content.append(footer);
  }
- footer.append(status,retry);content.append(footer);
 }
 window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);
 window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(payload,false);};
 
 let lastMetricsPayload = { ready: false };
+const METRIC_HISTORY_LEN = 24;
+const cpuHistory = [];
+const memHistory = [];
+let metricsRuntimeKey = '';
+
 function ensureRuntimeMetricsCard() {
  let card = document.querySelector('#runtime-metrics-card');
  if (card) return card;
@@ -801,29 +816,57 @@ function formatTrafficBytes(bytes) {
  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
  return bytes + ' B';
 }
+function sparklinePaths(samples, width = 112, height = 24) {
+ const pts = samples.length >= 2 ? samples : (samples.length === 1 ? [samples[0], samples[0]] : [0, 0]);
+ const step = width / Math.max(1, METRIC_HISTORY_LEN - 1);
+ const startX = width - (pts.length - 1) * step;
+ const coords = pts.map((val, idx) => {
+  const clamped = Math.max(0, Math.min(100, Number(val) || 0));
+  const x = (startX + idx * step).toFixed(1);
+  const y = (height - 2 - (clamped / 100) * (height - 5)).toFixed(1);
+  return [x, y];
+ });
+ const line = 'M' + coords.map(([x, y]) => x + ',' + y).join(' L');
+ const firstX = coords[0][0];
+ const lastX = coords[coords.length - 1][0];
+ const area = line + ` L${lastX},${height} L${firstX},${height} Z`;
+ return { line, area };
+}
 function drawRuntimeMetrics() {
  const card = ensureRuntimeMetricsCard();
  if (!card) return;
  const payload = lastMetricsPayload || {};
  const t = token => (typeof translate === 'function' ? translate(token) : token);
- card.replaceChildren();
- const head = document.createElement('div');
- head.className = 'runtime-metrics-head';
- const title = document.createElement('span');
- title.className = 'runtime-metrics-title';
- title.textContent = t('[[i18n:ui.cloud_computer]]');
- const spec = document.createElement('span');
- spec.className = 'runtime-metrics-spec';
  const ready = payload.ready === true;
+ const cloudIconSVG = '<svg viewBox="0 0 20 20"><path d="M6.2 14.5h8a3.3 3.3 0 0 0 .4-6.58A4.8 4.8 0 0 0 5.2 6.5a3.6 3.6 0 0 0 1 8Z"/><path d="M7.5 17.5h5M10 14.5v3"/></svg>';
+ const cpuIconSVG = '<svg viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="2"/><rect x="8" y="8" width="4" height="4" rx=".5"/><path d="M7 2v3m6-3v3M7 15v3m6-3v3M2 7h3m-3 6h3m10-6h3m-3 6h3"/></svg>';
+ const memIconSVG = '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5.5 8v4m3-4v4m3-4v4m3-4v4M6 15v2m4-2v2m4-2v2"/></svg>';
+ const netIconSVG = '<svg viewBox="0 0 20 20"><path d="M6 16V4m0 0L3 7m3-3 3 3m5-3v12m0 0-3-3m3 3 3-3"/></svg>';
+
  if (!ready) {
-  spec.classList.add('is-inactive');
+  card.dataset.mode = 'inactive';
+  card.replaceChildren();
+  const head = document.createElement('div');
+  head.className = 'runtime-metrics-head';
+  const titleWrap = document.createElement('span');
+  titleWrap.className = 'runtime-metrics-title-wrap';
+  const headIcon = document.createElement('span');
+  headIcon.className = 'billing-field-icon';
+  headIcon.setAttribute('aria-hidden', 'true');
+  headIcon.innerHTML = cloudIconSVG;
+  const title = document.createElement('span');
+  title.className = 'runtime-metrics-title';
+  title.textContent = t('[[i18n:ui.cloud_computer]]');
+  titleWrap.append(headIcon, title);
+  const spec = document.createElement('span');
+  spec.className = 'runtime-metrics-spec is-inactive';
   const st = payload.status || 'not_created';
   spec.textContent = st === 'creating'
    ? t('[[i18n:ui.creating]]')
    : st === 'offline'
     ? t('[[i18n:ui.offline]]')
     : t('[[i18n:ui.not_created]]');
-  head.append(title, spec);
+  head.append(titleWrap, spec);
   const emptyRow = document.createElement('div');
   emptyRow.className = 'runtime-metrics-empty';
   const msg = document.createElement('span');
@@ -856,45 +899,92 @@ function drawRuntimeMetrics() {
   return;
  }
 
+ if (card.dataset.mode !== 'live') {
+  card.dataset.mode = 'live';
+ card.replaceChildren();
+  card.innerHTML =
+   '<div class="runtime-metrics-head">' +
+   '<span class="runtime-metrics-title-wrap"><span class="billing-field-icon" aria-hidden="true">' + cloudIconSVG + '</span><span class="runtime-metrics-title" id="rt-card-title"></span></span>' +
+   '<span class="runtime-metrics-spec" id="rt-card-spec"></span>' +
+   '</div>' +
+   '<div class="runtime-metrics-grid">' +
+   '<div class="runtime-metric-cell">' +
+   '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + cpuIconSVG + '</span><span>CPU</span></span><strong class="runtime-metric-value" id="rt-cpu-val"></strong></div>' +
+   '<svg class="metric-sparkline" viewBox="0 0 112 24" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="spark-cpu-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f38d25" stop-opacity="0.28"/><stop offset="100%" stop-color="#f38d25" stop-opacity="0.0"/></linearGradient></defs><path class="metric-spark-area" id="rt-cpu-area" fill="url(#spark-cpu-grad)"/><path class="metric-spark-line" id="rt-cpu-line"/></svg>' +
+   '</div>' +
+   '<div class="runtime-metric-cell">' +
+   '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + memIconSVG + '</span><span id="rt-mem-lbl"></span></span><strong class="runtime-metric-value" id="rt-mem-val"></strong></div>' +
+   '<svg class="metric-sparkline" viewBox="0 0 112 24" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="spark-mem-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f38d25" stop-opacity="0.28"/><stop offset="100%" stop-color="#f38d25" stop-opacity="0.0"/></linearGradient></defs><path class="metric-spark-area" id="rt-mem-area" fill="url(#spark-mem-grad)"/><path class="metric-spark-line" id="rt-mem-line"/></svg>' +
+   '</div>' +
+   '<div class="runtime-metric-cell runtime-metric-net-cell">' +
+   '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + netIconSVG + '</span><span id="rt-net-lbl"></span></span></div>' +
+   '<div class="runtime-net-rows"><div class="runtime-net-row"><span class="net-dir">↑</span><strong id="rt-net-up"></strong></div><div class="runtime-net-row"><span class="net-dir">↓</span><strong id="rt-net-down"></strong></div></div>' +
+   '</div>' +
+   '</div>';
+ }
+
  const vcpus = payload.vcpus || 2;
  const minGiB = Math.max(1, Math.round((payload.memory_min_mib || 4096) / 1024));
  const maxGiB = Math.max(minGiB, Math.round((payload.memory_max_mib || 16384) / 1024));
- spec.textContent = vcpus + ' vCPU · ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
- head.append(title, spec);
+ card.querySelector('#rt-card-title').textContent = t('[[i18n:ui.cloud_computer]]');
+ card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU / ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
+ card.querySelector('#rt-mem-lbl').textContent = t('[[i18n:ui.memory]]');
+ card.querySelector('#rt-net-lbl').textContent = t('[[i18n:ui.network]]');
 
- const grid = document.createElement('div');
- grid.className = 'runtime-metrics-grid';
- const cpuVal = ready ? (typeof payload.cpu_percent === 'number' ? payload.cpu_percent.toFixed(1) : '0.0') + '%' : '—';
- const memVal = ready
-  ? ((payload.memory_used_mib || 0) / 1024).toFixed(1) + ' / ' + ((payload.memory_current_mib || payload.memory_min_mib || 4096) / 1024).toFixed(1) + ' GiB'
-  : '—';
- const upTotal = formatTrafficBytes(payload.net_tx_bytes || 0);
- const downTotal = formatTrafficBytes(payload.net_rx_bytes || 0);
- const netVal = ready ? '↑ ' + upTotal + ' · ↓ ' + downTotal : '—';
- const netTip = ready && (payload.net_tx_bps > 0 || payload.net_rx_bps > 0)
-  ? netVal + ' (' + formatTrafficBytes(payload.net_tx_bps || 0) + '/s ↑ · ' + formatTrafficBytes(payload.net_rx_bps || 0) + '/s ↓)'
-  : (ready ? netVal : '');
+ const cpuNum = typeof payload.cpu_percent === 'number' ? payload.cpu_percent : 0;
+ const curMiB = payload.memory_current_mib || payload.memory_min_mib || 4096;
+ const usedMiB = payload.memory_used_mib || 0;
+ card.querySelector('#rt-cpu-val').textContent = cpuNum.toFixed(1) + '%';
+ card.querySelector('#rt-mem-val').textContent = (usedMiB / 1024).toFixed(1) + ' / ' + (curMiB / 1024).toFixed(1) + 'G';
 
- for (const [label, val, tip] of [
-  ['CPU', cpuVal, ''],
-  [t('[[i18n:ui.memory]]'), memVal, ''],
-  [t('[[i18n:ui.network]]'), netVal, netTip]
- ]) {
-  const cell = document.createElement('div');
-  cell.className = 'runtime-metric-cell';
-  const lbl = document.createElement('span');
-  lbl.className = 'runtime-metric-label';
-  lbl.textContent = label;
-  const strong = document.createElement('strong');
-  strong.className = 'runtime-metric-value';
-  strong.textContent = val;
-  if (tip) strong.title = tip;
-  cell.append(lbl, strong);
-  grid.append(cell);
+ const cpuPaths = sparklinePaths(cpuHistory);
+ card.querySelector('#rt-cpu-area').setAttribute('d', cpuPaths.area);
+ card.querySelector('#rt-cpu-line').setAttribute('d', cpuPaths.line);
+
+ const memPaths = sparklinePaths(memHistory);
+ card.querySelector('#rt-mem-area').setAttribute('d', memPaths.area);
+ card.querySelector('#rt-mem-line').setAttribute('d', memPaths.line);
+
+ const upEl = card.querySelector('#rt-net-up');
+ const downEl = card.querySelector('#rt-net-down');
+ upEl.textContent = formatTrafficBytes(payload.net_tx_bytes || 0);
+ downEl.textContent = formatTrafficBytes(payload.net_rx_bytes || 0);
+ const netCell = card.querySelector('.runtime-metric-net-cell');
+ if (netCell) {
+  netCell.title = (payload.net_tx_bps > 0 || payload.net_rx_bps > 0)
+   ? '↑ ' + formatTrafficBytes(payload.net_tx_bps || 0) + '/s   ↓ ' + formatTrafficBytes(payload.net_rx_bps || 0) + '/s'
+   : '';
  }
- card.append(head, grid);
 }
-window.renderRuntimeMetrics = payload => { lastMetricsPayload = payload || { ready: false }; drawRuntimeMetrics(); };
+window.renderRuntimeMetrics = payload => {
+ lastMetricsPayload = payload || { ready: false };
+ if (lastMetricsPayload.ready === true) {
+  const rtKey = lastMetricsPayload.runtime_id || 'default';
+  if (rtKey !== metricsRuntimeKey) {
+   metricsRuntimeKey = rtKey;
+   cpuHistory.length = 0;
+   memHistory.length = 0;
+  }
+  if (Array.isArray(lastMetricsPayload.cpu_history) && cpuHistory.length === 0) {
+   cpuHistory.push(...lastMetricsPayload.cpu_history.slice(-METRIC_HISTORY_LEN));
+  } else {
+   cpuHistory.push(Number(lastMetricsPayload.cpu_percent) || 0);
+   if (cpuHistory.length > METRIC_HISTORY_LEN) cpuHistory.shift();
+  }
+  const curMiB = Math.max(1, Number(lastMetricsPayload.memory_current_mib || lastMetricsPayload.memory_min_mib || 4096));
+  const memPct = Math.min(100, ((Number(lastMetricsPayload.memory_used_mib) || 0) / curMiB) * 100);
+  if (Array.isArray(lastMetricsPayload.mem_history) && memHistory.length === 0) {
+   memHistory.push(...lastMetricsPayload.mem_history.slice(-METRIC_HISTORY_LEN));
+  } else {
+   memHistory.push(memPct);
+   if (memHistory.length > METRIC_HISTORY_LEN) memHistory.shift();
+  }
+ } else {
+  cpuHistory.length = 0;
+  memHistory.length = 0;
+ }
+ drawRuntimeMetrics();
+};
 window.rerenderRuntimeMetrics = drawRuntimeMetrics;
 drawRuntimeMetrics();
 

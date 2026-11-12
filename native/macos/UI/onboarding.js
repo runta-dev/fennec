@@ -1,5 +1,5 @@
-// Full-screen sign-in splash and ~5s cloud setup value-narrative onboarding
-// with peeking Fennec mascot and live Edge <-> Cloud SVG pulse diagram.
+// Minimalist full-screen Sign-in & ~5s Cloud Setup stage.
+// Let UI explain itself: Fennec peeks out from the Cloud node linked to Mac.
 (() => {
   const t = token => (typeof translate === 'function' ? translate(token) : token);
   const stage = document.createElement('section');
@@ -19,47 +19,58 @@
     '<ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/>' +
     '</svg>';
 
-  const diagramSVG =
-    '<svg class="onboarding-arch-svg" viewBox="0 0 320 76" fill="none" aria-hidden="true">' +
-    '<g class="arch-node arch-edge">' +
-    '<rect x="12" y="14" width="84" height="48" rx="11" class="arch-box"/>' +
-    '<rect x="39" y="23" width="30" height="19" rx="2.5" class="arch-stroke"/>' +
-    '<path d="M34 45h40" class="arch-stroke"/>' +
-    '</g>' +
-    '<g class="arch-link">' +
-    '<path d="M104 33h112" class="arch-rail"/>' +
-    '<path d="M216 43H104" class="arch-rail"/>' +
-    '<circle cx="110" cy="33" r="3" class="arch-pulse arch-pulse-fwd"/>' +
-    '<circle cx="210" cy="43" r="2.6" class="arch-pulse arch-pulse-rev"/>' +
-    '</g>' +
-    '<g class="arch-node arch-cloud">' +
-    '<rect x="224" y="14" width="84" height="48" rx="11" class="arch-box arch-box-cloud"/>' +
-    '<path d="M254 44h25a7 7 0 0 0 .8-13.9A9.5 9.5 0 0 0 262 24a8.5 8.5 0 0 0-8.2 6.4A6.8 6.8 0 0 0 254 44Z" class="arch-cloud-icon"/>' +
-    '</g>' +
+  const macIconSVG =
+    '<svg class="scene-node-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<rect x="4" y="5" width="16" height="11" rx="2"/>' +
+    '<path d="M2.5 19h19"/>' +
+    '<path d="m9 9.5 2 2-2 2m4 0h2.5"/>' +
+    '</svg>';
+
+  const cloudIconSVG =
+    '<svg class="scene-node-icon scene-cloud-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M7.5 18h9.2a4.3 4.3 0 0 0 .5-8.57A6 6 0 0 0 5.6 8a4.5 4.5 0 0 0 1.9 10Z"/>' +
+    '</svg>';
+
+  const bridgeSVG =
+    '<svg class="scene-bridge-svg" viewBox="0 0 88 28" fill="none" aria-hidden="true">' +
+    '<path d="M6 10h76" class="arch-rail"/>' +
+    '<path d="M82 18H6" class="arch-rail"/>' +
+    '<circle cx="10" cy="10" r="2.6" class="arch-pulse arch-pulse-fwd"/>' +
+    '<circle cx="78" cy="18" r="2.6" class="arch-pulse arch-pulse-rev"/>' +
     '</svg>';
 
   stage.innerHTML =
     '<div class="onboarding-signin" id="onboarding-signin">' +
     '<div class="onboarding-logo-hit" id="onboarding-logo-hit">' + foxSVG + '</div>' +
     '<div class="onboarding-wordmark"><strong>Fennec</strong><button type="button" class="env-badge" id="onboarding-env-badge" hidden>INT</button></div>' +
-    '<p class="onboarding-tagline" id="onboarding-tagline"></p>' +
     '<button type="button" class="onboarding-cta" id="onboarding-login-btn"></button>' +
     '<p class="onboarding-login-hint" id="onboarding-login-hint" hidden></p>' +
     '</div>' +
     '<div class="onboarding-setup" id="onboarding-setup" hidden>' +
-    '<div class="onboarding-arch-wrap">' +
-    diagramSVG +
-    '<div class="onboarding-arch-labels"><span id="arch-edge-label"></span><span id="arch-cloud-label"></span></div>' +
+    '<div class="onboarding-scene">' +
+    '<div class="scene-col">' +
+    '<div class="scene-box scene-box-mac">' + macIconSVG + '</div>' +
+    '<span class="scene-caption">Mac</span>' +
     '</div>' +
-    '<div class="onboarding-story">' +
-    '<strong class="onboarding-story-title" id="onboarding-story-title"></strong>' +
-    '<p class="onboarding-story-body" id="onboarding-story-body"></p>' +
-    '<div class="onboarding-dots" id="onboarding-dots"><span class="active"></span><span></span><span></span></div>' +
+    '<div class="scene-bridge">' + bridgeSVG + '</div>' +
+    '<div class="scene-col">' +
+    '<div class="scene-cloud-wrap">' +
+    '<div class="onboarding-peek-stage" id="onboarding-peek-stage">' +
+    '<div class="onboarding-peek-fox">' + foxSVG + '</div>' +
+    '</div>' +
+    '<div class="scene-box scene-box-cloud">' +
+    '<span class="fox-paw fox-paw-l" aria-hidden="true"></span>' +
+    '<span class="fox-paw fox-paw-r" aria-hidden="true"></span>' +
+    cloudIconSVG +
+    '</div>' +
+    '</div>' +
+    '<span class="scene-caption">Cloud</span>' +
+    '</div>' +
     '</div>' +
     '<div class="onboarding-footer">' +
-    '<div class="onboarding-peek-stage" id="onboarding-peek-stage"><div class="onboarding-peek-fox">' + foxSVG + '</div></div>' +
+    '<div class="onboarding-status-title" id="onboarding-stage-text"></div>' +
     '<div class="onboarding-bar"><div class="onboarding-bar-fill" id="onboarding-bar-fill"></div></div>' +
-    '<div class="onboarding-status-row"><span id="onboarding-stage-text"></span><button type="button" class="onboarding-action-btn" id="onboarding-action-btn" hidden></button></div>' +
+    '<div class="onboarding-action-wrap"><button type="button" class="onboarding-action-btn" id="onboarding-action-btn" hidden></button></div>' +
     '</div>' +
     '</div>';
   document.body?.append(stage);
@@ -68,14 +79,8 @@
   const setupPane = stage.querySelector('#onboarding-setup');
   const logoHit = stage.querySelector('#onboarding-logo-hit');
   const envBadge = stage.querySelector('#onboarding-env-badge');
-  const taglineEl = stage.querySelector('#onboarding-tagline');
   const loginBtn = stage.querySelector('#onboarding-login-btn');
   const loginHint = stage.querySelector('#onboarding-login-hint');
-  const edgeLabel = stage.querySelector('#arch-edge-label');
-  const cloudLabel = stage.querySelector('#arch-cloud-label');
-  const storyTitle = stage.querySelector('#onboarding-story-title');
-  const storyBody = stage.querySelector('#onboarding-story-body');
-  const storyDots = [...stage.querySelectorAll('#onboarding-dots span')];
   const peekStage = stage.querySelector('#onboarding-peek-stage');
   const barFill = stage.querySelector('#onboarding-bar-fill');
   const stageText = stage.querySelector('#onboarding-stage-text');
@@ -87,52 +92,10 @@
   let loginMessage = '';
   let loginBusy = false;
   let prepState = {};
-  let storyIndex = 0;
-  let storyTimer = null;
   let finishTimer = null;
   let delayedSetupTimer = null;
   let asyncHandoffTimer = null;
   let ctrlClicks = [];
-
-  const stories = () => [
-    {
-      title: t('[[i18n:ui.onboarding_story_1_title]]'),
-      body: t('[[i18n:ui.onboarding_story_1_body]]')
-    },
-    {
-      title: t('[[i18n:ui.onboarding_story_2_title]]'),
-      body: t('[[i18n:ui.onboarding_story_2_body]]')
-    },
-    {
-      title: t('[[i18n:ui.onboarding_story_3_title]]'),
-      body: t('[[i18n:ui.onboarding_story_3_body]]')
-    }
-  ];
-
-  function syncStorySlide() {
-    const list = stories();
-    const item = list[storyIndex % list.length];
-    storyTitle.textContent = item.title;
-    storyBody.textContent = item.body;
-    storyDots.forEach((dot, idx) => dot.classList.toggle('active', idx === storyIndex % list.length));
-  }
-
-  function startStoryCarousel() {
-    if (storyTimer) return;
-    storyIndex = 0;
-    syncStorySlide();
-    storyTimer = setInterval(() => {
-      storyIndex = (storyIndex + 1) % 3;
-      syncStorySlide();
-    }, 1850);
-  }
-
-  function stopStoryCarousel() {
-    if (storyTimer) {
-      clearInterval(storyTimer);
-      storyTimer = null;
-    }
-  }
 
   function stageProgress(st) {
     const weights = {
@@ -153,15 +116,8 @@
     if (st === 'offline' || status === 'network_offline') return t('[[i18n:ui.offline_waiting_for_network]]');
     if (status === 'billing_restricted') return t('[[i18n:ui.add_credits_in_runta_to_create_cloud_computer]]');
     if (st === 'failed') return t('[[i18n:ui.environment_preparation_failed]]');
-    const map = {
-      allocating: '[[i18n:ui.allocating_cloud_computer]]',
-      starting: '[[i18n:ui.starting_cloud_computer]]',
-      connecting: '[[i18n:ui.connecting_to_cloud_computer]]',
-      installing_session_service: '[[i18n:ui.preparing_session_service]]',
-      migrating_credentials: '[[i18n:ui.migrating_model_credentials]]',
-      agents_installed: '[[i18n:ui.cloud_computer_ready]]'
-    };
-    return t(map[st] || '[[i18n:ui.preparing_2]]');
+    if (st === 'agents_installed') return t('[[i18n:ui.cloud_computer_ready]]');
+    return t('[[i18n:ui.preparing_cloud_computer]]');
   }
 
   function syncEnvironmentBadge(envName, apiEndpoint) {
@@ -177,18 +133,14 @@
   function setMainChromeHidden(hidden) {
     const wasHidden = document.body?.classList.contains('is-onboarding');
     document.body?.classList.toggle('is-onboarding', hidden);
-    if (wasHidden && !hidden && typeof Event === 'function') {
-      window.dispatchEvent?.(new Event('resize'));
+    if (wasHidden && !hidden) {
+      window.syncTabIndicator?.();
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => window.syncTabIndicator?.());
     }
   }
 
   function renderOnboarding() {
-    taglineEl.textContent = t('[[i18n:ui.onboarding_signin_tagline]]');
-    edgeLabel.textContent = t('[[i18n:ui.edge_connector]]');
-    cloudLabel.textContent = t('[[i18n:ui.cloud_agent_loop]]');
-
     if (!isAuthorized) {
-      stopStoryCarousel();
       if (delayedSetupTimer) { clearTimeout(delayedSetupTimer); delayedSetupTimer = null; }
       if (asyncHandoffTimer) { clearTimeout(asyncHandoffTimer); asyncHandoffTimer = null; }
       stage.hidden = false;
@@ -204,7 +156,6 @@
     }
 
     if (setupDismissedForSession) {
-      stopStoryCarousel();
       stage.hidden = true;
       setMainChromeHidden(false);
       return;
@@ -236,7 +187,6 @@
           finishTimer = null;
           setupDismissedForSession = true;
           signedInTransition = false;
-          stopStoryCarousel();
           stage.hidden = true;
           stage.classList.remove('is-finishing');
           setMainChromeHidden(false);
@@ -265,7 +215,6 @@
     signinPane.hidden = true;
     setupPane.hidden = false;
     setMainChromeHidden(true);
-    startStoryCarousel();
 
     // Bounded ~5s onboarding experience: once Runta has allocated the cloud
     // computer (runtime_id assigned, no error/offline), smoothly hand off to the
@@ -280,7 +229,6 @@
             finishTimer = null;
             setupDismissedForSession = true;
             signedInTransition = false;
-            stopStoryCarousel();
             stage.hidden = true;
             stage.classList.remove('is-finishing');
             setMainChromeHidden(false);
@@ -389,7 +337,6 @@
     origPrefs?.(prefs);
     if (prefs) syncEnvironmentBadge(prefs.environment || 'production', prefs.api_endpoint || '');
     if (!stage.hidden) {
-      syncStorySlide();
       renderOnboarding();
     }
   };
