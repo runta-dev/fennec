@@ -235,7 +235,8 @@ const (
 	ErrCreditsExhausted ErrorCode = "model_credits_exhausted"
 	ErrHitMismatch      ErrorCode = "hit_mismatch" // the hit test at the point found another element, a root, or another app
 	ErrScreenLocked     ErrorCode = "screen_locked"
-	ErrNotShown         ErrorCode = "not_shown" // the text or window did not show after the step
+	ErrNotShown         ErrorCode = "not_shown"   // the text or window did not show after the step
+	ErrUnavailable      ErrorCode = "unavailable" // not available in this build or without the driver
 	ErrInternal         ErrorCode = "internal"
 )
 
@@ -679,4 +680,32 @@ type Resolution struct {
 	How    string   `json:"how"` // name, model, crop, ground, point
 	Served []Served `json:"served,omitempty"`
 	Ms     int      `json:"ms"`
+}
+
+// JSONSchema says that a target is a ref or selector string, or an object.
+func (Target) JSONSchema() map[string]any {
+	point := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"x":     map[string]any{"type": "number"},
+			"y":     map[string]any{"type": "number"},
+			"space": map[string]any{"type": "string", "enum": []string{SpaceScreen, SpaceWindow, SpaceImage}},
+			"view":  map[string]any{"type": "string"},
+		},
+		"required":             []string{"x", "y"},
+		"additionalProperties": false,
+	}
+	return map[string]any{"anyOf": []any{
+		map[string]any{"type": "string", "description": `a ref such as "e12" or "w3", or a selector such as 'button "Save"'`},
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ref":    map[string]any{"type": "string"},
+				"select": map[string]any{"type": "string"},
+				"point":  point,
+				"window": map[string]any{"type": "string"},
+			},
+			"additionalProperties": false,
+		},
+	}}
 }

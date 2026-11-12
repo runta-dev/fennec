@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os/exec"
 	"sync"
 )
@@ -87,6 +88,22 @@ func Start(ctx context.Context, name string, args ...string) (*Client, error) {
 	c.cmd = cmd
 	if err := c.Initialize(ctx); err != nil {
 		_ = c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// Dial opens a session on a unix socket that speaks MCP directly, such as
+// the fennec-cua daemon's.
+func Dial(ctx context.Context, socket string) (*Client, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return nil, err
+	}
+	c := New(conn, conn)
+	if err := c.Initialize(ctx); err != nil {
+		_ = conn.Close()
 		return nil, err
 	}
 	return c, nil
