@@ -334,7 +334,7 @@ func (r *planRun) finish(ctx context.Context, stopped int, why *stop) {
 		r.res.OK = false
 		at := stopped
 		r.res.StoppedAt = &at
-		r.res.Error = why.err
+		r.res.Error = scrubSecrets(why.err, r.steps)
 		if stopped < len(r.raw) {
 			r.res.Remaining = Remaining(r.raw[stopped:])
 		}
@@ -548,6 +548,10 @@ func Remaining(steps []protocol.Step) []protocol.Step {
 				hidden := "[secret]"
 				s.Type = &hidden
 			}
+			if s.Set != nil && s.Value != nil && !strings.Contains(string(*s.Value), "{{") {
+				hidden := json.RawMessage(`"[secret]"`)
+				s.Value = &hidden
+			}
 			s.Intent = ""
 		}
 		if s.Recorded != nil {
@@ -562,10 +566,10 @@ func Remaining(steps []protocol.Step) []protocol.Step {
 
 // redactResult removes a password from everything a step result says.
 func redactResult(res protocol.StepResult, s protocol.Step) protocol.StepResult {
-	if s.Type == nil {
+	secret, ok := secretText(s)
+	if !ok {
 		return res
 	}
-	secret := strings.TrimRight(*s.Type, "\n")
 	hide := func(v string) string {
 		if strings.TrimSpace(secret) == "" {
 			return v
@@ -600,4 +604,26 @@ func (e *Executor) models() Models {
 		return nil
 	}
 	return e.Models
+}
+
+// scrubSecrets returns err with every password the plan's steps carry
+// replaced, whatever produced the message: the plan's error is copied to
+// the top of the result and must never repeat a secret.
+func scrubSecrets(err *protocol.Error, steps []protocol.Step) *protocol.Error {
+	if err == nil {
+		return nil
+	}
+	e := err // in place: finish keeps adding to the same error
+	for _, s := range steps {
+		if !flows.Secure(s) {
+			continue
+		}
+		secret, ok := secretText(s)
+		if !ok || strings.TrimSpace(secret) == "" {
+			continue
+		}
+		e.Message = strings.ReplaceAll(e.Message, secret, "the password")
+		e.Hint = strings.ReplaceAll(e.Hint, secret, "the password")
+	}
+	return e
 }

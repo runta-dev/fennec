@@ -111,16 +111,17 @@ type Desk struct {
 	AfterList func(d *Desk, n int)
 	ScaleV    float64
 
-	Calls     []Call
-	HitCalls  []HitCall
-	Performs  []string // "id:action"
-	Selected  []string
-	Values    map[string]string
-	Raised    []string
-	Closed    []string
-	ListReads int
-	Focuses   int
-	Ancestry  int
+	Calls      []Call
+	HitCalls   []HitCall
+	Performs   []string // "id:action"
+	Selected   []string
+	FocusedIDs []string // handles given the keyboard focus, in order
+	Values     map[string]string
+	Raised     []string
+	Closed     []string
+	ListReads  int
+	Focuses    int
+	Ancestry   int
 }
 
 // New makes an empty desk.
@@ -496,3 +497,44 @@ func (d *Desk) String() string {
 }
 
 var _ actions.Backend = (*Desk)(nil)
+
+// FocusElement implements actions.Backend: the element becomes the only
+// focused node of its window.
+func (d *Desk) FocusElement(ctx context.Context, h view.Handle) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	id, _ := h.(string)
+	d.FocusedIDs = append(d.FocusedIDs, id)
+	if err := d.PerformErr[id+":focus"]; err != nil {
+		return err
+	}
+	k, i := d.find(id)
+	if i < 0 {
+		return nil
+	}
+	for j := range d.Trees[k] {
+		d.Trees[k][j].States = withoutState(d.Trees[k][j].States, "focused")
+	}
+	d.Trees[k][i].States = append(d.Trees[k][i].States, "focused")
+	// Focused answers this element from now on for its window's process.
+	for _, w := range d.Wins {
+		if w.Key == k {
+			if d.Focus == nil {
+				d.Focus = map[int][]*view.RawNode{}
+			}
+			n := d.Trees[k][i]
+			d.Focus[w.PID] = []*view.RawNode{&n}
+		}
+	}
+	return nil
+}
+
+func withoutState(states []string, drop string) []string {
+	out := states[:0:0]
+	for _, s := range states {
+		if s != drop {
+			out = append(out, s)
+		}
+	}
+	return out
+}

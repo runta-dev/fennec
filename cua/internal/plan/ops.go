@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fennec/cua/internal/actions"
 	"fennec/cua/internal/protocol"
@@ -105,11 +106,23 @@ func (r *planRun) setText(ctx context.Context, i int, s protocol.Step, mode stri
 		if now, _, err := r.e.X.B.Read(ctx, n.Handle, true, false); err == nil && now.Value != nil {
 			got = *now.Value
 		}
-		if ValueEquals(n.Role, got, want) {
+		secure := n.HasState("protected") || s.Secret
+		switch {
+		case secure && utf8.RuneCountInString(got) == utf8.RuneCountInString(want):
+			// A secure field reads back as mask characters: its length is
+			// all that can be checked, and neither side is ever quoted.
+			res.Status, res.OK, res.Retry = protocol.StatusConfirmed, true, nil
+			res.Evidence = fmt.Sprintf("%s holds %d characters, as many as were set", describeNode(n), utf8.RuneCountInString(got))
+			res.Notes = nil
+		case secure:
+			perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s holds %d characters after set, not %d", describeNode(n), utf8.RuneCountInString(got), utf8.RuneCountInString(want)), Hint: "clear the field before setting the password again"}
+			res.Error, res.Notes = perr, nil
+			return res, &stop{err: perr}, true
+		case ValueEquals(n.Role, got, want):
 			res.Status, res.OK, res.Retry = protocol.StatusConfirmed, true, nil
 			res.Evidence = fmt.Sprintf("%s reads %q", describeNode(n), got)
 			res.Notes = nil
-		} else {
+		default:
 			perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s reads %q after set, not %q", describeNode(n), view.Clip(got, 80, false), want), Hint: "read the field before setting it again"}
 			res.Error = perr
 			return res, &stop{err: perr}, true
@@ -166,6 +179,11 @@ func (r *planRun) pickOption(ctx context.Context, i int, s protocol.Step, mode s
 		case <-ctx.Done():
 		}
 	}
+	if hit == nil && len(options) == 0 {
+		// No list showed: a macOS popup whose menu a synthetic press cannot
+		// keep open (seen live). Pick by typing, as a person can.
+		return r.typeSelect(ctx, i, s, mode, n, e, want)
+	}
 	if hit == nil {
 		perr := &protocol.Error{Code: protocol.ErrTargetNotFound, Message: fmt.Sprintf("%s has no option %q; nothing more was pressed", describeNode(n), want), Hint: "options: " + orStr(strings.Join(options, ", "), "none listed")}
 		return protocol.StepResult{Status: protocol.StatusUnconfirmed, Evidence: "opened " + describeNode(n), Error: perr}, &stop{err: perr}
@@ -174,14 +192,11 @@ func (r *planRun) pickOption(ctx context.Context, i int, s protocol.Step, mode s
 	if !res.OK && res.Status == protocol.StatusRefused {
 		return res, &stop{err: res.Error}
 	}
-	if now, _, err := r.e.X.B.Read(ctx, n.Handle, false, false); err == nil {
-		got := view.StripObjects(now.Name)
-		if now.Value != nil {
-			got = *now.Value
-		}
-		if view.Norm(got) == view.Norm(want) || view.Norm(view.StripObjects(now.Name)) == view.Norm(want) {
-			return okResult(fmt.Sprintf("picked %q in %s", want, describeNode(n))), nil
-		}
+	// The control may show the new value a moment after the option's press:
+	// read until it does, up to the same bound as a typed pick.
+	if got, ok := r.readUntil(ctx, n, want); ok {
+		return okResult(fmt.Sprintf("picked %q in %s", want, describeNode(n))), nil
+	} else if got != "" {
 		perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s reads %q after picking %q", describeNode(n), got, want)}
 		return protocol.StepResult{Status: protocol.StatusUnconfirmed, Evidence: "pressed the option", Error: perr}, &stop{err: perr}
 	}
@@ -489,4 +504,59 @@ func (r *planRun) readOptions(ctx context.Context, e view.Entry, want string) ([
 		}
 	}
 	return options, hit
+}
+
+// How long a type-selected value may take to read back.
+const typeSelectWait = 1500 * time.Millisecond
+
+// typeSelect picks an option by focusing the element and typing the
+// option's name, which a macOS popup button takes as a selection. The value
+// is read back until it shows the option, so a slow update is not reported
+// as a failure.
+func (r *planRun) typeSelect(ctx context.Context, i int, s protocol.Step, mode string, n view.RawNode, e view.Entry, want string) (protocol.StepResult, *stop) {
+	end := r.acting()
+	err := r.e.X.B.FocusElement(ctx, e.Handle)
+	end()
+	if err != nil {
+		perr := &protocol.Error{Code: protocol.ErrTargetNotFound, Message: fmt.Sprintf("%s showed no options and takes no focus to pick %q by typing; nothing was typed", describeNode(n), want)}
+		return protocol.StepResult{Status: protocol.StatusRefused, Error: perr}, &stop{err: perr}
+	}
+	text := want
+	res := r.send(ctx, i, protocol.Step{Type: &text, Into: &protocol.Target{Ref: e.Ref}, Input: s.Input}, r.request(mode))
+	if !res.OK && res.Status == protocol.StatusRefused {
+		return res, &stop{err: res.Error}
+	}
+	got, ok := r.readUntil(ctx, n, want)
+	if ok {
+		return okResult(fmt.Sprintf("picked %q in %s by typing its name", want, describeNode(n))), nil
+	}
+	perr := &protocol.Error{Code: protocol.ErrExpectFailed, Message: fmt.Sprintf("%s reads %q after typing %q to pick it", describeNode(n), got, want), Hint: "the popup may not list that option; observe it with the menu open"}
+	return protocol.StepResult{Status: protocol.StatusUnconfirmed, Evidence: "typed the option's name", Error: perr}, &stop{err: perr}
+}
+
+// readUntil reads an element until its value (or name) is want, for up to
+// typeSelectWait. It returns the last reading and whether it matched; an
+// empty reading means the element could not be read.
+func (r *planRun) readUntil(ctx context.Context, n view.RawNode, want string) (string, bool) {
+	got := ""
+	deadline := time.Now().Add(typeSelectWait)
+	for {
+		if now, _, err := r.e.X.B.Read(ctx, n.Handle, false, false); err == nil {
+			name := view.StripObjects(now.Name)
+			got = name
+			if now.Value != nil {
+				got = *now.Value
+			}
+			if view.Norm(got) == view.Norm(want) || view.Norm(name) == view.Norm(want) {
+				return got, true
+			}
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return got, false
+		}
+		select {
+		case <-time.After(optionPoll):
+		case <-ctx.Done():
+		}
+	}
 }

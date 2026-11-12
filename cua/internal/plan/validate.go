@@ -201,11 +201,11 @@ func validateStep(i int, s protocol.Step) *protocol.Error {
 		return stepErr(i, "expect", "names no condition")
 	}
 	if s.Secret {
-		if kind != "type" {
-			return stepErr(i, "secret", "marks a "+kind+" step; only a type step carries a password")
+		if kind != "type" && kind != "set" {
+			return stepErr(i, "secret", "marks a "+kind+" step; only a type or set step carries a password")
 		}
-		body := strings.TrimSuffix(*s.Type, "\n")
-		if body == "" || strings.ContainsAny(body, "\r\n") {
+		body, ok := secretText(s)
+		if !ok || body == "" || strings.ContainsAny(body, "\r\n") {
 			return stepErr(i, "secret", "needs one password line, optionally ending in a newline")
 		}
 	}
@@ -248,4 +248,20 @@ func emptyExpect(e protocol.Expect) bool {
 
 func emptyWait(w protocol.WaitRequest) bool {
 	return emptyExpect(w.Expect) && !w.Still && !w.Changed
+}
+
+// secretText is the password a step carries: a type step's text or a set
+// step's string value, without a trailing newline.
+func secretText(s protocol.Step) (string, bool) {
+	switch {
+	case s.Type != nil:
+		return strings.TrimRight(*s.Type, "\n"), true
+	case s.Set != nil && s.Value != nil:
+		var v string
+		if json.Unmarshal(*s.Value, &v) != nil {
+			return "", false
+		}
+		return strings.TrimRight(v, "\n"), true
+	}
+	return "", false
 }

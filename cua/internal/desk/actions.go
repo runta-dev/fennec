@@ -314,3 +314,12 @@ func hitRefusal(why string) error {
 }
 
 var _ actions.Backend = (*Actions)(nil)
+
+// FocusElement sets AXFocused.
+func (a *Actions) FocusElement(ctx context.Context, h view.Handle) error {
+	el, err := element(h)
+	if err != nil {
+		return err
+	}
+	return axFailure(el.SetBool("AXFocused", true), "AXFocused")
+}

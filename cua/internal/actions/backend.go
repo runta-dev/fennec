@@ -29,6 +29,8 @@ type Backend interface {
 	SetValue(ctx context.Context, h view.Handle, value string) error
 	// Select selects a tab, option, row or tree item through accessibility.
 	Select(ctx context.Context, h view.Handle) error
+	// FocusElement gives an element the keyboard focus (AXFocused).
+	FocusElement(ctx context.Context, h view.Handle) error
 	// Ancestors are an element's ancestors, innermost first, up to its window.
 	Ancestors(ctx context.Context, h view.Handle) ([]view.RawNode, error)
 	// Same says whether two handles are the same element.

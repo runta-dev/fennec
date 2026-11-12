@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -496,3 +498,67 @@ func TestCaveatsForUnreadActions(t *testing.T) {
 }
 
 var _ = view.Norm
+
+// A popup that shows no list when pressed (a macOS NSPopUpButton under a
+// synthetic press) is picked by focusing it and typing the option's name;
+// a value that updates late still passes.
+func TestSetPopupTypeSelects(t *testing.T) {
+	r := newRig(t, policy.Config{}).notes()
+	red := "Red"
+	r.d.Add("cg:1", "color", "combobox", "Color", fakedesk.Box(10, 70, 100, 20), "cg:1")
+	r.d.Node("color").Value = &red
+	r.d.onDriver = func(tool string, args map[string]any) {
+		if strings.Contains(fmt.Sprint(args), "Blue") {
+			blue := "Blue"
+			r.d.Node("color").Value = &blue
+		}
+	}
+	res := r.run(protocol.Step{Set: sel(`combobox "Color"`), Value: raw(`"Blue"`)})
+	mustPass(t, res)
+	if strings.Join(r.d.FocusedIDs, ",") != "color" || len(typeCalls(r.d)) != 1 {
+		t.Fatalf("focus %v, type calls %d", r.d.FocusedIDs, len(typeCalls(r.d)))
+	}
+	if !strings.Contains(res.Steps[0].Evidence, "by typing") {
+		t.Errorf("evidence %q", res.Steps[0].Evidence)
+	}
+}
+
+// A password can be set into a secure field: the step runs, and its value
+// never appears in the result or in the remaining steps.
+func TestSecretSetRedacted(t *testing.T) {
+	r := newRig(t, policy.Config{}).notes()
+	r.d.Add("cg:1", "pw", "textbox", "Password", fakedesk.Box(10, 70, 200, 20), "cg:1")
+	r.d.Node("pw").States = append(r.d.Node("pw").States, "protected")
+	res := r.run(protocol.Step{Set: sel(`secure textbox "Password"`), Value: raw(`"hunter2"`), Secret: true})
+	data, _ := json.Marshal(res)
+	if strings.Contains(string(data), "hunter2") {
+		t.Fatalf("the password shows: %s", data)
+	}
+	rem := Remaining([]protocol.Step{{Set: sel("Password"), Value: raw(`"hunter2"`), Secret: true, Intent: "log in"}})
+	if string(*rem[0].Value) != `"[secret]"` || rem[0].Intent != "" {
+		t.Errorf("remaining %+v", rem[0])
+	}
+}
+
+// A secure field reads back as mask characters: the set is confirmed by
+// length, and a mismatch never quotes the password, at any level.
+func TestSecretSetReadsBackByLength(t *testing.T) {
+	for _, tc := range []struct {
+		shown string
+		ok    bool
+	}{{"•••••••", true}, {"•••", false}} {
+		r := newRig(t, policy.Config{}).notes()
+		r.d.Add("cg:1", "pw", "textbox", "Password", fakedesk.Box(10, 70, 200, 20), "cg:1")
+		r.d.Node("pw").States = append(r.d.Node("pw").States, "protected")
+		shown := tc.shown
+		r.d.onSet = func(string, string) string { return shown }
+		res := r.run(protocol.Step{Set: sel(`secure textbox "Password"`), Value: raw(`"hunter2"`), Secret: true})
+		data, _ := json.Marshal(res)
+		if strings.Contains(string(data), "hunter2") {
+			t.Fatalf("the password shows: %s", data)
+		}
+		if res.OK != tc.ok {
+			t.Errorf("shown %q: ok %v: %s", tc.shown, res.OK, data)
+		}
+	}
+}
