@@ -49,7 +49,10 @@ func (filter *chatgptPathFilter) migrateThreads(message []byte) {
 	if _, checked := migrationAttempts.LoadOrStore(key, true); checked {
 		return
 	}
-	if _, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
+	if path, err := localssh.FindCodexRollout(filter.codexHome, id); err == nil {
+		if err := filter.adoptProvider(path); err != nil {
+			fmt.Fprintf(os.Stderr, "fennec: conversation %s keeps its provider: %v\n", id, err)
+		}
 		return
 	}
 	if err := filter.importMacRollout(id); err != nil {
@@ -136,8 +139,12 @@ func (filter *chatgptPathFilter) cloudRollout(data []byte) []byte {
 // cloudRolloutFile maps working directories in a rollout file, keeping Codex's
 // own zstd compression for .jsonl.zst rollouts.
 func (filter *chatgptPathFilter) cloudRolloutFile(name string, data []byte) ([]byte, error) {
+	return transformRolloutFile(name, data, func(plain []byte) []byte { return filter.adoptRolloutProvider(filter.cloudRollout(plain)) })
+}
+
+func transformRolloutFile(name string, data []byte, transform func([]byte) []byte) ([]byte, error) {
 	if !strings.HasSuffix(name, ".zst") {
-		return filter.cloudRollout(data), nil
+		return transform(data), nil
 	}
 	decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
@@ -153,5 +160,51 @@ func (filter *chatgptPathFilter) cloudRolloutFile(name string, data []byte) ([]b
 		return nil, err
 	}
 	defer encoder.Close()
-	return encoder.EncodeAll(filter.cloudRollout(plain), nil), nil
+	return encoder.EncodeAll(transform(plain), nil), nil
+}
+
+// adoptRolloutProvider records Magpie as the thread's model provider when cloud
+// ChatGPT runs through Magpie. Codex refuses to resume a thread under a
+// different provider ("This chat uses openai, but your current provider is
+// magpie"); Magpie routes OpenAI models as well, so the conversation continues
+// through it. Only these exact fields change.
+func (filter *chatgptPathFilter) adoptRolloutProvider(data []byte) []byte {
+	if filter.provider == "" || filter.provider == "openai" {
+		return data
+	}
+	for _, field := range []string{"model_provider", "model_provider_id"} {
+		data = bytes.ReplaceAll(data, []byte(`"`+field+`":"openai"`), []byte(`"`+field+`":"`+filter.provider+`"`))
+	}
+	return data
+}
+
+// adoptProvider applies adoptRolloutProvider to a rollout already in the cloud
+// before ChatGPT first opens it in this service run.
+func (filter *chatgptPathFilter) adoptProvider(path string) error {
+	if filter.provider == "" || filter.provider == "openai" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	updated, err := transformRolloutFile(filepath.Base(path), data, func(plain []byte) []byte {
+		if !bytes.Contains(plain, []byte(`"model_provider":"openai"`)) {
+			return plain
+		}
+		return filter.adoptRolloutProvider(plain)
+	})
+	if err != nil || bytes.Equal(updated, data) {
+		return err
+	}
+	// Recompressing unchanged content still differs; compare decoded content.
+	if strings.HasSuffix(path, ".zst") {
+		decoder, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+		defer decoder.Close()
+		before, _ := decoder.DecodeAll(data, nil)
+		if !bytes.Contains(before, []byte(`"model_provider":"openai"`)) {
+			return nil
+		}
+	}
+	return writeFileAtomic(path, updated)
 }

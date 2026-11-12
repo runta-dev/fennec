@@ -33,6 +33,9 @@ func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
 	if served, ok := conn.(interface{ CodexHome() string }); ok {
 		filter.codexHome = served.CodexHome()
 	}
+	if filter.StreamLabel() == CodexAppServerGateway && gatewayOverrides(filter.codexHome) != nil {
+		filter.provider = "magpie"
+	}
 	filter.inbound.server = false
 	filter.outbound.server = true
 	return filter
@@ -51,6 +54,7 @@ type chatgptPathFilter struct {
 	paths   map[string]string // cloud directory -> Mac directory
 
 	codexHome string
+	provider  string // model provider forced for this app-server, if any
 
 	writeMu  sync.Mutex
 	inbound  wsStream

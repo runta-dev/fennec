@@ -86,3 +86,26 @@ func TestCompressedRolloutKeepsCodexFormat(t *testing.T) {
 		t.Fatal(string(decoded), err)
 	}
 }
+
+func TestMagpieModeAdoptsProviderForResumedThreads(t *testing.T) {
+	directory := t.TempDir()
+	plain := []byte(`{"type":"session_meta","payload":{"model_provider":"openai","text":"openai stays"}}` + "\n" + `{"type":"event_msg","payload":{"model_provider_id":"openai"}}` + "\n")
+	encoder, _ := zstd.NewWriter(nil)
+	path := filepath.Join(directory, "rollout-x-id.jsonl.zst")
+	os.WriteFile(path, encoder.EncodeAll(plain, nil), 0600)
+	filter := &chatgptPathFilter{provider: "magpie"}
+	if err := filter.adoptProvider(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	decoder, _ := zstd.NewReader(nil)
+	decoded, _ := decoder.DecodeAll(data, nil)
+	if bytes.Contains(decoded, []byte(`"model_provider":"openai"`)) || bytes.Contains(decoded, []byte(`"model_provider_id":"openai"`)) || !bytes.Contains(decoded, []byte("openai stays")) {
+		t.Fatal(string(decoded))
+	}
+	// Native mode (no forced provider) leaves threads unchanged.
+	native := &chatgptPathFilter{}
+	if got := native.adoptRolloutProvider(plain); !bytes.Equal(got, plain) {
+		t.Fatal(string(got))
+	}
+}
