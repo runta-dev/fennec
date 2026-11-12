@@ -237,7 +237,7 @@ capabilities:
       turn frees. After resume calls work again.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestStopEndsInFlight, planned:internal/policy.TestStopUntilResume, planned:internal/policy.TestQueuedRunDiesAtStop]
+    tests: [internal/daemon.TestStopEndsACallInFlightAndBusyBetweenSessions, internal/sched.TestStopCancelsAndRefusesUntilResume, internal/sched.TestStopCancelsAndRefusesUntilResume]
     upstream:
       - rust/shuttle/src/daemon.rs::stop_ends_a_desk_call_in_flight
       - rust/shuttle/src/daemon.rs::stop_fails_every_call_and_ends_the_run_in_flight_until_resume
@@ -268,7 +268,7 @@ capabilities:
       confirm off and nothing is marked acting or stopped.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestConfirmCoordinate, planned:internal/policy.TestConfirmEvery, planned:internal/policy.TestConfirmAllowedIsOwnInput]
+    tests: [internal/policy.TestConfirmCoordinate, internal/policy.TestConfirmEvery, internal/policy.TestConfirmAllowedIsOwnInput]
     upstream:
       - rust/shuttle/src/daemon.rs::confirm_asks_before_the_actions_its_mode_names_and_a_no_declines
       - rust/shuttle/src/daemon.rs::an_allowed_confirm_counts_as_the_desks_own_input_and_a_declined_one_does_not
@@ -284,7 +284,7 @@ capabilities:
       the text the user reads.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestConfirmQuestionText, planned:internal/policy.TestConfirmQuestionEscapes]
+    tests: [internal/policy.TestConfirmQuestionText, internal/policy.TestConfirmQuestionEscapes]
     upstream:
       - rust/shuttle/src/daemon.rs::the_confirm_question_names_the_target_and_escapes_what_the_agent_sends
   - id: CAP-DMN-019
@@ -297,7 +297,7 @@ capabilities:
       normally once it is answered.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestConfirmAfterTurn, planned:internal/policy.TestCallsFailWhileDialogOpen]
+    tests: [internal/policy.TestConfirmAfterTurn, internal/policy.TestCallsFailWhileDialogOpen]
     upstream:
       - rust/shuttle/src/daemon.rs::a_confirm_dialog_opens_only_once_the_actions_queued_before_it_are_done
       - rust/shuttle/src/daemon.rs::an_action_waiting_for_the_turn_never_opens_its_dialog
@@ -561,7 +561,7 @@ capabilities:
       missing directory and a broken configuration load no plugins.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestLoadPlugins, planned:internal/extensions.TestPluginName, planned:internal/extensions.TestPluginDir]
+    tests: [internal/extensions.TestLoadPlugins, internal/extensions.TestPluginName, internal/extensions.TestPluginDir]
     upstream:
       - rust/shuttle/src/plugins.rs::loads_valid_plugins_in_file_name_order_and_skips_every_broken_file_whole
       - rust/shuttle/src/plugins.rs::a_plugin_name_ends_in_run_and_has_lowercase_letters_digits_and_underscores
@@ -577,7 +577,7 @@ capabilities:
       tool.
     surface: extensions
     parity: oracle
-    tests: [planned:internal/extensions.TestPluginListed, planned:internal/extensions.TestPluginRuns, planned:internal/extensions.TestPluginResources]
+    tests: [internal/extensions.TestPluginListed, internal/extensions.TestPluginRuns, internal/extensions.TestPluginResources]
     upstream:
       - rust/shuttle/src/tools.rs::the_built_in_names_are_the_listed_tools_and_plugins_follow_with_script_runs_arguments
       - rust/shuttle/src/mcp.rs::a_plugin_is_listed_runs_through_the_daemon_and_serves_its_resource
@@ -596,7 +596,7 @@ capabilities:
       shorter path, without creating the services directory.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestLoadServices, planned:internal/extensions.TestServiceSocketTooLong]
+    tests: [internal/extensions.TestLoadServices, internal/extensions.TestServiceSocketTooLong]
     upstream:
       - rust/shuttle/src/plugins.rs::a_service_file_loads_its_tools_and_a_broken_rule_or_a_taken_name_skips_it_whole
       - rust/shuttle/src/services.rs::a_service_whose_socket_path_is_too_long_fails_the_start_and_says_why
@@ -610,7 +610,7 @@ capabilities:
       is stopped before the service starts again.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestServiceRestart, planned:internal/extensions.TestServiceStaleCopy, planned:internal/extensions.TestServiceStopsWithDaemon]
+    tests: [internal/extensions.TestServiceRestart, internal/extensions.TestServiceStaleCopy, internal/extensions.TestServiceStopsWithDaemon]
     upstream:
       - rust/shuttle/src/services.rs::a_service_that_dies_comes_back_and_answers_again
       - rust/shuttle/src/services.rs::a_service_killed_with_its_socket_left_behind_binds_again_on_restart
@@ -629,7 +629,7 @@ capabilities:
       turn.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestServiceListed, planned:internal/extensions.TestServiceForward, planned:internal/extensions.TestServiceLargePayload]
+    tests: [internal/extensions.TestServiceListed, internal/extensions.TestServiceForward, internal/extensions.TestServiceLargePayload]
     upstream:
       - rust/shuttle/src/services.rs::the_mcp_server_lists_a_service_tool_with_its_schema_and_forwards_its_call
       - rust/shuttle/src/tools.rs::a_service_tool_is_listed_with_its_own_schema_unless_it_is_for_the_wire_only
@@ -644,7 +644,7 @@ capabilities:
       if read late. A call that no service accepts within 10 s fails with an error.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestServiceCancel, planned:internal/extensions.TestServiceLateReply, planned:internal/extensions.TestServiceListenWait]
+    tests: [internal/extensions.TestServiceCancel, internal/extensions.TestServiceLateReply, internal/extensions.TestServiceListenWait]
     upstream:
       - rust/shuttle/src/services.rs::a_client_that_closes_mid_call_ends_the_call_and_the_service_sees_its_pipe_close
       - rust/shuttle/src/services.rs::a_reply_the_service_sends_before_it_closes_reaches_a_caller_that_reads_late
@@ -657,7 +657,7 @@ capabilities:
       calls work again). Turning scripts off leaves services running, listed and reachable.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestServiceStop, planned:internal/extensions.TestServiceScriptsOff]
+    tests: [internal/extensions.TestServiceStop, internal/extensions.TestServiceScriptsOff]
     upstream:
       - rust/shuttle/src/services.rs::a_stop_drops_live_splices_refuses_new_calls_and_keeps_the_service
       - rust/shuttle/src/services.rs::script_run_off_leaves_a_service_running_and_routed

@@ -556,7 +556,7 @@ capabilities:
       and the daemon offers them no path to the safety layer.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestPlansAndScriptsCannotReachSafety]
+    tests: [internal/policy.TestPlansAndScriptsCannotReachSafety]
     upstream:
       - 'node/safety/no gui_plan step and no desk API call reaches the daemon''s safety controls'
   - id: CAP-STP-038

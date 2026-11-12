@@ -55,7 +55,7 @@ capabilities:
       can be switched off. When the config fails to load, every call except status fails with the load error.
     surface: policy
     parity: oracle
-    tests: [planned:scenario/StopEndsRunInFlight, planned:scenario/AllowlistBlackout, planned:internal/policy.TestConfirmModes, planned:internal/policy.TestBadConfigFailsAllButStatus]
+    tests: [planned:scenario/StopEndsRunInFlight, planned:scenario/AllowlistBlackout, internal/policy.TestConfirmModes, internal/policy.TestBadConfigFailsAllButStatus]
     upstream: [changelog/0.1.0/4]
 
   - id: CAP-RGB-006
@@ -89,7 +89,7 @@ capabilities:
       empty id.
     surface: observe
     parity: spec
-    tests: [internal/view.TestTruncationNoteKinds, planned:internal/actions.TestFocusRejectsMalformedRef]
+    tests: [internal/view.TestTruncationNoteKinds, internal/actions.TestFocusRejectsMalformedRef]
     upstream: [changelog/0.1.2/1]
 
   - id: CAP-RGB-009
@@ -123,7 +123,7 @@ capabilities:
       and a block returning to an earlier content (a caret) counts only with new contents.
     surface: wait
     parity: oracle
-    tests: [planned:internal/vision.TestStillnessVolatileBlocks, planned:scenario/DragBothEndsAllowlisted, planned:scenario/ScrollAtPoint]
+    tests: [internal/vision.TestStillnessVolatileBlocks, planned:scenario/DragBothEndsAllowlisted, planned:scenario/ScrollAtPoint]
     upstream: [changelog/0.1.3/1]
 
   - id: CAP-RGB-012
@@ -134,7 +134,7 @@ capabilities:
       scripts off turns these off too.
     surface: extensions
     parity: oracle
-    tests: [planned:internal/extensions.TestPluginSpecAddsRunTool, planned:internal/extensions.TestScriptsOffDisablesPlugins]
+    tests: [internal/extensions.TestPluginSpecAddsRunTool, internal/extensions.TestScriptsOffDisablesPlugins]
     upstream: [changelog/0.1.3/2]
 
   - id: CAP-RGB-013
@@ -158,7 +158,7 @@ capabilities:
       closes those in flight while the service keeps running. On daemon exit it gets TERM, then KILL after 3 s.
     surface: extensions
     parity: oracle
-    tests: [planned:internal/extensions.TestServiceBackoff, planned:internal/extensions.TestServiceSplice, planned:internal/extensions.TestStopClosesServiceCalls]
+    tests: [internal/extensions.TestServiceBackoff, internal/extensions.TestServiceSplice, internal/extensions.TestStopClosesServiceCalls]
     upstream: [changelog/0.1.5/3]
 
   - id: CAP-RGB-015
@@ -209,7 +209,7 @@ capabilities:
       the same variable the binary itself reads to find the daemon.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestEndpointEnv]
+    tests: [internal/extensions.TestEndpointEnv]
     upstream: [changelog/0.1.6/3]
 
   - id: CAP-RGB-020
@@ -267,7 +267,7 @@ capabilities:
       Screen size is reported in pixels on Retina.
     surface: act
     parity: oracle
-    tests: [planned:scenario/ClickAfterStillLandsOnPoint, planned:internal/vision.TestRetinaScreenPixels]
+    tests: [planned:scenario/ClickAfterStillLandsOnPoint, internal/vision.TestRetinaScreenPixels]
     upstream: [changelog/0.1.9/2]
 
   - id: CAP-RGB-025
@@ -291,7 +291,7 @@ capabilities:
       within 1 s and exits.
     surface: run
     parity: spec
-    tests: [internal/script.TestTimeoutReportsWithLogs, planned:internal/extensions.TestTermThenKill]
+    tests: [internal/script.TestTimeoutReportsWithLogs, internal/extensions.TestTermThenKill]
     upstream: [changelog/0.1.9/8]
 
   - id: CAP-RGB-027
@@ -317,7 +317,7 @@ capabilities:
       An element whose app refuses its press action gets a hit-checked click at its centre.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/VisionIndexClick, planned:internal/vision.TestScaleFallbackByWidth]
+    tests: [planned:scenario/VisionIndexClick, internal/vision.TestScaleFallbackByWidth]
     upstream: [changelog/0.1.10/2]
 
   - id: CAP-RGB-029
@@ -348,7 +348,7 @@ capabilities:
       170 ms against 325 ms at a 1024 edge cap upstream).
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestCaptureLatencyBudget]
+    tests: [internal/vision.TestCaptureLatencyBudget]
     upstream: [changelog/0.1.10/6]
 
   - id: CAP-RGB-032
@@ -408,7 +408,7 @@ capabilities:
       (Electron, Chromium, Qt) carries a note that its pixels may be stale.
     surface: act
     parity: oracle
-    tests: [planned:scenario/KittyBackgroundType, planned:internal/actions.TestBlankReadbackUnconfirmed]
+    tests: [planned:scenario/KittyBackgroundType, internal/actions.TestBlankReadbackUnconfirmed]
     upstream: [changelog/0.1.13/1]
 
   - id: CAP-RGB-037
@@ -421,7 +421,7 @@ capabilities:
       the driver's advice to retry in the foreground and is not an error.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestUnseenWindowHint]
+    tests: [internal/actions.TestUnseenWindowHint]
     upstream: [changelog/0.1.13/2, changelog/0.1.20/1]
 
   - id: CAP-RGB-038
@@ -594,7 +594,7 @@ capabilities:
       layout instead of capturing again.
     surface: observe
     parity: oracle
-    tests: [planned:scenario/WindowOrderAcrossApps, planned:internal/vision.TestReuseProvenScale]
+    tests: [planned:scenario/WindowOrderAcrossApps, internal/vision.TestReuseProvenScale]
     upstream: [changelog/0.1.21/1]
 
   - id: CAP-RGB-053
@@ -641,7 +641,7 @@ capabilities:
       as unchecked.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestCoverFallbackWindowList, planned:scenario/QtWindowForegroundClick]
+    tests: [internal/actions.TestCoverFallbackWindowList, planned:scenario/QtWindowForegroundClick]
     upstream: [changelog/0.1.23/2]
 
   - id: CAP-RGB-057
@@ -674,7 +674,7 @@ capabilities:
       unverified focus, and is then reported unconfirmed.
     surface: act
     parity: oracle
-    tests: [planned:scenario/BackgroundTypeWrongFocusRefused, planned:internal/actions.TestUnverifiedFocusOptIn]
+    tests: [planned:scenario/BackgroundTypeWrongFocusRefused, internal/actions.TestUnverifiedFocusOptIn]
     upstream: [changelog/0.1.28/2]
 
   - id: CAP-RGB-060
@@ -685,7 +685,7 @@ capabilities:
       is honoured.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestDeliveryModeMismatchRefused]
+    tests: [internal/policy.TestDeliveryModeMismatchRefused]
     upstream: [changelog/0.1.28/3]
 
   - id: CAP-RGB-061
@@ -717,7 +717,7 @@ capabilities:
       is encoded once, and the default PNG is unchanged.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestJPEGOnRequest]
+    tests: [internal/vision.TestJPEGOnRequest]
     upstream: [changelog/0.1.29/1]
 
   - id: CAP-RGB-064
@@ -739,7 +739,7 @@ capabilities:
       clicks and every other action still refuse, and a driver without support refuses before sending.
     surface: policy
     parity: oracle
-    tests: [planned:scenario/LockedScreenType, planned:internal/policy.TestLockedChordRefused]
+    tests: [planned:scenario/LockedScreenType, internal/policy.TestLockedChordRefused]
     upstream: [changelog/0.1.30/2]
 
   - id: CAP-RGB-066
@@ -770,7 +770,7 @@ capabilities:
       its stderr instead of only an exit status. (fennec-cua scripts run in-process; this applies to plugins.)
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestCrashStderrTail]
+    tests: [internal/extensions.TestCrashStderrTail]
     upstream: [changelog/0.1.30/5]
 
   - id: CAP-RGB-069
@@ -792,7 +792,7 @@ capabilities:
       that process's window rather than failing for want of a focused window.
     surface: act
     parity: oracle
-    tests: [planned:scenario/AppTargetNoWindowRefused, planned:internal/policy.TestAutoNoForegroundWithoutWindow]
+    tests: [planned:scenario/AppTargetNoWindowRefused, internal/policy.TestAutoNoForegroundWithoutWindow]
     upstream: [changelog/0.1.31/1, changelog/0.1.31/2]
 
   - id: CAP-RGB-071
@@ -890,7 +890,7 @@ capabilities:
       image pixels), not a mapped desktop point, followed by any scope note.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestClickReplyCallerPoint]
+    tests: [internal/actions.TestClickReplyCallerPoint]
     upstream: [changelog/0.1.33/7]
 
   - id: CAP-RGB-080
@@ -947,7 +947,7 @@ capabilities:
       checked.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestYieldWindow, planned:scenario/YieldToUserMouse, planned:scenario/OwnTypingNotUser]
+    tests: [internal/policy.TestYieldWindow, planned:scenario/YieldToUserMouse, planned:scenario/OwnTypingNotUser]
     upstream: [changelog/0.1.35/1, changelog/0.1.37/2]
 
   - id: CAP-RGB-085
@@ -969,7 +969,7 @@ capabilities:
       and a click about 2036 ms on a 2x Mac.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestSingleCapture, planned:internal/vision.TestScaleSurvivesDownsize]
+    tests: [internal/vision.TestSingleCapture, internal/vision.TestScaleSurvivesDownsize]
     upstream: [changelog/0.1.36/3, changelog/0.1.37/1, changelog/0.1.37/8]
 
   - id: CAP-RGB-087
@@ -990,7 +990,7 @@ capabilities:
       rather than 1.5 s.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestSettleRevertEndsEarly, planned:internal/vision.TestDialogNoChangeSettle]
+    tests: [internal/vision.TestSettleRevertEndsEarly, internal/vision.TestDialogNoChangeSettle]
     upstream: [changelog/0.1.37/6]
 
   - id: CAP-RGB-089

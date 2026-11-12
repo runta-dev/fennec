@@ -1,6 +1,7 @@
 // Package mcpserver serves MCP JSON-RPC over a line-delimited stream (stdio or
 // a unix socket connection). It handles the handshake, tools/list, tools/call
-// and cancellation; tools are supplied by a Handler.
+// and cancellation; tools are supplied by a Handler. A Handler that is also
+// a ResourceHandler serves resources/list and resources/read.
 package mcpserver
 
 import (
@@ -59,6 +60,9 @@ type Session struct {
 	Client string
 	// Version is the negotiated protocol version.
 	Version string
+	// RunToken is the initialize request's _meta["fennec-cua/run"]: a
+	// script plugin passes it so its calls pass as its run's caller.
+	RunToken string
 }
 
 // Handler answers tools.
@@ -206,6 +210,10 @@ func (s *server) dispatch(ctx context.Context, line []byte, wg *sync.WaitGroup) 
 		return ready(&reply{ID: m.ID, Result: map[string]any{"tools": s.h.Tools(&s.sess)}})
 	case "tools/call":
 		return s.call(ctx, m, wg)
+	case "resources/list", "resources/read":
+		if rh, ok := s.h.(ResourceHandler); ok {
+			return s.resources(rh, m)
+		}
 	}
 	return fail(m.ID, CodeMethodNotFound, "method not found: "+m.Method)
 }
@@ -231,7 +239,10 @@ func (s *server) notify(m message) {
 func (s *server) initialize(params json.RawMessage) any {
 	var p struct {
 		ProtocolVersion string `json:"protocolVersion"`
-		ClientInfo      struct {
+		Meta            struct {
+			Run string `json:"fennec-cua/run"`
+		} `json:"_meta"`
+		ClientInfo struct {
 			Name string `json:"name"`
 		} `json:"clientInfo"`
 	}
@@ -244,6 +255,7 @@ func (s *server) initialize(params json.RawMessage) any {
 	}
 	s.sess.Version = version
 	s.sess.Client = p.ClientInfo.Name
+	s.sess.RunToken = p.Meta.Run
 	s.sess.AgentID = agentID(s.info.IDPrefix, p.ClientInfo.Name, s.info.FixedID)
 	instructions := s.info.Instructions
 	if len(instructions) > 2048 {
@@ -251,7 +263,7 @@ func (s *server) initialize(params json.RawMessage) any {
 	}
 	return map[string]any{
 		"protocolVersion": version,
-		"capabilities":    map[string]any{"tools": map[string]any{}},
+		"capabilities":    s.capabilities(),
 		"serverInfo":      map[string]any{"name": s.info.Name, "version": s.info.Version},
 		"instructions":    instructions,
 	}
@@ -348,4 +360,62 @@ func clean(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// Resource describes one resource for resources/list.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceContents is a resource read as text.
+type ResourceContents struct {
+	URI      string `json:"uri"`
+	MIMEType string `json:"mimeType,omitempty"`
+	Text     string `json:"text"`
+}
+
+// ErrUnknownResource answers resources/read for a URI nobody serves.
+var ErrUnknownResource = errors.New("unknown resource")
+
+// ResourceHandler is optional: a Handler that also implements it serves
+// resources/list and resources/read, and initialize names the resources
+// capability while it lists any.
+type ResourceHandler interface {
+	Resources(s *Session) []Resource
+	ReadResource(s *Session, uri string) (ResourceContents, error)
+}
+
+func (s *server) capabilities() map[string]any {
+	caps := map[string]any{"tools": map[string]any{}}
+	if rh, ok := s.h.(ResourceHandler); ok && len(rh.Resources(&s.sess)) > 0 {
+		caps["resources"] = map[string]any{}
+	}
+	return caps
+}
+
+func (s *server) resources(rh ResourceHandler, m message) *pending {
+	if m.Method == "resources/list" {
+		list := rh.Resources(&s.sess)
+		if list == nil {
+			list = []Resource{}
+		}
+		return ready(&reply{ID: m.ID, Result: map[string]any{"resources": list}})
+	}
+	var p struct {
+		URI string `json:"uri"`
+	}
+	if err := json.Unmarshal(m.Params, &p); err != nil || p.URI == "" {
+		return fail(m.ID, CodeInvalidParams, "resources/read needs a uri")
+	}
+	c, err := rh.ReadResource(&s.sess, p.URI)
+	if errors.Is(err, ErrUnknownResource) {
+		return fail(m.ID, CodeInvalidParams, "unknown resource: "+p.URI)
+	}
+	if err != nil {
+		return fail(m.ID, CodeInternal, err.Error())
+	}
+	return ready(&reply{ID: m.ID, Result: map[string]any{"contents": []ResourceContents{c}}})
 }

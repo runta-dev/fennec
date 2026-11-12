@@ -2,7 +2,7 @@
 // in. tart is a development dependency: https://github.com/cirruslabs/tart/releases.
 //
 //	go run ./cmd/cua-vm create [-image IMAGE]   clone the VM (first run downloads the image)
-//	go run ./cmd/cua-vm up                      boot it headless and wait for SSH
+//	go run ./cmd/cua-vm up                      boot it headless and wait for its guest agent
 //	go run ./cmd/cua-vm down                    shut it down
 //	go run ./cmd/cua-vm exec -- COMMAND         run a shell command in the VM
 //	go run ./cmd/cua-vm gui -- COMMAND          run it in the VM's desktop session
@@ -55,9 +55,9 @@ func run(args []string) error {
 		fmt.Printf("cloning %s into %s (the first run downloads the image)\n", *image, v.Name)
 		return v.Create(ctx, *image)
 	case "up":
-		ip, err := v.Start(ctx)
+		_, err := v.Start(ctx)
 		if err == nil {
-			fmt.Println(ip)
+			fmt.Println("up")
 		}
 		return err
 	case "down":
@@ -186,6 +186,11 @@ func test(ctx context.Context, v *vm.VM, args []string) error {
 	return withSession(ctx, v, func(s *vm.Session) error {
 		if err := pushDir(ctx, s, stage, ".", guestDir+"/tests"); err != nil {
 			return err
+		}
+		for _, b := range bins {
+			if err := s.GrantTCC(ctx, guestDir+"/tests/"+b); err != nil {
+				return fmt.Errorf("grant %s: %w", b, err)
+			}
 		}
 		failed := 0
 		for _, b := range bins {

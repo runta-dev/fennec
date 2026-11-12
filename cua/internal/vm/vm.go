@@ -8,36 +8,31 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os/exec"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/ssh"
 )
 
 // Defaults for the development VM.
 const (
 	DefaultName  = "fennec-cua-dev"
 	DefaultImage = "ghcr.io/cirruslabs/macos-tahoe-base:latest"
-	// The cirruslabs base images ship this account with passwordless sudo
-	// and automatic login to the desktop.
-	DefaultUser     = "admin"
-	DefaultPassword = "admin"
+	// The cirruslabs base images ship this account with passwordless sudo,
+	// automatic login to the desktop and tart's guest agent.
+	DefaultUser = "admin"
 )
 
 // VM is one tart VM.
 type VM struct {
-	Name     string
-	User     string
-	Password string
+	Name string
+	User string
 	// Tart is the tart binary; empty means "tart" from PATH.
 	Tart string
 }
 
 // New returns the default development VM.
 func New() *VM {
-	return &VM{Name: DefaultName, User: DefaultUser, Password: DefaultPassword}
+	return &VM{Name: DefaultName, User: DefaultUser}
 }
 
 func (v *VM) tart(ctx context.Context, args ...string) (string, error) {
@@ -84,41 +79,61 @@ func (v *VM) Create(ctx context.Context, image string) error {
 	return err
 }
 
-// Start boots the VM without a window and waits until SSH answers. The VM
-// keeps running after Start returns; Stop shuts it down.
+// Start boots the VM without a window and waits until its guest agent
+// answers. The VM keeps running after Start returns; Stop shuts it down.
 func (v *VM) Start(ctx context.Context) (string, error) {
-	if ip, err := v.IP(ctx); err == nil && ip != "" {
-		if v.sshReady(ip) {
-			return ip, nil
+	if v.agentReady(ctx) {
+		return v.Name, nil
+	}
+	bin := v.bin()
+	if running, _ := v.running(ctx); !running {
+		cmd := exec.Command(bin, "run", "--no-graphics", v.Name)
+		cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+		if err := cmd.Start(); err != nil {
+			return "", err
 		}
+		_ = cmd.Process.Release()
 	}
-	bin := v.Tart
-	if bin == "" {
-		bin = "tart"
-	}
-	cmd := exec.Command(bin, "run", "--no-graphics", v.Name)
-	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
-	if err := cmd.Start(); err != nil {
-		return "", err
-	}
-	_ = cmd.Process.Release()
-	deadline := time.Now().Add(4 * time.Minute)
+	deadline := time.Now().Add(8 * time.Minute)
 	for time.Now().Before(deadline) {
-		if ip, err := v.IP(ctx); err == nil && ip != "" && v.sshReady(ip) {
-			return ip, nil
+		if v.agentReady(ctx) {
+			return v.Name, nil
 		}
 		select {
-		case <-time.After(2 * time.Second):
+		case <-time.After(3 * time.Second):
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
 	}
-	return "", errors.New("the VM did not come up within 4 minutes")
+	return "", errors.New("the VM's guest agent did not answer within 8 minutes")
 }
 
-// IP is the VM's address.
-func (v *VM) IP(ctx context.Context) (string, error) {
-	return v.tart(ctx, "ip", "--wait", "1", v.Name)
+func (v *VM) bin() string {
+	if v.Tart != "" {
+		return v.Tart
+	}
+	return "tart"
+}
+
+func (v *VM) running(ctx context.Context) (bool, error) {
+	out, err := v.tart(ctx, "list")
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && f[1] == v.Name {
+			return strings.HasSuffix(strings.TrimSpace(line), "running"), nil
+		}
+	}
+	return false, nil
+}
+
+// agentReady reports whether tart exec reaches the guest.
+func (v *VM) agentReady(ctx context.Context) bool {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(cctx, v.bin(), "exec", v.Name, "/usr/bin/true").Run() == nil
 }
 
 // Stop shuts the VM down.
@@ -127,60 +142,33 @@ func (v *VM) Stop(ctx context.Context) error {
 	return err
 }
 
-func (v *VM) sshReady(ip string) bool {
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), 2*time.Second)
-	if err != nil {
-		return false
-	}
-	_ = c.Close()
-	return true
-}
-
-// Session is an SSH connection to the VM.
+// Session runs commands in the VM through tart exec and its guest agent,
+// a virtio channel that needs no network or SSH.
 type Session struct {
-	client *ssh.Client
+	vm *VM
 }
 
-// Connect opens an SSH connection. The VM is a throwaway local guest, so its
-// host key is not pinned.
+// Connect returns a session on a running VM.
 func (v *VM) Connect(ctx context.Context) (*Session, error) {
-	ip, err := v.IP(ctx)
-	if err != nil {
-		return nil, err
+	if !v.agentReady(ctx) {
+		return nil, errors.New("the VM is not running or its guest agent does not answer")
 	}
-	cfg := &ssh.ClientConfig{
-		User:            v.User,
-		Auth:            []ssh.AuthMethod{ssh.Password(v.Password)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-	client, err := ssh.Dial("tcp", net.JoinHostPort(ip, "22"), cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &Session{client: client}, nil
+	return &Session{vm: v}, nil
 }
 
-// Close ends the connection.
-func (s *Session) Close() error { return s.client.Close() }
+// Close is a no-op; each command is its own exec.
+func (s *Session) Close() error { return nil }
 
-// Run runs a shell command and returns its combined output.
+// Run runs a shell command as the VM's admin user.
 func (s *Session) Run(ctx context.Context, command string, stdin io.Reader, stdout, stderr io.Writer) error {
-	sess, err := s.client.NewSession()
-	if err != nil {
-		return err
+	args := []string{"exec"}
+	if stdin != nil {
+		args = append(args, "-i")
 	}
-	defer sess.Close()
-	sess.Stdin, sess.Stdout, sess.Stderr = stdin, stdout, stderr
-	done := make(chan error, 1)
-	go func() { done <- sess.Run(command) }()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		_ = sess.Signal(ssh.SIGKILL)
-		return ctx.Err()
-	}
+	args = append(args, s.vm.Name, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, s.vm.bin(), args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
+	return cmd.Run()
 }
 
 // Output runs a command and returns its stdout.

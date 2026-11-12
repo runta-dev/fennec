@@ -14,7 +14,7 @@ capabilities:
       window or sheet that holds focus, instead of claiming there is no focus.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTypeFocusWaitPolls, planned:scenario/TypeFocusArrivesLate, planned:scenario/TypeFocusHeldBySheet]
+    tests: [internal/actions.TestTypeFocusWaitPolls, planned:scenario/TypeFocusArrivesLate, planned:scenario/TypeFocusHeldBySheet]
     upstream: [changelog/0.1.50/1, changelog/0.1.50/7]
   - id: CAP-RGA-002
     title: Secret type steps are never echoed or persisted
@@ -53,7 +53,7 @@ capabilities:
       in the typed text need not appear (the terminal may trim or expand it).
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTerminalReadbackMatch, planned:scenario/TerminalTrailingSpace]
+    tests: [internal/actions.TestTerminalReadbackMatch, planned:scenario/TerminalTrailingSpace]
     upstream: [changelog/0.1.47/1, changelog/0.1.48/4]
   - id: CAP-RGA-005
     title: Partially shown terminal text stops a plan
@@ -105,7 +105,7 @@ capabilities:
       characters or changed without growing is reported unconfirmed instead of retyped.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestNoTerminalRetype, planned:scenario/TerminalReadSOnce, planned:scenario/AutoModeTerminalNoForegroundRetype]
+    tests: [internal/actions.TestNoTerminalRetype, planned:scenario/TerminalReadSOnce, planned:scenario/AutoModeTerminalNoForegroundRetype]
     upstream: [changelog/0.1.45/1, changelog/0.1.45/2, changelog/0.1.45/3, changelog/0.1.46/4]
   - id: CAP-RGA-009
     title: An accessibility insert that the field rewrote is not repeated as keys
@@ -115,7 +115,7 @@ capabilities:
       text is never entered twice.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestInsertRewrittenNotRetyped]
+    tests: [internal/actions.TestInsertRewrittenNotRetyped]
     upstream: [changelog/0.1.46/5]
   - id: CAP-RGA-010
     title: Typed-field settle ends 0.5 s after the field stops changing
@@ -125,7 +125,7 @@ capabilities:
       full 2 s window; a field that never takes the text is answered unconfirmed after about 0.7 s.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestTypeSettleTimings]
+    tests: [internal/actions.TestTypeSettleTimings]
     upstream: [changelog/0.1.46/6, changelog/0.1.44/13]
   - id: CAP-RGA-011
     title: Terminal type confirmation ignores text already in scrollback
@@ -136,7 +136,7 @@ capabilities:
       result is unconfirmed and the plan checks the screen itself. Other fields confirm as usual.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTerminalConfirmCountsCopies, planned:scenario/TerminalRepeatCommandPartial]
+    tests: [internal/actions.TestTerminalConfirmCountsCopies, planned:scenario/TerminalRepeatCommandPartial]
     upstream: [changelog/0.1.46/7, changelog/0.1.46/8]
   - id: CAP-RGA-012
     title: Batched typing is fast
@@ -159,7 +159,7 @@ capabilities:
       with a count of what landed; foreground typing carries them.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestChromiumTypePacing, planned:scenario/ChromeBackgroundType620]
+    tests: [internal/actions.TestChromiumTypePacing, planned:scenario/ChromeBackgroundType620]
     upstream: [changelog/0.1.44/3]
   - id: CAP-RGA-014
     title: Opening a URL hands it to the running app instance
@@ -189,7 +189,7 @@ capabilities:
       written; protocol framing never strips or rewrites user text.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTypeLiteralClosingTag]
+    tests: [internal/actions.TestTypeLiteralClosingTag]
     upstream: [changelog/0.1.41/23]
   - id: CAP-RGA-017
     title: A key shortcut aimed at a disabled control is refused
@@ -208,7 +208,7 @@ capabilities:
       prompts.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestSecurityPromptRefused, planned:scenario/SecurityPromptRefusal]
+    tests: [internal/actions.TestSecurityPromptRefused, planned:scenario/SecurityPromptRefusal]
     upstream: [changelog/0.1.50/6]
   - id: CAP-RGA-019
     title: Background trailing Return into a single-line field is sent separately
@@ -240,7 +240,7 @@ capabilities:
       process as it was before the lock.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestLockedInputMessages]
+    tests: [internal/actions.TestLockedInputMessages]
     upstream: [changelog/0.1.48/2, changelog/0.1.49/3]
   # --- plan executor ------------------------------------------------------
   - id: CAP-RGA-022
@@ -270,7 +270,7 @@ capabilities:
       reads its window's fields in small batches (four at a time) rather than all at once.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestBackgroundClickSingleList]
+    tests: [internal/actions.TestBackgroundClickSingleList]
     upstream: [changelog/0.1.44/7, changelog/0.1.44/8]
   - id: CAP-RGA-025
     title: Waits ignore title-only changes and ambiguous matches
@@ -299,7 +299,7 @@ capabilities:
       main one; a visual check whose model answer is not true or false fails.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestCropRelativeToOrigin, planned:internal/plan.TestVisualCheckNonBoolean]
+    tests: [internal/vision.TestCropRelativeToOrigin, planned:internal/plan.TestVisualCheckNonBoolean]
     upstream: [changelog/0.1.44/8, changelog/0.1.42/14]
   - id: CAP-RGA-028
     title: The flow store survives malformed files and never signs commits
@@ -394,7 +394,7 @@ capabilities:
       coordinates (a display left of or above the main display) is delivered instead of refused.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestNegativeCoordinates, planned:internal/actions.TestWholePixels]
+    tests: [internal/actions.TestNegativeCoordinates, internal/actions.TestWholePixels]
     upstream: [changelog/0.1.41/12, changelog/0.1.41/15]
   - id: CAP-RGA-038
     title: App matching by name first and whole-word titles
@@ -464,7 +464,7 @@ capabilities:
       unknown name fails before any input is sent (never a partial or first-letter key).
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestKeyNameTable]
+    tests: [internal/actions.TestKeyNameTable]
     upstream: [changelog/0.1.41/9]
   - id: CAP-RGA-045
     title: Type deadline scales with text length
@@ -474,7 +474,7 @@ capabilities:
       up.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestTypeDeadlineScales]
+    tests: [internal/actions.TestTypeDeadlineScales]
     upstream: [changelog/0.1.41/12]
   - id: CAP-RGA-046
     title: Clicks are spaced to avoid accidental double clicks
@@ -483,7 +483,7 @@ capabilities:
       earlier click's call was dropped while it ran.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestClickSpacing]
+    tests: [internal/actions.TestClickSpacing]
     upstream: [changelog/0.1.41/12, changelog/0.1.42/11]
   - id: CAP-RGA-047
     title: Input is resent only after the driver's own ended-session error
@@ -529,7 +529,7 @@ capabilities:
       rather than as a separate delayed key.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTrailingNewlineSameCall]
+    tests: [internal/actions.TestTrailingNewlineSameCall]
     upstream: [changelog/0.1.41/16]
   - id: CAP-RGA-052
     title: Partial multi-line type reports lines delivered
@@ -538,7 +538,7 @@ capabilities:
       marks the step as possibly landed.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestPartialTypeLineCount]
+    tests: [internal/actions.TestPartialTypeLineCount]
     upstream: [changelog/0.1.40/21]
   - id: CAP-RGA-053
     title: A delivered action survives a failed capture
@@ -548,7 +548,7 @@ capabilities:
       whose screenshot fails answers as it ran with a reason line.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestCaptureFailureAfterInput]
+    tests: [internal/actions.TestCaptureFailureAfterInput]
     upstream: [changelog/0.1.40/10, changelog/0.1.40/20]
   - id: CAP-RGA-054
     title: Background input reaches an allowed app on another Space
@@ -637,7 +637,7 @@ capabilities:
       a session maps through the latest screenshot's scale so it lands where shown.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestEmptyStateClearsElements, planned:internal/vision.TestRegionScaleLatest]
+    tests: [internal/vision.TestEmptyStateClearsElements, internal/vision.TestRegionScaleLatest]
     upstream: [changelog/0.1.41/16, changelog/0.1.40/10, changelog/0.1.40/20]
   - id: CAP-RGA-063
     title: Hit test works under a window with an elided long title
@@ -793,7 +793,7 @@ capabilities:
       modifiers of a click or drag, and states how many steps it omits when a list is too long.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestConfirmText]
+    tests: [internal/policy.TestConfirmText]
     upstream: [changelog/0.1.42/1]
   - id: CAP-RGA-079
     title: Confirm opens only once the action holds the turn
@@ -804,7 +804,7 @@ capabilities:
       input.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestConfirmAfterTurn, planned:scenario/ConfirmRestoresFront]
+    tests: [internal/policy.TestConfirmAfterTurn, planned:scenario/ConfirmRestoresFront]
     upstream: [changelog/0.1.40/3, changelog/0.1.42/24, changelog/0.1.40/18]
   - id: CAP-RGA-080
     title: Recording start asks under confirm mode
@@ -813,7 +813,7 @@ capabilities:
       the app's own menu does not.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestRecordStartConfirm]
+    tests: [internal/policy.TestRecordStartConfirm]
     upstream: [changelog/0.1.42/2]
   - id: CAP-RGA-081
     title: The allowlist refuses option arguments on launch
@@ -822,7 +822,7 @@ capabilities:
       arbitrary programs); URLs and plain arguments pass.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestLaunchOptionArgsRefused]
+    tests: [internal/policy.TestLaunchOptionArgsRefused]
     upstream: [changelog/0.1.42/3]
   - id: CAP-RGA-082
     title: Allowlist masking uses a window list stable across the capture
@@ -831,7 +831,7 @@ capabilities:
       capture, so a window that opens or moves in between never leaves a blocked app's pixels unmasked.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestMaskStableWindowList]
+    tests: [internal/policy.TestMaskStableWindowList]
     upstream: [changelog/0.1.40/11]
   - id: CAP-RGA-083
     title: A kill hotkey that cannot register says so
@@ -910,7 +910,7 @@ capabilities:
       service; a plugin whose resource URI duplicates an earlier one is skipped whole.
     surface: extensions
     parity: spec
-    tests: [planned:internal/extensions.TestStaleServiceStopped, planned:internal/extensions.TestDuplicateResourceURI]
+    tests: [internal/extensions.TestStaleServiceStopped, internal/extensions.TestDuplicateResourceURI]
     upstream: [changelog/0.1.40/4, changelog/0.1.40/13]
   - id: CAP-RGA-091
     title: First run works without a manual restart

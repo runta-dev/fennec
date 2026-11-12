@@ -30,6 +30,10 @@ type Daemon struct {
 	Log     *log.Logger
 	// Ready, when set, is closed once both sockets listen.
 	Ready chan struct{}
+	// Starting, when set, runs once the daemon holds its lock and before
+	// it listens, such as starting service plugins, which must never touch
+	// another daemon's copies; an error fails the start.
+	Starting func(ctx context.Context) error
 }
 
 // Run serves until ctx ends.
@@ -48,6 +52,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 	defer lockFile.Close()
+	if d.Starting != nil {
+		if err := d.Starting(ctx); err != nil {
+			return err
+		}
+	}
 	mcpLn, err := listen(d.Paths.MCP, 0o600)
 	if err != nil {
 		return err

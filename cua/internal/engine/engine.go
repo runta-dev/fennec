@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"fennec/cua/internal/extensions"
 	"fennec/cua/internal/mcpserver"
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/sched"
@@ -51,6 +52,11 @@ type Engine struct {
 	Broken error
 	// RunOff turns the run tool and script plugins off by configuration.
 	RunOff bool
+	// Ext holds the script and service plugins; nil means none.
+	Ext *extensions.Extensions
+	// Admit is the input policy's check before every tool but status, such
+	// as refusing calls while a confirm dialog is open; nil admits all.
+	Admit func(tool string) *protocol.Error
 }
 
 var descriptions = map[string]string{
@@ -71,13 +77,13 @@ var requests = map[string]any{
 	protocol.ToolStatus:  struct{}{},
 }
 
-// Tools lists the six tools.
+// Tools lists the six tools, then the extensions' tools.
 func (e *Engine) Tools(*mcpserver.Session) []mcpserver.Tool {
 	out := make([]mcpserver.Tool, 0, len(protocol.Tools))
 	for _, name := range protocol.Tools {
 		out = append(out, mcpserver.Tool{Name: name, Description: descriptions[name], InputSchema: schema.For(requests[name])})
 	}
-	return out
+	return append(out, e.Ext.Tools(!e.RunOff)...)
 }
 
 // Call answers a tool call.
@@ -88,6 +94,11 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 	if e.Broken != nil {
 		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "the configuration does not load: " + e.Broken.Error(), Hint: "fix the file; fennec-cua stays closed until it loads"})
 	}
+	if e.Admit != nil {
+		if perr := e.Admit(name); perr != nil {
+			return result(nil, perr)
+		}
+	}
 	gctx, guard, done, err := e.Stopper.Guard(ctx)
 	if err != nil {
 		return result(nil, &protocol.Error{Code: protocol.ErrStopped, Message: err.Error()})
@@ -96,12 +107,8 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 	if name == protocol.ToolRun && e.RunOff {
 		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "scripts are turned off", Hint: "set run = true under [tools] in fennec-cua's config to turn them back on"})
 	}
-	impl := e.Impl[name]
-	if impl == nil {
-		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: name + " is not available in this build yet"})
-	}
 	call := &Call{Session: s, Turn: func(ctx context.Context) (func(), error) {
-		release, err := e.Turn.Acquire(ctx, s.AgentID)
+		release, err := e.Turn.Acquire(ctx, e.owner(s))
 		if err != nil {
 			return nil, err
 		}
@@ -111,6 +118,13 @@ func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, ar
 		}
 		return release, nil
 	}}
+	if res, ok := e.callExtension(gctx, call, name, args); ok {
+		return res
+	}
+	impl := e.Impl[name]
+	if impl == nil {
+		return result(nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: name + " is not available in this build yet"})
+	}
 	out, perr := impl(gctx, call, args)
 	if perr == nil && gctx.Err() != nil {
 		perr = errorFor(sched.Cause(gctx))

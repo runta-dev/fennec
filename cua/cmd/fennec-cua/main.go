@@ -20,18 +20,23 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"fennec/cua/internal/actions"
 	"fennec/cua/internal/daemon"
 	"fennec/cua/internal/desk"
 	"fennec/cua/internal/driver"
 	"fennec/cua/internal/engine"
 	"fennec/cua/internal/macos"
 	"fennec/cua/internal/mcpserver"
+	"fennec/cua/internal/policy"
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/sched"
 	"fennec/cua/internal/view"
+	"fennec/cua/internal/vision"
 )
 
 func main() {
@@ -94,15 +99,37 @@ func serve(ctx context.Context, paths daemon.Paths) error {
 
 	stopper := &sched.Stopper{}
 	input := "foreground"
-	observer := &view.Observer{Source: desk.New(), Refs: view.NewRegistry(view.MaxRefs), Input: input}
+	dk := desk.New()
+	observer := &view.Observer{Source: dk, Refs: view.NewRegistry(view.MaxRefs), Input: input}
+	bin := driverBin()
+	// Captures and pointer, key and typing input go through cua-driver;
+	// without it observe refuses image and vision, and act answers
+	// unavailable for driver steps while accessibility steps still work.
+	var imager engine.Imager
+	var client *driver.Client
+	if bin != "" {
+		client = &driver.Client{Socket: paths.Driver}
+		defer client.Close()
+		imager = visionImager{vision.NewService(vision.DriverCapturer{Client: client}, windowID(observer.Refs))}
+	}
+	pol, err := policy.New(policy.Config{Input: input}, nil)
+	if err != nil {
+		return err
+	}
+	// The act tool shares the observer's refs, so refs from observe resolve.
+	executor := &actions.Executor{B: desk.NewActions(dk, client), Refs: observer.Refs, Policy: pol}
 	eng := &engine.Engine{
 		Turn:     &sched.Turn{},
 		Stopper:  stopper,
 		Platform: platform{},
 		Input:    input,
-		Impl:     map[string]engine.Tool{protocol.ToolObserve: engine.ObserveTool(observer)},
+		Admit:    pol.Admit,
+		Impl: map[string]engine.Tool{
+			protocol.ToolObserve: engine.ObserveToolWith(observer, imager),
+			protocol.ToolAct:     engine.ActTool(executor, pol, observer),
+		},
 	}
-	if bin := driverBin(); bin != "" {
+	if bin != "" {
 		sup := &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger}
 		dctx, dcancel := context.WithCancel(ctx)
 		defer func() { dcancel(); sup.Wait() }()
@@ -119,6 +146,25 @@ func serve(ctx context.Context, paths daemon.Paths) error {
 	}
 	logger.Printf("serving %s", paths.MCP)
 	return d.Run(ctx)
+}
+
+// visionImager adapts vision.Service to the engine's observe hook.
+type visionImager struct{ s *vision.Service }
+
+func (v visionImager) Observe(ctx context.Context, agent string, req protocol.ObserveRequest, base engine.Observer) (*protocol.ObserveResult, error) {
+	return v.s.Observe(ctx, agent, req, base)
+}
+
+// windowID resolves a window ref to its window server id.
+func windowID(refs *view.Registry) func(ref string) (uint32, bool) {
+	return func(ref string) (uint32, bool) {
+		e, err := refs.Lookup(ref)
+		if err != nil || !e.Window || !strings.HasPrefix(e.WindowKey, "cg:") {
+			return 0, false
+		}
+		n, err := strconv.ParseUint(strings.TrimPrefix(e.WindowKey, "cg:"), 10, 32)
+		return uint32(n), err == nil
+	}
 }
 
 // driverBin finds cua-driver: FENNEC_CUA_DRIVER, else beside this binary

@@ -47,7 +47,7 @@ capabilities:
       another Space is reported unconfirmed with the same do-not-resend note.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestBackgroundInputReachesOtherSpace, planned:internal/actions.TestTitleTwinsAcrossSpacesRefused, planned:internal/actions.TestElementClickOtherSpaceNote]
+    tests: [internal/actions.TestBackgroundInputReachesOtherSpace, internal/actions.TestTitleTwinsAcrossSpacesRefused, internal/actions.TestElementClickOtherSpaceNote]
     upstream:
       - rust/desk/src/desk.rs::an_allowlisted_app_whose_windows_are_all_on_another_space_takes_background_input
       - rust/desk/src/desk.rs::background_input_to_a_title_twin_goes_to_the_window_on_a_space_and_says_not_to_send_it_again
@@ -67,7 +67,7 @@ capabilities:
       carries only the driver's note again.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestWindowShotStaleMark, planned:internal/actions.TestUnseenWindowInputNote]
+    tests: [internal/vision.TestWindowShotStaleMark, internal/actions.TestUnseenWindowInputNote]
     upstream:
       - rust/desk/src/desk.rs::a_macos_window_shot_says_its_pixels_may_be_stale_on_another_space_or_minimized_and_not_when_covered
       - rust/desk/src/desk.rs::unconfirmed_background_input_to_a_minimized_window_may_have_taken_effect_and_to_a_covered_one_keeps_the_driver_note
@@ -85,7 +85,7 @@ capabilities:
       reported as not found, listing only admitted windows, and nothing is captured.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestWindowShotAnyDisplay, planned:internal/vision.TestWindowShotCropOrigin]
+    tests: [internal/vision.TestWindowShotAnyDisplay, internal/vision.TestWindowShotCropOrigin]
     upstream:
       - rust/desk/src/desk.rs::a_shot_by_window_captures_that_window_on_any_display_within_the_allowlist
       - rust/desk/src/desk.rs::a_cropped_window_shot_names_its_origin_in_the_window_pixels
@@ -100,7 +100,7 @@ capabilities:
       shot of the same window lands on the same point. A drag in a window reads the display scale once.
     surface: act
     parity: oracle
-    tests: [planned:internal/vision.TestWindowPixelsMapAcrossScales, planned:internal/actions.TestShotDoesNotShiftClickScale]
+    tests: [internal/vision.TestWindowPixelsMapAcrossScales, internal/actions.TestShotDoesNotShiftClickScale]
     upstream:
       - rust/desk/src/desk.rs::a_click_after_a_shot_of_its_window_lands_where_the_click_before_it_landed
       - rust/desk/src/desk.rs::with_a_window_x_and_y_are_pixels_of_its_shot_on_any_display_and_scale
@@ -116,7 +116,7 @@ capabilities:
       the same match tier (hint: use a longer title); a more specific title or a plain screen point works.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestWindowPixelsNeedUniqueTitle]
+    tests: [internal/actions.TestWindowPixelsNeedUniqueTitle]
     upstream:
       - rust/desk/src/desk.rs::a_title_two_windows_share_takes_no_points_in_shot_pixels
       - rust/desk/src/desk.rs::a_title_that_matches_two_windows_at_one_tier_takes_no_points_in_shot_pixels
@@ -129,7 +129,7 @@ capabilities:
       scale factor.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestScreenSizeInPixels]
+    tests: [internal/vision.TestScreenSizeInPixels]
     upstream:
       - rust/desk/src/desk.rs::the_screen_is_in_pixels_on_a_retina_mac_and_as_the_driver_reports_it_elsewhere
 
@@ -143,7 +143,7 @@ capabilities:
       window's frame.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestBackgroundInputNoRaise, planned:internal/actions.TestBackgroundPidReachesWindowBehind]
+    tests: [internal/actions.TestBackgroundInputNoRaise, internal/actions.TestBackgroundPidReachesWindowBehind]
     upstream:
       - rust/desk/src/desk.rs::background_input_goes_to_the_named_window_without_raising_it
       - rust/desk/src/desk.rs::a_background_click_in_a_named_window_does_not_raise_it
@@ -159,7 +159,7 @@ capabilities:
       blank name, or a different suffix such as "notepad" for "notepad++".
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestAppTargetWithoutWindowRefused, internal/view.TestAppNameMatching]
+    tests: [internal/actions.TestAppTargetWithoutWindowRefused, internal/view.TestAppNameMatching]
     upstream:
       - rust/desk/src/desk.rs::input_naming_an_app_goes_to_that_app_or_nowhere
       - rust/desk/src/desk.rs::a_name_matches_the_start_or_end_of_app_words_never_a_short_fragment
@@ -175,7 +175,7 @@ capabilities:
       refused before anything is sent; asking for the mode in force works.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestBackgroundNeedsTarget, planned:internal/policy.TestDeliveryModeMismatchRefused]
+    tests: [internal/policy.TestBackgroundNeedsTarget, internal/policy.TestDeliveryModeMismatchRefused]
     upstream:
       - rust/desk/src/desk.rs::background_input_without_a_target_or_into_a_window_that_refuses_the_pointer_is_refused
       - rust/desk/src/desk.rs::input_asking_for_a_delivery_mode_the_desk_does_not_use_is_refused_before_it_is_sent
@@ -190,7 +190,7 @@ capabilities:
       foreground.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestUnconfirmedBackgroundFlagged, planned:internal/policy.TestAutoKeepsUnconfirmedInBackground]
+    tests: [internal/actions.TestUnconfirmedBackgroundFlagged, internal/policy.TestAutoKeepsUnconfirmedInBackground]
     upstream:
       - rust/desk/src/desk.rs::background_input_the_driver_cannot_confirm_says_so_and_foreground_input_does_not
       - rust/desk/src/desk.rs::auto_input_the_driver_could_not_confirm_returns_its_note_without_a_foreground_run
@@ -207,7 +207,7 @@ capabilities:
       plain background input an explicit foreground request is refused.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestAutoEscalatesOnceWhenNothingSent, planned:internal/policy.TestAutoNoResendAfterPartialSend, planned:internal/policy.TestAutoExplicitForeground]
+    tests: [internal/policy.TestAutoEscalatesOnceWhenNothingSent, internal/policy.TestAutoNoResendAfterPartialSend, internal/policy.TestAutoExplicitForeground]
     upstream:
       - rust/desk/src/desk.rs::auto_input_refused_before_any_was_sent_fronts_its_window_and_runs_once_in_the_foreground
       - rust/desk/src/desk.rs::auto_input_refused_after_some_was_sent_stays_an_error_and_is_not_sent_again
@@ -225,7 +225,7 @@ capabilities:
       flag the text is sent and the result is unconfirmed with a note to check the field before Return/Send.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestBackgroundTypeChecksFocusAfterClick, planned:internal/actions.TestTypeFocusUnverified]
+    tests: [internal/actions.TestBackgroundTypeChecksFocusAfterClick, internal/actions.TestTypeFocusUnverified]
     upstream:
       - rust/desk/src/desk.rs::background_typing_after_a_click_the_keyboard_focus_did_not_follow_is_refused
       - rust/desk/src/desk.rs::background_typing_after_a_click_into_an_app_with_no_focused_text_field_needs_focus_unverified
@@ -242,7 +242,7 @@ capabilities:
       about lines.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTypeTerminalFlag, planned:internal/actions.TestTerminalLineWithoutConfirmGetsNoReturn, planned:internal/actions.TestTypeReportsLinesTypedBeforeFailure]
+    tests: [internal/actions.TestTypeTerminalFlag, internal/actions.TestTerminalLineWithoutConfirmGetsNoReturn, internal/actions.TestTypeReportsLinesTypedBeforeFailure]
     upstream:
       - rust/desk/src/desk.rs::a_type_that_fails_on_a_later_line_says_how_many_went_in
       - rust/desk/src/desk.rs::a_type_into_a_terminal_says_so_whether_or_not_the_driver_confirmed_it
@@ -260,7 +260,7 @@ capabilities:
       step is refused with nothing sent.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestLockScreenRefusalHint, planned:internal/policy.TestLockedInputKeysAndTypingOnly, planned:internal/policy.TestLockedInputNeverTargetsLoginwindow]
+    tests: [internal/policy.TestLockScreenRefusalHint, internal/policy.TestLockedInputKeysAndTypingOnly, internal/policy.TestLockedInputNeverTargetsLoginwindow]
     upstream:
       - rust/desk/src/desk.rs::a_lock_screen_refusal_says_once_that_shuttle_cannot_reach_the_password_field
       - rust/desk/src/desk.rs::locked_input_typing_aimed_at_loginwindows_pid_sends_nothing
@@ -277,7 +277,7 @@ capabilities:
       (emoji or other astral characters in the foreground, non-Chromium background) leave the driver default.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestKeyNamesToDriver, planned:internal/actions.TestPlusKeyByRoute, planned:internal/actions.TestTypingDelayRules]
+    tests: [internal/actions.TestKeyNamesToDriver, internal/actions.TestPlusKeyByRoute, internal/actions.TestTypingDelayRules]
     upstream:
       - rust/desk/src/desk.rs::macos_sends_the_plus_key_as_shift_and_equals_only_on_the_hid_path
       - rust/desk/src/desk.rs::keys_and_text_go_to_the_desktop_in_driver_names
@@ -292,7 +292,7 @@ capabilities:
       and ordinary HTML closers are typed unchanged. Empty text stays empty.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestStripTrailingProtocolTags]
+    tests: [internal/actions.TestStripTrailingProtocolTags]
     upstream:
       - rust/desk/src/desk.rs::typed_lines_keep_a_closing_tag_the_text_opens_and_drop_one_it_does_not
       - rust/desk/src/desk.rs::a_trailing_protocol_tail_goes_only_when_the_text_does_not_open_it
@@ -306,7 +306,7 @@ capabilities:
       returns well under a second and the desk is free for the next call at once.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestTypeSettleBounded, planned:internal/actions.TestTypedTail]
+    tests: [internal/actions.TestTypeSettleBounded, internal/actions.TestTypedTail]
     upstream:
       - rust/desk/src/desk.rs::a_focused_lookup_that_never_answers_ends_within_the_settle_and_frees_the_desk
       - rust/desk/src/desk.rs::a_run_repeats_a_character_freely_and_the_typed_tail_is_the_last_line_end
@@ -335,7 +335,7 @@ capabilities:
       frontmost and naming the actual front window, and nothing is typed or pressed.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestForegroundRaisesNamedWindow, planned:internal/actions.TestForegroundUnfrontedSendsNothing]
+    tests: [internal/actions.TestForegroundRaisesNamedWindow, internal/actions.TestForegroundUnfrontedSendsNothing]
     upstream:
       - rust/desk/src/desk.rs::foreground_input_raises_the_named_window_and_goes_to_the_desktop_at_its_pixels
       - rust/desk/src/desk.rs::foreground_keys_naming_an_app_bring_its_window_to_the_front_first
@@ -353,7 +353,7 @@ capabilities:
       On macOS a foreground click on a covered point of a named window goes to that window.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestForegroundPointerRaiseRules, planned:internal/ax.TestListedTopLevelByNumberOrTitle]
+    tests: [internal/actions.TestForegroundPointerRaiseRules, planned:internal/ax.TestListedTopLevelByNumberOrTitle]
     upstream:
       - rust/desk/src/desk.rs::a_foreground_click_where_no_window_is_does_not_raise_the_named_one
       - rust/desk/src/desk.rs::a_same_app_window_on_top_is_raised_past_unless_the_desk_does_not_list_it
@@ -372,7 +372,7 @@ capabilities:
       (no read at scale 1).
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestClickTargetsTopWindow, planned:internal/actions.TestClickDesktopFallbacks, planned:internal/driver.TestWindowStateReadReuse]
+    tests: [internal/actions.TestClickTargetsTopWindow, internal/actions.TestClickDesktopFallbacks, planned:internal/driver.TestWindowStateReadReuse]
     upstream:
       - rust/desk/src/desk.rs::a_macos_click_targets_the_top_window_under_the_point_in_its_pixels
       - rust/desk/src/desk.rs::a_macos_window_click_without_a_windowserver_connection_goes_to_the_desktop
@@ -393,7 +393,7 @@ capabilities:
       desktop click.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestCoveredClickGoesBackground, planned:internal/actions.TestCoveredNamedWindowNoDesktopFallback]
+    tests: [internal/actions.TestCoveredClickGoesBackground, internal/actions.TestCoveredNamedWindowNoDesktopFallback]
     upstream:
       - rust/desk/src/desk.rs::a_macos_foreground_click_under_another_apps_window_goes_in_the_background_and_says_so
       - rust/desk/src/desk.rs::a_macos_foreground_click_where_the_hit_test_fails_goes_in_the_background_and_says_so
@@ -407,7 +407,7 @@ capabilities:
       pointer click; when the item has no action to perform the step fails rather than reporting success.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestClickOnOpenMenuItemRunsIt]
+    tests: [internal/actions.TestClickOnOpenMenuItemRunsIt]
     upstream:
       - rust/desk/src/desk.rs::a_macos_click_on_an_open_menu_item_runs_it_instead_of_clicking
       - rust/desk/src/desk.rs::a_macos_click_on_a_menu_item_that_takes_no_action_fails
@@ -424,7 +424,7 @@ capabilities:
       focus, select and perform-action run without fronting the window.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestElementClickOwnWindow, planned:internal/actions.TestElementClickFrameCheck, planned:internal/actions.TestBackgroundElementActionsNoRaise]
+    tests: [internal/actions.TestElementClickOwnWindow, internal/actions.TestElementClickFrameCheck, internal/actions.TestBackgroundElementActionsNoRaise]
     upstream:
       - rust/desk/src/desk.rs::a_background_element_click_goes_to_the_elements_own_window_under_the_window_that_covers_it
       - rust/desk/src/desk.rs::a_background_element_click_tells_same_titled_windows_apart_by_frame_or_refuses
@@ -442,7 +442,7 @@ capabilities:
       are held.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestPressActionOrClick, internal/view.TestRefsSurviveIdCapEviction]
+    tests: [internal/actions.TestPressActionOrClick, internal/view.TestRefsSurviveIdCapEviction]
     upstream:
       - rust/desk/src/desk.rs::a_press_click_goes_through_the_driver
       - rust/desk/src/desk.rs::a_macos_press_resolves_an_id_of_the_snapshot_that_crossed_the_id_cap
@@ -459,7 +459,7 @@ capabilities:
       focus and close of one of two same-titled windows act on the active one.
     surface: observe
     parity: oracle
-    tests: [internal/view.TestWindowPickTiers, internal/view.TestWindowPickEqualTitles, internal/view.TestStaleTitleFallback, planned:internal/actions.TestFocusCloseActiveTwin]
+    tests: [internal/view.TestWindowPickTiers, internal/view.TestWindowPickEqualTitles, internal/view.TestStaleTitleFallback, internal/actions.TestFocusCloseActiveTwin]
     upstream:
       - rust/desk-core/src/window.rs::among_equal_titles_none_active_the_newest_shown_window_wins_and_a_lone_hidden_one_still_counts
       - rust/desk-core/src/window.rs::a_window_is_picked_by_exact_then_trimmed_then_contained_title
@@ -493,7 +493,7 @@ capabilities:
       gated on its target app, not on whatever window covers the point.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestAllowlistHidesWindows, planned:internal/policy.TestAllowlistGatesEveryPoint, planned:internal/policy.TestAllowlistGatesNamedTargetNotCover]
+    tests: [internal/policy.TestAllowlistHidesWindows, internal/policy.TestAllowlistGatesEveryPoint, internal/policy.TestAllowlistGatesNamedTargetNotCover]
     upstream:
       - rust/desk/src/desk.rs::an_app_allowlist_hides_and_refuses_the_windows_of_other_apps
       - rust/desk/src/desk.rs::an_app_allowlist_gates_every_point_and_element_a_call_reaches
@@ -509,7 +509,7 @@ capabilities:
       allowlist no masking work is done and only one capture call is made.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestCaptureBlackout, planned:internal/policy.TestCaptureMaskStableWindows]
+    tests: [internal/policy.TestCaptureBlackout, internal/policy.TestCaptureMaskStableWindows]
     upstream:
       - rust/desk/src/desk.rs::an_app_allowlist_masks_shots_outside_its_windows_and_costs_nothing_without_one
       - rust/desk/src/desk.rs::a_masked_shot_never_shows_a_window_that_left_while_it_was_taken
@@ -524,7 +524,7 @@ capabilities:
       then decoding a capture reproduces its pixels bit for bit.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestCropScalesAndClamps, planned:internal/vision.TestPNGRoundTrip, planned:internal/driver.TestCaptureSessionSeparate]
+    tests: [internal/vision.TestCropScalesAndClamps, internal/vision.TestPNGRoundTrip, planned:internal/driver.TestCaptureSessionSeparate]
     upstream:
       - rust/desk-core/src/shot.rs::a_crop_scales_screen_pixels_to_the_screenshot
       - rust/desk-core/src/shot.rs::crop_cuts_an_rgb_rectangle
@@ -542,7 +542,7 @@ capabilities:
       Chrome), keeping the URLs. With an allowlist, any argument starting with "-" is refused before launching.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestLaunchStaysBackground, planned:internal/actions.TestLaunchArgsNewInstanceUrlsToRunning, planned:internal/actions.TestLaunchRetryByBundleName, planned:internal/policy.TestAllowlistRefusesLaunchFlags]
+    tests: [internal/actions.TestLaunchStaysBackground, internal/actions.TestLaunchArgsNewInstanceUrlsToRunning, internal/actions.TestLaunchRetryByBundleName, internal/policy.TestAllowlistRefusesLaunchFlags]
     upstream:
       - rust/desk/src/desk.rs::a_macos_launch_never_raises_a_running_app_and_a_windows_one_does
       - rust/desk/src/desk.rs::only_a_macos_launch_reports_that_it_stays_in_the_background
@@ -674,7 +674,7 @@ capabilities:
       before comparing, so unadmitted windows neither trigger a change nor appear.
     surface: wait
     parity: oracle
-    tests: [planned:internal/actions.TestWaitWindowChange, planned:internal/actions.TestWaitTimeoutCountsListReads, planned:internal/policy.TestWaitComparesAdmittedOnly]
+    tests: [internal/actions.TestWaitWindowChange, internal/actions.TestWaitTimeoutCountsListReads, internal/policy.TestWaitComparesAdmittedOnly]
     upstream:
       - rust/desk/src/desk.rs::a_wait_returns_the_new_window_list_once_a_window_opens
       - rust/desk/src/desk.rs::a_wait_without_a_change_returns_the_same_list_at_its_timeout
@@ -710,7 +710,7 @@ capabilities:
       whole screen and returns no pixels.
     surface: wait
     parity: oracle
-    tests: [planned:internal/vision.TestStillnessHoldAndTimeout, planned:internal/vision.TestStillnessIgnoresVolatileBlocks]
+    tests: [internal/vision.TestStillnessHoldAndTimeout, internal/vision.TestStillnessIgnoresVolatileBlocks]
     upstream:
       - rust/desk/src/desk.rs::still_answers_once_the_screen_holds_and_a_churning_region_does_not_hold_it_back
 
@@ -724,7 +724,7 @@ capabilities:
       point.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestScrollAtPointOrFrontWindow, planned:internal/actions.TestDragTwoPoints]
+    tests: [internal/actions.TestScrollAtPointOrFrontWindow, internal/actions.TestDragTwoPoints]
     upstream:
       - rust/desk/src/desk.rs::a_scroll_wheels_at_its_point_or_at_the_front_window_and_a_drag_spans_two_points
       - rust/desk/src/desk.rs::a_checked_window_the_driver_titles_differently_falls_back_to_its_apps_topmost_window

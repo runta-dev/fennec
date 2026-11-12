@@ -142,7 +142,7 @@ capabilities:
       directly on the element or its chain, no further ancestry is read.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestPressFrontButtonRunsAction, planned:internal/actions.TestPressBehindClicks, planned:internal/actions.TestPressRefusedActionClicks, planned:internal/actions.TestPressCoveredRunsAction]
+    tests: [internal/actions.TestPressFrontButtonRunsAction, internal/actions.TestPressBehindClicks, internal/actions.TestPressRefusedActionClicks, internal/actions.TestPressCoveredRunsAction]
     upstream:
       - rust/desk/src/press.rs::a_macos_button_in_the_front_window_runs_its_action
       - rust/desk/src/press.rs::a_macos_button_in_a_window_behind_takes_a_click
@@ -157,7 +157,7 @@ capabilities:
       AX action without opening the menus above it.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestPressSelectsTab, planned:internal/actions.TestPressSelectsTreeItem, planned:internal/actions.TestPressMenuItemWithoutOpening]
+    tests: [internal/actions.TestPressSelectsTab, internal/actions.TestPressSelectsTreeItem, internal/actions.TestPressMenuItemWithoutOpening]
     upstream:
       - rust/desk/src/press.rs::a_tab_is_selected
       - rust/desk/src/press.rs::a_macos_tree_item_is_selected
@@ -170,7 +170,7 @@ capabilities:
       unconfirmed with the error and no click is sent afterwards, since the action may still land.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestBackgroundPressRunsAction, planned:internal/actions.TestBackgroundPressNoClickAfterFailure]
+    tests: [internal/actions.TestBackgroundPressRunsAction, internal/actions.TestBackgroundPressNoClickAfterFailure]
     upstream:
       - rust/desk/src/press.rs::a_background_press_runs_the_action_of_a_control_that_would_take_a_click
       - rust/desk/src/press.rs::a_background_action_that_fails_is_never_followed_by_a_click
@@ -186,7 +186,7 @@ capabilities:
       unconfirmed.
     surface: act
     parity: spec
-    tests: [planned:internal/policy.TestAutoEscalatesPreSendRefusals, planned:internal/policy.TestAutoKeepsPostSendErrors]
+    tests: [internal/policy.TestAutoEscalatesPreSendRefusals, internal/policy.TestAutoKeepsPostSendErrors]
     upstream:
       - rust/desk/src/auto.rs::a_refusal_raised_before_any_input_goes_to_the_foreground
       - rust/desk/src/auto.rs::a_refusal_that_may_follow_delivered_input_stays_an_error
@@ -202,7 +202,7 @@ capabilities:
       before anything is sent, as is a trailing empty part such as ctrl+.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestKeyAliases, planned:internal/actions.TestKeyUnknownRefused, planned:internal/actions.TestKeyMacOnlyNames]
+    tests: [internal/actions.TestKeyAliases, internal/actions.TestKeyUnknownRefused, internal/actions.TestKeyMacOnlyNames]
     upstream:
       - rust/desk/src/keys.rs::combinations_use_the_driver_names_of_each_os
       - rust/desk/src/keys.rs::every_os_takes_the_same_aliases_and_refuses_a_name_no_driver_knows
@@ -215,7 +215,7 @@ capabilities:
       on macOS, while backspace stays backspace.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestPlusKeyAsShiftEquals, planned:internal/actions.TestDeleteIsForwardDelete]
+    tests: [internal/actions.TestPlusKeyAsShiftEquals, internal/actions.TestDeleteIsForwardDelete]
     upstream:
       - rust/desk/src/keys.rs::the_plus_key_is_plus_and_the_hid_path_takes_it_as_shift_and_equals
       - rust/desk/src/keys.rs::delete_is_the_forward_delete_key_on_every_os
@@ -254,7 +254,7 @@ capabilities:
       says how long ago the user acted and that retrying after they stop is safe.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestUserBusyWindow, planned:internal/driver.TestOnlyForegroundInputIsOwn, planned:internal/driver.TestBringToFrontRefusedWhileBusy]
+    tests: [internal/policy.TestUserBusyWindow, planned:internal/driver.TestOnlyForegroundInputIsOwn, planned:internal/driver.TestBringToFrontRefusedWhileBusy]
     upstream:
       - rust/desk/src/driver.rs::only_input_within_a_second_and_past_the_lag_of_the_drivers_own_is_the_users
       - rust/desk/src/driver.rs::only_foreground_input_counts_as_the_drivers_own
@@ -343,7 +343,7 @@ capabilities:
       reports how many blocks were volatile.
     surface: wait
     parity: spec
-    tests: [planned:internal/vision.TestBlockClassification, planned:internal/vision.TestStillWatchCounts]
+    tests: [internal/vision.TestBlockClassification, internal/vision.TestStillWatchCounts]
     upstream:
       - rust/desk/src/still.rs::two_contents_toggle_more_churn_and_one_change_stays_quiet
       - rust/desk/src/still.rs::a_churning_block_and_a_caret_stop_counting_but_a_new_change_and_a_resize_count
@@ -437,7 +437,7 @@ capabilities:
       answers no title.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestVisionRefusedWithAllowlist, planned:internal/policy.TestVisionClickNeedsForeground]
+    tests: [internal/policy.TestVisionRefusedWithAllowlist, internal/policy.TestVisionClickNeedsForeground]
     upstream:
       - rust/desk/src/server.rs::the_native_desk_answers_the_computer_verbs_unless_an_app_allowlist_or_background_input_is_set
 excluded:

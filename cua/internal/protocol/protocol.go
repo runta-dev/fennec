@@ -626,6 +626,18 @@ type FlowResult struct {
 	Flow  *Flow      `json:"flow,omitempty"`  // show, save, record_stop (the draft)
 	Run   *ActResult `json:"run,omitempty"`   // run
 	ID    string     `json:"id,omitempty"`    // record_start
+	// Ran is false when a save stored the steps of the plan that just
+	// passed without running them again.
+	Ran *bool `json:"ran,omitempty"`
+	// Pick answers a list with a query: the flow the model named, if any,
+	// and the probability of its top choice.
+	Pick *FlowPick `json:"pick,omitempty"`
+}
+
+// FlowPick is a find's answer.
+type FlowPick struct {
+	Flow string  `json:"flow,omitempty"`
+	P    float64 `json:"p"`
 }
 
 // FlowInfo is a list entry.

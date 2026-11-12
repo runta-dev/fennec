@@ -166,7 +166,7 @@ capabilities:
       point, crops and ring are placed in capture pixels, and the prompt states the capture size and pixel position.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestGroundedCheckFreshCaptures, planned:internal/vision.TestGroundedCheckRetinaPixels]
+    tests: [internal/vision.TestGroundedCheckFreshCaptures, internal/vision.TestGroundedCheckRetinaPixels]
     upstream:
       - "node/resolve/a grounded step checks fresh captures taken after grounding: the crop, then one screen capture that the zoom and ring are cut from"
       - "node/resolve/a grounded check places the point in capture pixels on a 2x capture"

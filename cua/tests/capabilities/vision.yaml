@@ -13,7 +13,7 @@ capabilities:
       the screen, are left out.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestWindowLinesInScreenshotPixels, planned:internal/vision.TestWindowBoundsWholeOrFractional]
+    tests: [internal/vision.TestWindowLinesInScreenshotPixels, internal/vision.TestWindowBoundsWholeOrFractional]
     upstream:
       - rust/desk/src/computer.rs::a_window_list_takes_whole_or_fractional_bounds
       - rust/desk/src/computer.rs::window_lines_and_click_replies_are_in_screenshot_pixels
@@ -33,7 +33,7 @@ capabilities:
       forge another element line.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestElementListForPidUsesFrontmostWindow, planned:internal/vision.TestElementLinesDropObjectPlaceholders, planned:internal/vision.TestElementLinesEscapeForgedLines]
+    tests: [internal/vision.TestElementListForPidUsesFrontmostWindow, internal/vision.TestElementLinesDropObjectPlaceholders, internal/vision.TestElementLinesEscapeForgedLines]
     upstream:
       - rust/desk/src/computer.rs::a_pid_without_a_window_id_reads_its_frontmost_listed_window
       - rust/desk/src/computer.rs::element_lines_leave_out_object_replacement_characters
@@ -50,7 +50,7 @@ capabilities:
       the shrink ratio.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestScreenshotIsOneFullSizeCapture, planned:internal/vision.TestFittedShrinksToLongEdge]
+    tests: [internal/vision.TestScreenshotIsOneFullSizeCapture, internal/vision.TestFittedShrinksToLongEdge]
     upstream:
       - rust/desk/src/computer.rs::a_screenshot_is_one_full_size_capture_in_the_callers_session
       - rust/desk/src/computer.rs::fitted_shrinks_a_full_size_capture_to_the_long_edge_and_leaves_a_small_one
@@ -67,7 +67,7 @@ capabilities:
       size is given.
     surface: observe
     parity: spec
-    tests: [planned:internal/vision.TestPhotoDetectionThreshold, planned:internal/vision.TestShrinkFlatWebPNoiseJPEG, planned:internal/vision.TestDropAlpha, planned:internal/vision.TestScreenshotWeightReport]
+    tests: [internal/vision.TestPhotoDetectionThreshold, internal/vision.TestShrinkFlatWebPNoiseJPEG, internal/vision.TestDropAlpha, internal/vision.TestScreenshotWeightReport]
     upstream:
       - rust/desk/src/computer.rs::photo_answers_as_a_hash_set_of_the_sampled_colours_does
       - rust/desk/src/computer.rs::shrink_keeps_every_pixel_of_a_flat_screen_as_webp_and_turns_noise_into_jpeg
@@ -86,7 +86,7 @@ capabilities:
       anything is sent, and an unknown action name is rejected by name.
     surface: act
     parity: oracle
-    tests: [planned:internal/vision.TestScaleFromScreenAndScreenshotWidths, planned:internal/vision.TestPinnedScaleMapsStepAndPlan, planned:internal/vision.TestConcurrentActsKeepOwnScale]
+    tests: [internal/vision.TestScaleFromScreenAndScreenshotWidths, internal/vision.TestPinnedScaleMapsStepAndPlan, internal/vision.TestConcurrentActsKeepOwnScale]
     upstream:
       - rust/desk/src/computer.rs::a_driver_without_frame_scale_maps_by_its_screen_and_screenshot_widths
       - rust/desk/src/computer.rs::a_pinned_scale_maps_an_action_and_every_action_of_a_list
@@ -102,7 +102,7 @@ capabilities:
       intermediate steps settle but produce no image.
     surface: act
     parity: oracle
-    tests: [planned:internal/vision.TestPlanMapsByScreenshotBeforeIt, planned:internal/vision.TestPlanCapturesAfterLastStepOnly]
+    tests: [internal/vision.TestPlanMapsByScreenshotBeforeIt, internal/vision.TestPlanCapturesAfterLastStepOnly]
     upstream:
       - rust/desk/src/computer.rs::every_point_of_an_action_list_maps_by_the_screenshot_taken_before_it
       - rust/desk/src/computer.rs::an_action_list_captures_the_screen_after_its_last_action_only
@@ -117,7 +117,7 @@ capabilities:
       that other sessions fall back to.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestSessionWithoutShotUsesLatestOfAny, planned:internal/vision.TestSharedShotLeavesOtherScalesAlone]
+    tests: [internal/vision.TestSessionWithoutShotUsesLatestOfAny, internal/vision.TestSharedShotLeavesOtherScalesAlone]
     upstream:
       - rust/desk/src/computer.rs::a_session_without_its_own_screenshot_maps_by_the_latest_one_of_any_session
       - rust/desk/src/computer.rs::a_read_share_screenshot_leaves_the_scale_of_other_sessions_alone
@@ -132,7 +132,7 @@ capabilities:
       mapping accounts for the backing factor.
     surface: act
     parity: oracle
-    tests: [planned:internal/vision.TestRetinaClickLandsWhereShown]
+    tests: [internal/vision.TestRetinaClickLandsWhereShown]
     upstream:
       - rust/desk/src/computer.rs::a_retina_desktop_click_lands_where_the_screenshot_showed_after_a_shot_a_zoom_or_a_full_shot
   - id: CAP-VIS-009
@@ -146,7 +146,7 @@ capabilities:
       fails with an error asking to open or focus a window and sends nothing.
     surface: act
     parity: oracle
-    tests: [planned:internal/vision.TestWindowlessInputUsesDesktopScope, planned:internal/vision.TestFrontmostKeysGoToDesktop, planned:internal/vision.TestTypeWithNoWindowFails]
+    tests: [internal/vision.TestWindowlessInputUsesDesktopScope, internal/vision.TestFrontmostKeysGoToDesktop, internal/vision.TestTypeWithNoWindowFails]
     upstream:
       - rust/desk/src/computer.rs::off_linux_windowless_input_goes_with_desktop_scope_and_no_target
       - rust/desk/src/computer.rs::keys_for_the_frontmost_window_go_to_the_desktop_off_linux
@@ -165,7 +165,7 @@ capabilities:
       max_edge), not a fresh one.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestSettledActionReturnsSettledCapture, planned:internal/vision.TestFramesDifferPastTolerance, planned:internal/vision.TestThumbnailChangeDetection]
+    tests: [internal/vision.TestSettledActionReturnsSettledCapture, internal/vision.TestFramesDifferPastTolerance, internal/vision.TestThumbnailChangeDetection]
     upstream:
       - rust/desk/src/computer.rs::an_action_that_settles_still_returns_the_capture_it_settled_on
       - rust/desk/src/computer.rs::a_change_counts_outside_the_volatile_blocks_only
@@ -181,7 +181,7 @@ capabilities:
       same holds for each step of a plan and for a wait step.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestFailedCaptureCarriesDriverReason, planned:internal/vision.TestActionReportsRunWhenShotFails]
+    tests: [internal/vision.TestFailedCaptureCarriesDriverReason, internal/vision.TestActionReportsRunWhenShotFails]
     upstream:
       - rust/desk/src/computer.rs::a_failed_capture_fails_with_the_drivers_reason
       - rust/desk/src/computer.rs::an_action_whose_screenshot_fails_still_reports_that_it_ran
@@ -199,7 +199,7 @@ capabilities:
       showed.
     surface: daemon
     parity: spec
-    tests: [planned:internal/vision.TestCallersGetOwnDefaultSession, planned:internal/driver.TestEndedSessionRestartsOnce]
+    tests: [internal/vision.TestCallersGetOwnDefaultSession, planned:internal/driver.TestEndedSessionRestartsOnce]
     upstream:
       - rust/desk/src/computer.rs::callers_without_a_session_get_their_own_and_an_ended_default_starts_again
       - rust/desk/src/computer.rs::a_session_the_driver_ended_starts_again_and_its_click_lands_where_the_screenshot_showed
@@ -216,7 +216,7 @@ capabilities:
       session of its own and ends it afterwards.
     surface: observe
     parity: oracle
-    tests: [planned:internal/vision.TestCropClipsAtImageEdge, planned:internal/vision.TestZoomCutsFromFullCapture, planned:internal/vision.TestZoomMapsByLatestScreenshot, planned:internal/vision.TestZoomOneShotSessionEnded, planned:internal/vision.TestFitAveragesBlocks]
+    tests: [internal/vision.TestCropClipsAtImageEdge, internal/vision.TestZoomCutsFromFullCapture, internal/vision.TestZoomMapsByLatestScreenshot, internal/vision.TestZoomOneShotSessionEnded, internal/vision.TestFitAveragesBlocks]
     upstream:
       - rust/desk/src/computer.rs::a_crop_keeps_the_rgb_of_its_rectangle_and_stops_at_the_image_edge
       - rust/desk/src/computer.rs::a_zoom_without_mit_shm_cuts_the_region_from_a_full_size_capture
@@ -233,7 +233,7 @@ capabilities:
       Parenthesised text that is not a numeric pair is left as is.
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestClickReplyNamesScreenshotPoint, planned:internal/vision.TestReplyPointsDividedByScale]
+    tests: [internal/vision.TestClickReplyNamesScreenshotPoint, internal/vision.TestReplyPointsDividedByScale]
     upstream:
       - rust/desk/src/computer.rs::a_desktop_click_reply_names_the_screenshot_point_on_linux_and_macos
       - rust/desk/src/computer.rs::shot_points_divides_each_point_by_the_scale
@@ -248,7 +248,7 @@ capabilities:
       safer outcome (no stray input).
     surface: act
     parity: spec
-    tests: [planned:internal/vision.TestOffScreenPointRefused]
+    tests: [internal/vision.TestOffScreenPointRefused]
     upstream:
       - rust/desk/src/computer.rs::a_point_off_the_screen_is_refused_in_screenshot_pixels
   - id: CAP-VIS-016
@@ -263,7 +263,7 @@ capabilities:
       and equals.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestVisionKeyAliasesAndCombos, planned:internal/actions.TestMacPlusKeyIsShiftEquals]
+    tests: [internal/actions.TestVisionKeyAliasesAndCombos, internal/actions.TestMacPlusKeyIsShiftEquals]
     upstream:
       - rust/desk/src/computer.rs::key_aliases_become_driver_names_and_a_key_combination_a_hotkey
       - rust/desk/src/computer.rs::a_macos_foreground_plus_key_goes_as_shift_and_equals
@@ -280,7 +280,7 @@ capabilities:
       tool-call closing tag leaked into the text is stripped before typing.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTypeAtPointClicksThenTypes, planned:internal/actions.TestTrailingNewlineTypedWithText, planned:internal/actions.TestMacForegroundTypeCallSequence, planned:internal/actions.TestNonASCIIChunksOfEight, planned:internal/actions.TestProtocolTailStripped]
+    tests: [internal/actions.TestTypeAtPointClicksThenTypes, internal/actions.TestTrailingNewlineTypedWithText, internal/actions.TestMacForegroundTypeCallSequence, internal/actions.TestNonASCIIChunksOfEight, internal/actions.TestProtocolTailStripped]
     upstream:
       - rust/desk/src/computer.rs::a_type_at_a_point_clicks_it_then_types_into_the_focus
       - rust/desk/src/computer.rs::off_linux_a_typed_trailing_newline_goes_with_the_text
@@ -296,7 +296,7 @@ capabilities:
       marks the step unconfirmed so the text is not typed again.
     surface: act
     parity: spec
-    tests: [planned:internal/actions.TestFailedTypeCountsLanded]
+    tests: [internal/actions.TestFailedTypeCountsLanded]
     upstream:
       - rust/desk/src/computer.rs::a_failed_type_counts_the_characters_that_landed
   - id: CAP-VIS-019
@@ -315,7 +315,7 @@ capabilities:
       press.
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestTextFieldClickIsHitChecked, planned:internal/actions.TestHitRefusalFallsBackToPress, planned:internal/actions.TestRefusalThenUnsupportedPressNoPixelClick, planned:internal/actions.TestSentHitCheckedClickNotRepeated]
+    tests: [internal/actions.TestTextFieldClickIsHitChecked, internal/actions.TestHitRefusalFallsBackToPress, internal/actions.TestRefusalThenUnsupportedPressNoPixelClick, internal/actions.TestSentHitCheckedClickNotRepeated]
     upstream:
       - rust/desk/src/computer.rs::off_linux_a_click_on_a_text_field_asks_the_driver_for_a_hit_checked_click
       - rust/desk/src/computer.rs::off_linux_a_hit_refusal_falls_back_to_the_press_and_other_elements_are_pressed
@@ -334,7 +334,7 @@ capabilities:
       a timeout (-25204).
     surface: act
     parity: oracle
-    tests: [planned:internal/actions.TestUnsupportedPressGetsOneHitCheckedClick, planned:internal/actions.TestUnsupportedDoubleClickRetriedWithCount, planned:internal/actions.TestNoRetryWithoutWindowOrLeftButton, planned:internal/actions.TestTimedOutPressNotRetried, planned:internal/actions.TestLeftClickClassification]
+    tests: [internal/actions.TestUnsupportedPressGetsOneHitCheckedClick, internal/actions.TestUnsupportedDoubleClickRetriedWithCount, internal/actions.TestNoRetryWithoutWindowOrLeftButton, internal/actions.TestTimedOutPressNotRetried, internal/actions.TestLeftClickClassification]
     upstream:
       - rust/desk/src/computer.rs::an_element_without_the_press_action_gets_one_hit_checked_click
       - rust/desk/src/computer.rs::a_refused_hit_checked_click_after_an_unsupported_press_returns_both_errors
@@ -351,7 +351,7 @@ capabilities:
       before any driver call and before any keystroke is injected.
     surface: policy
     parity: oracle
-    tests: [planned:internal/policy.TestBackgroundRefusesVisionActs]
+    tests: [internal/policy.TestBackgroundRefusesVisionActs]
     upstream:
       - rust/desk/src/computer.rs::background_input_refuses_computer_actions_before_any_driver_call
       - rust/desk/src/computer.rs::background_input_never_reaches_the_xtest_typer
@@ -365,7 +365,7 @@ capabilities:
       input) do not count as user activity.
     surface: policy
     parity: spec
-    tests: [planned:internal/policy.TestVisionInputUserActivityGuard]
+    tests: [internal/policy.TestVisionInputUserActivityGuard]
     upstream:
       - rust/desk/src/computer.rs::computer_input_takes_the_same_user_check_and_counts_as_the_drivers_own
   - id: CAP-VIS-023

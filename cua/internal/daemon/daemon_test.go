@@ -203,3 +203,22 @@ func mustJSON(v any) string {
 	data, _ := json.Marshal(v)
 	return string(data)
 }
+
+func TestStartingRunsUnderTheLockAndCanFailTheStart(t *testing.T) {
+	p := tempPaths(t)
+	eng := newEngine(nil)
+	ran := false
+	d := &Daemon{Paths: p, Handler: eng, Stopper: eng.Stopper, Starting: func(context.Context) error {
+		ran = true
+		if _, err := os.Stat(p.Lock); err != nil {
+			t.Errorf("Starting ran before the lock: %v", err)
+		}
+		return errors.New("service x: path too long")
+	}}
+	if err := d.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "service x") || !ran {
+		t.Fatalf("Run = %v (ran %v)", err, ran)
+	}
+	if _, err := os.Stat(p.MCP); !os.IsNotExist(err) {
+		t.Error("the daemon listened after a failed start")
+	}
+}

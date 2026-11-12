@@ -40,18 +40,39 @@ func AsProtocol(err error) *protocol.Error {
 	return errorFor(err)
 }
 
+// Imager answers observe requests that ask for pixels (image or vision);
+// vision.Service in production. base answers the rest of the request.
+type Imager interface {
+	Observe(ctx context.Context, agent string, req protocol.ObserveRequest, base Observer) (*protocol.ObserveResult, error)
+}
+
 // ObserveTool reads the desktop. It takes no desk turn: reads run alongside
-// actions.
-func ObserveTool(o Observer) Tool {
-	return func(ctx context.Context, _ *Call, args json.RawMessage) (any, *protocol.Error) {
+// actions. Without an Imager, captures are refused.
+func ObserveTool(o Observer) Tool { return ObserveToolWith(o, nil) }
+
+// ObserveToolWith reads the desktop and hands requests for pixels to im.
+func ObserveToolWith(o Observer, im Imager) Tool {
+	return func(ctx context.Context, call *Call, args json.RawMessage) (any, *protocol.Error) {
 		var req protocol.ObserveRequest
 		if perr := Decode(args, &req); perr != nil {
 			return nil, perr
 		}
+		var (
+			res *protocol.ObserveResult
+			err error
+		)
 		if req.Vision || (req.Image != "" && req.Image != "none") {
-			return nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "captures are not available in this build yet", Hint: "observe without image or vision"}
+			if im == nil {
+				return nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: "captures are not available in this build yet", Hint: "observe without image or vision"}
+			}
+			agent := ""
+			if call != nil && call.Session != nil {
+				agent = call.Session.AgentID
+			}
+			res, err = im.Observe(ctx, agent, req, o)
+		} else {
+			res, err = o.Observe(ctx, req)
 		}
-		res, err := o.Observe(ctx, req)
 		if err != nil {
 			return nil, AsProtocol(err)
 		}
