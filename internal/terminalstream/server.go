@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/audit"
 	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -196,7 +198,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				if frame.Type == "operation" {
 					result, err := operate(session.ctx, *frame.Operation)
 					if err != nil || len(result) > 4<<20 {
-						emit(Frame{Type: "error", ID: frame.ID, Message: "operation not confirmed; inspect before retrying"})
+						emit(Frame{Type: "error", ID: frame.ID, Message: operationFailure(err)})
 					} else {
 						emit(Frame{Type: "result", ID: frame.ID, Result: result, Timings: map[string]float64{"operation": float64(time.Since(opened).Microseconds()) / 1000}})
 					}
@@ -501,4 +503,18 @@ func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit f
 	conn.Close()
 	<-inputDone
 	emit(Frame{Type: "exit", ID: frame.ID})
+}
+
+// operationFailure keeps the cause of a failed remote operation for private
+// diagnostics: one line, credentials redacted, bounded. Never a raw dump.
+func operationFailure(err error) string {
+	const base = "operation not confirmed; inspect before retrying"
+	if err == nil {
+		return base + ": result too large"
+	}
+	cause := audit.Redact(strings.Join(strings.Fields(err.Error()), " "), 240)
+	if cause == "" {
+		return base
+	}
+	return base + ": " + cause
 }

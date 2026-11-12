@@ -572,3 +572,64 @@ func sanitizeNativePiSettings(data []byte, providers map[string]bool) ([]byte, e
 	}
 	return json.Marshal(cfg)
 }
+
+// nativeSettingsModelKeys lists the per-file keys owned by the cloud agent's
+// explicit model choice. Everything else in these files is user preference.
+func nativeSettingsModelKeys(name string) ([]string, bool) {
+	switch name {
+	case "codex/config.toml":
+		return []string{"model", "model_reasoning_effort", "model_reasoning_summary", "model_verbosity"}, true
+	case "claude/settings.json":
+		return []string{"model"}, true
+	case "pi/settings.json":
+		return []string{"defaultProvider", "defaultModel", "defaultThinkingLevel"}, true
+	}
+	return nil, false
+}
+
+// mergeNativeSettings resolves a settings file that changed on both computers
+// without blocking preparation: local preference edits win, while the cloud
+// keeps its own model choice and keys that only exist in the cloud copy.
+// Credential files are not settings and never merge here.
+func mergeNativeSettings(name string, cloud, local []byte) ([]byte, bool) {
+	modelKeys, ok := nativeSettingsModelKeys(name)
+	if !ok {
+		return nil, false
+	}
+	decode := func(data []byte) (map[string]any, bool) {
+		var cfg map[string]any
+		var err error
+		if name == "codex/config.toml" {
+			err = toml.Unmarshal(data, &cfg)
+		} else {
+			err = json.Unmarshal(data, &cfg)
+		}
+		return cfg, err == nil && cfg != nil
+	}
+	cloudCfg, ok := decode(cloud)
+	if !ok {
+		return nil, false
+	}
+	merged, ok := decode(local)
+	if !ok {
+		return nil, false
+	}
+	for key, value := range cloudCfg {
+		if _, exists := merged[key]; !exists {
+			merged[key] = value
+		}
+	}
+	for _, key := range modelKeys {
+		if value, exists := cloudCfg[key]; exists {
+			merged[key] = value
+		}
+	}
+	var out []byte
+	var err error
+	if name == "codex/config.toml" {
+		out, err = toml.Marshal(merged)
+	} else {
+		out, err = json.Marshal(merged)
+	}
+	return out, err == nil
+}

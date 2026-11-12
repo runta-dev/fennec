@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fennec/internal/launchprofile"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
@@ -71,6 +72,9 @@ func (t *Transport) operate(ctx context.Context, operation cloudruntime.LocalOpe
 		return nil, fmt.Errorf("operation outcome unknown; inspect before retrying: %w", err)
 	}
 	if frame.Type != "result" || !json.Valid(frame.Result) {
+		if frame.Type == "error" && frame.Message != "" {
+			return nil, errors.New(frame.Message)
+		}
 		return nil, fmt.Errorf("operation not confirmed; inspect before retrying")
 	}
 	launchprofile.Record("operation."+operation.Kind+".roundtrip", started, time.Since(started))
