@@ -1,9 +1,11 @@
 package launcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -63,6 +65,7 @@ func InstallShellIntegration(home, shell string) error {
 			return err
 		}
 	}
+	_ = recordShellFiles(home, paths)
 	return nil
 }
 
@@ -126,5 +129,83 @@ func installFishIntegration(home string) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), path)
+	if err := os.Rename(file.Name(), path); err != nil {
+		return err
+	}
+	_ = recordShellFiles(home, []string{path})
+	return nil
+}
+
+func shellFilesManifestPath(home string) string {
+	return filepath.Join(home, ".local/share/fennec/shell-files.json")
+}
+
+// RecordedShellFiles returns previously modified shell startup files so cleanup
+// still restores custom ZDOTDIR or XDG_CONFIG_HOME paths when env vars differ.
+func RecordedShellFiles(home string) []string {
+	if !filepath.IsAbs(home) {
+		return nil
+	}
+	data, err := os.ReadFile(shellFilesManifestPath(home))
+	if err != nil || len(data) > 65536 {
+		return nil
+	}
+	var recorded []string
+	if json.Unmarshal(data, &recorded) != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(recorded))
+	for _, item := range recorded {
+		cleaned := filepath.Clean(item)
+		if !filepath.IsAbs(cleaned) || cleaned == string(filepath.Separator) || strings.ContainsAny(cleaned, "\x00\r\n") || seen[cleaned] {
+			continue
+		}
+		seen[cleaned] = true
+		out = append(out, cleaned)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func recordShellFiles(home string, added []string) error {
+	if !filepath.IsAbs(home) {
+		return fmt.Errorf("absolute home required")
+	}
+	merged := map[string]bool{}
+	for _, existing := range RecordedShellFiles(home) {
+		merged[existing] = true
+	}
+	for _, item := range added {
+		cleaned := filepath.Clean(item)
+		if filepath.IsAbs(cleaned) && cleaned != string(filepath.Separator) && !strings.ContainsAny(cleaned, "\x00\r\n") {
+			merged[cleaned] = true
+		}
+	}
+	list := make([]string, 0, len(merged))
+	for item := range merged {
+		list = append(list, item)
+	}
+	sort.Strings(list)
+	manifest := shellFilesManifestPath(home)
+	if err := os.MkdirAll(filepath.Dir(manifest), 0700); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(list)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(manifest), ".shell-files-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), manifest)
 }

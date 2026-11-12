@@ -86,17 +86,16 @@ actual=$("$stage/bin/` + id + `" --version)
 printf '%s\n' "$actual" | grep -Eq '(^|[[:space:]])v?'"$version"'([[:space:]]|$)'
 # Keep the verified prefix: existing processes may still use older installations.
 trap - EXIT HUP INT TERM
-python3 - "$stage/bin/` + id + `" "$binary" "$HOME/.local/bin/` + id + `" <<'ACTIVATE'
-import os,sys,uuid
-source,binary,alias=sys.argv[1:]
-for target,link in ((binary,source),(alias,binary)):
- temporary=target+'.'+uuid.uuid4().hex
- try:
-  os.symlink(link,temporary)
-  os.replace(temporary,target)
- finally:
-  if os.path.lexists(temporary):os.unlink(temporary)
-ACTIVATE
+source="$stage/bin/` + id + `"
+alias="$HOME/.local/bin/` + id + `"
+tmp_bin="$binary.tmp.$$"
+rm -f "$tmp_bin"
+ln -s "$source" "$tmp_bin"
+mv -f "$tmp_bin" "$binary"
+tmp_alias="$alias.tmp.$$"
+rm -f "$tmp_alias"
+ln -s "$binary" "$tmp_alias"
+mv -f "$tmp_alias" "$alias"
 `
 }
 

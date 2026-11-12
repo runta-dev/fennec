@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -56,7 +57,11 @@ func ManifestGit(ctx context.Context, cwd string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	cmd := exec.CommandContext(ctx, "git", "-C", real, "rev-parse", "--show-toplevel")
+	gitBinary, err := resolveUsableGit(ctx)
+	if err != nil {
+		return Manifest{}, err
+	}
+	cmd := exec.CommandContext(ctx, gitBinary, "-C", real, "rev-parse", "--show-toplevel")
 	output, err := cmd.Output()
 	if err != nil {
 		return Manifest{}, fmt.Errorf("cloud handoff requires a Git project")
@@ -77,7 +82,7 @@ func ManifestGit(ctx context.Context, cwd string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("working directory escapes project")
 	}
 	m := Manifest{Root: root, WorkingDirectory: filepath.ToSlash(relative), Files: []File{}, Excluded: []Exclusion{}}
-	cmd = exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	cmd = exec.CommandContext(ctx, gitBinary, "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	output, err = cmd.Output()
 	if err != nil {
 		return Manifest{}, fmt.Errorf("cannot enumerate Git project")
@@ -147,4 +152,19 @@ func ManifestGit(ctx context.Context, cwd string) (Manifest, error) {
 		m.Bytes += size
 	}
 	return m, nil
+}
+
+// On a clean Mac without Command Line Tools, /usr/bin/git is an xcrun shim that
+// triggers a GUI installer dialog when executed. Check xcode-select -p first.
+func resolveUsableGit(ctx context.Context) (string, error) {
+	gitBinary, err := exec.LookPath("git")
+	if err != nil {
+		return "", fmt.Errorf("Git is not installed on this Mac")
+	}
+	if runtime.GOOS == "darwin" && filepath.Clean(gitBinary) == "/usr/bin/git" {
+		if exec.CommandContext(ctx, "/usr/bin/xcode-select", "-p").Run() != nil {
+			return "", fmt.Errorf("Git requires macOS Command Line Tools")
+		}
+	}
+	return gitBinary, nil
 }

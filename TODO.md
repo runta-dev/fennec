@@ -41,7 +41,9 @@ Development evidence and outstanding work are in the
   credentials, cloud preparation, sessions, upgrades, and cleanup. Record what
   the product supplies, behavior when missing, fixes, and tests. Runtime behavior
   must not depend on a source checkout, Homebrew, Go, Node, Magpie, developer shell
-  configuration, or leftover developer services.
+  configuration, or leftover developer services. Source audit recorded in
+  [hidden dependency audit](docs/hidden-dependency-audit.md); keep unchecked until
+  clean-Mac final-DMG verification completes.
 - [ ] **First installation from the official DMG**: download from CI release links;
   verify signing, notarization, quarantine, and Gatekeeper. Drag into Applications
   and launch without developer certificates or helper caches. Cover spaces in

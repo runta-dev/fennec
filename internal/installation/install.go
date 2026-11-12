@@ -94,6 +94,9 @@ func RequiresInstallation(app, temp string, readonly bool) bool {
 	if readonly {
 		return true
 	}
+	if hasTrashSegment(app) {
+		return true
+	}
 	canonical := func(p string) string {
 		if resolved, err := canonicalPath(p); err == nil {
 			return resolved
@@ -101,12 +104,24 @@ func RequiresInstallation(app, temp string, readonly bool) bool {
 		return filepath.Clean(p)
 	}
 	app = canonical(app)
+	if hasTrashSegment(app) {
+		return true
+	}
 	for _, root := range []string{temp, "/tmp", "/private/tmp"} {
 		if root == "" {
 			continue
 		}
 		relative, err := filepath.Rel(canonical(root), app)
 		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTrashSegment(path string) bool {
+	for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
+		if part == ".Trash" || part == ".Trashes" {
 			return true
 		}
 	}

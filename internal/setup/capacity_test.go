@@ -19,25 +19,13 @@ func TestGuestCapacityUsesObservedMemoryAndCPU(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			hook := `import builtins,io,os,time
-original=builtins.open
-def observed(path,*args,**kwargs):
- if path=='/proc/meminfo':return io.StringIO('MemTotal: '+os.environ['TEST_MEMORY']+' kB\nMemAvailable: 100 kB\n')
- return original(path,*args,**kwargs)
-builtins.open=observed
-os.cpu_count=lambda:int(os.environ['TEST_CPUS'])
-clock=[0]
-def monotonic():
- clock[0]+=100
- return clock[0]
-time.monotonic=monotonic
-`
-			if err := os.WriteFile(filepath.Join(dir, "sitecustomize.py"), []byte(hook), 0600); err != nil {
+			meminfo := filepath.Join(dir, "meminfo")
+			if err := os.WriteFile(meminfo, []byte("MemTotal: "+tc.memory+" kB\nMemAvailable: 100 kB\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			cmd := exec.Command("sh", "-s")
 			cmd.Stdin = strings.NewReader(GuestCapacityScript)
-			cmd.Env = append(os.Environ(), "PYTHONPATH="+dir, "TEST_MEMORY="+tc.memory, "TEST_CPUS="+tc.cpus)
+			cmd.Env = append(os.Environ(), "FENNEC_PROC_MEMINFO="+meminfo, "FENNEC_CPU_COUNT="+tc.cpus, "FENNEC_CAPACITY_ATTEMPTS=1")
 			output, err := cmd.CombinedOutput()
 			if (err == nil) != tc.ready {
 				t.Fatalf("unexpected capacity result: %v %s", err, output)

@@ -2,6 +2,7 @@ package uninstall
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -141,6 +142,27 @@ func DiscoverLocal(home, executable string, entries []string, zdot, xdg string) 
 		return plan, fmt.Errorf("absolute shell config directory required")
 	}
 	plan.ShellFiles = append(plan.ShellFiles, filepath.Join(xdg, "fish/conf.d/fennec.fish"))
+	if raw, err := os.ReadFile(filepath.Join(home, ".local/share/fennec/shell-files.json")); err == nil && len(raw) <= 65536 {
+		var recorded []string
+		if json.Unmarshal(raw, &recorded) == nil {
+			for _, item := range recorded {
+				cleaned := filepath.Clean(item)
+				if filepath.IsAbs(cleaned) && cleaned != string(filepath.Separator) && !strings.ContainsAny(cleaned, "\x00\r\n") {
+					plan.ShellFiles = append(plan.ShellFiles, cleaned)
+				}
+			}
+		}
+	}
+	shellSeen := map[string]bool{}
+	dedupShell := make([]string, 0, len(plan.ShellFiles))
+	for _, item := range plan.ShellFiles {
+		cleaned := filepath.Clean(item)
+		if !shellSeen[cleaned] {
+			shellSeen[cleaned] = true
+			dedupShell = append(dedupShell, cleaned)
+		}
+	}
+	plan.ShellFiles = dedupShell
 	sort.Strings(plan.Apps)
 	sort.Strings(plan.Data)
 	sort.Strings(plan.ShellFiles)

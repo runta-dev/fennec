@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -20,21 +21,29 @@ func ProjectIgnores(root string) ([]string, error) {
 	paths := []string{".gitignore"}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".gitignore", "**/.gitignore")
-	if output, err := command.Output(); err == nil {
-		seen := map[string]bool{".gitignore": true}
-		for _, name := range strings.Split(string(output), "\x00") {
-			if name == "" || seen[name] {
-				continue
-			}
-			if filepath.IsAbs(name) || strings.HasPrefix(filepath.Clean(name), "..") {
-				return nil, fmt.Errorf("invalid ignore file path")
-			}
-			seen[name] = true
-			paths = append(paths, name)
+	gitBinary, gitErr := exec.LookPath("git")
+	if gitErr == nil && runtime.GOOS == "darwin" && filepath.Clean(gitBinary) == "/usr/bin/git" {
+		if exec.CommandContext(ctx, "/usr/bin/xcode-select", "-p").Run() != nil {
+			gitErr = fmt.Errorf("command line tools not installed")
 		}
-	} else if ctx.Err() != nil {
-		return nil, ctx.Err()
+	}
+	if gitErr == nil {
+		command := exec.CommandContext(ctx, gitBinary, "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".gitignore", "**/.gitignore")
+		if output, err := command.Output(); err == nil {
+			seen := map[string]bool{".gitignore": true}
+			for _, name := range strings.Split(string(output), "\x00") {
+				if name == "" || seen[name] {
+					continue
+				}
+				if filepath.IsAbs(name) || strings.HasPrefix(filepath.Clean(name), "..") {
+					return nil, fmt.Errorf("invalid ignore file path")
+				}
+				seen[name] = true
+				paths = append(paths, name)
+			}
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 	}
 	sort.Strings(paths)
 	rules := []string{}

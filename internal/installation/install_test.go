@@ -292,3 +292,15 @@ func TestCanceledUpgradeAfterUIStopReopensOriginal(t *testing.T) {
 		t.Fatal("canceled update did not restore UI")
 	}
 }
+
+func TestTrashLocationsRequireInstallation(t *testing.T) {
+	if !RequiresInstallation("/Users/alice/.Trash/Fennec.app", "/var/folders/x/T", false) {
+		t.Fatal("user Trash bundle did not require installation")
+	}
+	if !RequiresInstallation("/Volumes/External/.Trashes/501/Fennec.app", "/var/folders/x/T", false) {
+		t.Fatal("volume Trashes bundle did not require installation")
+	}
+	if RequiresInstallation("/Applications/Fennec.app", "/var/folders/x/T", false) {
+		t.Fatal("/Applications unexpectedly required installation")
+	}
+}

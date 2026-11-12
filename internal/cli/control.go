@@ -72,6 +72,7 @@ func serveControl(arguments []string) error {
 	// cannot create duplicate system authorization prompts.
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
 		controller.Start(ctx)
+		startTrashWatcher(ctx, cancel, home, os.Args[0])
 		go func() {
 			defer launchprofile.Begin("account.restore")()
 			restore, cancel := context.WithTimeout(ctx, 120*time.Second)
