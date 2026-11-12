@@ -48,11 +48,73 @@ func codexAppServerEnvironment(home string) (mode string, env []string, codexHom
 		}
 		return CodexAppServerNative, env, codexHome, nil
 	}
-	codexHome = os.Getenv("CODEX_HOME")
-	if codexHome == "" {
-		codexHome = filepath.Join(home, ".codex")
+	gateway := os.Getenv("CODEX_HOME")
+	if gateway == "" {
+		gateway = filepath.Join(home, ".codex")
 	}
-	return CodexAppServerGateway, os.Environ(), codexHome, nil
+	codexHome, err = prepareGatewayHome(home, gateway)
+	if err != nil {
+		return "", nil, "", err
+	}
+	env = []string{}
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "CODEX_HOME=") {
+			env = append(env, entry)
+		}
+	}
+	return CodexAppServerGateway, append(env, "CODEX_HOME="+codexHome), codexHome, nil
+}
+
+// prepareGatewayHome builds the CODEX_HOME for ChatGPT in Magpie mode. Routing
+// and model settings link to the Magpie-routed gateway home shared with Codex
+// CLI, while the ChatGPT identity links to the user's synchronized native
+// account, so ChatGPT shows the same account and limits as on the Mac. The
+// gateway home's own credentials are never read or changed.
+func prepareGatewayHome(home, gateway string) (string, error) {
+	directory := filepath.Join(home, ".local/fennec/chatgpt/codex")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return "", err
+	}
+	links := map[string]string{}
+	for _, name := range []string{"config.toml", "AGENTS.md", "skills", "plugins", "rules", "prompts"} {
+		links[name] = filepath.Join(gateway, name)
+	}
+	if root, _, err := setup.NativeAccountRoot(home, "codex"); err == nil {
+		links["auth.json"] = filepath.Join(root, "codex", "auth.json")
+	}
+	for name, target := range links {
+		if err := linkShared(filepath.Join(directory, name), target); err != nil {
+			return "", err
+		}
+	}
+	if _, ok := links["auth.json"]; !ok {
+		if current, err := os.Readlink(filepath.Join(directory, "auth.json")); err == nil && current != "" {
+			os.Remove(filepath.Join(directory, "auth.json"))
+		}
+	}
+	return directory, nil
+}
+
+// linkShared points path at target, replacing a stale link or a copy that
+// codex rewrote in place. A missing target removes the link.
+func linkShared(path, target string) error {
+	if current, err := os.Readlink(path); err == nil && current == target {
+		if _, err := os.Stat(target); err == nil {
+			return nil
+		}
+	}
+	if _, err := os.Stat(target); err != nil {
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return os.Remove(path)
+		}
+		return nil
+	}
+	temporary := path + ".fennec-link"
+	os.Remove(temporary)
+	if err := os.Symlink(target, temporary); err != nil {
+		return err
+	}
+	return os.Rename(temporary, path)
 }
 
 // appServerConn reports which mode served the stream.
