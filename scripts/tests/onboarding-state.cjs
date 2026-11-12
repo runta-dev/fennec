@@ -29,19 +29,13 @@ const nodes = {
   '#onboarding-setup': makeNode('div'),
   '#onboarding-logo-hit': makeNode('div'),
   '#onboarding-env-badge': makeNode('button'),
-  '#onboarding-tagline': makeNode('p'),
   '#onboarding-login-btn': makeNode('button'),
   '#onboarding-login-hint': makeNode('p'),
-  '#arch-edge-label': makeNode('span'),
-  '#arch-cloud-label': makeNode('span'),
-  '#onboarding-story-title': makeNode('strong'),
-  '#onboarding-story-body': makeNode('p'),
   '#onboarding-peek-stage': makeNode('div'),
   '#onboarding-bar-fill': makeNode('div'),
   '#onboarding-stage-text': makeNode('span'),
   '#onboarding-action-btn': makeNode('button')
 };
-const dots = [makeNode('span'), makeNode('span'), makeNode('span')];
 let stageEl = null;
 const bodyEl = makeNode('body');
 const sent = [];

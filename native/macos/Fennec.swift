@@ -613,7 +613,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func pollState() {
         guard controlReady,!stateLoading else { return }
-        if popup.isVisible, authorized, isOnline, visibleRefreshTab == "account", Date().timeIntervalSince(lastMetricsPoll) >= 3.0 {
+        if popup.isVisible, authorized, isOnline, visibleRefreshTab == "account", Date().timeIntervalSince(lastMetricsPoll) >= 1.0 {
             loadMetrics()
         }
         stateLoading = true
