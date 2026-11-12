@@ -45,6 +45,14 @@ const (
 	CapabilityCodexAppServer = "codex_app_server"
 )
 
+// A socket stream opened with Term SocketCompressionZstd receives its output as
+// a zstd stream when the receipt echoes the same Term; older services ignore
+// the request and send plain bytes.
+const (
+	SocketCompressionZstd   = "zstd"
+	SocketCompressionWindow = 8 << 20
+)
+
 func (frame Frame) validateOpen() error {
 	if !regexp.MustCompile(`^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$`).MatchString(frame.ID) {
 		return fmt.Errorf("invalid stream identity")

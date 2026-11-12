@@ -3,6 +3,7 @@ package terminalstream
 import (
 	"bytes"
 	"context"
+	"github.com/klauspost/compress/zstd"
 	"io"
 	"net"
 	"strings"
@@ -142,5 +143,66 @@ func TestSocketReceiptReportsServedMode(t *testing.T) {
 	defer session.Close()
 	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" || frame.Message != "native" {
 		t.Fatal(frame, err)
+	}
+}
+
+// Compressed socket output decodes to the exact bytes, arrives message by
+// message, and repeated replies cost far less than their size.
+func TestSocketStreamCompressesOutputWhenRequested(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	reply := []byte(strings.Repeat(`{"name":"tool","inputSchema":{"type":"object"}},`, 20000))
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(context.Context, string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go func() {
+			remote.Write(reply)
+			remote.Write(reply)
+			remote.Close()
+		}()
+		return local, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("a", 32), Target: SocketCodexAppServer, Term: SocketCompressionZstd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" || frame.Term != SocketCompressionZstd {
+		t.Fatal(frame, err)
+	}
+	reader, writer := io.Pipe()
+	decoded := make(chan []byte, 1)
+	go func() {
+		decoder, _ := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1))
+		data, _ := io.ReadAll(decoder)
+		decoded <- data
+	}()
+	wire := 0
+	for {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == "exit" {
+			break
+		}
+		if frame.Type == "data" {
+			wire += len(frame.Data)
+			writer.Write(frame.Data)
+			session.Send(Frame{Type: "credit", Bytes: len(frame.Data)})
+		}
+	}
+	writer.Close()
+	if got := <-decoded; !bytes.Equal(got, append(append([]byte(nil), reply...), reply...)) {
+		t.Fatal("decoded output differs", len(got))
+	}
+	if wire*20 > 2*len(reply) {
+		t.Fatal("output not compressed:", wire, "bytes for", 2*len(reply))
 	}
 }

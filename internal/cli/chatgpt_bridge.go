@@ -14,6 +14,7 @@ import (
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"fmt"
+	"github.com/klauspost/compress/zstd"
 	"io"
 	"net"
 	"os"
@@ -278,7 +279,8 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	defer cancel()
 	stop := context.AfterFunc(operation, func() { conn.Close() })
 	defer stop()
-	session, mode, err := b.open(operation)
+	session, receipt, err := b.open(operation)
+	mode := receipt.Message
 	if err != nil {
 		io.WriteString(conn, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return err
@@ -320,6 +322,29 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 			}
 		}
 	}()
+	// Compressed output is decoded on its own goroutine; writes into the pipe
+	// block until ChatGPT has received the bytes, so credits still pace the
+	// remote stream.
+	var output io.Writer = conn
+	decoded := make(chan error, 1)
+	if receipt.Term == terminalstream.SocketCompressionZstd {
+		reader, writer := io.Pipe()
+		defer writer.Close()
+		decoder, err := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxWindow(terminalstream.SocketCompressionWindow))
+		if err != nil {
+			return err
+		}
+		go func() {
+			_, err := io.Copy(conn, decoder)
+			decoder.Close()
+			reader.CloseWithError(io.ErrClosedPipe)
+			decoded <- err
+			cancel()
+		}()
+		output = writer
+	} else {
+		close(decoded)
+	}
 	for {
 		frame, err := session.Next(operation)
 		if err != nil {
@@ -327,7 +352,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		}
 		switch frame.Type {
 		case "data":
-			if _, err := conn.Write(frame.Data); err != nil {
+			if _, err := output.Write(frame.Data); err != nil {
 				return err
 			}
 			if err := session.Send(terminalstream.Frame{Type: "credit", Bytes: len(frame.Data)}); err != nil {
@@ -338,6 +363,10 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 				return fmt.Errorf("invalid app-server input credit")
 			}
 		case "exit":
+			if writer, ok := output.(*io.PipeWriter); ok {
+				writer.Close()
+				return <-decoded
+			}
 			return nil
 		case "error":
 			return fmt.Errorf("remote app-server stream failed")
@@ -347,7 +376,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 
 // open waits for the daemon's resident terminal channel, then opens a socket
 // stream on it. It never starts another SSH connection or exec channel.
-func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, string, error) {
+func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, terminalstream.Frame, error) {
 	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	var transport *terminalstream.Transport
@@ -364,28 +393,28 @@ func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, stri
 		}
 		select {
 		case <-wait.Done():
-			return nil, "", fmt.Errorf("cloud runtime channel unavailable")
+			return nil, terminalstream.Frame{}, fmt.Errorf("cloud runtime channel unavailable")
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
 	if !transport.Supports(terminalstream.CapabilityCodexAppServer) {
-		return nil, "", fmt.Errorf("cloud terminal service does not support codex app-server yet")
+		return nil, terminalstream.Frame{}, fmt.Errorf("cloud terminal service does not support codex app-server yet")
 	}
 	var nonce [16]byte
 	rand.Read(nonce[:])
 	b.services.mu.Lock()
 	device := b.services.config.Device
 	b.services.mu.Unlock()
-	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device})
+	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device, Term: terminalstream.SocketCompressionZstd})
 	if err != nil {
-		return nil, "", err
+		return nil, terminalstream.Frame{}, err
 	}
 	frame, err := session.Next(wait)
 	if err != nil || frame.Type != "receipt" {
 		session.Close()
-		return nil, "", fmt.Errorf("cloud codex app-server unavailable")
+		return nil, terminalstream.Frame{}, fmt.Errorf("cloud codex app-server unavailable")
 	}
-	return session, frame.Message, nil
+	return session, frame, nil
 }
 
 // track records which cloud app-server mode serves a connection; an empty mode

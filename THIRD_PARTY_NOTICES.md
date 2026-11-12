@@ -42,3 +42,10 @@ failure messages in `internal/guardian` reproduce text from
 `codex-rs/prompts/src/model_messages/guardian.rs`. Permission-mode semantics,
 protected metadata names, the dangerous-command rule and the sandbox-denial
 heuristic in `internal/sandbox` are reimplemented in Go from `codex-rs`.
+
+## klauspost/compress
+
+- `github.com/klauspost/compress` v1.18.2 (zstd), BSD 3-Clause; license:
+  `docs/licenses/klauspost-compress-LICENSE.txt`.
+- Compiled into the Go daemon and cloud terminal service to compress
+  ChatGPT app-server traffic on the resident channel.
