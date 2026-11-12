@@ -68,7 +68,7 @@ docs/                           Design references
 
 ## Design references
 
-[DESIGN.md](DESIGN.md) describes the architecture, trust boundaries, and delivery stages. [docs/references.md](docs/references.md) records the Magpie layout reference and the Runta brand source.
+[DESIGN.md](DESIGN.md) describes the architecture, trust boundaries, and delivery stages. [docs/references.md](docs/references.md) records the Magpie layout reference and the Runta brand source. [docs/codex-desktop-cloud.md](docs/codex-desktop-cloud.md) records the Codex Desktop app-server research and the separate native-client acceptance boundary; it is not a claim that Desktop support has shipped.
 
 Fennec is an independent application. Selected Agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md. Magpie's Go entry point, `internal/` packages, embedded web surface, and familiar-agent-first experience inform the layout.
 

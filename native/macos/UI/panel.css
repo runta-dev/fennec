@@ -538,8 +538,8 @@ nav button{padding:3px 7px}
 #sandbox-mode-label{white-space:nowrap;flex:none}
 #sandbox-segments{position:relative;isolation:isolate;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;margin-left:auto;padding:2px;gap:2px;border-radius:8px;background:var(--bg)}
 #sandbox-segments::before{content:"";position:absolute;z-index:0;top:2px;bottom:2px;left:2px;width:calc((100% - 8px)/3);border:1px solid var(--line);border-radius:6px;background:var(--card);box-shadow:0 1px 3px #00000014;pointer-events:none;transition:transform .24s cubic-bezier(.23,1,.32,1)}
-#sandbox-segments:has([data-sandbox-mode=workspace][aria-checked=true])::before{transform:translateX(calc(100% + 2px))}
-#sandbox-segments:has([data-sandbox-mode=full][aria-checked=true])::before{transform:translateX(calc(200% + 4px))}
+#sandbox-segments:has([data-permission-mode=auto][aria-checked=true])::before{transform:translateX(calc(100% + 2px))}
+#sandbox-segments:has([data-permission-mode=full][aria-checked=true])::before{transform:translateX(calc(200% + 4px))}
 #sandbox-segments>button{position:relative;z-index:1;min-width:0;white-space:nowrap;padding:3px 6px;line-height:18px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);font-size:11.5px;transition:color .18s ease}
 #sandbox-segments>button:hover{filter:none;color:var(--text)}
 #sandbox-segments>button[aria-checked=true]{background:transparent;border-color:transparent;box-shadow:none;color:var(--text);font-weight:500}

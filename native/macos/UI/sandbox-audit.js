@@ -1,8 +1,7 @@
 // Local macOS Seatbelt sandbox controls and 7-day rolling security audit view.
 (() => {
   const modeGroup = document.querySelector('#sandbox-segments');
-  const modeButtons = [...(modeGroup?.querySelectorAll('[data-sandbox-mode]') || [])];
-  const networkSwitch = document.querySelector('#sandbox-network');
+  const modeButtons = [...(modeGroup?.querySelectorAll('[data-permission-mode]') || [])];
   const rootsSection = document.querySelector('#sandbox-roots-section');
   const rootsList = document.querySelector('#sandbox-roots-list');
   const addRootBtn = document.querySelector('#add-sandbox-root');
@@ -15,12 +14,11 @@
   const countApprovedEl = document.querySelector('#audit-count-approved');
   const auditListEl = document.querySelector('#audit-list');
 
-  const MODES = ['read-only', 'workspace', 'full'];
+  const MODES = ['ask', 'auto', 'full'];
   const t = token => (typeof translate === 'function' ? translate(token) : token);
 
   let sandboxState = {
-    mode: 'workspace',
-    network: false,
+    mode: 'auto',
     customRoots: [],
     effectiveRoots: [],
     autoAccessGranted: false,
@@ -34,9 +32,9 @@
   const expandedIds = new Set();
 
   function normalizeMode(raw) {
-    if (raw === 'read-only') return 'read-only';
+    if (raw === 'ask' || raw === 'ask-for-approval' || raw === 'read-only') return 'ask';
     if (raw === 'full' || raw === 'full-access' || raw === 'danger-full-access') return 'full';
-    return 'workspace';
+    return 'auto';
   }
 
   function compactHomePath(p) {
@@ -88,9 +86,6 @@
     if (/(network-outbound|network is down|no route to host|curl |wget |nc )/.test(hay) && !entry.network_allowed) {
       return t('[[i18n:ui.audit_reason_network]]');
     }
-    if (normalizeMode(entry.sandbox_mode) === 'read-only') {
-      return t('[[i18n:ui.audit_reason_readonly]]');
-    }
     return t('[[i18n:ui.audit_reason_outside_workspace]]');
   }
 
@@ -109,28 +104,23 @@
 
   function modeLabel(mode) {
     const m = normalizeMode(mode);
-    if (m === 'read-only') return t('[[i18n:ui.sandbox_mode_read_only]]');
     if (m === 'full') return t('[[i18n:ui.sandbox_mode_full]]');
-    return t('[[i18n:ui.sandbox_mode_workspace]]');
+    if (m === 'ask') return t('[[i18n:ui.sandbox_mode_ask]]');
+    return t('[[i18n:ui.sandbox_mode_auto]]');
   }
 
   function drawSandboxSettings() {
     const mode = sandboxState.mode;
     modeButtons.forEach(btn => {
-      const selected = btn.dataset.sandboxMode === mode;
+      const selected = btn.dataset.permissionMode === mode;
       btn.setAttribute('aria-checked', String(selected));
       btn.tabIndex = selected ? 0 : -1;
     });
-    if (networkSwitch) {
-      const effectiveNet = mode === 'full' ? true : sandboxState.network;
-      networkSwitch.setAttribute('aria-checked', String(effectiveNet));
-      networkSwitch.disabled = mode === 'full';
-    }
     if (rootsSection) {
-      rootsSection.classList.toggle('is-inactive', mode !== 'workspace');
+      rootsSection.classList.toggle('is-inactive', mode === 'full');
     }
     if (addRootBtn) {
-      addRootBtn.disabled = mode !== 'workspace';
+      addRootBtn.disabled = mode === 'full';
     }
     if (rootsList) {
       const customSet = new Set(sandboxState.customRoots);
@@ -158,7 +148,7 @@
             const removeText = t('[[i18n:ui.remove_writable_folder]]');
             removeBtn.setAttribute('aria-label', removeText);
             removeBtn.title = removeText;
-            removeBtn.disabled = mode !== 'workspace';
+            removeBtn.disabled = mode === 'full';
             removeBtn.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3 3 9"/></svg>';
             removeBtn.onclick = () => removeCustomRoot(rootPath);
             row.append(removeBtn);
@@ -328,7 +318,7 @@
     if (sandboxState.mode === normalized) return;
     sandboxState = { ...sandboxState, mode: normalized };
     drawSandboxSettings();
-    send('settings:' + JSON.stringify({ sandbox_mode: normalized }));
+    send('settings:' + JSON.stringify({ permission_mode: normalized }));
   }
 
   function removeCustomRoot(target) {
@@ -344,7 +334,7 @@
   }
 
   modeButtons.forEach((btn, idx) => {
-    btn.onclick = () => selectMode(btn.dataset.sandboxMode);
+    btn.onclick = () => selectMode(btn.dataset.permissionMode);
     btn.onkeydown = event => {
       let nextIdx;
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIdx = (idx + 1) % MODES.length;
@@ -358,19 +348,9 @@
     };
   });
 
-  if (networkSwitch) {
-    networkSwitch.onclick = () => {
-      if (sandboxState.mode === 'full') return;
-      const next = !sandboxState.network;
-      sandboxState = { ...sandboxState, network: next };
-      drawSandboxSettings();
-      send('settings:' + JSON.stringify({ sandbox_network: next }));
-    };
-  }
-
   if (addRootBtn) {
     addRootBtn.onclick = () => {
-      if (sandboxState.mode !== 'workspace') return;
+      if (sandboxState.mode === 'full') return;
       send('pick-sandbox-root');
     };
   }
@@ -397,8 +377,9 @@
     const custom = Array.isArray(prefs.sandbox_roots) ? prefs.sandbox_roots.filter(Boolean) : sandboxState.customRoots;
     const effective = Array.isArray(prefs.effective_sandbox_roots) ? prefs.effective_sandbox_roots.filter(Boolean) : custom;
     sandboxState = {
-      mode: prefs.sandbox_mode !== undefined ? normalizeMode(prefs.sandbox_mode) : sandboxState.mode,
-      network: prefs.sandbox_network !== undefined ? Boolean(prefs.sandbox_network) : sandboxState.network,
+      mode: prefs.permission_mode !== undefined
+        ? normalizeMode(prefs.permission_mode)
+        : prefs.sandbox_mode !== undefined ? normalizeMode(prefs.sandbox_mode) : sandboxState.mode,
       customRoots: custom,
       effectiveRoots: effective,
       autoAccessGranted: prefs.auto_access_granted !== undefined ? Boolean(prefs.auto_access_granted) : sandboxState.autoAccessGranted,

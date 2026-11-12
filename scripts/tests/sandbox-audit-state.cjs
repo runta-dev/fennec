@@ -36,9 +36,9 @@ function makeNode(tag = 'div', dataset = {}) {
 }
 
 const modeButtons = [
-  makeNode('button', { sandboxMode: 'read-only' }),
-  makeNode('button', { sandboxMode: 'workspace' }),
-  makeNode('button', { sandboxMode: 'full' })
+  makeNode('button', { permissionMode: 'ask' }),
+  makeNode('button', { permissionMode: 'auto' }),
+  makeNode('button', { permissionMode: 'full' })
 ];
 const modeGroup = makeNode('div');
 modeGroup.querySelectorAll = () => modeButtons;
@@ -51,7 +51,6 @@ const filterButtons = [
 
 const nodes = {
   '#sandbox-segments': modeGroup,
-  '#sandbox-network': makeNode('button'),
   '#sandbox-roots-section': makeNode('div'),
   '#sandbox-roots-list': makeNode('div'),
   '#add-sandbox-root': makeNode('button'),
@@ -85,17 +84,15 @@ const context = vm.createContext({
 
 vm.runInContext(source, context);
 
-// 1. Render initial preferences with workspace mode, 1 synced + 1 custom root, and 7-day summary.
+// 1. Render initial preferences with Approve for me, 1 synced + 1 custom root, and 7-day summary.
 context.window.renderSandboxPreferences({
-  sandbox_mode: 'workspace',
-  sandbox_network: false,
+  permission_mode: 'auto',
   sandbox_roots: ['/Users/alice/work/custom-repo'],
   effective_sandbox_roots: ['/Users/alice/work/custom-repo', '/Users/alice/work/synced-repo'],
   auto_access_granted: true,
   audit_summary: { total_7d: 6, today_count: 2, blocked_7d: 1, retention_days: 7 }
 });
 assert.equal(modeButtons[1].attrs['aria-checked'], 'true');
-assert.equal(nodes['#sandbox-network'].attrs['aria-checked'], 'false');
 assert.equal(nodes['#clear-trust'].disabled, false);
 assert.equal(nodes['#clear-trust'].textContent, 'revoke_access');
 
@@ -111,19 +108,15 @@ assert.equal(nodes['#sandbox-roots-list'].children[0].children[0].textContent, '
 assert.equal(nodes['#audit-summary-badge'].textContent, '6 · 1 audit_summary_blocked');
 assert.equal(nodes['#audit-summary-badge'].classList.contains('has-blocked'), true);
 
-// 2. Switching to Full mode disables network toggle (showing true) and dims roots without removing rows.
+// 2. Switching to Full access dims roots without removing rows.
 modeButtons[2].onclick();
-assert.equal(sent.pop(), 'settings:{"sandbox_mode":"full"}');
-assert.equal(nodes['#sandbox-network'].disabled, true);
-assert.equal(nodes['#sandbox-network'].attrs['aria-checked'], 'true');
+assert.equal(sent.pop(), 'settings:{"permission_mode":"full"}');
 assert.equal(nodes['#sandbox-roots-section'].classList.contains('is-inactive'), true);
 assert.equal(nodes['#sandbox-roots-list'].children.length, 2, 'rows remain in place for zero layout shift');
 
-// 3. Switching back to Workspace re-enables network toggle and picking/removing custom folders.
+// 3. Switching back to Approve for me re-enables picking/removing custom folders.
 modeButtons[1].onclick();
-assert.equal(sent.pop(), 'settings:{"sandbox_mode":"workspace"}');
-assert.equal(nodes['#sandbox-network'].disabled, false);
-assert.equal(nodes['#sandbox-network'].attrs['aria-checked'], 'false');
+assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
 context.window.renderPickedSandboxRoot('/Users/alice/work/another');
 assert.equal(sent.pop(), 'settings:{"sandbox_roots":["/Users/alice/work/another","/Users/alice/work/custom-repo"]}');
 
@@ -186,3 +179,9 @@ nodes['#audit-clear'].onclick();
 assert.equal(sent.pop(), 'audit-clear');
 
 console.log('PASS sandbox segmented modes, custom/synced writable roots, and 7-day security audit timeline');
+
+// Legacy state remains visible, while new selections use the three permission presets.
+context.window.renderSandboxPreferences({ sandbox_mode: 'read-only' });
+assert.equal(modeButtons[0].attrs['aria-checked'], 'true');
+modeButtons[1].onclick();
+assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');

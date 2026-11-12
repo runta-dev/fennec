@@ -2479,21 +2479,21 @@
       "zh-CN": "保护 SSH 密钥、钥匙串与授权目录之外的文件",
       "zh-TW": "保護 SSH 金鑰、鑰匙圈與授權目錄之外的檔案"
     },
-    "ui.sandbox_mode_read_only": {
-      "en-GB": "Read-only",
-      "en-US": "Read-only",
-      "ja": "読み取り",
-      "ko": "읽기 전용",
-      "zh-CN": "只读",
-      "zh-TW": "唯讀"
+    "ui.sandbox_mode_ask": {
+      "en-GB": "Ask for approval",
+      "en-US": "Ask for approval",
+      "ja": "承認を求める",
+      "ko": "승인 요청",
+      "zh-CN": "每次询问",
+      "zh-TW": "每次詢問"
     },
-    "ui.sandbox_mode_workspace": {
-      "en-GB": "Workspace",
-      "en-US": "Workspace",
-      "ja": "ワークスペース",
-      "ko": "작업 공간",
-      "zh-CN": "工作区",
-      "zh-TW": "工作區"
+    "ui.sandbox_mode_auto": {
+      "en-GB": "Approve for me",
+      "en-US": "Approve for me",
+      "ja": "自動で承認",
+      "ko": "자동 승인",
+      "zh-CN": "自动批准",
+      "zh-TW": "自動核准"
     },
     "ui.sandbox_mode_full": {
       "en-GB": "Full",
