@@ -2503,6 +2503,14 @@
       "zh-CN": "完全访问",
       "zh-TW": "完全存取"
     },
+    "ui.permission_menu_title": {
+      "en-GB": "How should agent actions be approved?",
+      "en-US": "How should agent actions be approved?",
+      "ja": "エージェントの操作をどのように承認しますか？",
+      "ko": "에이전트 작업을 어떻게 승인할까요?",
+      "zh-CN": "Agent 操作如何审批？",
+      "zh-TW": "Agent 操作如何核准？"
+    },
     "ui.permission_mode_ask_description": {
       "en-GB": "Always ask to edit external files and use the internet",
       "en-US": "Always ask to edit external files and use the internet",
@@ -2524,8 +2532,8 @@
       "en-US": "Unrestricted access to the internet and any file on your computer",
       "ja": "インターネットとパソコン上のファイルに制限なくアクセスします",
       "ko": "인터넷과 컴퓨터의 모든 파일에 제한 없이 접근합니다",
-      "zh-CN": "Unrestricted access to the internet and any file on your computer",
-      "zh-TW": "Unrestricted access to the internet and any file on your computer"
+      "zh-CN": "不受限制地访问互联网和电脑上的任何文件",
+      "zh-TW": "不受限制地存取網際網路和電腦上的任何檔案"
     },
     "ui.sandbox_network": {
       "en-GB": "Sandbox network",

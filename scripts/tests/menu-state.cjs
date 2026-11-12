@@ -30,13 +30,13 @@ function permissionMenu(value) {
   const selected = options.find(option => option.value === value);
   selected.selected = true;
   const created=[];
- const document={querySelector(){return {hidden:false}},querySelectorAll(){return [select]},createElement(tag){const node={tag,dataset:{},full:false,style:{},children:[],setAttribute(){},append(...nodes){node.children.push(...nodes)},remove(){},focus(){},contains(){return false},querySelector(){return {focus(){},textContent:''}},getBoundingClientRect(){return {width:272,height:150}},prepend(node){node.parent=node},classList:{toggle(name,force){if(name==='is-full')node.full=Boolean(force)},contains(){return node.full}}};created.push(node);return node},body:{append(){}},addEventListener(){}};
- const select={id:'permission-mode',hidden:false,value,labels:[],options,selectedOptions:[selected],dispatchEvent(){},after(){},addEventListener(name,fn){this.change=fn}};
+ const document={querySelector(){return {hidden:false}},querySelectorAll(){return [select]},createElement(tag){const node={tag,dataset:{},full:false,style:{},children:[],setAttribute(){},append(...nodes){node.children.push(...nodes)},remove(){},focus(){},contains(){return false},queries:{},querySelector(selector){return node.queries[selector] ||= {focus(){},textContent:''}},getBoundingClientRect(){return {width:272,height:150}},prepend(child){node.prepended=child},classList:{toggle(name,force){if(name==='is-full')node.full=Boolean(force)},contains(){return node.full}}};created.push(node);return node},body:{append(){}},addEventListener(){}};
+ const select={id:'permission-mode',hidden:false,value,labels:[],options,get selectedOptions(){return options.filter(option=>option.value===this.value)},dispatchEvent(){},after(){},addEventListener(name,fn){this.change=fn}};
   const context=vm.createContext({document,Event:class{},innerWidth:440,innerHeight:500});
   vm.runInContext(fs.readFileSync('native/macos/UI/menus.js','utf8'),context);
   context.select=select;context.trigger=created[0];
   vm.runInContext('openChoiceMenu(select,trigger,{optimistic:false})',context);
-  return {trigger:created[0],created,select};
+  return {trigger:created[0],created,select,context};
 }
 
 const auto=permissionMenu('auto');
@@ -51,4 +51,16 @@ const fullItem=menu.children[2];
 fullItem.onclick();
 assert.equal(fullItem.dataset.value,'full');
 assert.equal(fullItem.children[0].children[1].children[1].textContent,'Unrestricted access');
+// Codex icons are assigned per option and stay in their own slot; the label never overwrites the icon.
+const icon=full.trigger.prepended;
+assert.match(icon.innerHTML,/fill="currentColor"/);
+assert.equal(full.trigger.queries['.field-value'].textContent,'Full access');
+assert.notEqual(icon.innerHTML,'Full access');
+assert.notEqual(full.select.options[0].dataset.iconSvg,full.select.options[2].dataset.iconSvg);
+// Backend state assigns select.value without a change event; the exposed hook resyncs the trigger.
+full.select.value='ask';
+full.context.syncPermissionTrigger();
+assert.equal(Boolean(full.trigger.full),false);
+assert.equal(full.trigger.queries['.field-value'].textContent,'Ask for approval');
+assert.equal(icon.innerHTML,full.select.options[0].dataset.iconSvg);
 console.log('PASS model menu sends selection without claiming persistence; local settings update immediately');

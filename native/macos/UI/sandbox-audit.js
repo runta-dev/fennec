@@ -100,6 +100,7 @@
   function drawSandboxSettings() {
     const mode = sandboxState.mode;
     if (modeSelect) modeSelect.value = mode;
+    window.syncPermissionTrigger?.();
     drawSummaryBadge();
   }
 

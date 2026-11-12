@@ -536,22 +536,27 @@ nav button{padding:3px 7px}
 #governance .preference-row{min-height:40px;padding-top:6px;padding-bottom:6px}
 #governance .card:has(.setting-info){overflow:visible}
 #sandbox-mode-label{white-space:nowrap;flex:none}
-#permission-trigger .field-value{min-width:0;overflow:hidden;text-overflow:ellipsis}
-#permission-trigger{margin-left:auto;flex:0 0 176px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:11.5px}
-#permission-trigger.is-full{color:#b44716;border-color:#f38d2570;background:var(--tint)}
-#permission-trigger .choice-item-icon-wrap{width:13px;height:13px;color:currentColor}
-#permission-trigger .choice-item-icon-wrap svg{width:13px;height:13px}
-#permission-menu{width:272px;padding:6px}
-#permission-menu button.choice-item-rich{align-items:flex-start;height:auto;min-height:46px;padding:7px 8px;border-radius:7px;white-space:normal;text-align:left}
-#permission-menu .choice-item-main{align-items:flex-start}
-#permission-menu .choice-item-icon-wrap{width:15px;height:15px;margin-top:1px}
-#permission-menu .choice-item-copy{display:flex;flex-direction:column;gap:2px}
-#permission-menu .choice-item-description{color:var(--muted);font-size:10.5px;font-weight:400;line-height:1.35}
-#permission-menu .choice-item-icon-wrap,#permission-menu button[data-value=full]{color:#b44716}
-#permission-menu button[data-value=full] .choice-item-description{color:#b44716}
-:root[data-theme=dark] #permission-trigger.is-full,:root[data-theme=dark] #permission-menu .choice-item-icon-wrap,:root[data-theme=dark] #permission-menu button[data-value=full]{color:#f5bc7e}
-:root[data-theme=dark] #permission-menu button[data-value=full] .choice-item-description{color:#f5bc7e}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]) #permission-trigger.is-full,:root:not([data-theme=light]) #permission-menu .choice-item-icon-wrap,:root:not([data-theme=light]) #permission-menu button[data-value=full]{color:#f5bc7e}:root:not([data-theme=light]) #permission-menu button[data-value=full] .choice-item-description{color:#f5bc7e}}
+:root{--permission-warning:#923b0f}
+:root[data-theme=dark]{--permission-warning:#ff9e6c}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--permission-warning:#ff9e6c}}
+#permission-trigger{margin-left:auto;flex:0 0 176px;gap:7px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font-size:12px}
+#permission-trigger .field-value{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left;font-size:12px}
+#permission-trigger.is-full{color:var(--permission-warning)}
+#permission-trigger .choice-item-icon-wrap,#permission-trigger .choice-item-icon-wrap svg{width:15px;height:15px}
+#permission-trigger .choice-item-icon-wrap svg,#permission-menu .choice-item-icon-wrap svg{fill:currentColor;stroke:none}
+#permission-menu{width:min(412px,calc(100vw - 20px));padding:6px;border-radius:12px}
+#permission-menu .choice-menu-title{padding:6px 8px 4px;color:var(--muted);font-size:12px;user-select:none}
+#permission-menu button.choice-item-rich{align-items:center;gap:8px;height:auto;min-height:44px;padding:6px 8px;border-radius:8px;white-space:normal;text-align:left;font-weight:400;color:var(--text)}
+#permission-menu .choice-item-main{align-items:flex-start;gap:9px}
+#permission-menu .choice-item-icon-wrap,#permission-menu .choice-item-icon-wrap svg{width:17px;height:17px}
+#permission-menu .choice-item-icon-wrap{margin-top:1px}
+#permission-menu .choice-item-copy{display:flex;flex-direction:column;gap:1px;min-width:0}
+#permission-menu .choice-item-label{font-size:12.5px;color:inherit}
+#permission-menu .choice-item-description{color:var(--muted);font-size:10.5px;line-height:1.4}
+#permission-menu button[data-value=full],#permission-menu button[data-value=full] .choice-item-description{color:var(--permission-warning)}
+#permission-menu .choice-check{display:inline-flex;width:14px;color:var(--muted)}
+#permission-menu button[data-value=full] .choice-check{color:var(--permission-warning)}
+#permission-menu .choice-check svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 
 .sandbox-roots-section{border-top:1px solid var(--line);padding:7px 12px 9px;transition:opacity .16s ease}
 .sandbox-roots-section.is-inactive{opacity:.52}
