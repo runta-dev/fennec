@@ -520,7 +520,7 @@ func (s *daemonServices) snapshot() any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if account.Epoch != s.epoch {
-		return map[string]any{"broker_ready": false, "approvals": []localssh.Event{}}
+		return map[string]any{"broker_ready": false, "approvals": []localssh.Event{}, "prepared_before": s.preparedBefore()}
 	}
 	approvals := []localssh.Event{}
 	for _, id := range s.approvalOrder {
@@ -546,6 +546,7 @@ func (s *daemonServices) snapshot() any {
 		}
 	}
 	state := map[string]any{"broker_ready": s.brokerReady, "selection_known": s.config.RuntimeID != "", "selected": selected, "active": active, "connector": status, "approvals": approvals, "coverage": coverage}
+	state["prepared_before"] = s.preparedBefore()
 	if s.channel != nil {
 		state["sessions"] = s.channel.cachedListing(false)
 	}
@@ -649,4 +650,11 @@ func (s *daemonServices) close() {
 		cancel()
 	}
 	s.workers.Wait()
+}
+
+// preparedBefore reports that a runtime preparation has completed on this Mac
+// before, so the UI keeps routine re-preparation out of the full-screen setup.
+func (s *daemonServices) preparedBefore() bool {
+	_, err := os.Stat(checkpointPath(s.home))
+	return err == nil
 }

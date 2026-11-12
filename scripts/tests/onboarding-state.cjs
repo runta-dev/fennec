@@ -72,7 +72,12 @@ bodyEl.append = el => { stageEl = el; };
 
 vm.runInContext(source, context);
 
+// 0. Nothing shows until the native shell reports the sign-in state.
+assert.equal(stageEl.hidden, true, 'no splash before the sign-in state is known');
+assert.equal(bodyEl.classList.contains('is-onboarding'), false);
+
 // 1. Starts in clean full-screen sign-in splash when signed out.
+context.window.renderSignedOut();
 assert.equal(stageEl.hidden, false, 'onboarding splash visible when signed out');
 assert.equal(nodes['#onboarding-signin'].hidden, false);
 assert.equal(nodes['#onboarding-setup'].hidden, true);
@@ -178,4 +183,59 @@ assert.equal(bodyEl.classList.contains('is-onboarding'), false);
   assert.equal(rafStage.hidden, true, 'onboarding dismisses after sprinting to 100%');
 }
 
+
+// 5. A returning signed-in user never sees onboarding when the popup loads, even
+// while the daemon re-prepares the runtime in the background; first-time setup
+// on this Mac still shows it.
+for (const completedBefore of [true, false]) {
+  const store = completedBefore ? { 'fennec.cloudSetupCompleted': '1' } : {};
+  const localNodes = {};
+  for (const key of Object.keys(nodes)) localNodes[key] = makeNode('div');
+  let localStage = null;
+  const localBody = makeNode('body');
+  localBody.append = el => { localStage = el; };
+  const ctx = vm.createContext({
+    window: { renderSignedOut() {}, renderAuthorized() {}, renderLogin() {}, renderPreparation() {}, renderPreferences() {}, renderDeveloperPreferences() {} },
+    Date,
+    setTimeout: fn => { fn(); return 1; },
+    clearTimeout() {},
+    setInterval: () => 2,
+    clearInterval() {},
+    localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } },
+    document: { body: localBody, createElement: tag => { const n = makeNode(tag); n.querySelector = s => localNodes[s] || null; n.querySelectorAll = () => []; return n; } },
+    translate: s => s,
+    send() {}
+  });
+  vm.runInContext(source, ctx);
+  ctx.window.renderAuthorized();
+  ctx.window.renderPreparation({ stage: 'connecting', status: '' });
+  assert.equal(localStage.hidden, completedBefore, completedBefore ? 'background preparation stays out of full screen' : 'first-time setup shows onboarding');
+  assert.equal(localNodes['#onboarding-signin'].hidden === false && !localStage.hidden, false, 'sign-in splash never flashes for a signed-in user');
+  ctx.window.renderPreparation({ stage: 'agents_installed', status: 'ready' });
+  assert.equal(store['fennec.cloudSetupCompleted'], '1', 'completed setup is remembered');
+}
+
 console.log('PASS full-screen sign-in splash, peeking mascot setup stage, and fast workspace handoff');
+
+// 6. Existing users updating to this version: the daemon's prepared_before
+// marks setup as done before any background preparation can take over.
+{
+  const store = {};
+  const localNodes = {};
+  for (const key of Object.keys(nodes)) localNodes[key] = makeNode('div');
+  let localStage = null;
+  const localBody = makeNode('body');
+  localBody.append = el => { localStage = el; };
+  const ctx = vm.createContext({
+    window: { renderSignedOut() {}, renderAuthorized() {}, renderLogin() {}, renderPreparation() {}, renderPreferences() {}, renderDeveloperPreferences() {} },
+    Date, setTimeout: fn => { fn(); return 1; }, clearTimeout() {}, setInterval: () => 2, clearInterval() {},
+    localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } },
+    document: { body: localBody, createElement: tag => { const n = makeNode(tag); n.querySelector = s => localNodes[s] || null; n.querySelectorAll = () => []; return n; } },
+    translate: s => s, send() {}
+  });
+  vm.runInContext(source, ctx);
+  ctx.window.renderAuthorized();
+  ctx.window.renderPreparation({ stage: 'installing_session_service', status: '', prepared_before: 'true' });
+  assert.equal(localStage.hidden, true, 'an already prepared Mac never shows onboarding on update');
+  console.log('PASS onboarding stays hidden for signed-in users outside first-time setup');
+}
