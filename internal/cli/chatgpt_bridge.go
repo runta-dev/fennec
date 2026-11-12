@@ -213,7 +213,7 @@ func (b *chatgptBridge) accept(ctx context.Context, listener net.Listener) {
 			err := b.serve(ctx, conn, token)
 			b.mu.Lock()
 			b.active--
-			if err != nil && !errors.Is(err, io.EOF) && ctx.Err() == nil {
+			if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, net.ErrClosed) && ctx.Err() == nil {
 				b.lastErr = err.Error()
 			}
 			b.mu.Unlock()
