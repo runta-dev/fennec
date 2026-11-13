@@ -116,6 +116,36 @@ func Dial(ctx context.Context, socket string) (*Client, error) {
 	return c, nil
 }
 
+// DialSession opens a connection on a unix socket that attaches to the
+// daemon's named session (mcpserver.SessionMetaKey): the session, and the
+// REPL runtime it holds, outlive the connection.
+func DialSession(ctx context.Context, socket, client, session string) (*Client, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return nil, err
+	}
+	c := New(conn, conn)
+	if err := c.InitializeWith(ctx, client, map[string]any{SessionMetaKey: session}); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// SessionMetaKey and EndSessionMethod mirror the server's names (the
+// client does not import the server).
+const (
+	SessionMetaKey   = "fennec-cua/session"
+	EndSessionMethod = "fennec-cua/endSession"
+)
+
+// EndSession asks the daemon to close the named session this connection
+// attached to once the connection closes.
+func (c *Client) EndSession(ctx context.Context) error {
+	return c.Call(ctx, EndSessionMethod, map[string]any{}, nil)
+}
+
 // New wraps an existing transport; call Initialize before tools.
 func New(w io.WriteCloser, r io.Reader) *Client {
 	c := &Client{w: w, pending: map[int64]chan response{}, done: make(chan struct{})}
@@ -188,10 +218,19 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 
 // Initialize performs the MCP handshake.
 func (c *Client) Initialize(ctx context.Context) error {
+	return c.InitializeWith(ctx, "fennec-cua-parity", nil)
+}
+
+// InitializeWith performs the MCP handshake as client name, with meta as the
+// request's _meta when it is not empty.
+func (c *Client) InitializeWith(ctx context.Context, name string, meta map[string]any) error {
 	params := map[string]any{
 		"protocolVersion": "2025-06-18",
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "fennec-cua-parity", "version": "0"},
+		"clientInfo":      map[string]any{"name": name, "version": "0"},
+	}
+	if len(meta) > 0 {
+		params["_meta"] = meta
 	}
 	if err := c.Call(ctx, "initialize", params, nil); err != nil {
 		return err

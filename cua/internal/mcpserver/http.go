@@ -98,7 +98,7 @@ func (s *HTTP) Serve(ctx context.Context, ln net.Listener) error {
 	if sc, ok := s.h.(SessionCloser); ok {
 		s.mu.Lock()
 		for id, sv := range s.sessions {
-			sc.CloseSession(&sv.sess)
+			sc.CloseSession(sv.sess)
 			delete(s.sessions, id)
 		}
 		s.mu.Unlock()
@@ -207,7 +207,7 @@ func (s *HTTP) newSession() *server {
 	id := hex.EncodeToString(b[:])
 	info := s.info
 	info.FixedID = id
-	sv := &server{h: s.h, info: info, running: map[string]context.CancelFunc{}}
+	sv := &server{h: s.h, info: info, sess: &Session{}, running: map[string]context.CancelFunc{}}
 	sv.sess.AgentID = agentID(info.IDPrefix, "", id)
 	s.mu.Lock()
 	s.sessions[id] = sv

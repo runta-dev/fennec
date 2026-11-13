@@ -2,7 +2,8 @@
 
 // Package macos holds the small macOS queries the daemon needs directly:
 // permission state and the main display's size. None of them prompts the
-// user or changes anything.
+// user or changes anything, except RequestPermissions, which runs only when
+// the user asks for the system prompts (`fennec-cua permissions --request`).
 package macos
 
 /*
@@ -20,6 +21,15 @@ static int mainDisplayPixels(size_t *w, size_t *h) {
 	*h = CGDisplayModeGetPixelHeight(mode);
 	CGDisplayModeRelease(mode);
 	return 1;
+}
+
+static int requestAccessibility(void) {
+	const void *keys[] = { kAXTrustedCheckOptionPrompt };
+	const void *values[] = { kCFBooleanTrue };
+	CFDictionaryRef opts = CFDictionaryCreate(NULL, keys, values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	int ok = AXIsProcessTrustedWithOptions(opts) ? 1 : 0;
+	CFRelease(opts);
+	return ok;
 }
 */
 import "C"
@@ -40,4 +50,18 @@ func MainDisplayPixels() (w, h int, ok bool) {
 		return 0, 0, false
 	}
 	return int(cw), int(ch), true
+}
+
+// RequestPermissions asks macOS for the Accessibility and Screen Recording
+// grants of this process (its app bundle), showing the system prompts for
+// those not granted yet; a prompt also lists the app in System Settings so
+// the user can turn it on. It reports the grants as they are now; macOS
+// applies a new Screen Recording grant only after the process restarts.
+func RequestPermissions() (accessibility, screenRecording bool) {
+	accessibility = C.requestAccessibility() != 0
+	screenRecording = ScreenCaptureAllowed()
+	if !screenRecording {
+		screenRecording = bool(C.CGRequestScreenCaptureAccess())
+	}
+	return accessibility, screenRecording
 }

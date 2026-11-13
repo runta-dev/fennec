@@ -93,7 +93,7 @@ func Bridge(ctx context.Context, in io.Reader, out io.Writer, cfg BridgeConfig) 
 		return fmt.Errorf("%s: %w", cfg.Socket, ErrEmbeddedNoDaemon)
 	}
 	if cfg.Local != nil {
-		b.local = &server{h: cfg.Local, info: cfg.Info, running: map[string]context.CancelFunc{}}
+		b.local = &server{h: cfg.Local, info: cfg.Info, sess: &Session{}, running: map[string]context.CancelFunc{}}
 		b.local.sess.AgentID = agentID(cfg.Info.IDPrefix, "", cfg.Info.FixedID)
 	}
 	br := bufio.NewReaderSize(in, 64*1024)

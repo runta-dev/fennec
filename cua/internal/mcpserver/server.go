@@ -106,6 +106,9 @@ type Info struct {
 	FixedID string
 	// MaxMessage bounds one message on a stream; zero means MaxMessage.
 	MaxMessage int
+	// Named, when set, keeps the sessions clients name in initialize
+	// (_meta["fennec-cua/session"]) across connections of Serve.
+	Named *Named
 }
 
 type message struct {
@@ -133,7 +136,8 @@ type reply struct {
 func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler, info Info) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s := &server{h: h, info: info, w: w, running: map[string]context.CancelFunc{}}
+	s := &server{h: h, info: info, w: w, sess: &Session{}, running: map[string]context.CancelFunc{}}
+	s.namedReg = info.Named
 	s.sess.AgentID = agentID(info.IDPrefix, "", info.FixedID)
 	out := make(chan *pending, 1024)
 	writerDone := make(chan struct{})
@@ -171,8 +175,11 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler, info Info) 
 	wg.Wait()
 	close(out)
 	<-writerDone
-	if sc, ok := h.(SessionCloser); ok {
-		sc.CloseSession(&s.sess)
+	sc, _ := h.(SessionCloser)
+	if s.named != nil {
+		s.named.detach(s.namedKey, s.endNamed, sc)
+	} else if sc != nil {
+		sc.CloseSession(s.sess)
 	}
 	if errors.Is(err, io.EOF) {
 		err = nil
@@ -218,7 +225,14 @@ func ready(r *reply) *pending {
 type server struct {
 	h    Handler
 	info Info
-	sess Session
+	sess *Session
+	// named is the registry a named session came from, and namedKey its
+	// name; endNamed ends it when the connection closes.
+	named *Named
+	// namedReg offers named sessions on this connection (Serve only).
+	namedReg *Named
+	namedKey string
+	endNamed bool
 
 	wmu sync.Mutex
 	w   io.Writer
@@ -263,11 +277,21 @@ func (s *server) dispatch(ctx context.Context, line []byte, wg *sync.WaitGroup) 
 	}
 	switch m.Method {
 	case "initialize":
-		return ready(&reply{ID: m.ID, Result: s.initialize(m.Params)})
+		res, rerr := s.initialize(m.Params)
+		if rerr != nil {
+			return fail(m.ID, rerr.Code, rerr.Message)
+		}
+		return ready(&reply{ID: m.ID, Result: res})
+	case EndSessionMethod:
+		if s.named == nil {
+			return fail(m.ID, CodeInvalidRequest, "this connection has no named session to end")
+		}
+		s.endNamed = true
+		return ready(&reply{ID: m.ID, Result: map[string]any{}})
 	case "ping":
 		return ready(&reply{ID: m.ID, Result: map[string]any{}})
 	case "tools/list":
-		return ready(&reply{ID: m.ID, Result: map[string]any{"tools": s.h.Tools(&s.sess)}})
+		return ready(&reply{ID: m.ID, Result: map[string]any{"tools": s.h.Tools(s.sess)}})
 	case "tools/call":
 		return s.call(ctx, m, wg)
 	case "resources/list", "resources/read":
@@ -296,11 +320,12 @@ func (s *server) notify(m message) {
 	}
 }
 
-func (s *server) initialize(params json.RawMessage) any {
+func (s *server) initialize(params json.RawMessage) (any, *rpcError) {
 	var p struct {
 		ProtocolVersion string `json:"protocolVersion"`
 		Meta            struct {
-			Run string `json:"fennec-cua/run"`
+			Run     string `json:"fennec-cua/run"`
+			Session string `json:"fennec-cua/session"`
 		} `json:"_meta"`
 		ClientInfo struct {
 			Name string `json:"name"`
@@ -313,10 +338,24 @@ func (s *server) initialize(params json.RawMessage) any {
 			version = v
 		}
 	}
+	if p.Meta.Session != "" && s.named == nil {
+		// A named session outlives this connection: the client attaches
+		// to the session the name holds, or starts it.
+		if s.namedReg == nil {
+			return nil, &rpcError{Code: CodeInvalidParams, Message: "named sessions are not offered on this transport"}
+		}
+		sess, err := s.namedReg.attach(p.Meta.Session, s.info.IDPrefix, closerOf(s.h))
+		if err != nil {
+			return nil, &rpcError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		s.sess, s.named, s.namedKey = sess, s.namedReg, p.Meta.Session
+	}
 	s.sess.Version = version
 	s.sess.Client = p.ClientInfo.Name
-	s.sess.RunToken = p.Meta.Run
-	s.sess.AgentID = agentID(s.info.IDPrefix, p.ClientInfo.Name, s.info.FixedID)
+	if s.named == nil {
+		s.sess.RunToken = p.Meta.Run
+		s.sess.AgentID = agentID(s.info.IDPrefix, p.ClientInfo.Name, s.info.FixedID)
+	}
 	instructions := s.info.Instructions
 	if len(instructions) > 2048 {
 		instructions = instructions[:2048]
@@ -326,7 +365,7 @@ func (s *server) initialize(params json.RawMessage) any {
 		"capabilities":    s.capabilities(),
 		"serverInfo":      map[string]any{"name": s.info.Name, "version": s.info.Version},
 		"instructions":    instructions,
-	}
+	}, nil
 }
 
 func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pending {
@@ -338,10 +377,10 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 		return fail(m.ID, CodeInvalidParams, "tools/call needs a tool name")
 	}
 	known := false
-	if ht, ok := s.h.(HiddenTools); ok && ht.HiddenTool(&s.sess, p.Name) {
+	if ht, ok := s.h.(HiddenTools); ok && ht.HiddenTool(s.sess, p.Name) {
 		known = true
 	}
-	for _, t := range s.h.Tools(&s.sess) {
+	for _, t := range s.h.Tools(s.sess) {
 		if t.Name == p.Name {
 			known = true
 			break
@@ -353,6 +392,7 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 	if args := strings.TrimSpace(string(p.Arguments)); args != "" && args != "null" && !strings.HasPrefix(args, "{") {
 		return fail(m.ID, CodeInvalidParams, "invalid arguments for "+p.Name+": arguments must be a JSON object")
 	}
+	sess := s.sess
 	cctx, cancel := context.WithCancel(ctx)
 	key := string(m.ID)
 	s.rmu.Lock()
@@ -363,7 +403,7 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 	go func() {
 		defer wg.Done()
 		defer close(pd.done)
-		res := s.h.Call(cctx, &s.sess, p.Name, p.Arguments)
+		res := s.h.Call(cctx, sess, p.Name, p.Arguments)
 		s.rmu.Lock()
 		delete(s.running, key)
 		s.rmu.Unlock()
@@ -475,7 +515,7 @@ type ResourceHandler interface {
 
 func (s *server) capabilities() map[string]any {
 	caps := map[string]any{"tools": map[string]any{}}
-	if rh, ok := s.h.(ResourceHandler); ok && len(rh.Resources(&s.sess)) > 0 {
+	if rh, ok := s.h.(ResourceHandler); ok && len(rh.Resources(s.sess)) > 0 {
 		caps["resources"] = map[string]any{}
 	}
 	return caps
@@ -483,7 +523,7 @@ func (s *server) capabilities() map[string]any {
 
 func (s *server) resources(rh ResourceHandler, m message) *pending {
 	if m.Method == "resources/list" {
-		list := rh.Resources(&s.sess)
+		list := rh.Resources(s.sess)
 		if list == nil {
 			list = []Resource{}
 		}
@@ -495,7 +535,7 @@ func (s *server) resources(rh ResourceHandler, m message) *pending {
 	if err := json.Unmarshal(m.Params, &p); err != nil || p.URI == "" {
 		return fail(m.ID, CodeInvalidParams, "resources/read needs a uri")
 	}
-	c, err := rh.ReadResource(&s.sess, p.URI)
+	c, err := rh.ReadResource(s.sess, p.URI)
 	if errors.Is(err, ErrUnknownResource) {
 		return fail(m.ID, CodeInvalidParams, "unknown resource: "+p.URI)
 	}

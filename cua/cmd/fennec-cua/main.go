@@ -6,7 +6,16 @@
 //	fennec-cua stop                stop every call until resume
 //	fennec-cua resume              lift a stop
 //	fennec-cua status              print the daemon's status
+//	fennec-cua quit                end the daemon (the next command starts it again)
 //	fennec-cua do TOOL [JSON | k=v ...]  one tool call; captures are saved to files
+//	fennec-cua js [--session NAME] [CODE | -]  one js call in a named session that persists across invocations
+//	fennec-cua js-reset | js-end [--session NAME]  reset or end a named session
+//	fennec-cua install [--app-dir DIR] [--bin-dir DIR]  install the standalone app for this user
+//	fennec-cua uninstall [--purge]  remove it (and, with --purge, its data)
+//	fennec-cua doctor [--json] [--no-start]  check the install, daemon, permissions, driver and browser
+//	fennec-cua permissions [--request] [--open]  the macOS permissions and how to grant them
+//	fennec-cua mcp-config [claude|codex|json|http]  how to connect an agent
+//	fennec-cua skill path | install [--claude] [--codex] [--dest DIR]  the agent skill
 //	fennec-cua browser profiles     list Google Chrome profiles to import from
 //	fennec-cua browser import [--profile NAME] [--replace]  import Chrome sign-ins (cookies) into the bundled Chromium
 //	fennec-cua browser status       the bundled Chromium and the last import
@@ -56,17 +65,35 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "fennec-cua:", err)
+		if !errors.Is(err, errSilent) {
+			fmt.Fprintln(os.Stderr, "fennec-cua:", err)
+		}
 		os.Exit(1)
 	}
 }
 
-const usage = "usage: fennec-cua mcp [--http ADDR] | serve [--http ADDR] | stop | resume | status | do TOOL [JSON | k=v ...] | browser profiles|import|status | version"
+const usage = `usage: fennec-cua COMMAND
+  mcp                                  MCP on stdio for an agent (starts the daemon on demand)
+  js [--session NAME] [CODE | -]       run REPL code from a shell; the session persists across calls
+  js-reset | js-end [--session NAME]   reset or end that session
+  doctor [--json] [--no-start]         check install, daemon, permissions, driver and browser
+  permissions [--request] [--open]     the macOS permissions and how to grant them
+  mcp-config [claude|codex|json|http]  how to connect an agent
+  skill path | install [--claude] [--codex] [--dest DIR]
+  install [--app-dir DIR] [--bin-dir DIR] | uninstall [--purge]
+  status | stop | resume | quit | serve [--http ADDR] | version
+  do TOOL [JSON | k=v ...]             one call without a persistent session
+  browser profiles | import [--profile NAME] [--replace] | status`
 
 func run(args []string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	// Through the ~/.local/bin link, find the app the binary sits in: the
+	// driver, the browser and the permission grants belong to it.
+	if r, err := filepath.EvalSymlinks(self); err == nil {
+		self = r
 	}
 	// LaunchServices opening the app (no arguments, launchd as parent)
 	// serves the daemon in place.
@@ -102,7 +129,31 @@ func run(args []string) error {
 		}
 		return bridge(ctx, paths, self)
 	case "do":
-		return do(ctx, paths, args[1:])
+		return do(ctx, paths, self, args[1:])
+	case "js":
+		return jsCmd(ctx, paths, self, args[1:], os.Stdin, os.Stdout)
+	case "js-reset", "js_reset":
+		return jsResetCmd(ctx, paths, self, args[1:], os.Stdout)
+	case "js-end":
+		return jsEndCmd(ctx, paths, args[1:], os.Stdout)
+	case "install":
+		return installCmd(ctx, paths, self, args[1:], os.Stdout)
+	case "uninstall":
+		return uninstallCmd(ctx, paths, args[1:], os.Stdout)
+	case "doctor":
+		return doctorCmd(ctx, paths, self, args[1:], os.Stdout)
+	case "permissions":
+		return permissionsCmd(ctx, paths, self, args[1:], os.Stdout)
+	case "mcp-config":
+		return mcpConfigCmd(self, args[1:], os.Stdout)
+	case "skill":
+		return skillCmd(self, args[1:], os.Stdout)
+	case "quit":
+		quit, err := quitDaemon(ctx, paths)
+		if err == nil && !quit {
+			fmt.Println("no daemon runs")
+		}
+		return err
 	case "browser":
 		return browserCmd(ctx, paths, args[1:])
 	case "stop", "resume", "status":
@@ -150,6 +201,9 @@ func policyConfig(cfg daemon.Config) policy.Config {
 }
 
 func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error {
+	// `fennec-cua quit` (the daemon.quit control) ends the daemon.
+	ctx, quit := context.WithCancel(ctx)
+	defer quit()
 	if err := os.MkdirAll(paths.Dir, 0o700); err != nil {
 		return err
 	}
@@ -204,7 +258,7 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		service = vision.NewService(vision.DriverCapturer{Client: client}, windowID(observer.Refs))
 		imager = visionImager{s: service, allow: pol.Allow}
 		dk.DriverPath = bin
-		sup = &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger, Embedded: cli.Embedded(), Foreground: input == protocol.InputForeground, OverlayOff: !cfg.Driver.Overlay}
+		sup = &driver.Supervisor{Bin: bin, Socket: paths.Driver, Log: logger, Embedded: driverEmbedded(self), Foreground: input == protocol.InputForeground, OverlayOff: !cfg.Driver.Overlay}
 		// The driver's own windows (its overlay) are never an agent's.
 		dk.ExcludePIDs = func() []int { return []int{sup.PID()} }
 	} else {
@@ -332,7 +386,8 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	// "Chromium"), confirmations and Stop apply to it.
 	var browsers *browser.Manager
 	var browserProfile string
-	if bin := chromium.Locate(self); bin != "" {
+	chromiumBin := chromium.Locate(self)
+	if bin := chromiumBin; bin != "" {
 		profile, err := chromium.DefaultProfileDir()
 		if err != nil {
 			return err
@@ -342,13 +397,19 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		// bundled one); any other build keeps the mock keychain and never
 		// touches the user's own "Chromium Safe Storage" item.
 		ss, renamed := chromium.SafeStorageOf(bin)
+		mock := !renamed
 		if !renamed {
 			logger.Printf("this Chromium build does not use the %q Keychain item; its cookies use the mock keychain (development only)", chromium.SafeStorageService)
+		} else if !loginKeychain() {
+			// Without a login keychain (a temporary HOME, a test account)
+			// Chromium would raise "Keychain Not Found" on the desktop.
+			mock = true
+			logger.Printf("no login keychain under this HOME; the browser's cookies use the mock keychain")
 		}
 		chrome := chromium.New(chromium.Options{
 			Bin: bin, ProfileDir: profile, Log: logger.Printf,
 			Headless:     os.Getenv(chromium.EnvHeadless) == "1",
-			MockKeychain: !renamed, SafeStorageService: ss.Service,
+			MockKeychain: mock, SafeStorageService: ss.Service,
 		})
 		browserProfile = profile
 		defer chrome.Close()
@@ -372,11 +433,16 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	}
 	fl.Decider, fl.Caption = mdl, flows.ModelCaptioner(mdl)
 
+	// Named sessions keep a REPL runtime across connections, for
+	// `fennec-cua js` from a shell.
+	named := &mcpserver.Named{}
+	mcpInfo := info()
+	mcpInfo.Named = named
 	d := &daemon.Daemon{
 		Paths:       paths,
 		Handler:     eng,
 		Stopper:     stopper,
-		Info:        info(),
+		Info:        mcpInfo,
 		Log:         logger,
 		SocketGroup: cfg.Daemon.SocketGroup,
 		Starting: func(ctx context.Context) error {
@@ -444,8 +510,17 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		logger.Printf("serving MCP over HTTP on %s", httpAddr)
 	}
 	logger.Printf("serving %s", paths.MCP)
+	d.Ops = daemonOps(func() daemonInfo {
+		di := daemonInfo{PID: os.Getpid(), Executable: self, Version: engine.Version, Driver: bin, Chromium: chromiumBin, Browser: browsers != nil, Sessions: named.Names()}
+		if sup != nil && sup.PID() > 0 {
+			di.DriverRunning = driverAnswers(paths.Driver)
+		}
+		return di
+	}, quit)
 	if browsers != nil {
-		d.Ops = browserOps(browsers, browserProfile)
+		for k, op := range browserOps(browsers, browserProfile) {
+			d.Ops[k] = op
+		}
 	}
 	return d.Run(ctx)
 }
@@ -572,12 +647,15 @@ func bridge(ctx context.Context, paths daemon.Paths, self string) error {
 }
 
 // do sends one tool call and prints its answer; images go to files.
-func do(ctx context.Context, paths daemon.Paths, args []string) error {
+func do(ctx context.Context, paths daemon.Paths, self string, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: fennec-cua do TOOL [JSON | k=v ...]")
 	}
 	raw, err := cli.ParseDoArgs(args[1:])
 	if err != nil {
+		return err
+	}
+	if err := ensureDaemon(ctx, paths, self); err != nil {
 		return err
 	}
 	res, err := cli.Do(ctx, paths.MCP, args[0], raw)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 
 	"fennec/cua/internal/mcpclient"
 	"fennec/cua/internal/mcpserver"
+	"fennec/cua/internal/standalone"
 )
 
 // AppBundle returns the .app bundle an executable sits in
@@ -46,13 +48,30 @@ func LaunchedByLaunchd(ppid int, exe string, args []string) bool {
 
 // StartCommand is how `fennec-cua mcp` starts a daemon when none answers. A
 // binary inside an app bundle opens its app through LaunchServices
-// (`open -g -a <bundle>`), so macOS attributes the Accessibility and Screen
+// (`open -g -a <bundle>`; the standalone app with -n and the PassedEnv
+// settings), so macOS attributes the Accessibility and Screen
 // Recording grants to the bundle rather than to the agent's terminal; a bare
 // binary runs `serve` in a new session. Either way the daemon holds none of
 // the bridge's stdio.
 func StartCommand(exe string) *exec.Cmd {
+	return startCommand(exe, os.Getenv)
+}
+
+func startCommand(exe string, getenv func(string) string) *exec.Cmd {
 	var cmd *exec.Cmd
-	if bundle, ok := AppBundle(exe); ok {
+	if bundle, ok := AppBundle(exe); ok && standalone.IsApp(bundle) {
+		// The standalone app is the daemon itself: a new instance (another
+		// copy serving a different directory must not swallow the start;
+		// the daemon lock refuses a duplicate) that gets the settings
+		// LaunchServices would not pass on.
+		args := []string{"-n", "-g"}
+		for _, k := range PassedEnv {
+			if v := getenv(k); v != "" {
+				args = append(args, "--env", k+"="+v)
+			}
+		}
+		cmd = exec.Command("/usr/bin/open", append(args, "-a", bundle)...)
+	} else if ok {
 		cmd = exec.Command("/usr/bin/open", "-g", "-a", bundle)
 	} else {
 		cmd = exec.Command(exe, "serve")
@@ -161,4 +180,22 @@ func Do(ctx context.Context, socket, tool string, args json.RawMessage) (mcpclie
 		return c.Tool(ctx, tool, args)
 	}
 	return c.EngineTool(ctx, tool, args)
+}
+
+// PassedEnv are the settings a daemon started through LaunchServices gets
+// from the command that started it, so both agree on the daemon directory,
+// the configuration and the browser. Secrets (the HTTP token) are never
+// passed: `open --env` puts them on a command line.
+var PassedEnv = []string{
+	"FENNEC_CUA_DIR",
+	"FENNEC_CUA_CONFIG",
+	"FENNEC_CUA_DRIVER",
+	"FENNEC_CUA_CHROMIUM",
+	"FENNEC_CUA_CHROMIUM_PROFILE",
+	"FENNEC_CUA_CHROMIUM_HEADLESS",
+}
+
+func dialUnix(ctx context.Context, socket string) (net.Conn, error) {
+	var d net.Dialer
+	return d.DialContext(ctx, "unix", socket)
 }
