@@ -113,6 +113,10 @@ A pending launch journal entry has an uncertain outcome. Inspect the correspondi
 
 Run focused tests for changed packages and `make check-ui`. macOS lacks GNU `flock`, so Linux-specific setup tests can fail locally; report that boundary rather than treating it as a regression or weakening production locking.
 
+Preparation timing: `touch ~/.config/fennec/launch-profile.enabled` records `prepare.*` stages (connect, native_gather, install.<step>, accounts.sync, route.<agent>) in `~/.config/fennec/launch-profile.jsonl`. The cloud SSH gateway can drop to ~80 KB/s, so never add large uploads to the preparation path. The terminal service upgrades as a zstd patch against the binary already on the cloud (`fennec-terminal apply-patch`, last upload cached in `~/.config/fennec/terminal-cache`, SHA-256 verified, full upload only as fallback); keep that path working when changing the installer.
+
+Native sync conflicts (a file changed on both computers) must resolve without blocking preparation where the semantics are clear: settings merge with local preferences winning, the Claude profile keeps cloud runtime state plus the Mac identity, and OAuth credential files keep the copy with the later expiry (per provider for Pi and OpenCode). Only truly undecidable cases may fail.
+
 Before reporting success:
 
 1. Confirm the app uses `Authority=Fennec Local Development`.
