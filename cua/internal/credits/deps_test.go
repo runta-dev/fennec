@@ -59,7 +59,7 @@ hooks = [
 `
 
 func TestEvalDEPS(t *testing.T) {
-	f, err := evalDEPS(sampleDEPS, nil, MacPlatform("arm64"), "src")
+	f, err := evalDEPS(sampleDEPS, nil, MacPlatform(), "src")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ deps = {
   'third_party/only_standalone': { 'url': 'https://a.test/s.git@1', 'condition': 'not build_with_chromium' },
   'third_party/with_chromium': { 'url': 'https://a.test/c.git@2', 'condition': 'build_with_chromium and own == "x"' },
 }`
-	f, err := evalDEPS(child, map[string]any{"build_with_chromium": true}, MacPlatform("amd64"), "src/third_party/angle")
+	f, err := evalDEPS(child, map[string]any{"build_with_chromium": true}, MacPlatform(), "src/third_party/angle")
 	if err != nil {
 		t.Fatal(err)
 	}

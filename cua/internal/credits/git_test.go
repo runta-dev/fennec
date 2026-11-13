@@ -80,7 +80,7 @@ func TestGitTree(t *testing.T) {
 	var logs []string
 	f := &Fetcher{Cache: filepath.Join(base, "cache"), SrcURL: "file://" + base + "/src", allowFile: true,
 		Log: func(format string, args ...any) { logs = append(logs, format) }}
-	tree, err := f.Tree(context.Background(), src, MacPlatform("arm64"))
+	tree, err := f.Tree(context.Background(), src, MacPlatform())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestGitTree(t *testing.T) {
 	}
 	// A second fetcher on the same cache reads everything locally.
 	f2 := &Fetcher{Cache: f.Cache, SrcURL: f.SrcURL, allowFile: true}
-	t2, err := f2.Tree(context.Background(), src, MacPlatform("arm64"))
+	t2, err := f2.Tree(context.Background(), src, MacPlatform())
 	if err != nil {
 		t.Fatal(err)
 	}

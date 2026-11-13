@@ -68,7 +68,7 @@ mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
 english_source="$(dirname "$app")/FennecEnglish.swift"
 go run ./cmd/build-locales native/macos/UI/translations.json "$app/Contents/Resources/UI/locale-data.js" "$english_source"
-swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift native/macos/Localization.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift native/macos/Localization.swift native/macos/LicenseWindow.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -87,8 +87,36 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
+rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
-cp docs/licenses/magpie-MIT.txt "$app/Contents/Resources/licenses/"
+cp docs/licenses/magpie-MIT.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
+# fennec-cua (computer use) and the pinned open-source Chromium it drives,
+# Apple silicon only. cua-package stages and signs Chromium.app once per pin,
+# packager source and identity (its downloads and generated notices stay in
+# the user cache directory, so a warm cache needs no network); reusing the
+# signed app keeps its code hash, and with it the "Fennec Safe Storage"
+# Keychain access, stable across ordinary rebuilds. fennec-cua itself is
+# rebuilt from this checkout every time, like the daemon.
+[ "$(uname -m)" = arm64 ] || { echo 'fennec-cua and its bundled Chromium are built for Apple silicon (arm64) only.' >&2; exit 1; }
+cua_cache="$PWD/build/cua-cache"
+cua_source=$(cd cua && find cmd/cua-package internal/chromium internal/credits -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d ' ' -f 1)
+cua_key=$(printf '%s' "$identity:$cua_source" | shasum -a 256 | cut -d ' ' -f 1)
+cua_stage="$cua_cache/$cua_key"
+if [ ! -f "$cua_stage/MANIFEST.json" ]; then
+  rm -rf "$cua_stage.partial"
+  mkdir -p "$cua_cache"
+  (cd cua && go run ./cmd/cua-package -stage "$cua_stage.partial" -skip-build -identity "$identity" -keychain "$sign_keychain")
+  mv "$cua_stage.partial" "$cua_stage"
+  # One signed Chromium is enough; earlier pins or identities are stale.
+  find "$cua_cache" -mindepth 1 -maxdepth 1 ! -name "$cua_key" -exec rm -rf {} +
+fi
+codesign --verify --deep --strict "$cua_stage/Chromium.app"
+(cd cua && MACOSX_DEPLOYMENT_TARGET=$deployment_target CGO_CFLAGS="-O2 -g -mmacosx-version-min=$deployment_target" CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -trimpath -o "$app/Contents/MacOS/fennec-cua" ./cmd/fennec-cua)
+sign_artifact "$app/Contents/MacOS/fennec-cua"
+rm -rf "$app/Contents/Helpers"
+mkdir -p "$app/Contents/Helpers"
+ditto "$cua_stage/Chromium.app" "$app/Contents/Helpers/Chromium.app"
+cp "$cua_stage/licenses/"* "$app/Contents/Resources/licenses/"
 /bin/chmod -R -P a+rX,go-w "$app"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same

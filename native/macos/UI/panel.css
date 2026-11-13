@@ -614,3 +614,9 @@ nav button{padding:3px 7px}
 .audit-detail-code{margin:0;padding:6px 8px;border-radius:6px;background:var(--card);border:1px solid var(--line);font:10.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
 .audit-entry-detail>.audit-detail-code:first-child{margin-top:7px}
 #codex-desktop-dialog:focus,#codex-desktop-dialog button:focus:not(:focus-visible){outline:none}
+/* Bundled third-party notices: flat rows inside the Licenses disclosure, opened in a native window. */
+.license-links{display:flex;flex-direction:column;margin:8px 0 6px;border-top:1px solid var(--line)}
+.license-link{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:32px;padding:6px 0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none;font-size:12px;font-weight:500;color:var(--text);text-align:left}
+.license-link:hover{filter:none}
+.license-link svg{width:13px;height:13px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.license-link:hover svg,.license-link:focus-visible svg{stroke:var(--text)}

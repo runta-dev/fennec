@@ -344,19 +344,18 @@ func (p *parser) atom() (any, error) {
 // Platform is the checkout the credits describe: gclient's built-in
 // variables for an official macOS build of public Chromium.
 type Platform struct {
-	HostCPU string // "arm64" or "x64"
+	HostCPU string // gclient's host_cpu
 	// TargetCPUs are the checkout_<cpu> variables set to true.
 	TargetCPUs []string
 }
 
-// MacPlatform is a macOS checkout for one architecture (Go naming).
-// Both macOS CPUs are checked out so the notices cover either build.
-func MacPlatform(goarch string) Platform {
-	cpu := "x64"
-	if goarch == "arm64" {
-		cpu = "arm64"
-	}
-	return Platform{HostCPU: cpu, TargetCPUs: []string{"arm64", "x64"}}
+// MacPlatform is the macOS checkout on an Apple silicon host, the only
+// one Fennec ships. gclient's checkout variables for a macOS checkout
+// carry both macOS CPUs (checkout_arm64 and checkout_x64), so DEPS
+// conditions are evaluated with both set, as the official build's
+// checkout does; the pinned credits hash depends on it.
+func MacPlatform() Platform {
+	return Platform{HostCPU: "arm64", TargetCPUs: []string{"arm64", "x64"}}
 }
 
 func (pl Platform) builtins() map[string]any {

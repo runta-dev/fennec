@@ -255,10 +255,13 @@ func TestStaleOwner(t *testing.T) {
 }
 
 func TestBuilds(t *testing.T) {
-	for _, arch := range []string{"arm64", "amd64"} {
-		b, ok := BuildFor(arch)
-		if !ok || len(b.SHA256) != 64 || b.Size <= 0 || !strings.HasPrefix(b.URL(), "https://storage.googleapis.com/chromium-browser-snapshots/") {
-			t.Errorf("%s: %+v", arch, b)
+	b, err := BuildFor("arm64")
+	if err != nil || b.Bucket != "Mac_Arm" || len(b.SHA256) != 64 || len(b.CreditsSHA256) != 64 || b.Size <= 0 || !strings.HasPrefix(b.URL(), "https://storage.googleapis.com/chromium-browser-snapshots/Mac_Arm/") {
+		t.Errorf("arm64: %+v %v", b, err)
+	}
+	for _, arch := range []string{"amd64", "386"} {
+		if _, err := BuildFor(arch); err == nil || !strings.Contains(err.Error(), "arm64") {
+			t.Errorf("%s: %v", arch, err)
 		}
 	}
 }

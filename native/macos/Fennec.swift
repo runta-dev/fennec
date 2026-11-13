@@ -52,6 +52,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var item: NSStatusItem!
     private let permissionPopover = NSPopover()
     private var nativeLanguage = "zh-CN"
+    private let licenseViewer = LicenseViewer()
     private var shownApprovalID: String?
     private var approvals: [[String:String]] = []
     private lazy var popup = PopupPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 390), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -835,6 +836,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
+        if action.hasPrefix("open-license:") { licenseViewer.open(String(action.dropFirst(13)), language: nativeLanguage); return }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
         if action.hasPrefix("audit-list:"),let data=String(action.dropFirst(11)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {

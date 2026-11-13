@@ -34,6 +34,8 @@ Build into a staging directory, verify the complete signature, stop the running 
 
 UI and Go control-plane artifacts must come from the same source snapshot. Never update only the native UI while reusing a Go artifact without its new methods. Packaging runs `cmd/check-control-contract` against UI method calls and writes the signed binary hash to `Contents/Resources/control-build-id`. `fen start` validates the running backend's build ID and replaces stale LaunchAgents serially. Restarting the UI alone does not update the backend; exercise the new interface after installing instead of treating an open app as acceptance.
 
+The packager also bundles `Contents/MacOS/fennec-cua` (rebuilt from `cua/` in the same checkout on every package) and `Contents/Helpers/Chromium.app` (staged and signed by `cua/cmd/cua-package`, cached in `build/cua-cache`). Do not clear that cache on ordinary rebuilds: reusing the signed Chromium keeps its code hash and avoids a new "Fennec Safe Storage" Keychain prompt with the self-signed certificate. The outer app is signed without `--deep` so Chromium's per-helper entitlements survive; verify with `codesign --verify --deep --strict` and `scripts/verify-macos-package.sh` (which runs `cua-package -smoke` on the bundled Chromium). `control-build-id` stays the `fen` hash; fennec-cua is not part of the control contract.
+
 Stop only the task-owned Fennec application process, then open `build/Fennec.app`. Do not terminate remote Herdr sessions or assume application restart deletes cloud work. Reinstall shims only if their daemon path is stale.
 
 After restart, inspect:

@@ -1,12 +1,16 @@
 // Command cua-package stages fennec-cua and the pinned open-source
 // Chromium for the Fennec bundle:
 //
-//	cua-package -stage DIR [-cache DIR] [-arch arm64|amd64] [-identity NAME|-] [-keychain PATH]
+//	cua-package -stage DIR [-cache DIR] [-identity NAME|SHA1|-] [-keychain PATH] [-skip-build]
+//	cua-package -smoke PATH/Chromium.app
+//
+// Chromium is pinned for Apple silicon only; on any other architecture it
+// stops with an error.
 //
 // It downloads the pinned chromium-browser-snapshots build (or reuses the
 // cached archive), checks its size and SHA-256 before anything else,
-// extracts Chromium.app, records Chromium's licence and credits
-// (chrome://credits, rendered by the build itself) inside the app and in
+// extracts Chromium.app, records Chromium's licence and the generated
+// third-party notices (also served as chrome://credits) inside the app and in
 // DIR/licenses, signs the app inside out with the Fennec signing identity
 // (hardened runtime with Chromium's per-helper entitlements), verifies the
 // signature, starts the signed browser once headless, builds and signs
@@ -18,6 +22,9 @@
 //
 // It never installs anything, never creates or changes certificates, and
 // stops (instead of waiting) when signing would ask the user for the key.
+// scripts/build-macos.sh runs it with -skip-build, caches the result and
+// builds fennec-cua itself; -smoke repeats the browser checks on a shipped
+// copy (scripts/verify-macos-package.sh).
 package main
 
 import (
@@ -54,9 +61,9 @@ func main() {
 }
 
 type options struct {
-	stage, cache, arch, identity, keychain string
-	creditsCache, creditsOut               string
-	skipBuild, allowNoCredits              bool
+	stage, cache, identity, keychain   string
+	creditsCache, creditsOut, smokeApp string
+	skipBuild, allowNoCredits          bool
 }
 
 func run(args []string) error {
@@ -64,15 +71,18 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("cua-package", flag.ContinueOnError)
 	fs.StringVar(&o.stage, "stage", "", "staging directory (created; must be empty or absent)")
 	fs.StringVar(&o.cache, "cache", "", "download cache (default: the user cache directory)")
-	fs.StringVar(&o.arch, "arch", runtime.GOARCH, "arm64 or amd64")
-	fs.StringVar(&o.identity, "identity", envOr("FENNEC_SIGN_IDENTITY", "Fennec Local Development"), `signing identity name, or "-" for ad-hoc`)
+	fs.StringVar(&o.identity, "identity", envOr("FENNEC_SIGN_IDENTITY", "Fennec Local Development"), `signing identity name or SHA-1 fingerprint, or "-" for ad-hoc`)
 	fs.StringVar(&o.keychain, "keychain", envOr("FENNEC_SIGN_KEYCHAIN", filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db")), "keychain holding the identity")
 	fs.BoolVar(&o.skipBuild, "skip-build", false, "stage Chromium only")
 	fs.BoolVar(&o.allowNoCredits, "allow-missing-credits", false, "skip generating the third-party notices: chrome://credits stays the sample page (development only; not for distribution)")
 	fs.StringVar(&o.creditsCache, "credits-cache", "", "cache of Chromium source metadata for the notices (default: the user cache directory)")
 	fs.StringVar(&o.creditsOut, "credits-out", "", "only generate the pinned commit's notices into this directory and print their hash (for a pin bump)")
+	fs.StringVar(&o.smokeApp, "smoke", "", "only check an already staged or installed Chromium.app (for example inside Fennec.app): signature, JavaScript in a renderer, and chrome://credits")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if o.smokeApp != "" {
+		return smokeOnly(context.Background(), o.smokeApp)
 	}
 	ucache, err := os.UserCacheDir()
 	if err != nil {
@@ -84,9 +94,11 @@ func run(args []string) error {
 	if o.creditsCache == "" {
 		o.creditsCache = filepath.Join(ucache, "fennec", "cua", "chromium-source")
 	}
-	build, ok := chromium.BuildFor(o.arch)
-	if !ok {
-		return fmt.Errorf("no pinned Chromium for %s", o.arch)
+	// Fennec ships for Apple silicon only: one pin, built and smoke-tested
+	// on an arm64 Mac.
+	build, err := chromium.BuildFor(runtime.GOARCH)
+	if err != nil {
+		return err
 	}
 	if o.creditsOut != "" {
 		return creditsOnly(context.Background(), build, o.creditsCache, o.creditsOut)
@@ -114,7 +126,7 @@ func run(args []string) error {
 	}
 
 	step("recording Chromium's licence")
-	license, err := fetchLicense(ctx, build)
+	license, err := fetchLicense(ctx, build, o.cache)
 	if err != nil {
 		return err
 	}
@@ -199,7 +211,7 @@ func run(args []string) error {
 		step("building fennec-cua")
 		bin := filepath.Join(o.stage, "fennec-cua")
 		cmd := exec.Command("go", "build", "-trimpath", "-o", bin, "./cmd/fennec-cua")
-		cmd.Env = append(os.Environ(), "GOARCH="+o.arch, "CGO_ENABLED=1")
+		cmd.Env = append(os.Environ(), "GOOS=darwin", "GOARCH="+build.Arch, "CGO_ENABLED=1")
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("go build: %w", err)
@@ -221,6 +233,35 @@ func run(args []string) error {
 		return err
 	}
 	step("staged in %s", o.stage)
+	return nil
+}
+
+// smokeOnly is -smoke: the checks a staging runs on its signed Chromium,
+// repeated on an app where it is shipped. The browser runs headless on a
+// throwaway profile with the mock keychain.
+func smokeOnly(ctx context.Context, app string) error {
+	if out, err := exec.Command("codesign", "--verify", "--deep", "--strict", app).CombinedOutput(); err != nil {
+		return fmt.Errorf("the signature does not verify: %v: %s", err, out)
+	}
+	bin := chromium.Executable(app)
+	product, err := smoke(ctx, bin)
+	if err != nil {
+		return fmt.Errorf("the Chromium in %s does not start: %w", app, err)
+	}
+	step("%s runs JavaScript in a renderer (%s)", app, product)
+	html, err := os.ReadFile(filepath.Join(app, "Contents", "Resources", "Chromium-credits.html"))
+	if err != nil {
+		return fmt.Errorf("the app carries no third-party notices: %w", err)
+	}
+	want := bytes.Count(html, []byte(`<div class="product">`))
+	page, err := dumpCredits(ctx, bin)
+	if err != nil {
+		return fmt.Errorf("reading chrome://credits: %w", err)
+	}
+	if n := bytes.Count(page, []byte(`<div class="product">`)); n != want || want == 0 {
+		return fmt.Errorf("chrome://credits shows %d components; the bundled notices have %d", n, want)
+	}
+	step("chrome://credits shows the %d bundled components", want)
 	return nil
 }
 
@@ -371,11 +412,28 @@ func unzipApp(archive, dir string) error {
 	return nil
 }
 
-// fetchLicense reads Chromium's LICENSE at the build's commit.
-func fetchLicense(ctx context.Context, b chromium.Build) ([]byte, error) {
+// fetchLicense reads Chromium's LICENSE at the build's commit, from the
+// download cache when an earlier run kept it there, so a warm cache stages
+// without network.
+func fetchLicense(ctx context.Context, b chromium.Build, cache string) ([]byte, error) {
 	if b.Commit == "" {
 		return nil, errors.New("the pin has no commit for the licence")
 	}
+	cached := filepath.Join(cache, "chromium-LICENSE-"+b.Commit+".txt")
+	if text, err := os.ReadFile(cached); err == nil && bytes.Contains(text, []byte("The Chromium Authors")) {
+		return text, nil
+	}
+	text, err := downloadLicense(ctx, b)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(cache, 0o700); err != nil {
+		return nil, err
+	}
+	return text, os.WriteFile(cached, text, 0o644)
+}
+
+func downloadLicense(ctx context.Context, b chromium.Build) ([]byte, error) {
 	u := "https://chromium.googlesource.com/chromium/src/+/" + b.Commit + "/LICENSE?format=TEXT"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -512,7 +570,10 @@ func smoke(ctx context.Context, bin string) (string, error) {
 	return product, err
 }
 
-var identityLine = regexp.MustCompile(`^\s*\d+\)\s+([0-9A-F]{40})\s+"([^"]+)"`)
+var (
+	identityLine = regexp.MustCompile(`^\s*\d+\)\s+([0-9A-F]{40})\s+"([^"]+)"`)
+	fingerprint  = regexp.MustCompile(`^[0-9A-Fa-f]{40}$`)
+)
 
 // resolveIdentity finds the identity's certificate hash in the keychain,
 // as scripts/build-macos.sh does (a self-signed development certificate is
@@ -520,6 +581,10 @@ var identityLine = regexp.MustCompile(`^\s*\d+\)\s+([0-9A-F]{40})\s+"([^"]+)"`)
 func resolveIdentity(name, keychain string) (string, error) {
 	if name == "-" {
 		return "-", nil
+	}
+	// scripts/build-macos.sh passes the fingerprint it already resolved.
+	if fingerprint.MatchString(name) {
+		return strings.ToUpper(name), nil
 	}
 	out, err := exec.Command("security", "find-identity", "-p", "codesigning", keychain).Output()
 	if err != nil {

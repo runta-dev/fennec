@@ -35,7 +35,7 @@ func sha256Hex(b []byte) string {
 // generate builds the notices of a commit from its sources.
 func generate(ctx context.Context, b chromium.Build, cache string) (*credits.Output, error) {
 	f := &credits.Fetcher{Cache: cache, Log: func(format string, args ...any) { step(format, args...) }}
-	tree, err := f.Tree(ctx, b.Commit, credits.MacPlatform(b.Arch))
+	tree, err := f.Tree(ctx, b.Commit, credits.MacPlatform())
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func generate(ctx context.Context, b chromium.Build, cache string) (*credits.Out
 // sources and checked against the pin.
 func buildCredits(ctx context.Context, b chromium.Build, cache string) (*creditsFiles, error) {
 	if b.CreditsSHA256 == "" {
-		return nil, fmt.Errorf("no credits hash is pinned for %s; run cua-package -credits-out DIR -arch %s and pin the hash it prints", b.Arch, b.Arch)
+		return nil, fmt.Errorf("no credits hash is pinned for %s; run cua-package -credits-out DIR and pin the hash it prints", b.Arch)
 	}
 	dir := filepath.Join(cache, "out", b.Commit)
 	if html, err := os.ReadFile(filepath.Join(dir, "Chromium-credits.html")); err == nil && sha256Hex(html) == b.CreditsSHA256 {
