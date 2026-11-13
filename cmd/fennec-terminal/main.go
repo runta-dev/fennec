@@ -49,6 +49,11 @@ func run() (int, error) {
 		fmt.Fprintln(os.Stdout, terminalstream.ProtocolVersion)
 		return 0, nil
 	}
+	// Upgrades arrive as a patch against this binary; the installer verifies
+	// the result's SHA-256 before using it.
+	if len(os.Args) == 3 && os.Args[1] == "apply-patch" {
+		return 0, setup.ApplyTerminalPatch(os.Args[2], os.Stdin, os.Stdout)
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 1, err

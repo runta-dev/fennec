@@ -56,16 +56,44 @@ if [ -x "$bin" ] && printf '%%s  %%s\n' '%s' "$bin" | sha256sum -c - >/dev/null 
  entry="$HOME/.local/bin/fennec-escalate"
  if [ ! -e "$entry" ] || [ -L "$entry" ]; then mkdir -p "$HOME/.local/bin"; ln -sfn "$HOME/.local/fennec/bin/fennec-terminal" "$entry"; fi
  printf 'already_installed\n'
+else
+ current=$(readlink "$HOME/.local/fennec/bin/fennec-terminal" 2>/dev/null || true)
+ printf 'current=%%s\n' "$(basename "$(dirname "$current")")"
 fi
 `, version, version)
-	if chk, chkErr := run(checkScript, nil); chkErr == nil && strings.Contains(string(chk), "already_installed") {
+	chk, chkErr := run(checkScript, nil)
+	if chkErr == nil && strings.Contains(string(chk), "already_installed") {
+		if cachedTerminalBinary(arch, version) == nil {
+			rememberTerminalBinary(arch, data)
+		}
 		return nil
+	}
+	current := ""
+	for _, line := range strings.Split(string(chk), "\n") {
+		if value, ok := strings.CutPrefix(line, "current="); ok {
+			current = strings.TrimSpace(value)
+		}
 	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
 	}
 	suffix := hex.EncodeToString(nonce[:])
+	// installScript stages the binary produced by decode, verifies it and
+	// switches the stable link to it.
+	installScript := func(decode string) string {
+		return fmt.Sprintf(installTemplate, version, suffix, decode, version, suffix)
+	}
+	if old := cachedTerminalBinary(arch, current); old != nil && current != version {
+		if patch, err := EncodeTerminalPatch(old, data); err == nil && len(patch) < len(data)/2 {
+			previous := fmt.Sprintf(`"$HOME/.local/fennec/terminal/%s/fennec-terminal"`, current)
+			if _, err := run(installScript(previous+" apply-patch "+previous), patch); err == nil {
+				rememberTerminalBinary(arch, data)
+				return nil
+			}
+			// An older cloud binary without apply-patch, or a damaged one: send it whole.
+		}
+	}
 	var compressed bytes.Buffer
 	gz, _ := gzip.NewWriterLevel(&compressed, gzip.BestSpeed)
 	if _, err := gz.Write(data); err != nil {
@@ -74,7 +102,14 @@ fi
 	if err := gz.Close(); err != nil {
 		return err
 	}
-	installScript := fmt.Sprintf(`set -eu
+	if _, err := run(installScript("gzip -dc"), compressed.Bytes()); err != nil {
+		return fmt.Errorf("terminal service upload verification failed: %w", err)
+	}
+	rememberTerminalBinary(arch, data)
+	return nil
+}
+
+const installTemplate = `set -eu
 umask 077
 root="$HOME/.local/fennec/terminal/%s"
 bin_dir="$HOME/.local/fennec/bin"
@@ -82,7 +117,7 @@ mkdir -p "$root" "$bin_dir"
 chmod 700 "$root" "$bin_dir"
 staged="$root/.upload-%s"
 trap 'rm -f "$staged"' EXIT
-gzip -dc > "$staged"
+%s > "$staged"
 printf '%%s  %%s\n' '%s' "$staged" | sha256sum -c - >/dev/null
 chmod 700 "$staged"
 mv -f "$staged" "$root/fennec-terminal"
@@ -93,9 +128,4 @@ mv -f "$tmp_link" "$bin_dir/fennec-terminal"
 # Agents request Mac escalation with fennec-escalate; never replace a user's own file.
 entry="$HOME/.local/bin/fennec-escalate"
 if [ ! -e "$entry" ] || [ -L "$entry" ]; then mkdir -p "$HOME/.local/bin"; ln -sfn "$HOME/.local/fennec/bin/fennec-terminal" "$entry"; fi
-`, version, suffix, version, suffix)
-	if _, err := run(installScript, compressed.Bytes()); err != nil {
-		return fmt.Errorf("terminal service upload verification failed: %w", err)
-	}
-	return nil
-}
+`
