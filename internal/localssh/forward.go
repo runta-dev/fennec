@@ -51,7 +51,11 @@ func directForward(parent context.Context, paired func(server.PublicKey) bool, b
 		decisionType := "auto_sandbox"
 		// Codex parity: network access outside Full access is a reviewed
 		// network request (user or auto-review); Full access never asks.
-		if approval && mode != sandbox.ModeFull && !policy.Network {
+		// Like exec, only approval "never" is Full access: a connector without
+		// a preset still asks for every forward.
+		full := policy.Approval == "never"
+		onRequest := policy.Approval == sandbox.PresetAsk || policy.Approval == sandbox.PresetAuto
+		if approval && !full && (!onRequest || (mode != sandbox.ModeFull && !policy.Network)) {
 			prompt, done := context.WithTimeout(ctx, 2*time.Minute)
 			outcome := broker.authorize(prompt, approvalRequest{Display: desc, Kind: "tcp_forward", Fingerprint: ssh.FingerprintSHA256(key), Action: guardian.Action{Kind: "network", Host: target.Host, Port: int(target.Port), Command: desc}})
 			allowed := outcome.Allowed
