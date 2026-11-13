@@ -74,6 +74,23 @@ Recorded incident: the same remote stop took about 6–10 ms; fresh SSH took 4.0
 
 Run `make test-e2e-ops` against the installed paths. Each warm operation sample must be ≤500 ms. Measure cold SSH separately (about 4 seconds, gate 5 seconds). Errors, invalid responses, timeouts, and over-budget samples must exit nonzero. Do not substitute averages, cached lists, or receipts for remote refresh/input-ready TUI, or shorten timeouts to manufacture speed. Failed end-to-end gates leave the performance goal incomplete. Ordinary unit tests do not connect to the user's machine; the explicit live target fails when login/runtime prerequisites are missing instead of skipping and claiming success.
 
+## Count round trips, then remove them
+
+The cloud link costs about 170–200 ms per round trip, so latency work is round-trip accounting, not CPU tuning. Before optimizing, trace one operation and attribute every wait to a round trip, a transfer (the link moves roughly 130 KB/s), or remote work. `ssh -vvv` with a timestamp per line shows the SSH phases (`session request sent` → `master session id` is the channel open; → `Received exit status` is the command). Then remove round trips structurally; never claim a budget from averages that hide them.
+
+**Cloud-to-Mac commands take one round trip.** Agents keep plain `ssh <device alias> command` (and scp, rsync, sftp, `-L`); do not invent another client or syntax. SSH itself needs two round trips per command even on a ControlMaster connection, because a command can only be sent on a channel the Mac has confirmed (the request carries the Mac's channel number). The device alias therefore uses `ProxyCommand fennec-terminal mac-relay <device> %p` (`internal/localssh/mac_relay.go`):
+
+- The ssh client's handshake and channel opens end at the relay on the cloud computer, so they cost no link round trips; ControlMaster (`ControlPath ~/.ssh/fennec/relay-%C`) keeps that local connection.
+- The relay holds one SSH connection to the Mac and keeps two session channels already confirmed there (prewarmed transport channels, not agent processes). A command takes one and sends `exec` at once: one round trip plus Mac execution (measured 216–240 ms, from ~400 ms with ControlMaster alone and ~1.5 s without). A replacement channel opens in the background.
+- Channel requests, data, stderr, EOF and exit status pass through unchanged; `direct-tcpip` channels are relayed as is. An unreachable Mac answers like ssh does: the reason on stderr and exit status 255.
+- The Mac side is unchanged: it still checks pairing, approval, sandbox and audit for every command. The relay verifies the Mac's host key from `~/.ssh/fennec/<device>.known_hosts`; ssh verifies the relay's own key (`relay_host_key`, trusted as `fennec-relay` in `relay_known_hosts`, created at alias registration). The relay accepts only the device identity key.
+- The relay serves a ControlMaster that outlives the client that started it: it ignores SIGHUP/SIGINT/SIGPIPE and stops on end of stdio or SIGTERM. Nothing may be written to its stdout except the SSH stream.
+- When the transport behind an alias changes, rename its ControlPath, or ssh keeps using old masters for up to `ControlPersist`.
+- The alias config is written by the cloud binary when the connector registers. If registration runs before the cloud terminal service is upgraded, the old config stays until the next reconnect; check `~/.ssh/fennec/<device>.conf` on the cloud after an install instead of assuming.
+- Test SSH relays with a buffered socket pair, not `net.Pipe`: both SSH ends send their banners first and deadlock on an unbuffered pipe. Inject link latency and assert the round-trip count (a command under 1.5 round trips), not just correctness.
+
+The same accounting applies to other paths. The ChatGPT bridge sends the WebSocket upgrade together with the socket open and replays the app-server's last 101 response so ChatGPT's first request follows immediately; `codex app-server` drops a connection whose upgrade request arrives in the same read as frames, so the cloud filter forwards the request head alone and holds frames until the app-server answers (advertised as `codex_app_server_early_input`; the Mac only answers early for services that advertise it). Results that are expensive to produce and rarely change (`mcpServerStatus/list` starts every MCP server, including node_repl on the Mac) are served from a store validated by the config they depend on and refreshed at most every few minutes, never on every request. Bandwidth-bound responses (a large thread's command output) cannot be fixed by compression levels; report them rather than truncating what users see.
+
 ## Product UI and internal diagnostics
 
 ### UI copy and controls
