@@ -58,6 +58,15 @@ func run() (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	// ProxyCommand of the Mac device alias; see localssh.ServeMacRelay. It
+	// serves a ControlMaster that outlives the terminal and the client that
+	// started it, so only the end of its stdio or SIGTERM stops it.
+	if len(os.Args) == 4 && os.Args[1] == localssh.MacRelayCommand {
+		signal.Ignore(syscall.SIGHUP, syscall.SIGINT, syscall.SIGPIPE)
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+		defer stop()
+		return 0, localssh.ServeMacRelay(ctx, home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
+	}
 	if len(os.Args) == 4 && os.Args[1] == "hook" {
 		response := hookbridge.Invoke(context.Background(), home, os.Args[2], os.Args[3], os.Stdin)
 		binding, _ := hookbridge.Lookup(home, os.Args[2], os.Args[3])

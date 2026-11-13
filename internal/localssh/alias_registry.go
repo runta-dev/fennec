@@ -66,6 +66,10 @@ func RegisterAlias(home string, r AliasRegistration) (string, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
+	// The alias reaches the Mac through the local relay, which presents this key.
+	if err := EnsureRelayHostKey(dir); err != nil {
+		return "", err
+	}
 	lock, err := os.OpenFile(filepath.Join(dir, "aliases.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return "", err
