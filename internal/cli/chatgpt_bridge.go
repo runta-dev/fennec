@@ -53,6 +53,9 @@ type chatgptPreference struct {
 	// first connection is answered at once even while the cloud is away.
 	Upgrade    string `json:"upgrade,omitempty"`
 	EarlyInput bool   `json:"early_input,omitempty"`
+	// Initialize is the app-server's last initialize result, answered by the
+	// bridge while the cloud is away.
+	Initialize string `json:"initialize,omitempty"`
 }
 
 type chatgptBridge struct {
@@ -321,7 +324,12 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	reader.Discard(len(buffered))
 	// ChatGPT's file requests for Mac paths are answered on this Mac; only the
 	// rest of its traffic goes to the cloud.
-	files := cloudruntime.NewChatGPTLocalFiles(conn, true)
+	// The shield answers initialize while the cloud is away; it sees every
+	// byte to ChatGPT after the local file answers are placed.
+	shield := newInitializeShield(b, conn, answered)
+	defer shield.close()
+	shield.observeInput(buffered)
+	files := cloudruntime.NewChatGPTLocalFiles(shield.output(), true)
 	defer files.Close()
 	if pending, err = files.Feed(pending); err != nil {
 		return unavailable(err)
@@ -335,6 +343,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		for {
 			length, readErr := reader.Read(buffer)
 			if length > 0 {
+				shield.observeInput(buffer[:length])
 				forward, feedErr := files.Feed(buffer[:length])
 				if feedErr != nil {
 					return
@@ -388,6 +397,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		frame, err := opened.Next(wait)
 		stopWaiting()
 		if err == nil && frame.Type == "receipt" {
+			shield.confirm()
 			forwarder.confirm()
 			session, window, receipt = opened, credit, frame
 			break
