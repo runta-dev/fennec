@@ -148,6 +148,29 @@ wise witty wolf wood woody worthy wren yacht
 yak yarn yellow yew young zebra zesty zinnia
 `)
 
+// Memorable reports whether id is a word-pair name.
+func Memorable(id string) bool {
+	return regexp.MustCompile(`^[a-z]{3,12}-[a-z]{3,12}$`).MatchString(id)
+}
+
+// Random returns a word-pair name without reserving it; callers that create a
+// directory for it must create it exclusively.
+func Random() (string, error) {
+	for {
+		a, err := rand.Int(rand.Reader, big.NewInt(int64(len(words))))
+		if err != nil {
+			return "", err
+		}
+		b, err := rand.Int(rand.Reader, big.NewInt(int64(len(words))))
+		if err != nil {
+			return "", err
+		}
+		if a.Int64() != b.Int64() {
+			return words[a.Int64()] + "-" + words[b.Int64()], nil
+		}
+	}
+}
+
 // Allocate reserves names across local processes and keeps retired names reserved.
 // Remote launch journals additionally reject mismatched device/launch identities.
 func Allocate(home string) (string, error) {

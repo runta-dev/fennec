@@ -3,11 +3,10 @@ package runtime
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/localssh"
+	"fennec/internal/sessionid"
 	"fmt"
 	"net"
 	"os"
@@ -227,15 +226,60 @@ func (filter *chatgptPathFilter) toMac(message []byte) []byte {
 		filter.pathsMu.Lock()
 		defer filter.pathsMu.Unlock()
 		mac, ok := filter.paths[path]
+		if !ok && strings.HasPrefix(path, filepath.Join(filter.home, ".fen")+"/") {
+			// Another connection may have created this workspace since.
+			filter.paths = loadChatGPTPaths(filter.home)
+			mac, ok = filter.paths[path]
+		}
 		return mac, ok
 	})
 }
 
-// workspace prepares the cloud session directory for a Mac directory. The ID
-// is derived from the Mac path, so reopening a thread reuses its directory.
+// chatgptWorkspaceMu serializes name allocation across ChatGPT connections,
+// which each hold their own copy of the path map.
+var chatgptWorkspaceMu sync.Mutex
+
+// workspaceID returns the cloud session name for a Mac directory: a word pair
+// like every other Fennec session (~/.fen/desert-true), allocated once and
+// remembered, so reopening a thread reuses its directory.
+func (filter *chatgptPathFilter) workspaceID(mac string) (string, error) {
+	chatgptWorkspaceMu.Lock()
+	defer chatgptWorkspaceMu.Unlock()
+	paths := loadChatGPTPaths(filter.home)
+	for cloud, known := range paths {
+		if known == mac && filepath.Dir(cloud) == filepath.Join(filter.home, ".fen") && sessionid.Memorable(filepath.Base(cloud)) {
+			return filepath.Base(cloud), nil
+		}
+	}
+	root := filepath.Join(filter.home, ".fen")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return "", err
+	}
+	for attempt := 0; attempt < 64; attempt++ {
+		id, err := sessionid.Random()
+		if err != nil {
+			return "", err
+		}
+		// Exclusive creation never adopts another session's directory.
+		if err := os.Mkdir(filepath.Join(root, id), 0700); os.IsExist(err) {
+			continue
+		} else if err != nil {
+			return "", err
+		}
+		paths[filepath.Join(root, id)] = mac
+		saveChatGPTPaths(filter.home, paths)
+		return id, nil
+	}
+	return "", fmt.Errorf("cloud session name allocation exhausted")
+}
+
+// workspace prepares the cloud session directory for a Mac directory.
 func (filter *chatgptPathFilter) workspace(mac string) (string, error) {
-	digest := sha256.Sum256([]byte(mac))
-	request := LocalLaunch{ID: hex.EncodeToString(digest[:16]), Agent: "codex", LocalDirectory: mac, Device: filter.device}
+	id, err := filter.workspaceID(mac)
+	if err != nil {
+		return "", err
+	}
+	request := LocalLaunch{ID: id, Agent: "codex", LocalDirectory: mac, Device: filter.device}
 	cloud := filepath.Join(filter.home, ".fen", request.ID)
 	if _, err := prepareSessionWorkspace(filter.home, request); err != nil {
 		// An earlier prompt (for example another device alias) is preserved.
@@ -245,10 +289,7 @@ func (filter *chatgptPathFilter) workspace(mac string) (string, error) {
 	}
 	filter.pathsMu.Lock()
 	defer filter.pathsMu.Unlock()
-	if filter.paths[cloud] != mac {
-		filter.paths[cloud] = mac
-		saveChatGPTPaths(filter.home, filter.paths)
-	}
+	filter.paths[cloud] = mac
 	return cloud, nil
 }
 
