@@ -222,20 +222,8 @@ func golden(ctx context.Context, args []string) error {
 			return fmt.Errorf("%s did not quit, so its first-launch state would be lost: %w", app.Name, err)
 		}
 	}
-	// Nothing may come back at the next login: loginwindow relaunches the
-	// apps of its last snapshot, which may predate the quits above. The
-	// Dock forgets the recently used apps. tart stop may end the VM before
-	// the page cache reaches the disk, hence the sync.
-	cleanup := []string{
-		`plutil -replace PersistentApps -json "[]" "$HOME/Library/Group Containers/group.com.apple.loginwindow.persistent-apps/persistantApps" || true`,
-		`defaults -currentHost write com.apple.loginwindow TALAppsToRelaunchAtLogin -array`,
-		`defaults delete com.apple.dock recent-apps 2>/dev/null; killall Dock; sleep 3`,
-		`sync; sleep 3`,
-	}
-	for _, c := range cleanup {
-		if _, err := s.Output(ctx, c); err != nil {
-			return err
-		}
+	if err := quietDesktop(ctx, s); err != nil {
+		return err
 	}
 	log.Printf("shutting %s down", *name)
 	return v.Shutdown(ctx)
@@ -467,6 +455,31 @@ func refreshFennec(ctx context.Context, v *vm.VM) error {
 	if out, err := s.Output(ctx, "shasum -a 256 "+vm.Quote(bench.GuestFennec)); err == nil {
 		log.Printf("installed: %s", strings.TrimSpace(out))
 	}
+	if err := quietDesktop(ctx, s); err != nil {
+		return err
+	}
 	log.Printf("shutting %s down", v.Name)
 	return v.Shutdown(ctx)
+}
+
+// quietDesktop makes sure nothing comes back at the next login: loginwindow
+// relaunches the apps of its last snapshot, which may predate the quits
+// above. The Dock forgets the recently used apps. tart stop may end the VM
+// before the page cache reaches the disk, hence the sync.
+func quietDesktop(ctx context.Context, s *vm.Session) error {
+	cleanup := []string{
+		`plutil -replace PersistentApps -json "[]" "$HOME/Library/Group Containers/group.com.apple.loginwindow.persistent-apps/persistantApps" || true`,
+		`defaults -currentHost write com.apple.loginwindow TALAppsToRelaunchAtLogin -array`,
+		// Twice: a Dock that restarts right after an app quit may write
+		// that app back.
+		`defaults delete com.apple.dock recent-apps 2>/dev/null; killall Dock; sleep 5`,
+		`defaults delete com.apple.dock recent-apps 2>/dev/null; killall Dock; sleep 5`,
+		`sync; sleep 3`,
+	}
+	for _, c := range cleanup {
+		if _, err := s.Output(ctx, c); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -220,7 +220,7 @@ func Run(ctx context.Context, m Model, backend *mcpclient.Client, task string, o
 			st.Result = clip(reply, 4000)
 			st.Ms = time.Since(t0).Milliseconds()
 			tr.Steps = append(tr.Steps, st)
-			msgs = append(msgs, chatMessage{Role: "tool", ToolCallID: call.ID, Content: clip(reply, 60000)})
+			msgs = append(msgs, chatMessage{Role: "tool", ToolCallID: call.ID, Content: clip(reply, 100000)})
 		}
 		// Tool messages carry text only; screenshots follow as a user turn.
 		if len(images) > 0 {
