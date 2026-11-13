@@ -378,6 +378,8 @@ main{min-height:0}
 :root[data-theme=dark] .update-hide{border-color:rgba(255,255,255,.16)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .update-hide{border-color:rgba(255,255,255,.16)}}
 .update-hide svg{width:8px;height:8px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
+/* The badge sits beside the title; keep the brand icon colour off its icons */
+.brand .update-wrap{margin-left:2px}.brand .update-wrap svg{color:inherit}
 .update-wrap:hover .update-hide,.update-hide:focus-visible{opacity:1;pointer-events:auto}
 .update-hide:hover{color:var(--text);filter:none}
 .update-pill[hidden]+.update-hide,.update-pill.busy+.update-hide{display:none!important}
