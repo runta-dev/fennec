@@ -64,7 +64,9 @@ mkdir "$release_work/dmg"
 ditto "$app" "$release_work/dmg/Fennec.app"
 ln -s /Applications "$release_work/dmg/Applications"
 dmg="release/Fennec-$version-macos-arm64.dmg"
-hdiutil create -volname Fennec -srcfolder "$release_work/dmg" -format UDZO -ov "$dmg" >/dev/null
+# ULMO (LZMA) keeps the download small now that Fennec.app carries Chromium:
+# about 153 MB against 217 MB for UDZO. Mounting it needs macOS 10.15 or later.
+hdiutil create -volname Fennec -srcfolder "$release_work/dmg" -format ULMO -ov "$dmg" >/dev/null
 codesign --force --timestamp --keychain "$release_keychain" --sign "$identity" "$dmg"
 notarize "$dmg" release/notarization-dmg.json
 xcrun stapler staple "$dmg"
