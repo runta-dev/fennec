@@ -118,6 +118,16 @@ func shortURL(u string) string {
 	return u
 }
 
+// shortData shortens a long data: URL in the header, where it shows as
+// the URL and, for a page without a title, as the title too.
+func shortData(s string) string {
+	if strings.HasPrefix(s, "data:") && len(s) > 64 {
+		head, _, _ := strings.Cut(s, ",")
+		return head + ",…"
+	}
+	return s
+}
+
 // oneLine keeps a field on one line.
 func oneLine(s string) string {
 	if !strings.ContainsAny(s, "\r\n") {
@@ -476,7 +486,7 @@ func (m *Memory) Read(tabID, title, url string, t *AXTree, ids map[int]string, d
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Browser tab: %s, Title: \"%s\", URL: \"%s\".", tabID, oneLine(title), oneLine(url))
+	fmt.Fprintf(&b, "Browser tab: %s, Title: \"%s\", URL: \"%s\".", tabID, oneLine(shortData(title)), oneLine(shortData(url)))
 	focusLine := "The focused UI element is " + strconv.Itoa(idOf[focused]) + " " + lines[focused].text
 	switch {
 	case !diff:

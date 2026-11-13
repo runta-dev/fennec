@@ -537,12 +537,14 @@ func (c *stepCtx) desktopArgs(args map[string]any) map[string]any {
 
 // raise brings a named window to the front for foreground input and checks
 // that it came; the user-activity check applies, but fronting is not own
-// input.
+// input. A sheet of the window in front (a save or open panel, an alert
+// sheet) counts as the window being in front: input for the window goes to
+// it, as the user sees it. Another window in front never does.
 func (c *stepCtx) raise(ctx context.Context, w view.RawWindow) *protocol.Error {
 	if perr := c.x.policy().Activity.Check(); perr != nil {
 		return perr
 	}
-	if w.Active {
+	if c.inFront(ctx, w) {
 		return nil
 	}
 	if err := c.x.B.Raise(ctx, w); err != nil {
@@ -554,31 +556,85 @@ func (c *stepCtx) raise(ctx context.Context, w view.RawWindow) *protocol.Error {
 		if perr != nil {
 			return perr
 		}
-		var front *view.RawWindow
-		for i := range listed {
-			if listed[i].Active {
-				front = &listed[i]
-				break
-			}
-		}
-		if front != nil && front.Key == w.Key {
+		front := activeOf(listed)
+		if fronts(front, w) {
 			return nil
 		}
 		if !c.x.now().Before(deadline) {
-			name := "no window"
-			if front != nil {
-				name = fmt.Sprintf("%q of %s", front.Title, front.App)
-			}
 			return &protocol.Error{
 				Code:    protocol.ErrFocusMismatch,
-				Message: fmt.Sprintf("window %q is not frontmost (the front window is %s); nothing was sent", w.Title, name),
-				Hint:    "focus the window first, or use background input",
+				Message: fmt.Sprintf("window %q is not frontmost (the front window is %s); nothing was sent", w.Title, c.frontName(ctx, front)),
+				Hint:    "close or dismiss what is in front (ask the user when it is a system prompt), then read the state again",
 			}
 		}
 		if err := c.x.sleep(ctx, FrontPoll); err != nil {
 			return asProtocol(err)
 		}
 	}
+}
+
+// inFront says whether w, or a sheet or dialog of its app that takes its
+// input, is in front.
+func (c *stepCtx) inFront(ctx context.Context, w view.RawWindow) bool {
+	if w.Active {
+		return true
+	}
+	listed, _ := c.windows(ctx)
+	return fronts(activeOf(listed), w)
+}
+
+// activeOf is the first active listed window, or nil.
+func activeOf(listed []view.RawWindow) *view.RawWindow {
+	for i := range listed {
+		if listed[i].Active {
+			return &listed[i]
+		}
+	}
+	return nil
+}
+
+// fronts says whether front, the active window, puts w in front: w itself,
+// w's owner, or a sheet of w (a save or open panel or an alert sheet,
+// which takes the window's input until it is dismissed).
+func fronts(front *view.RawWindow, w view.RawWindow) bool {
+	if front == nil {
+		return false
+	}
+	if front.Key == w.Key {
+		return true
+	}
+	if front.PID != w.PID || w.PID == 0 {
+		return false
+	}
+	return (w.OwnerKey != "" && front.Key == w.OwnerKey) || (front.OwnerKey != "" && front.OwnerKey == w.Key)
+}
+
+// FrontNamer is implemented by backends that can name what is in front
+// when no listed window is (a system prompt, a process without windows).
+type FrontNamer interface {
+	FrontWindow(ctx context.Context) (view.RawWindow, bool)
+}
+
+// frontName names the front window for an error.
+func (c *stepCtx) frontName(ctx context.Context, front *view.RawWindow) string {
+	if front == nil {
+		if n, ok := c.x.B.(FrontNamer); ok {
+			if f, ok := n.FrontWindow(ctx); ok {
+				front = &f
+			}
+		}
+	}
+	switch {
+	case front == nil:
+		return "no window of any app"
+	case front.Title == "" && front.App == "":
+		return "an untitled window"
+	case front.Title == "":
+		return "an untitled window of " + front.App
+	case front.App == "":
+		return fmt.Sprintf("%q", front.Title)
+	}
+	return fmt.Sprintf("%q of %s", front.Title, front.App)
 }
 
 // own records that foreground input just ended.

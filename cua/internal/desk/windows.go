@@ -252,12 +252,13 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 		if hasFrame {
 			w.Bounds = toDesk(r, scale)
 		}
-		w.Active = frontmost && focused != nil && focused.Equal(el)
-		if focused != nil && focused.Equal(el) {
-			active = w.Key
-		}
-		out = append(out, w)
-		// Sheets hang on the window as children.
+		// Sheets hang on the window as children. A sheet that holds the
+		// focus (a save or open panel, an alert sheet: the app reports it as
+		// its focused window, though it is not one of its windows) is the
+		// app's front UI; its window, which the input for it goes through,
+		// is the sheet's owner (actions take a front sheet as its owner
+		// being in front).
+		var sheets []view.RawWindow
 		kids, _ := v[8].([]any)
 		for _, k := range kids {
 			sheet, ok := k.(*ax.Element)
@@ -276,11 +277,23 @@ func (d *Desk) appWindows(pid int, name string, frontmost bool, scale float64, s
 				Title:    str(sv[1]),
 				Role:     view.WindowRole("", true),
 				OwnerKey: w.Key,
-				Active:   w.Active,
 			}
 			if r, ok := frame(sv[2], sv[3]); ok {
 				s.Bounds = toDesk(r, scale)
 			}
+			if focused != nil && focused.Equal(sheet) {
+				s.Active = frontmost
+				active = s.Key
+			}
+			sheets = append(sheets, s)
+		}
+		w.Active = frontmost && focused != nil && focused.Equal(el)
+		if focused != nil && focused.Equal(el) {
+			active = w.Key
+		}
+		out = append(out, w)
+		for _, s := range sheets {
+			s.Active = s.Active || w.Active
 			out = append(out, s)
 		}
 	}

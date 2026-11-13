@@ -138,9 +138,13 @@ func (d DriverCapturer) Window(ctx context.Context, session string, pid int, win
 		"max_image_dimension":        0,
 	})
 	if err != nil {
-		return nil, err
+		return nil, d.windowFailure(ctx, session, err)
 	}
-	return ParseWindow(raw)
+	c, err := ParseWindow(raw)
+	if err != nil {
+		return nil, d.windowFailure(ctx, session, err)
+	}
+	return c, nil
 }
 
 // Screen calls get_screen_size.
@@ -175,7 +179,7 @@ func (d DriverCapturer) call(ctx context.Context, session, tool string, args map
 	if err != nil {
 		var de *driver.Error
 		if errors.As(err, &de) {
-			return nil, &CaptureError{Reason: de.Message}
+			return nil, explain(&CaptureError{Reason: de.Message})
 		}
 		return nil, &CaptureError{Reason: err.Error()}
 	}
@@ -214,7 +218,7 @@ func parseImage(raw json.RawMessage) (toolResult, []byte, error) {
 		if reason == "" {
 			reason = "the driver failed without a reason"
 		}
-		return r, nil, &CaptureError{Reason: reason}
+		return r, nil, explain(&CaptureError{Reason: reason})
 	}
 	for _, c := range r.Content {
 		if c.Type == "image" && c.Data != "" {
@@ -285,4 +289,50 @@ func fillSize(c *Capture) error {
 	}
 	c.W, c.H = w, h
 	return nil
+}
+
+// consentCode is cua-driver's reason prefix when macOS has not yet asked
+// the user whether the app may capture the screen directly (macOS 15 and
+// later): an embedded driver refuses to raise that alert itself.
+const consentCode = "direct_capture_consent_required"
+
+// ConsentRequired says whether a capture failed only because macOS has not
+// asked yet whether the app may capture the screen directly.
+func ConsentRequired(err error) bool {
+	var ce *CaptureError
+	return errors.As(err, &ce) && strings.Contains(ce.Reason, consentCode)
+}
+
+// ConsentReason is the capture failure an agent and the user see for
+// ConsentRequired: the driver's own text names its own command, which the
+// user does not run.
+const ConsentReason = "macOS has not yet asked whether Fennec CUA may capture the screen directly (a one-time alert on macOS 15 and later), so screenshots are off; the accessibility tree is unaffected. Ask the user to run `fennec-cua permissions --request` and choose Allow in the macOS alert"
+
+// noContent is cua-driver's reason when a window state call produced
+// neither part; with the tree turned off it means only the capture failed.
+const noContent = "No content produced"
+
+// explain rewrites driver reasons that mislead in fennec-cua's context.
+func explain(e *CaptureError) *CaptureError {
+	if strings.Contains(e.Reason, consentCode) {
+		return &CaptureError{Reason: ConsentReason + " (" + consentCode + ")"}
+	}
+	return e
+}
+
+// windowFailure gives a failed window capture its real reason: the driver
+// answers a window capture it could not take with a generic "no content"
+// text, so a tiny desktop capture is tried for the reason behind it.
+func (d DriverCapturer) windowFailure(ctx context.Context, session string, err error) error {
+	var ce *CaptureError
+	if !errors.As(err, &ce) || !strings.Contains(ce.Reason, noContent) {
+		return err
+	}
+	if _, derr := d.Desktop(ctx, session, 64); derr != nil {
+		var de *CaptureError
+		if errors.As(derr, &de) {
+			return de
+		}
+	}
+	return &CaptureError{Reason: "the driver took no screenshot of the window (the accessibility tree is unaffected; the window may be off screen or being redrawn)"}
 }

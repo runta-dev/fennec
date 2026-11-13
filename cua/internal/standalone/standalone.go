@@ -171,7 +171,10 @@ func PermissionGuide(app string) string {
 which asks macOS to show its prompts and to list the app (or use "+" in the pane and pick
 ` + app + `). After a Screen Recording change, restart the daemon:
   fennec-cua quit   (the next command starts it again)
-Then check with: fennec-cua doctor
+On macOS 15 and later, with Screen Recording on, run once more:
+  fennec-cua permissions --request
+macOS then asks whether the app may capture the screen directly; choose Allow.
+Close any macOS prompt still on screen, then check with: fennec-cua doctor
 `)
 	return b.String()
 }

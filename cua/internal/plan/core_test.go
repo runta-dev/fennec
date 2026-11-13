@@ -27,6 +27,7 @@ func TestValidateRejectsBeforeAnyInput(t *testing.T) {
 		{`{"steps":[{"press":"button \"Save\""},{"type":"{{who}}"}]}`, "step 1: no value for {{who}}"},
 		{`{"steps":[{"type":5}]}`, "step 0: type must be text, not a number"},
 		{`{"steps":[{"press":"button \"Save\"","window":["a"]}]}`, "step 0: window must be text, not a list"},
+		{`{"steps":[{"key":"cmd+s","behind":true}]}`, "step 0: behind marks a key step"},
 	}
 	for _, c := range cases {
 		r := newRig(t, policy.Config{}).notes()

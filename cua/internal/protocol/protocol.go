@@ -429,6 +429,9 @@ type Step struct {
 	Close  string       `json:"close,omitempty"`  // close a window
 	Launch string       `json:"launch,omitempty"` // start or front an app; Args, URL apply
 	Wait   *WaitRequest `json:"wait,omitempty"`
+	// Behind, with Launch, leaves the app where it is: a window that is not
+	// in front is taken without fronting it (cua.getApp launches this way).
+	Behind bool `json:"behind,omitempty"`
 	// Perform runs the element's named accessibility action (Action, such
 	// as "AXShowMenu" or its spoken name "Show Menu").
 	Perform *Target `json:"perform,omitempty"`

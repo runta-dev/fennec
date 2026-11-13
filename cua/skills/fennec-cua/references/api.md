@@ -29,7 +29,7 @@ type AppInfo = { displayName?: string; id: string; isRunning?: boolean; lastUsed
 |---|---|
 | `cua.listApps(opts?)` | running and recently used apps as compact JSON `[{"displayName","id","isRunning","lastUsedDate","useCount"}]` |
 | `cua.getState(opts?)` | `{ apps, browsers: [{ id, name, family, type, tabs }], errors? }`; `errors` explains partial failures (e.g. missing permissions) |
-| `cua.getApp(target)` | `App` for a display name, `.app` path or bundle id; launches it in the background if needed (focus stays put) and prints its first state. An unresolved name throws, suggesting `listApps()` |
+| `cua.getApp(target, opts?)` | `App` for a display name, `.app` path or bundle id; launches it in the background if needed (it does not take the focus; the first input to it brings it to the front) and prints its first state unless `{ emit: false }`. An unresolved name throws, suggesting `listApps()`. Calling it again makes a new binding whose first state is full, with ids numbered afresh: use ids from the newest binding only |
 | `cua.computer.target` | `"mac"` |
 | `cua.listBrowsers()`, `cua.getBrowser({ id })`, `cua.createBrowserTab(...)`, `cua.getTab(...)`, `cua.listTabs(...)` | browser tabs: [browser.md](browser.md) |
 
@@ -44,11 +44,11 @@ type AppInfo = { displayName?: string; id: string; isRunning?: boolean; lastUsed
 | `drag(from, to)` | press at `from`, move, release at `to` (points) |
 | `scroll(target, direction, distance?)` | element id or point; `distance` in pages (default 1) or `{ pixels: N }` |
 | `selectText(id, text, opts?)` | select `text` in an editable element; `prefix`/`suffix` pick the occurrence; `selectionType` places the caret before/after instead |
-| `setValue(id, value)` | set through accessibility: text fields, sliders, steppers, pop-ups, check boxes |
+| `setValue(id, value)` | set through accessibility: text fields, sliders, steppers, pop-ups, check boxes. The way to enter exact text: `typeText` is subject to macOS autocorrect in text views (`"cua"` can become `"cut"`). When a pop-up refuses it, use `performSecondaryAction(id, "Show Menu")`, read the state, then `"Pick"` on the item |
 | `performSecondaryAction(id, name)` | one of the names in the element's `Secondary Actions` (`"Raise"`, `"Show Menu"`, `"Increment"`, ...); an unlisted name throws, listing the valid ones |
 | `paste(text, { format? })` | puts text on the pasteboard, pastes into the focus, restores the previous pasteboard text |
 | `pressKey(key, { durationMs? })` | xdotool names and chords |
-| `typeText(text)` | types into the focused element (click the field first if needed) |
+| `typeText(text)` | types into the focused element (click the field first if needed); macOS autocorrect and text substitution apply, so check the value afterwards or use `setValue` / `paste` for exact text |
 
 Input methods resolve to `undefined` and print nothing: read the state afterwards.
 
@@ -88,7 +88,15 @@ Removed element IDs: 4
 The focused UI element is 8 text field ...
 ```
 
-No change: `There has been no change in the accessibility tree for Window: "Orders".` A different front window prints a full state with its own header.
+No change: `There has been no change in the accessibility tree for Window: "Orders".` A different front window prints a full state with its own header. After an input method, `getAXState()` reads until two reads agree, so "no change" means the app really shows no change.
+
+### Sheets, panels and alerts
+
+A sheet on the window (a save or open panel, an alert sheet) appears inside the window's state as `sheet` with its controls; `click`, `pressKey` and `setValue` on them work through the same binding (`pressKey("Escape")` cancels, `click(<Save>)` saves). A separate dialog window of the app becomes the front window: `getAXState()` then prints it with its own header. If another app's window is in front (a macOS permission prompt, for example), input is refused with `window "X" is not frontmost (the front window is "Y" of Z); nothing was sent`: ask the user to answer or dismiss it, then read the state again.
+
+### App quirks
+
+Apps keep their own defaults. Examples: TextEdit opens new documents as rich text; `pressKey("super+shift+t")` makes the document plain text before you save a `.txt` file. When a shortcut seems to do nothing, read the menu bar (click its title id) to find the command.
 
 ## Errors you will see
 
@@ -100,6 +108,8 @@ No change: `There has been no change in the accessibility tree for Window: "Orde
 | `stopped: ...` | the user stopped fennec-cua; wait for them |
 | mentions of `permission`, `permissions_pending` | Accessibility or Screen Recording missing: `fennec-cua doctor` |
 | `not_allowed` | the app is outside the user's allowlist (`[safety] allow` in config.toml) |
+| `window "X" is not frontmost (the front window is ...)` | another window is in front; the message names it. A macOS prompt: ask the user to answer it. Otherwise read the state again |
+| `the capture failed: macOS has not yet asked whether Fennec CUA may capture the screen directly ...` | screenshots are off until the user runs `fennec-cua permissions --request` and clicks Allow; the accessibility state still works |
 
 ## `nodeRepl`
 
@@ -114,7 +124,8 @@ fennec-cua's own capabilities, apart from `cua`:
 fennec.status();                         // { version, permissions: {accessibility, screen_recording}, input, stopped, screen, ... }
 fennec.wait(app, { window_opens: "Export", timeout_ms: 5000 });   // also window_gone, exists/gone/reads(+equals) with { select: 'button "Save"' }, still
 fennec.act(app, steps, options?);        // multi-step plan, each step confirmed / unconfirmed / refused, stops at the first surprise
-fennec.observe(request);                 // the raw outline with refs (e12), a find, a hit test, a capture
+fennec.observe(request);                 // { app } (an App or name), { window: ref or title } or { scope: "desktop" }; plus find, text, image
+                                         // the raw outline with refs (e12), a find, a hit test, a capture
 fennec.flows.list(query?); fennec.flows.show(name); fennec.flows.run(name, params?);
 fennec.flows.save(name, { steps | from: "last", description }); fennec.flows.delete(name);
 fennec.record.start(apps?); fennec.record.note(text); fennec.record.stop(params?);
@@ -124,4 +135,16 @@ fennec.tools(); fennec.call(name, args); // installed plugin tools
 fennec.browser.chromeProfiles(); fennec.browser.importFromChrome({ profile?, replace? });
 ```
 
+`fennec.act` does not throw when a step is refused or unconfirmed: it resolves to `{ ok, steps: [{ index, action, status, error }], error }` and, when `ok` is false, also writes one line naming the step. Always check `result.ok`.
+
 `fennec.act` steps (one key each): `{ press: target }`, `{ click: target, button?, count?, mods? }`, `{ set: target, value }`, `{ type: "text", into?: target, secret?: true }`, `{ key: "cmd+s" }`, `{ menu: "File > Export > PDF" }`, `{ scroll: target, direction, amount }`, `{ launch: "TextEdit" }`, `{ wait: { window_opens: "Save" } }`, `{ close: "window title" }`. A target is `{ select: 'button "Save"' }`, `{ ref: "e12" }` (from `fennec.observe`) or `{ point: { x, y, space: "window" } }`. Mark passwords `secret: true`: they never appear in traces, errors or saved flows. For everyday work the `cua` methods are enough.
+
+## Input modes
+
+fennec-cua sends clicks and keys in one of three modes, set by the user in `~/Library/Application Support/fennec/cua/config.toml` (`[desk]` `input = "foreground"`, the default, `"background"` or `"auto"`) and shown by `fennec.status()`:
+
+- `foreground`: the target window is brought to the front first, as a person would; the most reliable.
+- `background`: input goes to the window without fronting it; some apps ignore it, and results may come back unconfirmed.
+- `auto`: background first, foreground when the app refuses.
+
+A step may narrow the mode (`fennec.act(app, steps, { input: "foreground" })`) but never widen it; only the user changes the configured mode. The daemon reads the file when it starts (`fennec-cua quit` restarts it, ending sessions).

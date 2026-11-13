@@ -18,7 +18,7 @@ type TabInfo = { id: string; title?: string; url?: string; browserId: string };
 
 cua.getState(options?: ObservationOptions): Promise<{ apps: AppInfo[]; browsers: (BrowserInfo & { tabs: TabInfo[] })[]; errors?: string[] }>;
 cua.listApps(options?: ObservationOptions): Promise<AppInfo[]>;   // id is the bundle id
-cua.getApp(target: string): Promise<App>;   // display name, .app path or bundle id
+cua.getApp(target: string, options?: ObservationOptions): Promise<App>;   // display name, .app path or bundle id
 cua.computer.target;                          // "mac"
 
 cua.listBrowsers(options?: ObservationOptions): Promise<BrowserInfo[]>;
@@ -59,7 +59,7 @@ nodeRepl.emitImage(image): Promise<void>;       // data: URL, PNG/JPEG/WebP byte
 
 ## Opening an app
 
-`var app = await cua.getApp("TextEdit")` finds the app by name, path or bundle id, starts it in the background when it is not running (your focus stays where it is), and shows its first state. If a name does not resolve, call `cua.listApps()` and pass the bundle id it lists.
+`var app = await cua.getApp("TextEdit")` finds the app by name, path or bundle id, starts it in the background when it is not running (your focus stays where it is), and shows its first state. If a name does not resolve, call `cua.listApps()` and pass the bundle id it lists. Calling `getApp` again makes a new binding: its first state is full and numbers the ids afresh, so use ids from the newest binding only. A sheet on the window (a save or open panel, an alert sheet) shows inside the window's state, and clicks and keys reach it through the binding.
 
 ## Opening a web page
 
@@ -84,13 +84,13 @@ Text comes from `nodeRepl.write`, `console.log` and the self-displaying calls: `
 ## Keys and per-method notes
 
 - `pressKey` takes xdotool names and chords: `"Return"`, `"Tab"`, `"Escape"`, `"BackSpace"`, `"Delete"`, `"Up"`, `"Page_Down"`, `"space"`, `"KP_0"`, `"super+c"` (super is Command), `"shift+Tab"`, `"ctrl+alt+Delete"`.
-- `typeText` types into the focused element; click a field first if needed. `setValue` writes a value through accessibility and suits text fields, sliders, steppers and pop-ups.
+- `typeText` types into the focused element; click a field first if needed. `setValue` writes a value through accessibility and suits text fields, sliders, steppers and pop-ups. `typeText` goes through macOS text input, so autocorrect can change words in text views (`"cua"` may become `"cut"`): for exact text use `setValue` or `paste`, then check the value in the state. When `setValue` is refused on a pop-up, run its `"Show Menu"` action, then `"Pick"` on the item.
 - `selectText` selects text inside an editable element; `prefix`/`suffix` pick one occurrence; `selectionType` places the caret before or after it instead.
 - `performSecondaryAction` runs one of the names listed under `Secondary Actions`, such as `"Raise"`, `"Show Menu"` or `"Increment"`.
 - `paste` places the text on the pasteboard, pastes it, and puts the previous pasteboard text back.
 - `click` with a number clicks that element; `clickCount: 2` double-clicks, `mouseButton: "right"` opens a context menu, `key: "shift"` holds a modifier.
 - An id that is not in the latest state is an error (`<id> is an invalid element ID`): read the state again and use a fresh id.
-- For tabs, `typeText`, `pressKey` and `paste` take an element index first and focus it; pass `null` for the current focus. A tab's state starts with a `Browser tab:` line and diffs like an app's. Browser `paste` restores the clipboard; its `md` format pastes the Markdown source as text.
+- For tabs, `typeText`, `pressKey` and `paste` take an element index first and focus it; pass `null` for the current focus. A tab's state starts with a `Browser tab:` line and diffs like an app's, except that a tab's first `getAXState()` after `createBrowserTab` or `getTab` is full, and a change to more than half of the lines prints the full state again. Browser `paste` restores the clipboard; its `md` format pastes the Markdown source as text.
 - When no browser is available, the browser calls fail and a browser can still be driven as an app (`cua.getApp("Safari")`).
 
 ## Confirmations
@@ -103,9 +103,9 @@ fennec-cua's own capabilities live on `fennec`, apart from `cua`:
 
 ```ts
 fennec.status();                       // permissions, input mode, whether the user stopped fennec-cua
-fennec.act(app, steps, options?);      // multi-step plan with read-back: each step confirmed, unconfirmed or refused
+fennec.act(app, steps, options?);      // multi-step plan with read-back: each step confirmed, unconfirmed or refused; does not throw: check result.ok
 fennec.wait(app, condition);           // { window_opens | window_gone | exists | gone | reads+equals | still, timeout_ms }
-fennec.observe(request);               // the raw outline with refs (e12), a find, a point hit test, a capture
+fennec.observe(request);               // { app } (an App or a name), { window }, or { scope: "desktop" }, plus find, text, image: the raw outline with refs (e12)
 fennec.flows.list(query?); fennec.flows.show(name); fennec.flows.save(name, { steps | from: "last", description });
 fennec.flows.run(name, params?); fennec.flows.delete(name);
 fennec.record.start(apps?); fennec.record.note(text); fennec.record.stop(params?);   // a demonstration becomes a draft flow

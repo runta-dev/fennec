@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"fennec/cua/internal/actions"
@@ -174,6 +175,11 @@ func (a *Actions) Same(x, y view.Handle) bool {
 	return err1 == nil && err2 == nil && ex.Equal(ey)
 }
 
+// raiseRetry bounds how long Raise retries an app that is still starting:
+// a window that has just appeared can fail AXFrontmost or AXRaise (cannot
+// complete, failure) for a moment.
+const raiseRetry = 1500 * time.Millisecond
+
 // Raise brings a window and its app to the front through accessibility.
 func (a *Actions) Raise(ctx context.Context, w view.RawWindow) error {
 	el, err := element(w.Handle)
@@ -183,14 +189,46 @@ func (a *Actions) Raise(ctx context.Context, w view.RawWindow) error {
 	app := ax.App(w.PID)
 	defer app.Release()
 	app.SetTimeout(MessagingTimeout.Seconds())
+	deadline := time.Now().Add(raiseRetry)
+	for {
+		err := raiseOnce(app, el)
+		if err == nil || !transientRaise(err) || !time.Now().Before(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func raiseOnce(app, el *ax.Element) error {
 	if err := app.SetBool("AXFrontmost", true); err != nil {
 		return axFailure(err, "AXFrontmost")
 	}
 	_ = el.SetBool("AXMain", true)
-	if err := el.Perform("AXRaise"); err != nil && !errors.Is(err, ax.ErrActionUnsupported) {
+	// Some apps (Calculator) answer AXRaise with "attribute unsupported"
+	// though the app came to the front; whether the window did is checked
+	// by the caller.
+	if err := el.Perform("AXRaise"); err != nil && !errors.Is(err, ax.ErrActionUnsupported) && !errors.Is(err, ax.ErrAttributeUnsupport) {
 		return axFailure(err, "AXRaise")
 	}
 	return nil
+}
+
+// transientRaise says whether a raise failure can pass while the app
+// finishes starting.
+func transientRaise(err error) bool {
+	var e *actions.AXError
+	if !errors.As(err, &e) {
+		return false
+	}
+	switch ax.Error(e.Code) {
+	case ax.ErrCannotComplete, ax.ErrFailure:
+		return true
+	}
+	return false
 }
 
 // CloseWindow presses the window's close button.

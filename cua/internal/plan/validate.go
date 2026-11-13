@@ -16,7 +16,7 @@ var (
 	textKeys   = map[string]bool{"key": true, "menu": true, "focus": true, "close": true, "launch": true, "url": true, "app": true, "window": true, "input": true, "intent": true, "button": true, "direction": true, "type": true, "action": true}
 	targetKeys = map[string]bool{"press": true, "set": true, "click": true, "scroll": true, "drag": true, "to": true, "into": true, "perform": true, "select_text": true}
 	objectKeys = map[string]bool{"wait": true, "expect": true, "web": true, "recorded": true}
-	boolKeys   = map[string]bool{"secret": true, "any_focus": true}
+	boolKeys   = map[string]bool{"secret": true, "any_focus": true, "behind": true}
 	numberKeys = map[string]bool{"count": true, "amount": true, "pid": true}
 	opKeys     = []string{"press", "set", "click", "type", "key", "scroll", "drag", "menu", "focus", "close", "launch", "wait", "perform", "select_text"}
 )
@@ -218,6 +218,9 @@ func validateStep(i int, s protocol.Step) *protocol.Error {
 	}
 	if s.Expect != nil && kind != "expect" && emptyExpect(*s.Expect) {
 		return stepErr(i, "expect", "names no condition")
+	}
+	if s.Behind && kind != "launch" {
+		return stepErr(i, "behind", "marks a "+kind+" step; only a launch step stays behind")
 	}
 	if s.Secret {
 		if kind != "type" && kind != "set" {

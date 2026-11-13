@@ -1,15 +1,10 @@
 // Command cua-vm manages the tart macOS VM that fennec-cua's desktop tests run
 // in. tart is a development dependency: https://github.com/cirruslabs/tart/releases.
 //
-//	go run ./cmd/cua-vm create [-image IMAGE]   clone the VM (first run downloads the image)
-//	go run ./cmd/cua-vm up                      boot it headless and wait for its guest agent
-//	go run ./cmd/cua-vm down                    shut it down
-//	go run ./cmd/cua-vm exec -- COMMAND         run a shell command in the VM
-//	go run ./cmd/cua-vm gui -- COMMAND          run it in the VM's desktop session
-//	go run ./cmd/cua-vm grant CLIENT            grant Accessibility and Screen Recording
-//	go run ./cmd/cua-vm test [-tags T] PKG...   build test binaries, run them in the VM's desktop session
-//	go run ./cmd/cua-vm fixture                 build the fixture app and install it in the VM
-//	go run ./cmd/cua-vm push DEST PATH...       copy local files into a VM directory
+//	go run ./cmd/cua-vm [-vm NAME] COMMAND [ARGS]
+//
+// Run it with -h for the commands. The VM is fennec-cua-dev unless -vm or
+// the CUA_VM environment variable names another.
 package main
 
 import (
@@ -17,6 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -30,22 +26,80 @@ import (
 // Where artifacts live in the VM.
 const guestDir = "/Users/admin/cua"
 
+const usage = `usage: go run ./cmd/cua-vm [-vm NAME] COMMAND [ARGS]
+
+The VM is fennec-cua-dev unless -vm NAME or the CUA_VM environment variable
+names another tart VM.
+
+Commands:
+  create [-image IMAGE]      clone the VM from IMAGE (the first run downloads it)
+  up                         boot it headless and wait for its guest agent
+  down                       shut it down
+  exec -- COMMAND            run a shell command in the VM
+  gui -- COMMAND             run it in the VM's desktop session (as the logged-in user)
+  grant CLIENT               grant Accessibility, Screen Recording and input
+                             monitoring to CLIENT (a bundle id or an absolute
+                             executable path), and approve its direct screen
+                             capture so macOS 15 and later do not ask; needs SIP
+                             disabled in the VM
+  test [-tags T] PKG... [-- TESTFLAGS]
+                             build test binaries, run them in the VM's desktop session
+  fixture                    build the fixture app and install it in the VM
+  push DEST PATH...          copy local files or directories into a VM directory
+  help                       print this help
+`
+
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	err := run(os.Args[1:], os.Stdout)
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "cua-vm:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: cua-vm create | up | down | exec | gui | grant | test | fixture")
+// wantsHelp says whether args ask for the help.
+func wantsHelp(args []string) bool {
+	for _, a := range args {
+		switch a {
+		case "-h", "-help", "--help":
+			return true
+		case "--":
+			return false
+		}
+	}
+	return false
+}
+
+func run(args []string, out io.Writer) error {
+	global := flag.NewFlagSet("cua-vm", flag.ContinueOnError)
+	global.SetOutput(io.Discard)
+	name := global.String("vm", "", "the tart VM (default $CUA_VM, else "+vm.DefaultName+")")
+	if err := global.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fmt.Fprint(out, usage)
+			return flag.ErrHelp
+		}
+		return fmt.Errorf("%v\n%s", err, usage)
+	}
+	args = global.Args()
+	if len(args) == 0 || args[0] == "help" || wantsHelp(args[1:]) {
+		fmt.Fprint(out, usage)
+		if len(args) == 0 {
+			return errors.New("no command")
+		}
+		return flag.ErrHelp
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	v := vm.New()
-	if name := os.Getenv("CUA_VM"); name != "" {
-		v.Name = name
+	if env := os.Getenv("CUA_VM"); env != "" {
+		v.Name = env
+	}
+	if *name != "" {
+		v.Name = *name
 	}
 	rest := args[1:]
 	switch args[0] {
@@ -78,7 +132,7 @@ func run(args []string) error {
 		if len(rest) != 1 {
 			return errors.New("grant takes one bundle id or absolute path")
 		}
-		return withSession(ctx, v, func(s *vm.Session) error { return s.GrantTCC(ctx, rest[0]) })
+		return withSession(ctx, v, func(s *vm.Session) error { return grant(ctx, s, rest[0]) })
 	case "fixture":
 		return fixture(ctx, v)
 	case "push":
@@ -101,7 +155,7 @@ func run(args []string) error {
 	case "test":
 		return test(ctx, v, rest)
 	}
-	return fmt.Errorf("unknown command %q", args[0])
+	return fmt.Errorf("unknown command %q\n%s", args[0], usage)
 }
 
 func trimDashes(args []string) []string {
@@ -232,4 +286,34 @@ func quoteAll(ss []string) []string {
 		out[i] = vm.Quote(s)
 	}
 	return out
+}
+
+// grant grants the TCC services to client and approves its direct screen
+// capture: macOS 15 and later otherwise ask once per app, and cua-driver
+// embedded in an app refuses captures until then. An app is approved by
+// its bundle's file URL, so a bundle id is resolved to the apps in the
+// VM's Applications folders that carry it.
+func grant(ctx context.Context, s *vm.Session, client string) error {
+	if err := s.GrantTCC(ctx, client); err != nil {
+		return err
+	}
+	keys := []string{client}
+	if !strings.HasPrefix(client, "/") {
+		find := `for a in /Applications/*.app "$HOME"/Applications/*.app; do ` +
+			`[ "$(defaults read "$a/Contents/Info" CFBundleIdentifier 2>/dev/null)" = ` + vm.Quote(client) + ` ] && echo "$a"; done; true`
+		paths, err := s.Output(ctx, find)
+		if err != nil {
+			return err
+		}
+		for _, p := range strings.Split(strings.TrimSpace(paths), "\n") {
+			if p == "" {
+				continue
+			}
+			keys = append(keys, "file://"+p+"/")
+		}
+		if len(keys) == 1 {
+			fmt.Fprintf(os.Stderr, "cua-vm: no app with bundle id %s is installed yet; install it and run grant again to approve its screen capture\n", client)
+		}
+	}
+	return s.ApproveScreenCapture(ctx, keys...)
 }

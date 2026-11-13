@@ -103,6 +103,11 @@ func run(args []string) error {
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
+	switch args[0] {
+	case "-h", "-help", "--help", "help":
+		fmt.Println(usage)
+		return nil
+	}
 	paths, err := daemon.DefaultPaths()
 	if err != nil {
 		return err
@@ -110,7 +115,7 @@ func run(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch args[0] {
-	case "version":
+	case "version", "--version", "-version":
 		fmt.Println(engine.Version)
 		return nil
 	case "serve":
@@ -169,7 +174,7 @@ func run(args []string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("unknown command %q; %s", args[0], usage)
+	return fmt.Errorf("unknown command %q (fennec-cua --help lists the commands)", args[0])
 }
 
 // httpFlag reads an optional --http ADDR (or --http=ADDR).
@@ -516,7 +521,7 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 			di.DriverRunning = driverAnswers(paths.Driver)
 		}
 		return di
-	}, quit)
+	}, quit, captureCheck(client))
 	if browsers != nil {
 		for k, op := range browserOps(browsers, browserProfile) {
 			d.Ops[k] = op

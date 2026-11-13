@@ -24,6 +24,7 @@ import (
 	"fennec/cua/internal/mcpserver"
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/standalone"
+	"fennec/cua/internal/vision"
 )
 
 // daemonStartWait bounds the wait for a daemon a command started: a cold
@@ -57,8 +58,19 @@ type daemonInfo struct {
 }
 
 // daemonOps are the daemon's own control operations beside the browser's:
-// its identity and health, a quit, and the permission prompts.
-func daemonOps(info func() daemonInfo, quit func()) map[string]func(context.Context, json.RawMessage) (any, error) {
+// its identity and health, a quit, the permission prompts and a test
+// capture. capture takes one small screen capture through cua-driver; nil
+// when there is no driver.
+func daemonOps(info func() daemonInfo, quit func(), capture func(context.Context) error) map[string]func(context.Context, json.RawMessage) (any, error) {
+	check := func(ctx context.Context) map[string]any {
+		if capture == nil {
+			return map[string]any{"ok": false, "reason": "no cua-driver, so no screenshots"}
+		}
+		if err := capture(ctx); err != nil {
+			return map[string]any{"ok": false, "reason": err.Error(), "consent": vision.ConsentRequired(err)}
+		}
+		return map[string]any{"ok": true}
+	}
 	return map[string]func(context.Context, json.RawMessage) (any, error){
 		"daemon.info": func(context.Context, json.RawMessage) (any, error) { return info(), nil },
 		"daemon.quit": func(context.Context, json.RawMessage) (any, error) {
@@ -66,9 +78,23 @@ func daemonOps(info func() daemonInfo, quit func()) map[string]func(context.Cont
 			time.AfterFunc(100*time.Millisecond, quit)
 			return map[string]any{"quitting": true}, nil
 		},
-		"permissions.request": func(context.Context, json.RawMessage) (any, error) {
+		"capture.check": func(ctx context.Context, _ json.RawMessage) (any, error) { return check(ctx), nil },
+		"permissions.request": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			ax, sr := macos.RequestPermissions()
-			return map[string]any{"accessibility": grantWord(ax), "screen_recording": grantWord(sr)}, nil
+			out := map[string]any{"accessibility": grantWord(ax), "screen_recording": grantWord(sr)}
+			// With the grant in place, macOS 15 and later still ask once
+			// whether the app may capture the screen directly; the
+			// embedded driver never raises that alert, so the daemon does,
+			// here, where the user asked for the prompts.
+			if sr {
+				if c := check(ctx); c["consent"] == true {
+					macos.RequestDirectCapture()
+					out["direct_capture"] = "asked: choose Allow in the macOS alert"
+				} else if c["ok"] == true {
+					out["direct_capture"] = "granted"
+				}
+			}
+			return out, nil
 		},
 	}
 }
@@ -439,6 +465,9 @@ func doctorCmd(ctx context.Context, paths daemon.Paths, self string, args []stri
 		if _, broken := daemon.LoadConfig(cfgPath); broken != nil {
 			f.ConfigErr = broken
 		}
+		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+			f.ConfigMissing = true
+		}
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, time.Minute)
@@ -475,6 +504,26 @@ func doctorCmd(ctx context.Context, paths daemon.Paths, self string, args []stri
 			// A daemon without daemon.info (an older build): judge the
 			// driver by its socket.
 			f.DriverRunning = driverAnswers(paths.Driver)
+		}
+		if f.DriverRunning && f.Permissions["screen_recording"] == "granted" {
+			if rep, err := daemon.Control(cctx, paths, "capture.check"); err == nil {
+				var c struct {
+					OK      bool   `json:"ok"`
+					Reason  string `json:"reason"`
+					Consent bool   `json:"consent"`
+				}
+				data, _ := json.Marshal(rep.Status)
+				if json.Unmarshal(data, &c) == nil {
+					f.CaptureChecked = true
+					if !c.OK {
+						f.CaptureErr = c.Reason
+						if f.CaptureErr == "" {
+							f.CaptureErr = "no reason given"
+						}
+					}
+					f.CaptureConsent = c.Consent
+				}
+			}
 		}
 	}
 	checks := standalone.Diagnose(f)
@@ -568,4 +617,18 @@ func loginKeychain() bool {
 	}
 	_, err = os.Stat(filepath.Join(home, "Library", "Keychains", "login.keychain-db"))
 	return err == nil
+}
+
+// captureCheck is daemonOps' test capture over the driver client: a small
+// desktop capture on the shared capture lane. nil without a driver.
+func captureCheck(client *driver.Client) func(context.Context) error {
+	if client == nil {
+		return nil
+	}
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		_, err := vision.DriverCapturer{Client: client}.Desktop(ctx, "", 64)
+		return err
+	}
 }

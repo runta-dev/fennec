@@ -7,6 +7,8 @@ Start with `fennec-cua doctor`; its `fix:` lines name the next step.
 | `cua.getApp(...)` takes long and then throws `<App> has no open window; open one ...` although the app shows a window; `getAXState` reads nothing; screenshots fail | Accessibility (or Screen Recording) is not granted to "Fennec CUA". Run `fennec-cua doctor` first; ask the user to grant them (`fennec-cua permissions`), then `fennec-cua quit`. `cua.listApps()` still works without the grants |
 | `doctor`: `fail Accessibility denied` although the user switched something on | the switch is for another app (a terminal, Fennec). It must be "Fennec CUA" (`~/Applications/FennecCUA.app`). `fennec-cua permissions --request` lists the app in the pane |
 | Screen Recording granted but still denied | macOS applies it to new processes: `fennec-cua quit`, then retry |
+| `doctor`: `fail screen capture macOS has not yet asked ...`, or screenshots fail with `the capture failed: macOS has not yet asked whether Fennec CUA may capture the screen directly` | macOS 15 and later ask once whether an app may capture the screen directly, on top of the Screen Recording grant. Ask the user to run `fennec-cua permissions --request` and click Allow in the alert (the accessibility state works meanwhile) |
+| Input fails with `window "X" is not frontmost (the front window is ...)` | another window is in front and the message names it; nothing was sent. A macOS prompt (an untitled window of UserNotificationCenter, a permission alert): ask the user to answer it, then read the state again. A window of the same app: read the state, which now shows it |
 | App was reinstalled from a newer archive and grants stopped working | a build signed with a different certificate counts as a new app for macOS: switch it off and on again in both panes |
 | `fennec-cua: command not found` | `~/.local/bin` is not on PATH: use `~/.local/bin/fennec-cua` or add it to PATH |
 | "cannot be opened", "developer cannot be verified", "damaged" | download quarantine on an un-notarized build: `xattr -dr com.apple.quarantine <extracted folder>` and run `install` again |
@@ -16,7 +18,10 @@ Start with `fennec-cua doctor`; its `fix:` lines name the next step.
 | `<id> is an invalid element ID` / `no longer in the app` | ids are only valid against the latest state: `getAXState()` again |
 | `getApp("Name")` throws | use the bundle id from `cua.listApps()`, or the `.app` path |
 | An app is missing from `listApps()` | only running and recently used apps are listed; `cua.getApp("/Applications/X.app")` launches any app |
-| `getAXState()` shows another window than expected | it reads the app's front window; `performSecondaryAction(<window id>, "Raise")` on the window you want, or close the sheet/dialog in front |
+| `getAXState()` shows another window than expected | it reads the app's front window (a sheet such as a save panel shows inside its window); `performSecondaryAction(0, "Raise")` on the window line of the state you want, or close the dialog in front |
+| Typed text came out different ("cua" became "cut") | macOS autocorrect: use `setValue(id, text)` or `paste(text)` for exact text and check the value in the state |
+| `setValue` on a pop-up button is refused | `performSecondaryAction(id, "Show Menu")`, read the state, then `performSecondaryAction(<item id>, "Pick")` |
+| `fennec.act` returned but nothing happened | it does not throw: check `result.ok` and `result.steps[i].status` (`refused` sent nothing); a line `fennec.act did not finish ...` names the step |
 | A click "did nothing" | read the state: input may have landed unconfirmed. Prefer `setValue` or `performSecondaryAction`; for canvas content take `getScreenshot()` and click a point |
 | `stopped: ...` on every call | the user ran `fennec-cua stop` (or Fennec's Stop). Do not resume yourself; ask the user |
 | Confirm errors ("cannot show a confirm dialog") | `[safety] confirm` in config.toml is not `off`; the standalone app has no confirm dialog, so set it to `off` (your own confirmation rules still apply) |
@@ -24,7 +29,7 @@ Start with `fennec-cua doctor`; its `fix:` lines name the next step.
 | Browser calls throw `No browser is available.` | the core archive, or `FENNEC_CUA_CHROMIUM=off`; use the full archive, or drive Safari as an app |
 | A site shows you signed out | the bundled browser has its own profile: `fennec-cua browser import` (user consent) or `markHandoff()` |
 | `js` call ended at 90 s | split the work; use `fennec.wait` for long waits |
-| Shell session lost its bindings | it idled for two hours, or the daemon restarted (`quit`, reinstall, logout): rebuild the bindings (`var app = await cua.getApp(...)`) |
+| Shell session lost its bindings | it idled for two hours, or the daemon restarted (`fennec-cua quit` ends every session, as do a reinstall and logout): rebuild the bindings (`var app = await cua.getApp(...)`); the new binding numbers ids afresh |
 | The emergency hotkey does nothing | the standalone daemon does not register the kill hotkey yet; use `fennec-cua stop` |
 
 Files: daemon log `~/Library/Caches/fennec/cua/daemon.log`; settings `~/Library/Application Support/fennec/cua/config.toml`; app `~/Applications/FennecCUA.app`; manifest with versions and pins `~/Applications/FennecCUA.app/Contents/Resources/MANIFEST.json`.

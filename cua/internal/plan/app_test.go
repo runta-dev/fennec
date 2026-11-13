@@ -177,6 +177,18 @@ func TestLaunchStepFrontsWindow(t *testing.T) {
 	if len(r.d.Raised) != 0 {
 		t.Fatalf("raised %v", r.d.Raised)
 	}
+	// A launch that stays behind (cua.getApp) fronts nothing under
+	// foreground input either.
+	r = newRig(t, policy.Config{})
+	r.d.Win("cg:9", "Finder", "Desktop", 50, [4]int{0, 0, 800, 600}, true)
+	r.d.Replies["launch_app"] = []fakedesk.Reply{{Raw: `{"pid":300,"background":true}`}}
+	launchAdds(r, 1, func(d *fakedesk.Desk) {
+		d.Wins = append(d.Wins, view.RawWindow{Key: "cg:7", Handle: "cg:7", App: "Calculator", PID: 300, Title: "Calculator", Role: "window"})
+	})
+	mustPass(t, r.run(protocol.Step{Launch: "Calculator", Behind: true}))
+	if len(r.d.Raised) != 0 {
+		t.Fatalf("raised %v", r.d.Raised)
+	}
 }
 
 func TestAppStepEscalatesOnStaleApp(t *testing.T) {

@@ -270,3 +270,15 @@ func TestStateContainers(t *testing.T) {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestShortDataHeader(t *testing.T) {
+	long := "data:text/html," + strings.Repeat("%3Cp%3E", 30)
+	ax, dom := trees(t, signIn(), long)
+	got := NewMemory().Read("1", long, long, ax, DOMIDs(dom), false)
+	if strings.Count(strings.SplitN(got, "\n", 2)[0], "data:text/html,…") != 2 || strings.Contains(got, "%3Cp") {
+		t.Fatalf("header: %s", strings.SplitN(got, "\n", 2)[0])
+	}
+	if s := shortData("https://example.test/" + strings.Repeat("a", 80)); !strings.HasSuffix(s, "aaaa") {
+		t.Fatalf("shortened an http URL: %s", s)
+	}
+}

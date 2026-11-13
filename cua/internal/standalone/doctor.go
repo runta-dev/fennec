@@ -60,6 +60,15 @@ type Facts struct {
 	DriverRunning bool
 	// BrowserAvailable is whether the daemon serves browser tabs.
 	BrowserAvailable bool
+	// CaptureChecked is set when the daemon took a test capture;
+	// CaptureErr is its failure ("" when it worked) and CaptureConsent
+	// marks a failure only because macOS has not yet asked whether the app
+	// may capture the screen directly.
+	CaptureChecked bool
+	CaptureErr     string
+	CaptureConsent bool
+	// ConfigMissing is set when there is no configuration file (defaults).
+	ConfigMissing bool
 }
 
 // Diagnose lists the checks, most basic first.
@@ -78,9 +87,13 @@ func Diagnose(f Facts) []Check {
 	default:
 		add("app", OK, f.App+" (signature verifies)", "")
 	}
-	if f.Quarantined {
-		add("quarantine", Warn, "the app carries the quarantine attribute; macOS may refuse to start the daemon",
-			"run `fennec-cua install` (it clears the attribute on the installed copy) or: xattr -dr "+QuarantineAttr+" "+quote(f.App))
+	if f.App != "" {
+		if f.Quarantined {
+			add("quarantine", Warn, "the app carries the quarantine attribute; macOS may refuse to start the daemon",
+				"run `fennec-cua install` (it clears the attribute on the installed copy) or: xattr -dr "+QuarantineAttr+" "+quote(f.App))
+		} else {
+			add("quarantine", OK, "none on the app", "")
+		}
 	}
 	if f.Driver == "" {
 		add("cua-driver", Fail, "no cua-driver beside fennec-cua; desktop input and screenshots are unavailable",
@@ -105,8 +118,13 @@ func Diagnose(f Facts) []Check {
 	default:
 		add("command", OK, f.Command, "")
 	}
-	if f.ConfigErr != nil {
+	switch {
+	case f.ConfigErr != nil:
 		add("config", Fail, f.ConfigPath+": "+f.ConfigErr.Error(), "fix or remove the file; every tool stays closed until it loads")
+	case f.ConfigPath != "" && f.ConfigMissing:
+		add("config", OK, f.ConfigPath+" (none; defaults apply)", "")
+	case f.ConfigPath != "":
+		add("config", OK, f.ConfigPath+" (loads)", "")
 	}
 
 	if f.DaemonErr != nil {
@@ -146,6 +164,18 @@ func Diagnose(f Facts) []Check {
 			add("cua-driver process", OK, "answering", "")
 		} else {
 			add("cua-driver process", Fail, "the daemon's cua-driver does not answer", "see daemon.log; `fennec-cua quit` restarts the daemon and its driver on the next command")
+		}
+	}
+	if f.CaptureChecked {
+		switch {
+		case f.CaptureErr == "":
+			add("screen capture", OK, "a test capture worked", "")
+		case f.CaptureConsent:
+			add("screen capture", Fail, "macOS has not yet asked whether "+DisplayName+" may capture the screen directly (macOS 15 and later ask once), so screenshots fail; the accessibility tree works",
+				"run `fennec-cua permissions --request` and choose Allow in the macOS alert")
+		default:
+			add("screen capture", Fail, "a test capture failed: "+f.CaptureErr,
+				"check Screen Recording for \""+DisplayName+"\", then `fennec-cua quit`; daemon.log has the driver's messages")
 		}
 	}
 	if f.Chromium != "" && !f.ChromiumOff {

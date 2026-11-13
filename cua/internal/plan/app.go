@@ -38,6 +38,8 @@ func (r *planRun) appStep(ctx context.Context, i int, s protocol.Step, mode stri
 		return refused(perr), &stop{err: perr}
 	}
 	bg := r.background(mode)
+	// stay: leave the window where it is, without fronting it.
+	stay := bg || s.Behind
 	owned := ownedBy(listed, name)
 	if len(owned) == 0 {
 		for _, w := range listed {
@@ -74,7 +76,7 @@ func (r *planRun) appStep(ctx context.Context, i int, s protocol.Step, mode stri
 		w := pickOwned(owned, bg)
 		r.win = &w
 		res := okResult(fmt.Sprintf("took %q of %s, which was already open", w.Title, orStr(w.App, name)))
-		if !bg && !w.Active {
+		if !stay && !w.Active {
 			if st := r.front(ctx, w, &res); st != nil {
 				return res, st
 			}
@@ -121,7 +123,7 @@ func (r *planRun) appStep(ctx context.Context, i int, s protocol.Step, mode stri
 	}
 	r.win = got
 	res := okResult(fmt.Sprintf("launched %s and took its window %q", name, got.Title))
-	if !bg && (rep.Background || !got.Active) {
+	if !stay && (rep.Background || !got.Active) {
 		if st := r.front(ctx, *got, &res); st != nil {
 			return res, st
 		}

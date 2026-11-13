@@ -168,3 +168,11 @@ func (w *watched) HitClick(ctx context.Context, win view.RawWindow, n view.RawNo
 	w.l.Drop()
 	return w.Backend.HitClick(ctx, win, n, count)
 }
+
+// FrontWindow passes FrontNamer through to the backend.
+func (w *watched) FrontWindow(ctx context.Context) (view.RawWindow, bool) {
+	if n, ok := w.Backend.(FrontNamer); ok {
+		return n.FrontWindow(ctx)
+	}
+	return view.RawWindow{}, false
+}

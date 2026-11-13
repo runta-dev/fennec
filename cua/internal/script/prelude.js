@@ -385,6 +385,14 @@
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
+  // treePrint is what a state read shows of a tree, to tell two reads apart.
+  function treePrint(res) {
+    const w = res.window || {};
+    return JSON.stringify([w.ref, w.title, (res.nodes || []).map(function (n) {
+      return [n.ref, n.parent, n.role, n.name, n.description, n.value, n.states, n.actions, n.selected_text];
+    })]);
+  }
+
   class App {
     constructor(a) {
       this._app = { name: a.name, pid: a.pid || 0, bundleId: a.bundle_id || "" };
@@ -408,7 +416,13 @@
       if (ws.length === 0) {
         throw new Error(a.name + " has no open window; open one (for example with pressKey(\"super+n\")) or call cua.getApp(\"" + a.name + "\") again");
       }
-      const w = ws.find(function (x) { return x.active; }) || ws[0];
+      let w = ws.find(function (x) { return x.active; }) || ws[0];
+      if (w.owner) {
+        // A sheet in front (a save panel) is read and driven through its
+        // window, whose state holds it.
+        const owner = w.owner;
+        w = ws.find(function (x) { return x.ref === owner; }) || w;
+      }
       if (!a.pid && w.pid) {
         a.pid = w.pid;
       }
@@ -427,7 +441,25 @@
       const opts = options || {};
       const w = await this._window();
       await this._settle();
-      const res = await host.call("observe", { window: w.ref, detail: true });
+      let res = await host.call("observe", { window: w.ref, detail: true });
+      if (this._acted) {
+        // After input, accessibility can lag the pixels the settle
+        // watched (a menu pick in an out-of-process save panel, a value
+        // the app commits late): read until two reads agree, so a diff's
+        // "no change" is not an early read.
+        this._acted = false;
+        let print = treePrint(res);
+        for (let waited = 0; waited < 1200; waited += 200) {
+          await sleep(200);
+          const again = await host.call("observe", { window: w.ref, detail: true });
+          const p = treePrint(again);
+          res = again;
+          if (p === print) {
+            break;
+          }
+          print = p;
+        }
+      }
       const text = host.axRead(this._ax, res, !opts.disableDiffing);
       if (opts.emit !== false) {
         host.write(text);
@@ -479,6 +511,7 @@
     }
 
     async _act(step, describe) {
+      this._acted = true;
       let win = host.axWindow(this._ax);
       if (!win) {
         win = (await this._window()).ref;
@@ -605,6 +638,7 @@
       if (!win) {
         win = (await this._window()).ref;
       }
+      this._acted = true;
       const res = await host.call("paste", { text: String(text), format: format, window: win });
       const err = stepFailure(res);
       if (err) {
@@ -653,7 +687,8 @@
       return apps;
     },
 
-    async getApp(target) {
+    async getApp(target, options) {
+      const opts = options || {};
       if (typeof target !== "string" || target.trim() === "") {
         throw new TypeError("getApp takes an app's name, its .app path or its bundle id");
       }
@@ -663,7 +698,7 @@
         throw new Error("no app matches " + JSON.stringify(target) + "; retry with a bundle id from cua.listApps()");
       }
       if (!a.running || windowsOf(inv, a).length === 0) {
-        const res = await host.call("act", { steps: [{ launch: a.name || a.bundle_id || a.path }] });
+        const res = await host.call("act", { steps: [{ launch: a.name || a.bundle_id || a.path, behind: true }] });
         const err = stepFailure(res);
         if (err) {
           throw err;
@@ -679,7 +714,7 @@
         }
       }
       const app = new App(a);
-      await app.getAXState();
+      await app.getAXState({ emit: opts.emit });
       return app;
     },
 
@@ -762,14 +797,45 @@
   const fennec = {
     input: input,
     status: function () { return host.call("status", {}); },
-    observe: function (request) { return host.call("observe", request || {}); },
-    act: function (app, steps, options) {
+    // observe takes the engine's observe request ({ scope: "desktop" },
+    // { window, find, text, image, ... }); an App binding, or { app } with
+    // an App or an app name, stands for that app's front window.
+    observe: async function (request) {
+      let req = request || {};
+      if (req instanceof App) {
+        req = { app: req };
+      }
+      if (req.app !== undefined) {
+        const self = req.app instanceof App ? req.app : { _app: { name: String(req.app), pid: 0, bundleId: "" } };
+        req = Object.assign({}, req, { window: (await App.prototype._window.call(self)).ref });
+        delete req.app;
+      }
+      return host.call("observe", req);
+    },
+    // act resolves to the plan's result and does not throw when a step is
+    // refused or unconfirmed: the result's ok says whether every step was
+    // confirmed. A plan that did not finish also writes one line naming the
+    // step, so a refusal never passes unseen.
+    act: async function (app, steps, options) {
       const req = Object.assign({}, options || {}, { steps: steps });
       const win = windowOf(app);
       if (win) {
         req.window = win;
       }
-      return host.call("act", req);
+      const res = await host.call("act", req);
+      if (res && res.ok === false) {
+        const bad = (res.steps || []).find(function (s) { return !s.ok; });
+        const e = res.error || (bad && bad.error) || {};
+        let line = "fennec.act did not finish (result.ok is false)";
+        if (bad) {
+          line += ": step " + bad.index + " (" + bad.action + ") " + bad.status;
+        }
+        if (e.message) {
+          line += ": " + e.message;
+        }
+        host.write(line);
+      }
+      return res;
     },
     wait: function (app, condition) {
       return host.call("wait", Object.assign({}, condition || {}));

@@ -40,14 +40,16 @@ fennec-cua permissions            # the list above, with this install's app path
 fennec-cua permissions --request  # the daemon asks macOS: shows the prompts and lists the app in the panes
 fennec-cua permissions --open     # opens the two required panes
 fennec-cua quit                   # after a Screen Recording change; the next command restarts the daemon
-fennec-cua doctor                 # Accessibility and Screen Recording must read "ok ... granted"
+fennec-cua doctor                 # Accessibility and Screen Recording must read "ok ... granted", screen capture "ok"
 ```
 
-These dialogs are for the user. An agent asks the user to switch "Fennec CUA" on; it never clicks System Settings itself.
+On macOS 15 and later, the first screen capture also needs a one-time answer: `permissions --request` makes macOS show "FennecCUA is requesting to bypass the system private window picker and directly access your screen"; the user clicks Allow. Until then `doctor` reports `fail screen capture` and screenshots fail, while accessibility reads and input work. Once the grants are on, close any macOS prompt still on screen (a prompt in front blocks input to other apps: input fails with `the front window is ... of UserNotificationCenter`).
+
+These dialogs are for the user. An agent asks the user to switch "Fennec CUA" on and to answer the prompts; it never clicks System Settings or a permission prompt itself.
 
 ## `fennec-cua doctor`
 
-Checks, in order: the app and its signature, the quarantine attribute, cua-driver, the bundled browser, the `fennec-cua` on `PATH`, the configuration file, the daemon (it starts one unless `--no-start`), each permission as the daemon itself sees it, the cua-driver process and the browser surface, and whether the user stopped fennec-cua. Each line is `ok`, `warn` or `fail`; failures carry a `fix:` line. Exit status 1 when any check fails. `--json` prints `{"healthy": bool, "checks": [{name, level, detail, fix}]}`.
+Checks, in order (one line each): `app` (and its signature), `quarantine`, `cua-driver`, `browser`, `command` (the `fennec-cua` on `PATH`), `config` (the configuration file: it loads, or there is none and defaults apply), `daemon` (it starts one unless `--no-start`), `Accessibility` and `Screen Recording` as the daemon itself sees them, `cua-driver process`, `screen capture` (a real test capture), `browser surface`, and `stop` when the user stopped fennec-cua. Each line is `ok`, `warn` or `fail`; failures carry a `fix:` line. Exit status 1 when any check fails. `--json` prints `{"healthy": bool, "checks": [{name, level, detail, fix}]}`.
 
 ## Connect an agent over MCP
 

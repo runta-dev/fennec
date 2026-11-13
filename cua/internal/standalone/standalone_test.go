@@ -280,3 +280,44 @@ func TestMCPConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnoseCaptureQuarantineConfig(t *testing.T) {
+	f := Facts{
+		Exe: "/A/" + AppName + "/Contents/MacOS/fennec-cua", App: "/A/" + AppName,
+		Driver: "/A/" + AppName + "/Contents/MacOS/cua-driver", Chromium: "/A/" + AppName + "/Contents/Helpers/Chromium.app/Contents/MacOS/Chromium",
+		Command: "/h/.local/bin/fennec-cua", CommandOK: true,
+		ConfigPath: "/h/config.toml", ConfigMissing: true,
+		Permissions:   map[string]string{"accessibility": "granted", "screen_recording": "granted"},
+		DriverRunning: true, BrowserAvailable: true, CaptureChecked: true,
+	}
+	byName := func(cs []Check) map[string]Check {
+		m := map[string]Check{}
+		for _, c := range cs {
+			m[c.Name] = c
+		}
+		return m
+	}
+	cs := byName(Diagnose(f))
+	for name, detail := range map[string]string{"quarantine": "none", "config": "defaults apply", "screen capture": "worked"} {
+		if c := cs[name]; c.Level != OK || !strings.Contains(c.Detail, detail) {
+			t.Errorf("%s: %+v", name, c)
+		}
+	}
+	f.CaptureErr, f.CaptureConsent = "the capture failed: direct_capture_consent_required", true
+	f.ConfigMissing = false
+	all := Diagnose(f)
+	cs = byName(all)
+	if Healthy(all) {
+		t.Fatal("a capture that fails passes")
+	}
+	if c := cs["screen capture"]; c.Level != Fail || !strings.Contains(c.Fix, "fennec-cua permissions --request") || !strings.Contains(c.Fix, "Allow") {
+		t.Errorf("consent: %+v", c)
+	}
+	if c := cs["config"]; c.Level != OK || !strings.Contains(c.Detail, "(loads)") {
+		t.Errorf("config: %+v", c)
+	}
+	f.CaptureConsent = false
+	if c := byName(Diagnose(f))["screen capture"]; c.Level != Fail || !strings.Contains(c.Detail, "direct_capture") {
+		t.Errorf("failure: %+v", c)
+	}
+}

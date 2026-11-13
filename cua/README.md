@@ -35,7 +35,7 @@ cd fennec-cua-<version>-macos-arm64
 ./FennecCUA.app/Contents/MacOS/fennec-cua install
 ```
 
-This copies the app to `~/Applications/FennecCUA.app`, links `~/.local/bin/fennec-cua`, clears the quarantine attribute on the installed copy, and prints what to do next. It registers nothing system-wide: no launch agent (the daemon starts on demand and stays running), no shell-profile edits (add `export PATH="$HOME/.local/bin:$PATH"` yourself if needed). Running it again from a newer archive replaces the app after the new copy verifies.
+The extracted folder's `INSTALL.txt` repeats these steps. `install` copies the app to `~/Applications/FennecCUA.app`, links `~/.local/bin/fennec-cua`, clears the quarantine attribute on the installed copy, and prints what to do next. It registers nothing system-wide: no launch agent (the daemon starts on demand and stays running), no shell-profile edits (add `export PATH="$HOME/.local/bin:$PATH"` yourself if needed). Running it again from a newer archive replaces the app after the new copy verifies.
 
 ### 3. Grant the permissions
 
@@ -47,10 +47,11 @@ The grants belong to the app "Fennec CUA" (the daemon is started through LaunchS
 | Screen Recording | window screenshots | `open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"` |
 | Automation | optional: only if macOS asks while an action talks to another app | `open "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"` |
 
-`fennec-cua permissions --request` has the daemon ask macOS, which shows its prompts and lists "Fennec CUA" in the panes. Switch it on, run `fennec-cua quit` (Screen Recording applies to new processes), then:
+`fennec-cua permissions --request` has the daemon ask macOS, which shows its prompts and lists "Fennec CUA" in the panes. Switch it on and run `fennec-cua quit` (Screen Recording applies to new processes). On macOS 15 and later, run `fennec-cua permissions --request` once more: macOS asks whether "FennecCUA" may bypass the system window picker and capture the screen directly; choose Allow (screenshots fail until then; the embedded cua-driver never raises that alert itself). Close any macOS prompt left on screen: a prompt in front blocks input to other apps. Then:
 
 ```sh
-fennec-cua doctor     # app, signature, quarantine, driver, browser, PATH, config, daemon, each permission
+fennec-cua doctor     # one line each: app, quarantine, cua-driver, browser, command, config, daemon,
+                      # Accessibility, Screen Recording, cua-driver process, screen capture (a test capture), browser surface
 ```
 
 ### 4. Connect your agent
@@ -70,14 +71,14 @@ Agents without MCP use the shell. `fennec-cua js` runs one REPL call in a **name
 
 ```sh
 fennec-cua js 'await cua.listApps()'
-fennec-cua js 'var app = await cua.getApp("TextEdit")'    # launches it in the background, prints its state
+fennec-cua js 'var app = await cua.getApp("TextEdit")'    # launches it in the background (focus stays put), prints its state
 printf '%s\n' 'await app.click(3);' 'await app.getAXState();' | fennec-cua js -   # act, then read: a diff
 fennec-cua js 'var tab = await cua.createBrowserTab("chromium", "https://example.com")'
 fennec-cua js-reset          # fresh runtime, same session
 fennec-cua js-end            # end the session (its unmarked browser tabs close)
 ```
 
-Images are saved to files and printed as `[image saved: PATH]`; the exit status is 1 when the code threw. A session ends after two idle hours. `fennec-cua stop` and `resume` are the user's emergency stop; `fennec-cua status` prints the daemon's state; `fennec-cua quit` ends the daemon.
+Images are saved to files and printed as `[image saved: PATH]`; the exit status is 1 when the code threw (`fennec.act` resolves even when a step was refused: check its `ok`). A session ends after two idle hours. `fennec-cua stop` and `resume` are the user's emergency stop; `fennec-cua status` prints the daemon's state; `fennec-cua quit` ends the daemon and with it every session (bindings are lost). Calling `cua.getApp` again for the same app makes a new binding whose ids start again, so keep one binding per app. `fennec-cua --help` lists the commands.
 
 ### 6. Uninstall
 
@@ -88,7 +89,7 @@ fennec-cua uninstall --purge   # also those, the daemon files, and the app's Acc
 
 ### Troubleshooting
 
-`fennec-cua doctor` names the fix for each failing check. Common cases: `getApp` answers `<App> has no open window` for an app that has one, or reads nothing (grant both permissions to "Fennec CUA", then `fennec-cua quit`); a stale element id (read the state again); "command not found" (`~/.local/bin` is not on PATH); Fennec.app's daemon answering instead (`fennec-cua quit`). Files: `~/Library/Caches/fennec/cua/daemon.log`, `~/Library/Application Support/fennec/cua/config.toml`. More: [skills/fennec-cua/references/troubleshooting.md](skills/fennec-cua/references/troubleshooting.md).
+`fennec-cua doctor` names the fix for each failing check. Common cases: `getApp` answers `<App> has no open window` for an app that has one, or reads nothing (grant both permissions to "Fennec CUA", then `fennec-cua quit`); `fail screen capture` or screenshots failing with "macOS has not yet asked" (`fennec-cua permissions --request`, then Allow); input refused with `the front window is ... of UserNotificationCenter` (a macOS prompt is in front: close it); a stale element id (read the state again); "command not found" (`~/.local/bin` is not on PATH); Fennec.app's daemon answering instead (`fennec-cua quit`). Files: `~/Library/Caches/fennec/cua/daemon.log`, `~/Library/Application Support/fennec/cua/config.toml`. More: [skills/fennec-cua/references/troubleshooting.md](skills/fennec-cua/references/troubleshooting.md).
 
 
 - **Capability baseline:** everything [loomhand/shuttle](https://github.com/loomhand/shuttle) v0.1.50 (`6d70274`, pinned in [`tests/UPSTREAM`](tests/UPSTREAM)) can do on macOS.

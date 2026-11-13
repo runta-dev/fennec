@@ -591,7 +591,9 @@ archive with a browser, clear the download quarantine before running anything in
 
   ./%s/Contents/MacOS/fennec-cua install
 
-Then grant the permissions it prints, and check everything with:
+Then grant the permissions it prints (on macOS 15 and later, also choose Allow when
+"fennec-cua permissions --request" makes macOS ask to capture the screen directly), close
+any macOS prompt left on screen, and check everything with:
 
   fennec-cua doctor
 

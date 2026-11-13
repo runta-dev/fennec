@@ -17,7 +17,7 @@ Run once per task (from a shell):
 fennec-cua doctor
 ```
 
-Every line should start with `ok`. If `Accessibility` or `Screen Recording` says `fail`, stop and ask the user to grant them (you cannot do it for them): the `fix:` line names the System Settings pane, and `fennec-cua permissions --request` shows the macOS prompts. After the user changes Screen Recording, run `fennec-cua quit` (the next call restarts the daemon). Not installed at all? See [references/setup.md](references/setup.md).
+Every line should start with `ok`. If `Accessibility` or `Screen Recording` says `fail`, stop and ask the user to grant them (you cannot do it for them): the `fix:` line names the System Settings pane, and `fennec-cua permissions --request` shows the macOS prompts. After the user changes Screen Recording, run `fennec-cua quit` (the next call restarts the daemon). If `screen capture` says `fail` because macOS has not yet asked, ask the user to run `fennec-cua permissions --request` and click Allow in the alert; until then screenshots fail but the accessibility state and input work. Once everything is `ok`, make sure no macOS prompt is left on screen (ask the user to close it): a prompt in front blocks input to other apps. Not installed at all? See [references/setup.md](references/setup.md).
 
 ## 2. Two ways to call the REPL
 
@@ -35,13 +35,13 @@ fennec-cua js-reset   # fresh runtime, same session
 fennec-cua js-end     # end the session (its unmarked browser tabs close)
 ```
 
-Exit status is 1 when the call threw. Images are written to files and printed as `[image saved: /path/file.png]`; open the file to look at it. Each call is limited to 90 s; a session ends after two idle hours.
+Exit status is 1 when the call threw. `fennec.act` does not throw for a refused step: check its `ok` (a line `fennec.act did not finish ...` also names the step). Images are written to files and printed as `[image saved: /path/file.png]`; open the file to look at it. Each call is limited to 90 s; a session ends after two idle hours.
 
 The first call of a runtime prints the full API documentation before your output. Read it once; it matches this skill.
 
 ## 3. The working loop
 
-1. Find the app: `var app = await cua.getApp("Notes")` (display name, bundle id or `.app` path). It starts the app in the background if needed and prints its state. Unsure of the name? `await cua.listApps()` prints `[{"displayName","id","isRunning",...}]`; pass the `id` (bundle id).
+1. Find the app: `var app = await cua.getApp("Notes")` (display name, bundle id or `.app` path). It starts the app in the background if needed (the user's focus stays put until your first input to it) and prints its state. Call it once per app and keep the binding: calling it again makes a new binding with a full state and freshly numbered ids. Unsure of the name? `await cua.listApps()` prints `[{"displayName","id","isRunning",...}]`; pass the `id` (bundle id).
 2. Read the state text: one line per element, `<id> <role> (<states>) <name>, <fields>`. The ids are what you act on.
 3. Act, then read again **in the same call**:
    ```js
@@ -58,7 +58,7 @@ The first call of a runtime prints the full API documentation before your output
 ```js
 await cua.listApps();                 // running and recent apps (bundle ids)
 await cua.getState();                 // apps plus browsers and their tabs
-var app = await cua.getApp("TextEdit");
+var app = await cua.getApp("TextEdit");      // { emit: false } skips printing the first state
 await app.getAXState();               // state text (diff after the first read)
 await app.getScreenshot();            // PNG of the window, shown as an image
 await app.getAXStateAndScreenshot();
@@ -66,7 +66,7 @@ await app.click(12);                              // element id
 await app.click([340, 120]);                      // pixel in the window screenshot
 await app.click(12, { clickCount: 2 });           // double-click
 await app.click(12, { mouseButton: "right" });    // context menu
-await app.typeText("hello");                      // into the focused element
+await app.typeText("hello");                      // into the focused element; autocorrect applies
 await app.setValue(8, "lamp");                    // set a field/slider/pop-up via accessibility
 await app.pressKey("super+s");                    // xdotool keys; super = Command
 await app.pressKey("Return");                     // Tab, Escape, BackSpace, Delete, Up, Page_Down, space, shift+Tab
@@ -77,7 +77,16 @@ await app.paste("long text");                     // via the pasteboard, which i
 nodeRepl.write("note");                           // add text to the output
 ```
 
+Exact text: `typeText` goes through macOS text input, so autocorrect can change it (`"cua"` became `"cut"` in TextEdit). Use `setValue(id, text)` or `paste(text)` for text that must be exact, and check the value in the next state. A pop-up that refuses `setValue`: `performSecondaryAction(id, "Show Menu")`, read the state, then `performSecondaryAction(<item id>, "Pick")`.
+
 Observation calls print their own result; do not print it again. Pass `{ emit: false }` to keep one quiet. A bare last expression is not echoed: use `nodeRepl.write(...)` or `console.log(...)`. Prefer element ids, then `setValue`, and use `[x, y]` points only for content the tree does not show (canvas, images). Full reference: [references/api.md](references/api.md).
+
+### Sheets, dialogs and app quirks
+
+- A sheet on the window (a save or open panel, an alert sheet) shows inside the window's state as `sheet` with its controls. Drive it with the same binding: `setValue` on the name field, `click(<Save>)`, `pressKey("Escape")` to cancel. The diff after an action is reliable: "no change" means the app shows no change.
+- A separate dialog window of the app becomes the front window, and `getAXState()` prints it with its own header.
+- Another app in front (a macOS permission prompt, for example) refuses input with `window "X" is not frontmost (the front window is "Y" of Z); nothing was sent`. Ask the user to deal with that window, then read the state again.
+- Apps keep their own defaults. TextEdit, for example, opens new documents as rich text: `pressKey("super+shift+t")` makes one plain text before you save a `.txt` file.
 
 ## 5. Web pages: the bundled Chromium
 
@@ -91,7 +100,7 @@ await tab.pressKey(null, "Return");
 await tab.playwright.getByRole("button", { name: "Search" }).click();
 ```
 
-Keep the `tab` binding; `cua.listTabs()` and `cua.getTab(id)` find tabs again. `markDeliverable()` keeps a result tab open; `markHandoff()` hands a tab to the user (sign-in, payment, CAPTCHA). If browser calls throw `No browser is available.`, the install has no Chromium: drive Safari as an app instead (`cua.getApp("Safari")`). Details: [references/browser.md](references/browser.md).
+A tab's first `getAXState()` after `createBrowserTab` or `getTab` prints the full state, and so does one where more than half of the lines changed (common on small pages); later reads are diffs. Keep the `tab` binding; `cua.listTabs()` and `cua.getTab(id)` find tabs again. `markDeliverable()` keeps a result tab open; `markHandoff()` hands a tab to the user (sign-in, payment, CAPTCHA). If browser calls throw `No browser is available.`, the install has no Chromium: drive Safari as an app instead (`cua.getApp("Safari")`). Details: [references/browser.md](references/browser.md).
 
 ## 6. Safety rules
 
@@ -103,7 +112,7 @@ Keep the `tab` binding; `cua.listTabs()` and `cua.getTab(id)` find tabs again. `
 
 ## 7. fennec extras
 
-`fennec` holds fennec-cua's own tools beside `cua`: `fennec.status()` (permissions, input mode, stopped), `fennec.wait(app, { window_opens: "Save", timeout_ms: 5000 })`, `fennec.act(app, steps)` (multi-step plans with read-back, e.g. `[{ menu: "File > Export as PDF..." }, { key: "cmd+s" }]`), saved flows (`fennec.flows.list/run`), recordings, the optional vision model (`fennec.model.*`, needs a configured endpoint), and `fennec.browser.importFromChrome()` (asks the user; brings their Chrome sign-ins into the bundled Chromium). See [references/api.md](references/api.md#fennec).
+`fennec` holds fennec-cua's own tools beside `cua`: `fennec.status()` (permissions, input mode, stopped), `fennec.wait(app, { window_opens: "Save", timeout_ms: 5000 })`, `fennec.act(app, steps)` (multi-step plans with read-back, e.g. `[{ menu: "File > Export as PDF..." }, { key: "cmd+s" }]`; check the result's `ok`), `fennec.observe({ app })` (the raw outline with refs), saved flows (`fennec.flows.list/run`), recordings, the optional vision model (`fennec.model.*`, needs a configured endpoint), and `fennec.browser.importFromChrome()` (asks the user; brings their Chrome sign-ins into the bundled Chromium). See [references/api.md](references/api.md#fennec). Clicks and keys go in the input mode the user configured (`foreground` by default; `fennec.status().input`): [references/api.md](references/api.md#input-modes).
 
 ## 8. When something goes wrong
 
@@ -111,6 +120,8 @@ Keep the `tab` binding; `cua.listTabs()` and `cua.getTab(id)` find tabs again. `
 |---|---|
 | `getApp` says `<App> has no open window` for an app with windows, `permission_missing`, empty trees, or screenshots fail | `fennec-cua doctor`; ask the user to grant the permission it names; then `fennec-cua quit` |
 | `<id> is an invalid element ID` / `no longer in the app` | `await app.getAXState()` and use a fresh id |
+| `window "X" is not frontmost (the front window is ...)` | the named window is in front; nothing was sent. Ask the user to answer a macOS prompt; for a window of the same app, read the state again |
+| `the capture failed: macOS has not yet asked whether Fennec CUA may capture the screen directly` | ask the user to run `fennec-cua permissions --request` and click Allow; the state text works meanwhile |
 | `getApp` cannot resolve a name | `await cua.listApps()`, then `cua.getApp("<bundle id>")` |
 | An app is not in `listApps()` | it lists running and recently used apps; pass the `.app` path, e.g. `cua.getApp("/Applications/Calculator.app")` |
 | `fennec-cua: command not found` | use the full path `~/.local/bin/fennec-cua`, or see setup |

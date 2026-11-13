@@ -17,6 +17,8 @@ type element struct {
 	h    view.Handle
 	win  view.RawWindow
 	ref  string
+	// window is set when the target is the window itself (a window ref).
+	window bool
 }
 
 func (e element) describe() string {
@@ -44,7 +46,7 @@ func (c *stepCtx) element(ctx context.Context, t protocol.Target) (element, *pro
 		if err != nil {
 			return element{}, asProtocol(err)
 		}
-		if e.Window {
+		if e.Window && c.kind != "perform" {
 			return element{}, &protocol.Error{Code: protocol.ErrInvalid, Message: t.Ref + " is a window, not an element; nothing was sent"}
 		}
 		var win *view.RawWindow
@@ -67,7 +69,7 @@ func (c *stepCtx) element(ctx context.Context, t protocol.Target) (element, *pro
 		if n.Handle == nil {
 			n.Handle = e.Handle
 		}
-		return element{node: n, h: e.Handle, win: *win, ref: t.Ref}, nil
+		return element{node: n, h: e.Handle, win: *win, ref: t.Ref, window: e.Window}, nil
 	}
 	if t.Select == "" {
 		return element{}, &protocol.Error{Code: protocol.ErrInvalid, Message: c.kind + " needs an element: a ref or a selector"}
@@ -168,7 +170,7 @@ func (c *stepCtx) press(ctx context.Context) policy.Attempt {
 		}
 		return confirmed("pressed " + e.describe() + " by its accessibility action")
 	}
-	if pressableRoles[role] && e.win.Active {
+	if pressableRoles[role] && c.inFront(ctx, e.win) {
 		err := c.x.B.Perform(ctx, e.h, "AXPress")
 		if err == nil {
 			return confirmed("pressed " + e.describe() + " by its accessibility action")
@@ -216,6 +218,14 @@ func (c *stepCtx) perform(ctx context.Context) policy.Attempt {
 		return refuse(&protocol.Error{Code: protocol.ErrInvalid, Message: msg}, policy.ReasonPolicy)
 	}
 	spoken := view.SpokenAction(raw)
+	if e.window && raw == "AXRaise" {
+		// Raising a window is fronting it: the app first, then the window,
+		// which works for apps (Calculator) that refuse a bare AXRaise.
+		if err := c.x.B.Raise(ctx, e.win); err != nil {
+			return axFailure(e, err, "the "+spoken+" action")
+		}
+		return confirmed("ran the " + spoken + " action of " + e.describe())
+	}
 	if err := c.x.B.Perform(ctx, e.h, raw); err != nil {
 		return axFailure(e, err, "the "+spoken+" action")
 	}

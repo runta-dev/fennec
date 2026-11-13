@@ -5,6 +5,7 @@ package desk
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
 	"fennec/cua/internal/ax"
 	"fennec/cua/internal/view"
@@ -189,3 +190,41 @@ func appName(pid int) string {
 	s, _ := v.(string)
 	return s
 }
+
+// FrontWindow names what is in front when no listed window is: the front
+// process's topmost window, such as a system prompt or a window of a
+// process that lists no accessibility windows. ok is false when nothing
+// can be named.
+func (d *Desk) FrontWindow(ctx context.Context) (view.RawWindow, bool) {
+	pid := ax.FrontmostPID()
+	if pid == 0 {
+		pid = focusedPID()
+	}
+	server, err := ax.ServerWindows(true)
+	if err != nil {
+		return view.RawWindow{}, false
+	}
+	if pid == 0 {
+		return view.RawWindow{}, false
+	}
+	// Its topmost window below the menu bar (prompts sit on the modal
+	// panel layer, above the Dock).
+	var front *ax.ServerWindow
+	for i, w := range server {
+		if w.PID == pid && w.Layer >= 0 && w.Layer < menuBarLayer && w.Alpha > 0 {
+			front = &server[i]
+			break
+		}
+	}
+	if front == nil {
+		p, err := ax.ProcessPath(pid)
+		if err != nil {
+			return view.RawWindow{}, false
+		}
+		return view.RawWindow{PID: pid, App: filepath.Base(p)}, true
+	}
+	return view.RawWindow{Key: ax.WindowKey(front.ID), PID: front.PID, App: front.Owner, Title: front.Title}, true
+}
+
+// menuBarLayer is the menu bar's window server layer (kCGMainMenuWindowLevel).
+const menuBarLayer = 24
