@@ -30,7 +30,12 @@ func actTool(ctx context.Context, call *engine.Call, _ json.RawMessage) (any, *p
 // serve runs a daemon over f's extensions and returns its engine.
 func serve(t *testing.T, f *fixture, runOff bool) *engine.Engine {
 	t.Helper()
-	eng := &engine.Engine{
+	eng := testEngine(f, runOff)
+	return serveWith(t, f, eng, &served{eng})
+}
+
+func testEngine(f *fixture, runOff bool) *engine.Engine {
+	return &engine.Engine{
 		Turn:    &sched.Turn{Busy: 500 * time.Millisecond},
 		Stopper: &sched.Stopper{},
 		Input:   protocol.InputForeground,
@@ -38,8 +43,22 @@ func serve(t *testing.T, f *fixture, runOff bool) *engine.Engine {
 		RunOff:  runOff,
 		Ext:     f.x,
 	}
+}
+
+// served reaches the engine directly: after js and js_reset it serves the
+// engine and extension tools by name (agents reach them only through the
+// REPL), so these tests exercise plugins and services over the transport.
+type served struct{ *engine.Engine }
+
+func (s *served) Tools(sess *mcpserver.Session) []mcpserver.Tool {
+	return append(s.Engine.Tools(sess), s.EngineTools()...)
+}
+
+// serveWith runs a daemon whose agents reach h.
+func serveWith(t *testing.T, f *fixture, eng *engine.Engine, h daemon.Handler) *engine.Engine {
+	t.Helper()
 	d := &daemon.Daemon{
-		Paths: daemon.PathsIn(f.dir), Handler: eng, Stopper: eng.Stopper,
+		Paths: daemon.PathsIn(f.dir), Handler: h, Stopper: eng.Stopper,
 		Info:  mcpserver.Info{Name: "fennec-cua", Version: "test", IDPrefix: "mcp"},
 		Ready: make(chan struct{}),
 	}
@@ -52,7 +71,6 @@ func serve(t *testing.T, f *fixture, runOff bool) *engine.Engine {
 		t.Fatal("the daemon did not start")
 	}
 	t.Cleanup(func() { cancel(); <-done })
-	f.eng = eng
 	return eng
 }
 
@@ -69,7 +87,6 @@ type client struct {
 	agent  string
 	caps   map[string]json.RawMessage
 	closed bool
-	eng    *engine.Engine
 }
 
 // dial opens an MCP session on the daemon at f.
@@ -79,7 +96,7 @@ func dial(t *testing.T, f *fixture) *client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &client{t: t, conn: conn, r: bufio.NewReader(conn), eng: f.eng}
+	c := &client{t: t, conn: conn, r: bufio.NewReader(conn)}
 	t.Cleanup(func() { _ = conn.Close() })
 	res, perr := c.rpc("initialize", map[string]any{"protocolVersion": "2025-06-18", "clientInfo": map[string]string{"name": "tester"}})
 	if perr != nil {
@@ -171,9 +188,8 @@ func (c *client) call(tool string, args any) toolResult {
 	return decodeResult(c.t, res)
 }
 
-// tools checks that tools/list names only the REPL's tools, then answers
-// the engine and extension tools the REPL reaches (fennec.tools()), which
-// stay callable by name for internal callers.
+// tools lists the engine and extension tools the test server serves after
+// js and js_reset.
 func (c *client) tools() []mcpserver.Tool {
 	c.t.Helper()
 	res, perr := c.rpc("tools/list", map[string]any{})
@@ -184,10 +200,11 @@ func (c *client) tools() []mcpserver.Tool {
 		Tools []mcpserver.Tool `json:"tools"`
 	}
 	_ = json.Unmarshal(res, &out)
-	if got := toolNames(out.Tools); got != strings.Join(protocol.MCPTools, ",") {
-		c.t.Fatalf("tools/list = %s", got)
+	n := len(protocol.MCPTools)
+	if len(out.Tools) < n || toolNames(out.Tools[:n]) != strings.Join(protocol.MCPTools, ",") {
+		c.t.Fatalf("tools/list = %s", toolNames(out.Tools))
 	}
-	return c.eng.EngineTools()
+	return out.Tools[n:]
 }
 
 func toolNames(ts []mcpserver.Tool) string {

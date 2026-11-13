@@ -23,6 +23,9 @@ func TestStartsOnFirstNonStatusCall(t *testing.T) {
 			return map[string]string{"from": "daemon", "agent": call.Session.AgentID}, nil
 		},
 	})
+	eng.plain = true // the production surface: js and js_reset only
+	local := newEngine(nil)
+	local.plain = true
 	var starts atomic.Int32
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)
@@ -45,7 +48,7 @@ func TestStartsOnFirstNonStatusCall(t *testing.T) {
 		done <- mcpserver.Bridge(context.Background(), inR, outW, mcpserver.BridgeConfig{
 			Socket: p.MCP,
 			Start:  start,
-			Local:  newEngine(nil),
+			Local:  local,
 			Info:   mcpserver.Info{Name: "fennec-cua", IDPrefix: "mcp"},
 		})
 		_ = outW.Close()
@@ -71,15 +74,23 @@ func TestStartsOnFirstNonStatusCall(t *testing.T) {
 	if m := rpc(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`); len(m["result"].(map[string]any)["tools"].([]any)) != 2 {
 		t.Fatalf("tools/list %v", m)
 	}
-	m := rpc(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"status"}}`)
-	if text := m["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string); !strings.Contains(text, `"version"`) {
-		t.Fatalf("status %s", text)
+	// An engine tool by name is unknown, answered here without a daemon.
+	if m := rpc(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"status"}}`); m["error"] == nil {
+		t.Fatalf("status by name %v", m)
 	}
 	if starts.Load() != 0 {
 		t.Fatalf("initialize, tools/list or status started the daemon (%d)", starts.Load())
 	}
-	m = rpc(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"observe"}}`)
-	text := m["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	js := func(id int) string {
+		t.Helper()
+		m := rpc(`{"jsonrpc":"2.0","id":` + itoa(id) + `,"method":"tools/call","params":{"name":"js","arguments":{"code":"nodeRepl.write(JSON.stringify(await fennec.call(\"observe\", {})))"}}}`)
+		var parts []string
+		for _, c := range m["result"].(map[string]any)["content"].([]any) {
+			parts = append(parts, c.(map[string]any)["text"].(string))
+		}
+		return strings.Join(parts, "\n")
+	}
+	text := js(4)
 	if starts.Load() != 1 || !strings.Contains(text, `"from":"daemon"`) {
 		t.Fatalf("first call: %s (starts %d)", text, starts.Load())
 	}
@@ -87,9 +98,9 @@ func TestStartsOnFirstNonStatusCall(t *testing.T) {
 	if !strings.Contains(text, `"agent":"mcp-agent-`) {
 		t.Errorf("handshake not replayed: %s", text)
 	}
-	// Later calls, status included, go to the running daemon.
-	rpc(`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"observe"}}`)
-	if m := rpc(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"status"}}`); m["id"] != 6.0 {
+	// Later calls go to the running daemon.
+	js(5)
+	if m := rpc(`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"status"}}`); m["id"] != 6.0 || m["error"] == nil {
 		t.Errorf("status %v", m)
 	}
 	if starts.Load() != 1 {
@@ -113,6 +124,8 @@ func TestCLIDoRoundTrip(t *testing.T) {
 			return map[string]any{"scope": req.Scope, "nodes": req.Nodes}, nil
 		},
 	})
+	// The production surface: fennec-cua do reaches the engine through js.
+	eng.plain = true
 	p, _, _ := startDaemon(t, eng)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

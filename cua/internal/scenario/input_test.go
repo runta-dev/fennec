@@ -665,7 +665,7 @@ func TestVisionIndexClick(t *testing.T) {
 // Protocol and safety
 
 // CAP-RGB-002: tools/list names the REPL's tools (js, js_reset); the REPL
-// answers, and each engine tool it reaches answers by name too.
+// answers, each engine tool answers through it, and none answers by name.
 func TestEveryToolAnswers(t *testing.T) {
 	run(t, Case{
 		Caps:      []string{"CAP-RGB-002"},
@@ -678,6 +678,9 @@ func TestEveryToolAnswers(t *testing.T) {
 			}
 			if strings.Join(names, ",") != strings.Join(protocol.MCPTools, ",") {
 				return parity.Outcome{Class: "tools", Detail: strings.Join(names, ",")}, nil
+			}
+			if _, err := s.c.Tool(ctx, "act", M{"steps": []M{}}); err == nil || !strings.Contains(err.Error(), "unknown tool") {
+				return parity.Outcome{Class: "by_name", Detail: fmt.Sprint(err)}, nil
 			}
 			calls := []struct {
 				tool string

@@ -77,7 +77,7 @@ func (c *confirmer) Confirm(ctx context.Context, q string) (bool, error) {
 	}
 }
 
-func flowEngine(t *testing.T, confirm string, c policy.Confirmer) (*engine.Engine, *recorderRig) {
+func flowEngine(t *testing.T, confirm string, c policy.Confirmer) (*served, *recorderRig) {
 	t.Helper()
 	pol, err := policy.New(policy.Config{Confirm: confirm}, c)
 	if err != nil {

@@ -28,7 +28,7 @@ func tempPaths(t *testing.T) Paths {
 	return PathsIn(filepath.Join(dir, "d"))
 }
 
-func startDaemon(t *testing.T, eng *engine.Engine) (Paths, context.CancelFunc, chan error) {
+func startDaemon(t *testing.T, eng *served) (Paths, context.CancelFunc, chan error) {
 	t.Helper()
 	p := tempPaths(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,8 +46,24 @@ func startDaemon(t *testing.T, eng *engine.Engine) (Paths, context.CancelFunc, c
 	return p, cancel, errc
 }
 
-func newEngine(impl map[string]engine.Tool) *engine.Engine {
-	return &engine.Engine{Turn: &sched.Turn{Busy: 200 * time.Millisecond}, Stopper: &sched.Stopper{}, Impl: impl}
+func newEngine(impl map[string]engine.Tool) *served {
+	return &served{Engine: &engine.Engine{Turn: &sched.Turn{Busy: 200 * time.Millisecond}, Stopper: &sched.Stopper{}, Impl: impl}}
+}
+
+// served reaches the engine directly: besides js and js_reset it serves the
+// engine tools by name (agents see only the first two), so these tests
+// exercise the daemon's transport and scheduling with the engine's own
+// tools. plain serves the engine's own surface only.
+type served struct {
+	*engine.Engine
+	plain bool
+}
+
+func (s *served) Tools(sess *mcpserver.Session) []mcpserver.Tool {
+	if s.plain {
+		return s.Engine.Tools(sess)
+	}
+	return append(s.Engine.Tools(sess), s.EngineTools()...)
 }
 
 func dialMCP(t *testing.T, p Paths) *mcpclient.Client {
@@ -95,7 +111,7 @@ func TestStatusOverMCPAndControl(t *testing.T) {
 	c := dialMCP(t, p)
 	ctx := context.Background()
 	names, err := c.Tools(ctx)
-	if err != nil || strings.Join(names, ",") != "js,js_reset" {
+	if err != nil || strings.Join(names, ",") != "js,js_reset,observe,act,wait,run,flow,status" {
 		t.Fatalf("tools %v %v", names, err)
 	}
 	r, err := c.Tool(ctx, "status", nil)

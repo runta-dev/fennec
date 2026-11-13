@@ -88,7 +88,7 @@ await app.click(1); await app.typeText("hello"); await app.getAXState()
 
 The `cua` object (`getState`, `listApps`, `getApp`, and the app methods `getAXState`, `getScreenshot`, `click`, `drag`, `scroll`, `selectText`, `setValue`, `performSecondaryAction`, `paste`, `pressKey`, `typeText`) is built on the engine tools below through the same host the `run` tool uses, so the allowlist, the desk turn (held for the whole call), Stop, confirmations and secret redaction apply to every call. fennec-cua's own capabilities sit on a separate `fennec` global and never shadow a reference name: `fennec.status`, `fennec.act` (plans with read-back), `fennec.wait`, `fennec.observe`, `fennec.flows`, `fennec.record`, `fennec.model`, `fennec.run`, `fennec.tools`/`fennec.call` (plugins and services).
 
-The six engine tools of 3.2 are no longer listed. They stay callable by name for internal callers (`fennec-cua do`, script plugins calling back as their run, the scenario harness), through the same checks.
+The six engine tools of 3.2 are neither listed nor callable by name: an agent session that calls `act` gets "unknown tool". Only a script plugin's own session, which presents its run's token, calls them back by name as that run. `fennec-cua do TOOL` and the scenario harness reach them through `js` (`fennec.call`, wrapped by `mcpclient.EngineTool`), so they pass the same path agents do.
 
 ### 3.1 Principles
 

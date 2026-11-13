@@ -26,10 +26,21 @@ type Session struct {
 	texts   []string
 }
 
-// Tool calls a tool and keeps its text.
+// Tool calls a tool and keeps its text. On fennec-cua, whose MCP surface is
+// the js REPL, an engine tool (observe, act, ...) is reached through js and
+// answers as that tool does.
 func (s *Session) Tool(ctx context.Context, name string, args any) (mcpclient.ToolResult, error) {
 	s.calls++
-	r, err := s.c.Tool(ctx, name, args)
+	var (
+		r   mcpclient.ToolResult
+		err error
+	)
+	switch {
+	case s.Backend != parity.Fennec || name == protocol.ToolJS || name == protocol.ToolJSReset:
+		r, err = s.c.Tool(ctx, name, args)
+	default:
+		r, err = s.c.EngineTool(ctx, name, args)
+	}
 	text := r.Text()
 	if err != nil {
 		text = "error: " + err.Error()

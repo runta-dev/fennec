@@ -81,14 +81,20 @@ func (r *repls) drop(s *mcpserver.Session) bool {
 // CloseSession discards the session's runtime when its connection ends.
 func (e *Engine) CloseSession(s *mcpserver.Session) { e.repl.drop(s) }
 
-// HiddenTool names tools that are callable but never listed: turn_ended,
-// and the engine and extension tools for in-process and internal callers
-// (the CLI's do, script plugins calling back as their run, the scenario
-// harness). Agents see only js and js_reset and reach the same tools
-// through the REPL; every path passes the same checks in Call.
-func (e *Engine) HiddenTool(name string) bool {
+// HiddenTool names tools that are callable over MCP but never listed:
+// turn_ended for every session, and the engine and extension tools only for
+// a script plugin's own session, which presents its run's token and calls
+// back as that run. Every other session reaches those tools through the
+// REPL alone; a call by name answers unknown tool.
+func (e *Engine) HiddenTool(s *mcpserver.Session, name string) bool {
 	if name == protocol.ToolTurnEnded {
 		return true
+	}
+	if s == nil || s.RunToken == "" {
+		return false
+	}
+	if _, ok := e.Ext.RunOwner(s.RunToken); !ok {
+		return false
 	}
 	for _, t := range protocol.Tools {
 		if t == name {
@@ -139,7 +145,6 @@ func (e *Engine) replCall(ctx context.Context, s *mcpserver.Session, name string
 			return replError(0, perr.Message), true
 		}
 	}
-	start := time.Now()
 	gctx, guard, done, err := e.Stopper.Guard(ctx)
 	if err != nil {
 		return replError(0, "stopped: "+err.Error()), true
@@ -160,15 +165,34 @@ func (e *Engine) replCall(ctx context.Context, s *mcpserver.Session, name string
 		return release, nil
 	}
 	call := &Call{Session: s, acquire: acquire, Turn: func(ctx context.Context) (func(), error) { return acquire(ctx, e.owner(s)) }}
-	// The call holds the desk turn while it runs, under its own id, so its
-	// steps re-enter it and no other agent's input interleaves with it.
+	// The call takes the desk turn, under its own id, at its first input
+	// and keeps it until it ends: its later steps re-enter it and no other
+	// agent's input interleaves with them. A call that only reads never
+	// takes it.
 	rc, turn := e.runCall(call)
-	release, err := turn(gctx)
-	if err != nil {
-		perr := TurnError(err)
-		return replError(time.Since(start), string(perr.Code)+": "+perr.Message), true
+	var (
+		mu   sync.Mutex
+		held func()
+	)
+	rc.Turn = func(ctx context.Context) (func(), error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if held == nil {
+			r, err := turn(ctx)
+			if err != nil {
+				return nil, err
+			}
+			held = r
+		}
+		return turn(ctx)
 	}
-	defer release()
+	defer func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if held != nil {
+			held()
+		}
+	}()
 	defer rc.holds.releaseAll()
 	rp := e.repl.get(s, e.JSTimeout)
 	host := &replHost{runHost: runHost{e: e, call: rc, models: e.Models}}
@@ -227,6 +251,12 @@ func (h *replHost) Tool(ctx context.Context, name string, args json.RawMessage) 
 		if perr := Decode(args, &req); perr != nil {
 			return nil, perr
 		}
+		// A run owns the desk until it ends, as the run tool does.
+		release, err := h.call.Turn(ctx)
+		if err != nil {
+			return nil, TurnError(err)
+		}
+		defer release()
 		report := script.Run(ctx, &runHost{e: e, call: h.call, models: h.models}, req)
 		if report.Error != nil {
 			code := protocol.ErrRunFailed
@@ -236,7 +266,7 @@ func (h *replHost) Tool(ctx context.Context, name string, args json.RawMessage) 
 			case protocol.RunStopped:
 				code = protocol.ErrStopped
 			}
-			return nil, &protocol.Error{Code: code, Message: report.Error.Kind + ": " + report.Error.Message + logsNote(report.Logs)}
+			return report, &protocol.Error{Code: code, Message: report.Error.Kind + ": " + report.Error.Message}
 		}
 		return report, nil
 	case "extensions":
@@ -260,13 +290,6 @@ func (h *replHost) Tool(ctx context.Context, name string, args json.RawMessage) 
 		return extensionValue(res)
 	}
 	return nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: name + " is not available in this build"}
-}
-
-func logsNote(logs string) string {
-	if strings.TrimSpace(logs) == "" {
-		return ""
-	}
-	return "\nlogs:\n" + logs
 }
 
 // extensionValue turns an extension tool's MCP result into a value.

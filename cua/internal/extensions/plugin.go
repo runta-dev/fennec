@@ -30,6 +30,9 @@ const maxReport = 64 << 20
 type RunCall struct {
 	Agent string // the caller that owns the run and its desk turn
 	Input string // the configured input mode
+	// Owner, when set, is whom the run's desk calls pass as instead of
+	// Agent: the js call that started the plugin and holds the turn.
+	Owner string
 }
 
 // report is what a plugin writes on its report descriptor.
@@ -63,7 +66,11 @@ func (x *Extensions) RunPlugin(ctx context.Context, name string, call RunCall, r
 	if err != nil {
 		return out(protocol.RunImport, err.Error())
 	}
-	token, done := x.addRun(call.Agent)
+	owner := call.Owner
+	if owner == "" {
+		owner = call.Agent
+	}
+	token, done := x.addRun(owner)
 	defer done()
 
 	cmd := exec.Command(p.Entry)

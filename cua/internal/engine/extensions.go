@@ -61,7 +61,9 @@ func (e *Engine) runPlugin(ctx context.Context, call *Call, name string, args js
 		return nil, TurnError(err)
 	}
 	defer release()
-	report := e.Ext.RunPlugin(ctx, name, extensions.RunCall{Agent: e.owner(call.Session), Input: e.Input}, req)
+	// Within a js call the turn is held under the call's own id: the
+	// plugin's desk calls pass as that call.
+	report := e.Ext.RunPlugin(ctx, name, extensions.RunCall{Agent: e.owner(call.Session), Input: e.Input, Owner: call.RunID()}, req)
 	if report.Error == nil {
 		return report, nil
 	}

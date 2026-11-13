@@ -90,7 +90,7 @@ func (a *actLog) log() string {
 	return strings.Join(a.sent, "")
 }
 
-func actEngine(a *actLog, busy time.Duration) *engine.Engine {
+func actEngine(a *actLog, busy time.Duration) *served {
 	eng := newEngine(nil)
 	eng.Turn.Busy = busy
 	a.turn = eng.Turn

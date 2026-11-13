@@ -147,11 +147,18 @@ func SaveCapture(dir, data string) (string, error) {
 }
 
 // Do sends one tool call to the daemon at socket and returns its answer.
+// js and js_reset go as they are; any other name is an engine tool, reached
+// through the js REPL (the MCP surface offers nothing else) and answered as
+// that tool answers.
 func Do(ctx context.Context, socket, tool string, args json.RawMessage) (mcpclient.ToolResult, error) {
 	c, err := mcpclient.Dial(ctx, socket)
 	if err != nil {
 		return mcpclient.ToolResult{}, err
 	}
 	defer c.Close()
-	return c.Tool(ctx, tool, args)
+	switch tool {
+	case "js", "js_reset":
+		return c.Tool(ctx, tool, args)
+	}
+	return c.EngineTool(ctx, tool, args)
 }

@@ -27,7 +27,6 @@ type client struct {
 	in  *io.PipeWriter
 	out *bufio.Scanner
 	id  int
-	h   mcpserver.Handler
 }
 
 func serve(t *testing.T, h mcpserver.Handler, info mcpserver.Info) *client {
@@ -41,7 +40,7 @@ func serve(t *testing.T, h mcpserver.Handler, info mcpserver.Info) *client {
 	sc := bufio.NewScanner(outR)
 	sc.Buffer(make([]byte, 1<<20), 4<<20)
 	t.Cleanup(func() { _ = inW.Close() })
-	return &client{t: t, in: inW, out: sc, h: h}
+	return &client{t: t, in: inW, out: sc}
 }
 
 func (c *client) rpc(method string, params any) map[string]any {
@@ -73,25 +72,33 @@ func (c *client) tool(name string, args any) (string, bool, map[string]any) {
 	return text, r["isError"] == true, nil
 }
 
-func newEngine(impl map[string]engine.Tool) *engine.Engine {
-	return &engine.Engine{Turn: &sched.Turn{Busy: time.Second}, Stopper: &sched.Stopper{}, Impl: impl}
+func newEngine(impl map[string]engine.Tool) *served {
+	return &served{&engine.Engine{Turn: &sched.Turn{Busy: time.Second}, Stopper: &sched.Stopper{}, Impl: impl}}
 }
 
-// toolList lists the engine tools with their schemas, as JSON objects: the
-// tools the REPL reaches (tools/list itself names only js and js_reset).
+// served reaches the engine directly: after js and js_reset it serves the
+// engine tools by name, which agents reach only through the REPL, so these
+// tests check the engine tools' schemas and answers over the transport.
+type served struct{ *engine.Engine }
+
+func (s *served) Tools(sess *mcpserver.Session) []mcpserver.Tool {
+	return append(s.Engine.Tools(sess), s.EngineTools()...)
+}
+
+// toolList lists the engine tools with their schemas as the test server
+// serves them after js and js_reset.
 func toolList(t *testing.T, c *client) []map[string]any {
 	t.Helper()
-	var listed []string
-	for _, tl := range c.rpc("tools/list", nil)["result"].(map[string]any)["tools"].([]any) {
-		listed = append(listed, tl.(map[string]any)["name"].(string))
-	}
-	if strings.Join(listed, ",") != strings.Join(protocol.MCPTools, ",") {
-		t.Fatalf("tools/list %v", listed)
-	}
-	data, _ := json.Marshal(c.h.(*engine.Engine).EngineTools())
 	var out []map[string]any
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatal(err)
+	for i, tl := range c.rpc("tools/list", nil)["result"].(map[string]any)["tools"].([]any) {
+		m := tl.(map[string]any)
+		if i < len(protocol.MCPTools) {
+			if m["name"] != protocol.MCPTools[i] {
+				t.Fatalf("tool %d is %v", i, m["name"])
+			}
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }

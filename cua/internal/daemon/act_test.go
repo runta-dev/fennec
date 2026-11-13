@@ -68,7 +68,7 @@ func (s *slowDesk) sends() int {
 
 // actDesk is an engine whose act tool is the real one over a fake desk with
 // a TextEdit window: a Save button and a focused Name field.
-func actDesk(t *testing.T, busy time.Duration) (*engine.Engine, *slowDesk) {
+func actDesk(t *testing.T, busy time.Duration) (*served, *slowDesk) {
 	t.Helper()
 	d := fakedesk.New()
 	d.Win("cg:10", "TextEdit", "Notes", 100, [4]int{0, 0, 800, 600}, true)
@@ -89,7 +89,7 @@ func actDesk(t *testing.T, busy time.Duration) (*engine.Engine, *slowDesk) {
 	return eng, s
 }
 
-func act(eng *engine.Engine, agent, args string) string {
+func act(eng *served, agent, args string) string {
 	return eng.Call(context.Background(), session(agent), "act", json.RawMessage(args)).Text
 }
 

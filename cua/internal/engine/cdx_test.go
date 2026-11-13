@@ -19,6 +19,7 @@ import (
 	"fennec/cua/internal/actions"
 	"fennec/cua/internal/actions/fakedesk"
 	"fennec/cua/internal/engine"
+	"fennec/cua/internal/mcpclient"
 	"fennec/cua/internal/mcpserver"
 	"fennec/cua/internal/policy"
 	"fennec/cua/internal/protocol"
@@ -338,13 +339,15 @@ func TestCDX01ToolsList(t *testing.T) {
 	if p, _ := reset["properties"].(map[string]any); len(p) != 0 {
 		t.Errorf("js_reset takes arguments: %v", p)
 	}
-	// turn_ended and the engine tools (for the CLI, plugins and the
-	// harness) answer without being listed; other names are unknown.
-	if r := c.call("observe", map[string]any{"scope": "desktop"}); r.isError {
-		t.Errorf("observe for internal callers: %v", r.all())
-	}
-	if m := c.rpc("tools/call", map[string]any{"name": "apps", "arguments": map[string]any{}}); m["error"] == nil {
-		t.Errorf("apps answered over MCP: %v", m)
+	// A plain session reaches no engine tool by name: act, observe and the
+	// rest are unknown tools (only a script plugin's run token opens them);
+	// turn_ended, the host's notice, answers without being listed.
+	for _, name := range []string{"act", "observe", "wait", "run", "flow", "status", "apps", "paste"} {
+		m := c.rpc("tools/call", map[string]any{"name": name, "arguments": map[string]any{"steps": []any{map[string]any{"key": "cmd+q"}}}})
+		e, _ := m["error"].(map[string]any)
+		if e == nil || e["code"] != float64(mcpserver.CodeInvalidParams) || e["message"] != "unknown tool: "+name {
+			t.Errorf("%s by name: %v", name, m)
+		}
 	}
 	if r := c.call("turn_ended", map[string]any{}); r.isError {
 		t.Errorf("turn_ended: %v", r.all())
@@ -1000,4 +1003,50 @@ func secretRig(t *testing.T) (*fakedesk.Desk, engine.Tool, *policy.Policy) {
 	p.Activity.Idle = func() time.Duration { return time.Hour }
 	x := &actions.Executor{B: d, Refs: view.NewRegistry(0), Policy: p, Sleep: func(context.Context, time.Duration) error { return nil }}
 	return d, engine.ActTool(x, p, nil), p
+}
+
+// The CLI and harnesses reach an engine tool through js
+// (mcpclient.EngineTool) and get the tool's own answer back.
+func TestEngineToolThroughREPL(t *testing.T) {
+	w := newWorld()
+	e := w.engine()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	go func() {
+		_ = mcpserver.Serve(context.Background(), inR, outW, e, mcpserver.Info{Name: "fennec-cua"})
+		_ = outW.Close()
+	}()
+	t.Cleanup(func() { _ = inW.Close() })
+	c := mcpclient.New(inW, outR)
+	ctx := context.Background()
+	if err := c.Initialize(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r, err := c.EngineTool(ctx, "act", map[string]any{"window": "w1", "steps": []any{map[string]any{"key": "cmd+s"}}})
+	if err != nil || r.IsError || !strings.Contains(r.Text(), `"ok":true`) || len(r.Content) != 1 {
+		t.Fatalf("act: %+v %v", r, err)
+	}
+	if s := lastStep(w); s["key"] != "cmd+s" {
+		t.Errorf("step %v", s)
+	}
+	r, _ = c.EngineTool(ctx, "observe", map[string]any{"bogus": 1})
+	if !r.IsError || !strings.Contains(r.Text(), `"code":"invalid_argument"`) {
+		t.Errorf("bad argument: %s", r.Text())
+	}
+	r, _ = c.EngineTool(ctx, "observe", map[string]any{"window": "w1", "image": "window"})
+	if r.IsError || len(r.Content) != 2 || r.Content[1].Type != "image" {
+		t.Errorf("capture: %+v", r.Content)
+	}
+	release, err := e.Turn.Acquire(ctx, "other-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ = c.EngineTool(ctx, "act", map[string]any{"window": "w1", "steps": []any{map[string]any{"key": "cmd+s"}}})
+	release()
+	if !r.IsError || !strings.Contains(r.Text(), `"code":"busy"`) {
+		t.Errorf("busy: %s", r.Text())
+	}
+	if r, _ := c.EngineTool(ctx, "status", nil); r.IsError || !strings.Contains(r.Text(), `"version"`) {
+		t.Errorf("status: %s", r.Text())
+	}
 }

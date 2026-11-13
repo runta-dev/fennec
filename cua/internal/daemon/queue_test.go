@@ -52,7 +52,7 @@ func hang(q *sched.Queue) (unhang func()) {
 	return func() { once.Do(func() { close(block) }) }
 }
 
-func axEngine(r *axRig, busy time.Duration) *engine.Engine {
+func axEngine(r *axRig, busy time.Duration) *served {
 	eng := newEngine(map[string]engine.Tool{protocol.ToolAct: r.act})
 	eng.Turn.Busy = busy
 	return eng

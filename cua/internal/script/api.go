@@ -173,7 +173,7 @@ func (r *runner) async(f func(ctx context.Context, h Host) (any, *protocol.Error
 		v, perr := f(ctx, h)
 		// Round-trip through JSON so the script sees plain objects.
 		var plain any
-		if perr == nil {
+		if v != nil {
 			data, _ := json.Marshal(v)
 			_ = json.Unmarshal(data, &plain)
 		}
@@ -183,6 +183,10 @@ func (r *runner) async(f func(ctx context.Context, h Host) (any, *protocol.Error
 				_ = e.Set("code", string(perr.Code))
 				if perr.Hint != "" {
 					_ = e.Set("hint", perr.Hint)
+				}
+				if plain != nil {
+					// A failure with a report (a run) keeps it.
+					_ = e.Set("report", r.vm.ToValue(plain))
 				}
 				_ = reject(e)
 				return

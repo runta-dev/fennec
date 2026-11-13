@@ -70,9 +70,9 @@ type SessionCloser interface {
 }
 
 // HiddenTools is optional: a Handler that implements it answers calls to
-// tools it never lists.
+// tools it never lists, as it decides per session.
 type HiddenTools interface {
-	HiddenTool(name string) bool
+	HiddenTool(s *Session, name string) bool
 }
 
 // Session is one MCP connection: one agent.
@@ -338,7 +338,7 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 		return fail(m.ID, CodeInvalidParams, "tools/call needs a tool name")
 	}
 	known := false
-	if ht, ok := s.h.(HiddenTools); ok && ht.HiddenTool(p.Name) {
+	if ht, ok := s.h.(HiddenTools); ok && ht.HiddenTool(&s.sess, p.Name) {
 		known = true
 	}
 	for _, t := range s.h.Tools(&s.sess) {

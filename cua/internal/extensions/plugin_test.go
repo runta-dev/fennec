@@ -279,3 +279,26 @@ func TestEndpointEnv(t *testing.T) {
 		t.Errorf("the binary reads another variable: %+v %v", p, err)
 	}
 }
+
+// A plain agent session reaches neither the engine tools nor a plugin by
+// name; it runs the plugin through the REPL, and the plugin's own session,
+// which presents its run token, calls act back by name as the run.
+func TestPluginCallbackNeedsRunToken(t *testing.T) {
+	f := open(t, map[string]any{"p.json": pluginSpec(t, "gate_run")})
+	eng := testEngine(f, false)
+	serveWith(t, f, eng, eng)
+	c := dial(t, f)
+	for _, name := range []string{"act", "status", "gate_run"} {
+		if _, perr := c.rpc("tools/call", map[string]any{"name": name, "arguments": map[string]any{}}); perr == nil || perr.Code != mcpserver.CodeInvalidParams {
+			t.Errorf("%s by name from an agent session: %+v", name, perr)
+		}
+	}
+	r := c.call("js", map[string]any{"code": `nodeRepl.write(JSON.stringify(await fennec.call("gate_run", {params: {mode: "desk"}})))`})
+	text := ""
+	for _, part := range r.Content {
+		text += part.Text + "\n"
+	}
+	if r.IsError || !strings.Contains(text, `"acted":true`) {
+		t.Fatalf("plugin through the REPL: %s", text)
+	}
+}
