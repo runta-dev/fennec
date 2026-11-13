@@ -40,6 +40,9 @@ type Release struct {
 	Notes   string           `json:"notes"`
 	URL     string           `json:"url"`
 	Assets  map[string]Asset `json:"assets"`
+	// Components is the release component manifest for the target architecture,
+	// or nil when the release publishes only the full archive.
+	Components *ComponentSet `json:"-"`
 }
 
 // AppAssetName returns the expected macOS archive name for version and arch.
@@ -180,7 +183,7 @@ func decodeReleaseFeed(ctx context.Context, httpClient *http.Client, raw []byte)
 
 	needSums := false
 	for name, asset := range rel.Assets {
-		if strings.HasSuffix(name, ".zip") && asset.SHA256 == "" {
+		if (strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, "-components.json")) && asset.SHA256 == "" {
 			needSums = true
 			break
 		}

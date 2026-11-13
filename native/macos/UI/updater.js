@@ -51,6 +51,8 @@
     const steps = {
       retry: '[[i18n:ui.reconnecting]]',
       verify: '[[i18n:ui.verifying]]',
+      // Cloning and checking an installed component the update reuses.
+      reuse: '[[i18n:ui.verifying]]',
       unpack: '[[i18n:ui.unpacking]]',
       signature: '[[i18n:ui.checking_signature]]'
     };

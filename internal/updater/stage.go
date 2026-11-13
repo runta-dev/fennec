@@ -59,58 +59,97 @@ func stagingRoot(bundle string) string {
 }
 
 // StageBundle downloads, verifies, unpacks, and signature-checks the release's
-// macOS archive beside bundle. Like Magpie (#3965), the staged folder does not
+// macOS bundle beside bundle. Like Magpie (#3965), the staged folder does not
 // end in .app while waiting so LaunchServices/Spotlight never index a duplicate.
 func StageBundle(ctx context.Context, transport http.RoundTripper, rel *Release, bundle string, arch string, opts progressOptions, verifySigner func(ctx context.Context, installedBundle, candidateBundle string) error) (string, error) {
 	if arch == "" {
 		arch = TargetArch()
 	}
+	staged, _, err := stageReleaseBundle(ctx, transport, rel, bundle, arch, PlanUpdate(rel, bundle, arch), opts, verifySigner)
+	return staged, err
+}
+
+// stageReleaseBundle assembles the release from components when plan says some can
+// be reused, and from the full archive otherwise or when that fails for any
+// reason other than the network or cancellation. It returns the staged
+// payload and the components reused from bundle.
+func stageReleaseBundle(ctx context.Context, transport http.RoundTripper, rel *Release, bundle, arch string, plan UpdatePlan, opts progressOptions, verifySigner func(ctx context.Context, installedBundle, candidateBundle string) error) (string, []string, error) {
+	if verifySigner == nil {
+		verifySigner = VerifySameSigner
+	}
+	root := stagingRoot(bundle)
+	if plan.Components && rel.Components != nil {
+		var reused []string
+		staged, err := stageAttempt(ctx, root, bundle, opts, verifySigner, func() (string, error) {
+			app, used, err := stageComponents(ctx, transport, rel, bundle, root, plan, opts)
+			reused = used
+			return app, err
+		})
+		if err == nil {
+			return staged, reused, nil
+		}
+		if ctx.Err() != nil || IsNetworkError(err) {
+			return "", nil, err
+		}
+	}
 	assetName := AppAssetName(rel.Version, arch)
 	asset, ok := rel.Assets[assetName]
 	if !ok {
-		return "", fmt.Errorf("release %s has no %s asset", rel.Version, assetName)
+		return "", nil, fmt.Errorf("release %s has no %s asset", rel.Version, assetName)
 	}
-	root := stagingRoot(bundle)
+	staged, err := stageAttempt(ctx, root, bundle, opts, verifySigner, func() (string, error) {
+		zipPath := filepath.Join(root, assetName)
+		if err := downloadVerifiedAsset(ctx, transport, asset, zipPath, opts); err != nil {
+			return "", err
+		}
+		if opts.onStep != nil {
+			opts.onStep(StepUnpack)
+		}
+		unpackDir := filepath.Join(root, "unpack")
+		if err := unpackArchive(ctx, zipPath, unpackDir); err != nil {
+			return "", err
+		}
+		_ = os.Remove(zipPath)
+		return filepath.Join(unpackDir, "Fennec.app"), nil
+	})
+	return staged, nil, err
+}
+
+// stageAttempt runs assemble in a fresh staging root, checks the assembled
+// bundle's identity and signature, and moves it to the staged payload path.
+// On failure nothing is left behind.
+func stageAttempt(ctx context.Context, root, bundle string, opts progressOptions, verifySigner func(ctx context.Context, installedBundle, candidateBundle string) error, assemble func() (string, error)) (string, error) {
 	_ = os.RemoveAll(root)
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return "", err
 	}
-	zipPath := filepath.Join(root, assetName)
-	if err := downloadVerifiedAsset(ctx, transport, asset, zipPath, opts); err != nil {
+	staged, err := finishStage(ctx, root, bundle, opts, verifySigner, assemble)
+	if err != nil {
 		_ = os.RemoveAll(root)
 		return "", err
 	}
-	unpackDir := filepath.Join(root, "unpack")
-	if opts.onStep != nil {
-		opts.onStep(StepUnpack)
-	}
-	if err := unpackArchive(ctx, zipPath, unpackDir); err != nil {
-		_ = os.RemoveAll(root)
-		return "", err
-	}
-	_ = os.Remove(zipPath)
+	return staged, nil
+}
 
-	unzipped := filepath.Join(unpackDir, "Fennec.app")
+func finishStage(ctx context.Context, root, bundle string, opts progressOptions, verifySigner func(ctx context.Context, installedBundle, candidateBundle string) error, assemble func() (string, error)) (string, error) {
+	assembled, err := assemble()
+	if err != nil {
+		return "", err
+	}
 	staged := filepath.Join(root, "staged-payload")
-	if err := os.Rename(unzipped, staged); err != nil {
-		_ = os.RemoveAll(root)
+	if err := os.Rename(assembled, staged); err != nil {
 		return "", fmt.Errorf("stage unpacked bundle: %w", err)
 	}
-	_ = os.RemoveAll(unpackDir)
-	unregisterLaunchServices(unzipped)
+	unregisterLaunchServices(assembled)
+	_ = os.RemoveAll(filepath.Join(root, "unpack"))
 
 	if opts.onStep != nil {
 		opts.onStep(StepSignature)
 	}
 	if id, err := stagedBundleIdentifier(staged); err != nil || id != "com.runta.fennec" {
-		_ = os.RemoveAll(root)
 		return "", fmt.Errorf("downloaded bundle has unexpected identifier")
 	}
-	if verifySigner == nil {
-		verifySigner = VerifySameSigner
-	}
 	if err := verifySigner(ctx, bundle, staged); err != nil {
-		_ = os.RemoveAll(root)
 		return "", err
 	}
 	return staged, nil

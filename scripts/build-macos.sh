@@ -96,9 +96,12 @@ cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses
 # the user cache directory, so a warm cache needs no network); reusing the
 # signed app keeps its code hash, and with it the "Fennec Safe Storage"
 # Keychain access, stable across ordinary rebuilds. fennec-cua itself is
-# rebuilt from this checkout every time, like the daemon.
+# rebuilt from this checkout every time, like the daemon. Byte-identical
+# Chromium across releases also lets auto-updates reuse the installed copy
+# instead of downloading it, so release builds keep FENNEC_CUA_CACHE between
+# runs (see package-release-macos.sh).
 [ "$(uname -m)" = arm64 ] || { echo 'fennec-cua and its bundled Chromium are built for Apple silicon (arm64) only.' >&2; exit 1; }
-cua_cache="$PWD/build/cua-cache"
+cua_cache="${FENNEC_CUA_CACHE:-$PWD/build/cua-cache}"
 cua_source=$(cd cua && find cmd/cua-package internal/chromium internal/credits -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d ' ' -f 1)
 cua_key=$(printf '%s' "$identity:$cua_source" | shasum -a 256 | cut -d ' ' -f 1)
 cua_stage="$cua_cache/$cua_key"
@@ -117,6 +120,9 @@ rm -rf "$app/Contents/Helpers"
 mkdir -p "$app/Contents/Helpers"
 ditto "$cua_stage/Chromium.app" "$app/Contents/Helpers/Chromium.app"
 cp "$cua_stage/licenses/"* "$app/Contents/Resources/licenses/"
+# Sealed by the outer signature: the updater reads which Chromium (by tree
+# digest) this bundle carries and reuses it when a release needs the same one.
+go run ./cmd/release-components bundle -app "$app" -chromium-key "$cua_key"
 /bin/chmod -R -P a+rX,go-w "$app"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same

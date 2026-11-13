@@ -29,6 +29,8 @@ for notice in THIRD_PARTY_NOTICES.md magpie-MIT.txt Chromium-LICENSE.txt Chromiu
 done
 [[ -x "$app/Contents/Helpers/Chromium.app/Contents/MacOS/Chromium" ]]
 (cd cua && go run ./cmd/cua-package -smoke "$app/Contents/Helpers/Chromium.app")
+# components.json (read by incremental updates) must describe this bundle.
+go run ./cmd/release-components verify -app "$app"
 codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/fennec-daemon" help >/dev/null
 "$app/Contents/MacOS/fennec-cua" version >/dev/null

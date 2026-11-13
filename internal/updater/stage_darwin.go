@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,4 +92,31 @@ func bundleLeafCertificateDigest(ctx context.Context, app string) string {
 	}
 	sum := sha256.Sum256(der)
 	return hex.EncodeToString(sum[:])
+}
+
+// cloneTreeSystem clones src to dst with clonefile(2): on APFS the copy is
+// instant and shares storage with src until either changes. Where cloning is
+// unavailable (another file system), it copies with ditto, which keeps
+// extended attributes such as detached code signatures.
+func cloneTreeSystem(src, dst string) error {
+	if err := unix.Clonefile(src, dst, unix.CLONE_NOFOLLOW); err == nil {
+		return nil
+	}
+	_ = os.RemoveAll(dst)
+	if out, err := exec.Command("/usr/bin/ditto", src, dst).CombinedOutput(); err != nil {
+		_ = os.RemoveAll(dst)
+		return fmt.Errorf("copy %s: %w (%s)", filepath.Base(src), err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// clearQuarantine drops com.apple.quarantine from a reused tree so it matches
+// a freshly downloaded component, which the updater never quarantines.
+func clearQuarantine(root string) {
+	_ = filepath.WalkDir(root, func(p string, _ fs.DirEntry, err error) error {
+		if err == nil {
+			_ = unix.Lremovexattr(p, "com.apple.quarantine")
+		}
+		return nil
+	})
 }

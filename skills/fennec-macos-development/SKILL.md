@@ -36,6 +36,8 @@ UI and Go control-plane artifacts must come from the same source snapshot. Never
 
 The packager also bundles `Contents/MacOS/fennec-cua` (rebuilt from `cua/` in the same checkout on every package) and `Contents/Helpers/Chromium.app` (staged and signed by `cua/cmd/cua-package`, cached in `build/cua-cache`). Do not clear that cache on ordinary rebuilds: reusing the signed Chromium keeps its code hash and avoids a new "Fennec Safe Storage" Keychain prompt with the self-signed certificate. The outer app is signed without `--deep` so Chromium's per-helper entitlements survive; verify with `codesign --verify --deep --strict` and `scripts/verify-macos-package.sh` (which runs `cua-package -smoke` on the bundled Chromium). `control-build-id` stays the `fen` hash; fennec-cua is not part of the control contract.
 
+Auto-updates are incremental: releases publish a core archive, a content-addressed Chromium archive and a component manifest next to the full ZIP, and the updater clones the installed Chromium.app when its tree digest (sealed in `Contents/Resources/components.json`) matches. Release builds must keep `FENNEC_CUA_CACHE` between runs; a re-signed Chromium makes every user download it again. `scripts/package-release-macos.sh --dry-run` builds every release archive locally (local identity, no notarization, nothing published) and reassembles the bundle from them to prove it matches.
+
 Stop only the task-owned Fennec application process, then open `build/Fennec.app`. Do not terminate remote Herdr sessions or assume application restart deletes cloud work. Reinstall shims only if their daemon path is stale.
 
 After restart, inspect:
