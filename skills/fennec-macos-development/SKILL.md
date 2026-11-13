@@ -126,6 +126,10 @@ Do not replace broker or project-launch failures with only `launch not confirmed
 
 A pending launch journal entry has an uncertain outcome. Inspect the corresponding cloud session before retrying; do not delete the journal or repeatedly create replacement sessions. If a receipt exists, reconnect to that session.
 
+## ChatGPT bridge resilience
+
+ChatGPT fails every request waiting on a connection attempt that does not complete its WebSocket handshake (it gives up after about 15 s), and a failed `permissionProfile/list` leaves the composer blocked with "Permission mode is unavailable" until ChatGPT restarts; it never refetches. The bridge therefore answers the handshake at once from the remembered app-server 101 (persisted in `~/.config/fennec/chatgpt.json` with `early_input`) and holds ChatGPT's requests while the cloud is unreachable, replaces a cloud stream that fails before its receipt and replays the bytes already sent, and the resident channel is retired after 45 s without a pong. Never make a ChatGPT connection attempt fail fast (503, close before the handshake) while the cloud is only temporarily away. A daemon restart still refuses connections for about a second; keep that window short.
+
 ## Verification
 
 Run focused tests for changed packages and `make check-ui`. macOS lacks GNU `flock`, so Linux-specific setup tests can fail locally; report that boundary rather than treating it as a regression or weakening production locking.
