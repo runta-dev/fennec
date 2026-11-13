@@ -1,0 +1,149 @@
+package runtime
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"io"
+	"net"
+	"strings"
+	"testing"
+	"time"
+)
+
+// statusHarness connects a fake ChatGPT and a fake app-server through one
+// filter, past the WebSocket handshake.
+type statusHarness struct {
+	client, server             net.Conn
+	clientReader, serverReader *bufio.Reader
+	filter                     net.Conn
+}
+
+type homeConn struct {
+	net.Conn
+	home string
+}
+
+func (conn homeConn) CodexHome() string { return conn.home }
+
+func newStatusHarness(t *testing.T, home string) *statusHarness {
+	t.Helper()
+	client, filterSide := net.Pipe()
+	serverSide, server := net.Pipe()
+	filter := NewChatGPTPathFilter(homeConn{serverSide, home + "/codex"}, home, "")
+	go io.Copy(filter, filterSide)
+	go io.Copy(filterSide, filter)
+	deadline := time.Now().Add(5 * time.Second)
+	client.SetDeadline(deadline)
+	server.SetDeadline(deadline)
+	h := &statusHarness{client: client, server: server, clientReader: bufio.NewReader(client), serverReader: bufio.NewReader(server), filter: filter}
+	go io.WriteString(client, "GET /rpc HTTP/1.1\r\nUpgrade: websocket\r\n\r\n")
+	readHead(t, h.serverReader)
+	go io.WriteString(server, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n")
+	readHead(t, h.clientReader)
+	t.Cleanup(func() { client.Close(); server.Close(); filter.Close() })
+	return h
+}
+
+func readHead(t *testing.T, reader *bufio.Reader) {
+	t.Helper()
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line == "\r\n" {
+			return
+		}
+	}
+}
+
+func (h *statusHarness) request(t *testing.T, message string) {
+	t.Helper()
+	go h.client.Write(maskedFrame(0x1, true, []byte(message)))
+}
+
+func (h *statusHarness) serverReceives(t *testing.T) jsonRPCRequest {
+	t.Helper()
+	var request jsonRPCRequest
+	if err := json.Unmarshal(readFrame(t, h.serverReader).payload, &request); err != nil {
+		t.Fatal(err)
+	}
+	return request
+}
+
+func (h *statusHarness) reply(id json.RawMessage, result string) {
+	go h.server.Write(encodeWebSocketFrame(0x1, []byte(`{"id":`+string(id)+`,"result":`+result+`}`), false))
+}
+
+func (h *statusHarness) clientReceives(t *testing.T) jsonRPCResponse {
+	t.Helper()
+	var response jsonRPCResponse
+	if err := json.Unmarshal(readFrame(t, h.clientReader).payload, &response); err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
+	home := t.TempDir()
+	first := newStatusHarness(t, home)
+	first.request(t, `{"id":1,"method":"mcpServerStatus/list","params":{"detail":"toolsAndAuthOnly","limit":100}}`)
+	forwarded := first.serverReceives(t)
+	if string(forwarded.ID) != "1" {
+		t.Fatal("first request must reach the app-server", string(forwarded.ID))
+	}
+	first.reply(forwarded.ID, `{"data":[{"name":"node_repl","tools":{"a":{}}}]}`)
+	if got := first.clientReceives(t); string(got.ID) != "1" || !bytes.Contains(got.Result, []byte("node_repl")) {
+		t.Fatal(string(got.Result))
+	}
+
+	// A new connection (ChatGPT relaunched) is answered at once, in any key
+	// order, while the app-server refreshes under a private ID.
+	second := newStatusHarness(t, home)
+	second.request(t, `{"id":"a7","method":"mcpServerStatus/list","params":{"limit":100,"detail":"toolsAndAuthOnly"}}`)
+	if got := second.clientReceives(t); string(got.ID) != `"a7"` || !bytes.Contains(got.Result, []byte("node_repl")) {
+		t.Fatal(string(got.ID), string(got.Result))
+	}
+	refresh := second.serverReceives(t)
+	if !strings.HasPrefix(string(refresh.ID), `"`+mcpStatusRefreshID) || refresh.Method != mcpStatusMethod {
+		t.Fatal("no background refresh", string(refresh.ID))
+	}
+	// The refresh answer updates the store but never reaches ChatGPT.
+	second.reply(refresh.ID, `{"data":[{"name":"cua_repl"}]}`)
+	second.request(t, `{"id":"a8","method":"account/read","params":{}}`)
+	if next := second.serverReceives(t); next.Method != "account/read" {
+		t.Fatal(next.Method)
+	}
+	second.reply(json.RawMessage(`"a8"`), `{}`)
+	if got := second.clientReceives(t); string(got.ID) != `"a8"` {
+		t.Fatal("refresh response leaked to ChatGPT", string(got.ID))
+	}
+	second.request(t, `{"id":"a9","method":"mcpServerStatus/list","params":{"detail":"toolsAndAuthOnly","limit":100}}`)
+	if got := second.clientReceives(t); !bytes.Contains(got.Result, []byte("cua_repl")) {
+		t.Fatal("refreshed status not served", string(got.Result))
+	}
+	second.serverReceives(t) // its own refresh
+}
+
+func TestMCPStatusClearedByConfigWritesAndSkippedForThreads(t *testing.T) {
+	home := t.TempDir()
+	h := newStatusHarness(t, home)
+	h.request(t, `{"id":1,"method":"mcpServerStatus/list","params":{}}`)
+	h.reply(h.serverReceives(t).ID, `{"data":[]}`)
+	h.clientReceives(t)
+	h.request(t, `{"id":2,"method":"config/batchWrite","params":{"edits":[]}}`)
+	h.reply(h.serverReceives(t).ID, `{}`)
+	h.clientReceives(t)
+	h.request(t, `{"id":3,"method":"mcpServerStatus/list","params":{}}`)
+	if got := h.serverReceives(t); string(got.ID) != "3" {
+		t.Fatal("status served after a config change", string(got.ID))
+	}
+	h.reply(json.RawMessage("3"), `{"data":[]}`)
+	h.clientReceives(t)
+	// Thread-scoped requests reuse the thread's MCP connections and pass through.
+	h.request(t, `{"id":4,"method":"mcpServerStatus/list","params":{"threadId":"t1"}}`)
+	if got := h.serverReceives(t); string(got.ID) != "4" {
+		t.Fatal(string(got.ID))
+	}
+}

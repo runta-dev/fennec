@@ -36,6 +36,8 @@ func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
 	if filter.StreamLabel() == CodexAppServerGateway && gatewayOverrides(filter.codexHome) != nil {
 		filter.provider = "magpie"
 	}
+	filter.statusPending = map[string]string{}
+	filter.outCond = sync.NewCond(&filter.outMu)
 	filter.inbound.server = false
 	filter.outbound.server = true
 	return filter
@@ -56,12 +58,26 @@ type chatgptPathFilter struct {
 	codexHome string
 	provider  string // model provider forced for this app-server, if any
 
-	writeMu  sync.Mutex
-	inbound  wsStream
-	readMu   sync.Mutex
+	statusMu      sync.Mutex
+	statusPending map[string]string // JSON-RPC id -> MCP status key
+
+	writeMu sync.Mutex
+	inbound wsStream
+
+	// One pump goroutine reads server bytes for ChatGPT, so the filter can
+	// also answer requests itself, between whole frames.
+	pumpOnce sync.Once
 	outbound wsStream
+	outMu    sync.Mutex
+	outCond  *sync.Cond
 	pending  []byte
+	outErr   error
+	closed   bool
 }
+
+// chatgptOutputBuffer bounds server output held for ChatGPT, so the credit
+// window still paces the app-server.
+const chatgptOutputBuffer = 1 << 20
 
 func (filter *chatgptPathFilter) StreamLabel() string {
 	if labeled, ok := filter.Conn.(interface{ StreamLabel() string }); ok {
@@ -88,31 +104,79 @@ func (filter *chatgptPathFilter) Write(data []byte) (int, error) {
 
 // Read returns server bytes (app-server -> ChatGPT).
 func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
-	filter.readMu.Lock()
-	defer filter.readMu.Unlock()
+	filter.pumpOnce.Do(func() { go filter.pump() })
+	filter.outMu.Lock()
+	defer filter.outMu.Unlock()
+	for len(filter.pending) == 0 && filter.outErr == nil && !filter.closed {
+		filter.outCond.Wait()
+	}
+	if len(filter.pending) == 0 {
+		if filter.outErr != nil {
+			return 0, filter.outErr
+		}
+		return 0, net.ErrClosed
+	}
+	count := copy(data, filter.pending)
+	filter.pending = filter.pending[count:]
+	filter.outCond.Broadcast()
+	return count, nil
+}
+
+func (filter *chatgptPathFilter) pump() {
 	buffer := make([]byte, 32<<10)
-	for len(filter.pending) == 0 {
+	for {
 		length, err := filter.Conn.Read(buffer)
 		if length > 0 {
 			output, feedErr := filter.outbound.feed(buffer[:length], filter.toMac)
 			if feedErr != nil {
-				return 0, feedErr
+				err = feedErr
+			} else if len(output) > 0 && !filter.deliver(output, true) {
+				return
 			}
-			filter.pending = append(filter.pending, output...)
 		}
 		if err != nil {
-			if len(filter.pending) > 0 {
-				break
-			}
-			return 0, err
+			filter.outMu.Lock()
+			filter.outErr = err
+			filter.outCond.Broadcast()
+			filter.outMu.Unlock()
+			return
 		}
 	}
-	count := copy(data, filter.pending)
-	filter.pending = filter.pending[count:]
-	return count, nil
+}
+
+// deliver queues whole frames for ChatGPT. Server output waits for room; the
+// filter's own answers never wait.
+func (filter *chatgptPathFilter) deliver(frames []byte, wait bool) bool {
+	filter.outMu.Lock()
+	defer filter.outMu.Unlock()
+	for wait && len(filter.pending) >= chatgptOutputBuffer && !filter.closed {
+		filter.outCond.Wait()
+	}
+	if filter.closed {
+		return false
+	}
+	filter.pending = append(filter.pending, frames...)
+	filter.outCond.Broadcast()
+	return true
+}
+
+func (filter *chatgptPathFilter) Close() error {
+	filter.forgetStatusRefreshes()
+	filter.outMu.Lock()
+	filter.closed = true
+	filter.outCond.Broadcast()
+	filter.outMu.Unlock()
+	return filter.Conn.Close()
 }
 
 func (filter *chatgptPathFilter) toCloud(message []byte) []byte {
+	message, answer := filter.statusRequest(message)
+	if answer != nil {
+		filter.deliver(encodeWebSocketFrame(0x1, answer, false), false)
+	}
+	if message == nil {
+		return nil
+	}
 	filter.migrateThreads(message)
 	return rewriteMessage(message, filter.desktopServer, filter.cloudPath)
 }
@@ -131,6 +195,9 @@ func (filter *chatgptPathFilter) cloudPath(path string) (string, bool) {
 }
 
 func (filter *chatgptPathFilter) toMac(message []byte) []byte {
+	if !filter.statusResponse(message) {
+		return nil
+	}
 	filter.noteCloudThreads(message)
 	return rewriteCwd(message, func(path string) (string, bool) {
 		filter.pathsMu.Lock()
@@ -310,7 +377,10 @@ func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte
 				return nil, fmt.Errorf("app-server message too large")
 			}
 			if frame.fin {
-				output = append(output, encodeWebSocketFrame(0x1, transform(stream.message), !stream.server)...)
+				// A nil transform result drops the message.
+				if transformed := transform(stream.message); transformed != nil {
+					output = append(output, encodeWebSocketFrame(0x1, transformed, !stream.server)...)
+				}
 				stream.message, stream.collecting = nil, false
 			}
 		default: // binary messages and their continuations pass through

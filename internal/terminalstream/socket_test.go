@@ -206,3 +206,58 @@ func TestSocketStreamCompressesOutputWhenRequested(t *testing.T) {
 		t.Fatal("output not compressed:", wire, "bytes for", 2*len(reply))
 	}
 }
+
+// The ChatGPT bridge sends the WebSocket upgrade together with the open; input
+// that arrives while the socket is still being dialed must reach it in order.
+func TestSocketInputSentBeforeReceiptIsDelivered(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	dialing := make(chan struct{})
+	release := make(chan struct{})
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(ctx context.Context, target string) (net.Conn, error) {
+		close(dialing)
+		<-release // a slow dial: input is already on its way
+		local, remote := net.Pipe()
+		go func() { io.Copy(remote, remote) }()
+		return local, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("e", 32), Target: SocketCodexAppServer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := []byte("GET /rpc HTTP/1.1\r\n\r\n")
+	if err := session.Send(Frame{Type: "input", Data: request[:9]}); err != nil {
+		t.Fatal(err)
+	}
+	<-dialing
+	if err := session.Send(Frame{Type: "input", Data: request[9:]}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // both frames reach the server before the dial finishes
+	close(release)
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" {
+		t.Fatal(frame, err)
+	}
+	var received []byte
+	for len(received) < len(request) {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == "data" {
+			received = append(received, frame.Data...)
+			session.Send(Frame{Type: "credit", Bytes: len(frame.Data)})
+		}
+	}
+	if !bytes.Equal(received, request) {
+		t.Fatalf("%q", received)
+	}
+}

@@ -279,14 +279,14 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	defer cancel()
 	stop := context.AfterFunc(operation, func() { conn.Close() })
 	defer stop()
-	session, receipt, err := b.open(operation)
-	mode := receipt.Message
-	if err != nil {
+	unavailable := func(err error) error {
 		io.WriteString(conn, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return err
 	}
-	b.track(conn, mode)
-	defer b.track(conn, "")
+	session, err := b.open(operation)
+	if err != nil {
+		return unavailable(err)
+	}
 	defer session.Close()
 	buffered, _ := reader.Peek(reader.Buffered())
 	pending := append(head, buffered...)
@@ -322,6 +322,17 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 			}
 		}
 	}()
+	// The upgrade request travels with the open instead of after the receipt:
+	// the cloud queues input until its app-server socket is connected, which
+	// saves one round trip per connection.
+	wait, stopWaiting := context.WithTimeout(operation, 45*time.Second)
+	receipt, err := session.Next(wait)
+	stopWaiting()
+	if err != nil || receipt.Type != "receipt" {
+		return unavailable(fmt.Errorf("cloud codex app-server unavailable"))
+	}
+	b.track(conn, receipt.Message)
+	defer b.track(conn, "")
 	// Compressed output is decoded on its own goroutine; writes into the pipe
 	// block until ChatGPT has received the bytes, so credits still pace the
 	// remote stream.
@@ -375,8 +386,9 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 }
 
 // open waits for the daemon's resident terminal channel, then opens a socket
-// stream on it. It never starts another SSH connection or exec channel.
-func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, terminalstream.Frame, error) {
+// stream on it without waiting for the cloud receipt. It never starts another
+// SSH connection or exec channel.
+func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, error) {
 	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	var transport *terminalstream.Transport
@@ -393,28 +405,19 @@ func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, term
 		}
 		select {
 		case <-wait.Done():
-			return nil, terminalstream.Frame{}, fmt.Errorf("cloud runtime channel unavailable")
+			return nil, fmt.Errorf("cloud runtime channel unavailable")
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
 	if !transport.Supports(terminalstream.CapabilityCodexAppServer) {
-		return nil, terminalstream.Frame{}, fmt.Errorf("cloud terminal service does not support codex app-server yet")
+		return nil, fmt.Errorf("cloud terminal service does not support codex app-server yet")
 	}
 	var nonce [16]byte
 	rand.Read(nonce[:])
 	b.services.mu.Lock()
 	device := b.services.config.Device
 	b.services.mu.Unlock()
-	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device, Term: terminalstream.SocketCompressionZstd})
-	if err != nil {
-		return nil, terminalstream.Frame{}, err
-	}
-	frame, err := session.Next(wait)
-	if err != nil || frame.Type != "receipt" {
-		session.Close()
-		return nil, terminalstream.Frame{}, fmt.Errorf("cloud codex app-server unavailable")
-	}
-	return session, frame, nil
+	return transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device, Term: terminalstream.SocketCompressionZstd})
 }
 
 // track records which cloud app-server mode serves a connection; an empty mode
