@@ -38,6 +38,17 @@ type Entry struct {
 	ExitCode       int    `json:"exit_code"`
 	DurationMS     int64  `json:"duration_ms"`
 	Detail         string `json:"detail,omitempty"` // sanitized stderr snippet or block reason
+	// Count is set on query results when repeats were grouped into this row.
+	Count int `json:"count,omitempty"`
+}
+
+// RepeatWindow groups back-to-back identical activity (for example ChatGPT
+// starting the same desktop tool for each conversation) into one row. The
+// log itself keeps every entry.
+const RepeatWindow = 10 * time.Minute
+
+func sameActivity(a, b Entry) bool {
+	return a.Kind == b.Kind && a.Command == b.Command && a.Workdir == b.Workdir && a.SandboxMode == b.SandboxMode && a.Decision == b.Decision && a.Blocked == b.Blocked
 }
 
 // Summary provides top-level counts for the Settings badge and audit header.
@@ -238,6 +249,8 @@ func (s *Store) Query(opts QueryOptions) (QueryResult, error) {
 		}
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(shards)))
+	// oldest[i] is the earliest timestamp folded into res.Entries[i].
+	var oldest []int64
 
 	for _, name := range shards {
 		shardDate := strings.TrimSuffix(name, ".jsonl")
@@ -263,13 +276,22 @@ func (s *Store) Query(opts QueryOptions) (QueryResult, error) {
 			dayEntries = append(dayEntries, e)
 		}
 		for i := len(dayEntries) - 1; i >= 0; i-- {
+			e := dayEntries[i]
+			if !matchFilter(e, filter) {
+				continue
+			}
+			// Newest first: fold an older repeat into the row above it.
+			if n := len(res.Entries); n > 0 && sameActivity(res.Entries[n-1], e) && oldest[n-1]-e.TimestampMS <= RepeatWindow.Milliseconds() {
+				res.Entries[n-1].Count++
+				oldest[n-1] = e.TimestampMS
+				continue
+			}
 			if len(res.Entries) >= limit {
 				break
 			}
-			e := dayEntries[i]
-			if matchFilter(e, filter) {
-				res.Entries = append(res.Entries, e)
-			}
+			e.Count = 1
+			res.Entries = append(res.Entries, e)
+			oldest = append(oldest, e.TimestampMS)
 		}
 	}
 	s.mu.Unlock()

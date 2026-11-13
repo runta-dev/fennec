@@ -170,7 +170,16 @@
       const timeEl = document.createElement('span');
       timeEl.className = 'audit-time';
       timeEl.textContent = formatTimestamp(entry.timestamp_ms);
-      top.append(cmd, timeEl);
+      top.append(cmd);
+      // Back-to-back repeats arrive grouped from the store; show how many as quiet metadata.
+      const repeats = Number(entry.count || 1);
+      if (repeats > 1) {
+        const countEl = document.createElement('span');
+        countEl.className = 'audit-repeat';
+        countEl.textContent = '\u00d7' + repeats;
+        top.append(countEl);
+      }
+      top.append(timeEl);
 
       const meta = document.createElement('div');
       meta.className = 'audit-entry-meta';

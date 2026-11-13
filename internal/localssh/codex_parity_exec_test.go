@@ -141,10 +141,11 @@ func TestCodexParityExecFlow(t *testing.T) {
 		t.Fatal("escalated command did not run")
 	}
 
-	// 4. Approved escalation still cannot read denied credential paths.
+	// 4. Approved escalation still cannot read denied credential paths. (Public
+	// SSH material is readable after approval; the Keychain never is.)
 	home, _ := os.UserHomeDir()
-	if _, err := os.Stat(filepath.Join(home, ".ssh")); err == nil {
-		code, _ = exec(`fennec-escalate --reason "inspect keys" -- ls ` + filepath.Join(home, ".ssh"))
+	if _, err := os.Stat(filepath.Join(home, "Library/Keychains")); err == nil {
+		code, _ = exec(`fennec-escalate --reason "inspect keys" -- ls ` + filepath.Join(home, "Library/Keychains"))
 		if code == 0 {
 			t.Fatal("approved escalation read a protected credential path")
 		}
