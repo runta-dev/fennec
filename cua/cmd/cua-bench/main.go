@@ -5,6 +5,8 @@
 //	go run ./cmd/cua-bench golden [flags]   build the golden image
 //	go run ./cmd/cua-bench run [flags]      run trials, then write summary.md
 //	go run ./cmd/cua-bench summary [flags]  rewrite summary.md from results
+//	go run ./cmd/cua-bench web [flags]      serve the live results page
+//	go run ./cmd/cua-bench export [flags]   write the page and data.json to a folder
 //
 // Task texts and grading commands come from a local macOSWorld checkout
 // (-macosworld); this repository holds only the ids (bench/macosworld.txt).
@@ -39,7 +41,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cua-bench golden | run | summary [flags]")
+		return errors.New("usage: cua-bench golden | run | summary | web | export [flags]")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -58,6 +60,10 @@ func run(args []string) error {
 			return err
 		}
 		return writeSummary(*results, l.IDs)
+	case "web":
+		return serveWeb(ctx, args[1:])
+	case "export":
+		return exportWeb(args[1:])
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
@@ -99,11 +105,15 @@ func golden(ctx context.Context, args []string) error {
 	display := fs.String("display", "1920x1080px", "display size")
 	driver := fs.String("driver", "", "cua-driver binary (v0.47.14-loomhand.1)")
 	shuttle := fs.String("shuttle", "", "Shuttle.app bundle (v0.1.50)")
+	refresh := fs.Bool("refresh-fennec", false, "only rebuild fennec-cua and replace it in the existing golden image")
 	_ = fs.Parse(args)
+	v := &vm.VM{Name: *name, User: vm.DefaultUser, Tart: tartBin()}
+	if *refresh {
+		return refreshFennec(ctx, v)
+	}
 	if *driver == "" || *shuttle == "" {
 		return errors.New("golden needs -driver and -shuttle")
 	}
-	v := &vm.VM{Name: *name, User: vm.DefaultUser, Tart: tartBin()}
 	exists, err := v.Exists(ctx)
 	if err != nil {
 		return err
@@ -135,11 +145,8 @@ func golden(ctx context.Context, args []string) error {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
-	build := exec.CommandContext(ctx, "go", "build", "-o", filepath.Join(binDir, "fennec-cua"), "./cmd/fennec-cua")
-	build.Env = append(os.Environ(), "GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=1")
-	build.Stdout, build.Stderr = os.Stderr, os.Stderr
-	if err := build.Run(); err != nil {
-		return fmt.Errorf("build fennec-cua: %w", err)
+	if err := buildFennec(ctx, binDir); err != nil {
+		return err
 	}
 	if out, err := exec.Command("cp", *driver, filepath.Join(binDir, "cua-driver")).CombinedOutput(); err != nil {
 		return fmt.Errorf("copy cua-driver: %v: %s", err, out)
@@ -415,4 +422,51 @@ func writeSummary(results string, ids []string) error {
 	fmt.Print(md)
 	log.Printf("wrote %s", p)
 	return nil
+}
+
+func buildFennec(ctx context.Context, dir string) error {
+	build := exec.CommandContext(ctx, "go", "build", "-o", filepath.Join(dir, "fennec-cua"), "./cmd/fennec-cua")
+	build.Env = append(os.Environ(), "GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=1")
+	build.Stdout, build.Stderr = os.Stderr, os.Stderr
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("build fennec-cua: %w", err)
+	}
+	return nil
+}
+
+// refreshFennec replaces only the fennec-cua binary in an existing golden
+// image, keeping the desktop state, the other backends and every grant (TCC
+// grants and capture approvals are keyed by path, which does not change).
+func refreshFennec(ctx context.Context, v *vm.VM) error {
+	stage, err := os.MkdirTemp("", "cua-bench-golden")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	binDir := filepath.Join(stage, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		return err
+	}
+	if err := buildFennec(ctx, binDir); err != nil {
+		return err
+	}
+	if _, err := v.Start(ctx); err != nil {
+		return err
+	}
+	s, err := v.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	log.Printf("replacing fennec-cua in %s", v.Name)
+	if err := s.Push(ctx, bench.HomeDir+"/bench", "-C", stage, "bin/fennec-cua"); err != nil {
+		return err
+	}
+	if err := s.GrantTCC(ctx, bench.GuestFennec); err != nil {
+		return err
+	}
+	if out, err := s.Output(ctx, "shasum -a 256 "+vm.Quote(bench.GuestFennec)); err == nil {
+		log.Printf("installed: %s", strings.TrimSpace(out))
+	}
+	log.Printf("shutting %s down", v.Name)
+	return v.Shutdown(ctx)
 }

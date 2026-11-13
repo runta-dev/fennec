@@ -114,11 +114,13 @@ func localize(cmd string) string { return strings.ReplaceAll(cmd, UpstreamHome, 
 type IDList struct {
 	Commit string
 	IDs    []string
+	Apps   map[string]string // id -> the app the task is about
 }
 
 // ReadIDList reads a selection file: one "category/uuid" per line, blank
 // lines and "#" comments ignored, and a "# commit: SHA" line naming the
-// upstream commit the ids come from.
+// upstream commit the ids come from. A trailing "# Name" on an id line
+// names the task's app.
 func ReadIDList(path string) (IDList, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -136,7 +138,15 @@ func ReadIDList(path string) (IDList, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		l.IDs = append(l.IDs, line)
+		id, app, _ := strings.Cut(line, "#")
+		id, app = strings.TrimSpace(id), strings.TrimSpace(app)
+		l.IDs = append(l.IDs, id)
+		if app != "" {
+			if l.Apps == nil {
+				l.Apps = map[string]string{}
+			}
+			l.Apps[id] = app
+		}
 	}
 	if err := sc.Err(); err != nil {
 		return IDList{}, err

@@ -80,14 +80,14 @@ func TestGradeIsBinaryAndOrdered(t *testing.T) {
 
 func TestReadIDList(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "ids.txt")
-	if err := os.WriteFile(p, []byte("# a comment\n# commit: abc123\n\ncat/u1\ncat/u2\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("# a comment\n# commit: abc123\n\ncat/u1  # Activity Monitor\ncat/u2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	l, err := ReadIDList(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Commit != "abc123" || strings.Join(l.IDs, " ") != "cat/u1 cat/u2" {
+	if l.Commit != "abc123" || strings.Join(l.IDs, " ") != "cat/u1 cat/u2" || l.Apps["cat/u1"] != "Activity Monitor" || l.Apps["cat/u2"] != "" {
 		t.Errorf("%+v", l)
 	}
 }

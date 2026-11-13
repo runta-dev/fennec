@@ -2,34 +2,35 @@
 # Upstream: https://github.com/showlab/macOSWorld (CC BY-NC 4.0, internal evaluation only).
 # Task texts and grading commands are read from a local checkout and never stored here.
 # Selection: built-in apps only, no network, no snapshot files.
+# A trailing "# Name" on an id line is the app the task is about.
 # commit: e2ca8334b3765537e5c1c428ce57990248a1bb5f
-sys_apps/259bcb80-aa2b-8291-1d11-6ff4ae36f8cb
-sys_apps/152a753b-7258-6630-a0c6-b6ed38a9926c
-sys_apps/dbfb0512-cb02-984b-4d25-610b4f8f995a
-sys_apps/595554cf-4f75-611c-4cdc-68cd9c8ba973
-sys_apps/9f0d7200-5b15-ccff-b896-b8f6ed5d584b
-sys_apps/48cf0af3-0612-dbcd-14da-d5202eed6ce9
-sys_apps/b071a2dc-6b16-5e76-16a8-72803d557495
-sys_apps/89f88c8c-2c64-91a0-444f-fa71315cd92c
-sys_apps/4a89fe83-8a93-ecd4-7841-c0bb470571c2
-sys_apps/b431b94b-193c-0478-1e26-709f7d3aa453
-sys_apps/a204124e-c06a-08b1-13fa-5e61f689180c
-sys_apps/e8bc0bd1-1618-ea00-345b-589b1fef3f99
-sys_apps/1ef109cd-fea2-d2d5-b4e4-fbbad6689b2a
-sys_apps/d516fdbf-5bb8-955c-3e94-a13efa1b11e5
-sys_apps/ea12a7de-2cf2-57b2-7e8c-13da58cc626a
-sys_apps/0e224b29-14f7-3629-ee27-13a9789a997d
-sys_apps/96786064-5d99-e102-8ec1-48024916bb85
-sys_apps/cb187818-649a-795c-fe02-47e283cc5856
-sys_and_interface/23c1acf7-94fd-cdd0-b10e-abc5fce48237
-sys_and_interface/ce71ae98-6947-6c18-87ac-cdecb1750e5a
-sys_and_interface/4fe32b2b-7f05-cbc6-47e5-b8a1bbad5bc2
-sys_and_interface/2c70d1c2-8430-d2e0-e802-e32443cc6022
-sys_and_interface/a3373cf7-70ed-c145-3981-6ef84395530e
-sys_and_interface/694e8aa5-9106-dc74-86c1-2dd71435c093
-sys_and_interface/94cab5ba-eb70-f363-fe46-7289274309cb
-sys_and_interface/17fed363-d017-b26c-22f2-ec1865306075
-productivity/12c3de99-51a3-371b-7a00-47887565bfd0
-productivity/0bc05a1d-1e5a-c967-e0f9-fbca371592ca
-productivity/e4b774ef-3c56-3df8-69e6-1ff6ac69f3f7
-productivity/2d8282ba-155c-c044-f682-10be7126e2b0
+sys_apps/259bcb80-aa2b-8291-1d11-6ff4ae36f8cb  # Calculator
+sys_apps/152a753b-7258-6630-a0c6-b6ed38a9926c  # Calculator
+sys_apps/dbfb0512-cb02-984b-4d25-610b4f8f995a  # Calculator
+sys_apps/595554cf-4f75-611c-4cdc-68cd9c8ba973  # Calculator
+sys_apps/9f0d7200-5b15-ccff-b896-b8f6ed5d584b  # Calculator
+sys_apps/48cf0af3-0612-dbcd-14da-d5202eed6ce9  # Contacts
+sys_apps/b071a2dc-6b16-5e76-16a8-72803d557495  # Contacts
+sys_apps/89f88c8c-2c64-91a0-444f-fa71315cd92c  # Contacts
+sys_apps/4a89fe83-8a93-ecd4-7841-c0bb470571c2  # Reminders
+sys_apps/b431b94b-193c-0478-1e26-709f7d3aa453  # Reminders
+sys_apps/a204124e-c06a-08b1-13fa-5e61f689180c  # Reminders
+sys_apps/e8bc0bd1-1618-ea00-345b-589b1fef3f99  # Reminders
+sys_apps/1ef109cd-fea2-d2d5-b4e4-fbbad6689b2a  # Chess
+sys_apps/d516fdbf-5bb8-955c-3e94-a13efa1b11e5  # Chess
+sys_apps/ea12a7de-2cf2-57b2-7e8c-13da58cc626a  # Chess
+sys_apps/0e224b29-14f7-3629-ee27-13a9789a997d  # Dictionary
+sys_apps/96786064-5d99-e102-8ec1-48024916bb85  # Activity Monitor
+sys_apps/cb187818-649a-795c-fe02-47e283cc5856  # Freeform
+sys_and_interface/23c1acf7-94fd-cdd0-b10e-abc5fce48237  # System Settings
+sys_and_interface/ce71ae98-6947-6c18-87ac-cdecb1750e5a  # System Settings
+sys_and_interface/4fe32b2b-7f05-cbc6-47e5-b8a1bbad5bc2  # System Settings
+sys_and_interface/2c70d1c2-8430-d2e0-e802-e32443cc6022  # System Settings
+sys_and_interface/a3373cf7-70ed-c145-3981-6ef84395530e  # System Settings
+sys_and_interface/694e8aa5-9106-dc74-86c1-2dd71435c093  # System Settings
+sys_and_interface/94cab5ba-eb70-f363-fe46-7289274309cb  # System Settings
+sys_and_interface/17fed363-d017-b26c-22f2-ec1865306075  # System Settings
+productivity/12c3de99-51a3-371b-7a00-47887565bfd0  # Notes
+productivity/0bc05a1d-1e5a-c967-e0f9-fbca371592ca  # Notes
+productivity/e4b774ef-3c56-3df8-69e6-1ff6ac69f3f7  # Notes
+productivity/2d8282ba-155c-c044-f682-10be7126e2b0  # Notes

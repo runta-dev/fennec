@@ -246,6 +246,21 @@ go run ./cmd/cua-vm down
 
 Read-only checks against the host's own desktop are allowed (`go test -tags axlive ./internal/ax ./internal/desk`): they list windows and read trees, and send nothing.
 
+The live scenario suite (`go run ./cmd/cua-vm test -tags scenario ./internal/scenario -- -test.timeout 3h`) runs every catalog scenario against fennec-cua and shuttle in the VM.
+
+### Benchmark
+
+`cmd/cua-bench` runs the macOSWorld tasks listed in `bench/macosworld.txt` against cua-driver, shuttle and fennec-cua, one fresh tart clone per trial, all driven by the same host-side agent loop and model:
+
+```sh
+go run ./cmd/cua-bench golden                                   # build the golden image once
+go run ./cmd/cua-bench run -macosworld PATH -trials 3 -concurrency 2 -results bench-results
+go run ./cmd/cua-bench web -results bench-results                # live results page on 127.0.0.1:8090
+go run ./cmd/cua-bench export -results bench-results -out DIR    # static page + data.json
+```
+
+The results page (`bench/index.html`, embedded in the binary) shows the ranking, per-app and per-task scores, and the live feed; `web` also serves each run's transcript and final screenshot. macOSWorld is CC BY-NC 4.0: task texts and grading commands stay in the local checkout and never reach the page or the repository.
+
 ## 7. Third-party components
 
 | Component | License | Use |
