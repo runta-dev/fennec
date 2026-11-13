@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ChatGPT asks for MCP server status (mcpServerStatus/list without a thread)
@@ -43,7 +44,19 @@ var mcpStatusInvalidating = map[string]bool{
 type mcpStatusEntry struct {
 	Result json.RawMessage `json:"result"`
 	Config string          `json:"config"`
+	// At is when the app-server last confirmed this answer (Unix ms).
+	At int64 `json:"at,omitempty"`
 }
+
+// mcpStatusFresh is how long a confirmed answer is served without asking the
+// app-server again. Every app-server answer starts all MCP servers, and
+// ChatGPT's desktop tools start on the Mac over SSH only to be stopped once
+// their tools are listed; refreshing on every status request started node_repl
+// on the Mac dozens of times a minute. Config, plugin and login changes still
+// replace the answer at once.
+const mcpStatusFresh = 10 * time.Minute
+
+var mcpStatusNow = time.Now
 
 // statusWait is a status request awaiting the app-server's answer.
 type statusWait struct {
@@ -194,7 +207,7 @@ func (filter *chatgptPathFilter) statusRequest(message []byte) (forward, answer 
 		return message, nil
 	}
 	answer, _ = json.Marshal(map[string]any{"id": request.ID, "result": stored.Result})
-	if store.refreshing[key] {
+	if store.refreshing[key] || mcpStatusNow().Sub(time.UnixMilli(stored.At)) < mcpStatusFresh {
 		return nil, answer
 	}
 	store.refreshing[key] = true
@@ -239,8 +252,8 @@ func (filter *chatgptPathFilter) statusResponse(message []byte) bool {
 	if refresh {
 		store.refreshing[wait.key] = false
 	}
-	entry := mcpStatusEntry{Result: append(json.RawMessage(nil), response.Result...), Config: wait.config}
-	if previous := store.results[wait.key]; len(response.Error) == 0 && len(response.Result) > 0 && (previous.Config != entry.Config || !bytes.Equal(previous.Result, entry.Result)) {
+	entry := mcpStatusEntry{Result: append(json.RawMessage(nil), response.Result...), Config: wait.config, At: mcpStatusNow().UnixMilli()}
+	if len(response.Error) == 0 && len(response.Result) > 0 {
 		store.results[wait.key] = entry
 		store.saveLocked(filter.home)
 	}

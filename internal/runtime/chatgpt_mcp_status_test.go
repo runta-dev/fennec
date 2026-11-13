@@ -87,7 +87,17 @@ func (h *statusHarness) clientReceives(t *testing.T) jsonRPCResponse {
 	return response
 }
 
+// statusClock lets a test move time past the freshness window.
+func statusClock(t *testing.T) *time.Time {
+	now := time.Now()
+	previous := mcpStatusNow
+	mcpStatusNow = func() time.Time { return now }
+	t.Cleanup(func() { mcpStatusNow = previous })
+	return &now
+}
+
 func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
+	clock := statusClock(t)
 	home := t.TempDir()
 	first := newStatusHarness(t, home)
 	first.request(t, `{"id":1,"method":"mcpServerStatus/list","params":{"detail":"toolsAndAuthOnly","limit":100}}`)
@@ -100,8 +110,10 @@ func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
 		t.Fatal(string(got.Result))
 	}
 
-	// A new connection (ChatGPT relaunched) is answered at once, in any key
-	// order, while the app-server refreshes under a private ID.
+	// Once the answer is no longer fresh, a new connection (ChatGPT
+	// relaunched) is answered at once, in any key order, while the app-server
+	// refreshes under a private ID.
+	*clock = clock.Add(mcpStatusFresh + time.Second)
 	second := newStatusHarness(t, home)
 	second.request(t, `{"id":"a7","method":"mcpServerStatus/list","params":{"limit":100,"detail":"toolsAndAuthOnly"}}`)
 	if got := second.clientReceives(t); string(got.ID) != `"a7"` || !bytes.Contains(got.Result, []byte("node_repl")) {
@@ -125,10 +137,16 @@ func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
 	if got := second.clientReceives(t); !bytes.Contains(got.Result, []byte("cua_repl")) {
 		t.Fatal("refreshed status not served", string(got.Result))
 	}
-	second.serverReceives(t) // its own refresh
+	// The refresh just confirmed it: no further app-server request (each one
+	// starts the Mac's desktop tools over SSH).
+	second.request(t, `{"id":"a10","method":"account/read","params":{}}`)
+	if next := second.serverReceives(t); next.Method != "account/read" {
+		t.Fatal("fresh status refreshed again", next.Method, string(next.ID))
+	}
 }
 
 func TestMCPStatusFollowsConfigChangesAndSkipsThreads(t *testing.T) {
+	statusClock(t)
 	home := t.TempDir()
 	config := filepath.Join(home, "codex", "config.toml")
 	os.MkdirAll(filepath.Dir(config), 0700)
@@ -145,8 +163,6 @@ func TestMCPStatusFollowsConfigChangesAndSkipsThreads(t *testing.T) {
 	if got := h.clientReceives(t); string(got.ID) != "3" || !bytes.Contains(got.Result, []byte(`"a"`)) {
 		t.Fatal("unchanged config lost the stored status", string(got.Result))
 	}
-	refresh := h.serverReceives(t)
-	h.reply(refresh.ID, `{"data":[{"name":"a"}]}`)
 	// A real change asks the app-server again.
 	os.WriteFile(config, []byte("[mcp_servers.b]\ncommand = 'b'\n"), 0600)
 	h.request(t, `{"id":4,"method":"mcpServerStatus/list","params":{}}`)
