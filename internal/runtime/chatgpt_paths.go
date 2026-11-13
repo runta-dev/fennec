@@ -36,7 +36,7 @@ func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
 	if filter.StreamLabel() == CodexAppServerGateway && gatewayOverrides(filter.codexHome) != nil {
 		filter.provider = "magpie"
 	}
-	filter.statusPending = map[string]string{}
+	filter.statusPending = map[string]statusWait{}
 	filter.outCond = sync.NewCond(&filter.outMu)
 	filter.upgraded = make(chan struct{})
 	filter.inbound.server = false
@@ -60,7 +60,7 @@ type chatgptPathFilter struct {
 	provider  string // model provider forced for this app-server, if any
 
 	statusMu      sync.Mutex
-	statusPending map[string]string // JSON-RPC id -> MCP status key
+	statusPending map[string]statusWait // JSON-RPC id -> MCP status request
 
 	writeMu sync.Mutex
 	inbound wsStream

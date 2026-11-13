@@ -17,7 +17,10 @@ import (
 // tools; ChatGPT's desktop tools start on the Mac over SSH, which takes seconds
 // per call. The filter answers a repeated question from the last result at
 // once and lets the app-server's fresh answer replace the stored one for the
-// next call (stale-while-revalidate). Config and plugin changes clear it.
+// next call (stale-while-revalidate). A stored result is used only while
+// config.toml is unchanged; ChatGPT rewrites the same MCP entries whenever it
+// connects, which must not cost the next status request its stored answer.
+// Plugin and login changes clear the store.
 //
 // Requests naming a thread reuse that thread's MCP connections and are already
 // fast; they pass through untouched.
@@ -28,18 +31,40 @@ const mcpStatusMethod = "mcpServerStatus/list"
 // responses never reach ChatGPT.
 const mcpStatusRefreshID = "fennec-mcp-status:"
 
-// Methods after which a stored status may be wrong.
+// Methods after which a stored status may be wrong although config.toml is
+// unchanged.
 var mcpStatusInvalidating = map[string]bool{
-	"config/batchWrite": true, "config/value/write": true, "mcpServer/oauth/login": true,
-	"mcpServer/refresh": true, "plugin/install": true, "plugin/uninstall": true,
-	"plugin/reconcile": true, "skills/config/write": true, "account/login/start": true,
+	"mcpServer/oauth/login": true, "mcpServer/refresh": true, "plugin/install": true,
+	"plugin/uninstall": true, "plugin/reconcile": true, "account/login/start": true,
 	"account/logout": true,
+}
+
+// mcpStatusEntry is one stored answer and the config.toml it was given for.
+type mcpStatusEntry struct {
+	Result json.RawMessage `json:"result"`
+	Config string          `json:"config"`
+}
+
+// statusWait is a status request awaiting the app-server's answer.
+type statusWait struct {
+	key, config string
+}
+
+// mcpConfigVersion fingerprints the configuration the app-server reads MCP
+// servers from.
+func mcpConfigVersion(codexHome string) string {
+	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
 }
 
 type mcpStatusStore struct {
 	mu         sync.Mutex
 	loaded     bool
-	results    map[string]json.RawMessage // CODEX_HOME + params -> result
+	results    map[string]mcpStatusEntry // CODEX_HOME + params -> answer
 	refreshing map[string]bool
 }
 
@@ -56,7 +81,7 @@ func (store *mcpStatusStore) loadLocked(home string) {
 		return
 	}
 	store.loaded = true
-	store.results = map[string]json.RawMessage{}
+	store.results = map[string]mcpStatusEntry{}
 	store.refreshing = map[string]bool{}
 	if data, err := os.ReadFile(mcpStatusFile(home)); err == nil {
 		json.Unmarshal(data, &store.results)
@@ -159,15 +184,16 @@ func (filter *chatgptPathFilter) statusRequest(message []byte) (forward, answer 
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.loadLocked(filter.home)
-	stored, hit := store.results[key]
-	if !hit {
+	config := mcpConfigVersion(filter.codexHome)
+	stored := store.results[key]
+	if len(stored.Result) == 0 || stored.Config != config {
 		// The first answer passes through and is remembered on its way back.
 		filter.statusMu.Lock()
-		filter.statusPending[string(request.ID)] = key
+		filter.statusPending[string(request.ID)] = statusWait{key, config}
 		filter.statusMu.Unlock()
 		return message, nil
 	}
-	answer, _ = json.Marshal(map[string]any{"id": request.ID, "result": stored})
+	answer, _ = json.Marshal(map[string]any{"id": request.ID, "result": stored.Result})
 	if store.refreshing[key] {
 		return nil, answer
 	}
@@ -175,7 +201,7 @@ func (filter *chatgptPathFilter) statusRequest(message []byte) (forward, answer 
 	digest := sha256.Sum256([]byte(key))
 	refreshID, _ := json.Marshal(mcpStatusRefreshID + hex.EncodeToString(digest[:8]))
 	filter.statusMu.Lock()
-	filter.statusPending[string(refreshID)] = key
+	filter.statusPending[string(refreshID)] = statusWait{key, config}
 	filter.statusMu.Unlock()
 	refresh, err := json.Marshal(map[string]any{"id": json.RawMessage(refreshID), "method": request.Method, "params": request.Params})
 	if err != nil {
@@ -199,7 +225,7 @@ func (filter *chatgptPathFilter) statusResponse(message []byte) bool {
 		return true
 	}
 	filter.statusMu.Lock()
-	key, ok := filter.statusPending[string(response.ID)]
+	wait, ok := filter.statusPending[string(response.ID)]
 	delete(filter.statusPending, string(response.ID))
 	filter.statusMu.Unlock()
 	if !ok {
@@ -211,10 +237,11 @@ func (filter *chatgptPathFilter) statusResponse(message []byte) bool {
 	defer store.mu.Unlock()
 	store.loadLocked(filter.home)
 	if refresh {
-		store.refreshing[key] = false
+		store.refreshing[wait.key] = false
 	}
-	if len(response.Error) == 0 && len(response.Result) > 0 && !bytes.Equal(store.results[key], response.Result) {
-		store.results[key] = append(json.RawMessage(nil), response.Result...)
+	entry := mcpStatusEntry{Result: append(json.RawMessage(nil), response.Result...), Config: wait.config}
+	if previous := store.results[wait.key]; len(response.Error) == 0 && len(response.Result) > 0 && (previous.Config != entry.Config || !bytes.Equal(previous.Result, entry.Result)) {
+		store.results[wait.key] = entry
 		store.saveLocked(filter.home)
 	}
 	return !refresh
@@ -225,12 +252,12 @@ func (filter *chatgptPathFilter) statusResponse(message []byte) bool {
 func (filter *chatgptPathFilter) forgetStatusRefreshes() {
 	filter.statusMu.Lock()
 	keys := []string{}
-	for id, key := range filter.statusPending {
+	for id, wait := range filter.statusPending {
 		if strings.HasPrefix(id, `"`+mcpStatusRefreshID) {
-			keys = append(keys, key)
+			keys = append(keys, wait.key)
 		}
 	}
-	filter.statusPending = map[string]string{}
+	filter.statusPending = map[string]statusWait{}
 	filter.statusMu.Unlock()
 	store := mcpStatuses
 	store.mu.Lock()

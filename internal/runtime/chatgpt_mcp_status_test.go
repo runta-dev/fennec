@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,24 +128,48 @@ func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
 	second.serverReceives(t) // its own refresh
 }
 
-func TestMCPStatusClearedByConfigWritesAndSkippedForThreads(t *testing.T) {
+func TestMCPStatusFollowsConfigChangesAndSkipsThreads(t *testing.T) {
 	home := t.TempDir()
+	config := filepath.Join(home, "codex", "config.toml")
+	os.MkdirAll(filepath.Dir(config), 0700)
+	os.WriteFile(config, []byte("[mcp_servers.a]\ncommand = 'a'\n"), 0600)
 	h := newStatusHarness(t, home)
 	h.request(t, `{"id":1,"method":"mcpServerStatus/list","params":{}}`)
-	h.reply(h.serverReceives(t).ID, `{"data":[]}`)
+	h.reply(h.serverReceives(t).ID, `{"data":[{"name":"a"}]}`)
 	h.clientReceives(t)
+	// ChatGPT rewrites the same entries when it connects: still answered.
 	h.request(t, `{"id":2,"method":"config/batchWrite","params":{"edits":[]}}`)
 	h.reply(h.serverReceives(t).ID, `{}`)
 	h.clientReceives(t)
 	h.request(t, `{"id":3,"method":"mcpServerStatus/list","params":{}}`)
-	if got := h.serverReceives(t); string(got.ID) != "3" {
+	if got := h.clientReceives(t); string(got.ID) != "3" || !bytes.Contains(got.Result, []byte(`"a"`)) {
+		t.Fatal("unchanged config lost the stored status", string(got.Result))
+	}
+	refresh := h.serverReceives(t)
+	h.reply(refresh.ID, `{"data":[{"name":"a"}]}`)
+	// A real change asks the app-server again.
+	os.WriteFile(config, []byte("[mcp_servers.b]\ncommand = 'b'\n"), 0600)
+	h.request(t, `{"id":4,"method":"mcpServerStatus/list","params":{}}`)
+	if got := h.serverReceives(t); string(got.ID) != "4" {
 		t.Fatal("status served after a config change", string(got.ID))
 	}
-	h.reply(json.RawMessage("3"), `{"data":[]}`)
+	h.reply(json.RawMessage("4"), `{"data":[{"name":"b"}]}`)
+	if got := h.clientReceives(t); !bytes.Contains(got.Result, []byte(`"b"`)) {
+		t.Fatal(string(got.Result))
+	}
+	// Plugin changes clear the store.
+	h.request(t, `{"id":5,"method":"plugin/install","params":{}}`)
+	h.reply(h.serverReceives(t).ID, `{}`)
+	h.clientReceives(t)
+	h.request(t, `{"id":6,"method":"mcpServerStatus/list","params":{}}`)
+	if got := h.serverReceives(t); string(got.ID) != "6" {
+		t.Fatal("status served after a plugin install", string(got.ID))
+	}
+	h.reply(json.RawMessage("6"), `{"data":[]}`)
 	h.clientReceives(t)
 	// Thread-scoped requests reuse the thread's MCP connections and pass through.
-	h.request(t, `{"id":4,"method":"mcpServerStatus/list","params":{"threadId":"t1"}}`)
-	if got := h.serverReceives(t); string(got.ID) != "4" {
+	h.request(t, `{"id":7,"method":"mcpServerStatus/list","params":{"threadId":"t1"}}`)
+	if got := h.serverReceives(t); string(got.ID) != "7" {
 		t.Fatal(string(got.ID))
 	}
 }
