@@ -68,16 +68,19 @@ func (p *fakePB) SetText(_ context.Context, s string) error {
 
 func fixtureTree() []protocol.Node {
 	return []protocol.Node{
-		{Ref: "w1", Role: "window", RoleDesc: "standard window", Name: "Runta CUA Fixture", Actions: []string{"Raise"}},
+		{Ref: "w1", Role: "window", AXRole: "AXWindow", RoleDesc: "standard window", Name: "Runta CUA Fixture", Actions: []string{"Raise"}, States: []string{"focused"}},
 		{Ref: "e1", Role: "text", RoleDesc: "text", Value: sp("Runta CUA Fixture"), Parent: "w1", Depth: 1},
-		{Ref: "e20", Role: "group", RoleDesc: "group", Parent: "w1", Depth: 1},
-		{Ref: "e2", Role: "button", RoleDesc: "button", Name: "Start trial (evaluator)", Parent: "e20", Depth: 2},
+		// An unnamed group with nothing inside does not show.
+		{Ref: "e20", Role: "group", AXRole: "AXGroup", RoleDesc: "group", Parent: "w1", Depth: 1},
+		{Ref: "e2", Role: "button", RoleDesc: "button", Name: "Start trial (evaluator)", Parent: "w1", Depth: 1},
 		{Ref: "e3", Role: "text", RoleDesc: "text", Value: sp("Evaluator: press Start when ready"), Parent: "w1", Depth: 1},
 		{Ref: "e4", Role: "button", RoleDesc: "close button", Parent: "w1", Depth: 1},
 		{Ref: "e5", Role: "button", RoleDesc: "zoom button", States: []string{"disabled"}, Parent: "w1", Depth: 1},
 		{Ref: "e6", Role: "button", RoleDesc: "minimize button", Parent: "w1", Depth: 1},
 		{Ref: "e7", Role: "menubar", RoleDesc: "menu bar"},
-		{Ref: "e8", Role: "menubaritem", RoleDesc: "menu bar item", Name: "Runta CUA Fixture", Parent: "e7", Depth: 1},
+		// The Apple menu never shows.
+		{Ref: "e19", Role: "menubaritem", AXRole: "AXMenuBarItem", RoleDesc: "menu bar item", Name: "Apple", Parent: "e7", Depth: 1},
+		{Ref: "e8", Role: "menubaritem", AXRole: "AXMenuBarItem", RoleDesc: "menu bar item", Name: "Runta CUA Fixture", Parent: "e7", Depth: 1},
 		{Ref: "e9", Role: "menu", RoleDesc: "menu", Parent: "e8", Depth: 2},
 		{Ref: "e10", Role: "menuitem", RoleDesc: "menu item", Name: "About", Parent: "e9", Depth: 3},
 	}
@@ -426,12 +429,13 @@ func TestCDX05Errors(t *testing.T) {
 	if !r.isError {
 		t.Fatal("no isError")
 	}
-	last := r.blocks[len(r.blocks)-1].Text
-	if !strings.HasPrefix(last, "Error: boom") || !strings.Contains(r.output(), "partial") {
+	// As the reference: the message alone, first, before the documentation and
+	// what the call wrote.
+	if len(r.blocks) < 3 || r.blocks[1].Text != "boom" || !strings.HasPrefix(r.blocks[2].Text, "# fennec-cua") || !strings.Contains(r.output(), "partial") {
 		t.Errorf("error output %q", r.all())
 	}
 	r = c.js(`null.x`)
-	if !r.isError || !strings.Contains(r.blocks[len(r.blocks)-1].Text, "TypeError") {
+	if !r.isError || strings.HasPrefix(r.blocks[1].Text, "TypeError") || !strings.Contains(r.blocks[1].Text, "undefined") {
 		t.Errorf("type error %q", r.all())
 	}
 	r = c.js(`let = = 1`)
@@ -577,6 +581,7 @@ func TestCDX11Diff(t *testing.T) {
 	w.mu.Lock()
 	tree := fixtureTree()
 	tree[1].Value = sp("Runta CUA Fixture Ready Runtime name")
+	tree[0].States = nil // the focus moves to the new field
 	next := []protocol.Node{tree[0], tree[1]}
 	next = append(next,
 		protocol.Node{Ref: "e30", Role: "textbox", RoleDesc: "text field", Name: "Runtime name", Description: "Runtime name", Value: sp("old-runtime"), States: []string{"settable", "focused"}, Parent: "w1", Depth: 1},
@@ -588,8 +593,8 @@ func TestCDX11Diff(t *testing.T) {
 	want := "The following is a diff from the previous accessibility tree for Window: \"Runta CUA Fixture\" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.\n" +
 		"Removed element IDs: 2-3\n" +
 		"~\t1 text Runta CUA Fixture Ready Runtime name\n" +
-		"+\t\t9 text field (settable) Description: Runtime name, Value: old-runtime\n" +
-		"+\t\t10 text Region\n" +
+		"+\t9 text field (settable) Description: Runtime name, Value: old-runtime\n" +
+		"+\t10 text Region\n" +
 		"The focused UI element is 9 text field (settable) Description: Runtime name, Value: old-runtime"
 	if out := c.ok(`await app.getAXState()`); out != want {
 		t.Errorf("diff:\n%s\nwant:\n%s", out, want)
@@ -609,7 +614,7 @@ func TestCDX12FullAndUnchanged(t *testing.T) {
 	c := session(t, w.engine())
 	c.ok(`var app = await cua.getApp("Runta CUA Fixture")`)
 	out := c.ok(`await app.getAXState()`)
-	if out != `The accessibility tree for Window: "Runta CUA Fixture" has not changed since the previous read.` {
+	if out != "There has been no change in the accessibility tree for Window: \"Runta CUA Fixture\".\nThe focused UI element is 0 standard window Runta CUA Fixture, Secondary Actions: Raise" {
 		t.Errorf("unchanged: %q", out)
 	}
 	if out := c.ok(`await app.getAXState({disableDiffing: true})`); out != fixtureState {
@@ -622,7 +627,7 @@ func TestCDX12FullAndUnchanged(t *testing.T) {
 		{Ref: "e40", Role: "checkbox", RoleDesc: "checkbox", Name: "Dark", Value: sp("1"), States: []string{"checked", "focused"}, Parent: "w2", Depth: 1},
 	}
 	w.mu.Unlock()
-	want := "Window: \"Settings\", App: Runta CUA Fixture.\n0 standard window Settings\n\t1 checkbox (checked) Dark\n\nThe focused UI element is 1 checkbox (checked) Dark"
+	want := "Window: \"Settings\", App: Runta CUA Fixture.\n0 standard window Settings\n\t1 checkbox Dark, Value: 1\n\nThe focused UI element is 1 checkbox Dark, Value: 1"
 	if out := c.ok(`await app.getAXState()`); out != want {
 		t.Errorf("window change:\n%s\nwant:\n%s", out, want)
 	}
@@ -810,37 +815,16 @@ func quote(s string) string {
 	return string(data)
 }
 
-// CDX-18: getState and listApps shapes; browsers is always empty.
+// CDX-18: getState and listApps shapes; browsers is always empty. Apps list
+// as the reference's: compact JSON, keys in alphabetical order, the last use
+// as seconds since 2001-01-01 UTC rounded to the day, no windows.
 func TestCDX18Inventory(t *testing.T) {
 	c := session(t, newWorld().engine())
 	out := c.ok(`await cua.getState()`)
-	var st struct {
-		Apps []struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"displayName"`
-			LastUsed    string `json:"lastUsedDate"`
-			UseCount    int    `json:"useCount"`
-			IsRunning   bool   `json:"isRunning"`
-			Windows     []struct {
-				ID    int    `json:"id"`
-				App   string `json:"app"`
-				Title string `json:"title"`
-			} `json:"windows"`
-		} `json:"apps"`
-		Browsers []any `json:"browsers"`
-	}
-	if err := json.Unmarshal([]byte(out), &st); err != nil {
-		t.Fatalf("%v: %s", err, out)
-	}
-	if st.Browsers == nil || len(st.Browsers) != 0 || len(st.Apps) != 2 {
-		t.Fatalf("state %s", out)
-	}
-	a := st.Apps[0]
-	if a.ID != "dev.runta.fixture" || a.DisplayName != "Runta CUA Fixture" || !a.IsRunning || len(a.Windows) != 1 || a.Windows[0].ID != 1 || a.Windows[0].Title != "Runta CUA Fixture" {
-		t.Errorf("app %+v", a)
-	}
-	if b := st.Apps[1]; b.ID != "com.apple.TextEdit" || b.IsRunning || b.LastUsed != "2026-11-01" || b.UseCount != 3 {
-		t.Errorf("app %+v", b)
+	want := `{"apps":[{"displayName":"Runta CUA Fixture","id":"dev.runta.fixture","isRunning":true},` +
+		`{"displayName":"TextEdit","id":"com.apple.TextEdit","isRunning":false,"lastUsedDate":815184000,"useCount":3}],"browsers":[]}`
+	if out != want {
+		t.Fatalf("state %s\nwant  %s", out, want)
 	}
 	if out := c.ok(`const l = await cua.listApps({emit: false}); nodeRepl.write(l.map(a => a.id).join(","))`); out != "dev.runta.fixture,com.apple.TextEdit" {
 		t.Errorf("listApps %q", out)
@@ -855,7 +839,7 @@ func TestCDX19Browsers(t *testing.T) {
 	c := session(t, newWorld().engine())
 	for _, fn := range []string{"getBrowser", "createBrowserTab", "getTab", "listBrowsers", "listTabs"} {
 		r := c.js(`await cua.` + fn + `()`)
-		if !r.isError || !strings.Contains(r.all(), `Error: browser surfaces are not enabled; use cua.getApp("<browser>")`) {
+		if !r.isError || !strings.Contains(r.all(), "\nbrowser surfaces are not enabled; use cua.getApp(\"<browser>\")") {
 			t.Errorf("%s: %q", fn, r.all())
 		}
 	}
@@ -868,7 +852,7 @@ func TestCDX20StaleIDs(t *testing.T) {
 	c := session(t, w.engine())
 	c.ok(`var app = await cua.getApp("Runta CUA Fixture")`)
 	r := c.js(`await app.click(99)`)
-	if !r.isError || !strings.Contains(r.all(), "element 99 is not in the latest state") || !strings.Contains(r.all(), "getAXState()") {
+	if !r.isError || r.blocks[1].Text != "Computer Use server error -10005: 99 is an invalid element ID" {
 		t.Errorf("unknown id: %q", r.all())
 	}
 	w.fail = func(map[string]any) *protocol.ActResult {

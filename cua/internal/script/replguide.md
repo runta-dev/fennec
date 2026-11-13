@@ -11,7 +11,7 @@ type StateOptions = ObservationOptions & { disableDiffing?: boolean };
 type ClickOptions = { mouseButton?: "left" | "right" | "middle" | "l" | "r" | "m"; clickCount?: number; key?: string; durationMs?: number };
 type Direction = "up" | "down" | "left" | "right" | "u" | "d" | "l" | "r";
 type SelectTextOptions = { prefix?: string; suffix?: string; selectionType?: "text" | "cursor_before" | "cursor_after" };
-type AppInfo = { id: string; displayName?: string; lastUsedDate?: string; useCount?: number; isRunning?: boolean; windows?: { id: number; app: string; title?: string }[] };
+type AppInfo = { displayName?: string; id: string; isRunning?: boolean; lastUsedDate?: number; useCount?: number };   // lastUsedDate: seconds since 2001-01-01 UTC
 
 type BrowserInfo = { id: string; name?: string; family?: string; type?: string };
 type TabInfo = { id: string; title?: string; url?: string; browserId: string };
@@ -67,7 +67,7 @@ nodeRepl.emitImage(image): Promise<void>;       // data: URL, PNG/JPEG/WebP byte
 
 ## The state text
 
-`getAXState()` prints the front window of the app and its menu bar: a header `Window: "<title>", App: <name>.`, then one line per element, indented by depth, starting with the element's id: `12 button (disabled) Save, Help: Saves the file`. States appear in parentheses, the name follows, then labelled fields (`Description`, `ID`, `Help`, `URL`, `Value`, `Secondary Actions`). The last line names the focused element. After the first read through a binding, later reads print only a diff: `~` for changed lines, `+` for new ones, and the removed ids as ranges; pass `disableDiffing: true` for the whole tree again. Ids of unchanged elements stay the same; new elements get new ids. Another window coming to the front gives a full state.
+`getAXState()` prints the front window of the app and its menu bar: a header `Window: "<title>", App: <name>.`, then one line per element, indented by depth, starting with the element's id: `12 button (disabled) Save, Help: Saves the file`. States appear in parentheses, the name follows, then labelled fields (`Description`, `Help`, `URL`, `Value`, `ID`, `Placeholder`, `Secondary Actions`). The last line names the focused element, or shows the text the user has selected in it. After the first read through a binding, later reads print only a diff: `~` for changed lines, `+` for new ones, and the removed ids as ranges; pass `disableDiffing: true` for the whole tree again. Ids of unchanged elements stay the same; new elements get new ids. Another window coming to the front gives a full state.
 
 ## Working loop
 
@@ -79,7 +79,7 @@ nodeRepl.emitImage(image): Promise<void>;       // data: URL, PNG/JPEG/WebP byte
 
 ## Output
 
-Text comes from `nodeRepl.write`, `console.log` and the self-displaying calls: `getAXState`, `getScreenshot`, `getAXStateAndScreenshot`, `cua.getState`, `cua.listApps`, `cua.getApp`, `cua.createBrowserTab`, `cua.getTab`, `cua.listBrowsers` and `cua.listTabs` show their own result (`cua.getBrowser` shows the browser documentation), so writing their return value again only repeats it; pass `{ emit: false }` to keep a result quiet. A last expression's value is not shown: write what you want to see. Output is capped; long text is cut with a note. An uncaught error ends the call and shows `Error: <message>` after what was written; bindings made before it stay.
+Text comes from `nodeRepl.write`, `console.log` and the self-displaying calls: `getAXState`, `getScreenshot`, `getAXStateAndScreenshot`, `cua.getState`, `cua.listApps`, `cua.getApp`, `cua.createBrowserTab`, `cua.getTab`, `cua.listBrowsers` and `cua.listTabs` show their own result (`cua.getBrowser` shows the browser documentation), so writing their return value again only repeats it; pass `{ emit: false }` to keep a result quiet. A last expression's value is not shown: write what you want to see. Output is capped; long text is cut with a note. An uncaught error ends the call; its message comes first in the result, before what was written; bindings made before it stay.
 
 ## Keys and per-method notes
 
@@ -89,7 +89,7 @@ Text comes from `nodeRepl.write`, `console.log` and the self-displaying calls: `
 - `performSecondaryAction` runs one of the names listed under `Secondary Actions`, such as `"Raise"`, `"Show Menu"` or `"Increment"`.
 - `paste` places the text on the pasteboard, pastes it, and puts the previous pasteboard text back.
 - `click` with a number clicks that element; `clickCount: 2` double-clicks, `mouseButton: "right"` opens a context menu, `key: "shift"` holds a modifier.
-- An id that is no longer present is an error: read the state again and use a fresh id.
+- An id that is not in the latest state is an error (`<id> is an invalid element ID`): read the state again and use a fresh id.
 - For tabs, `typeText`, `pressKey` and `paste` take an element index first and focus it; pass `null` for the current focus. A tab's state starts with a `Browser tab:` line and diffs like an app's. Browser `paste` restores the clipboard; its `md` format pastes the Markdown source as text.
 - When no browser is available, the browser calls fail and a browser can still be driven as an app (`cua.getApp("Safari")`).
 

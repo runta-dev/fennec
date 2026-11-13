@@ -22,7 +22,7 @@ var webRoles = map[string]string{
 	"textbox": "text field", "searchbox": "search text field", "combobox": "combo box",
 	"checkbox": "checkbox", "radio": "radio button", "switch": "switch", "spinbutton": "stepper",
 	"slider": "slider", "progressbar": "progress indicator", "meter": "level indicator",
-	"list": "content list", "listbox": "list", "option": "option", "ListMarker": "AXListMarker",
+	"list": "content list", "listbox": "list", "option": "option", "ListMarker": "AXListMarker", "MenuListPopup": "menu",
 	"table": "table", "grid": "table", "treegrid": "table", "row": "row",
 	"cell": "cell", "gridcell": "cell", "columnheader": "cell", "rowheader": "cell",
 	"tablist": "tab group", "tab": "tab", "tree": "outline", "treeitem": "row",
@@ -32,7 +32,13 @@ var webRoles = map[string]string{
 }
 
 // skipped roles never show, nor what they hold.
-var skippedRoles = map[string]bool{"InlineTextBox": true, "LineBreak": true, "MenuListPopup": true}
+var skippedRoles = map[string]bool{"InlineTextBox": true, "LineBreak": true}
+
+// selectOption says whether a node is an option of a native <select> (in its
+// MenuListPopup): it shows without role words, "(selected)" when chosen.
+func selectOption(n *AXNode) bool {
+	return n.Parent != nil && n.Parent.Role == "MenuListPopup"
+}
 
 // fieldRoles hold an editor whose inner nodes are not shown.
 var fieldRoles = map[string]bool{"textbox": true, "searchbox": true, "spinbutton": true, "slider": true}
@@ -66,6 +72,9 @@ func isSelect(n *AXNode) bool {
 }
 
 func roleWords(n *AXNode) string {
+	if selectOption(n) {
+		return ""
+	}
 	switch n.Role {
 	case "combobox":
 		if isSelect(n) {
@@ -203,11 +212,21 @@ func lineText(n *AXNode, words string, collapsed bool, ids map[int]string) (stri
 	}
 	el.Value = value
 	var states []string
+	tabSelect := false
 	if s, ok := n.Prop("selected"); ok {
-		if s == "true" {
+		switch {
+		case s == "true":
 			states = append(states, "selected")
-		} else {
+		case selectOption(n):
+			// A select's other options show no state.
+		default:
 			states = append(states, "selectable")
+		}
+		// A tab with a selection state is a settable boolean: 1 when chosen.
+		tabSelect = n.Role == "tab"
+		if tabSelect {
+			el.Value = map[bool]string{true: "1", false: "0"}[s == "true"]
+			value = el.Value
 		}
 	}
 	if n.True("disabled") {
@@ -224,15 +243,24 @@ func lineText(n *AXNode, words string, collapsed bool, ids map[int]string) (stri
 		}
 	}
 	editable := false
-	if (fieldRoles[n.Role] || (n.Role == "combobox" && !isSelect(n))) && n.True("settable") && !n.True("disabled") && !n.True("readonly") {
+	switch {
+	case (fieldRoles[n.Role] || (n.Role == "combobox" && !isSelect(n))) && n.True("settable") && !n.True("disabled") && !n.True("readonly"):
 		states = append(states, "settable")
 		editable = true
+	case n.Role == "combobox" && isSelect(n) && !n.True("disabled"):
+		// A native <select> takes a value.
+		states = append(states, "settable")
+	case tabSelect:
+		states = append(states, "settable", "boolean")
 	}
 	if ed, _ := n.Prop("editable"); ed != "" {
 		editable = true
 	}
 	el.Editable, el.Actions = editable, actions
-	head := []string{words}
+	head := []string{}
+	if words != "" {
+		head = append(head, words)
+	}
 	if len(states) > 0 {
 		head = append(head, "("+strings.Join(states, ", ")+")")
 	}
@@ -250,10 +278,10 @@ func lineText(n *AXNode, words string, collapsed bool, ids map[int]string) (stri
 		el.URL = u
 	}
 	if value != "" {
-		fields = append(fields, "Value: "+oneLine(value))
+		fields = append(fields, "Value: "+value)
 	}
 	if n.Desc != "" && n.Desc != n.Name {
-		fields = append(fields, "Help: "+oneLine(n.Desc))
+		fields = append(fields, "Help: "+n.Desc)
 	}
 	if id := ids[n.Backend]; id != "" && !isRoot {
 		fields = append(fields, "ID: "+id)
@@ -275,14 +303,17 @@ func lineText(n *AXNode, words string, collapsed bool, ids map[int]string) (stri
 		if name != "" {
 			sep = ", "
 		}
+		if text == "" {
+			sep = ""
+		}
 		text += sep + strings.Join(fields, ", ")
 	}
-	return oneLine(text), el
+	return text, el
 }
 
-// layout builds the shown tree: ignored nodes and unnamed single-child
-// containers give way to their children; field editors, inline text boxes
-// and closed select lists do not show.
+// layout builds the shown tree: ignored nodes give way to their children;
+// unnamed containers with nothing inside, field editors and inline text
+// boxes do not show. A native <select> shows its options under a "menu".
 func layout(t *AXTree, ids map[int]string) *vnode {
 	var build func(n *AXNode) []*vnode
 	build = func(n *AXNode) []*vnode {
@@ -304,8 +335,8 @@ func layout(t *AXTree, ids map[int]string) *vnode {
 		}
 		words := roleWords(n)
 		if words == "container" && n.Name == "" && n.Desc == "" && !n.True("focusable") && n.Role != "RootWebArea" {
-			if _, ok := n.Prop("expanded"); !ok && len(kids) <= 1 {
-				return kids
+			if _, ok := n.Prop("expanded"); !ok && len(kids) == 0 {
+				return nil
 			}
 		}
 		text, el := lineText(n, words, collapsed, ids)
@@ -349,6 +380,7 @@ func flatten(v *vnode) []shownLine {
 // Memory is what a tab binding remembers between reads.
 type Memory struct {
 	doc   string         // the document's root key
+	docs  int            // documents read through the binding
 	url   string         // the URL of the last read
 	ids   map[string]int // element key -> id
 	next  int
@@ -374,14 +406,21 @@ func (m *Memory) Element(id int) (Element, bool) {
 
 // Read renders a read: the full state, or a diff against the previous
 // read when diff is set and the page is the same. A new document starts
-// the ids again from 0; a changed URL or a change to more than half the
+// the ids again (from 0 for the binding's first, from 1 after); a changed URL or a change to more than half the
 // lines gives the full state with the ids kept.
 func (m *Memory) Read(tabID, title, url string, t *AXTree, ids map[int]string, diff bool) string {
 	root := layout(t, ids)
 	lines := flatten(root)
 	if root.key != m.doc {
+		// A new document numbers its elements again: from 0 for the first
+		// document of the binding, from 1 for every later one, as the
+		// reference does after a navigation.
+		docs := m.docs + 1
 		*m = *NewMemory()
-		m.doc = root.key
+		m.doc, m.docs = root.key, docs
+		if docs > 1 {
+			m.next = 1
+		}
 		diff = false
 	}
 	if len(m.shown) == 0 || url != m.url {
@@ -446,7 +485,7 @@ func (m *Memory) Read(tabID, title, url string, t *AXTree, ids map[int]string, d
 		}
 		b.WriteString("\n\n" + focusLine)
 	case len(changes) == 0 && len(removed) == 0:
-		b.WriteString("\nThe accessibility tree has not changed since the previous read.")
+		b.WriteString("\nThere has been no change in the accessibility tree.\n" + focusLine)
 	default:
 		b.WriteString("\nThe following is a diff from the previous accessibility tree with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.")
 		if len(removed) > 0 {
@@ -455,7 +494,7 @@ func (m *Memory) Read(tabID, title, url string, t *AXTree, ids map[int]string, d
 		for _, c := range changes {
 			b.WriteString("\n" + c)
 		}
-		b.WriteString("\n\n" + focusLine)
+		b.WriteString("\n" + focusLine)
 	}
 	m.url, m.shown, m.byID = url, shown, byID
 	return b.String()

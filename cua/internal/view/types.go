@@ -60,6 +60,12 @@ type RawNode struct {
 	Identifier  string
 	Help        string
 	Actions     []string
+	// AXRole is the raw role; ValueType the kind of AXValue (see
+	// protocol.Node); Placeholder and SelectedText the raw attributes.
+	AXRole       string
+	ValueType    string
+	Placeholder  string
+	SelectedText string
 }
 
 // Tree is a window's walk.

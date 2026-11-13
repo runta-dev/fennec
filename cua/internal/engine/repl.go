@@ -216,11 +216,15 @@ func (e *Engine) replCall(ctx context.Context, s *mcpserver.Session, name string
 	return replResult(res), true
 }
 
-// replResult frames a call: the wall time, the documentation on a fresh
-// runtime, the output parts, then the error.
+// replResult frames a call as the reference does: the wall time, then the
+// error of a failed call, the documentation on a fresh runtime, and the
+// output parts.
 func replResult(res script.EvalResult) mcpserver.Result {
 	out := mcpserver.Result{IsError: res.Err != ""}
 	out.Parts = append(out.Parts, mcpserver.Part{Text: framing(res.Wall)})
+	if res.Err != "" {
+		out.Parts = append(out.Parts, mcpserver.Part{Text: res.Err})
+	}
 	if res.Fresh {
 		out.Parts = append(out.Parts, mcpserver.Part{Text: script.Guide()})
 	}
@@ -230,9 +234,6 @@ func replResult(res script.EvalResult) mcpserver.Result {
 			continue
 		}
 		out.Parts = append(out.Parts, mcpserver.Part{Text: p.Text})
-	}
-	if res.Err != "" {
-		out.Parts = append(out.Parts, mcpserver.Part{Text: res.Err})
 	}
 	return out
 }

@@ -213,6 +213,16 @@ type Node struct {
 	// Actions are the element's accessibility actions other than the
 	// press, by their spoken names ("Raise", "Show Menu").
 	Actions []string `json:"actions,omitempty"`
+	// AXRole is the raw accessibility role ("AXGroup").
+	AXRole string `json:"ax_role,omitempty"`
+	// ValueType is the kind of AXValue: "boolean", "integer", "float",
+	// "string", or "unknown" for a value of another kind; empty when the
+	// element has no value.
+	ValueType   string `json:"value_type,omitempty"`
+	Placeholder string `json:"placeholder,omitempty"` // AXPlaceholderValue
+	// SelectedText is the element's selected text (AXSelectedText), read
+	// for text elements.
+	SelectedText string `json:"selected_text,omitempty"`
 }
 
 // Image is a capture.

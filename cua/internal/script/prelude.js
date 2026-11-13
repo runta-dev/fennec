@@ -347,24 +347,17 @@
     });
   }
 
+  // appInfo is one app as the reference lists it: keys in alphabetical
+  // order, lastUsedDate as seconds since 2001-01-01 UTC (Apple's reference
+  // date) rounded down to the day, and no windows.
   function appInfo(inv, a) {
-    const info = { id: a.bundle_id || a.name, displayName: a.name };
-    if (a.last_used) {
-      info.lastUsedDate = a.last_used;
+    const info = { displayName: a.name, id: a.bundle_id || a.name, isRunning: !!a.running };
+    const used = a.last_used ? Date.parse(a.last_used) : NaN;
+    if (isFinite(used)) {
+      info.lastUsedDate = Math.floor(used / 86400000) * 86400 - 978307200;
     }
     if (a.use_count) {
       info.useCount = a.use_count;
-    }
-    info.isRunning = !!a.running;
-    const ws = windowsOf(inv, a);
-    if (a.running) {
-      info.windows = ws.map(function (w) {
-        const out = { id: Number(String(w.ref).replace(/^w/, "")), app: w.app || a.name };
-        if (w.title) {
-          out.title = w.title;
-        }
-        return out;
-      });
     }
     return info;
   }
@@ -473,7 +466,7 @@
       }
       const e = host.axElement(this._ax, id);
       if (!e) {
-        throw new Error("element " + id + " is not in the latest state of " + this._app.name + "; call getAXState() again and use an id from it");
+        throw new Error("Computer Use server error -10005: " + id + " is an invalid element ID");
       }
       return e;
     }
@@ -645,7 +638,7 @@
         state.errors = errors;
       }
       if (opts.emit !== false) {
-        host.write(JSON.stringify(state, null, 2));
+        host.write(JSON.stringify(state));
       }
       return state;
     },
@@ -655,7 +648,7 @@
       const inv = await inventory();
       const apps = (inv.apps || []).map(function (a) { return appInfo(inv, a); });
       if (opts.emit !== false) {
-        host.write(JSON.stringify(apps, null, 2));
+        host.write(JSON.stringify(apps));
       }
       return apps;
     },

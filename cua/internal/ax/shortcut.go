@@ -28,6 +28,8 @@ func MenuShortcut(char string, mods any) string {
 	switch v := mods.(type) {
 	case float64:
 		m = int(v)
+	case int64:
+		m = int(v)
 	case int:
 		m = v
 	}

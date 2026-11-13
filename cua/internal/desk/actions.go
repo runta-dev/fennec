@@ -114,7 +114,7 @@ func (a *Actions) SetValue(ctx context.Context, h view.Handle, value string) err
 	// A slider or stepper holds a number and refuses a string
 	// (kAXErrorIllegalArgument): write the number it parses to.
 	if cur, err := el.Attr("AXValue"); err == nil {
-		if _, numeric := cur.(float64); numeric {
+		if _, numeric := cur.(float64); numeric || isInt(cur) {
 			if f, ok := view.NumberOf(value); ok {
 				return axFailure(el.SetNumber("AXValue", f), "AXValue")
 			}
@@ -351,4 +351,10 @@ func (a *Actions) FocusElement(ctx context.Context, h view.Handle) error {
 		return err
 	}
 	return axFailure(el.SetBool("AXFocused", true), "AXFocused")
+}
+
+// isInt says whether an attribute value is an integer number.
+func isInt(v any) bool {
+	_, ok := v.(int64)
+	return ok
 }

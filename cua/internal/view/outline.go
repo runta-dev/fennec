@@ -246,6 +246,7 @@ func NodeOf(n RawNode, ref, parent string, urls bool) protocol.Node {
 		out.URL = n.URL
 	}
 	out.RoleDesc, out.Description, out.Identifier, out.Help = n.RoleDesc, n.Description, n.Identifier, n.Help
+	out.AXRole, out.ValueType, out.Placeholder, out.SelectedText = n.AXRole, n.ValueType, n.Placeholder, n.SelectedText
 	if len(n.Actions) > 0 {
 		out.Actions = append([]string(nil), n.Actions...)
 	}

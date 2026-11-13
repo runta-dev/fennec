@@ -51,7 +51,7 @@ session (section 4).
 | Top-level await | Allowed in every call. |
 | Last value | Output comes from `nodeRepl.write`, `nodeRepl.emitImage`, `console.*` and the self-displaying APIs (section 3.5). Recorded sessions show no echo of a last expression's value (`var x = await cua.getApp(…)` prints only the app's state); whether a bare expression such as `1 + 1` is echoed is unverified. |
 | Globals | `cua`, `nodeRepl`, `console`, `setTimeout`, timers. No `require`, `process`, file system, environment or network access. |
-| Errors | An uncaught error ends the call; the output is whatever was written before it followed by `Error: <message>` (and the error's extra lines). The tool result has `isError` set. Bindings made before the error stay. |
+| Errors | An uncaught error ends the call. Its message alone (no `Error:` prefix, no name, no stack) is the first part after the framing, before the first-use documentation and whatever the call wrote (section 5.3). The tool result has `isError` set. Bindings made before the error stay. fennec-cua's own failures (timeout, Stop, reset, configuration) keep an `Error:` prefix. |
 | Time | Each call has a wall-clock limit; when it is exceeded the call ends with an error and the runtime stays usable. Stop (the user's kill switch) cancels a call in flight. |
 | Output cap | Text output is capped (the reference caps the tool at 25k tokens); longer output is cut with a note saying how much was dropped. |
 
@@ -64,8 +64,13 @@ Wall time: 0.5033 seconds
 Output:
 ```
 
-followed by the call's output as text parts, with images as MCP image content
-in the order they were emitted. Four decimals on the wall time.
+followed by the error of a failed call, the first-use documentation on a
+fresh runtime, then the call's output as text parts, with images as MCP image
+content in the order they were emitted. Four decimals on the wall time (801 of
+801 recorded results; the line `Output:` always follows). The recorded results
+sometimes join consecutive displays in one text part with no separator
+(`…Raise[{"displayName":…`) and sometimes split them; fennec-cua keeps one
+part per display.
 
 ## 3. The `cua` API (macOS)
 
@@ -99,9 +104,9 @@ type State = { apps: AppInfo[]; browsers: (BrowserInfo & { tabs: TabInfo[] })[];
 
 | Member | Behaviour |
 |---|---|
-| `cua.getState(options?: ObservationOptions): Promise<State>` | Inventory of apps (running and recently used) with their windows, and the browsers with their tabs (section 8; `[]` when the browser surface is off). Displays the result as JSON unless `emit: false`. Partial failures go in `errors` (`"Browsers: …"` for the browser part). |
+| `cua.getState(options?: ObservationOptions): Promise<State>` | Inventory of apps (running and recently used) and the browsers with their tabs (section 8; `[]` when the browser surface is off). Displays the result as compact JSON unless `emit: false`, as recorded (13 getState results, 327 app entries): top-level keys `apps`, `browsers`, then `errors` when any; each app `{"displayName","id","isRunning","lastUsedDate","useCount"}` in that (alphabetical) order, `lastUsedDate` a number of seconds since 2001-01-01 UTC rounded down to the day, and no `windows` key on macOS (0 of 327). Partial failures go in `errors` (`"Browsers: …"` for the browser part). |
 | `cua.getApp(target: string): Promise<App>` | `target` is a display name, a full `.app` path or a bundle id. Launches the app in the background if it is not running (does not steal focus). Displays the app's initial accessibility state. If a display name does not resolve, the error says to retry with a bundle id from `listApps()`. |
-| `cua.listApps(options?: ObservationOptions): Promise<AppInfo[]>` | Same app inventory as `getState().apps`; displays it unless `emit: false`. |
+| `cua.listApps(options?: ObservationOptions): Promise<AppInfo[]>` | Same app inventory as `getState().apps`; displays it as compact JSON unless `emit: false`. |
 | `cua.computer.target` | `"mac"`. |
 | `cua.computer.launch_app?({ app })` | Not provided on macOS (the reference provides it on Linux); `getApp` launches. |
 
@@ -157,62 +162,156 @@ own.
 
 ## 5. Accessibility state text
 
+The rules below were confirmed against the recorded Codex sessions on this
+machine: 11 sessions with 802 `cua_repl` calls, holding 137 full native
+states (4,638 element lines), 127 native diffs (3,099 `~`/`+` lines), 32
+native no-change reads, 66 full tab states (19,660 lines) and 37 tab diffs.
+Counts in parentheses are occurrences in that corpus. The examples here are
+synthetic.
+
 ### 5.1 Full state
 
 ```
-Window: "Runta CUA Fixture", App: Runta CUA Fixture.
-0 standard window Runta CUA Fixture, Secondary Actions: Raise
-	1 text Runta CUA Fixture
-	2 button Start trial (evaluator)
-	3 text Evaluator: press Start when ready
-	4 close button
-	5 zoom button (disabled)
-	6 minimize button
-8 menu bar
-	9 Runta CUA Fixture
+Window: "Orders", App: Orders.
+0 standard window Orders, Secondary Actions: Raise
+	1 container
+		2 button (collapsed) Refresh
+	3 switch (settable, boolean) Sync, Value: on
+	4 scroll bar (settable, float) 0.25
+	5 row (selectable, expanded) Description: folder, Value: Inbox, Secondary Actions: Collapse
+	6 (settable, unknown) Mode
+		7 radio button Fast, Value: 1
+	8 text field (settable) Description: Search, Help: Find orders, Value: lamp, ID: search, Placeholder: Search orders
+	9 HTML content Description: Orders, URL: shop.example.test/orders
+		10 link Help center, Value: help.example.test/start
+		11 text Line one
+Line two
+	12 text field (settable) URL: file:///Users/test/Report.pdf, Value: Report.pdf, Secondary Actions: Open Finder item
+13 menu bar
+	14 Orders
+	15 Edit
 
-The focused UI element is 0 standard window Runta CUA Fixture, Secondary Actions: Raise
+The focused UI element is 8 text field (settable) Description: Search, Help: Find orders, Value: lamp, ID: search, Placeholder: Search orders
 ```
 
 Rules:
 
-- Header `Window: "<title>", App: <app name>.` (title may be empty: `Window: ""`).
-- One element per line: tab indentation by depth, the element id, then the
-  role description in lower-case words as macOS speaks it ("standard window",
-  "button", "text field", "pop up button", "scroll area", "row", "cell",
-  "menu bar", "text entry area", "close button", "HTML content").
-- Then, when present and in this order: states in parentheses
-  (`(selected)`, `(disabled)`, `(settable)`, `(selectable)`, `(expanded)`,
-  `(collapsed)`, `(checked)`), the name (title), `Description: …`, `ID: …`
-  (accessibility identifier), `Help: …`, `URL: …`, `Value: …`,
-  `Secondary Actions: A, B`. Fields after the name are joined with `, `.
-- Ids are assigned in pre-order from 0; the window subtree comes first, the
-  app's menu bar after it (top-level menu titles only while menus are closed;
-  an open menu's items appear as children).
-- Unnamed, actionless layout groups are elided and their children lifted.
-- A blank line, then `The focused UI element is <that element's line text>`.
+- Header `Window: "<title>", App: <app name>.` The title may be empty
+  (`Window: ""`, common for panel apps). A title longer than 63 characters is
+  cut to its first and last 31 characters around `…` (1 occurrence; the
+  exact threshold is between 56 and 149 characters). The title is not
+  escaped.
+- One element per line: tab indentation by depth, the id, then the role
+  words. The role words are the element's `AXRoleDescription` ("standard
+  window", "button", "text field", "row", "scroll area", "HTML content",
+  "system dialog", "pop up button", "menu button", "value indicator",
+  "increment arrow button", "column header", ..., as macOS speaks them),
+  with two overrides kept as a table (`axRoleWords` in
+  `internal/script/axstate.go`): `AXGroup` reads `container` (832 lines;
+  `group` never appears), and a menu bar item shows no role words. An
+  element without a role description shows none either (`8 (settable,
+  unknown) Mode` for a radio group, 18).
+- States in parentheses, in this order: `selected` or `selectable` (an
+  element that has `AXSelected` false), `disabled`, `expanded` or
+  `collapsed` (an element that has `AXExpanded` false), `settable` (the value
+  is settable), then the kind of a settable non-string value: `boolean`
+  (153), `float` (91), `integer` (5) or `unknown` (18). Combinations seen:
+  `(selectable, expanded)`, `(disabled, settable, boolean)`, `(selected,
+  settable, boolean)`, `(disabled, settable, float)`. There is no `checked`
+  state: a check box or radio button shows `Value: 0` / `Value: 1`.
+- Then the name (`AXTitle`). An element named only by its description shows
+  it as `Description: …` instead. Static text shows its value as its name.
+  An unnamed element without a description whose value is a number shows the
+  number bare in the name's place (`scroll bar (settable, float) 0`, 86).
+- Then the labelled fields, joined with `, ` (after the name) or a space
+  (without one): `Description`, `Help`, `URL`, `Value`, `ID`
+  (`AXIdentifier`), `Placeholder`, `Secondary Actions`. Order evidence:
+  `URL, Value, Secondary Actions` (312), `Description, URL` (119),
+  `Description, ID` (108), `Value, ID` (69), `Help, Value` (43),
+  `Description, Help, ID` (18), `Value, Placeholder` (9); a few apps report
+  attributes in another order (`Placeholder` before `Value`, 2).
+- Values: a boolean reads `on` / `off` (switches and Chrome's tabs); numbers
+  in full precision (`0.9552117263843648`); an empty value is left out.
+  `URL:` is the element's `AXURL` with `http://` / `https://` dropped and
+  other schemes kept (`file:///…`); a link's address is its `Value`, without
+  a `URL` field.
+- No field is truncated by the renderer (names up to 390 characters seen);
+  ellipses in the corpus come from the apps themselves. Line breaks inside
+  names and values are printed as they are, so one element can span several
+  lines.
+- Ids are assigned in pre-order from 0 and are contiguous: the window
+  subtree first, then the app's menu bar, whose items are the top-level menu
+  titles with no role words. The Apple menu is never listed (0 of 73 menu
+  bars).
+- An unnamed, actionless group shows as `container` while something shows
+  inside it, even a single child (61 single-child containers); a group with
+  nothing inside is left out (no childless unnamed container in 496).
+- A blank line, then `The focused UI element is <id> <line text>`. When no
+  element has the focus the line is left out (7 reads). When the focused
+  element has selected text, the closing reads instead:
+
+  ````
+  Selected text: ```
+  <the selected text>
+  ```
+
+  Note: Pay special attention to the content selected by the user. ...
+  ````
+
+  (the note's full wording is in `selectionNote`, 5 reads).
 
 ### 5.2 Diff
 
 After the first full state of a binding, `getAXState()` returns:
 
 ```
-The following is a diff from the previous accessibility tree for Window: "Runta CUA Fixture" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
-Removed element IDs: 2-3, 7
-~	1 text Runta CUA Fixture Ready Runtime name
-+	10 text field (settable) Description: Runtime name, Value: old-runtime
-+	11 text Region
-The focused UI element is 10 text field (settable) Description: Runtime name, Value: runta-27611
+The following is a diff from the previous accessibility tree for Window: "Orders" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+Removed element IDs: 4
+~0 standard window Orders (2), Secondary Actions: Raise
+~		2 button (expanded) Refresh
++		18 text Saved
+The focused UI element is 10 text field (settable) Description: Search, Value: lamp
 ```
 
 Rules: ids of unchanged elements are stable within a binding; new elements get
-ids above every id used so far; `~` lines show the element's whole new line;
-`+` lines keep their depth indentation after the marker; the `Removed element
-IDs:` line is omitted when nothing was removed; a window change (another
-window comes to the front) yields a full state with the new header instead of
-a diff; when nothing changed the text says so in one line (the reference's
-exact wording for this case has not been observed in recorded sessions yet;
-verify it before freezing CDX-12).
+ids above every id used so far; each changed or added line is its marker
+followed directly by the element's depth in tabs (`~0 …` for the window, 15
+`~` and 14 `+` lines at depth 0; never a separating tab); the `Removed
+element IDs:` line (ranges as `12-20, 64`) is omitted when nothing was
+removed; the focused line follows the changes with no blank line (85 of 85
+diffs with a focused line). A window change (another window comes to the
+front) yields a full state with the new header. When nothing changed:
+
+```
+There has been no change in the accessibility tree for Window: "Orders".
+The focused UI element is 10 text field (settable) Description: Search, Value: lamp
+```
+
+(32 reads; the closing line follows directly, or the selected text).
+
+### 5.3 Errors
+
+An uncaught error is shown as its message alone, without `Error:` or the
+error's name and without a stack (`tab is not defined`, `cua.computer.launch_app
+is not a function`), as the first output part after the framing, before the
+first-use documentation and before anything the call wrote (8 calls show the
+order). An element id the latest state does not hold reads
+`Computer Use server error -10005: <id> is an invalid element ID`.
+
+### 5.4 Unconfirmed
+
+- When the reference adds other windows of the app (a popover, a second
+  system dialog) as further roots of one state (14 states), and when it
+  leaves out the menu bar (27 states).
+- The `Selected:` closing that lists selected rows (`Selected:` then
+  `\t<id> <line>` and the note, 7 reads): which element's selection it lists.
+- Why a few titles that contain `: ` print after the labelled fields
+  (`tab (settable, boolean) Value: off, <title>`, 13 lines), and why some
+  long URLs read `…`.
+- Error texts other than the invalid id (stale element, unknown secondary
+  action, app not found): the corpus holds only `noWindowsAvailable`,
+  `cgWindowNotFound`, `timeoutReached` server errors and an ambiguous bundle
+  id message.
 
 ## 6. fennec-cua capabilities beyond the reference
 
@@ -262,8 +361,8 @@ space is reopened by id), and closed with the session. A navigation takes
 about 150 ms; reading the accessibility tree 2-25 ms. `ego-browser` is found
 through `FENNEC_CUA_EGO` (`off` disables the surface), the `PATH`, then
 `~/.local/bin`. Without it, or without a browser surface configured, the
-browser calls throw `Error: browser surfaces are not enabled; use
-cua.getApp("<browser>")` (surface off) or `Error: No browser is available.`
+browser calls throw `browser surfaces are not enabled; use
+cua.getApp("<browser>")` (surface off) or `No browser is available.`
 (ego lite missing), and `getState().browsers` is `[]`.
 
 ### 8.1 Mapping
@@ -294,23 +393,31 @@ cua.getApp("<browser>")` (surface off) or `Error: No browser is available.`
 
 ### 8.2 Tab state text
 
-Learned from recorded Codex sessions that drove Chrome tabs:
+Learned from recorded Codex sessions that drove Chrome tabs (66 full tab
+states with 19,660 element lines, 37 tab diffs; counts in parentheses). The
+example is synthetic:
 
 ```
 Browser tab: 1, Title: "Sign in", URL: "https://example.test/login".
 0 AXWebArea Sign in, URL: example.test/login
-	1 heading Sign in, Value: 1
-		2 text Sign in
-	3 text field (settable) Email, Value: a@b.c, ID: email
-	4 pop up button (collapsed) Description: Language, Value: English, ID: lang, Secondary Actions: Expand
-	5 button Description: Close dialog
-	6 link Description: Sign up, Value: example.test/sign-up
+	1 container
+		2 heading Sign in, Value: 1
+			3 text Sign in
+		4 text field (settable) Email, Value: a@b.c, ID: email
+		5 pop up button (collapsed, settable) Description: Language, Value: English, ID: lang, Secondary Actions: Expand
+			6 menu
+				7 (selected) English
+				8 Deutsch
+		9 tab (selected, settable, boolean) Billing, Value: 1
+		10 button Description: Close dialog
+		11 link Description: Sign up, Value: example.test/sign-up
 
-The focused UI element is 3 text field (settable) Email, Value: a@b.c, ID: email
+The focused UI element is 4 text field (settable) Email, Value: a@b.c, ID: email
 ```
 
 - The header `Browser tab: <id>, Title: "<title>", URL: "<url>".` starts every
-  read, diffs included. The root is `0 AXWebArea <title>, URL: <url>`.
+  read, diffs and no-change reads included (103 headers). The root is
+  `<id> AXWebArea <title>, URL: <url>`.
 - URLs in lines drop `http://` and `https://`; long `data:` URLs are cut to
   their media type.
 - Role words are macOS's for Chromium's roles: `text`, `button`, `link`,
@@ -322,31 +429,48 @@ The focused UI element is 3 text field (settable) Email, Value: a@b.c, ID: email
   `table`, `row`, `cell`, `tab group`, `tab`, `outline`, `menu`, `menu bar`,
   `menu item`, `toolbar`, `dialog`, `AXListMarker`; every other role
   (generic, landmarks, paragraphs, list items, sections) reads `container`.
-- States in parentheses: `selected` / `selectable`, `disabled`, `expanded` /
-  `collapsed`, `settable` (editable fields). `Expand` / `Collapse` appear as
+- States in parentheses, in the native order: `selected` / `selectable`,
+  `disabled`, `expanded` / `collapsed`, `settable`, the value kind:
+  `pop up button (collapsed)` (308), `button (disabled, collapsed)`,
+  `row (selectable, collapsed)` (9), `combo box (collapsed, settable)` (7),
+  `combo box (expanded, settable)` (3). `Expand` / `Collapse` appear as
   `Secondary Actions`.
+- A tab with a selection state is a settable boolean whose value is 1 when
+  chosen: `tab (selectable, settable, boolean) …, Value: 0` (39) and
+  `tab (selected, settable, boolean) …, Value: 1` (15); a tab without one
+  shows no states (15).
+- A native `<select>` is `pop up button (collapsed, settable)` and its
+  options show under a `menu` child as lines without role words: `(selected)
+  <option>` for the chosen one, the bare option text for the others.
 - A name given by an attribute (`aria-label`, `title`) shows as
   `Description:` on controls; names from content or a label show as the
   name. A link that holds only text shows as one line, `link Description:
-  <text>, Value: <url>`; a link without a name shows its URL.
+  <text>, Value: <url>` (727); a link without a name shows its URL.
 - Fields after the name, in order: `Description`, `Value`, `Help` (the
   accessible description), `ID` (the DOM id), `URL` (root only), a link's
-  `Value`, `Secondary Actions`.
-- Ignored nodes, inline text boxes, line breaks, whitespace-only text, the
-  inner editor of text fields and a closed `<select>`'s options do not show;
-  an unnamed, unfocusable container with at most one shown child gives way
-  to it.
+  `Value`, `Secondary Actions`: `Description, Value` (724), `Description,
+  ID, Secondary Actions` (284), `Value, ID` (75), `Description, ID, Value`
+  (22, links).
+- Line breaks inside names and values are printed as they are.
+- Ignored nodes, inline text boxes, line breaks, whitespace-only text and the
+  inner editor of text fields do not show. An unnamed container shows while
+  something shows inside it, a single child included (132 single-child
+  containers); one with nothing inside is left out (none in the corpus).
 - Ids are keyed by DOM node: stable within a binding, fresh ones above every
-  id used. A new document (another root node) starts again from 0.
+  id used. A new document starts the numbering again: from 0 for the first
+  document a binding reads, from 1 for every later one (the recorded root is
+  `1 AXWebArea` on every full state after a navigation within a binding).
 - Diff: the header line, then `The following is a diff from the previous
   accessibility tree with ~ and + representing changed and added elements,
   respectively. Removed elements are summarized by ID range.`, `Removed
-  element IDs: …` when any, `~` / `+` lines as the marker followed by the
-  depth's tabs, a blank line and the focused line. A changed URL, a new
-  document or changes to more than half of the lines give the full state
-  (ids kept). When nothing changed: `The accessibility tree has not changed
-  since the previous read.` (the reference's wording for tabs is not in the
-  recorded sessions).
+  element IDs: …` when any, `~` / `+` lines as the marker followed directly
+  by the depth's tabs, then the focused line with no blank line before it
+  (29 of 29 diffs of that shape). A changed URL, a new document or changes
+  to more than half of the lines give the full state (ids kept).
+- No change: the header, then `There has been no change in the
+  accessibility tree.` and the focused line. The recorded sessions hold no
+  unchanged tab read; this wording follows the native one (section 5.2)
+  without the window part, as the tab diff line does.
 - The tab's first display (`createBrowserTab`, `getTab`) leaves no baseline:
   the binding's first `getAXState()` is full, as recorded.
 - `playwright.domSnapshot()` renders the same tree as Playwright's aria
@@ -397,12 +521,12 @@ only unmanaged tabs inside its own space.
 
 - ego lite in the tart image for live tests and the bench (licence and
   install); until then the `egolive` tests run on a developer Mac.
-- Byte-exact parity of the tab state for rare roles (the reference also
-  prints value types such as `(settable, integer)` on some controls, and
-  `ID:` on some containers) needs more recorded Chrome sessions; section 8.2
-  is what the recorded sessions show.
-- Element ids after a navigation: the reference sometimes continues from 1
-  instead of 0; fennec-cua starts a new document at 0.
+- Unconfirmed tab rules: which check boxes read `(settable, integer)` (41
+  do, 33 do not; native `<input>` versus ARIA check boxes is the likely
+  split) and the bare value of an unnamed one; whether the numbering also
+  returns to 0 at a turn's end (one recorded binding did); the no-change
+  wording (section 8.2); why the focused line sometimes shows the root's URL
+  as `…`; the reference error text for a stale tab element id.
 - Iframe content is not read (the tree is the main frame's).
 
 ## 9. Not supported
@@ -428,28 +552,28 @@ real ego lite in their own task space on pages they serve on 127.0.0.1 or as
 | CDX-02 | result framing `Wall time: N.NNNN seconds\nOutput:` | unit |
 | CDX-03 | bindings persist across calls (`var`, `let`, `const`, `function`, `class`); top-level await | unit |
 | CDX-04 | `js_reset` drops bindings and re-shows the documentation; apps untouched | unit |
-| CDX-05 | error output `Error: …`, `isError`, session still usable | unit |
+| CDX-05 | error output: the message alone, first after the framing and before the documentation and what was written; `isError`; session still usable | unit |
 | CDX-06 | `completion_summary`-only call answers `Completion summary received.` | unit |
 | CDX-07 | first-use documentation shown once per session, covering section 4's topics | unit |
 | CDX-08 | `nodeRepl.write` / `emitImage` (data URL, bytes, `{bytes, mimeType}`); `file:` refused | unit |
 | CDX-09 | self-displaying calls display once; `emit: false` suppresses | unit |
-| CDX-10 | full state format (section 5.1) on a fixed fake tree, byte for byte | unit |
-| CDX-11 | diff format (section 5.2): removed ranges, `~`, `+`, stable and fresh ids, focused line | unit |
-| CDX-12 | `disableDiffing`, window change gives a full state, no-change line | unit |
+| CDX-10 | full state format (section 5.1) on a fixed fake tree, byte for byte; the confirmed rules each on a synthetic tree (`internal/script/axstate_test.go`: role words, state order and value kinds, on/off, bare numbers, field order, URLs, raw line breaks, containers, Apple menu, long titles, focus and selected text) | unit |
+| CDX-11 | diff format (section 5.2): removed ranges, `~` and `+` followed by the depth's tabs, stable and fresh ids, focused line with no blank line | unit |
+| CDX-12 | `disableDiffing`, window change gives a full state, the no-change line followed by the focused line | unit |
 | CDX-13 | `click(id)`, `click([x, y])` in screenshot pixels, `clickCount`, `mouseButton`, `key` | unit + live |
 | CDX-14 | `setValue`, `selectText` (prefix/suffix/selectionType), `performSecondaryAction` with an unlisted name refused | unit + live |
 | CDX-15 | `pressKey` xdotool syntax table, `typeText`, `paste` restoring the pasteboard | unit + live |
 | CDX-16 | `scroll` by element and point, pages and `{ pixels }`; `drag` | unit + live |
 | CDX-17 | `getApp` by name, path and bundle id; background launch keeps focus; unresolved name hint | unit + live |
-| CDX-18 | `getState` / `listApps` shapes; `browsers: []` with the browser surface off | unit + live |
+| CDX-18 | `getState` / `listApps` as compact JSON with the reference's keys and order; `browsers: []` with the browser surface off | unit + live |
 | CDX-19 | with the browser surface off, the browser APIs throw the documented error | unit |
-| CDX-20 | stale element id is an error asking for a fresh state | unit |
+| CDX-20 | an id not in the latest state reads `Computer Use server error -10005: <id> is an invalid element ID`; a stale element is an error asking for a fresh state | unit |
 | CDX-21 | safety: allowlist, Stop mid-call, confirmation, secret redaction, wrong-window refusal through `cua` calls | unit + live |
 | CDX-22 | sandbox: no `require`, `process`, file system | unit |
 | CDX-23 | the macOSWorld bench runs fennec-cua through this surface (`cmd/cua-bench`) | live |
 | CDX-24 | browser discovery: `listBrowsers`, `getBrowser` (documentation once per runtime), `getState().browsers` with tabs, `listTabs` as compact JSON | unit (`internal/engine`, `internal/ego`) |
 | CDX-25 | `createBrowserTab` / `getTab` display documentation then state; reference error texts; `js_reset` keeps tabs and ids; turn end passed on | unit + egolive |
-| CDX-26 | tab state text (section 8.2) byte for byte on synthetic trees: header, roles, fields, link collapse, elision, focused line; diff with removed ranges, `~`/`+` depth, no-change line, full state on URL or document change or a large change; `domSnapshot` | unit + egolive |
+| CDX-26 | tab state text (section 8.2) byte for byte on synthetic trees: header, roles, fields, link collapse, select options, tab values, containers, focused line; diff with removed ranges, `~`/`+` depth, focused line without a blank line, no-change line, full state on URL or document change (numbering from 1 after the first document) or a large change; `domSnapshot` | unit + egolive |
 | CDX-27 | tab input: element-index-first `typeText`/`pressKey`/`paste` (bad index refused before input), click centre and options, points scaled from screenshot pixels, `selectText`, `setValue`, `performSecondaryAction`, history, xdotool to Playwright keys | unit + egolive |
 | CDX-28 | Playwright subset: role/text/label/test-id/CSS resolution, RegExp, `nth`/`filter`, strict mode, timeouts, `fill`/`check`/`selectOption`, `evaluate` | unit + egolive |
 | CDX-29 | bridge: JSON-line framing, token check, timeout, Stop (cancel), crash then restart with the space reopened, close | unit + egolive |

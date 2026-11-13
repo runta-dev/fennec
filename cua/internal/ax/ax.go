@@ -395,7 +395,8 @@ func ElementAt(x, y float64) (*Element, error) {
 	return wrap(ref), nil
 }
 
-// convert turns a borrowed CF value into Go: string, bool, float64, Point,
+// convert turns a borrowed CF value into Go: string, bool, int64 (an
+// integer CFNumber), float64 (a floating-point one), Point,
 // Size, Rect, Range, URL, *Element, []any, or nil.
 func convert(v C.CFTypeRef) any {
 	if v == 0 {
@@ -412,6 +413,9 @@ func convert(v C.CFTypeRef) any {
 		var d C.double
 		if C.cfNumberDouble(C.CFNumberRef(v), &d) == 0 {
 			return nil
+		}
+		if C.CFNumberIsFloatType(C.CFNumberRef(v)) == 0 {
+			return int64(d)
 		}
 		return float64(d)
 	case C.CFArrayGetTypeID():
@@ -468,8 +472,11 @@ func ServerWindows(onScreen bool) ([]ServerWindow, error) {
 		return C.dictGet(d, k)
 	}
 	num := func(v C.CFTypeRef) float64 {
-		if f, ok := convert(v).(float64); ok {
+		switch f := convert(v).(type) {
+		case float64:
 			return f
+		case int64:
+			return float64(f)
 		}
 		return 0
 	}

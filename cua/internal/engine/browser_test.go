@@ -169,7 +169,7 @@ func TestCDX25Tabs(t *testing.T) {
 		t.Errorf("getTab %q", out)
 	}
 	r := c.js(`await cua.getTab("9")`)
-	if !r.isError || !strings.Contains(r.all(), "\nError: Tab not found in browser ego.") || strings.Contains(r.all(), "target_not_found") {
+	if !r.isError || !strings.Contains(r.all(), "\nTab not found in browser ego.") || strings.Contains(r.all(), "target_not_found") {
 		t.Errorf("error %q", r.all())
 	}
 	// js_reset forgets bindings; the documentation shows again.
@@ -229,7 +229,7 @@ func TestCDX27TabInput(t *testing.T) {
 	n := len(fb.calls)
 	for _, code := range []string{`await tab.typeText(1.5, "x")`, `await tab.pressKey(-1, "a")`, `await tab.paste("3", "x")`} {
 		r := c.js(code)
-		if !r.isError || !strings.Contains(r.all(), "Error: Browser input requires an element index from the latest AX snapshot, or null to use current focus.") {
+		if !r.isError || !strings.Contains(r.all(), "\nBrowser input requires an element index from the latest AX snapshot, or null to use current focus.") {
 			t.Errorf("%s: %q", code, r.all())
 		}
 	}
@@ -237,7 +237,7 @@ func TestCDX27TabInput(t *testing.T) {
 		t.Error("a bad index was sent")
 	}
 	r := c.js(`await tab.click(99)`)
-	if !r.isError || !strings.Contains(r.all(), "Error: element 99 is not in the latest state of tab 1; call getAXState() again") {
+	if !r.isError || !strings.Contains(r.all(), "\nelement 99 is not in the latest state of tab 1; call getAXState() again") {
 		t.Errorf("stale %q", r.all())
 	}
 	c.ok(`await tab.scroll([10, 20], "down")`)

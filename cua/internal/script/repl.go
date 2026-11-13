@@ -221,44 +221,25 @@ func (p *REPL) ended(ctx context.Context, timeout time.Duration) (string, bool) 
 	return "Error: the call was stopped: the user stopped fennec-cua, or the client cancelled it. Input may have been sent before the stop; read the state again before resending.", true
 }
 
-// errorLine renders an uncaught error as "Error: <message>" with the
-// error's own name when it has one ("TypeError: ...") and its stack lines.
+// errorLine renders an uncaught error as the reference does: an Error's
+// message alone, without its name or stack ("tab is not defined"); a thrown
+// value of another kind as its text.
 func errorLine(v any) string {
-	text := errText(v)
 	if exc, ok := v.(*goja.Exception); ok {
 		if val := exc.Value(); val != nil {
-			if o, ok := val.(*goja.Object); ok {
-				name, msg := o.Get("name"), o.Get("message")
-				if msg != nil && !goja.IsUndefined(msg) {
-					head := "Error"
-					if name != nil && !goja.IsUndefined(name) && name.String() != "" {
-						head = name.String()
-					}
-					text = head + ": " + msg.String()
-					if st := o.Get("stack"); st != nil && !goja.IsUndefined(st) {
-						if _, rest, ok := strings.Cut(st.String(), "\n"); ok && strings.TrimSpace(rest) != "" {
-							text += "\n" + rest
-						}
-					}
-					return text
-				}
-			}
-			text = val.String()
+			v = val
 		}
 	}
 	if o, ok := v.(*goja.Object); ok {
 		if msg := o.Get("message"); msg != nil && !goja.IsUndefined(msg) {
-			head := "Error"
-			if name := o.Get("name"); name != nil && !goja.IsUndefined(name) && name.String() != "" {
-				head = name.String()
-			}
-			return head + ": " + msg.String()
+			return msg.String()
 		}
+		return o.String()
 	}
-	if !strings.Contains(strings.SplitN(text, "\n", 2)[0], "Error") {
-		text = "Error: " + text
+	if val, ok := v.(goja.Value); ok && val != nil {
+		return val.String()
 	}
-	return text
+	return errText(v)
 }
 
 // output collects a call's parts within the caps.

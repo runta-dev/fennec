@@ -18,7 +18,7 @@ var nodeAttrs = []string{
 	"AXRole", "AXSubrole", "AXRoleDescription", "AXTitle", "AXDescription", "AXValue",
 	"AXFocused", "AXSelected", "AXExpanded", "AXEnabled", "AXPosition", "AXSize",
 	"AXChildren", "AXHelp", "AXPlaceholderValue", "AXURL", "AXDOMIdentifier",
-	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemMarkChar", "AXIdentifier",
+	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemMarkChar", "AXIdentifier", "AXSelectedText",
 }
 
 const (
@@ -43,6 +43,7 @@ const (
 	aCmdMods
 	aMarkChar
 	aIdentifier
+	aSelectedText
 )
 
 // ErrStale is a read aimed at a window whose app is not answering.
@@ -144,7 +145,7 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 			n.States = append(n.States, "showing")
 		}
 	}
-	if u := urlOf(v[aURL]); u != "" && (opts.URLs || n.Role == "link") {
+	if u := urlOf(v[aURL]); u != "" && (opts.URLs || opts.Detail || n.Role == "link") {
 		n.URL = string(u)
 	}
 	if opts.Web {
@@ -166,8 +167,38 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 		if ok, err := el.Settable("AXValue"); err == nil && ok && !n.HasState("settable") {
 			n.States = append(n.States, "settable")
 		}
+		n.AXRole = role
+		n.ValueType = valueType(v[aValue])
+		n.Placeholder = str(v[aPlaceholder])
+		n.SelectedText = str(v[aSelectedText])
+		// An element that has AXSelected or AXExpanded but has it false is
+		// selectable or collapsed; the state text names both.
+		if b, ok := v[aSelected].(bool); ok && !b {
+			n.States = append(n.States, "selectable")
+		}
+		if b, ok := v[aExpanded].(bool); ok && !b {
+			n.States = append(n.States, "collapsed")
+		}
 	}
 	return n
+}
+
+// valueType names the kind of an AXValue as the state text prints it after
+// "settable": "" without a value.
+func valueType(v any) string {
+	switch v.(type) {
+	case nil:
+		return ""
+	case bool:
+		return "boolean"
+	case int64:
+		return "integer"
+	case float64:
+		return "float"
+	case string:
+		return "string"
+	}
+	return "unknown"
 }
 
 func enabled(v any) bool {
@@ -192,6 +223,8 @@ func valueString(v any) (string, bool) {
 		return x, true
 	case float64:
 		return strconv.FormatFloat(x, 'f', -1, 64), true
+	case int64:
+		return strconv.FormatInt(x, 10), true
 	case bool:
 		if x {
 			return "1", true

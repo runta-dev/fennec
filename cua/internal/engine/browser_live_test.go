@@ -101,7 +101,7 @@ func TestLiveBrowserREPL(t *testing.T) {
 	saveID := id(state, `button Save`)
 	moreID := id(state, `pop up button \(collapsed\) More`)
 	notesID := id(state, `text entry area \(settable\) Description: Notes`)
-	if out := run(`await tab.getAXState()`); !strings.Contains(out, "has not changed") {
+	if out := run(`await tab.getAXState()`); !strings.Contains(out, "There has been no change in the accessibility tree.") {
 		t.Errorf("unchanged read: %s", out)
 	}
 	out = run(`await tab.typeText(` + nameID + `, "Ada"); await tab.click(` + saveID + `); await tab.getAXState()`)
@@ -176,7 +176,7 @@ func TestLiveBrowserREPL(t *testing.T) {
 	if !strings.Contains(out, "# Browser: ego lite") || !strings.Contains(out, "Browser tab: 1,") {
 		t.Errorf("getTab after reset: %s", out)
 	}
-	if r := c.js(`await cua.getTab("99")`); !r.isError || !strings.Contains(r.all(), "Error: Tab not found in browser ego.") {
+	if r := c.js(`await cua.getTab("99")`); !r.isError || !strings.Contains(r.all(), "\nTab not found in browser ego.") {
 		t.Errorf("missing tab: %s", r.all())
 	}
 	if r := c.js(`await again.typeText(1.5, "x")`); !r.isError || !strings.Contains(r.all(), "Browser input requires an element index") {
