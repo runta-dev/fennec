@@ -129,7 +129,7 @@ func fill(s protocol.Step, params map[string]string) protocol.Step {
 	s.URL = fillText(s.URL, params)
 	s.Window = fillText(s.Window, params)
 	s.App = fillText(s.App, params)
-	for _, t := range []**protocol.Target{&s.Press, &s.Set, &s.Click, &s.Scroll, &s.Drag, &s.To, &s.Into} {
+	for _, t := range []**protocol.Target{&s.Press, &s.Set, &s.Click, &s.Scroll, &s.Drag, &s.To, &s.Into, &s.Perform, &s.SelectText} {
 		if *t != nil {
 			c := **t
 			c.Select = fillText(c.Select, params)

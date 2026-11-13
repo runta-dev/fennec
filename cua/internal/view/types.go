@@ -50,6 +50,16 @@ type RawNode struct {
 	Page  string
 	DOMID string
 	Keys  string // menu shortcut, such as cmd+s
+
+	// Detail, read only with TreeOptions.Detail: the spoken role, the raw
+	// AXDescription, AXIdentifier and AXHelp, and the element's actions
+	// other than the press, by their spoken names. A settable value shows
+	// as the "settable" state.
+	RoleDesc    string
+	Description string
+	Identifier  string
+	Help        string
+	Actions     []string
 }
 
 // Tree is a window's walk.
@@ -64,6 +74,8 @@ type TreeOptions struct {
 	Menus bool // include the app's menu bar
 	URLs  bool
 	Web   bool // web address and DOM ids
+	// Detail reads the RawNode detail fields (more calls per element).
+	Detail bool
 }
 
 // Limits of one tree.

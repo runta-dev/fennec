@@ -1,4 +1,6 @@
-// Package engine answers fennec-cua's six MCP tools. It applies the safety
+// Package engine answers fennec-cua's MCP tools: the js REPL and js_reset
+// (docs/codex-parity.md), whose cua and fennec objects reach the six engine
+// tools (observe, act, wait, run, flow, status). It applies the safety
 // controls every call passes (stop, then the desk turn for input) and hands
 // each tool to its implementation.
 package engine
@@ -8,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"runtime"
-	"strings"
+	"time"
 
 	"fennec/cua/internal/extensions"
 	"fennec/cua/internal/mcpserver"
@@ -65,9 +67,17 @@ type Engine struct {
 	// as refusing calls while a confirm dialog is open; nil admits all.
 	Admit func(tool string) *protocol.Error
 
+	// Models answers model calls from the REPL; nil answers them
+	// unavailable.
+	Models Models
+	// JSTimeout bounds each js call; zero means script.ReplTimeout.
+	JSTimeout time.Duration
+
 	// runs names each run; its nonce is drawn once per engine, that is
 	// once per daemon.
 	runs sched.RunIDs
+	// repl holds each MCP session's REPL runtime.
+	repl repls
 }
 
 var descriptions = map[string]string{
@@ -88,8 +98,16 @@ var requests = map[string]any{
 	protocol.ToolStatus:  struct{}{},
 }
 
-// Tools lists the six tools, then the extensions' tools.
+// Tools lists the MCP surface: js and js_reset (docs/codex-parity.md).
+// The engine tools and the extensions are reached through the REPL.
 func (e *Engine) Tools(*mcpserver.Session) []mcpserver.Tool {
+	return replTools()
+}
+
+// EngineTools lists the six engine tools and the extensions' tools with
+// their schemas, as the REPL's fennec object and in-process callers reach
+// them.
+func (e *Engine) EngineTools() []mcpserver.Tool {
 	out := make([]mcpserver.Tool, 0, len(protocol.Tools))
 	for _, name := range protocol.Tools {
 		out = append(out, mcpserver.Tool{Name: name, Description: descriptions[name], InputSchema: schema.For(requests[name])})
@@ -97,8 +115,12 @@ func (e *Engine) Tools(*mcpserver.Session) []mcpserver.Tool {
 	return append(out, e.Ext.Tools(!e.RunOff)...)
 }
 
-// Call answers a tool call.
+// Call answers a tool call: the REPL's tools, and for in-process callers
+// (the CLI, tests) the engine tools by name.
 func (e *Engine) Call(ctx context.Context, s *mcpserver.Session, name string, args json.RawMessage) mcpserver.Result {
+	if res, ok := e.replCall(ctx, s, name, args); ok {
+		return res
+	}
 	if name == protocol.ToolStatus {
 		return result(e.Status(), nil)
 	}
@@ -221,7 +243,6 @@ func grant(ok bool) string {
 	return "denied"
 }
 
-// Instructions is the initialize text agents read first.
-var Instructions = strings.TrimSpace(`
-fennec-cua drives this Mac's desktop. Start with observe: it answers the front window's outline, where each element has a ref such as e12. Then act with steps that name targets by ref, by selector (button "Save", textbox "Name" in sheet "Export") or, last, by point. Every act step reports confirmed, unconfirmed (sent but not proven: read back before resending) or refused (nothing sent). Add expect to a step to have it checked. Refused, declined and busy answers (another agent acting, or a confirm dialog pending) sent nothing: retrying is safe. Stopped, unconfirmed, a type error after the lines it reports as typed, and a plan.s partial trace may have taken effect: observe before resending. If a call answers stopped, the user halted fennec-cua: wait for them to resume.
-`)
+// Instructions is the initialize text agents read first: one line, as the
+// API documentation comes with the first js call.
+var Instructions = "Automate this Mac's apps (UI automation) through the `cua` API in the js REPL; the first js call returns its documentation."

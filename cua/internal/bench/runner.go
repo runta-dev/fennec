@@ -53,6 +53,8 @@ func BackendSetup(name string, m ModelAccess) (setup, serve string, err error) {
 		// proxying to a CuaDriver.app that the image does not have.
 		return "", "exec " + vm.Quote(GuestDriver) + " mcp --direct", nil
 	case BackendFennec:
+		// fennec-cua's only MCP surface is the js REPL (docs/codex-parity.md):
+		// the agent sees js and js_reset and drives apps through cua.
 		dir := "/tmp/fcua"
 		cfg := ""
 		if m.BaseURL != "" {

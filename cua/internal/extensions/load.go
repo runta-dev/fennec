@@ -140,6 +140,10 @@ func Load(dir string, logf func(format string, args ...any)) Set {
 	for _, n := range protocol.Tools {
 		l.taken[n] = true
 	}
+	// The REPL's tools and the internal tools it calls are reserved too.
+	for _, n := range []string{protocol.ToolJS, protocol.ToolJSReset, protocol.ToolTurnEnded, protocol.ToolApps, protocol.ToolPaste, "extensions"} {
+		l.taken[n] = true
+	}
 	for _, n := range names {
 		path := filepath.Join(dir, n)
 		data, err := os.ReadFile(path)

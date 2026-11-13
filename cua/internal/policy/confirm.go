@@ -196,7 +196,7 @@ func Describe(s protocol.Step, target string, textClip int) string {
 }
 
 func firstTarget(s protocol.Step) *protocol.Target {
-	for _, t := range []*protocol.Target{s.Click, s.Press, s.Scroll, s.Set} {
+	for _, t := range []*protocol.Target{s.Click, s.Press, s.Scroll, s.Set, s.Perform, s.SelectText} {
 		if t != nil {
 			return t
 		}

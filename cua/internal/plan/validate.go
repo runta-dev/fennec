@@ -13,12 +13,12 @@ import (
 
 // Keys of a step by the JSON type they take.
 var (
-	textKeys   = map[string]bool{"key": true, "menu": true, "focus": true, "close": true, "launch": true, "url": true, "app": true, "window": true, "input": true, "intent": true, "button": true, "direction": true, "type": true}
-	targetKeys = map[string]bool{"press": true, "set": true, "click": true, "scroll": true, "drag": true, "to": true, "into": true}
+	textKeys   = map[string]bool{"key": true, "menu": true, "focus": true, "close": true, "launch": true, "url": true, "app": true, "window": true, "input": true, "intent": true, "button": true, "direction": true, "type": true, "action": true}
+	targetKeys = map[string]bool{"press": true, "set": true, "click": true, "scroll": true, "drag": true, "to": true, "into": true, "perform": true, "select_text": true}
 	objectKeys = map[string]bool{"wait": true, "expect": true, "web": true, "recorded": true}
 	boolKeys   = map[string]bool{"secret": true, "any_focus": true}
 	numberKeys = map[string]bool{"count": true, "amount": true, "pid": true}
-	opKeys     = []string{"press", "set", "click", "type", "key", "scroll", "drag", "menu", "focus", "close", "launch", "wait"}
+	opKeys     = []string{"press", "set", "click", "type", "key", "scroll", "drag", "menu", "focus", "close", "launch", "wait", "perform", "select_text"}
 )
 
 // CheckRaw checks an act call's steps as sent, before anything is decoded
@@ -80,6 +80,11 @@ func CheckRaw(args json.RawMessage) *protocol.Error {
 			case numberKeys[k]:
 				if !strings.ContainsAny(string(v[:1]), "-0123456789") {
 					return stepErr(i, k, "must be a number, not "+jsonKind(v))
+				}
+			case k == "range":
+				var r [2]int
+				if json.Unmarshal(v, &r) != nil || r[0] < 0 || r[1] < 0 {
+					return stepErr(i, k, "must be [offset, length] with two whole numbers")
 				}
 			case k == "args" || k == "mods":
 				var list []string
@@ -180,6 +185,20 @@ func validateStep(i int, s protocol.Step) *protocol.Error {
 		if kind == "set" && s.Value == nil {
 			return stepErr(i, "value", "is missing; set needs the value to give")
 		}
+	case "perform":
+		if emptyTarget(s.Perform) {
+			return stepErr(i, "perform", "is empty")
+		}
+		if strings.TrimSpace(s.Action) == "" {
+			return stepErr(i, "action", "is missing; perform needs the action's name")
+		}
+	case "select_text":
+		if emptyTarget(s.SelectText) || s.SelectText.Point != nil {
+			return stepErr(i, "select_text", "needs an element (a ref or a selector)")
+		}
+		if s.Range == nil {
+			return stepErr(i, "range", "is missing; select_text needs [offset, length]")
+		}
 	case "key":
 		if strings.TrimSpace(s.Key) == "" {
 			return stepErr(i, "key", "is empty")
@@ -238,6 +257,10 @@ func hasOp(s protocol.Step, k string) bool {
 		return s.Launch != ""
 	case "wait":
 		return s.Wait != nil
+	case "perform":
+		return s.Perform != nil
+	case "select_text":
+		return s.SelectText != nil
 	}
 	return false
 }

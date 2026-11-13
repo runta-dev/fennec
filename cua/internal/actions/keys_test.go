@@ -187,3 +187,17 @@ func TestMacPlusKeyIsShiftEquals(t *testing.T) {
 		t.Fatalf("the plus key: %s", d)
 	}
 }
+
+// CDX-15: the xdotool key names pressKey takes read into the driver's keys.
+func TestXdotoolKeyNames(t *testing.T) {
+	for combo, want := range map[string]string{
+		"Return": "return", "Tab": "tab", "Escape": "escape", "BackSpace": "backspace", "Delete": "forward_delete",
+		"Up": "up", "Page_Down": "pagedown", "space": "space", "KP_0": "0", "KP_Add": "+",
+		"super+c": "cmd+c", "shift+Tab": "shift+tab", "ctrl+alt+Delete": "ctrl+alt+forward_delete",
+	} {
+		keys, err := actions.KeyNames(combo)
+		if err != nil || strings.Join(keys, "+") != want {
+			t.Errorf("%s: %v %v, want %s", combo, keys, err, want)
+		}
+	}
+}

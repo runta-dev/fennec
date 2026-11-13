@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os/exec"
+	"strings"
 	"sync"
 )
 
@@ -59,15 +60,16 @@ type Content struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 
-// Text joins the text blocks.
+// Text joins the text blocks, one per line (a REPL result sends its
+// framing, documentation and output as separate blocks).
 func (r ToolResult) Text() string {
-	s := ""
+	var parts []string
 	for _, c := range r.Content {
 		if c.Type == "text" {
-			s += c.Text
+			parts = append(parts, c.Text)
 		}
 	}
-	return s
+	return strings.Join(parts, "\n")
 }
 
 // Start runs the command and initialises a session.

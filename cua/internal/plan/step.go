@@ -84,7 +84,7 @@ func (r *planRun) dispatch(ctx context.Context, i int, s protocol.Step, kind str
 
 // targetOf is the step's element target.
 func targetOf(s protocol.Step) *protocol.Target {
-	for _, t := range []*protocol.Target{s.Press, s.Set, s.Click, s.Scroll, s.Drag} {
+	for _, t := range []*protocol.Target{s.Press, s.Set, s.Click, s.Scroll, s.Drag, s.Perform, s.SelectText} {
 		if t != nil {
 			return t
 		}
@@ -295,7 +295,7 @@ func isBool(v *json.RawMessage) bool {
 // needsWindow says whether a step kind sends input to a window.
 func needsWindow(kind string) bool {
 	switch kind {
-	case "press", "set", "click", "type", "key", "scroll", "drag", "menu":
+	case "press", "set", "click", "type", "key", "scroll", "drag", "menu", "perform", "select_text":
 		return true
 	}
 	return false

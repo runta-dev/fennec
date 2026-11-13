@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"fennec/cua/internal/daemon"
+	"fennec/cua/internal/engine"
 	"fennec/cua/internal/extensions"
 	"fennec/cua/internal/protocol"
 )
@@ -322,6 +323,7 @@ type fixture struct {
 	state string // where test services leave notes
 	x     *extensions.Extensions
 	logs  *logs
+	eng   *engine.Engine // set by serve
 }
 
 func testEnv(state string) []string {

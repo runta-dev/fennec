@@ -68,7 +68,7 @@ func TestStartsOnFirstNonStatusCall(t *testing.T) {
 		t.Fatalf("initialize %v", m)
 	}
 	_, _ = inW.Write([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n"))
-	if m := rpc(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`); len(m["result"].(map[string]any)["tools"].([]any)) < 6 {
+	if m := rpc(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`); len(m["result"].(map[string]any)["tools"].([]any)) != 2 {
 		t.Fatalf("tools/list %v", m)
 	}
 	m := rpc(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"status"}}`)

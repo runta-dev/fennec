@@ -664,7 +664,8 @@ func TestVisionIndexClick(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Protocol and safety
 
-// CAP-RGB-002: tools/list names the six tools and each answers.
+// CAP-RGB-002: tools/list names the REPL's tools (js, js_reset); the REPL
+// answers, and each engine tool it reaches answers by name too.
 func TestEveryToolAnswers(t *testing.T) {
 	run(t, Case{
 		Caps:      []string{"CAP-RGB-002"},
@@ -675,13 +676,15 @@ func TestEveryToolAnswers(t *testing.T) {
 			if err != nil {
 				return parity.Outcome{}, err
 			}
-			if strings.Join(names, ",") != strings.Join(protocol.Tools, ",") {
+			if strings.Join(names, ",") != strings.Join(protocol.MCPTools, ",") {
 				return parity.Outcome{Class: "tools", Detail: strings.Join(names, ",")}, nil
 			}
 			calls := []struct {
 				tool string
 				args M
 			}{
+				{"js", M{"code": `nodeRepl.write(JSON.stringify(await fennec.status()))`, "title": "Checking status"}},
+				{"js_reset", M{}},
 				{"status", M{}},
 				{"observe", M{}},
 				{"act", M{"steps": []M{{"press": `button "Increment"`}}}},

@@ -313,6 +313,10 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	// calls unavailable); the client is built once the daemon listens.
 	mdl := &modelBox{}
 	eng.Impl[protocol.ToolRun] = eng.RunTool(mdl)
+	// The REPL's app inventory and paste.
+	eng.Models = mdl
+	eng.Impl[protocol.ToolApps] = eng.AppsTool(driverApps(client))
+	eng.Impl[protocol.ToolPaste] = eng.PasteTool(pasteboard{})
 	px.Models, px.VisionModel = mdl, cfg.Model.Models.Verify != nil
 	fl.Decider, fl.Caption = mdl, flows.ModelCaptioner(mdl)
 

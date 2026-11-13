@@ -1,6 +1,7 @@
 package script
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,7 +13,8 @@ import (
 	"fennec/cua/internal/protocol"
 )
 
-// install puts the globals a script sees: console, setTimeout, sleep and cua.
+// install puts the globals every runtime sees: console, setTimeout and
+// sleep.
 func (r *runner) install() {
 	vm := r.vm
 	console := vm.NewObject()
@@ -32,22 +34,24 @@ func (r *runner) install() {
 	}
 	_ = vm.Set("console", console)
 	_ = vm.Set("setTimeout", func(fn goja.Callable, ms int64) int {
+		ctx, loop := r.ctx, r.loop
 		go func() {
 			select {
 			case <-time.After(time.Duration(ms) * time.Millisecond):
-				r.post(func() { _, _ = fn(goja.Undefined()) })
-			case <-r.ctx.Done():
+				post(ctx, loop, func() { _, _ = fn(goja.Undefined()) })
+			case <-ctx.Done():
 			}
 		}()
 		return 0
 	})
 	_ = vm.Set("sleep", func(ms int64) *goja.Promise {
 		p, resolve, _ := vm.NewPromise()
+		ctx, loop := r.ctx, r.loop
 		go func() {
 			select {
 			case <-time.After(time.Duration(ms) * time.Millisecond):
-				r.post(func() { _ = resolve(goja.Undefined()) })
-			case <-r.ctx.Done():
+				post(ctx, loop, func() { _ = resolve(goja.Undefined()) })
+			case <-ctx.Done():
 			}
 		}()
 		return p
@@ -59,7 +63,11 @@ func (r *runner) install() {
 			delete(r.unhandled, p)
 		}
 	})
+}
 
+// installRunAPI puts the run tool's cua object.
+func (r *runner) installRunAPI() {
+	vm := r.vm
 	cua := vm.NewObject()
 	_ = cua.Set("input", r.h.Input())
 	for _, tool := range []string{protocol.ToolObserve, protocol.ToolAct, protocol.ToolWait, protocol.ToolFlow, protocol.ToolStatus} {
@@ -126,46 +134,50 @@ func pngs(v goja.Value) []string {
 	return out
 }
 
-// post schedules work on the loop unless the run has ended.
-func (r *runner) post(f func()) {
+// post schedules work on an evaluation's loop unless that evaluation has
+// ended. Goroutines capture ctx and loop when they start, so work left
+// behind by an ended evaluation of a persistent runtime never runs in a
+// later one.
+func post(ctx context.Context, loop chan func(), f func()) {
 	select {
-	case r.loop <- f:
-	case <-r.ctx.Done():
+	case loop <- f:
+	case <-ctx.Done():
 	}
 }
 
 // tool calls a host tool off the loop and settles the promise on it.
 func (r *runner) tool(name string, args any) *goja.Promise {
-	return r.async(func() (any, *protocol.Error) {
+	return r.async(func(ctx context.Context, h Host) (any, *protocol.Error) {
 		data, err := json.Marshal(args)
 		if err != nil {
 			return nil, &protocol.Error{Code: protocol.ErrInvalid, Message: err.Error()}
 		}
-		return r.h.Tool(r.ctx, name, data)
+		return h.Tool(ctx, name, data)
 	})
 }
 
 func (r *runner) model(op string, args any) *goja.Promise {
-	return r.async(func() (any, *protocol.Error) {
+	return r.async(func(ctx context.Context, h Host) (any, *protocol.Error) {
 		data, err := json.Marshal(args)
 		if err != nil {
 			return nil, &protocol.Error{Code: protocol.ErrInvalid, Message: err.Error()}
 		}
-		return r.h.Model(r.ctx, op, data)
+		return h.Model(ctx, op, data)
 	})
 }
 
-func (r *runner) async(f func() (any, *protocol.Error)) *goja.Promise {
+func (r *runner) async(f func(ctx context.Context, h Host) (any, *protocol.Error)) *goja.Promise {
 	p, resolve, reject := r.vm.NewPromise()
+	ctx, loop, h := r.ctx, r.loop, r.h
 	go func() {
-		v, perr := f()
+		v, perr := f(ctx, h)
 		// Round-trip through JSON so the script sees plain objects.
 		var plain any
 		if perr == nil {
 			data, _ := json.Marshal(v)
 			_ = json.Unmarshal(data, &plain)
 		}
-		r.post(func() {
+		post(ctx, loop, func() {
 			if perr != nil {
 				e := r.vm.NewGoError(fmt.Errorf("%s: %s", perr.Code, perr.Message))
 				_ = e.Set("code", string(perr.Code))

@@ -95,7 +95,7 @@ func TestStatusOverMCPAndControl(t *testing.T) {
 	c := dialMCP(t, p)
 	ctx := context.Background()
 	names, err := c.Tools(ctx)
-	if err != nil || strings.Join(names, ",") != "observe,act,wait,run,flow,status" {
+	if err != nil || strings.Join(names, ",") != "js,js_reset" {
 		t.Fatalf("tools %v %v", names, err)
 	}
 	r, err := c.Tool(ctx, "status", nil)

@@ -46,6 +46,25 @@ static AXError perform(AXUIElementRef e, const char *action) {
 	return err;
 }
 
+static AXError settable(AXUIElementRef e, const char *name, int *out) {
+	CFStringRef a = cfstr(name);
+	Boolean b = false;
+	AXError err = AXUIElementIsAttributeSettable(e, a, &b);
+	CFRelease(a);
+	*out = b ? 1 : 0;
+	return err;
+}
+
+static AXError setRange(AXUIElementRef e, const char *name, long loc, long len) {
+	CFStringRef a = cfstr(name);
+	CFRange r = CFRangeMake(loc, len);
+	AXValueRef v = AXValueCreate(kAXValueCFRangeType, &r);
+	AXError err = AXUIElementSetAttributeValue(e, a, v);
+	CFRelease(v);
+	CFRelease(a);
+	return err;
+}
+
 static AXError setBool(AXUIElementRef e, const char *name, int v) {
 	CFStringRef a = cfstr(name);
 	AXError err = AXUIElementSetAttributeValue(e, a, v ? kCFBooleanTrue : kCFBooleanFalse);
@@ -328,6 +347,24 @@ func (e *Element) SetString(name, v string) error {
 	defer C.free(unsafe.Pointer(cn))
 	defer C.free(unsafe.Pointer(cv))
 	return axErr(C.setString(e.ref, cn, cv))
+}
+
+// Settable reports whether an attribute such as AXValue can be written.
+func (e *Element) Settable(name string) (bool, error) {
+	c := C.CString(name)
+	defer C.free(unsafe.Pointer(c))
+	var out C.int
+	if err := axErr(C.settable(e.ref, c, &out)); err != nil {
+		return false, err
+	}
+	return out != 0, nil
+}
+
+// SetRange sets a range attribute such as AXSelectedTextRange.
+func (e *Element) SetRange(name string, loc, length int) error {
+	c := C.CString(name)
+	defer C.free(unsafe.Pointer(c))
+	return axErr(C.setRange(e.ref, c, C.long(loc), C.long(length)))
 }
 
 // Actions lists the element's action names.

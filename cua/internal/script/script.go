@@ -91,31 +91,56 @@ func bundle(code, dir string) (string, error) {
 	return string(res.OutputFiles[0].Contents), nil
 }
 
-// logs keeps the first LogCap bytes of console output.
+// logs keeps the first max bytes (LogCap when zero) of console output.
 type logs struct {
 	mu  sync.Mutex
 	b   strings.Builder
 	cut bool
+	max int
+	// note is the line added when output was cut.
+	note string
+}
+
+func (l *logs) limit() int {
+	if l.max > 0 {
+		return l.max
+	}
+	return LogCap
 }
 
 func (l *logs) write(s string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.b.Len() >= LogCap {
-		l.cut = true
+	if l.b.Len() >= l.limit() {
+		l.cut = l.cut || s != ""
 		return
 	}
-	if room := LogCap - l.b.Len(); len(s) > room {
-		s, l.cut = s[:room], true
+	if room := l.limit() - l.b.Len(); len(s) > room {
+		s, l.cut = cutUTF8(s, room), true
 	}
 	l.b.WriteString(s)
+}
+
+// cutUTF8 keeps at most n bytes of s without splitting a character.
+func cutUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && n < len(s) && s[n]&0xC0 == 0x80 {
+		n--
+	}
+	return s[:n]
 }
 
 func (l *logs) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.cut {
-		return l.b.String() + "\n[logs cut at 32 KiB]"
+		note := l.note
+		if note == "" {
+			note = "[logs cut at 32 KiB]"
+		}
+		return l.b.String() + "\n" + note
 	}
 	return l.b.String()
 }
@@ -154,6 +179,7 @@ func Run(ctx context.Context, h Host, req protocol.RunRequest) protocol.RunResul
 	r.vm = vm
 	vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
 	r.install()
+	r.installRunAPI()
 	stop := context.AfterFunc(rctx, func() { vm.Interrupt(errInterrupted) })
 	defer stop()
 

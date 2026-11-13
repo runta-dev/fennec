@@ -95,6 +95,14 @@ func (s *HTTP) Serve(ctx context.Context, ln net.Listener) error {
 	defer cancel()
 	_ = srv.Shutdown(sctx)
 	s.wg.Wait()
+	if sc, ok := s.h.(SessionCloser); ok {
+		s.mu.Lock()
+		for id, sv := range s.sessions {
+			sc.CloseSession(&sv.sess)
+			delete(s.sessions, id)
+		}
+		s.mu.Unlock()
+	}
 	return nil
 }
 

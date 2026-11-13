@@ -132,7 +132,7 @@ func (o *Observer) window(ctx context.Context, walk *Walk, res *protocol.Observe
 	}
 	start := time.Now()
 	// find always searches the menu bar.
-	tree, err := o.Source.Tree(ctx, w, TreeOptions{Menus: req.Menus || req.Find != "", URLs: o.URLs, Web: req.Web})
+	tree, err := o.Source.Tree(ctx, w, TreeOptions{Menus: req.Menus || req.Find != "" || req.Detail, URLs: o.URLs, Web: req.Web, Detail: req.Detail})
 	if err != nil {
 		return nil, internal(err)
 	}
@@ -155,7 +155,10 @@ func (o *Observer) window(ctx context.Context, walk *Walk, res *protocol.Observe
 	res.Outline = out.Text
 	res.Notes = append(res.Notes, out.Notes...)
 	res.Truncated = out.Cut
-	if req.Nodes {
+	switch {
+	case req.Detail:
+		res.Nodes = DetailNodes(snap)
+	case req.Nodes:
 		res.Nodes = Nodes(snap, out.Shown, req.Menus, o.URLs)
 	}
 	return res, nil

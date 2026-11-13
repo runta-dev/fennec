@@ -38,6 +38,11 @@ var keyAliases = map[string]string{
 	"plus": "+", "minus": "-", "dash": "-", "equal": "=", "equals": "=", "asterisk": "*", "star": "*",
 	"slash": "/", "backslash": "\\", "period": ".", "dot": ".", "comma": ",", "semicolon": ";", "colon": ":",
 	"underscore": "_", "parenleft": "(", "parenright": ")",
+	// Keypad names of the xdotool vocabulary (KP_0, KP_Add, ...).
+	"kp0": "0", "kp1": "1", "kp2": "2", "kp3": "3", "kp4": "4", "kp5": "5", "kp6": "6", "kp7": "7", "kp8": "8", "kp9": "9",
+	"kpadd": "+", "kpsubtract": "-", "kpmultiply": "*", "kpdivide": "/", "kpdecimal": ".", "kpequal": "=",
+	"kpup": "up", "kpdown": "down", "kpleft": "left", "kpright": "right", "kphome": "home", "kpend": "end",
+	"kpprior": "pageup", "kpnext": "pagedown", "kppageup": "pageup", "kppagedown": "pagedown", "kpdelete": "forward_delete", "kpspace": "space", "kptab": "tab",
 }
 
 // notMac are names of keys a Mac keyboard does not have.

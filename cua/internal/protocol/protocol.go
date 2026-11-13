@@ -11,7 +11,8 @@ import (
 	"strings"
 )
 
-// Tool names. Six tools cover the whole surface.
+// Engine tool names. Six tools cover what the engine does; agents reach them
+// through the REPL (the cua and fennec objects), not as MCP tools.
 const (
 	ToolObserve = "observe"
 	ToolAct     = "act"
@@ -19,10 +20,60 @@ const (
 	ToolRun     = "run"
 	ToolFlow    = "flow"
 	ToolStatus  = "status"
+	// ToolApps lists running and recently used apps; the REPL's app
+	// inventory reads it.
+	ToolApps = "apps"
+	// ToolPaste pastes text through the pasteboard (the REPL's paste).
+	ToolPaste = "paste"
 )
 
-// Tools lists every tool in the order tools/list answers them.
+// Tools lists the engine's six tools.
 var Tools = []string{ToolObserve, ToolAct, ToolWait, ToolRun, ToolFlow, ToolStatus}
+
+// MCP tool names: the REPL surface (docs/codex-parity.md).
+const (
+	ToolJS      = "js"
+	ToolJSReset = "js_reset"
+	// ToolTurnEnded is the host's notice that the model's turn is over; it
+	// is callable but never listed.
+	ToolTurnEnded = "turn_ended"
+)
+
+// MCPTools lists every tool in the order tools/list answers them.
+var MCPTools = []string{ToolJS, ToolJSReset}
+
+// JSRequest is the js tool's input.
+type JSRequest struct {
+	// Code runs in the session's persistent JavaScript runtime.
+	Code string `json:"code,omitempty"`
+	// Title is a short present-progressive label for a person watching
+	// ("Checking the form"); it never changes behaviour.
+	Title string `json:"title,omitempty"`
+	// CompletionSummary, sent alone, records a three-to-six word past-tense
+	// headline of the finished UI task.
+	CompletionSummary string `json:"completion_summary,omitempty"`
+}
+
+// AppsRequest asks for the app inventory.
+type AppsRequest struct{}
+
+// AppInfo is one app of the inventory.
+type AppInfo struct {
+	Name     string `json:"name"`
+	BundleID string `json:"bundle_id,omitempty"`
+	Path     string `json:"path,omitempty"`
+	PID      int    `json:"pid,omitempty"`
+	Running  bool   `json:"running"`
+	LastUsed string `json:"last_used,omitempty"`
+	UseCount int    `json:"use_count,omitempty"`
+}
+
+// AppsResult is the inventory: apps and the admitted windows.
+type AppsResult struct {
+	Apps    []AppInfo `json:"apps"`
+	Windows []Window  `json:"windows,omitempty"`
+	Errors  []string  `json:"errors,omitempty"`
+}
 
 // ---------------------------------------------------------------------------
 // Targets
@@ -148,6 +199,17 @@ type Node struct {
 	DOMID  string   `json:"dom_id,omitempty"` // a web element's DOM id
 	// Truncated is set when Value holds only part of the element's text.
 	Truncated bool `json:"truncated,omitempty"`
+
+	// Detail fields, read only when an observe asks for detail.
+	// RoleDesc is the role as macOS speaks it ("standard window",
+	// "pop up button").
+	RoleDesc    string `json:"role_desc,omitempty"`
+	Description string `json:"description,omitempty"` // AXDescription
+	Identifier  string `json:"identifier,omitempty"`  // AXIdentifier
+	Help        string `json:"help,omitempty"`        // AXHelp
+	// Actions are the element's accessibility actions other than the
+	// press, by their spoken names ("Raise", "Show Menu").
+	Actions []string `json:"actions,omitempty"`
 }
 
 // Image is a capture.
@@ -278,6 +340,10 @@ type ObserveRequest struct {
 	// for this session; it is turned off again when the session ends and
 	// no other holder needs it. Steps with a web check do this by themselves.
 	Web bool `json:"web,omitempty"`
+	// Detail reads each node's role description, description, identifier,
+	// help, accessibility actions and whether its value is settable (as the
+	// "settable" state); it implies Nodes.
+	Detail bool `json:"detail,omitempty"`
 }
 
 // ObserveResult is a view. Refs in it stay valid until the view changes.
@@ -350,6 +416,15 @@ type Step struct {
 	Close  string       `json:"close,omitempty"`  // close a window
 	Launch string       `json:"launch,omitempty"` // start or front an app; Args, URL apply
 	Wait   *WaitRequest `json:"wait,omitempty"`
+	// Perform runs the element's named accessibility action (Action, such
+	// as "AXShowMenu" or its spoken name "Show Menu").
+	Perform *Target `json:"perform,omitempty"`
+	Action  string  `json:"action,omitempty"`
+	// SelectText selects Range (character offset and length) of a text
+	// element's value through accessibility; a zero length places the
+	// caret.
+	SelectText *Target `json:"select_text,omitempty"`
+	Range      *[2]int `json:"range,omitempty"`
 
 	// Value is the desired value for Set (string, number, or bool for a
 	// check box or switch) and the desired on/off state for a Menu toggle.
@@ -410,6 +485,7 @@ func (s Step) Kind() (string, error) {
 		{"type", s.Type != nil}, {"key", s.Key != ""}, {"scroll", s.Scroll != nil},
 		{"drag", s.Drag != nil}, {"menu", s.Menu != ""}, {"focus", s.Focus != ""},
 		{"close", s.Close != ""}, {"launch", s.Launch != ""}, {"wait", s.Wait != nil},
+		{"perform", s.Perform != nil}, {"select_text", s.SelectText != nil},
 	}
 	found := ""
 	for _, k := range kinds {

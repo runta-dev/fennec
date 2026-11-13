@@ -18,7 +18,7 @@ var nodeAttrs = []string{
 	"AXRole", "AXSubrole", "AXRoleDescription", "AXTitle", "AXDescription", "AXValue",
 	"AXFocused", "AXSelected", "AXExpanded", "AXEnabled", "AXPosition", "AXSize",
 	"AXChildren", "AXHelp", "AXPlaceholderValue", "AXURL", "AXDOMIdentifier",
-	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemMarkChar",
+	"AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemMarkChar", "AXIdentifier",
 }
 
 const (
@@ -42,6 +42,7 @@ const (
 	aCmdChar
 	aCmdMods
 	aMarkChar
+	aIdentifier
 )
 
 // ErrStale is a read aimed at a window whose app is not answering.
@@ -154,6 +155,18 @@ func node(el *ax.Element, v []any, scale float64, opts view.TreeOptions) view.Ra
 		}
 	}
 	n.Keys = shortcut(str(v[aCmdChar]), v[aCmdMods])
+	if opts.Detail {
+		n.RoleDesc = str(v[aRoleDesc])
+		n.Description = str(v[aDesc])
+		n.Help = str(v[aHelp])
+		n.Identifier = str(v[aIdentifier])
+		if names, err := el.Actions(); err == nil {
+			n.Actions = view.SecondaryActions(names)
+		}
+		if ok, err := el.Settable("AXValue"); err == nil && ok && !n.HasState("settable") {
+			n.States = append(n.States, "settable")
+		}
+	}
 	return n
 }
 

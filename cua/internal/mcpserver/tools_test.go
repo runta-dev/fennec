@@ -27,6 +27,7 @@ type client struct {
 	in  *io.PipeWriter
 	out *bufio.Scanner
 	id  int
+	h   mcpserver.Handler
 }
 
 func serve(t *testing.T, h mcpserver.Handler, info mcpserver.Info) *client {
@@ -40,7 +41,7 @@ func serve(t *testing.T, h mcpserver.Handler, info mcpserver.Info) *client {
 	sc := bufio.NewScanner(outR)
 	sc.Buffer(make([]byte, 1<<20), 4<<20)
 	t.Cleanup(func() { _ = inW.Close() })
-	return &client{t: t, in: inW, out: sc}
+	return &client{t: t, in: inW, out: sc, h: h}
 }
 
 func (c *client) rpc(method string, params any) map[string]any {
@@ -76,11 +77,21 @@ func newEngine(impl map[string]engine.Tool) *engine.Engine {
 	return &engine.Engine{Turn: &sched.Turn{Busy: time.Second}, Stopper: &sched.Stopper{}, Impl: impl}
 }
 
+// toolList lists the engine tools with their schemas, as JSON objects: the
+// tools the REPL reaches (tools/list itself names only js and js_reset).
 func toolList(t *testing.T, c *client) []map[string]any {
 	t.Helper()
-	var out []map[string]any
+	var listed []string
 	for _, tl := range c.rpc("tools/list", nil)["result"].(map[string]any)["tools"].([]any) {
-		out = append(out, tl.(map[string]any))
+		listed = append(listed, tl.(map[string]any)["name"].(string))
+	}
+	if strings.Join(listed, ",") != strings.Join(protocol.MCPTools, ",") {
+		t.Fatalf("tools/list %v", listed)
+	}
+	data, _ := json.Marshal(c.h.(*engine.Engine).EngineTools())
+	var out []map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
 	}
 	return out
 }
@@ -177,7 +188,12 @@ func TestDescriptionsStateOutcomes(t *testing.T) {
 			run = tl["description"].(string)
 		}
 	}
-	for name, text := range map[string]string{"instructions": instr, "act": act} {
+	// The instructions are one line pointing at the REPL; the outcomes are
+	// documented on act (and in the REPL's documentation).
+	if strings.Contains(instr, "\n") || !strings.Contains(instr, "cua") {
+		t.Errorf("instructions %q", instr)
+	}
+	for name, text := range map[string]string{"act": act} {
 		lower := strings.ToLower(text)
 		for _, want := range []string{"refused", "declined", "busy", "confirm dialog", "sent nothing", "stopped", "unconfirmed", "typed", "partial trace", "may have taken effect"} {
 			if !strings.Contains(lower, want) {

@@ -192,6 +192,59 @@ func (c *stepCtx) press(ctx context.Context) policy.Attempt {
 	return confirmed("pressed " + e.describe() + " by its accessibility action")
 }
 
+// perform runs one of the element's named accessibility actions; a name
+// the element does not list is refused before anything is sent.
+func (c *stepCtx) perform(ctx context.Context) policy.Attempt {
+	e, perr := c.element(ctx, *c.s.Perform)
+	if perr != nil {
+		return refuse(perr, "")
+	}
+	if a, ok := c.security(e); !ok {
+		return a
+	}
+	names, err := c.x.B.ActionNames(ctx, e.h)
+	if err != nil {
+		return refuse(&protocol.Error{Code: protocol.ErrNotResponding, Message: fmt.Sprintf("reading the actions of %s failed: %v; nothing was sent", e.describe(), err)}, policy.ReasonPolicy)
+	}
+	raw, ok := view.ActionName(names, c.s.Action)
+	if !ok {
+		listed := view.SecondaryActions(names)
+		msg := fmt.Sprintf("%s has no action %q; nothing was sent", e.describe(), c.s.Action)
+		if len(listed) > 0 {
+			msg = fmt.Sprintf("%s has no action %q (it lists %s); nothing was sent", e.describe(), c.s.Action, strings.Join(listed, ", "))
+		}
+		return refuse(&protocol.Error{Code: protocol.ErrInvalid, Message: msg}, policy.ReasonPolicy)
+	}
+	spoken := view.SpokenAction(raw)
+	if err := c.x.B.Perform(ctx, e.h, raw); err != nil {
+		return axFailure(e, err, "the "+spoken+" action")
+	}
+	return confirmed("ran the " + spoken + " action of " + e.describe())
+}
+
+// selectText selects a character range of a text element's value, or
+// places the caret when the length is zero.
+func (c *stepCtx) selectText(ctx context.Context) policy.Attempt {
+	e, perr := c.element(ctx, *c.s.SelectText)
+	if perr != nil {
+		return refuse(perr, "")
+	}
+	if a, ok := c.security(e); !ok {
+		return a
+	}
+	if c.s.Range == nil || c.s.Range[0] < 0 || c.s.Range[1] < 0 {
+		return refuse(&protocol.Error{Code: protocol.ErrInvalid, Message: "select_text needs range [offset, length]; nothing was sent"}, policy.ReasonPolicy)
+	}
+	loc, n := c.s.Range[0], c.s.Range[1]
+	if err := c.x.B.SelectRange(ctx, e.h, loc, n); err != nil {
+		return axFailure(e, err, "the text selection")
+	}
+	if n == 0 {
+		return confirmed(fmt.Sprintf("placed the caret at character %d of %s", loc, e.describe()))
+	}
+	return confirmed(fmt.Sprintf("selected characters %d to %d of %s", loc, loc+n, e.describe()))
+}
+
 // reachable is the element's centre when a hit test there lands on the
 // element, inside it or on one of its ancestors.
 func (c *stepCtx) reachable(ctx context.Context, e element) (int, int, bool) {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,7 @@ func serve(t *testing.T, f *fixture, runOff bool) *engine.Engine {
 		t.Fatal("the daemon did not start")
 	}
 	t.Cleanup(func() { cancel(); <-done })
+	f.eng = eng
 	return eng
 }
 
@@ -67,6 +69,7 @@ type client struct {
 	agent  string
 	caps   map[string]json.RawMessage
 	closed bool
+	eng    *engine.Engine
 }
 
 // dial opens an MCP session on the daemon at f.
@@ -76,7 +79,7 @@ func dial(t *testing.T, f *fixture) *client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &client{t: t, conn: conn, r: bufio.NewReader(conn)}
+	c := &client{t: t, conn: conn, r: bufio.NewReader(conn), eng: f.eng}
 	t.Cleanup(func() { _ = conn.Close() })
 	res, perr := c.rpc("initialize", map[string]any{"protocolVersion": "2025-06-18", "clientInfo": map[string]string{"name": "tester"}})
 	if perr != nil {
@@ -168,6 +171,9 @@ func (c *client) call(tool string, args any) toolResult {
 	return decodeResult(c.t, res)
 }
 
+// tools checks that tools/list names only the REPL's tools, then answers
+// the engine and extension tools the REPL reaches (fennec.tools()), which
+// stay callable by name for internal callers.
 func (c *client) tools() []mcpserver.Tool {
 	c.t.Helper()
 	res, perr := c.rpc("tools/list", map[string]any{})
@@ -178,7 +184,10 @@ func (c *client) tools() []mcpserver.Tool {
 		Tools []mcpserver.Tool `json:"tools"`
 	}
 	_ = json.Unmarshal(res, &out)
-	return out.Tools
+	if got := toolNames(out.Tools); got != strings.Join(protocol.MCPTools, ",") {
+		c.t.Fatalf("tools/list = %s", got)
+	}
+	return c.eng.EngineTools()
 }
 
 func toolNames(ts []mcpserver.Tool) string {

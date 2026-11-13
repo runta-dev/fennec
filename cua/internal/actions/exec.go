@@ -286,6 +286,10 @@ func (c *stepCtx) dispatch(ctx context.Context) policy.Attempt {
 		return c.closeWindow(ctx)
 	case "launch":
 		return c.launch(ctx)
+	case "perform":
+		return c.perform(ctx)
+	case "select_text":
+		return c.selectText(ctx)
 	}
 	return refuse(&protocol.Error{Code: protocol.ErrUnavailable, Message: c.kind + " steps run in the plan executor, which this build does not have yet; nothing was done"}, policy.ReasonPolicy)
 }

@@ -25,6 +25,10 @@ type Backend interface {
 	// Perform runs an accessibility action such as AXPress on an element.
 	// A failure the app reports carries an AXError.
 	Perform(ctx context.Context, h view.Handle, action string) error
+	// ActionNames lists an element's raw accessibility action names.
+	ActionNames(ctx context.Context, h view.Handle) ([]string, error)
+	// SelectRange sets a text element's selected range (AXSelectedTextRange).
+	SelectRange(ctx context.Context, h view.Handle, loc, length int) error
 	// SetValue writes an element's value.
 	SetValue(ctx context.Context, h view.Handle, value string) error
 	// Select selects a tab, option, row or tree item through accessibility.

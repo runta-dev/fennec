@@ -52,6 +52,27 @@ type Result struct {
 	Images     []Image
 	IsError    bool
 	Structured any
+	// Parts, when set, is the content in order (text and images
+	// interleaved) and replaces Text and Images.
+	Parts []Part
+}
+
+// Part is one content block: text, or an image when Image is set.
+type Part struct {
+	Text  string
+	Image *Image
+}
+
+// SessionCloser is optional: a Handler that implements it learns when a
+// session ends, to let go of what it kept for it.
+type SessionCloser interface {
+	CloseSession(s *Session)
+}
+
+// HiddenTools is optional: a Handler that implements it answers calls to
+// tools it never lists.
+type HiddenTools interface {
+	HiddenTool(name string) bool
 }
 
 // Session is one MCP connection: one agent.
@@ -150,6 +171,9 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler, info Info) 
 	wg.Wait()
 	close(out)
 	<-writerDone
+	if sc, ok := h.(SessionCloser); ok {
+		sc.CloseSession(&s.sess)
+	}
 	if errors.Is(err, io.EOF) {
 		err = nil
 	}
@@ -314,6 +338,9 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 		return fail(m.ID, CodeInvalidParams, "tools/call needs a tool name")
 	}
 	known := false
+	if ht, ok := s.h.(HiddenTools); ok && ht.HiddenTool(p.Name) {
+		known = true
+	}
 	for _, t := range s.h.Tools(&s.sess) {
 		if t.Name == p.Name {
 			known = true
@@ -352,6 +379,24 @@ func (s *server) call(ctx context.Context, m message, wg *sync.WaitGroup) *pendi
 
 func content(r Result) map[string]any {
 	blocks := []map[string]any{}
+	if len(r.Parts) > 0 {
+		for _, p := range r.Parts {
+			if p.Image == nil {
+				blocks = append(blocks, map[string]any{"type": "text", "text": p.Text})
+				continue
+			}
+			mime := p.Image.MIMEType
+			if sniffed := sniffBase64(p.Image.Data); sniffed != "" {
+				mime = sniffed
+			}
+			blocks = append(blocks, map[string]any{"type": "image", "data": p.Image.Data, "mimeType": mime})
+		}
+		out := map[string]any{"content": blocks, "isError": r.IsError}
+		if r.Structured != nil {
+			out["structuredContent"] = r.Structured
+		}
+		return out
+	}
 	if r.Text != "" || len(r.Images) == 0 {
 		blocks = append(blocks, map[string]any{"type": "text", "text": r.Text})
 	}

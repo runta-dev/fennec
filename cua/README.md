@@ -3,7 +3,7 @@
 fennec-cua is Fennec's computer-use (CUA) host: a Go program, macOS only, that lets local agents see and drive the desktop over MCP.
 
 - **Capability baseline:** everything [loomhand/shuttle](https://github.com/loomhand/shuttle) v0.1.50 (`6d70274`, pinned in [`tests/UPSTREAM`](tests/UPSTREAM)) can do on macOS.
-- **Own design:** an agent-native protocol (six tools, stable refs, verified actions, recoverable errors) and an independent Go implementation. shuttle (AGPL-3.0-only) is a capability reference and a black-box comparison target; no shuttle code, tests or documentation text are copied into this tree.
+- **Own design:** one MCP surface, a persistent JavaScript REPL (`js`, `js_reset`) whose `cua` object matches OpenAI Codex's computer-use interface ([docs/codex-parity.md](docs/codex-parity.md)), over an engine of six tools (stable refs, verified actions, recoverable errors), all in an independent Go implementation. shuttle (AGPL-3.0-only) is a capability reference and a black-box comparison target; no shuttle code, tests or documentation text are copied into this tree.
 - **Acceptance:** our own test suite proves parity with shuttle, capability by capability ([Acceptance](#5-acceptance-parity-with-shuttle)).
 
 Windows, Linux and Android are out of scope.
@@ -69,6 +69,27 @@ The plan executor is Go inside the daemon, not script.
 
 ## 3. Protocol: agent-native
 
+### 3.0 The MCP surface: a JavaScript REPL
+
+Agents see two tools, `js` {code, title, completion_summary} and `js_reset` {}, interface-compatible with Codex's `cua_repl` server; [docs/codex-parity.md](docs/codex-parity.md) is the contract (tool shapes, result framing, the `cua` API, the accessibility state text and its diff, and the CDX parity tests). Each MCP session has one persistent goja runtime: top-level await, bindings that survive between calls until `js_reset`, `nodeRepl.write`/`emitImage` for output, a 90-second limit per call, output capped at 100,000 characters, and the run sandbox (no `require`, `process`, file system or network). The first `js` call of a session returns the API documentation, so it stays out of the system prompt; the server's instructions are one line.
+
+```js
+// js call 1 (the result starts "Wall time: 0.4120 seconds\nOutput:", then the documentation)
+var app = await cua.getApp("TextEdit")   // launches in the background if needed, prints the state:
+// Window: "Untitled", App: TextEdit.
+// 0 standard window Untitled, Secondary Actions: Raise
+// 	1 text entry area (settable) Value: , Secondary Actions: Show Menu
+// ...
+// js call 2: act, then read the state in the same call
+await app.click(1); await app.typeText("hello"); await app.getAXState()
+// The following is a diff from the previous accessibility tree for Window: "Untitled" ...
+// ~	1 text entry area (settable) Value: hello, Secondary Actions: Show Menu
+```
+
+The `cua` object (`getState`, `listApps`, `getApp`, and the app methods `getAXState`, `getScreenshot`, `click`, `drag`, `scroll`, `selectText`, `setValue`, `performSecondaryAction`, `paste`, `pressKey`, `typeText`) is built on the engine tools below through the same host the `run` tool uses, so the allowlist, the desk turn (held for the whole call), Stop, confirmations and secret redaction apply to every call. fennec-cua's own capabilities sit on a separate `fennec` global and never shadow a reference name: `fennec.status`, `fennec.act` (plans with read-back), `fennec.wait`, `fennec.observe`, `fennec.flows`, `fennec.record`, `fennec.model`, `fennec.run`, `fennec.tools`/`fennec.call` (plugins and services).
+
+The six engine tools of 3.2 are no longer listed. They stay callable by name for internal callers (`fennec-cua do`, script plugins calling back as their run, the scenario harness), through the same checks.
+
 ### 3.1 Principles
 
 1. **Few tools, clear intent.** About 30 shuttle verbs plus `gui_plan` and `script_run` become six tools.
@@ -79,7 +100,9 @@ The plan executor is Go inside the daemon, not script.
 6. **Errors say how to recover.** `{code, message, hint, observe?}` with a stable `code`, a next-step `hint` and, where useful, the current view.
 7. **One shape for one step and many.** An action is a one-step plan; a plan is actions with `expect`.
 
-### 3.2 Tools
+### 3.2 Engine tools
+
+Reached from the REPL (`fennec.*` and the `cua` methods built on them), and by name for internal callers.
 
 | Tool | Does | Replaces in shuttle |
 |---|---|---|
@@ -135,6 +158,9 @@ Writing the catalog surfaced behaviours the first protocol draft could not expre
 | Web tree | `observe web: true` or any web-checked step holds the Chromium page tree on for the session; it is released when the session ends |
 | Extensions | service plugins answer one reply per call over MCP; byte streaming is not supported. Script plugins may be external programs: they are installed by the user, not written by the agent |
 | Stricter than shuttle | off-screen points are refused, a value preview says when it was cut |
+| The REPL is the only MCP surface | code as action: one `js` call reads a state, acts on several elements and reads again, where the tool surface needed a model turn per step. Our macOSWorld bench showed fennec-cua's six-tool surface spending about 17 turns and 530k tokens per task with a 25% tool error rate, mostly malformed `act` steps; a REPL call is ordinary JavaScript against a small typed API. The API is Codex's `cua_repl` interface rather than our own, because models from several vendors are post-trained on it ([docs/codex-parity.md](docs/codex-parity.md)) |
+| The REPL's accessibility text | numbered elements in pre-order with role words macOS speaks, a diff after the first read through a binding, ids stable for unchanged elements; the engine reads role descriptions, identifiers, help, actions and settable values only for it (`observe detail`) |
+| Steps the REPL needed | `perform` (a named accessibility action, refused when the element does not list it) and `select_text` (a character range through `AXSelectedTextRange`) joined the step vocabulary; `paste` saves and restores the pasteboard's text around Command-V sent through `act` |
 
 Excluded on purpose (each recorded in the catalog): Node process-group signalling and a script cleanup hook (goja's interrupt replaces them), shuttle's private desk wire and its framing, Linux, Windows and Android branches that run on every platform, installers and release bookkeeping.
 
@@ -165,7 +191,7 @@ cua/
   internal/plan/              multi-step executor, expect, trace, escalation
   internal/flows/             flow store (git), parameters, recording drafts
   internal/record/    (cgo)   listen-only CGEventTap
-  internal/script/            esbuild + goja, cua.* bindings, interrupt, capped logs
+  internal/script/            esbuild + goja, cua.* bindings, interrupt, capped logs; the js REPL (persistent runtime, cua/fennec/nodeRepl, AX state text and diff)
   internal/extensions/        service plugins
   internal/hotkey/    (cgo)   Carbon global hotkey
   internal/upstream/          upstream inventory
@@ -196,6 +222,8 @@ cua/
 ---
 
 ## 5. Acceptance: parity with shuttle
+
+The REPL surface has its own contract and tests: [docs/codex-parity.md](docs/codex-parity.md) section 9 lists CDX-01 to CDX-23; the unit parts run on fakes in `internal/engine/cdx_test.go`, the live parts (marked TODO there) in the VM.
 
 ### 5.1 The catalog is the contract
 
@@ -250,10 +278,11 @@ The live scenario suite (`go run ./cmd/cua-vm test -tags scenario ./internal/sce
 
 ### Benchmark
 
-`cmd/cua-bench` runs the macOSWorld tasks listed in `bench/macosworld.txt` against cua-driver, shuttle and fennec-cua, one fresh tart clone per trial, all driven by the same host-side agent loop and model:
+`cmd/cua-bench` runs the macOSWorld tasks listed in `bench/macosworld.txt` against cua-driver, shuttle and fennec-cua (through its REPL surface), one fresh tart clone per trial, all driven by the same host-side agent loop and model:
 
 ```sh
 go run ./cmd/cua-bench golden                                   # build the golden image once
+go run ./cmd/cua-bench golden -refresh-fennec                    # after a fennec-cua change: replace only its binary
 go run ./cmd/cua-bench run -macosworld PATH -trials 3 -concurrency 2 -results bench-results
 go run ./cmd/cua-bench web -results bench-results                # live results page on 127.0.0.1:8090
 go run ./cmd/cua-bench export -results bench-results -out DIR    # static page + data.json

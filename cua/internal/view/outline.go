@@ -245,6 +245,27 @@ func NodeOf(n RawNode, ref, parent string, urls bool) protocol.Node {
 	if urls {
 		out.URL = n.URL
 	}
+	out.RoleDesc, out.Description, out.Identifier, out.Help = n.RoleDesc, n.Description, n.Identifier, n.Help
+	if len(n.Actions) > 0 {
+		out.Actions = append([]string(nil), n.Actions...)
+	}
+	return out
+}
+
+// DetailNodes lists every node of a snapshot in walk order, the window
+// root and the menu bar included, with its raw states (settable among
+// them) and full value: the input of the REPL's accessibility state.
+func DetailNodes(s Snapshot) []protocol.Node {
+	out := make([]protocol.Node, 0, len(s.Tree.Nodes))
+	for i, n := range s.Tree.Nodes {
+		p := NodeOf(n, s.Refs[i], s.parentRef(i), true)
+		p.States = append([]string(nil), n.States...)
+		if n.Value != nil {
+			v := StripObjects(*n.Value)
+			p.Value, p.Truncated = &v, false
+		}
+		out = append(out, p)
+	}
 	return out
 }
 

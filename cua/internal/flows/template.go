@@ -109,7 +109,7 @@ func Secure(s protocol.Step) bool {
 // fingerprint: not when a parameter changes its target or window.
 func Pinned(s protocol.Step) bool {
 	var texts []string
-	for _, t := range []*protocol.Target{s.Press, s.Set, s.Click, s.Scroll, s.Drag, s.To} {
+	for _, t := range []*protocol.Target{s.Press, s.Set, s.Click, s.Scroll, s.Drag, s.To, s.Perform, s.SelectText} {
 		if t != nil {
 			texts = append(texts, t.Select, t.Window)
 		}

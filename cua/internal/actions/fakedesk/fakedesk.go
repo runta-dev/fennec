@@ -114,6 +114,7 @@ type Desk struct {
 	Calls      []Call
 	HitCalls   []HitCall
 	Performs   []string // "id:action"
+	Ranges     []string // "id:loc:len" text selections
 	Selected   []string
 	FocusedIDs []string // handles given the keyboard focus, in order
 	Values     map[string]string
@@ -316,6 +317,26 @@ func (d *Desk) Perform(ctx context.Context, h view.Handle, action string) error 
 		}
 	}
 	return nil
+}
+
+// ActionNames implements actions.Backend: a node's Actions as stored.
+func (d *Desk) ActionNames(ctx context.Context, h view.Handle) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	id, _ := h.(string)
+	if k, i := d.find(id); i >= 0 {
+		return append([]string{"AXPress"}, d.Trees[k][i].Actions...), nil
+	}
+	return nil, errors.New("no such element")
+}
+
+// SelectRange implements actions.Backend; it records "id:loc:len".
+func (d *Desk) SelectRange(ctx context.Context, h view.Handle, loc, length int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	id, _ := h.(string)
+	d.Ranges = append(d.Ranges, fmt.Sprintf("%s:%d:%d", id, loc, length))
+	return d.SetErr
 }
 
 func toggle(n *view.RawNode, state string) {

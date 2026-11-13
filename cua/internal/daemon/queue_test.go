@@ -76,6 +76,12 @@ func TestQueuedTimeoutNeverRuns(t *testing.T) {
 	if n := r.ran.Load(); n != 0 {
 		t.Errorf("a timed-out call ran %d times late", n)
 	}
+	// Queue.Held lets go of the turn from its own goroutine once the
+	// abandoned job is passed over: wait for it briefly.
+	deadline := time.Now().Add(time.Second)
+	for eng.Turn.Holder() != "" && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if eng.Turn.Holder() != "" {
 		t.Errorf("turn still held by %q", eng.Turn.Holder())
 	}

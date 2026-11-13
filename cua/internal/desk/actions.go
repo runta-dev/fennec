@@ -85,6 +85,26 @@ func (a *Actions) Perform(ctx context.Context, h view.Handle, action string) err
 	return axFailure(el.Perform(action), action)
 }
 
+// ActionNames lists an element's raw action names.
+func (a *Actions) ActionNames(ctx context.Context, h view.Handle) ([]string, error) {
+	el, err := element(h)
+	if err != nil {
+		return nil, err
+	}
+	el.SetTimeout(MessagingTimeout.Seconds())
+	return el.Actions()
+}
+
+// SelectRange sets AXSelectedTextRange.
+func (a *Actions) SelectRange(ctx context.Context, h view.Handle, loc, length int) error {
+	el, err := element(h)
+	if err != nil {
+		return err
+	}
+	el.SetTimeout(MessagingTimeout.Seconds() * 4)
+	return axFailure(el.SetRange("AXSelectedTextRange", loc, length), "AXSelectedTextRange")
+}
+
 // SetValue writes AXValue.
 func (a *Actions) SetValue(ctx context.Context, h view.Handle, value string) error {
 	el, err := element(h)
