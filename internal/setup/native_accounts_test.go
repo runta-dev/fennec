@@ -93,8 +93,12 @@ func TestNativeRefreshAndConflictsPreserveCloudCredential(t *testing.T) {
 		t.Fatal("stale local auth overwrote refresh")
 	}
 	req.Files["codex/auth.json"] = base64.StdEncoding.EncodeToString([]byte(`{"tokens":{"access_token":"other-local"}}`))
-	if _, e = ApplyNativeAccounts(context.Background(), remote, req); e == nil {
-		t.Fatal("conflicting changes accepted")
+	// Neither copy is confirmed by the provider: preparation continues and
+	// both computers keep their own copy.
+	stubCredentialChecks(t)
+	result, e := ApplyNativeAccounts(context.Background(), remote, req)
+	if e != nil || len(result.NativeDeferred) != 1 {
+		t.Fatalf("conflict: %v %v", e, result.NativeDeferred)
 	}
 	b, _ = os.ReadFile(filepath.Join(remote, target))
 	if string(b) != refreshed {

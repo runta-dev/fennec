@@ -28,7 +28,10 @@ type ModelAccountsRequest struct {
 }
 
 type ModelAccountsResult struct {
-	NativeReady      map[string]bool    `json:"native_ready,omitempty"`
+	NativeReady map[string]bool `json:"native_ready,omitempty"`
+	// NativeDeferred lists native files changed on both computers whose
+	// resolution waits for the next sync; each computer keeps its own copy.
+	NativeDeferred   []string           `json:"native_deferred,omitempty"`
 	CatalogDeferred  bool               `json:"catalog_deferred,omitempty"`
 	Version          int                `json:"version"`
 	Migrated         int                `json:"migrated"`

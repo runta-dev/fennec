@@ -165,6 +165,7 @@ func TestChatGPTBridgeAnswersStartupReadsWhileTheCloudIsAway(t *testing.T) {
 	services := &daemonServices{} // the resident channel is reconnecting
 	bridge, address := readsBridge(t, ctx, services)
 	bridge.rememberRead("", `configRequirements/read null`, json.RawMessage(`{"requirements":null,"from":"remembered"}`))
+	bridge.rememberRead("", `permissionProfile/list {}`, json.RawMessage(`{"from":"remembered"}`))
 
 	conn, reader := openChatGPT(t, address)
 	if answer := readServerMessage(t, reader); answer["id"] != "__codex_initialize__" {
@@ -211,13 +212,12 @@ func TestChatGPTBridgeHoldsReadsWithoutARememberedAnswer(t *testing.T) {
 	bridge.rememberRead("", `account/read {"refreshToken":true}`, json.RawMessage(`{"from":"remembered"}`))
 
 	conn, reader := openChatGPT(t, address)
-	readServerMessage(t, reader) // initialize
 	sendRequest(conn, `{"id":"pp","method":"permissionProfile/list","params":{}}`)
 	sendRequest(conn, `{"id":"acct","method":"account/read","params":{"refreshToken":true}}`)
 	sendRequest(conn, `{"id":"start","method":"thread/start","params":{}}`)
 	time.Sleep(500 * time.Millisecond)
 	connectCloud(t, ctx, services, &delayedAppServer{})
-	for _, want := range []string{"pp", "acct", "start"} {
+	for _, want := range []string{"__codex_initialize__", "pp", "acct", "start"} {
 		message := readServerMessage(t, reader)
 		if message["id"] != want || resultOf(t, message)["from"] != "cloud" {
 			t.Fatalf("got %v; want the cloud's answer to %s", message, want)
@@ -357,5 +357,38 @@ func waitReadsSaved(bridge *chatgptBridge) {
 			return
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// With no remembered answers to the startup reads (first use after an upgrade,
+// or cloud preparation failed) the bridge does not answer initialize itself:
+// ChatGPT's reads would follow and time out with a modal. The connection waits
+// for the cloud instead, whose answers then arrive in order.
+func TestChatGPTBridgeKeepsInitializeForTheCloudWithoutRememberedReads(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	setReadBounds(t, 100*time.Millisecond, 100*time.Millisecond, 5*time.Second)
+	services := &daemonServices{}
+	bridge, address := readsBridge(t, ctx, services)
+	// Only one of the required reads is remembered.
+	bridge.rememberRead("", `configRequirements/read null`, json.RawMessage(`{"from":"remembered"}`))
+	if bridge.startupReadsRemembered() {
+		t.Fatal("permissionProfile/list is not remembered")
+	}
+
+	conn, reader := openChatGPT(t, address)
+	conn.SetReadDeadline(time.Now().Add(600 * time.Millisecond))
+	var probe [1]byte
+	if n, _ := reader.Read(probe[:]); n != 0 {
+		t.Fatal("initialize answered locally without remembered startup reads")
+	}
+	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+	connectCloud(t, ctx, services, &delayedAppServer{})
+	if answer := readServerMessage(t, reader); answer["id"] != "__codex_initialize__" || resultOf(t, answer)["from"] != "cloud" {
+		t.Fatalf("initialize: %v", answer)
+	}
+	bridge.rememberRead("", `permissionProfile/list {}`, json.RawMessage(`{}`))
+	if !bridge.startupReadsRemembered() {
+		t.Fatal("both required reads are remembered")
 	}
 }

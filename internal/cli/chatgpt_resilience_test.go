@@ -252,6 +252,8 @@ func TestChatGPTBridgeAnswersInitializeWhileTheCloudIsAway(t *testing.T) {
 	t.Cleanup(func() { waitReadsSaved(bridge) })
 	bridge.pref.Token = bridgeTestToken
 	bridge.pref.EarlyInput = true
+	bridge.rememberRead("", `configRequirements/read null`, json.RawMessage(`{}`))
+	bridge.rememberRead("", `permissionProfile/list {"cwd":"/elsewhere"}`, json.RawMessage(`{}`))
 	bridge.pref.Initialize = `{"from":"remembered"}`
 	bridge.upgrade = []byte("HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\n")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

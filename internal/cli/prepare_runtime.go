@@ -391,6 +391,12 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		emit("failed", runtime.ID, err.Error())
 		return err
 	}
+	// A credential changed on both computers that neither side could confirm
+	// usable stays as it is on each; the next sync decides. Diagnostics only.
+	for _, name := range accounts.NativeDeferred {
+		agent, _, _ := strings.Cut(name, "/")
+		launchprofile.Record("prepare.accounts.credential_deferred."+agent, time.Now(), 0)
+	}
 	for _, phase := range []string{"credentials", "plugins", "identity", "catalog", "inventory"} {
 		elapsed, ok := accounts.Timings[phase]
 		if !ok {

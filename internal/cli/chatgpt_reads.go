@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // chatgptReads are the app-server's last answers to ChatGPT's startup reads,
@@ -111,4 +112,30 @@ func (b *chatgptBridge) saveReadsLocked() {
 			}
 		}
 	}()
+}
+
+// chatgptRequiredStartupReads are the reads whose failure ChatGPT surfaces as a
+// modal ("Timed out waiting for MCP response to configRequirements/read") or a
+// stuck "Permission mode is unavailable".
+var chatgptRequiredStartupReads = []string{"configRequirements/read", "permissionProfile/list"}
+
+// startupReadsRemembered reports whether every required startup read has a
+// remembered answer, so a locally answered initialize cannot strand ChatGPT
+// on reads nobody can answer while the cloud is away.
+func (b *chatgptBridge) startupReadsRemembered() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, method := range chatgptRequiredStartupReads {
+		found := false
+		for key := range b.reads.Results {
+			if strings.HasPrefix(key, method+" ") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

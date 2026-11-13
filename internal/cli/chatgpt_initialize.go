@@ -21,7 +21,8 @@ import (
 //
 // So the bridge answers initialize and ChatGPT's side-effect-free startup reads
 // itself from the app-server's last answer to the same request when the cloud
-// has not answered within a short bound. The request still reaches the
+// has not answered within a short bound; initialize only once the startup
+// reads it leads to can be answered the same way. The request still reaches the
 // app-server, and its answer is dropped so ChatGPT never sees two. Requests
 // with side effects, and reads with no remembered answer, keep waiting for the
 // cloud.
@@ -180,7 +181,14 @@ func (s *chatgptShield) answerLocally(id string, held *heldRequest) {
 	}
 	var result json.RawMessage
 	if held.initialize {
-		result = s.bridge.cachedInitialize()
+		// Answering initialize starts ChatGPT's 30 s clocks for the startup
+		// reads that follow. Without remembered answers to them (first use,
+		// cloud preparation failed) they would time out and leave a modal or
+		// a stuck "Permission mode is unavailable"; an unanswered initialize
+		// only fails this connection, and ChatGPT reconnects.
+		if s.bridge.startupReadsRemembered() {
+			result = s.bridge.cachedInitialize()
+		}
 	} else {
 		result = s.bridge.cachedRead(held.key)
 	}

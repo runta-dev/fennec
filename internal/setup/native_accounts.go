@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -518,13 +519,17 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 				data = previousPolicy
 			} else if credentialHash(previous) != old.Remote {
 				// Settings are preferences: local edits win, cloud model choice
-				// stays. OAuth credentials keep the most recently refreshed copy.
+				// stays. Credentials keep a copy confirmed usable (see
+				// resolveNativeCredential). A conflict never fails preparation:
+				// when nothing can be confirmed each computer keeps its own copy
+				// and, with the baseline untouched, the next sync decides again.
 				merged, ok := mergeNativeSettings(name, previousPolicy, data)
 				if !ok {
-					merged, ok = newerNativeCredential(name, previousPolicy, data)
+					merged, ok = resolveNativeCredential(ctx, name, previousPolicy, data)
 				}
 				if !ok {
-					return result, fmt.Errorf("native credentials changed on both computers (%s); cloud copy preserved", name)
+					result.NativeDeferred = append(result.NativeDeferred, name)
+					continue
 				}
 				data = merged
 			}
@@ -550,6 +555,7 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 			return result, e
 		}
 	}
+	sort.Strings(result.NativeDeferred)
 	b, _ := json.Marshal(baseline)
 	if e := atomicCredential(marker, b); e != nil {
 		return result, e
