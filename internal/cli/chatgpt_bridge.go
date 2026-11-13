@@ -319,6 +319,13 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	buffered, _ := reader.Peek(reader.Buffered())
 	pending := append(head, buffered...)
 	reader.Discard(len(buffered))
+	// ChatGPT's file requests for Mac paths are answered on this Mac; only the
+	// rest of its traffic goes to the cloud.
+	files := cloudruntime.NewChatGPTLocalFiles(conn, true)
+	defer files.Close()
+	if pending, err = files.Feed(pending); err != nil {
+		return unavailable(err)
+	}
 	// ChatGPT's bytes are read on their own goroutine so a cloud stream can be
 	// replaced before it is confirmed without losing any of them.
 	incoming := make(chan []byte, 64)
@@ -326,15 +333,21 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		defer close(incoming)
 		buffer := make([]byte, terminalstream.Chunk)
 		for {
-			length, err := reader.Read(buffer)
+			length, readErr := reader.Read(buffer)
 			if length > 0 {
-				select {
-				case incoming <- append([]byte(nil), buffer[:length]...):
-				case <-operation.Done():
+				forward, feedErr := files.Feed(buffer[:length])
+				if feedErr != nil {
 					return
 				}
+				if len(forward) > 0 {
+					select {
+					case incoming <- forward:
+					case <-operation.Done():
+						return
+					}
+				}
 			}
-			if err != nil {
+			if readErr != nil {
 				return
 			}
 		}
@@ -396,7 +409,8 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	// Compressed output is decoded on its own goroutine; writes into the pipe
 	// block until ChatGPT has received the bytes, so credits still pace the
 	// remote stream.
-	sink := &upgradeReader{bridge: b, dst: conn, early: answered}
+	files.ExpectHead(!answered)
+	sink := &upgradeReader{bridge: b, dst: files, early: answered}
 	var output io.Writer = sink
 	decoded := make(chan error, 1)
 	if receipt.Term == terminalstream.SocketCompressionZstd {

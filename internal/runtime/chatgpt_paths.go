@@ -401,6 +401,17 @@ type wsStream struct {
 	message    []byte
 	messageOp  byte
 	collecting bool
+	checked    bool // the first frame looked like WebSocket from this side
+	raw        bool // not a WebSocket stream: bytes pass through untouched
+}
+
+// plausibleFirstFrame reports whether a stream starts like WebSocket frames
+// from this side: no reserved bits, not a continuation, and masked exactly
+// when sent by the client.
+func (stream *wsStream) plausibleFirstFrame() bool {
+	first, second := stream.buffer[0], stream.buffer[1]
+	masked := second&0x80 != 0
+	return first&0x70 == 0 && first&0x0f != 0 && masked != stream.server
 }
 
 func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte, error) {
@@ -423,6 +434,15 @@ func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte
 		stream.headOut = len(head)
 		stream.buffer = stream.buffer[end+4:]
 		stream.headDone = true
+	}
+	if !stream.raw && !stream.checked && len(stream.buffer) >= 2 {
+		stream.checked = true
+		stream.raw = !stream.plausibleFirstFrame()
+	}
+	if stream.raw {
+		output = append(output, stream.buffer...)
+		stream.buffer = nil
+		return output, nil
 	}
 	for {
 		frame, size, err := parseWebSocketFrame(stream.buffer)
