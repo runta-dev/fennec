@@ -36,12 +36,23 @@ const (
 	chatgptDefaultPort = 47631
 	chatgptPathPrefix  = "/fennec/"
 	chatgptHeadLimit   = 16 << 10
+	// chatgptOpenWait bounds the wait for the cloud channel before ChatGPT has
+	// a handshake answer; chatgptHeldOpenWait applies once it has one and its
+	// requests are simply waiting for the cloud to come back.
+	chatgptOpenWait     = 45 * time.Second
+	chatgptHeldOpenWait = 15 * time.Minute
 )
 
 type chatgptPreference struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Token   string `json:"token"`
+	// Upgrade is the app-server's last 101 response (without its accept
+	// value) and EarlyInput whether the cloud service holds ChatGPT's frames
+	// until the app-server answers. Kept across daemon restarts so ChatGPT's
+	// first connection is answered at once even while the cloud is away.
+	Upgrade    string `json:"upgrade,omitempty"`
+	EarlyInput bool   `json:"early_input,omitempty"`
 }
 
 type chatgptBridge struct {
@@ -94,6 +105,9 @@ func (b *chatgptBridge) run(ctx context.Context) {
 	b.mu.Lock()
 	b.ctx = ctx
 	b.pref = b.load()
+	if b.pref.Upgrade != "" {
+		b.upgrade = []byte(b.pref.Upgrade)
+	}
 	if b.pref.Enabled {
 		b.enableLocked()
 	}
@@ -288,12 +302,15 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		io.WriteString(conn, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return err
 	}
-	session, earlyInput, err := b.open(operation)
-	if err != nil {
-		return unavailable(err)
-	}
-	defer session.Close()
-	if early := b.earlyUpgrade(head); early != nil && earlyInput {
+	// ChatGPT fails every request waiting on a connection attempt that does
+	// not complete its handshake (it gives up after about 15 s), and a failed
+	// permission-profile request leaves the composer blocked with "Permission
+	// mode is unavailable" until ChatGPT restarts. So when the cloud link is
+	// down (network change, weak network) the handshake is still answered at
+	// once from the remembered response and ChatGPT's requests wait here until
+	// the cloud is back, instead of failing.
+	early := b.earlyUpgrade(head)
+	if early != nil && b.knownEarlyInput() {
 		if _, err := conn.Write(early); err != nil {
 			return err
 		}
@@ -302,46 +319,78 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	buffered, _ := reader.Peek(reader.Buffered())
 	pending := append(head, buffered...)
 	reader.Discard(len(buffered))
-	window := terminalstream.NewCreditWindow()
-	defer window.Close()
+	// ChatGPT's bytes are read on their own goroutine so a cloud stream can be
+	// replaced before it is confirmed without losing any of them.
+	incoming := make(chan []byte, 64)
 	go func() {
-		defer cancel()
-		send := func(data []byte) bool {
-			for len(data) > 0 {
-				count := window.Take(min(len(data), terminalstream.Chunk))
-				if count == 0 {
-					return false
-				}
-				if session.Send(terminalstream.Frame{Type: "input", Data: append([]byte(nil), data[:count]...)}) != nil {
-					return false
-				}
-				data = data[count:]
-			}
-			return true
-		}
-		if !send(pending) {
-			return
-		}
+		defer close(incoming)
 		buffer := make([]byte, terminalstream.Chunk)
 		for {
-			length, err := conn.Read(buffer)
-			if length > 0 && !send(buffer[:length]) {
-				return
+			length, err := reader.Read(buffer)
+			if length > 0 {
+				select {
+				case incoming <- append([]byte(nil), buffer[:length]...):
+				case <-operation.Done():
+					return
+				}
 			}
 			if err != nil {
 				return
 			}
 		}
 	}()
-	// The upgrade request travels with the open instead of after the receipt:
-	// the cloud queues input until its app-server socket is connected, which
-	// saves one round trip per connection.
-	wait, stopWaiting := context.WithTimeout(operation, 45*time.Second)
-	receipt, err := session.Next(wait)
-	stopWaiting()
-	if err != nil || receipt.Type != "receipt" {
-		return unavailable(fmt.Errorf("cloud codex app-server unavailable"))
+	openWait := chatgptOpenWait
+	if answered {
+		openWait = chatgptHeldOpenWait
 	}
+	deadline := time.Now().Add(openWait)
+	var session *terminalstream.Session
+	var window *terminalstream.CreditWindow
+	var receipt terminalstream.Frame
+	replay := pending
+	for {
+		opened, earlyInput, err := b.open(operation, max(time.Until(deadline), time.Second))
+		if err != nil {
+			return unavailable(err)
+		}
+		b.rememberEarlyInput(earlyInput)
+		if answered && !earlyInput {
+			opened.Close()
+			return fmt.Errorf("cloud service cannot accept an early handshake") // ChatGPT reconnects and waits for the real one
+		}
+		if !answered && early != nil && earlyInput {
+			if _, err := conn.Write(early); err != nil {
+				opened.Close()
+				return err
+			}
+			answered = true
+		}
+		credit := terminalstream.NewCreditWindow()
+		forwarder := newChatGPTForwarder(opened, credit)
+		go forwarder.run(replay, incoming, cancel)
+		// The upgrade request travels with the open instead of after the
+		// receipt: the cloud queues input until its app-server socket is
+		// connected, which saves one round trip per connection.
+		wait, stopWaiting := context.WithTimeout(operation, 45*time.Second)
+		frame, err := opened.Next(wait)
+		stopWaiting()
+		if err == nil && frame.Type == "receipt" {
+			forwarder.confirm()
+			session, window, receipt = opened, credit, frame
+			break
+		}
+		// Nothing has come back from the app-server yet, so the same bytes can
+		// go to a fresh stream: a half-open channel after a network change is
+		// replaced within the heartbeat timeout and ChatGPT never notices.
+		replay = append(replay, forwarder.abandon()...)
+		credit.Close()
+		opened.Close()
+		if !answered || operation.Err() != nil || time.Now().After(deadline) {
+			return unavailable(fmt.Errorf("cloud codex app-server unavailable"))
+		}
+	}
+	defer session.Close()
+	defer window.Close()
 	b.track(conn, receipt.Message)
 	defer b.track(conn, "")
 	// Compressed output is decoded on its own goroutine; writes into the pipe
@@ -400,8 +449,8 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 // open waits for the daemon's resident terminal channel, then opens a socket
 // stream on it without waiting for the cloud receipt. It never starts another
 // SSH connection or exec channel.
-func (b *chatgptBridge) open(ctx context.Context) (*terminalstream.Session, bool, error) {
-	wait, cancel := context.WithTimeout(ctx, 45*time.Second)
+func (b *chatgptBridge) open(ctx context.Context, patience time.Duration) (*terminalstream.Session, bool, error) {
+	wait, cancel := context.WithTimeout(ctx, patience)
 	defer cancel()
 	var transport *terminalstream.Transport
 	for transport == nil {
@@ -556,4 +605,93 @@ func (s *daemonServices) setCodexDesktop(raw json.RawMessage) (any, bool, error)
 		return nil, true, err
 	}
 	return s.snapshot(), true, nil
+}
+
+// chatgptForwarder sends ChatGPT's bytes to one cloud stream. Until the stream
+// is confirmed it records what it took from ChatGPT so a replacement stream
+// can replay it.
+type chatgptForwarder struct {
+	session *terminalstream.Session
+	window  *terminalstream.CreditWindow
+	stop    chan struct{}
+	done    chan struct{}
+
+	mu        sync.Mutex
+	recording bool
+	sent      []byte
+}
+
+func newChatGPTForwarder(session *terminalstream.Session, window *terminalstream.CreditWindow) *chatgptForwarder {
+	return &chatgptForwarder{session: session, window: window, stop: make(chan struct{}), done: make(chan struct{}), recording: true}
+}
+
+func (f *chatgptForwarder) run(replay []byte, incoming <-chan []byte, closeConnection context.CancelFunc) {
+	defer close(f.done)
+	send := func(data []byte) bool {
+		for len(data) > 0 {
+			count := f.window.Take(min(len(data), terminalstream.Chunk))
+			if count == 0 {
+				return false
+			}
+			if f.session.Send(terminalstream.Frame{Type: "input", Data: append([]byte(nil), data[:count]...)}) != nil {
+				return false
+			}
+			data = data[count:]
+		}
+		return true
+	}
+	// A failure before confirmation leaves the connection to the retry loop.
+	failed := func() {
+		f.mu.Lock()
+		confirmed := !f.recording
+		f.mu.Unlock()
+		if confirmed {
+			closeConnection()
+		}
+	}
+	if !send(replay) {
+		failed()
+		return
+	}
+	for {
+		select {
+		case <-f.stop:
+			return
+		case chunk, ok := <-incoming:
+			if !ok {
+				closeConnection() // ChatGPT closed its connection
+				return
+			}
+			f.mu.Lock()
+			if f.recording {
+				f.sent = append(f.sent, chunk...)
+			}
+			f.mu.Unlock()
+			if !send(chunk) {
+				failed()
+				return
+			}
+		}
+	}
+}
+
+// confirm stops recording once the cloud stream is established.
+func (f *chatgptForwarder) confirm() {
+	f.mu.Lock()
+	f.recording = false
+	f.sent = nil
+	f.mu.Unlock()
+}
+
+// abandon stops the forwarder and returns every byte it took from ChatGPT,
+// which the next stream replays.
+func (f *chatgptForwarder) abandon() []byte {
+	close(f.stop)
+	f.window.Close() // unblocks a send waiting for credit
+	<-f.done
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sent := f.sent
+	f.sent = nil
+	return sent
 }

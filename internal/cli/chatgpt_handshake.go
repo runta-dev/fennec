@@ -62,8 +62,39 @@ func (b *chatgptBridge) rememberUpgrade(response []byte) {
 		kept.WriteString(line + "\r\n")
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
+	if string(b.upgrade) == kept.String() {
+		return
+	}
 	b.upgrade = []byte(kept.String())
-	b.mu.Unlock()
+	b.pref.Upgrade = kept.String()
+	b.saveLocked()
+}
+
+// knownEarlyInput reports whether the cloud service last seen holds early
+// frames, so a handshake may be answered before the cloud is reachable.
+func (b *chatgptBridge) knownEarlyInput() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pref.EarlyInput
+}
+
+func (b *chatgptBridge) rememberEarlyInput(supported bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.pref.EarlyInput == supported {
+		return
+	}
+	b.pref.EarlyInput = supported
+	b.saveLocked()
+}
+
+// saveLocked persists the preference; a bridge without a path (tests) keeps
+// it in memory only.
+func (b *chatgptBridge) saveLocked() {
+	if b.path != "" {
+		writePrivateJSON(b.path, b.pref)
+	}
 }
 
 // upgradeReader passes the app-server's output to ChatGPT, removing the
