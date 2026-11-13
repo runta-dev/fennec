@@ -371,7 +371,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	var receipt terminalstream.Frame
 	replay := pending
 	for {
-		opened, earlyInput, err := b.open(operation, max(time.Until(deadline), time.Second))
+		opened, transport, earlyInput, err := b.open(operation, max(time.Until(deadline), time.Second))
 		if err != nil {
 			return unavailable(err)
 		}
@@ -406,6 +406,12 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		// go to a fresh stream: a half-open channel after a network change is
 		// replaced within the heartbeat timeout and ChatGPT never notices.
 		replay = append(replay, forwarder.abandon()...)
+		// A channel that still answers pings but never confirms a stream is
+		// stuck (seen for minutes after network trouble); retire it so the
+		// daemon reconnects instead of every new stream waiting on it.
+		if errors.Is(err, context.DeadlineExceeded) && operation.Err() == nil {
+			transport.Close()
+		}
 		credit.Close()
 		opened.Close()
 		if !answered || operation.Err() != nil || time.Now().After(deadline) {
@@ -473,7 +479,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 // open waits for the daemon's resident terminal channel, then opens a socket
 // stream on it without waiting for the cloud receipt. It never starts another
 // SSH connection or exec channel.
-func (b *chatgptBridge) open(ctx context.Context, patience time.Duration) (*terminalstream.Session, bool, error) {
+func (b *chatgptBridge) open(ctx context.Context, patience time.Duration) (*terminalstream.Session, *terminalstream.Transport, bool, error) {
 	wait, cancel := context.WithTimeout(ctx, patience)
 	defer cancel()
 	var transport *terminalstream.Transport
@@ -490,12 +496,12 @@ func (b *chatgptBridge) open(ctx context.Context, patience time.Duration) (*term
 		}
 		select {
 		case <-wait.Done():
-			return nil, false, fmt.Errorf("cloud runtime channel unavailable")
+			return nil, nil, false, fmt.Errorf("cloud runtime channel unavailable")
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
 	if !transport.Supports(terminalstream.CapabilityCodexAppServer) {
-		return nil, false, fmt.Errorf("cloud terminal service does not support codex app-server yet")
+		return nil, nil, false, fmt.Errorf("cloud terminal service does not support codex app-server yet")
 	}
 	var nonce [16]byte
 	rand.Read(nonce[:])
@@ -503,7 +509,7 @@ func (b *chatgptBridge) open(ctx context.Context, patience time.Duration) (*term
 	device := b.services.config.Device
 	b.services.mu.Unlock()
 	session, err := transport.Launch(terminalstream.Frame{Type: "socket", ID: hex.EncodeToString(nonce[:]), Target: terminalstream.SocketCodexAppServer, Message: device, Term: terminalstream.SocketCompressionZstd})
-	return session, transport.Supports(terminalstream.CapabilityCodexAppServerEarlyInput), err
+	return session, transport, transport.Supports(terminalstream.CapabilityCodexAppServerEarlyInput), err
 }
 
 // track records which cloud app-server mode serves a connection; an empty mode
