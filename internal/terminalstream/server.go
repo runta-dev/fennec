@@ -119,7 +119,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 	}()
 	capabilities := []string{"hook_bridge_v1"}
 	if operate != nil {
-		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics")
+		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics", "native_credential_set", "native_credential_watch")
 	}
 	if dial != nil {
 		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput)

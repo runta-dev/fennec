@@ -13,16 +13,18 @@ import (
 )
 
 type LocalOperation struct {
-	Configuration *setup.RuntimeConfiguration `json:"configuration,omitempty"`
-	Login         *setup.NativeLogin          `json:"login,omitempty"`
-	NativeModel   *setup.NativeModelSelection `json:"native_model,omitempty"`
-	Accounts      *setup.ModelAccountsRequest `json:"accounts,omitempty"`
-	Routes        []setup.AgentRoute          `json:"routes,omitempty"`
-	Launch        *LocalLaunch                `json:"launch,omitempty"`
-	Kind          string                      `json:"kind"`
-	Address       string                      `json:"address,omitempty"`
-	SessionID     string                      `json:"session_id,omitempty"`
-	Text          string                      `json:"text,omitempty"`
+	Configuration   *setup.RuntimeConfiguration  `json:"configuration,omitempty"`
+	Login           *setup.NativeLogin           `json:"login,omitempty"`
+	NativeModel     *setup.NativeModelSelection  `json:"native_model,omitempty"`
+	Accounts        *setup.ModelAccountsRequest  `json:"accounts,omitempty"`
+	Credential      *setup.NativeCredentialPush  `json:"credential,omitempty"`
+	CredentialWatch *setup.NativeCredentialWatch `json:"credential_watch,omitempty"`
+	Routes          []setup.AgentRoute           `json:"routes,omitempty"`
+	Launch          *LocalLaunch                 `json:"launch,omitempty"`
+	Kind            string                       `json:"kind"`
+	Address         string                       `json:"address,omitempty"`
+	SessionID       string                       `json:"session_id,omitempty"`
+	Text            string                       `json:"text,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
@@ -50,6 +52,18 @@ func (o LocalOperation) Validate() error {
 
 	if o.Kind == "model_catalog" {
 		return nil
+	}
+	if o.Kind == "native_credential_set" {
+		if o.Credential == nil {
+			return fmt.Errorf("credential required")
+		}
+		return o.Credential.Validate()
+	}
+	if o.Kind == "native_credential_watch" {
+		if o.CredentialWatch == nil {
+			return fmt.Errorf("credential watch required")
+		}
+		return o.CredentialWatch.Validate()
 	}
 	if o.Kind == "system_metrics" {
 		return nil
@@ -143,6 +157,22 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 			return nil, err
 		}
 		return json.Marshal(state)
+	}
+	// One Mac credential applied with the same rules and baseline as a full
+	// sync, and the long-lived watch that reports cloud refreshes to the Mac.
+	if o.Kind == "native_credential_set" {
+		result, err := setup.ApplyNativeCredential(ctx, r.Home, *o.Credential)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(result)
+	}
+	if o.Kind == "native_credential_watch" {
+		changes, err := setup.WatchNativeCredentials(ctx, r.Home, *o.CredentialWatch)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(changes)
 	}
 	if o.Kind == "model_catalog" {
 		models, err := setup.LocalGatewayModels(ctx)

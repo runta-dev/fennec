@@ -187,6 +187,8 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	go func() { defer s.workers.Done(); s.runEntryRepair(ctx, epoch) }()
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.runMetricsCollector(ctx, epoch) }()
+	s.workers.Add(1)
+	go func() { defer s.workers.Done(); s.runCredentialSync(ctx, epoch) }()
 	return nil
 }
 func (s *daemonServices) prepare(ctx context.Context, token string, output io.Writer) error {

@@ -142,6 +142,8 @@ Preparation timing: `touch ~/.config/fennec/launch-profile.enabled` records `pre
 
 Native sync conflicts (a file changed on both computers) must resolve without blocking preparation where the semantics are clear: settings merge with local preferences winning, the Claude profile keeps cloud runtime state plus the Mac identity, and OAuth credential files keep the copy with the later expiry (per provider for Pi and OpenCode). Only truly undecidable cases may fail.
 
+Between preparation syncs the daemon keeps the shared OAuth grants in step live (`internal/cli/credential_sync.go`, `internal/setup/native_credential_sync.go`). Mac changes are detected by kqueue on the auth files and on `login.keychain-db`, then by the Keychain item's `mdat` attribute (attributes only, never the secret), and pushed with one `native_credential_set` resident-channel operation that reuses the preparation baseline, lock and conflict rules. A long-lived `native_credential_watch` (inotify on the cloud) returns cloud refreshes; the Mac applies `ResolveMacCredential` (same rules), moves only the grant fields, writes Keychain items through `security -i` on stdin (never argv; lines over 4000 bytes are refused because `security -i` truncates them) and files atomically under the agent's lock, then pushes the result back. Queued names are pushed after a reconnect; a refused Keychain update is never retried. Diagnostics carry names only.
+
 Before reporting success:
 
 1. Confirm the app uses `Authority=Fennec Local Development`.

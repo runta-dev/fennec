@@ -3,7 +3,6 @@ package setup
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -24,7 +23,6 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
-	"golang.org/x/text/unicode/norm"
 )
 
 // Native files are private to Fennec's sandbox agent configuration. No sessions,
@@ -260,12 +258,7 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			mode, _ := config["cli_auth_credentials_store"].(string)
 			var auth []byte
 			if (mode == "keyring" || mode == "auto") && s.Keychain != nil {
-				canonical, e := filepath.EvalSymlinks(dir)
-				if e != nil {
-					canonical = dir
-				}
-				sum := sha256.Sum256([]byte(canonical))
-				auth, e = s.Keychain(ctx, "Codex Auth", "cli|"+hex.EncodeToString(sum[:])[:16])
+				auth, e = s.Keychain(ctx, "Codex Auth", codexKeychainAccount(dir))
 				if e != nil && !os.IsNotExist(e) {
 					return r, e
 				}
@@ -325,12 +318,7 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			var b []byte
 			var e error
 			if s.Keychain != nil {
-				service := "Claude Code-credentials"
-				if s.Env("CLAUDE_CONFIG_DIR") != "" {
-					sum := sha256.Sum256([]byte(norm.NFC.String(dir)))
-					service += "-" + hex.EncodeToString(sum[:])[:8]
-				}
-				b, e = s.Keychain(ctx, service, nativeKeychainAccount(s.Env("USER")))
+				b, e = s.Keychain(ctx, claudeKeychainService(s, dir), nativeKeychainAccount(s.Env("USER")))
 				if e != nil && !os.IsNotExist(e) {
 					return r, e
 				}
@@ -425,37 +413,13 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 	if err := ValidateModelAccountsRequest(r); err != nil {
 		return result, err
 	}
-	root := filepath.Join(home, ".local/fennec/native")
-	if err := ensureNativeDirectory(home, ".local/fennec/native"); err != nil {
-		return result, err
-	}
-	lock, e := os.OpenFile(filepath.Join(root, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	root, unlock, e := lockNativeRoot(ctx, home)
 	if e != nil {
 		return result, e
 	}
-	defer lock.Close()
-	for {
-		e = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if e == nil {
-			break
-		}
-		if !errors.Is(e, syscall.EWOULDBLOCK) {
-			return result, e
-		}
-		select {
-		case <-ctx.Done():
-			return result, ctx.Err()
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	baseline := map[string]credentialPair{}
-	marker := filepath.Join(root, ".baseline.json")
-	if b, e := readNativeFile(marker); e == nil {
-		if json.Unmarshal(b, &baseline) != nil {
-			return result, fmt.Errorf("invalid native synchronization baseline")
-		}
-	} else if !os.IsNotExist(e) {
+	defer unlock()
+	baseline, e := readNativeBaseline(root)
+	if e != nil {
 		return result, e
 	}
 	writes := []credentialWrite{}
@@ -471,84 +435,17 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		if cloudLogins[agent] != "" {
 			continue
 		}
-		data, e := base64.StdEncoding.DecodeString(encoded)
-		if e != nil || len(data) > 4<<20 {
-			return result, fmt.Errorf("invalid native credential envelope")
-		}
-		if strings.HasSuffix(name, ".toml") {
-			var v map[string]any
-			if toml.Unmarshal(data, &v) != nil {
-				return result, fmt.Errorf("invalid native TOML")
-			}
-		} else if !json.Valid(data) {
-			return result, fmt.Errorf("invalid native JSON")
-		}
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if e := ensureNativeDirectory(home, filepath.Join(".local/fennec/native", filepath.Dir(name))); e != nil {
-			return result, e
-		}
-		previous, e := readNativeFile(path)
-		exists := e == nil
-		if e != nil && !os.IsNotExist(e) {
-			return result, e
-		}
-		data, e = sanitizeNativeIdentityFile(name, data, r.Files)
+		write, deferred, e := reconcileNativeFile(ctx, home, root, name, encoded, r.Files, baseline)
 		if e != nil {
 			return result, e
 		}
-		data, e = sanitizeNativeModelFile(name, data)
-		if e != nil {
-			return result, e
-		}
-		previousPolicy := previous
-		if exists {
-			previousPolicy, e = sanitizeNativeIdentityFile(name, previous, r.Files)
-			if e != nil {
-				return result, e
-			}
-		}
-		source := credentialHash(data)
-		old := baseline[name]
-		if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" {
+		if deferred {
+			result.NativeDeferred = append(result.NativeDeferred, name)
 			continue
 		}
-		if exists && !bytes.Equal(previous, data) {
-			if source == old.Source {
-				data = previousPolicy // Preserve refreshes and explicit native model choices.
-			} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previousPolicy, data) {
-				data = previousPolicy
-			} else if credentialHash(previous) != old.Remote {
-				// Settings are preferences: local edits win, cloud model choice
-				// stays. Credentials keep a copy confirmed usable (see
-				// resolveNativeCredential). A conflict never fails preparation:
-				// when nothing can be confirmed each computer keeps its own copy
-				// and, with the baseline untouched, the next sync decides again.
-				merged, ok := mergeNativeSettings(name, previousPolicy, data)
-				if !ok {
-					merged, ok = resolveNativeCredential(ctx, name, previousPolicy, data)
-				}
-				if !ok {
-					result.NativeDeferred = append(result.NativeDeferred, name)
-					continue
-				}
-				data = merged
-			}
+		if write != nil {
+			writes = append(writes, *write)
 		}
-		if name == "pi/settings.json" {
-			data, e = sanitizeNativePiSettings(data, nativePiProviderFiles(func(name string) []byte { raw, _ := base64.StdEncoding.DecodeString(r.Files[name]); return raw }))
-			if e != nil {
-				return result, e
-			}
-		}
-		data, e = sanitizeNativeModelFile(name, data)
-		if e != nil {
-			return result, e
-		}
-		baseline[name] = credentialPair{Source: source, Remote: credentialHash(data)}
-		if !exists || !bytes.Equal(previous, data) {
-			writes = append(writes, credentialWrite{path: path, data: data, previous: previous, existed: exists})
-		}
-
 	}
 	for _, w := range writes {
 		if e := atomicCredential(w.path, w.data, w); e != nil {
@@ -556,8 +453,7 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		}
 	}
 	sort.Strings(result.NativeDeferred)
-	b, _ := json.Marshal(baseline)
-	if e := atomicCredential(marker, b); e != nil {
+	if e := writeNativeBaseline(root, baseline); e != nil {
 		return result, e
 	}
 	for _, id := range r.Agents {
@@ -572,6 +468,137 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		return result, e
 	}
 	return result, nil
+}
+
+// lockNativeRoot takes the shared native synchronization lock that full
+// preparation syncs and single-credential pushes both hold.
+func lockNativeRoot(ctx context.Context, home string) (string, func(), error) {
+	root := filepath.Join(home, ".local/fennec/native")
+	if err := ensureNativeDirectory(home, ".local/fennec/native"); err != nil {
+		return "", nil, err
+	}
+	lock, e := os.OpenFile(filepath.Join(root, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if e != nil {
+		return "", nil, e
+	}
+	for {
+		e = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if e == nil {
+			break
+		}
+		if !errors.Is(e, syscall.EWOULDBLOCK) {
+			lock.Close()
+			return "", nil, e
+		}
+		select {
+		case <-ctx.Done():
+			lock.Close()
+			return "", nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return root, func() { syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); lock.Close() }, nil
+}
+
+func readNativeBaseline(root string) (map[string]credentialPair, error) {
+	baseline := map[string]credentialPair{}
+	if b, e := readNativeFile(filepath.Join(root, ".baseline.json")); e == nil {
+		if json.Unmarshal(b, &baseline) != nil {
+			return nil, fmt.Errorf("invalid native synchronization baseline")
+		}
+	} else if !os.IsNotExist(e) {
+		return nil, e
+	}
+	return baseline, nil
+}
+
+func writeNativeBaseline(root string, baseline map[string]credentialPair) error {
+	b, _ := json.Marshal(baseline)
+	return atomicCredential(filepath.Join(root, ".baseline.json"), b)
+}
+
+// reconcileNativeFile decides what one Mac copy does to the cloud copy and
+// records the new baseline. It returns the write to perform (nil when the
+// cloud copy stays), or deferred when the file changed on both computers and
+// neither copy could be confirmed; the baseline is then left untouched.
+func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, files map[string]string, baseline map[string]credentialPair) (*credentialWrite, bool, error) {
+	data, e := base64.StdEncoding.DecodeString(encoded)
+	if e != nil || len(data) > 4<<20 {
+		return nil, false, fmt.Errorf("invalid native credential envelope")
+	}
+	if strings.HasSuffix(name, ".toml") {
+		var v map[string]any
+		if toml.Unmarshal(data, &v) != nil {
+			return nil, false, fmt.Errorf("invalid native TOML")
+		}
+	} else if !json.Valid(data) {
+		return nil, false, fmt.Errorf("invalid native JSON")
+	}
+	path := filepath.Join(root, filepath.FromSlash(name))
+	if e := ensureNativeDirectory(home, filepath.Join(".local/fennec/native", filepath.Dir(name))); e != nil {
+		return nil, false, e
+	}
+	previous, e := readNativeFile(path)
+	exists := e == nil
+	if e != nil && !os.IsNotExist(e) {
+		return nil, false, e
+	}
+	data, e = sanitizeNativeIdentityFile(name, data, files)
+	if e != nil {
+		return nil, false, e
+	}
+	data, e = sanitizeNativeModelFile(name, data)
+	if e != nil {
+		return nil, false, e
+	}
+	previousPolicy := previous
+	if exists {
+		previousPolicy, e = sanitizeNativeIdentityFile(name, previous, files)
+		if e != nil {
+			return nil, false, e
+		}
+	}
+	source := credentialHash(data)
+	old := baseline[name]
+	if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" {
+		return nil, false, nil
+	}
+	if exists && !bytes.Equal(previous, data) {
+		if source == old.Source {
+			data = previousPolicy // Preserve refreshes and explicit native model choices.
+		} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previousPolicy, data) {
+			data = previousPolicy
+		} else if credentialHash(previous) != old.Remote {
+			// Settings are preferences: local edits win, cloud model choice
+			// stays. Credentials keep a copy confirmed usable (see
+			// resolveNativeCredential). A conflict never fails preparation:
+			// when nothing can be confirmed each computer keeps its own copy
+			// and, with the baseline untouched, the next sync decides again.
+			merged, ok := mergeNativeSettings(name, previousPolicy, data)
+			if !ok {
+				merged, ok = resolveNativeCredential(ctx, name, previousPolicy, data)
+			}
+			if !ok {
+				return nil, true, nil
+			}
+			data = merged
+		}
+	}
+	if name == "pi/settings.json" {
+		data, e = sanitizeNativePiSettings(data, nativePiProviderFiles(func(name string) []byte { raw, _ := base64.StdEncoding.DecodeString(files[name]); return raw }))
+		if e != nil {
+			return nil, false, e
+		}
+	}
+	data, e = sanitizeNativeModelFile(name, data)
+	if e != nil {
+		return nil, false, e
+	}
+	baseline[name] = credentialPair{Source: source, Remote: credentialHash(data)}
+	if !exists || !bytes.Equal(previous, data) {
+		return &credentialWrite{path: path, data: data, previous: previous, existed: exists}, false, nil
+	}
+	return nil, false, nil
 }
 func nativeHasCredentials(root, agent string) bool {
 	env := map[string]string{}
