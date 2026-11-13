@@ -38,6 +38,7 @@ func NewChatGPTPathFilter(conn net.Conn, home, device string) net.Conn {
 	}
 	filter.statusPending = map[string]string{}
 	filter.outCond = sync.NewCond(&filter.outMu)
+	filter.upgraded = make(chan struct{})
 	filter.inbound.server = false
 	filter.outbound.server = true
 	return filter
@@ -66,13 +67,15 @@ type chatgptPathFilter struct {
 
 	// One pump goroutine reads server bytes for ChatGPT, so the filter can
 	// also answer requests itself, between whole frames.
-	pumpOnce sync.Once
-	outbound wsStream
-	outMu    sync.Mutex
-	outCond  *sync.Cond
-	pending  []byte
-	outErr   error
-	closed   bool
+	pumpOnce    sync.Once
+	upgraded    chan struct{} // closed once the app-server answered the handshake or the stream ended
+	upgradeOnce sync.Once
+	outbound    wsStream
+	outMu       sync.Mutex
+	outCond     *sync.Cond
+	pending     []byte
+	outErr      error
+	closed      bool
 }
 
 // chatgptOutputBuffer bounds server output held for ChatGPT, so the credit
@@ -93,6 +96,17 @@ func (filter *chatgptPathFilter) Write(data []byte) (int, error) {
 	output, err := filter.inbound.feed(data, filter.toCloud)
 	if err != nil {
 		return 0, err
+	}
+	// codex app-server drops a connection whose upgrade request arrives with
+	// frames behind it. The Mac may already have completed the handshake for
+	// ChatGPT, so frames wait here until the app-server has answered.
+	if head := filter.inbound.headOut; head > 0 {
+		if _, err := filter.Conn.Write(output[:head]); err != nil {
+			return 0, err
+		}
+		output = output[head:]
+		filter.pumpOnce.Do(func() { go filter.pump() })
+		<-filter.upgraded
 	}
 	if len(output) > 0 {
 		if _, err := filter.Conn.Write(output); err != nil {
@@ -123,11 +137,15 @@ func (filter *chatgptPathFilter) Read(data []byte) (int, error) {
 }
 
 func (filter *chatgptPathFilter) pump() {
+	defer filter.releaseInput()
 	buffer := make([]byte, 32<<10)
 	for {
 		length, err := filter.Conn.Read(buffer)
 		if length > 0 {
 			output, feedErr := filter.outbound.feed(buffer[:length], filter.toMac)
+			if filter.outbound.headDone {
+				filter.releaseInput()
+			}
 			if feedErr != nil {
 				err = feedErr
 			} else if len(output) > 0 && !filter.deliver(output, true) {
@@ -160,7 +178,13 @@ func (filter *chatgptPathFilter) deliver(frames []byte, wait bool) bool {
 	return true
 }
 
+// releaseInput lets client frames follow the handshake to the app-server.
+func (filter *chatgptPathFilter) releaseInput() {
+	filter.upgradeOnce.Do(func() { close(filter.upgraded) })
+}
+
 func (filter *chatgptPathFilter) Close() error {
+	filter.releaseInput()
 	filter.forgetStatusRefreshes()
 	filter.outMu.Lock()
 	filter.closed = true
@@ -331,6 +355,7 @@ func rewriteMessage(message []byte, replace desktopReplacer, mapping func(string
 type wsStream struct {
 	server     bool // frames from the server are unmasked; client frames are masked
 	headDone   bool
+	headOut    int // length of the handshake at the start of the last output, if any
 	buffer     []byte
 	message    []byte
 	messageOp  byte
@@ -340,6 +365,7 @@ type wsStream struct {
 func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte, error) {
 	stream.buffer = append(stream.buffer, data...)
 	var output []byte
+	stream.headOut = 0
 	if !stream.headDone {
 		end := bytes.Index(stream.buffer, []byte("\r\n\r\n"))
 		if end < 0 {
@@ -353,6 +379,7 @@ func (stream *wsStream) feed(data []byte, transform func([]byte) []byte) ([]byte
 			head = dropHeader(head, chatgptCompressionHeader)
 		}
 		output = append(output, head...)
+		stream.headOut = len(head)
 		stream.buffer = stream.buffer[end+4:]
 		stream.headDone = true
 	}

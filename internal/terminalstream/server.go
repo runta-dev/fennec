@@ -122,7 +122,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err

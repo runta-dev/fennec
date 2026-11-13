@@ -43,6 +43,11 @@ const ProtocolVersion = 7
 const (
 	SocketCodexAppServer     = "codex-app-server"
 	CapabilityCodexAppServer = "codex_app_server"
+	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that
+	// follow the WebSocket upgrade request until the app-server has answered
+	// it (codex app-server drops a connection whose request arrives together
+	// with frames), so the Mac may complete the handshake for ChatGPT itself.
+	CapabilityCodexAppServerEarlyInput = "codex_app_server_early_input"
 )
 
 // A socket stream opened with Term SocketCompressionZstd receives its output as

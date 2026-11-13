@@ -57,6 +57,8 @@ func TestChatGPTPathFilterMovesThreadsIntoFennecWorkspaces(t *testing.T) {
 	if strings.Contains(strings.ToLower(head.String()), "compression") || !strings.Contains(head.String(), "Upgrade: websocket") {
 		t.Fatalf("handshake not filtered: %q", head.String())
 	}
+	// Frames follow only once the app-server has answered the handshake.
+	go io.WriteString(server, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n")
 	ping := readFrame(t, reader)
 	if ping.opcode != 0x9 {
 		t.Fatal("control frame not passed through", ping.opcode)
@@ -82,7 +84,6 @@ func TestChatGPTPathFilterMovesThreadsIntoFennecWorkspaces(t *testing.T) {
 
 	// The server reports the cloud directory; ChatGPT sees its Mac project.
 	go func() {
-		io.WriteString(server, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n")
 		reply, _ := json.Marshal(map[string]any{"id": 1, "result": map[string]any{"thread": map[string]any{"id": "t1", "cwd": cloud}}})
 		server.Write(encodeWebSocketFrame(0x1, reply, false))
 	}()
@@ -207,5 +208,31 @@ func TestDesktopMCPServersRunOnTheMacThroughItsAlias(t *testing.T) {
 	offline := &chatgptPathFilter{home: t.TempDir()}
 	if got := string(rewriteMessage(request, offline.desktopServer, func(string) (string, bool) { return "", false })); !strings.Contains(got, `"mcp_servers.node_repl":{"command":"","enabled":false}`) {
 		t.Fatal(got)
+	}
+}
+
+// codex app-server drops a connection whose upgrade request arrives with frames
+// behind it; the filter holds frames until the app-server has answered.
+func TestChatGPTFramesWaitForTheHandshakeAnswer(t *testing.T) {
+	client, filterSide := net.Pipe()
+	serverSide, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	filter := NewChatGPTPathFilter(serverSide, t.TempDir(), "")
+	defer filter.Close()
+	go io.Copy(filter, filterSide)
+	go io.Copy(filterSide, filter)
+	server.SetDeadline(time.Now().Add(5 * time.Second))
+	go client.Write(append([]byte("GET /rpc HTTP/1.1\r\nUpgrade: websocket\r\n\r\n"), maskedFrame(0x1, true, []byte(`{"id":1,"method":"initialize"}`))...))
+	reader := bufio.NewReader(server)
+	readHead(t, reader)
+	server.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	if _, err := reader.ReadByte(); err == nil {
+		t.Fatal("a frame reached the app-server before its handshake answer")
+	}
+	server.SetDeadline(time.Now().Add(5 * time.Second))
+	go io.WriteString(server, "HTTP/1.1 101 Switching Protocols\r\n\r\n")
+	if message := readFrame(t, reader); !bytes.Contains(message.payload, []byte("initialize")) {
+		t.Fatal(string(message.payload))
 	}
 }
