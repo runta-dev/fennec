@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"fennec/cua/internal/browser"
+	"fennec/cua/internal/chromium"
 	"fennec/cua/internal/daemon"
 )
 
 // browserOps are the daemon's control operations for the bundled
 // Chromium, for the CLI and Fennec's UI: the daemon owns the browser, so
 // an import writes into the running instance.
-func browserOps(m *browser.Manager) map[string]func(context.Context, json.RawMessage) (any, error) {
+func browserOps(m *browser.Manager, profile string) map[string]func(context.Context, json.RawMessage) (any, error) {
 	return map[string]func(context.Context, json.RawMessage) (any, error){
 		"browser.profiles": func(context.Context, json.RawMessage) (any, error) {
 			return m.ChromeProfiles()
@@ -36,7 +37,13 @@ func browserOps(m *browser.Manager) map[string]func(context.Context, json.RawMes
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"available": m.Available(), "lastImport": last}, nil
+			// How the managed profile's cookies are encrypted, and what a
+			// move from the mock keychain carried over (counts only).
+			cookies, err := chromium.ReadCookieState(profile)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"available": m.Available(), "lastImport": last, "cookieStore": cookies}, nil
 		},
 	}
 }

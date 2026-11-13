@@ -55,6 +55,7 @@ func main() {
 
 type options struct {
 	stage, cache, arch, identity, keychain string
+	creditsCache, creditsOut               string
 	skipBuild, allowNoCredits              bool
 }
 
@@ -67,23 +68,31 @@ func run(args []string) error {
 	fs.StringVar(&o.identity, "identity", envOr("FENNEC_SIGN_IDENTITY", "Fennec Local Development"), `signing identity name, or "-" for ad-hoc`)
 	fs.StringVar(&o.keychain, "keychain", envOr("FENNEC_SIGN_KEYCHAIN", filepath.Join(os.Getenv("HOME"), "Library/Keychains/login.keychain-db")), "keychain holding the identity")
 	fs.BoolVar(&o.skipBuild, "skip-build", false, "stage Chromium only")
-	fs.BoolVar(&o.allowNoCredits, "allow-missing-credits", false, "stage a build whose chrome://credits is the sample page (development only; not for distribution)")
+	fs.BoolVar(&o.allowNoCredits, "allow-missing-credits", false, "skip generating the third-party notices: chrome://credits stays the sample page (development only; not for distribution)")
+	fs.StringVar(&o.creditsCache, "credits-cache", "", "cache of Chromium source metadata for the notices (default: the user cache directory)")
+	fs.StringVar(&o.creditsOut, "credits-out", "", "only generate the pinned commit's notices into this directory and print their hash (for a pin bump)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if o.stage == "" {
-		return errors.New("-stage is required")
+	ucache, err := os.UserCacheDir()
+	if err != nil {
+		return err
 	}
 	if o.cache == "" {
-		dir, err := os.UserCacheDir()
-		if err != nil {
-			return err
-		}
-		o.cache = filepath.Join(dir, "fennec", "cua", "chromium-downloads")
+		o.cache = filepath.Join(ucache, "fennec", "cua", "chromium-downloads")
+	}
+	if o.creditsCache == "" {
+		o.creditsCache = filepath.Join(ucache, "fennec", "cua", "chromium-source")
 	}
 	build, ok := chromium.BuildFor(o.arch)
 	if !ok {
 		return fmt.Errorf("no pinned Chromium for %s", o.arch)
+	}
+	if o.creditsOut != "" {
+		return creditsOnly(context.Background(), build, o.creditsCache, o.creditsOut)
+	}
+	if o.stage == "" {
+		return errors.New("-stage is required")
 	}
 	if entries, err := os.ReadDir(o.stage); err == nil && len(entries) > 0 {
 		return fmt.Errorf("the staging directory %s is not empty", o.stage)
@@ -104,34 +113,44 @@ func run(args []string) error {
 		return err
 	}
 
-	step("recording Chromium's licence and credits")
+	step("recording Chromium's licence")
 	license, err := fetchLicense(ctx, build)
 	if err != nil {
 		return err
 	}
-	credits, err := dumpCredits(ctx, chromium.Executable(app))
-	if err != nil {
-		return fmt.Errorf("reading chrome://credits: %w", err)
-	}
-	creditsNote := "licenses/Chromium-credits.html (chrome://credits of this build)"
-	if bytes.Contains(credits, []byte("This is sample credits page")) {
-		// Snapshot builds are made without generate_about_credits: their
-		// chrome://credits is a placeholder, so the third-party notices
-		// Chromium's licence requires are not in the build.
-		if !o.allowNoCredits {
-			return errors.New("this Chromium build carries no third-party notices (chrome://credits is the sample page: built without generate_about_credits); it must not be distributed. Pass -allow-missing-credits to stage it for development only")
+	files := map[string][]byte{"Chromium-LICENSE.txt": license}
+	// Snapshot builds are made without generate_about_credits: their
+	// chrome://credits is a placeholder. The notices are generated from
+	// the pinned commit's sources (internal/credits) and put both into
+	// licenses/ and in place of the placeholder resource.
+	var cf *creditsFiles
+	creditsNote := "MISSING: -allow-missing-credits skipped the notices; not distributable"
+	if o.allowNoCredits {
+		step("WARNING: no third-party notices; staged for development only, not for distribution")
+	} else {
+		if cf, err = buildCredits(ctx, build, o.creditsCache); err != nil {
+			return err
 		}
-		step("WARNING: chrome://credits is the sample page; staged for development only, not for distribution")
-		creditsNote = "MISSING: the build has no generated credits; not distributable"
+		id, err := patchCreditsPage(ctx, app, build.Commit, cf.HTML)
+		if err != nil {
+			return fmt.Errorf("replacing the placeholder chrome://credits: %w", err)
+		}
+		step("chrome://credits now carries the %d generated notices (resource %d)", cf.Components, id)
+		files["Chromium-credits.html"], files["Chromium-credits.txt"] = cf.HTML, cf.Text
+		creditsNote = fmt.Sprintf("licenses/Chromium-credits.html and .txt (%d components, SHA-256 %s, generated from the pinned commit by internal/credits; also chrome://credits)", cf.Components, build.CreditsSHA256)
 	}
 	res := filepath.Join(app, "Contents", "Resources")
-	for name, data := range map[string][]byte{"Chromium-LICENSE.txt": license, "Chromium-credits.html": credits} {
+	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(o.stage, "licenses", name), data, 0o644); err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(res, name), data, 0o644); err != nil {
 			return err
 		}
+	}
+	step("naming the cookie key's Keychain item %q", chromium.SafeStorageService)
+	if err := patchSafeStorage(app); err != nil {
+		return fmt.Errorf("renaming the Safe Storage item: %w", err)
 	}
 
 	noTeam := false
@@ -161,6 +180,20 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("the signed Chromium does not start: %w", err)
 	}
+	if cf != nil {
+		step("checking chrome://credits")
+		page, err := dumpCredits(ctx, chromium.Executable(app))
+		if err != nil {
+			return fmt.Errorf("reading chrome://credits: %w", err)
+		}
+		if n := bytes.Count(page, []byte(`<div class="product">`)); n != cf.Components {
+			return fmt.Errorf("chrome://credits shows %d components; %d were generated", n, cf.Components)
+		}
+	}
+	step("checking the Keychain item with a temporary keychain")
+	if err := checkSafeStorage(ctx, chromium.Executable(app)); err != nil {
+		return fmt.Errorf("the Safe Storage check: %w", err)
+	}
 
 	if !o.skipBuild {
 		step("building fennec-cua")
@@ -177,7 +210,8 @@ func run(args []string) error {
 	}
 	manifest := map[string]any{
 		"chromium": map[string]any{"revision": build.Revision, "commit": build.Commit, "version": build.Version, "arch": build.Arch,
-			"sha256": build.SHA256, "url": build.URL(), "product": product, "license": "BSD-3-Clause (licenses/Chromium-LICENSE.txt)", "thirdPartyNotices": creditsNote},
+			"sha256": build.SHA256, "url": build.URL(), "product": product, "license": "BSD-3-Clause (licenses/Chromium-LICENSE.txt)", "thirdPartyNotices": creditsNote,
+			"modified": "chrome://credits resource replaced by the generated notices; Safe Storage Keychain item renamed to \"" + chromium.SafeStorageService + "\"; re-signed"},
 		"signed": identityLabel(o.identity, ident),
 		"layout": map[string]string{"fennec-cua": "Contents/MacOS/fennec-cua", "Chromium.app": "Contents/Helpers/Chromium.app", "licenses": "Contents/Resources/licenses"},
 		"at":     time.Now().UTC().Format(time.RFC3339),
@@ -376,7 +410,8 @@ func headless(ctx context.Context, bin string, fn func(c *cdp.Conn) error) error
 		return err
 	}
 	defer os.RemoveAll(dir)
-	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, IdleTimeout: -1})
+	// The mock keychain: these runs never touch the user's Keychain.
+	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, MockKeychain: true, IdleTimeout: -1})
 	defer b.Close()
 	c, _, err := b.Conn(ctx)
 	if err != nil {

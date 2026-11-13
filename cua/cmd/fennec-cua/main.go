@@ -331,15 +331,26 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	// agent's own tabs, so it needs no desk turn; the allowlist (as the app
 	// "Chromium"), confirmations and Stop apply to it.
 	var browsers *browser.Manager
+	var browserProfile string
 	if bin := chromium.Locate(self); bin != "" {
 		profile, err := chromium.DefaultProfileDir()
 		if err != nil {
 			return err
 		}
+		// Cookies are encrypted with a key in the "Fennec Safe Storage"
+		// Keychain item when the build carries the renamed item (the
+		// bundled one); any other build keeps the mock keychain and never
+		// touches the user's own "Chromium Safe Storage" item.
+		ss, renamed := chromium.SafeStorageOf(bin)
+		if !renamed {
+			logger.Printf("this Chromium build does not use the %q Keychain item; its cookies use the mock keychain (development only)", chromium.SafeStorageService)
+		}
 		chrome := chromium.New(chromium.Options{
 			Bin: bin, ProfileDir: profile, Log: logger.Printf,
-			Headless: os.Getenv(chromium.EnvHeadless) == "1",
+			Headless:     os.Getenv(chromium.EnvHeadless) == "1",
+			MockKeychain: !renamed, SafeStorageService: ss.Service,
 		})
+		browserProfile = profile
 		defer chrome.Close()
 		browsers = browser.NewManager(browser.Options{
 			Browser: chrome, Log: logger.Printf, Gate: pol.Gate,
@@ -434,7 +445,7 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	}
 	logger.Printf("serving %s", paths.MCP)
 	if browsers != nil {
-		d.Ops = browserOps(browsers)
+		d.Ops = browserOps(browsers, browserProfile)
 	}
 	return d.Run(ctx)
 }

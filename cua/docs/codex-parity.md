@@ -356,8 +356,9 @@ The daemon runs one browser for every MCP session, started on the first
 browser call (about 0.4 s cold, headless) with its own profile
 (`~/Library/Application Support/fennec/cua/Chromium`, mode 0700, never a
 Chrome profile; `FENNEC_CUA_CHROMIUM_PROFILE` overrides), no first-run or
-default-browser prompts, no startup window, the mock keychain (the browser
-itself never raises a Keychain prompt) and no Google API keys. It is
+default-browser prompts, no startup window, cookies encrypted at rest with a
+key in its own "Fennec Safe Storage" Keychain item (section 8.7) and no
+Google API keys. It is
 supervised: an exit is noticed, the next call starts it again (three exits
 within a minute stop the restarts), a leftover of the same bundled binary
 holding the profile is stopped, it shuts down after ten minutes with no page
@@ -545,11 +546,13 @@ stays false); its DevTools pipe is private to the daemon (no port).
 ### 8.5 Open points
 
 - Third-party notices: chromium-browser-snapshots builds are made without
-  `generate_about_credits`, so their `chrome://credits` is a placeholder.
-  `cua-package` refuses to stage such a build unless told it is for
-  development (`-allow-missing-credits`, recorded in `MANIFEST.json`).
-  Distribution needs a Chromium build with generated credits (our own
-  official-config build, or a maintained BSD prebuilt that ships them).
+  `generate_about_credits`. `internal/credits` generates the notices from
+  the pinned commit's sources with licenses.py's rules in Go, and
+  `cua-package` ships them in `licenses/` and as `chrome://credits` (README,
+  "Third-party notices"). Remaining gaps: the contents of CIPD and GCS
+  dependencies are not read (their metadata in `chromium/src` is); the
+  scan covers every shipped-marked component of a macOS checkout, as the
+  official build does, not only what the snapshot links.
 - The managed Chromium in the tart image for the bench; the
   `chromiumlive` tests run on a developer Mac (headless).
 - Snapshot builds are untested trunk builds and do not update themselves:
@@ -601,9 +604,69 @@ agent tabs signed in:
   the import (or `markHandoff()`) when a site needs a sign-in it cannot do.
 - Passwords are not imported: Chromium's password store has no DevTools
   interface, writing its database directly would put every saved password
-  into a profile the agent drives, and the profile's own encryption uses the
-  mock keychain. Signed-in sessions (cookies) cover the agent's need; a
+  into a profile the agent drives, and a password store is a larger target
+  than the cookies the agent needs. Signed-in sessions (cookies) cover the agent's need; a
   password the user wants to use stays with the user (hand-off).
+
+### 8.7 Cookie encryption
+
+Reference: Codex's built-in browser is its own Chromium build that keeps
+the os_crypt key in an app-specific Safe Storage item in the
+data-protection keychain, under its team's `keychain-access-groups`
+entitlement. Access follows the team identity, with no per-app access-list
+prompts, and nothing is shared with the user's Chrome.
+
+Now (stock snapshot build, README "Cookie encryption"):
+
+- This build's os_crypt (`components/os_crypt/common/keychain_password_mac.mm`,
+  `crypto/apple/keychain_v2.mm`) reads a generic password by service and
+  account with `SecItemCopyMatching` on the default (file) keychain and
+  creates it with 16 random bytes when missing. The key is
+  PBKDF2-HMAC-SHA1 of that password, 1003 rounds, salt "saltysalt" (tag
+  `v10`) or, for a `--user-data-dir` profile such as ours, "pepper" (tag
+  `v11`, `chrome/browser/browser_process_impl.cc`).
+- `cua-package` changes the service constant `kDefaultServiceName` from
+  "Chromium Safe Storage" to "Fennec Safe Storage" in the framework (the
+  one NUL-terminated occurrence, padded with NULs; the account stays
+  "Chromium") and proves it on every staging against a temporary keychain.
+- The bundled browser creates the item itself, so the item's access list
+  trusts only that signed app: no prompt, no other app, and no "allow all
+  applications". With the self-signed development certificate, the
+  item's partition is the code hash, and the first launch after a
+  re-signed update asks once whether "Chromium" may use "Fennec Safe
+  Storage". With a Developer ID team the partition is the team and
+  updates stay silent.
+- A build without the rename runs with the mock keychain and never reads,
+  creates or changes the user's own "Chromium Safe Storage" item.
+- Profiles from the mock keychain are migrated losslessly on first use: the
+  mock password is public, so the daemon decrypts the cookies, sets the old
+  database aside and sets them again in the running browser. The counts and
+  anything not carried are reported (`fennec-cua browser status`,
+  `cookieStore`).
+
+End state (needs our own Chromium build):
+
+- Patch `keychain_password_mac.mm`: `kDefaultServiceName = "Fennec Safe
+  Storage"`, `kDefaultAccountName = "Fennec"`.
+- Patch `KeychainV2::FindGenericPassword` and `AddGenericPassword` (only
+  os_crypt calls them) so their query and new item add
+  `kSecUseDataProtectionKeychain: @YES` and `kSecAttrAccessGroup:
+  @"<TEAMID>.com.runta.fennec.shared"` (accessible after first unlock,
+  this device only). On a miss, copy an existing file-keychain "Fennec
+  Safe Storage" password into the new item before generating one, so
+  existing cookies stay readable, then delete the old item.
+- Signing prerequisites: an Apple Developer Program team with a
+  Developer ID Application certificate; an App ID for the browser (for
+  example `com.runta.fennec.browser`) with the keychain-sharing capability
+  and a Developer ID provisioning profile for it, embedded as
+  `Chromium.app/Contents/embedded.provisionprofile`; the browser executable
+  signed with `com.apple.application-identifier` (`<TEAMID>.<app id>`),
+  `com.apple.developer.team-identifier` and `keychain-access-groups`
+  (`<TEAMID>.com.runta.fennec.shared`), with the hardened runtime and the
+  existing helper entitlements; notarization. Helpers need no keychain
+  entitlement, because only the browser process reads the key. Fennec.app
+  (`com.runta.fennec`) joins the same group only if it ever needs the key;
+  today it does not.
 
 ## 9. Not supported
 

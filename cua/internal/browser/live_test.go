@@ -40,7 +40,7 @@ func liveBrowser(t *testing.T) (*chromium.Browser, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, Log: t.Logf})
+	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, MockKeychain: true, Log: t.Logf})
 	t.Cleanup(b.Close)
 	return b, dir
 }

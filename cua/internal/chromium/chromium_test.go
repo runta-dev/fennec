@@ -93,7 +93,7 @@ func readPID(t *testing.T, o Options) int {
 }
 
 func TestArgs(t *testing.T) {
-	a := strings.Join(Args(Options{ProfileDir: "/p"}), " ")
+	a := strings.Join(Args(Options{ProfileDir: "/p", MockKeychain: true}), " ")
 	for _, want := range []string{"--remote-debugging-pipe", "--user-data-dir=/p", "--no-first-run", "--no-default-browser-check", "--use-mock-keychain", "--no-startup-window"} {
 		if !strings.Contains(a, want) {
 			t.Errorf("missing %s in %s", want, a)
@@ -104,7 +104,7 @@ func TestArgs(t *testing.T) {
 			t.Errorf("%s in %s", never, a)
 		}
 	}
-	h := strings.Join(Args(Options{ProfileDir: "/p", Headless: true, RealKeychain: true}), " ")
+	h := strings.Join(Args(Options{ProfileDir: "/p", Headless: true}), " ")
 	if !strings.Contains(h, "--headless") || strings.Contains(h, "--use-mock-keychain") || strings.Contains(h, "--no-startup-window") {
 		t.Errorf("headless %s", h)
 	}

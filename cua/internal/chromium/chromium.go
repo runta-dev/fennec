@@ -90,11 +90,18 @@ type Options struct {
 	Bin        string
 	ProfileDir string
 	Headless   bool
-	// RealKeychain lets Chromium keep its cookie key in the login
-	// Keychain; the default (mock keychain) never touches the Keychain,
-	// so the browser cannot raise a prompt, and the profile relies on
-	// its 0700 directory.
-	RealKeychain bool
+	// MockKeychain runs Chromium with --use-mock-keychain: its cookie key
+	// is a fixed public password, so cookies are protected only by the
+	// 0700 profile directory. Builds without the renamed Safe Storage
+	// item (SafeStorageOf) and tests use it; the bundled build keeps its
+	// key in the "Fennec Safe Storage" Keychain item.
+	MockKeychain bool
+	// SafeStorageService names the Keychain item the build uses (state
+	// and logs only; the name is compiled into the build).
+	SafeStorageService string
+	// Env is added to the child's environment (tests point HOME at a
+	// temporary keychain).
+	Env []string
 	// Args are appended (tests).
 	Args []string
 	// IdleTimeout shuts the browser down after this long with no page
@@ -119,7 +126,7 @@ func Args(o Options) []string {
 		"--disable-features=Translate,MediaRouter,DialMediaRouteProvider",
 		"--disable-component-update",
 	}
-	if !o.RealKeychain {
+	if o.MockKeychain {
 		args = append(args, "--use-mock-keychain")
 	}
 	if o.Headless {
@@ -304,6 +311,27 @@ func (b *Browser) start(ctx context.Context) (*process, error) {
 	if err := clearStaleOwner(b.opts.ProfileDir, b.opts.Bin, b.logf); err != nil {
 		return nil, err
 	}
+	mig, err := prepareCookieStore(ctx, b.opts, b.logf)
+	if err != nil {
+		return nil, err
+	}
+	p, err := b.launch(ctx)
+	if err != nil {
+		if mig != nil {
+			mig.restore()
+		}
+		return nil, err
+	}
+	if mig != nil {
+		if err := mig.finish(ctx, p.conn, b.opts, b.logf); err != nil {
+			b.logf("chromium: recording the cookie migration: %v", err)
+		}
+	}
+	return p, nil
+}
+
+// launch starts the process and waits for its DevTools answer.
+func (b *Browser) launch(ctx context.Context) (*process, error) {
 	// fd 3 carries commands to Chromium, fd 4 its replies.
 	cmdR, cmdW, err := os.Pipe()
 	if err != nil {
@@ -316,7 +344,7 @@ func (b *Browser) start(ctx context.Context) (*process, error) {
 		return nil, err
 	}
 	cmd := exec.Command(b.opts.Bin, Args(b.opts)...)
-	cmd.Env = Env(os.Environ())
+	cmd.Env = append(Env(os.Environ()), b.opts.Env...)
 	cmd.ExtraFiles = []*os.File{cmdR, repW}
 	t := &tail{max: 8192}
 	cmd.Stdout, cmd.Stderr = t, t

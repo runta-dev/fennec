@@ -233,7 +233,7 @@ func TestDecrypt(t *testing.T) {
 		t.Error("another host's hash was accepted")
 	}
 	if _, err := Decrypt(key, []byte("v11xxxx"), "", 0); err == nil {
-		t.Error("v11 accepted")
+		t.Error("a malformed v11 value accepted")
 	}
 	if _, err := Decrypt(key, append([]byte("v10"), make([]byte, 15)...), "", 0); err == nil {
 		t.Error("short block accepted")
@@ -268,5 +268,30 @@ func TestListProfiles(t *testing.T) {
 	}
 	if _, err := ListProfiles(t.TempDir()); err == nil {
 		t.Error("no Local State")
+	}
+}
+
+// TestDecryptV11 covers values Chromium 160 writes in a profile started
+// with --user-data-dir: tag "v11", the same password, salt "pepper".
+func TestDecryptV11(t *testing.T) {
+	key11, err := DeriveKeyFor([]byte(testPassword), SaltCustomDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key10, _ := DeriveKey([]byte(testPassword))
+	if bytes.Equal(key10, key11) {
+		t.Fatal("the salts give the same key")
+	}
+	plain := []byte("value")
+	pad := aes.BlockSize - len(plain)%aes.BlockSize
+	buf := append(append([]byte(nil), plain...), bytes.Repeat([]byte{byte(pad)}, pad)...)
+	block, _ := aes.NewCipher(key11)
+	cipher.NewCBCEncrypter(block, []byte("                ")).CryptBlocks(buf, buf)
+	enc := append([]byte("v11"), buf...)
+	if v, err := Decrypt(key11, enc, "", 0); err != nil || string(v) != "value" {
+		t.Errorf("%q %v", v, err)
+	}
+	if _, err := Decrypt(key10, enc, "", 0); err == nil {
+		t.Error("the v10 key opened a v11 value")
 	}
 }

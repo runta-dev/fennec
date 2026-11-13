@@ -17,6 +17,10 @@ type Build struct {
 	Version  string
 	SHA256   string // of chrome-mac.zip
 	Size     int64
+	// CreditsSHA256 is the SHA-256 of the third-party notices page
+	// (licenses.py credits rules, internal/credits) generated from
+	// Commit and the dependencies its DEPS pins for macOS.
+	CreditsSHA256 string
 }
 
 // URL is where the build's archive is downloaded from.
@@ -29,17 +33,19 @@ func (b Build) URL() string {
 var Builds = []Build{
 	{
 		Arch: "arm64", Bucket: "Mac_Arm", Revision: "1743750",
-		Commit:  "2c8bee4ceb39a8f0ebf674b3327138b5e0ebea57",
-		Version: "160.0.8159.0",
-		SHA256:  "14e94ce639bde8031f31ee9f0935bba892d6955fa36bab2eae3b7b43cbc45f18",
-		Size:    184457146,
+		Commit:        "2c8bee4ceb39a8f0ebf674b3327138b5e0ebea57",
+		Version:       "160.0.8159.0",
+		SHA256:        "14e94ce639bde8031f31ee9f0935bba892d6955fa36bab2eae3b7b43cbc45f18",
+		Size:          184457146,
+		CreditsSHA256: "085e2ec9c87be3a957497969189e3c8e44534ba622bf833b31617aec32e7d711",
 	},
 	{
 		Arch: "amd64", Bucket: "Mac", Revision: "1743759",
-		Commit:  "e085decaed8260097cb09cf29dd090433cc6040c",
-		Version: "160.0.8159.0",
-		SHA256:  "d29ffe16eb55d0462f2fbf03eecd6aa6858da1823555dfdb3fc3ccc6039d791a",
-		Size:    204362313,
+		Commit:        "e085decaed8260097cb09cf29dd090433cc6040c",
+		Version:       "160.0.8159.0",
+		SHA256:        "d29ffe16eb55d0462f2fbf03eecd6aa6858da1823555dfdb3fc3ccc6039d791a",
+		Size:          204362313,
+		CreditsSHA256: "085e2ec9c87be3a957497969189e3c8e44534ba622bf833b31617aec32e7d711",
 	},
 }
 

@@ -141,16 +141,31 @@ var ErrKeyDenied = errors.New("access to Chrome's Safe Storage key was not allow
 // DeriveKey turns the Safe Storage password into the AES-128 key Chrome
 // on macOS uses (PBKDF2-HMAC-SHA1, salt "saltysalt", 1003 rounds).
 func DeriveKey(password []byte) ([]byte, error) {
-	return pbkdf2.Key(sha1.New, string(password), []byte("saltysalt"), 1003, 16)
+	return DeriveKeyFor(password, SaltDefaultDir)
 }
 
-// Decrypt reads an encrypted_value: "v10" then AES-128-CBC with an IV of
-// sixteen spaces and PKCS#7 padding. Databases at version 24 or later
-// prefix the plaintext with SHA-256 of the cookie's host, which is checked
-// and dropped.
+// PBKDF2 salts: values tagged "v10" (the default user data directory)
+// use SaltDefaultDir; Chromium 160 and later tag values "v11" and use
+// SaltCustomDir in a profile started with --user-data-dir (the same
+// Keychain password).
+const (
+	SaltDefaultDir = "saltysalt"
+	SaltCustomDir  = "pepper"
+)
+
+// DeriveKeyFor derives the AES-128 key with a given salt.
+func DeriveKeyFor(password []byte, salt string) ([]byte, error) {
+	return pbkdf2.Key(sha1.New, string(password), []byte(salt), 1003, 16)
+}
+
+// Decrypt reads an encrypted_value: "v10" or "v11" (the key differs by
+// salt; the caller picks it) then AES-128-CBC with an IV of sixteen
+// spaces and PKCS#7 padding. Databases at version 24 or later prefix the
+// plaintext with SHA-256 of the cookie's host, which is checked and
+// dropped.
 func Decrypt(key, enc []byte, host string, dbVersion int) ([]byte, error) {
-	if len(enc) < 3 || string(enc[:3]) != "v10" {
-		return nil, errors.New("not a v10 value")
+	if len(enc) < 3 || (string(enc[:3]) != "v10" && string(enc[:3]) != "v11") {
+		return nil, errors.New("not a v10 or v11 value")
 	}
 	ct := enc[3:]
 	if len(ct) == 0 || len(ct)%aes.BlockSize != 0 {
@@ -294,8 +309,8 @@ func ReadCookies(ctx context.Context, profileDir string, keys KeyProvider, now t
 	if err != nil {
 		return nil, st, fmt.Errorf("the cookie database does not read: %w", err)
 	}
-	var key []byte
-	defer func() { clear(key) }()
+	var key, key11 []byte
+	defer func() { clear(key); clear(key11) }()
 	needKey := false
 	for _, r := range rows {
 		if len(r.enc) > 0 {
@@ -309,6 +324,9 @@ func ReadCookies(ctx context.Context, profileDir string, keys KeyProvider, now t
 			return nil, st, err
 		}
 		key, err = DeriveKey(pw)
+		if err == nil {
+			key11, err = DeriveKeyFor(pw, SaltCustomDir)
+		}
 		clear(pw)
 		if err != nil {
 			return nil, st, err
@@ -330,7 +348,11 @@ func ReadCookies(ctx context.Context, profileDir string, keys KeyProvider, now t
 			}
 		}
 		if len(r.enc) > 0 {
-			v, err := Decrypt(key, r.enc, r.host, version)
+			k := key
+			if len(r.enc) >= 3 && string(r.enc[:3]) == "v11" {
+				k = key11
+			}
+			v, err := Decrypt(k, r.enc, r.host, version)
 			if err != nil {
 				st.Undecryptable++
 				continue

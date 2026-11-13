@@ -230,7 +230,7 @@ func liveManager(t *testing.T) *browser.Manager {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	logf := func(f string, a ...any) { t.Logf(f, a...) }
-	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, Log: logf})
+	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, MockKeychain: true, Log: logf})
 	t.Cleanup(b.Close)
 	return browser.NewManager(browser.Options{Browser: b, Log: logf})
 }
