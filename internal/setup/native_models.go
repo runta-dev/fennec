@@ -583,6 +583,10 @@ func nativeSettingsModelKeys(name string) ([]string, bool) {
 		return []string{"model"}, true
 	case "pi/settings.json":
 		return []string{"defaultProvider", "defaultModel", "defaultThinkingLevel"}, true
+	case "claude/.claude.json":
+		// The Mac sends only the account identity; Claude Code keeps its own
+		// runtime state (projects, counters, tips) in the cloud copy.
+		return nil, true
 	}
 	return nil, false
 }

@@ -76,3 +76,17 @@ func TestNewerNativeCredential(t *testing.T) {
 		t.Fatal("changed API keys on both sides must stay a conflict")
 	}
 }
+
+// Claude Code writes its own runtime state into the cloud .claude.json while
+// the Mac's account identity also changes; the merge keeps both.
+func TestClaudeProfileChangedOnBothComputersMerges(t *testing.T) {
+	out, ok := mergeNativeSettings("claude/.claude.json",
+		[]byte(`{"oauthAccount":{"emailAddress":"old"},"hasCompletedOnboarding":true,"numStartups":42,"projects":{"/w":{}}}`),
+		[]byte(`{"oauthAccount":{"emailAddress":"new"},"hasCompletedOnboarding":true}`))
+	var got map[string]any
+	json.Unmarshal(out, &got)
+	account, _ := got["oauthAccount"].(map[string]any)
+	if !ok || account["emailAddress"] != "new" || got["numStartups"] != float64(42) || got["projects"] == nil {
+		t.Fatalf("profile merge: %s %v", out, ok)
+	}
+}
