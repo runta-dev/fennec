@@ -1,4 +1,9 @@
-package ego
+// Package browser serves the REPL's browser API (docs/codex-parity.md,
+// section 8) from the Chromium fennec-cua bundles (internal/chromium),
+// driven over the DevTools protocol (internal/cdp). Every decision (the tab
+// registry, element ids, the state text, locators, key names, safety
+// checks) is made here in Go.
+package browser
 
 import (
 	"context"
@@ -7,15 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"fennec/cua/internal/cdp"
 	"fennec/cua/internal/protocol"
 )
 
@@ -28,17 +31,21 @@ func Guide() string { return guide }
 
 // The one browser.
 const (
-	BrowserID     = "ego"
-	BrowserName   = "ego lite"
+	BrowserID     = "chromium"
+	BrowserName   = "Chromium"
 	BrowserFamily = "chromium"
 	BrowserType   = "cdp"
-	// AppName is the name the app allowlist admits ego lite by.
-	AppName = "ego lite"
+	// AppName is the name the app allowlist admits the managed browser by.
+	AppName = "Chromium"
 )
 
-// browserAliases are the ids that select ego lite: its own, and the ids
-// models default to.
-var browserAliases = map[string]bool{"ego": true, "ego lite": true, "ego-lite": true, "chrome": true, "browser": true, "chromium": true}
+// CallTimeout bounds one browser command unless the caller's context ends
+// sooner.
+const CallTimeout = 45 * time.Second
+
+// browserAliases are the ids that select the managed Chromium: its own,
+// and the ids models default to.
+var browserAliases = map[string]bool{"chromium": true, "chrome": true, "browser": true}
 
 // BrowserInfo is listBrowsers' entry.
 type BrowserInfo struct {
@@ -65,7 +72,7 @@ type BrowserState struct {
 	Tabs   []TabInfo `json:"tabs"`
 }
 
-func egoInfo() BrowserInfo {
+func chromiumInfo() BrowserInfo {
 	return BrowserInfo{ID: BrowserID, Name: BrowserName, Family: BrowserFamily, Type: BrowserType}
 }
 
@@ -74,42 +81,27 @@ type Asker interface {
 	Ask(ctx context.Context, steps []protocol.Step, target string) *protocol.Error
 }
 
+// Launcher runs the browser (chromium.Browser): Conn starts it when it is
+// not running; gen counts starts, so a new value means the targets of
+// earlier ones are gone.
+type Launcher interface {
+	Conn(ctx context.Context) (conn *cdp.Conn, gen int, err error)
+	Available() bool
+}
+
 // Options configure a Manager.
 type Options struct {
-	// Bin is ego-browser; empty means FindBin.
-	Bin string
-	// Dir holds bridge sockets and screenshots; keep it short.
-	Dir string
-	// Start replaces the bridge starter (tests).
-	Start Starter
-	Log   func(string, ...any)
-	// Allowed says whether the app allowlist admits ego lite; nil admits.
+	Browser Launcher
+	Log     func(string, ...any)
+	// Allowed says whether the app allowlist admits the browser; nil
+	// admits.
 	Allowed func() bool
 	// Gate asks the user in confirm mode; nil never asks.
 	Gate Asker
-	// Timeout bounds one bridge request; zero means CallTimeout.
+	// Timeout bounds one command; zero means CallTimeout.
 	Timeout time.Duration
-}
-
-// FindBin locates ego-browser: FENNEC_CUA_EGO ("off" turns browsers
-// off), the PATH, then ego lite's per-user install.
-func FindBin() string {
-	if v := os.Getenv("FENNEC_CUA_EGO"); v != "" {
-		if v == "off" {
-			return ""
-		}
-		return v
-	}
-	if p, err := exec.LookPath("ego-browser"); err == nil {
-		return p
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".local", "bin", "ego-browser")
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
-	}
-	return ""
+	// Import configures "Import from Chrome"; nil leaves it unavailable.
+	Import *ImportConfig
 }
 
 // Manager holds each REPL session's browser state.
@@ -118,28 +110,35 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[any]*Session
-	names    map[string]bool
+	// importMu serialises imports.
+	importMu sync.Mutex
 }
 
 // NewManager makes a manager.
 func NewManager(o Options) *Manager {
-	return &Manager{opts: o, sessions: map[any]*Session{}, names: map[string]bool{}}
+	return &Manager{opts: o, sessions: map[any]*Session{}}
 }
 
-// Available says whether ego lite can be driven.
+// Available says whether the browser can be driven.
 func (m *Manager) Available() bool {
-	if m.opts.Start != nil {
-		return true
-	}
-	if m.opts.Bin == "" {
-		return false
-	}
-	_, err := os.Stat(m.opts.Bin)
-	return err == nil
+	return m.opts.Browser != nil && m.opts.Browser.Available()
 }
 
 func (m *Manager) allowed() bool {
 	return m.opts.Allowed == nil || m.opts.Allowed()
+}
+
+func (m *Manager) timeout() time.Duration {
+	if m.opts.Timeout > 0 {
+		return m.opts.Timeout
+	}
+	return CallTimeout
+}
+
+func (m *Manager) logf(format string, args ...any) {
+	if m.opts.Log != nil {
+		m.opts.Log(format, args...)
+	}
 }
 
 func (m *Manager) session(key any, create bool) *Session {
@@ -147,38 +146,15 @@ func (m *Manager) session(key any, create bool) *Session {
 	defer m.mu.Unlock()
 	s := m.sessions[key]
 	if s == nil && create {
-		start := m.opts.Start
-		if start == nil && m.opts.Bin != "" {
-			start = ExecStarter(m.opts.Bin, m.opts.Log)
-		}
-		s = &Session{m: m, client: &Client{Dir: m.opts.Dir, Start: start, Log: m.opts.Log, Timeout: m.opts.Timeout},
-			byTarget: map[string]*tabRec{}, byID: map[string]*tabRec{}, bindings: map[int]*binding{}}
+		s = &Session{m: m, byTarget: map[string]*tabRec{}, byID: map[string]*tabRec{}, bindings: map[int]*binding{}, foreign: map[string]bool{}, lives: map[string]*lifecycle{}}
 		m.sessions[key] = s
 	}
 	return s
 }
 
-// claimName reserves a task space name for one session.
-func (m *Manager) claimName(name string) string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cand := name
-	for i := 2; m.names[cand]; i++ {
-		cand = fmt.Sprintf("%s (%d)", name, i)
-	}
-	m.names[cand] = true
-	return cand
-}
-
-func (m *Manager) releaseName(name string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.names, name)
-}
-
-// Reset forgets a runtime's tab bindings (js_reset): tabs, their ids and
-// the task space stay, as in the reference, and the next browser call shows
-// the browser documentation again.
+// Reset forgets a runtime's tab bindings (js_reset): tabs and their ids
+// stay, as in the reference, and the next browser call shows the browser
+// documentation again.
 func (m *Manager) Reset(key any) {
 	if s := m.session(key, false); s != nil {
 		s.mu.Lock()
@@ -197,18 +173,14 @@ func (m *Manager) TurnEnded(ctx context.Context, key any) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.spaceID == 0 || s.handedOff || !s.client.Live() {
-		for _, t := range s.tabs {
-			t.mark = ""
-		}
-		return
-	}
-	for _, t := range s.tabs {
-		if t.closed || !t.agent || t.mark != "" || t.label == "" {
-			continue
-		}
-		if _, err := s.page(ctx, t, "close"); err == nil {
-			s.forget(t)
+	if s.live() {
+		for _, t := range append([]*tabRec(nil), s.tabs...) {
+			if t.closed || !t.agent || t.mark != "" {
+				continue
+			}
+			if err := s.closeTarget(ctx, t); err == nil {
+				s.forget(t)
+			}
 		}
 	}
 	for _, t := range s.tabs {
@@ -216,9 +188,9 @@ func (m *Manager) TurnEnded(ctx context.Context, key any) {
 	}
 }
 
-// Close ends a session: its task space is finished keeping only the tabs
-// marked deliverable or for hand-off (a space handed to the user is left
-// to the user), and its bridge stops.
+// Close ends a session: its unmarked agent tabs close, tabs marked
+// deliverable or for hand-off stay open for the user, and the session's
+// hold on them is released.
 func (m *Manager) Close(ctx context.Context, key any) {
 	m.mu.Lock()
 	s := m.sessions[key]
@@ -229,21 +201,25 @@ func (m *Manager) Close(ctx context.Context, key any) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.spaceID != 0 && !s.handedOff && s.client.Live() {
-		keep := []string{}
-		for _, t := range s.tabs {
-			if !t.closed && t.mark != "" && t.label != "" {
-				keep = append(keep, t.label)
+	if s.live() {
+		for _, t := range append([]*tabRec(nil), s.tabs...) {
+			switch {
+			case t.closed:
+			case t.agent && t.mark == "":
+				if err := s.closeTarget(ctx, t); err != nil {
+					m.logf("browser: closing tab %s: %v", t.id, err)
+				}
+			case t.sid != "":
+				cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				_, _ = s.conn.Call(cctx, "", "Target.detachFromTarget", map[string]any{"sessionId": t.sid})
+				cancel()
 			}
 		}
-		if _, err := s.task(ctx, "finish", map[string]any{"keep": keep}); err != nil && m.opts.Log != nil {
-			m.opts.Log("ego: finishing space %d: %v", s.spaceID, err)
-		}
 	}
-	if s.spaceName != "" {
-		m.releaseName(s.spaceName)
+	if s.unsub != nil {
+		s.unsub()
+		s.unsub = nil
 	}
-	s.client.Close()
 }
 
 // CloseAll closes every session (daemon shutdown).
@@ -259,42 +235,49 @@ func (m *Manager) CloseAll(ctx context.Context) {
 	}
 }
 
-// Session is one REPL session's browser state: its bridge, its task space
-// and its tab registry. Tab ids stay valid across js_reset.
+// Session is one REPL session's browser state: its connection, its agent
+// window and its tab registry. Tab ids stay valid across js_reset.
 type Session struct {
-	m      *Manager
-	client *Client
+	m *Manager
 
-	mu        sync.Mutex
-	spaceID   int
-	spaceName string
-	gen       int  // the bridge generation the space was opened under
-	handedOff bool // the space was handed to the user
-	p1Fresh   bool // the new space's first page is still unused
-	nextName  string
+	mu       sync.Mutex
+	conn     *cdp.Conn
+	gen      int // the browser start the tabs belong to
+	unsub    func()
+	windowID int    // the session's agent window
+	name     string // sessionName, shown on the agent cursor
+	nextName string
 
 	tabs     []*tabRec
 	byTarget map[string]*tabRec
 	byID     map[string]*tabRec
+	foreign  map[string]bool // targets of other windows, not ours
 	nextTab  int
 
 	bindings    map[int]*binding
 	nextBinding int
 	docShown    bool
+
+	lifeMu sync.Mutex
+	lives  map[string]*lifecycle // by CDP session id
 }
 
-// tabRec is a tab of the session's space.
+// tabRec is a tab of the session.
 type tabRec struct {
 	id       string
-	label    string // the SDK page label; empty while unmanaged
 	targetID string
+	sid      string // the flattened CDP session; empty until attached
 	title    string
 	url      string
-	agent    bool   // opened by the agent
+	agent    bool   // opened by the agent (or by a page of an agent tab)
 	mark     string // "deliverable" or "handoff"
 	closed   bool
 	scale    float64 // CSS pixels per screenshot pixel
 	dirty    bool    // input was sent since the last read
+	mods     int     // modifier keys held down (CDP bits)
+	buttons  int     // mouse buttons held down (CDP bits)
+	px, py   float64 // where the pointer is
+	life     *lifecycle
 }
 
 // binding is one Tab object of a runtime.
@@ -305,6 +288,19 @@ type binding struct {
 
 func (s *Session) info(t *tabRec) TabInfo {
 	return TabInfo{ID: t.id, Title: t.title, URL: t.url, BrowserID: BrowserID}
+}
+
+// live says whether the session's connection is up.
+func (s *Session) live() bool {
+	if s.conn == nil {
+		return false
+	}
+	select {
+	case <-s.conn.Done():
+		return false
+	default:
+		return true
+	}
 }
 
 // request is a browser call from the REPL.
@@ -323,6 +319,8 @@ type request struct {
 	Chain       []locStep         `json:"chain"`
 	Desc        string            `json:"desc"`
 	Name        *string           `json:"name"`
+	Profile     string            `json:"profile"`
+	Replace     bool              `json:"replace"`
 }
 
 func invalid(msg string) *protocol.Error {
@@ -345,7 +343,7 @@ func (m *Manager) Call(ctx context.Context, key any, args json.RawMessage) (any,
 		if !avail {
 			return []BrowserInfo{}, nil
 		}
-		return []BrowserInfo{egoInfo()}, nil
+		return []BrowserInfo{chromiumInfo()}, nil
 	case "state":
 		if !avail {
 			return []BrowserState{}, nil
@@ -354,7 +352,7 @@ func (m *Manager) Call(ctx context.Context, key any, args json.RawMessage) (any,
 		if s := m.session(key, false); s != nil {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if s.spaceID != 0 {
+			if len(s.tabs) > 0 {
 				if err := s.sync(ctx); err != nil {
 					return nil, s.fail(err, "")
 				}
@@ -366,6 +364,10 @@ func (m *Manager) Call(ctx context.Context, key any, args json.RawMessage) (any,
 		return []BrowserState{st}, nil
 	case "guide":
 		return guide, nil
+	case "chromeProfiles":
+		return m.replProfiles()
+	case "importChrome":
+		return m.replImport(ctx, req)
 	}
 	if !m.allowed() {
 		return nil, &protocol.Error{Code: protocol.ErrNotAllowed, Message: AppName + " is outside the app allowlist; nothing was sent", Hint: "the user admits apps in Fennec's settings"}
@@ -386,8 +388,9 @@ func (m *Manager) Call(ctx context.Context, key any, args json.RawMessage) (any,
 		if req.Name == nil || strings.TrimSpace(*req.Name) == "" {
 			return nil, invalid("nameSession takes a name")
 		}
-		if s.spaceID == 0 {
-			s.nextName = strings.TrimSpace(*req.Name)
+		s.nextName = strings.TrimSpace(*req.Name)
+		if s.name == "" {
+			s.name = s.nextName
 		}
 		return nil, nil
 	case "createTab":
@@ -438,153 +441,218 @@ func normalizeURL(u string) string {
 	return "https://" + u
 }
 
-// ensureSpace opens the session's task space: a new agent-owned space
-// named after the session, never a user's.
-func (s *Session) ensureSpace(ctx context.Context, name string) error {
-	if s.spaceID != 0 {
-		return s.reopen(ctx)
-	}
-	if name == "" {
-		name = s.nextName
-	}
-	if name == "" {
-		name = "fennec-cua"
-	}
-	base := name
-	for attempt := 0; attempt < 6; attempt++ {
-		cand := s.m.claimName(base)
-		v, gen, err := s.client.Do(ctx, "space", map[string]any{"name": cand})
-		if err != nil {
-			s.m.releaseName(cand)
-			var re *RemoteError
-			if errors.As(err, &re) && (re.Code == "EGO_TASK_SPACE_NAME_IN_USE" || strings.Contains(re.Message, "EGO_TASK_SPACE_NAME_IN_USE") || strings.Contains(re.Message, "in use")) {
-				base = fmt.Sprintf("%s (%d)", name, attempt+2)
-				continue
-			}
-			return err
-		}
-		var info struct {
-			SpaceID   int    `json:"spaceId"`
-			Name      string `json:"name"`
-			Ownership string `json:"ownership"`
-		}
-		_ = json.Unmarshal(v, &info)
-		if info.Ownership != "" && info.Ownership != "agent" {
-			// Never work in a space that is not the agent's.
-			s.m.releaseName(cand)
-			base = fmt.Sprintf("%s (%d)", name, attempt+2)
-			continue
-		}
-		s.spaceID, s.spaceName, s.gen, s.p1Fresh = info.SpaceID, cand, gen, true
-		return nil
-	}
-	return errors.New("no free task space name for " + strconv.Quote(name))
-}
-
-// reopen opens the space again in a restarted bridge, and takes it back
-// from the user after a hand-off.
-func (s *Session) reopen(ctx context.Context) error {
-	if s.handedOff {
-		if _, gen, err := s.client.Do(ctx, "takeover", map[string]any{"spaceId": s.spaceID}); err != nil {
-			return fmt.Errorf("the task space was handed to the user and could not be taken back: %w", err)
-		} else {
-			s.gen = gen
-		}
-		s.handedOff = false
-		return nil
-	}
-	if s.client.Live() && s.client.Gen() == s.gen {
-		return nil
-	}
-	_, gen, err := s.client.Do(ctx, "resume", map[string]any{"spaceId": s.spaceID})
+// ensureConn connects to the browser, starting it when needed. After a
+// restart the session's tabs are gone with the browser that held them.
+func (s *Session) ensureConn(ctx context.Context) error {
+	conn, gen, err := s.m.opts.Browser.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	s.gen = gen
+	if s.conn == conn && s.gen == gen {
+		return nil
+	}
+	if s.unsub != nil {
+		s.unsub()
+	}
+	for _, t := range s.tabs {
+		t.closed = true
+	}
+	s.tabs = nil
+	s.foreign = map[string]bool{}
+	s.windowID = 0
+	s.conn, s.gen = conn, gen
+	s.lifeMu.Lock()
+	s.lives = map[string]*lifecycle{}
+	s.lifeMu.Unlock()
+	s.unsub = conn.Subscribe(s.event)
 	return nil
 }
 
-// task calls a TaskSpace method.
-func (s *Session) task(ctx context.Context, method string, args ...any) (json.RawMessage, error) {
-	if err := s.reopen(ctx); err != nil {
-		return nil, err
+// event records page lifecycle events of the session's tabs.
+func (s *Session) event(e cdp.Event) {
+	if e.Method != "Page.lifecycleEvent" || e.SessionID == "" {
+		return
 	}
-	if args == nil {
-		args = []any{}
+	s.lifeMu.Lock()
+	l := s.lives[e.SessionID]
+	s.lifeMu.Unlock()
+	if l == nil {
+		return
 	}
-	v, _, err := s.client.Do(ctx, "call", map[string]any{"spaceId": s.spaceID, "method": method, "args": args})
-	return v, err
+	var p struct {
+		FrameID  string `json:"frameId"`
+		LoaderID string `json:"loaderId"`
+		Name     string `json:"name"`
+	}
+	if json.Unmarshal(e.Params, &p) == nil {
+		l.note(p.FrameID, p.LoaderID, p.Name)
+	}
 }
 
-// page calls a Page method of a tab, adopting an unmanaged tab first.
-func (s *Session) page(ctx context.Context, t *tabRec, method string, args ...any) (json.RawMessage, error) {
-	if err := s.reopen(ctx); err != nil {
-		return nil, err
-	}
-	if t.label == "" {
-		v, _, err := s.client.Do(ctx, "adopt", map[string]any{"spaceId": s.spaceID, "targetId": t.targetID})
-		if err != nil {
+// call sends a browser-level command.
+func (s *Session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	if !s.live() {
+		if err := s.ensureConn(ctx); err != nil {
 			return nil, err
 		}
-		var a struct {
-			Label string `json:"label"`
-		}
-		_ = json.Unmarshal(v, &a)
-		if a.Label == "" {
-			return nil, errors.New("the tab could not be adopted")
-		}
-		t.label = a.Label
 	}
-	if args == nil {
-		args = []any{}
+	cctx, cancel := context.WithTimeout(ctx, s.m.timeout())
+	defer cancel()
+	return s.conn.Call(cctx, "", method, params)
+}
+
+// attach opens a flattened session on a tab and turns on the events the
+// package reads.
+func (s *Session) attach(ctx context.Context, t *tabRec) error {
+	if t.sid != "" {
+		return nil
 	}
-	v, _, err := s.client.Do(ctx, "call", map[string]any{"spaceId": s.spaceID, "page": t.label, "method": method, "args": args})
+	v, err := s.call(ctx, "Target.attachToTarget", map[string]any{"targetId": t.targetID, "flatten": true})
+	if err != nil {
+		if isGone(err) {
+			s.forget(t)
+			return errTabGone
+		}
+		return err
+	}
+	var r struct {
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.Unmarshal(v, &r)
+	if r.SessionID == "" {
+		return errors.New("the tab could not be attached")
+	}
+	t.sid = r.SessionID
+	t.life = newLifecycle()
+	s.lifeMu.Lock()
+	s.lives[t.sid] = t.life
+	s.lifeMu.Unlock()
+	for _, m := range []string{"Page.enable", "Page.setLifecycleEventsEnabled"} {
+		var params any
+		if m == "Page.setLifecycleEventsEnabled" {
+			params = map[string]any{"enabled": true}
+		}
+		if _, err := s.cdp(ctx, t, m, params); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var errTabGone = errors.New("the tab is gone")
+
+// isGone says whether the browser answered that a target or its session
+// no longer exists.
+func isGone(err error) bool {
+	var ce *cdp.Error
+	if !errors.As(err, &ce) {
+		return false
+	}
+	msg := strings.ToLower(ce.Message)
+	return strings.Contains(msg, "no target with given id") || strings.Contains(msg, "session with given id not found") || strings.Contains(msg, "target closed")
+}
+
+// cdp sends a command to a tab.
+func (s *Session) cdp(ctx context.Context, t *tabRec, method string, params any) (json.RawMessage, error) {
+	if t.closed {
+		return nil, errTabGone
+	}
+	if !s.live() {
+		if err := s.ensureConn(ctx); err != nil {
+			return nil, err
+		}
+		if t.closed {
+			return nil, errTabGone
+		}
+	}
+	if t.sid == "" {
+		if err := s.attach(ctx, t); err != nil {
+			return nil, err
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, s.m.timeout())
+	defer cancel()
+	v, err := s.conn.Call(cctx, t.sid, method, params)
+	if err != nil && isGone(err) {
+		s.forget(t)
+		return nil, errTabGone
+	}
 	return v, err
 }
 
-// cdp sends a CDP command through a tab's page.
-func (s *Session) cdp(ctx context.Context, t *tabRec, method string, params any) (json.RawMessage, error) {
-	if params == nil {
-		params = map[string]any{}
-	}
-	return s.page(ctx, t, "cdp", method, params)
+type targetInfo struct {
+	TargetID string `json:"targetId"`
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	OpenerID string `json:"openerId"`
 }
 
-// sync reads the space's tabs into the registry.
+// sync reads the browser's pages into the registry: the session's own
+// tabs, pages its tabs opened (popups, target=_blank), and tabs the user
+// opened in the session's window.
 func (s *Session) sync(ctx context.Context) error {
-	v, err := s.task(ctx, "tabs")
+	if err := s.ensureConn(ctx); err != nil {
+		return err
+	}
+	v, err := s.call(ctx, "Target.getTargets", nil)
 	if err != nil {
 		return err
 	}
-	var list []struct {
-		Label    string `json:"label"`
-		TargetID string `json:"targetId"`
-		Title    string `json:"title"`
-		URL      string `json:"url"`
-		OpenedBy string `json:"openedBy"`
+	var r struct {
+		TargetInfos []targetInfo `json:"targetInfos"`
 	}
-	if err := json.Unmarshal(v, &list); err != nil {
+	if err := json.Unmarshal(v, &r); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
-	for _, it := range list {
-		seen[it.TargetID] = true
-		t := s.byTarget[it.TargetID]
-		if t == nil {
-			s.nextTab++
-			t = &tabRec{id: strconv.Itoa(s.nextTab), targetID: it.TargetID, agent: it.OpenedBy == "agent", scale: 1}
-			s.byTarget[it.TargetID] = t
-			s.byID[t.id] = t
-			s.tabs = append(s.tabs, t)
+	pages := map[string]targetInfo{}
+	for _, it := range r.TargetInfos {
+		if it.Type == "page" {
+			pages[it.TargetID] = it
 		}
-		if it.Label != "" {
-			t.label = it.Label
+	}
+	// Openers first: a popup of a popup joins once its opener has.
+	for changed := true; changed; {
+		changed = false
+		for id, it := range pages {
+			if s.byTarget[id] != nil && !s.byTarget[id].closed || s.foreign[id] {
+				continue
+			}
+			if op := s.byTarget[it.OpenerID]; op != nil && !op.closed {
+				s.add(it, op.agent)
+				changed = true
+			}
 		}
-		t.title, t.url = it.Title, it.URL
+	}
+	for id, it := range pages {
+		if (s.byTarget[id] != nil && !s.byTarget[id].closed) || s.foreign[id] {
+			continue
+		}
+		if s.windowID == 0 {
+			s.foreign[id] = true
+			continue
+		}
+		if w, err := s.windowOf(ctx, id); err == nil && w == s.windowID {
+			s.add(it, false)
+		} else {
+			s.foreign[id] = true
+		}
+	}
+	for id, it := range pages {
+		seen[id] = true
+		if t := s.byTarget[id]; t != nil {
+			t.title, t.url = it.Title, it.URL
+		}
 	}
 	for _, t := range s.tabs {
 		if !seen[t.targetID] {
 			t.closed = true
+		}
+	}
+	for id := range s.foreign {
+		if !seen[id] {
+			delete(s.foreign, id)
 		}
 	}
 	kept := s.tabs[:0]
@@ -594,7 +662,31 @@ func (s *Session) sync(ctx context.Context) error {
 		}
 	}
 	s.tabs = kept
+	if len(s.tabs) == 0 {
+		s.windowID = 0
+	}
 	return nil
+}
+
+func (s *Session) add(it targetInfo, agent bool) *tabRec {
+	s.nextTab++
+	t := &tabRec{id: strconv.Itoa(s.nextTab), targetID: it.TargetID, title: it.Title, url: it.URL, agent: agent, scale: 1}
+	s.byTarget[it.TargetID] = t
+	s.byID[t.id] = t
+	s.tabs = append(s.tabs, t)
+	return t
+}
+
+func (s *Session) windowOf(ctx context.Context, targetID string) (int, error) {
+	v, err := s.call(ctx, "Browser.getWindowForTarget", map[string]any{"targetId": targetID})
+	if err != nil {
+		return 0, err
+	}
+	var w struct {
+		WindowID int `json:"windowId"`
+	}
+	_ = json.Unmarshal(v, &w)
+	return w.WindowID, nil
 }
 
 func (s *Session) forget(t *tabRec) {
@@ -606,6 +698,23 @@ func (s *Session) forget(t *tabRec) {
 		}
 	}
 	s.tabs = kept
+	if t.sid != "" {
+		s.lifeMu.Lock()
+		delete(s.lives, t.sid)
+		s.lifeMu.Unlock()
+	}
+	if len(s.tabs) == 0 {
+		s.windowID = 0
+	}
+}
+
+// closeTarget closes a tab in the browser.
+func (s *Session) closeTarget(ctx context.Context, t *tabRec) error {
+	_, err := s.call(ctx, "Target.closeTarget", map[string]any{"targetId": t.targetID})
+	if err != nil && isGone(err) {
+		return nil
+	}
+	return err
 }
 
 func (s *Session) bind(t *tabRec) int {
@@ -614,8 +723,8 @@ func (s *Session) bind(t *tabRec) int {
 	return s.nextBinding
 }
 
-// fail maps an error from the bridge onto a REPL error; secret is text the
-// message must not repeat.
+// fail maps an error from the browser onto a REPL error; secret is text
+// the message must not repeat.
 func (s *Session) fail(err error, secret string) *protocol.Error {
 	if err == nil {
 		return nil
@@ -624,11 +733,14 @@ func (s *Session) fail(err error, secret string) *protocol.Error {
 		return &protocol.Error{Code: protocol.ErrStopped, Message: "stopped"}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return &protocol.Error{Code: protocol.ErrTimeout, Message: "ego lite did not answer in time; the action may have been sent, so read the state again before retrying"}
+		return &protocol.Error{Code: protocol.ErrTimeout, Message: "Chromium did not answer in time; the action may have been sent, so read the state again before retrying"}
 	}
 	msg := err.Error()
-	if errors.Is(err, ErrBridgeGone) {
-		msg = "the ego lite bridge stopped; the action may have been sent. Read the tab's state again; the next call starts a new bridge"
+	switch {
+	case errors.Is(err, cdp.ErrClosed):
+		msg = "Chromium stopped; the action may have been sent. Its tabs closed with it: the next call starts it again, then open a fresh tab with cua.createBrowserTab()"
+	case errors.Is(err, errTabGone):
+		msg = "the tab was closed; get or create a fresh tab from this browser."
 	}
 	if secret != "" {
 		msg = strings.ReplaceAll(msg, secret, "[text]")
@@ -645,6 +757,38 @@ func decodeOptString(raw *json.RawMessage, what string) (*string, *protocol.Erro
 		return nil, invalid(what + " must be a string")
 	}
 	return &v, nil
+}
+
+// newTab opens a page: the session's first in a new agent window (in the
+// background), later ones in that window.
+func (s *Session) newTab(ctx context.Context) (*tabRec, error) {
+	if err := s.sync(ctx); err != nil {
+		return nil, err
+	}
+	params := map[string]any{"url": "about:blank", "background": true}
+	if s.windowID == 0 {
+		params["newWindow"] = true
+	}
+	v, err := s.call(ctx, "Target.createTarget", params)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		TargetID string `json:"targetId"`
+	}
+	if err := json.Unmarshal(v, &r); err != nil || r.TargetID == "" {
+		return nil, errors.New("the browser did not open a tab")
+	}
+	t := s.add(targetInfo{TargetID: r.TargetID, URL: "about:blank"}, true)
+	if s.windowID == 0 {
+		if w, err := s.windowOf(ctx, r.TargetID); err == nil {
+			s.windowID = w
+		}
+	}
+	if err := s.attach(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 func (s *Session) createTab(ctx context.Context, req request) (any, *protocol.Error) {
@@ -672,42 +816,16 @@ func (s *Session) createTab(ctx context.Context, req request) (any, *protocol.Er
 	if perr := s.ask(ctx, protocol.Step{Launch: target}, BrowserName); perr != nil {
 		return nil, perr
 	}
-	sname := ""
-	if name != nil {
-		sname = strings.TrimSpace(*name)
+	if name != nil && strings.TrimSpace(*name) != "" {
+		s.name = strings.TrimSpace(*name)
+	} else if s.name == "" {
+		s.name = s.nextName
 	}
-	if err := s.ensureSpace(ctx, sname); err != nil {
+	t, err := s.newTab(ctx)
+	if err != nil {
 		return nil, s.fail(err, "")
 	}
-	label := ""
-	if s.p1Fresh {
-		label = "p1"
-		s.p1Fresh = false
-	} else {
-		v, err := s.task(ctx, "newPage")
-		if err != nil {
-			return nil, s.fail(err, "")
-		}
-		var p struct {
-			Label string `json:"label"`
-		}
-		_ = json.Unmarshal(v, &p)
-		label = p.Label
-	}
-	if err := s.sync(ctx); err != nil {
-		return nil, s.fail(err, "")
-	}
-	var t *tabRec
-	for _, x := range s.tabs {
-		if x.label == label {
-			t = x
-		}
-	}
-	if t == nil {
-		return nil, s.fail(errors.New("the new tab did not appear in the task space"), "")
-	}
-	t.agent = true
-	if _, err := s.page(ctx, t, "goto", target); err != nil {
+	if err := s.navigate(ctx, t, target); err != nil {
 		return nil, s.fail(err, "")
 	}
 	b := s.bind(t)
@@ -754,7 +872,7 @@ func (s *Session) getTab(ctx context.Context, req request) (any, *protocol.Error
 		}
 		byURL = ref.URL
 	}
-	if s.spaceID == 0 {
+	if len(s.tabs) == 0 {
 		return nil, failed("Tab not found in browser " + BrowserID + ".")
 	}
 	if err := s.sync(ctx); err != nil {
@@ -802,7 +920,7 @@ func (s *Session) listTabs(ctx context.Context, req request) (any, *protocol.Err
 		doc = s.doc()
 	}
 	tabs := []TabInfo{}
-	if s.spaceID != 0 {
+	if len(s.tabs) > 0 {
 		if err := s.sync(ctx); err != nil {
 			return nil, s.fail(err, "")
 		}
@@ -824,4 +942,13 @@ func (s *Session) ask(ctx context.Context, step protocol.Step, target string) *p
 		return nil
 	}
 	return s.m.opts.Gate.Ask(ctx, []protocol.Step{step}, target)
+}
+
+// cursorLabel prefixes an action with the session's name for the agent
+// cursor.
+func (s *Session) cursorLabel(action string) string {
+	if s.name == "" {
+		return action
+	}
+	return fmt.Sprintf("%s · %s", s.name, action)
 }

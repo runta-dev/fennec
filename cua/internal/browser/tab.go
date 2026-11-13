@@ -1,4 +1,4 @@
-package ego
+package browser
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -194,13 +192,13 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 			return nil, perr
 		}
 		t.dirty = true
-		if _, err := s.page(ctx, t, "goto", u); err != nil {
+		if err := s.navigate(ctx, t, u); err != nil {
 			return nil, s.fail(err, "")
 		}
 		return nil, nil
 	case "reload":
 		t.dirty = true
-		if _, err := s.page(ctx, t, "reload"); err != nil {
+		if err := s.reload(ctx, t); err != nil {
 			return nil, s.fail(err, "")
 		}
 		return nil, nil
@@ -210,7 +208,7 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 		if !t.agent {
 			return nil, &protocol.Error{Code: protocol.ErrNotAllowed, Message: "Tab " + t.id + " was opened by the user; it is left open"}
 		}
-		if _, err := s.page(ctx, t, "close"); err != nil {
+		if err := s.closeTarget(ctx, t); err != nil {
 			return nil, s.fail(err, "")
 		}
 		s.forget(t)
@@ -219,11 +217,14 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 		t.mark = "deliverable"
 		return nil, nil
 	case "markHandoff":
+		// The tab stays open for the user: it comes to the front of its
+		// window, and the agent cursor says the user is up.
 		t.mark = "handoff"
-		if _, err := s.task(ctx, "handOff"); err != nil {
+		if _, err := s.call(ctx, "Target.activateTarget", map[string]any{"targetId": t.targetID}); err != nil {
 			return nil, s.fail(err, "")
 		}
-		s.handedOff = true
+		x, y := t.pointer()
+		s.cursor(ctx, t, "move", x, y, s.cursorLabel("waiting for you"))
 		return nil, nil
 	case "waitForLoadState":
 		var state string
@@ -238,7 +239,10 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 		if state == "" {
 			state = "load"
 		}
-		if _, err := s.page(ctx, t, "waitForLoadState", state, waitOpts(o)); err != nil {
+		if state != "load" && state != "domcontentloaded" && state != "networkidle" {
+			return nil, invalid("state is load, domcontentloaded or networkidle")
+		}
+		if err := s.waitLoadState(ctx, t, state, waitTimeout(o)); err != nil {
 			return nil, s.fail(err, "")
 		}
 		return nil, nil
@@ -248,7 +252,7 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 			return nil, invalid("waitForURL takes a URL string")
 		}
 		o, _ := options(arg(req, 1))
-		if _, err := s.page(ctx, t, "waitForURL", u, waitOpts(o)); err != nil {
+		if err := s.waitURL(ctx, t, u, waitTimeout(o)); err != nil {
 			return nil, s.fail(err, "")
 		}
 		return nil, nil
@@ -258,33 +262,19 @@ func (s *Session) tabCall(ctx context.Context, req request) (any, *protocol.Erro
 	return nil, invalid("tabs have no method " + strconv.Quote(req.Method))
 }
 
-func waitOpts(o tabOptions) map[string]any {
-	out := map[string]any{}
+// waitTimeout is a wait's timeout: timeoutMs (or timeout), default 30 s
+// as Playwright's.
+func waitTimeout(o tabOptions) time.Duration {
+	ms := 30000.0
 	if o.TimeoutMs != nil {
-		out["timeout"] = *o.TimeoutMs
+		ms = *o.TimeoutMs
 	} else if o.Timeout != nil {
-		out["timeout"] = *o.Timeout
+		ms = *o.Timeout
 	}
-	return out
-}
-
-// pageInfo reads the tab's URL, title and viewport.
-type viewport struct {
-	URL   string  `json:"url"`
-	Title string  `json:"title"`
-	W     float64 `json:"w"`
-	H     float64 `json:"h"`
-}
-
-func (s *Session) pageInfo(ctx context.Context, t *tabRec) (viewport, error) {
-	v, err := s.page(ctx, t, "info")
-	if err != nil {
-		return viewport{}, err
+	if ms <= 0 {
+		ms = 30000
 	}
-	var vp viewport
-	_ = json.Unmarshal(v, &vp)
-	t.url, t.title = vp.URL, vp.Title
-	return vp, nil
+	return time.Duration(ms) * time.Millisecond
 }
 
 // settle waits for the document after input, as the reference's reads do.
@@ -293,7 +283,7 @@ func (s *Session) settle(ctx context.Context, t *tabRec) {
 		return
 	}
 	t.dirty = false
-	_, _ = s.page(ctx, t, "waitForLoadState", "domcontentloaded", map[string]any{"timeout": 3000})
+	_ = s.waitLoadState(ctx, t, "domcontentloaded", 3*time.Second)
 	select {
 	case <-time.After(120 * time.Millisecond):
 	case <-ctx.Done():
@@ -352,28 +342,9 @@ func (s *Session) shoot(ctx context.Context, t *tabRec, full bool) ([]byte, *pro
 	if err != nil {
 		return nil, s.fail(err, "")
 	}
-	dir := s.m.opts.Dir
-	if dir == "" {
-		dir = os.TempDir()
-	}
-	path := filepath.Join(dir, "shot-"+randHex(6)+".png")
-	defer os.Remove(path)
-	opts := map[string]any{"path": path}
-	if full {
-		opts["fullPage"] = true
-	}
-	v, err := s.page(ctx, t, "screenshot", opts)
+	data, err := s.capture(ctx, t, vp, full)
 	if err != nil {
 		return nil, s.fail(err, "")
-	}
-	var got string
-	if json.Unmarshal(v, &got) == nil && got != "" && got != path {
-		defer os.Remove(got)
-		path = got
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, s.fail(fmt.Errorf("the screenshot did not arrive: %w", err), "")
 	}
 	if w := pngWidth(data); w > 0 && vp.W > 0 && !full {
 		t.scale = vp.W / float64(w)
@@ -508,8 +479,8 @@ func (s *Session) focusElement(ctx context.Context, t *tabRec, e Element) error 
 	if err != nil {
 		return err
 	}
-	_, err = s.page(ctx, t, "mouse.click", x, y, map[string]any{"label": label("focus", e)})
-	return err
+	t.dirty = true
+	return s.mouseClick(ctx, t, x, y, "left", 1, label("focus", e))
 }
 
 // isSecret says whether the element, or the focused element when backend
@@ -530,7 +501,7 @@ func (s *Session) isSecret(ctx context.Context, t *tabRec, backend int) bool {
 	return err == nil && string(v) == "true"
 }
 
-// label is the short description ego shows beside its cursor.
+// label is the short description the agent cursor shows.
 func label(verb string, e Element) string {
 	name := strings.Join(strings.Fields(e.Name), " ")
 	if r := []rune(name); len(r) > 24 {
@@ -629,40 +600,31 @@ func (s *Session) click(ctx context.Context, b *binding, target, rawOpts json.Ra
 func (s *Session) clickAt(ctx context.Context, t *tabRec, x, y float64, button string, count int, mods []string, hold time.Duration, held bool, lbl string) error {
 	t.dirty = true
 	for i, k := range mods {
-		if _, err := s.page(ctx, t, "keyboard.down", k); err != nil {
-			s.release(ctx, t, mods[:i])
+		if err := s.keyDown(ctx, t, k); err != nil {
+			s.releaseKeys(ctx, t, mods[:i])
 			return err
 		}
 	}
-	defer s.release(ctx, t, mods)
+	defer s.releaseKeys(ctx, t, mods)
 	if !held {
-		_, err := s.page(ctx, t, "mouse.click", x, y, map[string]any{"button": button, "clickCount": count, "label": lbl})
-		return err
+		return s.mouseClick(ctx, t, x, y, button, count, lbl)
 	}
-	if _, err := s.page(ctx, t, "mouse.move", x, y, map[string]any{"label": lbl}); err != nil {
+	if err := s.mouseMove(ctx, t, x, y, 1, lbl); err != nil {
 		return err
 	}
 	for i := 1; i <= count; i++ {
-		if _, err := s.page(ctx, t, "mouse.down", map[string]any{"button": button, "clickCount": i}); err != nil {
+		if err := s.mouseDown(ctx, t, button, i); err != nil {
 			return err
 		}
 		select {
 		case <-time.After(hold):
 		case <-ctx.Done():
 		}
-		if _, err := s.page(ctx, t, "mouse.up", map[string]any{"button": button, "clickCount": i}); err != nil {
+		if err := s.mouseUp(context.WithoutCancel(ctx), t, button, i); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// release lets go of held keys, last first. It runs even after a stop.
-func (s *Session) release(ctx context.Context, t *tabRec, keys []string) {
-	rctx := context.WithoutCancel(ctx)
-	for i := len(keys) - 1; i >= 0; i-- {
-		_, _ = s.page(rctx, t, "keyboard.up", keys[i])
-	}
 }
 
 func (s *Session) drag(ctx context.Context, b *binding, from, to json.RawMessage) (any, *protocol.Error) {
@@ -680,14 +642,14 @@ func (s *Session) drag(ctx context.Context, b *binding, from, to json.RawMessage
 	}
 	t.dirty = true
 	err := func() error {
-		if _, err := s.page(ctx, t, "mouse.move", x0, y0, map[string]any{"label": "drag"}); err != nil {
+		if err := s.mouseMove(ctx, t, x0, y0, 1, "drag"); err != nil {
 			return err
 		}
-		if _, err := s.page(ctx, t, "mouse.down"); err != nil {
+		if err := s.mouseDown(ctx, t, "left", 1); err != nil {
 			return err
 		}
-		_, err := s.page(ctx, t, "mouse.move", x1, y1, map[string]any{"steps": 12, "label": "drag"})
-		if _, uerr := s.page(context.WithoutCancel(ctx), t, "mouse.up"); err == nil {
+		err := s.mouseMove(ctx, t, x1, y1, 12, "drag")
+		if uerr := s.mouseUp(context.WithoutCancel(ctx), t, "left", 1); err == nil {
 			err = uerr
 		}
 		return err
@@ -752,11 +714,26 @@ func (s *Session) scroll(ctx context.Context, b *binding, target, rawDir, rawDis
 		dx = amount
 	}
 	t.dirty = true
-	if _, err := s.page(ctx, t, "mouse.move", x, y, map[string]any{"label": lbl}); err != nil {
+	if err := s.mouseMove(ctx, t, x, y, 1, lbl); err != nil {
 		return nil, s.fail(err, "")
 	}
-	_, err = s.page(ctx, t, "mouse.wheel", dx, dy, map[string]any{"label": lbl})
-	return nil, s.fail(err, "")
+	if err := s.mouseWheel(ctx, t, dx, dy); err != nil {
+		return nil, s.fail(err, "")
+	}
+	// Wheel scrolling lands asynchronously: wait briefly for the page to
+	// move (an inner scroller leaves the page where it is).
+	for deadline := time.Now().Add(400 * time.Millisecond); time.Now().Before(deadline); {
+		now, err := s.pageInfo(ctx, t)
+		if err != nil || now.X != vp.X || now.Y != vp.Y {
+			break
+		}
+		select {
+		case <-time.After(25 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, nil
+		}
+	}
+	return nil, nil
 }
 
 // utf16Offset converts a byte offset of s into UTF-16 units.
@@ -993,8 +970,7 @@ func (s *Session) typeText(ctx context.Context, b *binding, rawIdx, rawText json
 		return nil, perr
 	}
 	t.dirty = true
-	_, err := s.page(ctx, t, "keyboard.type", text)
-	return nil, s.fail(err, text)
+	return nil, s.fail(s.keyType(ctx, t, text), text)
 }
 
 func (s *Session) pressKey(ctx context.Context, b *binding, rawIdx, rawKey, rawOpts json.RawMessage) (any, *protocol.Error) {
@@ -1027,12 +1003,11 @@ func (s *Session) pressKey(ctx context.Context, b *binding, rawIdx, rawKey, rawO
 	}
 	t.dirty = true
 	if !held {
-		_, err := s.page(ctx, t, "keyboard.press", strings.Join(keys, "+"))
-		return nil, s.fail(err, "")
+		return nil, s.fail(s.keyPress(ctx, t, strings.Join(keys, "+")), "")
 	}
 	for i, k := range keys {
-		if _, err := s.page(ctx, t, "keyboard.down", k); err != nil {
-			s.release(ctx, t, keys[:i])
+		if err := s.keyDown(ctx, t, k); err != nil {
+			s.releaseKeys(ctx, t, keys[:i])
 			return nil, s.fail(err, "")
 		}
 	}
@@ -1040,7 +1015,7 @@ func (s *Session) pressKey(ctx context.Context, b *binding, rawIdx, rawKey, rawO
 	case <-time.After(hold):
 	case <-ctx.Done():
 	}
-	s.release(ctx, t, keys)
+	s.releaseKeys(ctx, t, keys)
 	return nil, nil
 }
 
@@ -1058,11 +1033,11 @@ func (s *Session) paste(ctx context.Context, b *binding, rawIdx, rawText, rawOpt
 	if perr != nil {
 		return nil, perr
 	}
-	var content any = text
+	html := ""
 	switch o.Format {
 	case "", "text", "md":
 	case "html":
-		content = map[string]any{"text": text, "html": text}
+		html = text
 	default:
 		return nil, invalid("format is text, md or html")
 	}
@@ -1074,8 +1049,7 @@ func (s *Session) paste(ctx context.Context, b *binding, rawIdx, rawText, rawOpt
 		return nil, perr
 	}
 	t.dirty = true
-	_, err := s.page(ctx, t, "keyboard.paste", content)
-	return nil, s.fail(err, text)
+	return nil, s.fail(s.pasteContent(ctx, t, text, html), text)
 }
 
 func (s *Session) history(ctx context.Context, t *tabRec, back bool) (any, *protocol.Error) {
@@ -1105,7 +1079,7 @@ func (s *Session) history(ctx context.Context, t *tabRec, back bool) (any, *prot
 	if _, err := s.cdp(ctx, t, "Page.navigateToHistoryEntry", map[string]any{"entryId": h.Entries[i].ID}); err != nil {
 		return nil, s.fail(err, "")
 	}
-	_, _ = s.page(ctx, t, "waitForLoadState", "load", map[string]any{"timeout": 10000})
+	_ = s.waitLoadState(ctx, t, "load", 10*time.Second)
 	return nil, nil
 }
 

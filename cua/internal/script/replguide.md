@@ -63,7 +63,7 @@ nodeRepl.emitImage(image): Promise<void>;       // data: URL, PNG/JPEG/WebP byte
 
 ## Opening a web page
 
-`var tab = await cua.createBrowserTab("ego", "https://example.com", { sessionName: "🔎 Prices" })` opens a tab in ego lite, a browser for agents whose tabs stay apart from the user's, and shows the page's state. The first browser call also shows the browser's documentation (tabs, Playwright locators, keeping tabs). Get an open tab again with `cua.getTab(id)` from `cua.listTabs()`. Use a tab for websites instead of driving a browser app's window.
+`var tab = await cua.createBrowserTab("chromium", "https://example.com", { sessionName: "🔎 Prices" })` opens a tab in Chromium, fennec-cua's own browser for agents (its tabs stay apart from the user's browser; the user can import their Chrome sign-ins into it), and shows the page's state. The first browser call also shows the browser's documentation (tabs, Playwright locators, keeping tabs). Get an open tab again with `cua.getTab(id)` from `cua.listTabs()`. Use a tab for websites instead of driving a browser app's window.
 
 ## The state text
 
@@ -112,6 +112,8 @@ fennec.record.start(apps?); fennec.record.note(text); fennec.record.stop(params?
 fennec.model.ask(prompt, images?); fennec.model.decide(args); fennec.model.ground(args);   // the configured vision model
 fennec.run(code, params?);             // a module whose main(params) uses the run API
 fennec.tools(); fennec.call(name, args);   // installed plugin and service tools
+fennec.browser.chromeProfiles();         // the user's Google Chrome profiles { dir, name, email, lastUsed }
+fennec.browser.importFromChrome({ profile?, replace? });   // the user's Chrome sign-ins (cookies) into Chromium; asks the user (Keychain prompt), answers counts
 ```
 
 Safety is the same on every path: the app allowlist, one agent on the desktop at a time, the user's Stop, confirmations and secret redaction apply to `cua` and `fennec` alike. If a call ends with a stop, the user halted fennec-cua: wait for them before trying again.

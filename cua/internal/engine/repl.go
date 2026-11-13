@@ -79,7 +79,7 @@ func (r *repls) drop(s *mcpserver.Session) bool {
 }
 
 // CloseSession discards the session's runtime when its connection ends,
-// and its browser state (its task space is finished in the background).
+// and its browser state (its unmarked agent tabs close in the background).
 func (e *Engine) CloseSession(s *mcpserver.Session) {
 	e.repl.drop(s)
 	if b := e.Browsers; b != nil {

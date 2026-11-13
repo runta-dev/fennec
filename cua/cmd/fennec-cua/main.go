@@ -7,6 +7,9 @@
 //	fennec-cua resume              lift a stop
 //	fennec-cua status              print the daemon's status
 //	fennec-cua do TOOL [JSON | k=v ...]  one tool call; captures are saved to files
+//	fennec-cua browser profiles     list Google Chrome profiles to import from
+//	fennec-cua browser import [--profile NAME] [--replace]  import Chrome sign-ins (cookies) into the bundled Chromium
+//	fennec-cua browser status       the bundled Chromium and the last import
 //	fennec-cua version
 package main
 
@@ -28,11 +31,13 @@ import (
 
 	"fennec/cua/internal/actions"
 	"fennec/cua/internal/ax"
+	"fennec/cua/internal/browser"
+	"fennec/cua/internal/chromeimport"
+	"fennec/cua/internal/chromium"
 	"fennec/cua/internal/cli"
 	"fennec/cua/internal/daemon"
 	"fennec/cua/internal/desk"
 	"fennec/cua/internal/driver"
-	"fennec/cua/internal/ego"
 	"fennec/cua/internal/engine"
 	"fennec/cua/internal/extensions"
 	"fennec/cua/internal/flows"
@@ -56,7 +61,7 @@ func main() {
 	}
 }
 
-const usage = "usage: fennec-cua mcp [--http ADDR] | serve [--http ADDR] | stop | resume | status | do TOOL [JSON | k=v ...] | version"
+const usage = "usage: fennec-cua mcp [--http ADDR] | serve [--http ADDR] | stop | resume | status | do TOOL [JSON | k=v ...] | browser profiles|import|status | version"
 
 func run(args []string) error {
 	self, err := os.Executable()
@@ -98,6 +103,8 @@ func run(args []string) error {
 		return bridge(ctx, paths, self)
 	case "do":
 		return do(ctx, paths, args[1:])
+	case "browser":
+		return browserCmd(ctx, paths, args[1:])
 	case "stop", "resume", "status":
 		cctx, ccancel := context.WithTimeout(ctx, 5*time.Second)
 		defer ccancel()
@@ -319,14 +326,29 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	eng.Impl[protocol.ToolApps] = eng.AppsTool(driverApps(client))
 	eng.Impl[protocol.ToolPaste] = eng.PasteTool(pasteboard{})
 	px.Models, px.VisionModel = mdl, cfg.Model.Models.Verify != nil
-	// Browser tabs: ego lite through its SDK bridge, one per REPL session.
-	// Its input is CDP input into the agent's own tabs, so it needs no desk
-	// turn; the allowlist (as the app "ego lite"), confirmations and Stop
-	// apply to it.
-	if bin := ego.FindBin(); bin != "" {
-		browsers := ego.NewManager(ego.Options{
-			Bin: bin, Dir: paths.Dir, Log: logger.Printf, Gate: pol.Gate,
-			Allowed: func() bool { return pol.Allow.Admits(ego.AppName) },
+	// Browser tabs: the bundled Chromium over CDP, one agent window per
+	// REPL session, started on demand. Its input is CDP input into the
+	// agent's own tabs, so it needs no desk turn; the allowlist (as the app
+	// "Chromium"), confirmations and Stop apply to it.
+	var browsers *browser.Manager
+	if bin := chromium.Locate(self); bin != "" {
+		profile, err := chromium.DefaultProfileDir()
+		if err != nil {
+			return err
+		}
+		chrome := chromium.New(chromium.Options{
+			Bin: bin, ProfileDir: profile, Log: logger.Printf,
+			Headless: os.Getenv(chromium.EnvHeadless) == "1",
+		})
+		defer chrome.Close()
+		browsers = browser.NewManager(browser.Options{
+			Browser: chrome, Log: logger.Printf, Gate: pol.Gate,
+			Allowed: func() bool { return pol.Allow.Admits(browser.AppName) },
+			Import: &browser.ImportConfig{
+				ChromeDir:  chromeimport.DefaultChromeDir(),
+				Keys:       chromeimport.ChromeKeychain,
+				StatusFile: filepath.Join(filepath.Dir(profile), "chrome-import.json"),
+			},
 		})
 		eng.Browsers = browsers
 		defer func() {
@@ -335,7 +357,7 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 			browsers.CloseAll(ctx)
 		}()
 	} else {
-		logger.Printf("ego lite (ego-browser) not found; browser tabs are unavailable")
+		logger.Printf("the bundled Chromium was not found; browser tabs are unavailable")
 	}
 	fl.Decider, fl.Caption = mdl, flows.ModelCaptioner(mdl)
 
@@ -411,6 +433,9 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		logger.Printf("serving MCP over HTTP on %s", httpAddr)
 	}
 	logger.Printf("serving %s", paths.MCP)
+	if browsers != nil {
+		d.Ops = browserOps(browsers)
+	}
 	return d.Run(ctx)
 }
 

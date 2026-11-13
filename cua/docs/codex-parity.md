@@ -15,7 +15,7 @@ Anything a model can observe through the tools must match it.
 |---|---|
 | Reference build | ChatGPT.app 26.1106.51428, `unified-computer-use` plugin 26.1106.51428 |
 | Packages | `@oai/cua` 0.2.6 (the `cua` API, "tinysky-alt"), `@oai/cua-repl` 0.1.3 (the MCP server) |
-| Scope | macOS native apps (`CUA_REPL_ENABLED_SURFACES=computer`) and browser tabs, which fennec-cua serves from ego lite (section 8). The ChatGPT-app browsers are out of scope (see "Not supported") |
+| Scope | macOS native apps (`CUA_REPL_ENABLED_SURFACES=computer`) and browser tabs, which fennec-cua serves from its bundled Chromium (section 8). The ChatGPT-app browsers are out of scope (see "Not supported") |
 | Evidence | the packages' shipped type declarations and docs, and recorded Codex sessions on this machine (tool calls and their outputs) |
 
 Only the interface is matched. fennec-cua's implementation, its own
@@ -342,54 +342,76 @@ confirmation needed). fennec-cua's documentation states an equivalent policy in
 its own words, and the daemon enforces its configured confirmations
 independently of what the model decides.
 
-## 8. Browser surface (ego lite)
+## 8. Browser surface (bundled Chromium)
 
-The reference's browser API is served from ego lite (`com.citrolabs.ego.lite`,
-a Chromium browser built for agents), through its public SDK only
-(`internal/ego`). `ego-browser nodejs -e` runs a small bridge script
-(`internal/ego/bridge.js`) in ego's own Node runtime; the script dials back
-to a unix socket the daemon listens on (the runtime does not forward stdin),
-proves itself with a one-time token, and serves JSON lines by dispatching to
-`taskSpace`, `takeOverTaskSpace`, `listTaskSpaces` and TaskSpace / Page
-methods. Every decision (the tab registry, element ids, the state text,
-locators, key names, safety checks) is made in Go. ego's internal wire
-protocol is undocumented and versioned with the app, so it is not used.
+The reference's browser API is served from the open-source Chromium that
+fennec-cua bundles (`internal/chromium`; BSD-3-Clause, never Google Chrome
+or Chrome for Testing), driven over the DevTools protocol by a small Go
+client (`internal/cdp`) on `--remote-debugging-pipe`: NUL-framed JSON on
+fds 3 and 4, no TCP port, flattened target sessions. Every decision (the
+tab registry, element ids, the state text, locators, key names, safety
+checks) is made in Go (`internal/browser`).
 
-One bridge per MCP session, started on its first browser call (about 140 ms
-on ego lite 0.6.2.9), restarted on the next call after a crash (the task
-space is reopened by id), and closed with the session. A navigation takes
-about 150 ms; reading the accessibility tree 2-25 ms. `ego-browser` is found
-through `FENNEC_CUA_EGO` (`off` disables the surface), the `PATH`, then
-`~/.local/bin`. Without it, or without a browser surface configured, the
-browser calls throw `browser surfaces are not enabled; use
-cua.getApp("<browser>")` (surface off) or `No browser is available.`
-(ego lite missing), and `getState().browsers` is `[]`.
+The daemon runs one browser for every MCP session, started on the first
+browser call (about 0.4 s cold, headless) with its own profile
+(`~/Library/Application Support/fennec/cua/Chromium`, mode 0700, never a
+Chrome profile; `FENNEC_CUA_CHROMIUM_PROFILE` overrides), no first-run or
+default-browser prompts, no startup window, the mock keychain (the browser
+itself never raises a Keychain prompt) and no Google API keys. It is
+supervised: an exit is noticed, the next call starts it again (three exits
+within a minute stop the restarts), a leftover of the same bundled binary
+holding the profile is stopped, it shuts down after ten minutes with no page
+and no command, and with the daemon. The app is found as
+`Fennec.app/Contents/Helpers/Chromium.app` beside
+`Contents/MacOS/fennec-cua`, as `Chromium.app` beside the binary in a
+staging directory, or through `FENNEC_CUA_CHROMIUM` (an app or executable;
+`off` disables the surface); `FENNEC_CUA_CHROMIUM_HEADLESS=1` runs it
+without windows. Without it the browser calls throw `No browser is
+available.`, without a browser surface configured `browser surfaces are not
+enabled; use cua.getApp("<browser>")`, and `getState().browsers` is `[]`.
+
+Each session works in an agent window of its own, opened in the background
+by its first tab; later tabs open in it. Its tabs are the ones it created,
+pages they opened (popups, `target=_blank`) and tabs the user opened in its
+window; other sessions' windows are never listed or touched. CDP has no tab
+groups, so windows are the unit of ownership. A visible agent cursor is
+drawn in the page for every pointer action: a fixed, click-through,
+`aria-hidden` element appended to `<html>` whose label (the session name and
+the action, such as `🔎 Shop · click button Save`) is CSS content, so it
+adds no node to the accessibility tree and no text to the document; it is
+hidden while screenshots are taken. Navigation, a reload and history wait
+for the document's `load` lifecycle event (up to 30 s); reading the
+accessibility tree takes 2-25 ms.
+
+"Import from Chrome" brings the user's sign-ins into this profile (section
+8.6).
 
 ### 8.1 Mapping
 
-| Reference API | ego lite |
+| Reference API | Bundled Chromium |
 |---|---|
-| `cua.listBrowsers()` | one browser `{"id":"ego","name":"ego lite","family":"chromium","type":"cdp"}`, displayed as compact JSON |
-| `cua.getBrowser({ id })` | ids `ego`, `chrome`, `chromium`, `browser`, `ego lite` select it; another id is an error naming `ego`. Displays the browser documentation (`internal/ego/guide.md`, fennec-cua's own text) the first time in a runtime and returns `{ browserId, name, documentation(), nameSession(name) }` |
-| `cua.createBrowserTab(id, url?, { sessionName, visible })` | the session's task space (`taskSpace(sessionName)`, created once; a name a user-owned space holds, or another session's, gets a ` (2)` suffix; a space that is not agent-owned is never used), its first page `p1` or `newPage()`, then `goto(url)` (`https://` added when the URL has no scheme, `about:blank` when omitted). `visible` must be boolean; ego always shows agent spaces in its own window, so it changes nothing. Displays the documentation (first time) and the full state |
-| `cua.getTab(id \| { url }, { browser })` | a tab of the session's space by id (or target id), or by exact URL with an explicit browser; an unmanaged tab (a popup, a tab the user opened in the space) is adopted. Errors as the reference: `getTab requires a tab reference`, `getTab requires an absolute URL.`, `getTab({ url }) requires an explicit browser.`, `Tab not found in browser ego.`, `Multiple tabs match the reference in browser ego: [...]`. `chrome://newtab` shows the tab's metadata instead of its state |
-| `cua.listTabs({ browser })`, `getState().browsers[].tabs` | the session's space only (never another space); `{ id, title, url, browserId }`, ids are `"1"`, `"2"`, ... per session and survive `js_reset` |
-| `tab.getAXState()` / `getAXStateAndScreenshot()` | `page.cdp("Accessibility.getFullAXTree")` and `DOM.getDocument` (for `ID:` fields), rendered as section 8.2 |
-| `tab.getScreenshot()` / `tab.screenshot()` | `page.screenshot()` (PNG at CSS-pixel size); the ratio of the viewport width to the PNG width maps later `[x, y]` points to CSS pixels |
-| `tab.click(id \| [x, y], { mouseButton, clickCount, key, durationMs })` | `DOM.scrollIntoViewIfNeeded` and `DOM.getContentQuads` give the element centre, then `page.mouse.click(x, y, { button, clickCount, label })`, which keeps ego's visible agent cursor and its automation masking; `key` is held with `keyboard.down/up` across the clicks; `durationMs` (0-30000) holds each press with `mouse.down/up` |
-| `tab.drag(from, to)` | `mouse.move`, `down`, `move` in 12 steps, `up` |
-| `tab.scroll(id \| [x, y], direction, pages = 1 \| { pixels })` | `mouse.move` over the target, then `mouse.wheel` by 0.9 viewport heights (or widths) per page |
-| `tab.typeText` / `pressKey` / `paste` (element index or `null` first) | `DOM.focus` on the element (a click when it takes no focus), then `keyboard.type` / `keyboard.press` (xdotool names mapped to Playwright's: `Return` Enter, `BackSpace` Backspace, `super` Meta, `KP_0` Numpad0, ...; `durationMs` holds with `down/up`) / `keyboard.paste` (`html` as `{ text, html }`, `md` as text; ego restores the clipboard). A non-integer index fails before input with the reference's message |
+| `cua.listBrowsers()` | one browser `{"id":"chromium","name":"Chromium","family":"chromium","type":"cdp"}`, displayed as compact JSON |
+| `cua.getBrowser({ id })` | ids `chromium`, `chrome`, `browser` select it (models default to `chrome`); another id is an error naming `chromium`. Displays the browser documentation (`internal/browser/guide.md`, fennec-cua's own text) the first time in a runtime and returns `{ browserId, name, documentation(), nameSession(name) }` |
+| `cua.createBrowserTab(id, url?, { sessionName, visible })` | `Target.createTarget` (`about:blank`, in the background; `newWindow` for the session's first tab), `Target.attachToTarget` with `flatten`, `Page.enable` and lifecycle events, then `Page.navigate` (`https://` added when the URL has no scheme, `about:blank` when omitted; a failed navigation is Chromium's error, such as `net::ERR_NAME_NOT_RESOLVED at https://…`). `sessionName` (or `nameSession`) labels the agent cursor. `visible` must be boolean and changes nothing. Displays the documentation (first time) and the full state |
+| `cua.getTab(id \| { url }, { browser })` | a tab of the session by id (or target id), or by exact URL with an explicit browser; a page a session tab opened, or a tab the user opened in the session's window, is attached on first use. Errors as the reference: `getTab requires a tab reference`, `getTab requires an absolute URL.`, `getTab({ url }) requires an explicit browser.`, `Tab not found in browser chromium.`, `Multiple tabs match the reference in browser chromium: [...]`. `chrome://newtab` shows the tab's metadata instead of its state |
+| `cua.listTabs({ browser })`, `getState().browsers[].tabs` | the session's tabs (`Target.getTargets`, pages only); `{ id, title, url, browserId }`, ids are `"1"`, `"2"`, ... per session and survive `js_reset` |
+| `tab.getAXState()` / `getAXStateAndScreenshot()` | `Accessibility.getFullAXTree` and `DOM.getDocument` (for `ID:` fields), rendered as section 8.2 |
+| `tab.getScreenshot()` / `tab.screenshot()` | `Page.captureScreenshot` (PNG at CSS-pixel size: a clip scaled by 1 / `devicePixelRatio`; `fullPage` captures beyond the viewport); the ratio of the viewport width to the PNG width maps later `[x, y]` points to CSS pixels |
+| `tab.click(id \| [x, y], { mouseButton, clickCount, key, durationMs })` | `DOM.scrollIntoViewIfNeeded` and `DOM.getContentQuads` give the element centre; the agent cursor moves there; `Input.dispatchMouseEvent` moves, then presses and releases `clickCount` times (each press carrying its count and the held modifiers); `key` is held with key events across the clicks; `durationMs` (0-30000) holds each press |
+| `tab.drag(from, to)` | move, press, move in 12 steps, release |
+| `tab.scroll(id \| [x, y], direction, pages = 1 \| { pixels })` | move over the target, then a `mouseWheel` event by 0.9 viewport heights (or widths) per page; it waits up to 0.4 s for the page to move |
+| `tab.typeText` / `pressKey` / `paste` (element index or `null` first) | `DOM.focus` on the element (a click when it takes no focus), then `Input.dispatchKeyEvent` per character of the US layout (others, and text typed while a modifier is held, through `Input.insertText`) / key events for the chord (xdotool names mapped to Playwright's: `Return` Enter, `BackSpace` Backspace, `super` Meta, `KP_0` Numpad0, ...; macOS editing commands such as `selectAll` for Command-A or `deleteBackward` for Backspace ride on the key event, as Chromium's text system would add them; `durationMs` holds the keys) / a `paste` `ClipboardEvent` with `text/plain` (and `text/html` for `html`) dispatched at the focused element, falling back to inserted text when the page does not take it (`md` pastes the source as text). The user's clipboard is never read or changed. A non-integer index fails before input with the reference's message |
 | `tab.setValue(id, value)` | in-page: the native value setter plus `input`/`change` (and key) events for inputs and text areas, the matching option of a `<select>`, the checked state of a check box or radio, the text of a content-editable element |
 | `tab.selectText(id, text, { prefix, suffix, selectionType })` | the occurrence is found in Go on the element's value or text; `setSelectionRange` or a DOM range selects it |
 | `tab.performSecondaryAction(id, action)` | the listed `Expand` / `Collapse` toggle the element with a click; an unlisted name is an error listing the element's actions |
-| `tab.goto` / `reload` / `back` / `forward` / `close` | `page.goto` / `page.reload`; `back`/`forward` through `Page.getNavigationHistory` and `Page.navigateToHistoryEntry`; `close` closes agent tabs only (a user's tab is refused, never closed) |
-| `tab.markDeliverable()` / `markHandoff()` | marks for the turn. `markHandoff` also calls `task.handOff()`; the next call on the space takes it back with `takeOverTaskSpace(id)` |
-| turn end (`turn_ended`) | unmarked agent tabs close (`page.close`) and the marks clear, as the reference's turn cleanup |
-| session end | `task.finish({ keep })` keeps only marked tabs (user tabs are never closed); a space handed to the user is left to the user |
-| `js_reset` | drops the runtime's tab bindings and shows the documentation again on the next browser call; the bridge, the space, the tabs and their ids stay |
-| `tab.title()`, `tab.url()`, `tab.id` | `page.info()`; the id is the session's tab id |
-| `tab.playwright` | section 8.3 |
+| `tab.goto` / `reload` / `back` / `forward` / `close` | `Page.navigate` / `Page.reload` (waiting for the new document's `load`); `back`/`forward` through `Page.getNavigationHistory` and `Page.navigateToHistoryEntry`; `close` is `Target.closeTarget` for agent tabs only (a user's tab is refused, never closed) |
+| `tab.markDeliverable()` / `markHandoff()` | marks for the turn. `markHandoff` also brings the tab to the front of its window (`Target.activateTarget`) and labels the agent cursor `waiting for you`; the user acts in the tab, and the agent's next call simply continues |
+| turn end (`turn_ended`) | unmarked agent tabs close and the marks clear, as the reference's turn cleanup |
+| session end | unmarked agent tabs close; marked tabs stay open for the user (detached); user tabs are never closed |
+| `js_reset` | drops the runtime's tab bindings and shows the documentation again on the next browser call; the browser, the tabs and their ids stay |
+| `tab.title()`, `tab.url()`, `tab.id` | `Target.getTargetInfo`; the id is the session's tab id |
+| `tab.playwright` | section 8.3; `waitForLoadState` reads `document.readyState` (and the `networkIdle` lifecycle event), `waitForURL` takes an exact URL or a glob (`**`, `*`, `{a,b}`) and then waits for `load` |
+| browser restart | a crash ends the call in flight with `Chromium stopped; the action may have been sent…`; the session's tabs are gone with it (`the tab was closed; …`), and the next `createBrowserTab` starts the browser and opens a new window |
 
 ### 8.2 Tab state text
 
@@ -497,7 +519,7 @@ default 5000); reads `count`, `all`, `innerText`, `textContent`,
 `isDisabled`, `isChecked`, `isEditable`, `boundingBox`, `allTextContents`,
 `allInnerTexts`, `waitFor({ state })`, `evaluate`; page-level
 `domSnapshot`, `waitForTimeout`, `waitForLoadState`, `waitForURL`,
-`evaluate`. The reference runs `evaluate` in a read-only scope; ego has no
+`evaluate`. The reference runs `evaluate` in a read-only scope; CDP has no
 such scope, so here the code runs in the page as it is, and confirm mode
 `every` asks before it. Other members are absent (a call is a `TypeError`), and
 Playwright's internal selectors and `>>` chains are refused with an error.
@@ -506,7 +528,7 @@ Playwright's internal selectors and `>>` chains are refused with an error.
 
 Browser input is CDP input into the agent's own tabs, not OS input, so it
 does not take the desk turn. Everything else applies: the app allowlist
-admits the browser as the app `ego lite` (otherwise every browser call is
+admits the browser as the app `Chromium` (otherwise every browser call is
 refused and the inventory lists no browser); every input (click, drag,
 scroll, typing, keys, paste, values, selections, secondary actions,
 navigation, locator actions) passes the confirm gate as the equivalent
@@ -514,13 +536,28 @@ step, with the tab's title as the target; Stop cancels the call in flight
 (the late reply is dropped) and every later one; text typed or set into a
 password field is marked secret (dots in the confirm question) and typed
 text never appears in errors; Chromium itself masks password values in the
-accessibility tree. The session never claims a user-owned space; it adopts
-only unmanaged tabs inside its own space.
+accessibility tree. A session never lists or drives another session's
+window; it attaches only to pages its tabs opened and tabs the user opened
+in its window, and never closes a user's tab. The browser runs as the
+user, in its own profile, without automation flags (`navigator.webdriver`
+stays false); its DevTools pipe is private to the daemon (no port).
 
 ### 8.5 Open points
 
-- ego lite in the tart image for live tests and the bench (licence and
-  install); until then the `egolive` tests run on a developer Mac.
+- Third-party notices: chromium-browser-snapshots builds are made without
+  `generate_about_credits`, so their `chrome://credits` is a placeholder.
+  `cua-package` refuses to stage such a build unless told it is for
+  development (`-allow-missing-credits`, recorded in `MANIFEST.json`).
+  Distribution needs a Chromium build with generated credits (our own
+  official-config build, or a maintained BSD prebuilt that ships them).
+- The managed Chromium in the tart image for the bench; the
+  `chromiumlive` tests run on a developer Mac (headless).
+- Snapshot builds are untested trunk builds and do not update themselves:
+  bump the pin (revision, commit, size, SHA-256 in `internal/chromium`)
+  deliberately and rerun the live tests.
+- Several sessions at once: a later tab opens in the browser's last active
+  window, which is the session's own window unless the user or another
+  session focused another one since.
 - Unconfirmed tab rules: which check boxes read `(settable, integer)` (41
   do, 33 do not; native `<input>` versus ARIA check boxes is the likely
   split) and the bare value of an unnamed one; whether the numbering also
@@ -529,6 +566,45 @@ only unmanaged tabs inside its own space.
   as `…`; the reference error text for a stale tab element id.
 - Iframe content is not read (the tree is the main frame's).
 
+### 8.6 Import from Chrome
+
+The ChatGPT desktop app imports a Chrome (or Atlas) profile's cookies,
+passwords and, on request, history and extensions into its built-in
+browser, natively and after the user picks a profile; the Keychain prompt
+for the Safe Storage key is the consent. fennec-cua imports **cookies** from
+one Google Chrome profile into the managed Chromium, the part that keeps
+agent tabs signed in:
+
+- Profiles come from Chrome's `Local State` (`profile.info_cache`: name,
+  account e-mail, last used); the default is the last used one.
+- `Network/Cookies` (and its write-ahead log) is copied to a private
+  temporary directory and read by a small read-only SQLite reader in Go, so
+  a running Chrome is not disturbed. Values are decrypted with the
+  "Chrome Safe Storage" Keychain password (read through Security.framework,
+  so macOS asks whether fennec-cua may use it): PBKDF2-HMAC-SHA1, salt
+  `saltysalt`, 1003 rounds, AES-128-CBC with a 16-space IV; databases at
+  meta version 24 or later carry SHA-256 of the host before the value, which
+  is checked and dropped. The key lives only for the import; no value is
+  logged, stored outside the profile or returned.
+- Cookies go into the running browser with `Storage.setCookies` (domain
+  cookies by `domain`, host-only ones by `url`; SameSite, priority, source
+  scheme and port kept; expired ones skipped; partitioned (CHIPS) cookies
+  left out). Running it again refreshes them; `replace` clears the managed
+  cookies first. The answer is counts only (found, imported, expired,
+  partitioned, undecryptable, failed), also kept in `chrome-import.json`
+  beside the profile.
+- Entry points: `fennec-cua browser profiles | import [--profile NAME]
+  [--replace] | status` (the daemon's control socket, owner only; Fennec's
+  UI calls the same operations), and `fennec.browser.chromeProfiles()` /
+  `fennec.browser.importFromChrome({ profile, replace })` in the REPL, which
+  also passes the confirm gate. The browser guide tells the agent to suggest
+  the import (or `markHandoff()`) when a site needs a sign-in it cannot do.
+- Passwords are not imported: Chromium's password store has no DevTools
+  interface, writing its database directly would put every saved password
+  into a profile the agent drives, and the profile's own encryption uses the
+  mock keychain. Signed-in sessions (cookies) cover the agent's need; a
+  password the user wants to use stays with the user (hand-off).
+
 ## 9. Not supported
 
 | Reference API | fennec-cua |
@@ -536,15 +612,17 @@ only unmanaged tabs inside its own space.
 | `typeCharacters`, `listWindows`, `getApp({ windowId })`, `screenshotId` | Linux/Windows only in the reference; absent here as there. |
 | `"iab"`, `"dot"`, `"mcpapps"` browsers | ChatGPT-app surfaces; not available outside it. |
 | `getTab({ mention })`, `getBrowser({ extensionInstanceId })` | tab mentions and extension instances are ChatGPT-app features; both are errors. |
-| `agent.browsers`, `browser.tabs`, `browser.user.claimTab`, `browser.history`, `tab.capabilities`, `tab.clipboard`, `tab.content`, `tab.dev`, `getJsDialog`, `playwright.frameLocator`, `waitForEvent`, `expectNavigation` | the reference's wider browser runtime; not provided. A user's tab outside the session's task space is never taken. |
+| `agent.browsers`, `browser.tabs`, `browser.user.claimTab`, `browser.history`, `tab.capabilities`, `tab.clipboard`, `tab.content`, `tab.dev`, `getJsDialog`, `playwright.frameLocator`, `waitForEvent`, `expectNavigation` | the reference's wider browser runtime; not provided. A tab outside the session's window and its tabs' popups is never taken. |
 
 ## 10. Parity tests
 
 Each row is a test that must exist and pass. Unit tests run on fakes; `live`
-tests run in the tart VM against CUAFixture and built-in apps; `egolive`
-tests (`go test -tags egolive ./internal/ego ./internal/engine`) drive the
-real ego lite in their own task space on pages they serve on 127.0.0.1 or as
-`data:` URLs, and always finish the space.
+tests run in the tart VM against CUAFixture and built-in apps; `chromiumlive`
+tests (`FENNEC_CUA_CHROMIUM=/path/to/Chromium.app go test -tags chromiumlive
+./internal/browser ./internal/engine`) run the pinned Chromium headless on a
+temporary profile against pages they serve on 127.0.0.1, with a synthetic
+Chrome profile and a test key for the import; they never read the user's
+Chrome or Keychain.
 
 | ID | Checks | Kind |
 |---|---|---|
@@ -571,14 +649,15 @@ real ego lite in their own task space on pages they serve on 127.0.0.1 or as
 | CDX-21 | safety: allowlist, Stop mid-call, confirmation, secret redaction, wrong-window refusal through `cua` calls | unit + live |
 | CDX-22 | sandbox: no `require`, `process`, file system | unit |
 | CDX-23 | the macOSWorld bench runs fennec-cua through this surface (`cmd/cua-bench`) | live |
-| CDX-24 | browser discovery: `listBrowsers`, `getBrowser` (documentation once per runtime), `getState().browsers` with tabs, `listTabs` as compact JSON | unit (`internal/engine`, `internal/ego`) |
-| CDX-25 | `createBrowserTab` / `getTab` display documentation then state; reference error texts; `js_reset` keeps tabs and ids; turn end passed on | unit + egolive |
-| CDX-26 | tab state text (section 8.2) byte for byte on synthetic trees: header, roles, fields, link collapse, select options, tab values, containers, focused line; diff with removed ranges, `~`/`+` depth, focused line without a blank line, no-change line, full state on URL or document change (numbering from 1 after the first document) or a large change; `domSnapshot` | unit + egolive |
-| CDX-27 | tab input: element-index-first `typeText`/`pressKey`/`paste` (bad index refused before input), click centre and options, points scaled from screenshot pixels, `selectText`, `setValue`, `performSecondaryAction`, history, xdotool to Playwright keys | unit + egolive |
-| CDX-28 | Playwright subset: role/text/label/test-id/CSS resolution, RegExp, `nth`/`filter`, strict mode, timeouts, `fill`/`check`/`selectOption`, `evaluate` | unit + egolive |
-| CDX-29 | bridge: JSON-line framing, token check, timeout, Stop (cancel), crash then restart with the space reopened, close | unit + egolive |
-| CDX-30 | browser safety: allowlist, confirm gate per input (declined sends nothing), secret marking and redaction, user tabs never closed, user spaces never used, hand-off and take-back | unit + egolive |
-| CDX-31 | marks: turn end closes unmarked agent tabs; session end finishes the space keeping marked tabs only | unit + egolive |
+| CDX-24 | browser discovery: `listBrowsers`, `getBrowser` (documentation once per runtime), `getState().browsers` with tabs, `listTabs` as compact JSON | unit (`internal/engine`, `internal/browser`) |
+| CDX-25 | `createBrowserTab` / `getTab` display documentation then state; reference error texts; `js_reset` keeps tabs and ids; turn end passed on | unit + chromiumlive |
+| CDX-26 | tab state text (section 8.2) byte for byte on synthetic trees: header, roles, fields, link collapse, select options, tab values, containers, focused line; diff with removed ranges, `~`/`+` depth, focused line without a blank line, no-change line, full state on URL or document change (numbering from 1 after the first document) or a large change; `domSnapshot` | unit + chromiumlive |
+| CDX-27 | tab input: element-index-first `typeText`/`pressKey`/`paste` (bad index refused before input), click centre and options, points scaled from screenshot pixels, `selectText`, `setValue`, `performSecondaryAction`, history, xdotool to Playwright keys | unit + chromiumlive |
+| CDX-28 | Playwright subset: role/text/label/test-id/CSS resolution, RegExp, `nth`/`filter`, strict mode, timeouts, `fill`/`check`/`selectOption`, `evaluate` | unit + chromiumlive |
+| CDX-29 | transport: CDP pipe framing (NUL-delimited, sessions, events, large replies), timeout, Stop (cancel), launch arguments, supervision (restart after a crash, crash-loop stop, idle shutdown, a stale profile owner), crash with the tabs gone and a new window after the restart | unit + chromiumlive |
+| CDX-30 | browser safety: allowlist, confirm gate per input (declined sends nothing), secret marking and redaction, user tabs never closed, other sessions' windows never listed, hand-off brings the tab forward | unit + chromiumlive |
+| CDX-31 | marks: turn end closes unmarked agent tabs; session end closes unmarked agent tabs and leaves marked ones open | unit + chromiumlive |
+| CDX-32 | import from Chrome: `Local State` profiles, cookie decryption at meta versions 23 and 24 (host hash checked), write-ahead log and overflow pages, expired and partitioned cookies, a wrong key, values never in errors, logs, answers or the status file; `Storage.setCookies` batches with a per-cookie fallback, `replace`, the confirm gate; a live import reaching a 127.0.0.1 page | unit (`internal/chromeimport`, `internal/browser`) + chromiumlive |
 
 ## 11. Updating
 

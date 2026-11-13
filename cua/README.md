@@ -86,10 +86,10 @@ await app.click(1); await app.typeText("hello"); await app.getAXState()
 // ~	1 text entry area (settable) Value: hello, Secondary Actions: Show Menu
 ```
 
-Web pages go through the reference's browser API (`cua.listBrowsers`, `getBrowser`, `createBrowserTab`, `getTab`, `listTabs`, and tabs with element-index-first input, navigation, marks and a Playwright locator subset), served from ego lite, a Chromium browser for agents, through its public SDK: one bridge script per MCP session runs in ego's Node runtime and dials back to the daemon (`internal/ego`, [docs/codex-parity.md](docs/codex-parity.md) section 8). Agent tabs live in their own task space; the allowlist (as the app `ego lite`), confirmations, Stop and secret redaction apply to them. `FENNEC_CUA_EGO` names the `ego-browser` binary (`off` turns the surface off).
+Web pages go through the reference's browser API (`cua.listBrowsers`, `getBrowser`, `createBrowserTab`, `getTab`, `listTabs`, and tabs with element-index-first input, navigation, marks and a Playwright locator subset), served from the open-source Chromium fennec-cua bundles, driven over the DevTools protocol on a private pipe ([Browser](#36-browser-bundled-chromium), [docs/codex-parity.md](docs/codex-parity.md) section 8). Each session works in an agent window of its own with a visible agent cursor; the allowlist (as the app `Chromium`), confirmations, Stop and secret redaction apply to it. The user can import their Google Chrome sign-ins into it.
 
 ```js
-var tab = await cua.createBrowserTab("ego", "https://example.com", { sessionName: "🔎 Example" })
+var tab = await cua.createBrowserTab("chromium", "https://example.com", { sessionName: "🔎 Example" })
 // Browser tab: 1, Title: "Example Domain", URL: "https://example.com/".
 // 0 AXWebArea Example Domain, URL: example.com/
 // 	1 heading Example Domain, Value: 1
@@ -100,6 +100,21 @@ await tab.click(4); await tab.typeText(null, "hello"); await tab.getAXState()   
 The `cua` object (`getState`, `listApps`, `getApp`, and the app methods `getAXState`, `getScreenshot`, `click`, `drag`, `scroll`, `selectText`, `setValue`, `performSecondaryAction`, `paste`, `pressKey`, `typeText`) is built on the engine tools below through the same host the `run` tool uses, so the allowlist, the desk turn (held for the whole call), Stop, confirmations and secret redaction apply to every call. fennec-cua's own capabilities sit on a separate `fennec` global and never shadow a reference name: `fennec.status`, `fennec.act` (plans with read-back), `fennec.wait`, `fennec.observe`, `fennec.flows`, `fennec.record`, `fennec.model`, `fennec.run`, `fennec.tools`/`fennec.call` (plugins and services).
 
 The six engine tools of 3.2 are neither listed nor callable by name: an agent session that calls `act` gets "unknown tool". Only a script plugin's own session, which presents its run's token, calls them back by name as that run. `fennec-cua do TOOL` and the scenario harness reach them through `js` (`fennec.call`, wrapped by `mcpclient.EngineTool`), so they pass the same path agents do.
+
+### 3.6 Browser: bundled Chromium
+
+fennec-cua ships open-source Chromium (BSD-3-Clause with its third-party notices; never Google Chrome or Chrome for Testing) and drives it over CDP. ego lite, the earlier backend, is not redistributable and is gone.
+
+- **Build.** A pinned [chromium-browser-snapshots](https://storage.googleapis.com/chromium-browser-snapshots/index.html) build per architecture: revision, commit, version, size and SHA-256 live in `internal/chromium/pin.go` (arm64 r1743750, x64 r1743759, both 160.0.8159.0). Updating is a deliberate pin bump followed by the live tests.
+- **Runtime.** The daemon starts it on the first browser call with `--remote-debugging-pipe` (no TCP port), its own profile in `~/Library/Application Support/fennec/cua/Chromium` (0700), no first-run, default-browser or Keychain prompts (mock keychain), no startup window; it supervises it (restart on the next call after a crash, a crash-loop stop, idle shutdown after ten minutes with no page, shutdown with the daemon). Lookup: `Contents/Helpers/Chromium.app` beside `Contents/MacOS/fennec-cua`, `Chromium.app` beside the binary, or `FENNEC_CUA_CHROMIUM` (`off` disables); `FENNEC_CUA_CHROMIUM_HEADLESS=1` hides its windows.
+- **Agent windows.** Each MCP session gets its own window, opened in the background; its tabs, their popups and tabs the user opens there are its tabs. A visible cursor with the session name and action is drawn in the page (outside the accessibility tree and the document text) and hidden for screenshots.
+- **Import from Chrome.** `fennec-cua browser profiles`, `fennec-cua browser import [--profile NAME] [--replace]`, `fennec-cua browser status` (daemon control socket, owner only; for Fennec's UI) and `fennec.browser.importFromChrome()` in the REPL copy one Chrome profile's cookies into the managed profile: the database is copied and read in Go, values are decrypted with the "Chrome Safe Storage" key, whose Keychain prompt is the user's consent, and set with `Storage.setCookies`. The key is never cached; values are never logged or returned. Passwords are not imported ([docs/codex-parity.md](docs/codex-parity.md) section 8.6).
+- **Packaging.** `go run ./cmd/cua-package -stage DIR` downloads (or reuses) the pinned archive, verifies size and SHA-256, extracts `Chromium.app`, records Chromium's `LICENSE` (from the pinned commit) and its `chrome://credits` page, signs the app inside out with the Fennec signing identity (hardened runtime; JIT for the renderer and GPU helpers; library validation off for a certificate without a team), verifies the signature, starts the signed browser once, builds and signs `fennec-cua`, and writes `MANIFEST.json`. It stops instead of waiting when signing would ask for the key, and never installs anything. Snapshot builds carry no generated credits, so the packager refuses them unless `-allow-missing-credits` marks the staging as development only.
+
+```sh
+go run ./cmd/cua-package -stage /tmp/cua-stage -allow-missing-credits   # development staging
+FENNEC_CUA_CHROMIUM=/tmp/cua-stage/Chromium.app go test -tags chromiumlive ./internal/browser ./internal/engine
+```
 
 ### 3.1 Principles
 
@@ -188,8 +203,9 @@ Excluded on purpose (each recorded in the catalog): Node process-group signallin
 ```
 cua/
   go.mod                      module fennec/cua (its own module)
-  cmd/fennec-cua/             mcp | serve | stop | resume | status | do <tool> <json>
+  cmd/fennec-cua/             mcp | serve | stop | resume | status | do <tool> <json> | browser profiles|import|status
   cmd/cua-upstream/           upstream inventory and catalog coverage
+  cmd/cua-package/            stage fennec-cua and the pinned, signed Chromium.app for the Fennec bundle
   internal/mcpserver/         MCP JSON-RPC: stdio bridge, unix socket, Streamable HTTP
   internal/daemon/            sessions, scheduling, cancellation, peer check (getpeereid)
   internal/policy/            stop/resume, allowlist with capture blackout, confirm, input modes
@@ -198,6 +214,10 @@ cua/
   internal/driver/            cua-driver client and sessions
   internal/actions/           press, set, type, key, click, scroll, drag, menu, focus, close, launch, read-back
   internal/vision/            scaling, encoding, element numbering, coordinate mapping, stillness, NCC matching
+  internal/cdp/               DevTools protocol client over a NUL-framed pipe (sessions, events)
+  internal/chromium/          the pinned Chromium build, lookup, launch arguments, supervision
+  internal/browser/           the REPL's browser API over CDP: tabs, state text and diff, locators, keys, agent cursor, Chrome import
+  internal/chromeimport/ (cgo) Chrome profiles, a read-only SQLite reader, cookie decryption, the Keychain read
   internal/models/            OpenAI-compatible chat: decide, ground, ask, usage, 402
   internal/plan/              multi-step executor, expect, trace, escalation
   internal/flows/             flow store (git), parameters, recording drafts
@@ -311,5 +331,6 @@ The results page (`bench/index.html`, embedded in the binary) shows the ranking,
 | gopkg.in/yaml.v3 | MIT, Apache-2.0 | catalog files |
 | golang.org/x/crypto (ssh) | BSD-3-Clause | the test VM tool |
 | tart | FSL-1.1-ALv2 (internal use permitted; Apache-2.0 after two years) | development only: the test VM, never shipped |
+| Chromium (chromium-browser-snapshots, pinned in `internal/chromium`) | BSD-3-Clause, plus the third-party licences in its `chrome://credits` | the agent browser, shipped as `Contents/Helpers/Chromium.app` with `licenses/Chromium-LICENSE.txt` and `Chromium-credits.html` |
 
-Update the repository's `THIRD_PARTY_NOTICES.md` before the first release.
+The CDP client is fennec-cua's own (no chromedp/cdproto dependency). The repository's `THIRD_PARTY_NOTICES.md` lists Chromium; update it with every pin bump.

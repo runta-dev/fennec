@@ -46,6 +46,9 @@ type Daemon struct {
 	// listen, for slow setup such as building the model client, so the
 	// first answer after a cold start never waits for it.
 	Serving func(ctx context.Context)
+	// Ops answers further control operations of the owner (such as
+	// "browser.import"), by name.
+	Ops map[string]func(ctx context.Context, args json.RawMessage) (any, error)
 }
 
 // acceptor is a listener (tests fail its accepts).
@@ -190,7 +193,8 @@ func (d *Daemon) serveMCP(ctx context.Context, conn *net.UnixConn) {
 
 // ControlRequest is one line on the control socket.
 type ControlRequest struct {
-	Op string `json:"op"` // stop, resume, status
+	Op   string          `json:"op"` // stop, resume, status, or one of Daemon.Ops
+	Args json.RawMessage `json:"args,omitempty"`
 }
 
 // ControlReply answers it.
@@ -200,7 +204,7 @@ type ControlReply struct {
 	Status any    `json:"status,omitempty"`
 }
 
-func (d *Daemon) serveControl(_ context.Context, conn *net.UnixConn, peer, own uint32) {
+func (d *Daemon) serveControl(ctx context.Context, conn *net.UnixConn, peer, own uint32) {
 	sc := bufio.NewScanner(conn)
 	enc := json.NewEncoder(conn)
 	for sc.Scan() {
@@ -209,7 +213,7 @@ func (d *Daemon) serveControl(_ context.Context, conn *net.UnixConn, peer, own u
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			rep.Error = "bad request: " + err.Error()
 		} else {
-			rep = d.control(peer, own, req)
+			rep = d.control(ctx, peer, own, req)
 		}
 		if err := enc.Encode(rep); err != nil {
 			return
@@ -219,7 +223,7 @@ func (d *Daemon) serveControl(_ context.Context, conn *net.UnixConn, peer, own u
 
 // control answers one control request from a peer running as uid peer;
 // every control is the daemon's own user's alone.
-func (d *Daemon) control(peer, own uint32, req ControlRequest) ControlReply {
+func (d *Daemon) control(ctx context.Context, peer, own uint32, req ControlRequest) ControlReply {
 	if err := OwnerOnly(peer, own); err != nil {
 		return ControlReply{Error: req.Op + ": " + err.Error()}
 	}
@@ -233,6 +237,13 @@ func (d *Daemon) control(peer, own uint32, req ControlRequest) ControlReply {
 	case "status":
 		return ControlReply{OK: true, Status: d.Handler.Status()}
 	}
+	if op := d.Ops[req.Op]; op != nil {
+		v, err := op(ctx, req.Args)
+		if err != nil {
+			return ControlReply{Error: err.Error()}
+		}
+		return ControlReply{OK: true, Status: v}
+	}
 	return ControlReply{Error: "unknown op " + req.Op}
 }
 
@@ -244,6 +255,11 @@ func (d *Daemon) logf(format string, args ...any) {
 
 // Control sends one control request to a running daemon.
 func Control(ctx context.Context, p Paths, op string) (ControlReply, error) {
+	return ControlArgs(ctx, p, op, nil)
+}
+
+// ControlArgs sends one control request with arguments.
+func ControlArgs(ctx context.Context, p Paths, op string, args json.RawMessage) (ControlReply, error) {
 	var dl net.Dialer
 	conn, err := dl.DialContext(ctx, "unix", p.Control)
 	if err != nil {
@@ -253,7 +269,7 @@ func Control(ctx context.Context, p Paths, op string) (ControlReply, error) {
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	}
-	if err := json.NewEncoder(conn).Encode(ControlRequest{Op: op}); err != nil {
+	if err := json.NewEncoder(conn).Encode(ControlRequest{Op: op, Args: args}); err != nil {
 		return ControlReply{}, err
 	}
 	var rep ControlReply

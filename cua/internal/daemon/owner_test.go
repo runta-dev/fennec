@@ -98,7 +98,7 @@ func TestOwnerOnlyRefusedForOtherUser(t *testing.T) {
 	}
 	d := &Daemon{Stopper: newEngine(nil).Stopper}
 	for _, op := range []string{"stop", "resume", "status"} {
-		rep := d.control(502, 501, ControlRequest{Op: op})
+		rep := d.control(context.Background(), 502, 501, ControlRequest{Op: op})
 		if rep.OK || !strings.Contains(rep.Error, op+": stop, resume and recording are answered only for the daemon's own user") {
 			t.Errorf("%s from another user: %+v", op, rep)
 		}
@@ -171,14 +171,27 @@ func TestOwnerOnlyAnsweredForOwnUser(t *testing.T) {
 
 func TestStopOnlyFromOwnUser(t *testing.T) {
 	d := &Daemon{Stopper: newEngine(nil).Stopper}
-	if rep := d.control(1000, 501, ControlRequest{Op: "stop"}); rep.OK || d.Stopper.Stopped() {
+	if rep := d.control(context.Background(), 1000, 501, ControlRequest{Op: "stop"}); rep.OK || d.Stopper.Stopped() {
 		t.Errorf("stop from another user: %+v", rep)
 	}
-	if rep := d.control(501, 501, ControlRequest{Op: "stop"}); !rep.OK || !d.Stopper.Stopped() {
+	if rep := d.control(context.Background(), 501, 501, ControlRequest{Op: "stop"}); !rep.OK || !d.Stopper.Stopped() {
 		t.Errorf("stop from the owner: %+v", rep)
 	}
-	if rep := d.control(1000, 501, ControlRequest{Op: "resume"}); rep.OK || !d.Stopper.Stopped() {
+	if rep := d.control(context.Background(), 1000, 501, ControlRequest{Op: "resume"}); rep.OK || !d.Stopper.Stopped() {
 		t.Errorf("resume from another user: %+v", rep)
+	}
+	// Further operations answer the owner only, with their arguments.
+	d.Ops = map[string]func(context.Context, json.RawMessage) (any, error){
+		"browser.import": func(_ context.Context, args json.RawMessage) (any, error) { return string(args), nil },
+	}
+	if rep := d.control(context.Background(), 1000, 501, ControlRequest{Op: "browser.import"}); rep.OK {
+		t.Errorf("an operation from another user: %+v", rep)
+	}
+	if rep := d.control(context.Background(), 501, 501, ControlRequest{Op: "browser.import", Args: json.RawMessage(`{"profile":"Default"}`)}); !rep.OK || rep.Status != `{"profile":"Default"}` {
+		t.Errorf("an operation from the owner: %+v", rep)
+	}
+	if rep := d.control(context.Background(), 501, 501, ControlRequest{Op: "browser.nope"}); rep.OK {
+		t.Errorf("an unknown operation: %+v", rep)
 	}
 	// No MCP tool reaches stop or resume, whatever its name.
 	eng := newEngine(nil)

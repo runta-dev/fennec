@@ -1,4 +1,4 @@
-package ego
+package browser
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 )
 
 // pwKeys maps fennec-cua's key names (actions.KeyNames) to Playwright's,
-// which ego's keyboard takes.
+// which the CDP key table takes.
 var pwKeys = map[string]string{
 	"return": "Enter", "tab": "Tab", "escape": "Escape", "space": "Space", "backspace": "Backspace",
 	"forward_delete": "Delete", "home": "Home", "end": "End", "pageup": "PageUp", "pagedown": "PageDown",

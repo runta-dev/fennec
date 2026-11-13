@@ -26,7 +26,7 @@ const (
 	// ToolPaste pastes text through the pasteboard (the REPL's paste).
 	ToolPaste = "paste"
 	// ToolBrowser carries the REPL's browser calls (cua.getBrowser,
-	// createBrowserTab, tabs and their locators) to ego lite.
+	// createBrowserTab, tabs and their locators) to the bundled Chromium.
 	ToolBrowser = "browser"
 )
 

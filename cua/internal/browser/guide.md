@@ -1,9 +1,11 @@
-# Browser: ego lite
+# Browser: Chromium
 
-- Name: ego lite (Chromium built for agents)
-- ID: ego (the id "chrome" selects it too)
+- Name: Chromium (fennec-cua's own browser for agents)
+- ID: chromium (the id "chrome" selects it too)
 
-Keep the browser and tab bindings you made; they stay valid across calls and `js_reset` keeps the tabs open (get them back with `cua.getTab(id)`). Your tabs live in a task space of their own, apart from the user's tabs: `cua.listTabs()` lists only that space. If a tab is gone, open a fresh one with `cua.createBrowserTab("ego", url)`. Pass a short `sessionName` (for example "🔎 Flight prices") on the first `createBrowserTab`; it names the task space the user sees. `visible` is accepted; ego lite always shows agent spaces in its own window without taking the user's focus.
+Keep the browser and tab bindings you made; they stay valid across calls and `js_reset` keeps the tabs open (get them back with `cua.getTab(id)`). Your tabs open in a window of their own, apart from other sessions: `cua.listTabs()` lists only your tabs, the pages they opened, and tabs the user opened in your window. If a tab is gone, open a fresh one with `cua.createBrowserTab("chromium", url)`. Pass a short `sessionName` (for example "🔎 Flight prices") on the first `createBrowserTab`; the visible agent cursor shows it beside each action. `visible` is accepted; your window opens in the background.
+
+Chromium keeps its own profile. The user can bring their Google Chrome sign-ins into it ("Import from Chrome" in Fennec, or `fennec.browser.importFromChrome()`, which asks the user and shows a Keychain prompt). When a site needs a sign-in you cannot do, suggest that import, or mark the tab with `markHandoff()` for the user.
 
 ## Tabs
 
@@ -34,7 +36,7 @@ interface Tab {
 - `typeText`, `pressKey` and `paste` take an element index first and focus it before sending input; pass `null` to use the current focus.
 - `[x, y]` points are pixels of the tab's latest screenshot.
 - `pressKey` takes xdotool names and chords (`"Return"`, `"Tab"`, `"super+a"`, `"shift+Tab"`, `"KP_0"`); super is Command.
-- `paste` restores the user's clipboard afterwards; `md` pastes the Markdown source as plain text.
+- `paste` hands the text to the page as a paste (it never touches the clipboard); `md` pastes the Markdown source as plain text.
 - Do not `goto` the URL a tab already shows; that reloads it and can lose what was typed. Use `reload()` when you mean it.
 
 ## Playwright locators
@@ -61,7 +63,7 @@ Text matching follows Playwright: a string matches a case-insensitive substring 
 
 ## Keeping tabs
 
-When the host ends a turn, the agent tabs you opened close unless marked in that turn. `markDeliverable()` keeps a tab that is itself the result (a document, a submitted form, a page the user asked to keep). `markHandoff()` keeps a tab the user must act on (sign-in, approval, payment, CAPTCHA) and hands the task space to the user; your next call on it takes it back. Do not mark search results or intermediate pages. When the session ends, unmarked agent tabs close; tabs the user opened are never closed.
+When the host ends a turn, the agent tabs you opened close unless marked in that turn. `markDeliverable()` keeps a tab that is itself the result (a document, a submitted form, a page the user asked to keep). `markHandoff()` keeps a tab the user must act on (sign-in, approval, payment, CAPTCHA) and brings it to the front for them. Do not mark search results or intermediate pages. When the session ends, unmarked agent tabs close; tabs the user opened are never closed.
 
 ## Safety
 

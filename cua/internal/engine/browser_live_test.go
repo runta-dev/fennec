@@ -1,4 +1,4 @@
-//go:build egolive
+//go:build chromiumlive
 
 package engine_test
 
@@ -13,13 +13,15 @@ import (
 	"testing"
 	"time"
 
-	"fennec/cua/internal/ego"
+	"fennec/cua/internal/browser"
+	"fennec/cua/internal/chromium"
 )
 
-// The live browser tests drive the real ego lite on this Mac through the
-// REPL: only their own task space, only a page this test serves on
-// 127.0.0.1, and the space is always finished. Run with
-// go test -tags egolive -run Live ./internal/engine
+// The live browser tests drive the pinned Chromium on this Mac, headless,
+// through the REPL: a temporary profile, only pages this test serves on
+// 127.0.0.1, no OS-level input, and never the user's Chrome or Keychain.
+// Run with FENNEC_CUA_CHROMIUM=/path/to/Chromium.app
+// go test -tags chromiumlive -run Live ./internal/engine
 
 const livePage = `<!doctype html><html><head><title>Live Form</title></head><body>
 <h1>Order</h1>
@@ -49,17 +51,7 @@ func liveServer(t *testing.T) string {
 }
 
 func TestLiveBrowserREPL(t *testing.T) {
-	bin := ego.FindBin()
-	if bin == "" {
-		t.Skip("ego-browser not installed")
-	}
-	dir, err := os.MkdirTemp("/tmp", "fcego")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-	logf := func(f string, a ...any) { t.Logf(f, a...) }
-	m := ego.NewManager(ego.Options{Bin: bin, Dir: dir, Log: logf})
+	m := liveManager(t)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -82,9 +74,9 @@ func TestLiveBrowserREPL(t *testing.T) {
 		return out
 	}
 	run(`1`) // the first call shows the API documentation
-	out := run(`var tab = await cua.createBrowserTab("ego", "` + url + `", { sessionName: "fennec-cua live test" })`)
+	out := run(`var tab = await cua.createBrowserTab("chromium", "` + url + `", { sessionName: "fennec-cua live test" })`)
 	show("createBrowserTab", out)
-	if !strings.Contains(out, "# Browser: ego lite") || !strings.Contains(out, `Browser tab: 1, Title: "Live Form"`) || !strings.Contains(out, "0 AXWebArea Live Form, URL: 127.0.0.1:") {
+	if !strings.Contains(out, "# Browser: Chromium") || !strings.Contains(out, `Browser tab: 1, Title: "Live Form"`) || !strings.Contains(out, "0 AXWebArea Live Form, URL: 127.0.0.1:") {
 		t.Fatalf("create: %s", out)
 	}
 	id := func(text, pattern string) string {
@@ -155,28 +147,63 @@ func TestLiveBrowserREPL(t *testing.T) {
 	if out := run(`nodeRepl.write(await tab.title())`); !strings.Contains(out, "Live Form") {
 		t.Errorf("back: %s", out)
 	}
+	// The agent cursor is in the page but not in its accessibility tree.
+	if out := run(`await tab.click([5, 5]); nodeRepl.write(String(await tab.playwright.evaluate(() => !!document.querySelector("fennec-agent-cursor"))))`); !strings.Contains(out, "true") {
+		t.Errorf("agent cursor: %s", out)
+	}
+	if out := run(`await tab.getAXState({ disableDiffing: true })`); strings.Contains(out, "fennec") {
+		t.Errorf("the cursor shows in the state: %s", out)
+	}
+	// Select all and replace by keys (macOS editing commands), then paste.
+	state = run(`await tab.getAXState({ disableDiffing: true })`)
+	nameID = id(state, `text field \(settable\) Name`)
+	run(`await tab.pressKey(` + nameID + `, "super+a"); await tab.typeText(null, "Grace")`)
+	if out := run(`nodeRepl.write(await tab.playwright.locator("#name").inputValue())`); lastLine(out) != "Grace" {
+		t.Errorf("select all + type: %s", out)
+	}
+	run(`await tab.paste(` + nameID + `, " Hopper")`)
+	if out := run(`nodeRepl.write(await tab.playwright.locator("#name").inputValue())`); lastLine(out) != "Grace Hopper" {
+		t.Errorf("paste: %s", out)
+	}
+	// goto, waitForURL and a reload.
+	run(`await tab.goto("` + url + `two"); await tab.playwright.waitForURL("**/two"); await tab.reload()`)
+	if out := run(`nodeRepl.write(await tab.url())`); !strings.HasSuffix(lastLine(out), "/two") {
+		t.Errorf("goto: %s", out)
+	}
+	if r := c.js(`await tab.goto("http://unreachable.invalid/")`); !r.isError || !strings.Contains(r.all(), "net::ERR_") {
+		t.Errorf("unreachable: %s", r.all())
+	}
+	run(`await tab.goto("` + url + `")`)
+	// Screenshots are CSS-pixel PNGs of the viewport.
+	if out := run(`var s2 = await tab.screenshot(); var w = (s2[16] << 24) | (s2[17] << 16) | (s2[18] << 8) | s2[19]; nodeRepl.write(String(w) + " " + String(await tab.playwright.evaluate(() => innerWidth)))`); func() bool {
+		f := strings.Fields(lastLine(out))
+		return len(f) != 2 || f[0] != f[1]
+	}() {
+		t.Errorf("screenshot width: %s", out)
+	}
+	run(`await tab.markHandoff()`)
 	out = run(`await cua.listTabs()`)
 	show("listTabs", out)
-	if !strings.Contains(out, `"id":"1"`) || !strings.Contains(out, `"browserId":"ego"`) {
+	if !strings.Contains(out, `"id":"1"`) || !strings.Contains(out, `"browserId":"chromium"`) {
 		t.Errorf("listTabs: %s", out)
 	}
 	out = run(`var st = await cua.getState({ emit: false }); nodeRepl.write(JSON.stringify(st.browsers))`)
 	show("getState().browsers", out)
-	if !strings.Contains(out, `"id":"ego"`) || !strings.Contains(out, `"tabs":[{"id":"1"`) {
+	if !strings.Contains(out, `"id":"chromium"`) || !strings.Contains(out, `"tabs":[{"id":"1"`) {
 		t.Errorf("getState: %s", out)
 	}
 	out = run(`var t2 = await cua.createBrowserTab("chrome", "` + url + `two")`)
-	if !strings.Contains(out, `Browser tab: 2, Title: "Page Two"`) || strings.Contains(out, "# Browser: ego lite") {
+	if !strings.Contains(out, `Browser tab: 2, Title: "Page Two"`) || strings.Contains(out, "# Browser: Chromium") {
 		t.Errorf("second tab: %s", out)
 	}
 	run(`await t2.close()`)
 	c.call("js_reset", map[string]any{})
-	out = run(`var again = await cua.getTab("1", { browser: "ego" })`)
+	out = run(`var again = await cua.getTab("1", { browser: "chromium" })`)
 	show("getTab after js_reset", out)
-	if !strings.Contains(out, "# Browser: ego lite") || !strings.Contains(out, "Browser tab: 1,") {
+	if !strings.Contains(out, "# Browser: Chromium") || !strings.Contains(out, "Browser tab: 1,") {
 		t.Errorf("getTab after reset: %s", out)
 	}
-	if r := c.js(`await cua.getTab("99")`); !r.isError || !strings.Contains(r.all(), "\nTab not found in browser ego.") {
+	if r := c.js(`await cua.getTab("99")`); !r.isError || !strings.Contains(r.all(), "\nTab not found in browser chromium.") {
 		t.Errorf("missing tab: %s", r.all())
 	}
 	if r := c.js(`await again.typeText(1.5, "x")`); !r.isError || !strings.Contains(r.all(), "Browser input requires an element index") {
@@ -187,4 +214,23 @@ func TestLiveBrowserREPL(t *testing.T) {
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	return lines[len(lines)-1]
+}
+
+// liveManager runs the Chromium FENNEC_CUA_CHROMIUM names, headless, on a
+// temporary profile.
+func liveManager(t *testing.T) *browser.Manager {
+	t.Helper()
+	bin := chromium.Locate("")
+	if bin == "" {
+		t.Skip("set FENNEC_CUA_CHROMIUM to the pinned Chromium.app")
+	}
+	dir, err := os.MkdirTemp("", "fccr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	logf := func(f string, a ...any) { t.Logf(f, a...) }
+	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, Log: logf})
+	t.Cleanup(b.Close)
+	return browser.NewManager(browser.Options{Browser: b, Log: logf})
 }

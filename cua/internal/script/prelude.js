@@ -5,7 +5,7 @@
 (function (host, input) {
   "use strict";
 
-  // Browser calls go to the daemon's ego lite manager; every check and
+  // Browser calls go to the daemon's Chromium manager (internal/browser); every check and
   // decision is made there. Errors lose their code prefix so the model
   // reads the message alone, as in the reference.
   async function browser(op, args) {
@@ -793,6 +793,16 @@
       ask: function (prompt, images) { return host.model("ask", { prompt: prompt, images: images }); },
       decide: function (args) { return host.model("decide", args); },
       ground: function (args) { return host.model("ground", args); },
+    }),
+    // The bundled Chromium: list the user's Google Chrome profiles and
+    // import their sign-ins (cookies). The import asks the user (confirm
+    // mode, and always the Keychain prompt) and answers counts only.
+    browser: Object.freeze({
+      chromeProfiles: function () { return browser("chromeProfiles", {}); },
+      importFromChrome: function (options) {
+        const o = options || {};
+        return browser("importChrome", { profile: o.profile === undefined ? "" : String(o.profile), replace: !!o.replace });
+      },
     }),
     tools: function () { return host.call("extensions", {}); },
     call: function (name, args) { return host.call(name, args || {}); },

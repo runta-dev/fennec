@@ -1,4 +1,4 @@
-package ego
+package browser
 
 import (
 	"context"
@@ -681,8 +681,7 @@ func (s *Session) locCall(ctx context.Context, req request) (any, *protocol.Erro
 			return nil, failed(desc + ": " + err.Error())
 		}
 		if req.Method == "hover" {
-			_, err = s.page(ctx, t, "mouse.move", x, y, map[string]any{"label": label("hover", e)})
-			return nil, s.fail(err, "")
+			return nil, s.fail(s.mouseMove(ctx, t, x, y, 1, label("hover", e)), "")
 		}
 		if perr := s.ask(ctx, step, t.title); perr != nil {
 			return nil, perr
@@ -747,9 +746,9 @@ func (s *Session) locCall(ctx context.Context, req request) (any, *protocol.Erro
 		}
 		var err error
 		if value == "" {
-			_, err = s.page(ctx, t, "keyboard.press", "Delete")
+			err = s.keyPress(ctx, t, "Delete")
 		} else {
-			_, err = s.page(ctx, t, "keyboard.insertText", value)
+			err = s.insertText(ctx, t, value)
 		}
 		return nil, s.fail(err, value)
 	case "press", "type", "pressSequentially":
@@ -757,7 +756,7 @@ func (s *Session) locCall(ctx context.Context, req request) (any, *protocol.Erro
 		if perr != nil {
 			return nil, perr
 		}
-		// press takes Playwright key names, which ego's keyboard reads.
+		// press takes Playwright key names, which the key table reads.
 		step := protocol.Step{Key: v}
 		secret := false
 		if req.Method != "press" {
@@ -773,10 +772,10 @@ func (s *Session) locCall(ctx context.Context, req request) (any, *protocol.Erro
 		t.dirty = true
 		var err error
 		if req.Method == "press" {
-			_, err = s.page(ctx, t, "keyboard.press", v)
+			err = s.keyPress(ctx, t, v)
 			return nil, s.fail(err, "")
 		}
-		_, err = s.page(ctx, t, "keyboard.type", v)
+		err = s.keyType(ctx, t, v)
 		return nil, s.fail(err, v)
 	case "selectOption":
 		var vals []any

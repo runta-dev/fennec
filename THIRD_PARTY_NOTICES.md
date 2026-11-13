@@ -25,3 +25,10 @@ Auto-updater background staging, non-`.app` payload staging, and quiet header pi
 - `@xterm/xterm` 5.5.0, MIT; license: `native/macos/UI/vendor/xterm-LICENSE`.
 - `@xterm/addon-fit` 0.10.0, MIT; license: `native/macos/UI/vendor/addon-fit-LICENSE`.
 - Distributed locally in the app; no CDN scripts are loaded.
+
+## Chromium (fennec-cua's agent browser)
+
+- Source: open-source Chromium snapshot builds from the public `chromium-browser-snapshots` bucket, pinned in `cua/internal/chromium/pin.go` (macOS arm64 r1743750, commit `2c8bee4ceb39a8f0ebf674b3327138b5e0ebea57`; macOS x64 r1743759, commit `e085decaed8260097cb09cf29dd090433cc6040c`; both 160.0.8159.0), each verified by SHA-256 before use. Not Google Chrome and not Chrome for Testing.
+- License: BSD-3-Clause (Copyright The Chromium Authors), plus the licences of the third-party components Chromium includes. `cua/cmd/cua-package` stages Chromium's `LICENSE` from the pinned commit and the build's `chrome://credits` page as `licenses/Chromium-LICENSE.txt` and `licenses/Chromium-credits.html`, and copies both into `Chromium.app/Contents/Resources`.
+- Distributed unmodified apart from re-signing with Fennec's signing identity. Snapshot builds carry no generated `chrome://credits`; such a staging is marked development-only and must not be distributed until a build with generated third-party notices is pinned.
+- The DevTools protocol client in `cua/internal/cdp` is Fennec's own code; no chromedp or cdproto code is included.

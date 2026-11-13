@@ -1,4 +1,4 @@
-package ego
+package browser
 
 import (
 	"strings"

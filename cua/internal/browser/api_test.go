@@ -1,4 +1,4 @@
-package ego
+package browser
 
 import (
 	"context"
@@ -39,86 +39,92 @@ func formPage(url string) *spec {
 	)
 }
 
-func formManager(t *testing.T) (*fakeEgo, *Manager, *gateRec) {
+func formManager(t *testing.T) (*fakeBrowser, *Manager, *gateRec) {
 	f := newFake()
-	f.pages = formPage
+	f.build = formPage
 	m, g := newTestManager(t, f)
 	return f, m, g
 }
 
 func open(t *testing.T, m *Manager, key any) (binding float64, text string) {
 	t.Helper()
-	res := mustCall(t, m, key, map[string]any{"op": "createTab", "browserId": "ego", "url": "shop.test/form", "sessionName": "🔎 Shop"})
+	res := mustCall(t, m, key, map[string]any{"op": "createTab", "browserId": "chromium", "url": "shop.test/form", "sessionName": "🔎 Shop"})
 	return res["binding"].(float64), res["text"].(string)
 }
 
 func TestBrowsersAndState(t *testing.T) {
-	_, m, _ := formManager(t)
+	f, m, _ := formManager(t)
 	v, perr := m.Call(context.Background(), "s", json.RawMessage(`{"op":"browsers"}`))
 	if perr != nil {
 		t.Fatal(perr)
 	}
 	data, _ := json.Marshal(v)
-	if string(data) != `[{"id":"ego","name":"ego lite","family":"chromium","type":"cdp"}]` {
+	if string(data) != `[{"id":"chromium","name":"Chromium","family":"chromium","type":"cdp"}]` {
 		t.Errorf("browsers %s", data)
 	}
-	// No space yet: getState lists the browser with no tabs and starts
+	// No tab yet: getState lists the browser with no tabs and starts
 	// nothing.
 	v, _ = m.Call(context.Background(), "s", json.RawMessage(`{"op":"state"}`))
 	data, _ = json.Marshal(v)
-	if string(data) != `[{"id":"ego","name":"ego lite","family":"chromium","type":"cdp","tabs":[]}]` {
-		t.Errorf("state %s", data)
+	if string(data) != `[{"id":"chromium","name":"Chromium","family":"chromium","type":"cdp","tabs":[]}]` || f.starts != 0 {
+		t.Errorf("state %s, %d starts", data, f.starts)
 	}
 	open(t, m, "s")
 	v, _ = m.Call(context.Background(), "s", json.RawMessage(`{"op":"state"}`))
 	data, _ = json.Marshal(v)
-	if !strings.Contains(string(data), `"tabs":[{"id":"1","title":"Form","url":"https://shop.test/form","browserId":"ego"}]`) {
+	if !strings.Contains(string(data), `"tabs":[{"id":"1","title":"Form","url":"https://shop.test/form","browserId":"chromium"}]`) {
 		t.Errorf("state %s", data)
 	}
 	// The browser documentation shows once per runtime, again after reset.
 	res := mustCall(t, m, "s", map[string]any{"op": "browser", "id": "chrome"})
-	if res["doc"] != "" || res["browserId"] != "ego" {
+	if res["doc"] != "" || res["browserId"] != "chromium" {
 		t.Errorf("browser %v", res)
 	}
 	m.Reset("s")
-	if res := mustCall(t, m, "s", map[string]any{"op": "browser"}); !strings.HasPrefix(res["doc"].(string), "# Browser: ego lite") {
+	if res := mustCall(t, m, "s", map[string]any{"op": "browser"}); !strings.HasPrefix(res["doc"].(string), "# Browser: Chromium") {
 		t.Errorf("doc after reset %v", res)
 	}
-	if _, perr := call(t, m, "s", map[string]any{"op": "browser", "id": "firefox"}); perr == nil || !strings.Contains(perr.Message, `Browser "firefox" is not available`) {
-		t.Errorf("unknown browser %v", perr)
+	for _, id := range []string{"firefox", "ego", "google chrome"} {
+		if _, perr := call(t, m, "s", map[string]any{"op": "browser", "id": id}); perr == nil || !strings.Contains(perr.Message, `Browser "`+id+`" is not available`) {
+			t.Errorf("%s: %v", id, perr)
+		}
 	}
 }
 
 func TestCreateTab(t *testing.T) {
 	f, m, _ := formManager(t)
-	res := mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "ego", "url": "shop.test/form", "sessionName": "🔎 Shop", "visible": true})
+	res := mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "shop.test/form", "sessionName": "🔎 Shop", "visible": true})
 	text := res["text"].(string)
 	if !strings.HasPrefix(text, "Browser tab: 1, Title: \"Form\", URL: \"https://shop.test/form\".\n0 AXWebArea Form, URL: shop.test/form\n\t1 heading Order, Value: 1") {
 		t.Errorf("state:\n%s", text)
 	}
-	if !strings.HasPrefix(res["doc"].(string), "# Browser: ego lite") || res["id"] != "1" {
+	if !strings.HasPrefix(res["doc"].(string), "# Browser: Chromium") || res["id"] != "1" {
 		t.Errorf("create %v", res)
 	}
-	// The space is named after sessionName and its first page is used.
-	if got := f.callsLike("space"); len(got) != 1 || !strings.Contains(got[0], "") {
-		t.Errorf("space calls %v", got)
+	// The first tab opens a new window in the background; the page is
+	// loaded through Page.navigate after attaching with lifecycle events.
+	if got := f.callsLike("Target.createTarget"); len(got) != 1 || got[0] != `Target.createTarget {"background":true,"newWindow":true,"url":"about:blank"}` {
+		t.Errorf("create %v", got)
 	}
-	if sp := f.spaces[1]; sp.name != "🔎 Shop" || len(sp.pages) != 1 {
-		t.Errorf("space %+v", sp)
+	if got := f.callsLike("p1 Page."); len(got) < 3 || got[0] != "p1 Page.enable" || got[1] != `p1 Page.setLifecycleEventsEnabled {"enabled":true}` || got[2] != `p1 Page.navigate {"url":"https://shop.test/form"}` {
+		t.Errorf("page calls %v", got)
 	}
-	// A second tab opens a new page in the same space.
+	// A second tab opens in the same window.
 	res = mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chrome", "url": "https://shop.test/two"})
 	if res["id"] != "2" || res["doc"] != "" || !strings.Contains(res["text"].(string), `Title: "Two"`) {
 		t.Errorf("second %v", res)
 	}
-	if len(f.spaces) != 1 || len(f.spaces[1].pages) != 2 {
-		t.Errorf("spaces %d", len(f.spaces))
+	if got := f.callsLike("Target.createTarget"); len(got) != 2 || strings.Contains(got[1], "newWindow") {
+		t.Errorf("second create %v", got)
+	}
+	if len(f.pages) != 2 || f.pages[0].window != f.pages[1].window {
+		t.Errorf("windows %+v %+v", f.pages[0], f.pages[1])
 	}
 	for _, bad := range []map[string]any{
 		{"op": "createTab"},
 		{"op": "createTab", "browserId": ""},
-		{"op": "createTab", "browserId": "ego", "visible": "yes"},
-		{"op": "createTab", "browserId": "ego", "sessionName": 3},
+		{"op": "createTab", "browserId": "chromium", "visible": "yes"},
+		{"op": "createTab", "browserId": "chromium", "sessionName": 3},
 	} {
 		if _, perr := call(t, m, "s", bad); perr == nil || perr.Code != protocol.ErrInvalid {
 			t.Errorf("%v: %v", bad, perr)
@@ -127,62 +133,82 @@ func TestCreateTab(t *testing.T) {
 	if _, perr := call(t, m, "s", map[string]any{"op": "createTab", "browserId": ""}); !strings.Contains(perr.Message, "createBrowserTab requires a browser ID. Select one with cua.getBrowser().") {
 		t.Errorf("message %q", perr.Message)
 	}
+	// A failed navigation reports Chromium's error.
+	if _, perr := call(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "unreachable.test"}); perr == nil || perr.Message != "net::ERR_NAME_NOT_RESOLVED at https://unreachable.test" {
+		t.Errorf("unreachable %v", perr)
+	}
 }
 
-// A name a user space holds is never taken; another session's name is not
-// shared.
-func TestSpaceNames(t *testing.T) {
+// Each session works in its own window; it sees its own tabs, the pages
+// they opened and tabs the user opened in its window, never another
+// session's.
+func TestWindows(t *testing.T) {
 	f, m, _ := formManager(t)
-	f.userNames["Research"] = true
-	mustCall(t, m, "a", map[string]any{"op": "createTab", "browserId": "ego", "sessionName": "Research"})
-	mustCall(t, m, "b", map[string]any{"op": "createTab", "browserId": "ego", "sessionName": "Research"})
-	names := map[string]bool{}
-	for _, sp := range f.spaces {
-		names[sp.name] = true
-		if sp.ownership != "agent" {
-			t.Errorf("space %+v", sp)
+	mustCall(t, m, "a", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/form", "sessionName": "A"})
+	mustCall(t, m, "b", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/two", "sessionName": "B"})
+	if f.pages[0].window == f.pages[1].window {
+		t.Fatal("two sessions share a window")
+	}
+	popup := f.addPage("https://shop.test/two", 9, f.pages[0].targetID) // a popup of A's tab
+	f.addPage("https://user.test/", f.pages[0].window, "")              // the user's tab in A's window
+	f.addPage("https://elsewhere.test/", 77, "")                        // a tab in a window of no session
+	res := mustCall(t, m, "a", map[string]any{"op": "listTabs"})
+	data, _ := json.Marshal(res["tabs"])
+	if !strings.Contains(string(data), `"url":"https://shop.test/form"`) || !strings.Contains(string(data), `"url":"https://user.test/"`) ||
+		strings.Count(string(data), `"id"`) != 3 || strings.Contains(string(data), "elsewhere") {
+		t.Errorf("a's tabs %s", data)
+	}
+	res = mustCall(t, m, "b", map[string]any{"op": "listTabs"})
+	data, _ = json.Marshal(res["tabs"])
+	if strings.Count(string(data), `"id"`) != 1 {
+		t.Errorf("b's tabs %s", data)
+	}
+	// The popup is an agent tab (closed at the turn's end); the user's is
+	// not.
+	m.TurnEnded(context.Background(), "a")
+	for _, p := range f.pages {
+		if p == popup || p.url == "https://shop.test/form" {
+			t.Errorf("agent tab %s survived the turn", p.url)
 		}
 	}
-	if names["Research"] || len(names) != 2 {
-		t.Errorf("names %v", names)
+	if f.target(f.pages[len(f.pages)-1].targetID) == nil || len(f.pages) != 3 {
+		t.Errorf("pages after the turn: %d", len(f.pages))
 	}
-	// nameSession before the first tab names the space.
+	// nameSession names the agent cursor.
 	mustCall(t, m, "c", map[string]any{"op": "nameSession", "name": "Named"})
-	mustCall(t, m, "c", map[string]any{"op": "createTab", "browserId": "ego"})
-	found := false
-	for _, sp := range f.spaces {
-		found = found || sp.name == "Named"
-	}
-	if !found {
-		t.Error("nameSession was not used")
+	res = mustCall(t, m, "c", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/form"})
+	f.clearCalls()
+	mustCall(t, m, "c", map[string]any{"op": "tab", "binding": res["binding"], "method": "click", "args": []any{6}})
+	if len(f.cursor) == 0 || !strings.Contains(f.cursor[0], "move 40 155 Named · click button Save") {
+		t.Errorf("cursor %v", f.cursor)
 	}
 }
 
 func TestGetTabAndList(t *testing.T) {
 	_, m, _ := formManager(t)
-	if _, perr := call(t, m, "s", map[string]any{"op": "getTab", "ref": "1"}); perr == nil || perr.Message != "Tab not found in browser ego." {
-		t.Errorf("no space: %v", perr)
+	if _, perr := call(t, m, "s", map[string]any{"op": "getTab", "ref": "1"}); perr == nil || perr.Message != "Tab not found in browser chromium." {
+		t.Errorf("no tabs: %v", perr)
 	}
 	open(t, m, "s")
-	mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "ego", "url": "https://shop.test/form"})
-	res := mustCall(t, m, "s", map[string]any{"op": "listTabs", "browser": "ego"})
+	mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/form"})
+	res := mustCall(t, m, "s", map[string]any{"op": "listTabs", "browser": "chromium"})
 	data, _ := json.Marshal(res["tabs"])
-	if string(data) != `[{"browserId":"ego","id":"1","title":"Form","url":"https://shop.test/form"},{"browserId":"ego","id":"2","title":"Form","url":"https://shop.test/form"}]` {
+	if string(data) != `[{"browserId":"chromium","id":"1","title":"Form","url":"https://shop.test/form"},{"browserId":"chromium","id":"2","title":"Form","url":"https://shop.test/form"}]` {
 		t.Errorf("tabs %s", data)
 	}
-	res = mustCall(t, m, "s", map[string]any{"op": "getTab", "ref": "2", "browser": "ego"})
+	res = mustCall(t, m, "s", map[string]any{"op": "getTab", "ref": "2", "browser": "chromium"})
 	if res["id"] != "2" || !strings.Contains(res["text"].(string), "Browser tab: 2,") {
 		t.Errorf("getTab %v", res)
 	}
-	if _, perr := call(t, m, "s", map[string]any{"op": "getTab", "ref": map[string]any{"url": "https://shop.test/form"}, "browser": "ego"}); perr == nil || !strings.HasPrefix(perr.Message, "Multiple tabs match the reference in browser ego: [") {
+	if _, perr := call(t, m, "s", map[string]any{"op": "getTab", "ref": map[string]any{"url": "https://shop.test/form"}, "browser": "chromium"}); perr == nil || !strings.HasPrefix(perr.Message, "Multiple tabs match the reference in browser chromium: [") {
 		t.Errorf("ambiguous: %v", perr)
 	}
 	cases := map[string]map[string]any{
 		"getTab requires a tab reference":               {"op": "getTab", "ref": ""},
-		"getTab requires an absolute URL.":              {"op": "getTab", "ref": map[string]any{"url": "shop.test"}, "browser": "ego"},
+		"getTab requires an absolute URL.":              {"op": "getTab", "ref": map[string]any{"url": "shop.test"}, "browser": "chromium"},
 		"getTab({ url }) requires an explicit browser.": {"op": "getTab", "ref": map[string]any{"url": "https://shop.test/form"}},
-		"Tab mentions are not available in ego lite":    {"op": "getTab", "ref": map[string]any{"mention": "plugin://x"}},
-		"Tab not found in browser ego.":                 {"op": "getTab", "ref": "9"},
+		"Tab mentions are not available in Chromium":    {"op": "getTab", "ref": map[string]any{"mention": "plugin://x"}},
+		"Tab not found in browser chromium.":            {"op": "getTab", "ref": "9"},
 	}
 	for want, req := range cases {
 		if _, perr := call(t, m, "s", req); perr == nil || !strings.HasPrefix(perr.Message, want) {
@@ -191,12 +217,7 @@ func TestGetTabAndList(t *testing.T) {
 	}
 }
 
-func centre(calls []string) string {
-	if len(calls) == 0 {
-		return ""
-	}
-	return calls[len(calls)-1]
-}
+func joined(list []string) string { return strings.Join(list, "|") }
 
 func TestClickAndPoints(t *testing.T) {
 	f, m, g := formManager(t)
@@ -206,28 +227,26 @@ func TestClickAndPoints(t *testing.T) {
 	}
 	f.clearCalls()
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "click", "args": []any{6}})
-	if got := centre(f.callsLike("call p1 mouse.click")); got != `call p1 mouse.click 40 155 {"button":"left","clickCount":1,"label":"click button Save"}` {
+	if got := joined(f.inputs("p1 ")); got != "p1 move 40 155|p1 down left 40 155 x1 mods0|p1 up left 40 155 x1" {
 		t.Errorf("click %q", got)
+	}
+	if len(f.cursor) != 1 || f.cursor[0] != "p1 [move 40 155 🔎 Shop · click button Save]" {
+		t.Errorf("cursor %v", f.cursor)
 	}
 	if !strings.Contains(g.asked[len(g.asked)-1], `"click":{"ref":"element 6"}`) || !strings.HasSuffix(g.asked[len(g.asked)-1], " @ Form") {
 		t.Errorf("gate %v", g.asked)
 	}
-	// Right double click with shift held: keys go down and up around it.
+	// Right double click with shift held: the key goes down and up around
+	// it, and each press carries the modifier and its click count.
 	f.clearCalls()
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "click", "args": []any{6, map[string]any{"mouseButton": "r", "clickCount": 2, "key": "shift"}}})
-	var seq []string
-	for _, c := range f.callsLike("call p1 ") {
-		if strings.Contains(c, "keyboard.") || strings.Contains(c, "mouse.") {
-			seq = append(seq, c)
-		}
-	}
-	if strings.Join(seq, "|") != `call p1 keyboard.down "Shift"|call p1 mouse.click 40 155 {"button":"right","clickCount":2,"label":"click button Save"}|call p1 keyboard.up "Shift"` {
-		t.Errorf("sequence %v", seq)
+	if got := joined(f.inputs("p1 ")); got != "p1 key down Shift|p1 move 40 155|p1 down right 40 155 x1 mods8|p1 up right 40 155 x1|p1 down right 40 155 x2 mods8|p1 up right 40 155 x2|p1 key up Shift" {
+		t.Errorf("sequence %v", got)
 	}
 	// A held press: move, then down and up per click.
 	f.clearCalls()
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "click", "args": []any{6, map[string]any{"durationMs": 10}}})
-	if got := f.callsLike("call p1 mouse."); len(got) != 3 || !strings.Contains(got[1], "mouse.down") || !strings.Contains(got[2], "mouse.up") {
+	if got := f.inputs("p1 "); len(got) != 3 || !strings.Contains(got[1], "down") || !strings.Contains(got[2], "up") {
 		t.Errorf("held %v", got)
 	}
 	// Points are screenshot pixels: an 800 px shot of a 1000 px viewport
@@ -235,7 +254,7 @@ func TestClickAndPoints(t *testing.T) {
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "getScreenshot"})
 	f.clearCalls()
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "click", "args": []any{[]any{100, 40}}})
-	if got := centre(f.callsLike("call p1 mouse.click")); !strings.HasPrefix(got, "call p1 mouse.click 125 50 ") {
+	if got := f.inputs("p1 down"); len(got) != 1 || !strings.HasPrefix(got[0], "p1 down left 125 50 ") {
 		t.Errorf("point %q", got)
 	}
 	errs := map[string][]any{
@@ -260,6 +279,17 @@ func TestClickAndPoints(t *testing.T) {
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "click", "args": []any{13}}); perr == nil || !strings.Contains(perr.Message, "no box") {
 		t.Errorf("hidden: %v", perr)
 	}
+	// Drag and scroll.
+	f.clearCalls()
+	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "drag", "args": []any{[]any{0, 0}, []any{80, 0}}})
+	if got := f.inputs("p1 "); len(got) != 15 || got[1] != "p1 down left 0 0 x1 mods0" || got[13] != "p1 move 100 0" || got[14] != "p1 up left 100 0 x1" {
+		t.Errorf("drag %v", got)
+	}
+	f.clearCalls()
+	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "scroll", "args": []any{6, "down", 2}})
+	if got := joined(f.inputs("p1 ")); got != "p1 move 40 155|p1 wheel 0 1080" {
+		t.Errorf("scroll %v", got)
+	}
 }
 
 func TestInputMethods(t *testing.T) {
@@ -270,31 +300,41 @@ func TestInputMethods(t *testing.T) {
 		return perr
 	}
 	f.clearCalls()
-	if perr := tab("typeText", 3, "Ada"); perr != nil {
+	if perr := tab("typeText", 3, "Ad!\né"); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := strings.Join(f.callsLike("call p1 "), "|"); !strings.Contains(got, `cdp "DOM.focus" {"backendNodeId":`) || !strings.HasSuffix(got, `call p1 keyboard.type "Ada"`) {
+	if got := joined(f.callsLike("p1 DOM.focus")); !strings.Contains(got, `{"backendNodeId":`) {
+		t.Errorf("focus %s", got)
+	}
+	if got := joined(f.inputs("p1 ")); got != `p1 key down A text="A"|p1 key up A|p1 key down d text="d"|p1 key up d|p1 key down ! text="!"|p1 key up !|p1 key down Enter text="\r" [insertNewline]|p1 key up Enter|p1 insert é` {
 		t.Errorf("typeText %s", got)
 	}
 	f.clearCalls()
 	if perr := tab("pressKey", nil, "super+a"); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := f.callsLike("call p1 keyboard."); len(got) != 1 || got[0] != `call p1 keyboard.press "Meta+a"` {
+	if got := joined(f.inputs("p1 ")); got != "p1 key down Meta|p1 key down a [selectAll]|p1 key up a|p1 key up Meta" {
 		t.Errorf("pressKey %v", got)
 	}
 	f.clearCalls()
 	if perr := tab("pressKey", 3, "Return", map[string]any{"durationMs": 5}); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := f.callsLike("call p1 keyboard."); strings.Join(got, "|") != `call p1 keyboard.down "Enter"|call p1 keyboard.up "Enter"` {
+	if got := joined(f.inputs("p1 key")); got != `p1 key down Enter text="\r" [insertNewline]|p1 key up Enter` {
 		t.Errorf("held key %v", got)
+	}
+	f.clearCalls()
+	if perr := tab("pressKey", nil, "BackSpace"); perr != nil {
+		t.Fatal(perr)
+	}
+	if got := joined(f.inputs("p1 key")); got != "p1 key down Backspace [deleteBackward]|p1 key up Backspace" {
+		t.Errorf("backspace %v", got)
 	}
 	f.clearCalls()
 	if perr := tab("paste", nil, "bold x", map[string]any{"format": "html"}); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := f.callsLike("call p1 keyboard.paste"); len(got) != 1 || got[0] != `call p1 keyboard.paste {"html":"bold x","text":"bold x"}` {
+	if got := joined(f.inputs("p1 ")); got != `p1 paste ["bold x","bold x"]|p1 insert bold x` {
 		t.Errorf("paste %v", got)
 	}
 	for want, args := range map[string][]any{
@@ -327,7 +367,7 @@ func TestInputMethods(t *testing.T) {
 	if perr := tab("selectText", 5, "hello", map[string]any{"prefix": "world ", "selectionType": "cursor_after"}); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := f.callsLike("call p1 cdp \"Runtime.callFunctionOn\""); len(got) < 2 || !strings.Contains(got[len(got)-1], `"arguments":[{"value":17},{"value":17}]`) {
+	if got := f.callsLike("p1 Runtime.callFunctionOn"); len(got) < 2 || !strings.Contains(got[len(got)-1], `"arguments":[{"value":17},{"value":17}]`) {
 		t.Errorf("selection %v", got)
 	}
 	if perr := tab("selectText", 5, "nope"); perr == nil || !strings.Contains(perr.Message, `"nope" is not in element 5`) {
@@ -340,7 +380,7 @@ func TestInputMethods(t *testing.T) {
 	if perr := tab("performSecondaryAction", 10, "expand"); perr != nil {
 		t.Fatal(perr)
 	}
-	if len(f.callsLike("call p1 mouse.click")) != 1 {
+	if len(f.inputs("p1 down")) != 1 {
 		t.Error("Expand did not click")
 	}
 	// Every input step asked the gate first.
@@ -361,12 +401,16 @@ func TestSecrets(t *testing.T) {
 	if !strings.Contains(last, `"secret":true`) {
 		t.Errorf("not marked secret: %s", last)
 	}
-	f.fail["keyboard.type"] = "typing failed for hunter2-secret"
+	f.mu.Lock()
+	f.fail["Input.dispatchKeyEvent"] = "typing failed for hunter2-secret"
+	f.mu.Unlock()
 	_, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "typeText", "args": []any{4, "hunter2-secret"}})
 	if perr == nil || strings.Contains(perr.Message, "hunter2-secret") || !strings.Contains(perr.Message, "[text]") {
 		t.Errorf("error %v", perr)
 	}
-	delete(f.fail, "keyboard.type")
+	f.mu.Lock()
+	delete(f.fail, "Input.dispatchKeyEvent")
+	f.mu.Unlock()
 	// setValue on the password field: the question shows dots.
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "setValue", "args": []any{4, "hunter2-secret"}}); perr != nil {
 		t.Fatal(perr)
@@ -391,21 +435,18 @@ func TestDeclined(t *testing.T) {
 			t.Errorf("%s: %v", method, perr)
 		}
 	}
-	if got := f.callsLike("call p1 mouse."); len(got) != 0 {
-		t.Errorf("sent %v", got)
-	}
-	if got := f.callsLike("call p1 keyboard."); len(got) != 0 {
+	if got := f.inputs(""); len(got) != 0 {
 		t.Errorf("sent %v", got)
 	}
 }
 
-// The allowlist refuses every call when ego lite is not admitted; state
+// The allowlist refuses every call when Chromium is not admitted; state
 // and the browser list show nothing.
 func TestAllowlist(t *testing.T) {
 	f := newFake()
-	m := NewManager(Options{Dir: t.TempDir(), Start: f.starter(), Allowed: func() bool { return false }})
+	m := NewManager(Options{Browser: f, Allowed: func() bool { return false }})
 	defer m.CloseAll(context.Background())
-	if _, perr := call(t, m, "s", map[string]any{"op": "createTab", "browserId": "ego"}); perr == nil || perr.Code != protocol.ErrNotAllowed {
+	if _, perr := call(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium"}); perr == nil || perr.Code != protocol.ErrNotAllowed {
 		t.Errorf("create %v", perr)
 	}
 	v, _ := m.Call(context.Background(), "s", json.RawMessage(`{"op":"browsers"}`))
@@ -413,7 +454,7 @@ func TestAllowlist(t *testing.T) {
 		t.Errorf("browsers %s", data)
 	}
 	if f.starts != 0 {
-		t.Error("a bridge started")
+		t.Error("the browser started")
 	}
 	off := NewManager(Options{})
 	if _, perr := call(t, off, "s", map[string]any{"op": "browser"}); perr == nil || perr.Message != "No browser is available." {
@@ -425,7 +466,9 @@ func TestAllowlist(t *testing.T) {
 func TestStop(t *testing.T) {
 	f, m, _ := formManager(t)
 	b, _ := open(t, m, "s")
-	f.delay["goto"] = time.Second
+	f.mu.Lock()
+	f.delay["Page.navigate"] = time.Second
+	f.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
 	start := time.Now()
@@ -466,21 +509,35 @@ func TestNavigationAndMarks(t *testing.T) {
 	if _, perr := tab("forward"); perr != nil {
 		t.Fatal(perr)
 	}
-	// Hand-off gives the space to the user; the next call takes it back.
+	if _, perr := tab("reload"); perr != nil {
+		t.Fatal(perr)
+	}
+	for _, args := range [][]any{{"load"}, {map[string]any{"state": "networkidle"}}, {"domcontentloaded", map[string]any{"timeoutMs": 100}}} {
+		if _, perr := tab("waitForLoadState", args...); perr != nil {
+			t.Errorf("waitForLoadState %v: %v", args, perr)
+		}
+	}
+	if _, perr := tab("waitForLoadState", "idle"); perr == nil {
+		t.Error("an unknown load state was accepted")
+	}
+	if _, perr := tab("waitForURL", "**/two"); perr != nil {
+		t.Errorf("waitForURL glob %v", perr)
+	}
+	if _, perr := tab("waitForURL", "https://shop.test/{one,three}", map[string]any{"timeoutMs": 150}); perr == nil || !strings.Contains(perr.Message, "Timeout 150ms exceeded") {
+		t.Errorf("waitForURL timeout %v", perr)
+	}
+	// Hand-off brings the tab to the front for the user.
 	if _, perr := tab("markHandoff"); perr != nil {
 		t.Fatal(perr)
 	}
-	if f.spaces[1].ownership != "agentDelegatedToUser" {
-		t.Error("not handed off")
+	if got := f.callsLike("Target.activateTarget"); len(got) != 1 || !strings.Contains(got[0], f.pages[0].targetID) {
+		t.Errorf("handoff %v", got)
 	}
 	if _, perr := tab("getAXState"); perr != nil {
 		t.Fatal(perr)
 	}
-	if f.spaces[1].ownership != "agent" || len(f.callsLike("takeover")) != 1 {
-		t.Error("not taken back")
-	}
 	// Close: the tab and its bindings go.
-	res2 := mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "ego", "url": "https://shop.test/two"})
+	res2 := mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/two"})
 	b2 := res2["binding"]
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b2, "method": "close"}); perr != nil {
 		t.Fatal(perr)
@@ -488,11 +545,12 @@ func TestNavigationAndMarks(t *testing.T) {
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b2, "method": "getAXState"}); perr == nil || perr.Message != "Tab 2 was closed; get or create a fresh tab from this browser." {
 		t.Errorf("closed %v", perr)
 	}
-	// End of the session: finish keeps the marked tab only.
+	// End of the session: the marked tab stays open, others close.
+	mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/two"})
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "markDeliverable"})
 	m.Close(context.Background(), "s")
-	if sp := f.spaces[1]; !sp.done || strings.Join(sp.finished, ",") != "p1" {
-		t.Errorf("finish %+v", sp)
+	if len(f.pages) != 1 || f.pages[0].label != "p1" {
+		t.Errorf("after close %d pages", len(f.pages))
 	}
 }
 
@@ -501,12 +559,9 @@ func TestNavigationAndMarks(t *testing.T) {
 func TestTurnEnded(t *testing.T) {
 	f, m, _ := formManager(t)
 	b, _ := open(t, m, "s")
-	mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "ego", "url": "https://shop.test/two"})
-	f.mu.Lock()
-	user := &fakePage{label: "", targetID: "TUSER", url: "https://user.test/", title: "Mine", openedBy: "user"}
-	user.load(n("RootWebArea", "Mine"))
-	f.spaces[1].pages = append(f.spaces[1].pages, user)
-	f.mu.Unlock()
+	mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/two"})
+	user := f.addPage("https://user.test/", f.pages[0].window, "")
+	user.title = "Mine"
 	mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "markDeliverable"})
 	mustCall(t, m, "s", map[string]any{"op": "listTabs"})
 	m.TurnEnded(context.Background(), "s")
@@ -515,17 +570,18 @@ func TestTurnEnded(t *testing.T) {
 	if !strings.Contains(string(data), `"title":"Form"`) || strings.Contains(string(data), `"title":"Two"`) || !strings.Contains(string(data), `"title":"Mine"`) {
 		t.Errorf("after the turn %s", data)
 	}
-	// The user's tab can be bound (adopted) but not closed.
+	// The user's tab can be bound (attached on first use) but not closed.
 	res = mustCall(t, m, "s", map[string]any{"op": "getTab", "ref": "3"})
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": res["binding"], "method": "close"}); perr == nil || perr.Code != protocol.ErrNotAllowed {
 		t.Errorf("closing a user tab: %v", perr)
 	}
-	if len(f.callsLike("adopt")) != 1 {
-		t.Errorf("adopt %v", f.callsLike("adopt"))
+	if got := f.callsLike("Target.attachToTarget"); len(got) != 3 || !strings.Contains(got[2], user.targetID) {
+		t.Errorf("attach %v", got)
 	}
+	// The marks cleared: the session's end closes the formerly kept tab.
 	m.Close(context.Background(), "s")
-	if sp := f.spaces[1]; len(sp.finished) != 0 {
-		t.Errorf("marks survived the turn: %v", sp.finished)
+	if len(f.pages) != 1 || f.pages[0] != user {
+		t.Errorf("after close %d pages", len(f.pages))
 	}
 }
 
@@ -543,20 +599,28 @@ func TestReset(t *testing.T) {
 	}
 }
 
-// A bridge crash: the call in flight fails with advice; the next one
-// restarts the bridge and reopens the space.
+// A browser crash: the call in flight fails with advice; the tabs are gone
+// with it, and the next tab starts the browser again.
 func TestCrashRecovery(t *testing.T) {
 	f, m, _ := formManager(t)
 	b, _ := open(t, m, "s")
-	f.delay["reload"] = 300 * time.Millisecond
+	f.mu.Lock()
+	f.delay["Page.reload"] = 300 * time.Millisecond
+	f.mu.Unlock()
 	go func() { time.Sleep(50 * time.Millisecond); f.crash() }()
 	_, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "reload"})
-	if perr == nil || !strings.Contains(perr.Message, "the ego lite bridge stopped; the action may have been sent") {
+	if perr == nil || !strings.Contains(perr.Message, "Chromium stopped; the action may have been sent") {
 		t.Fatalf("in flight %v", perr)
 	}
-	res := mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "getAXState", "args": []any{map[string]any{"disableDiffing": true}}})
-	if !strings.Contains(res["text"].(string), "button Save") || len(f.callsLike("resume")) != 1 || f.starts != 2 {
-		t.Errorf("recovery: %d starts, resume %v", f.starts, f.callsLike("resume"))
+	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "getAXState"}); perr == nil || !strings.Contains(perr.Message, "the tab was closed") {
+		t.Errorf("old tab after the crash: %v", perr)
+	}
+	res := mustCall(t, m, "s", map[string]any{"op": "createTab", "browserId": "chromium", "url": "https://shop.test/form"})
+	if !strings.Contains(res["text"].(string), "button Save") || f.starts != 2 || res["id"] != "2" {
+		t.Errorf("recovery: %d starts, %v", f.starts, res["id"])
+	}
+	if got := f.callsLike("Target.createTarget"); len(got) != 2 || !strings.Contains(got[1], "newWindow") {
+		t.Errorf("a new window after the restart: %v", got)
 	}
 }
 
@@ -623,18 +687,39 @@ func TestLocators(t *testing.T) {
 	if _, perr := loc("click", role("button", s("Save"), true)); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := centre(f.callsLike("call p1 mouse.click")); got != `call p1 mouse.click 40 155 {"button":"left","clickCount":1,"label":"click button Save"}` {
+	if got := joined(f.inputs("p1 ")); got != "p1 move 40 155|p1 down left 40 155 x1 mods0|p1 up left 40 155 x1" {
 		t.Errorf("click %q", got)
 	}
 	if !strings.Contains(g.asked[len(g.asked)-1], `"select":"the locator"`) {
 		t.Errorf("gate %v", g.asked[len(g.asked)-1])
 	}
 	f.clearCalls()
+	if _, perr := loc("hover", role("button", s("Save"), true)); perr != nil {
+		t.Fatal(perr)
+	}
+	if got := joined(f.inputs("p1 ")); got != "p1 move 40 155" {
+		t.Errorf("hover %q", got)
+	}
+	f.clearCalls()
 	if _, perr := loc("fill", []map[string]any{{"kind": "label", "text": s("Name")}}, "Ada"); perr != nil {
 		t.Fatal(perr)
 	}
-	if got := f.callsLike("call p1 keyboard."); len(got) != 1 || got[0] != `call p1 keyboard.insertText "Ada"` {
+	if got := joined(f.inputs("p1 ")); got != "p1 insert Ada" {
 		t.Errorf("fill %v", got)
+	}
+	f.clearCalls()
+	if _, perr := loc("clear", []map[string]any{{"kind": "label", "text": s("Name")}}); perr != nil {
+		t.Fatal(perr)
+	}
+	if got := joined(f.inputs("p1 ")); got != "p1 key down Delete [deleteForward]|p1 key up Delete" {
+		t.Errorf("clear %v", got)
+	}
+	f.clearCalls()
+	if _, perr := loc("press", []map[string]any{{"kind": "label", "text": s("Name")}}, "Shift+Tab"); perr != nil {
+		t.Fatal(perr)
+	}
+	if got := joined(f.inputs("p1 key")); got != "p1 key down Shift|p1 key down Tab [insertBacktab]|p1 key up Tab|p1 key up Shift" {
+		t.Errorf("press %v", got)
 	}
 	f.clearCalls()
 	if _, perr := loc("check", role("checkbox", s("Agree"), false)); perr == nil || !strings.Contains(perr.Message, "did not change its checked state") {
@@ -660,5 +745,22 @@ func TestLocators(t *testing.T) {
 	}
 	if _, perr := call(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "evaluate", "args": []any{"() => { throw new Error('boom') }", true, nil}}); perr == nil || perr.Message != "Error: boom" {
 		t.Errorf("evaluate error %v", perr)
+	}
+}
+
+// Screenshots hide the agent cursor and come at CSS-pixel size.
+func TestScreenshot(t *testing.T) {
+	f, m, _ := formManager(t)
+	b, _ := open(t, m, "s")
+	f.clearCalls()
+	res := mustCall(t, m, "s", map[string]any{"op": "tab", "binding": b, "method": "screenshot", "args": []any{map[string]any{"fullPage": true}}})
+	if res["mime"] != "image/png" || res["data"] == "" {
+		t.Errorf("shot %v", res)
+	}
+	if got := f.callsLike("p1 Page.captureScreenshot"); len(got) != 1 || !strings.Contains(got[0], `"captureBeyondViewport":true`) || !strings.Contains(got[0], `"height":2400`) {
+		t.Errorf("capture %v", got)
+	}
+	if len(f.cursor) != 2 || !strings.Contains(f.cursor[0], "hide") || !strings.Contains(f.cursor[1], "show") {
+		t.Errorf("cursor %v", f.cursor)
 	}
 }

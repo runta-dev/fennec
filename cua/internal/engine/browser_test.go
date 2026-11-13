@@ -11,7 +11,7 @@ import (
 	"fennec/cua/internal/protocol"
 )
 
-// fakeBrowsers stands in for internal/ego behind the REPL: it records each
+// fakeBrowsers stands in for internal/browser behind the REPL: it records each
 // call and answers canned results, so these tests check the cua surface
 // (display, return values, errors) on its own.
 type fakeBrowsers struct {
@@ -32,21 +32,25 @@ func (f *fakeBrowsers) Call(ctx context.Context, key any, args json.RawMessage) 
 	f.mu.Unlock()
 	doc := ""
 	if !f.doc {
-		doc = "# Browser: ego lite\n(doc)"
+		doc = "# Browser: Chromium\n(doc)"
 	}
 	switch req["op"] {
 	case "browsers":
-		return []map[string]any{{"id": "ego", "name": "ego lite", "family": "chromium", "type": "cdp"}}, nil
+		return []map[string]any{{"id": "chromium", "name": "Chromium", "family": "chromium", "type": "cdp"}}, nil
 	case "state":
-		return []map[string]any{{"id": "ego", "name": "ego lite", "family": "chromium", "type": "cdp", "tabs": []map[string]any{{"id": "1", "title": "T", "url": "https://x.test/", "browserId": "ego"}}}}, nil
+		return []map[string]any{{"id": "chromium", "name": "Chromium", "family": "chromium", "type": "cdp", "tabs": []map[string]any{{"id": "1", "title": "T", "url": "https://x.test/", "browserId": "chromium"}}}}, nil
 	case "guide":
-		return "# Browser: ego lite\n(doc)", nil
+		return "# Browser: Chromium\n(doc)", nil
+	case "chromeProfiles":
+		return []map[string]any{{"dir": "Default", "name": "Me", "lastUsed": true}}, nil
+	case "importChrome":
+		return map[string]any{"profile": map[string]any{"dir": "Default"}, "cookies": map[string]any{"found": 3, "imported": 3}}, nil
 	case "browser":
 		f.doc = true
-		return map[string]any{"browserId": "ego", "name": "ego lite", "doc": doc}, nil
+		return map[string]any{"browserId": "chromium", "name": "Chromium", "doc": doc}, nil
 	case "createTab", "getTab":
 		if req["ref"] == "9" {
-			return nil, &protocol.Error{Code: protocol.ErrTargetNotFound, Message: "Tab not found in browser ego."}
+			return nil, &protocol.Error{Code: protocol.ErrTargetNotFound, Message: "Tab not found in browser chromium."}
 		}
 		f.doc = true
 		return map[string]any{"id": "1", "binding": 1, "doc": doc, "text": "Browser tab: 1, Title: \"T\", URL: \"https://x.test/\".\n0 AXWebArea T, URL: x.test/\n\nThe focused UI element is 0 AXWebArea T, URL: x.test/"}, nil
@@ -56,7 +60,7 @@ func (f *fakeBrowsers) Call(ctx context.Context, key any, args json.RawMessage) 
 			d = doc
 			f.doc = true
 		}
-		return map[string]any{"doc": d, "tabs": []map[string]any{{"id": "1", "title": "T", "url": "https://x.test/", "browserId": "ego"}}}, nil
+		return map[string]any{"doc": d, "tabs": []map[string]any{{"id": "1", "title": "T", "url": "https://x.test/", "browserId": "chromium"}}}, nil
 	case "tab":
 		switch req["method"] {
 		case "getAXState":
@@ -118,13 +122,13 @@ func browserSession(t *testing.T) (*mcp, *fakeBrowsers) {
 // the object), getState().browsers filled, listTabs as compact JSON.
 func TestCDX24BrowserDiscovery(t *testing.T) {
 	c, fb := browserSession(t)
-	if out := c.ok(`await cua.listBrowsers()`); out != `[{"id":"ego","name":"ego lite","family":"chromium","type":"cdp"}]` {
+	if out := c.ok(`await cua.listBrowsers()`); out != `[{"id":"chromium","name":"Chromium","family":"chromium","type":"cdp"}]` {
 		t.Errorf("listBrowsers %q", out)
 	}
 	if out := c.ok(`await cua.listBrowsers({ emit: false })`); out != "" {
 		t.Errorf("emit false %q", out)
 	}
-	if out := c.ok(`var b = await cua.getBrowser({ id: "chrome" }); nodeRepl.write("|" + b.browserId)`); out != "# Browser: ego lite\n(doc)\n|ego" {
+	if out := c.ok(`var b = await cua.getBrowser({ id: "chrome" }); nodeRepl.write("|" + b.browserId)`); out != "# Browser: Chromium\n(doc)\n|chromium" {
 		t.Errorf("getBrowser %q", out)
 	}
 	if fb.last()["id"] != "chrome" {
@@ -133,7 +137,7 @@ func TestCDX24BrowserDiscovery(t *testing.T) {
 	if out := c.ok(`await cua.getBrowser()`); out != "" {
 		t.Errorf("documentation twice %q", out)
 	}
-	if out := c.ok(`nodeRepl.write(await b.documentation())`); !strings.HasPrefix(out, "# Browser: ego lite") {
+	if out := c.ok(`nodeRepl.write(await b.documentation())`); !strings.HasPrefix(out, "# Browser: Chromium") {
 		t.Errorf("documentation() %q", out)
 	}
 	out := c.ok(`var st = await cua.getState({ emit: false }); nodeRepl.write(JSON.stringify(st.browsers))`)
@@ -143,10 +147,10 @@ func TestCDX24BrowserDiscovery(t *testing.T) {
 			ID, URL string
 		} `json:"tabs"`
 	}
-	if err := json.Unmarshal([]byte(out), &states); err != nil || len(states) != 1 || states[0].ID != "ego" || len(states[0].Tabs) != 1 || states[0].Tabs[0].ID != "1" {
+	if err := json.Unmarshal([]byte(out), &states); err != nil || len(states) != 1 || states[0].ID != "chromium" || len(states[0].Tabs) != 1 || states[0].Tabs[0].ID != "1" {
 		t.Errorf("getState %q", out)
 	}
-	if out := c.ok(`await cua.listTabs()`); out != `[{"id":"1","title":"T","url":"https://x.test/","browserId":"ego"}]` {
+	if out := c.ok(`await cua.listTabs()`); out != `[{"id":"1","title":"T","url":"https://x.test/","browserId":"chromium"}]` {
 		t.Errorf("listTabs %q", out)
 	}
 }
@@ -155,21 +159,21 @@ func TestCDX24BrowserDiscovery(t *testing.T) {
 // documentation first, once per runtime); errors read without codes.
 func TestCDX25Tabs(t *testing.T) {
 	c, fb := browserSession(t)
-	out := c.ok(`var tab = await cua.createBrowserTab("ego", "x.test", { sessionName: "🔎 Test", visible: false })`)
-	if out != "# Browser: ego lite\n(doc)\nBrowser tab: 1, Title: \"T\", URL: \"https://x.test/\".\n0 AXWebArea T, URL: x.test/\n\nThe focused UI element is 0 AXWebArea T, URL: x.test/" {
+	out := c.ok(`var tab = await cua.createBrowserTab("chromium", "x.test", { sessionName: "🔎 Test", visible: false })`)
+	if out != "# Browser: Chromium\n(doc)\nBrowser tab: 1, Title: \"T\", URL: \"https://x.test/\".\n0 AXWebArea T, URL: x.test/\n\nThe focused UI element is 0 AXWebArea T, URL: x.test/" {
 		t.Errorf("create %q", out)
 	}
-	if got := fb.lastJSON(); got != `{"browserId":"ego","op":"createTab","sessionName":"🔎 Test","url":"x.test","visible":false}` {
+	if got := fb.lastJSON(); got != `{"browserId":"chromium","op":"createTab","sessionName":"🔎 Test","url":"x.test","visible":false}` {
 		t.Errorf("args %s", got)
 	}
 	if out := c.ok(`nodeRepl.write(tab.id + " " + JSON.stringify(tab))`); out != `1 {"id":"1"}` {
 		t.Errorf("id %q", out)
 	}
-	if out := c.ok(`var t2 = await cua.getTab("1", { browser: "ego" })`); !strings.HasPrefix(out, "Browser tab: 1,") {
+	if out := c.ok(`var t2 = await cua.getTab("1", { browser: "chromium" })`); !strings.HasPrefix(out, "Browser tab: 1,") {
 		t.Errorf("getTab %q", out)
 	}
 	r := c.js(`await cua.getTab("9")`)
-	if !r.isError || !strings.Contains(r.all(), "\nTab not found in browser ego.") || strings.Contains(r.all(), "target_not_found") {
+	if !r.isError || !strings.Contains(r.all(), "\nTab not found in browser chromium.") || strings.Contains(r.all(), "target_not_found") {
 		t.Errorf("error %q", r.all())
 	}
 	// js_reset forgets bindings; the documentation shows again.
@@ -178,7 +182,7 @@ func TestCDX25Tabs(t *testing.T) {
 		t.Error("reset not passed on")
 	}
 	c.ok(`1`)
-	if out := c.ok(`var t3 = await cua.getTab({ url: "https://x.test/" }, { browser: "ego" })`); !strings.HasPrefix(out, "# Browser: ego lite") {
+	if out := c.ok(`var t3 = await cua.getTab({ url: "https://x.test/" }, { browser: "chromium" })`); !strings.HasPrefix(out, "# Browser: Chromium") {
 		t.Errorf("after reset %q", out)
 	}
 	c.call("turn_ended", map[string]any{})
@@ -190,7 +194,7 @@ func TestCDX25Tabs(t *testing.T) {
 // CDX-26: tab observation displays itself once; emit: false keeps it quiet.
 func TestCDX26TabObservation(t *testing.T) {
 	c, _ := browserSession(t)
-	c.ok(`var tab = await cua.createBrowserTab("ego")`)
+	c.ok(`var tab = await cua.createBrowserTab("chromium")`)
 	if out := c.ok(`await tab.getAXState()`); !strings.HasSuffix(out, "has not changed since the previous read.") {
 		t.Errorf("state %q", out)
 	}
@@ -217,7 +221,7 @@ func TestCDX26TabObservation(t *testing.T) {
 // fails before anything is sent; locators carry their chain.
 func TestCDX27TabInput(t *testing.T) {
 	c, fb := browserSession(t)
-	c.ok(`var tab = await cua.createBrowserTab("ego")`)
+	c.ok(`var tab = await cua.createBrowserTab("chromium")`)
 	c.ok(`await tab.typeText(4, "hi")`)
 	if got := fb.lastJSON(); got != `{"args":[4,"hi"],"binding":1,"method":"typeText","op":"tab"}` {
 		t.Errorf("typeText %s", got)
@@ -273,5 +277,22 @@ func TestCDX28BrowsersOff(t *testing.T) {
 	out := c.ok(`var st = await cua.getState({ emit: false }); nodeRepl.write(JSON.stringify(st.browsers) + " " + JSON.stringify(st.errors || []))`)
 	if out != "[] []" {
 		t.Errorf("state %q", out)
+	}
+}
+
+// fennec.browser reaches the import through the same browser channel.
+func TestBrowserImportREPL(t *testing.T) {
+	fb := &fakeBrowsers{}
+	e := newWorld().engine()
+	e.Browsers = fb
+	c := session(t, e)
+	if out := c.ok(`nodeRepl.write(JSON.stringify(await fennec.browser.chromeProfiles()))`); !strings.Contains(out, `"dir":"Default"`) {
+		t.Errorf("profiles %q", out)
+	}
+	if out := c.ok(`var r = await fennec.browser.importFromChrome({ profile: "Me", replace: true }); nodeRepl.write(String(r.cookies.imported))`); !strings.HasSuffix(out, "3") {
+		t.Errorf("import %q", out)
+	}
+	if got := fb.lastJSON(); got != `{"op":"importChrome","profile":"Me","replace":true}` {
+		t.Errorf("request %s", got)
 	}
 }

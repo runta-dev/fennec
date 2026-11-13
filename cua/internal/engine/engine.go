@@ -32,8 +32,8 @@ type Platform interface {
 // Tool runs one tool's request after the engine's checks.
 type Tool func(ctx context.Context, call *Call, args json.RawMessage) (any, *protocol.Error)
 
-// Browsers is the REPL's browser surface (internal/ego). Keys are MCP
-// sessions: each has its own bridge, task space and tabs.
+// Browsers is the REPL's browser surface (internal/browser). Keys are MCP
+// sessions: each has its own agent window and tabs in the shared browser.
 type Browsers interface {
 	Call(ctx context.Context, key any, args json.RawMessage) (any, *protocol.Error)
 	// Reset forgets a runtime's tab bindings (js_reset); tabs stay.
@@ -85,7 +85,7 @@ type Engine struct {
 	// Models answers model calls from the REPL; nil answers them
 	// unavailable.
 	Models Models
-	// Browsers answers the REPL's browser calls (ego lite); nil leaves
+	// Browsers answers the REPL's browser calls (the bundled Chromium); nil leaves
 	// the browser surface off.
 	Browsers Browsers
 	// JSTimeout bounds each js call; zero means script.ReplTimeout.
