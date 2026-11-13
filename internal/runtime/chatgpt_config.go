@@ -26,7 +26,13 @@ func desktopOnlyCommand(command string) bool {
 // do not exist here are dropped so their startup timeouts cannot stall every
 // request. Desktop-only servers that reached the gateway file through an
 // earlier shared link are removed from it; nothing else there is changed.
-func syncChatGPTConfig(path, gatewayPath string) error {
+//
+// ChatGPT runs with the magpie provider (gatewayOverrides), for which Codex
+// does not fetch the gateway's model list, so like Magpie on the Mac it reads
+// Magpie's model catalog from model_catalog_json. A catalog the gateway file
+// names itself wins; otherwise catalog supplies Fennec's copy of Magpie's
+// catalog ("" when none is available).
+func syncChatGPTConfig(path, gatewayPath string, catalog func() string) error {
 	gatewayData, err := os.ReadFile(gatewayPath)
 	if err != nil {
 		return nil
@@ -61,6 +67,11 @@ func syncChatGPTConfig(path, gatewayPath string) error {
 			delete(config, key)
 		}
 	}
+	if _, named := gateway["model_catalog_json"]; !named && catalog != nil && magpieProvider(gateway) {
+		if catalogPath := catalog(); catalogPath != "" {
+			config["model_catalog_json"] = catalogPath
+		}
+	}
 	dropMCPServers(config, func(command string) bool {
 		if desktopOnlyCommand(command) {
 			return true
@@ -79,6 +90,12 @@ func syncChatGPTConfig(path, gatewayPath string) error {
 		return nil
 	}
 	return writeFileAtomic(path, updated)
+}
+
+func magpieProvider(config map[string]any) bool {
+	providers, _ := config["model_providers"].(map[string]any)
+	_, ok := providers["magpie"].(map[string]any)
+	return ok
 }
 
 func dropMCPServers(config map[string]any, drop func(string) bool) bool {

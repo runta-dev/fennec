@@ -103,7 +103,7 @@ func TestGatewayHomeLinksRoutingAndUserAccount(t *testing.T) {
 	os.WriteFile(filepath.Join(gateway, "config.toml"), []byte("model = 'zai/glm-5.3'\n"), 0600)
 	os.WriteFile(filepath.Join(gateway, "auth.json"), []byte(`{"account":"gateway"}`), 0600)
 	os.WriteFile(filepath.Join(native, "auth.json"), []byte(`{"account":"user"}`), 0600)
-	mode, env, codexHome, err := codexAppServerEnvironment(home)
+	mode, env, codexHome, err := codexAppServerEnvironment(context.Background(), home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
 [mcp_servers.local_tool]
 command = "npx"
 `), 0600)
-	if err := syncChatGPTConfig(chatgpt, gateway); err != nil {
+	if err := syncChatGPTConfig(chatgpt, gateway, nil); err != nil {
 		t.Fatal(err)
 	}
 	gatewayData, _ := os.ReadFile(gateway)

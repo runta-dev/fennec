@@ -33,7 +33,7 @@ func CodexAppServerSocket(codexHome string) string {
 
 // codexAppServerEnvironment mirrors how the cloud launches Codex CLI in the
 // current agent mode, so desktop and terminal sessions share configuration.
-func codexAppServerEnvironment(home string) (mode string, env []string, codexHome string, err error) {
+func codexAppServerEnvironment(ctx context.Context, home string) (mode string, env []string, codexHome string, err error) {
 	if setup.NativeAgentMode(home) {
 		env, err = setup.NativeAgentEnvironment(home, "codex")
 		if err != nil {
@@ -53,7 +53,7 @@ func codexAppServerEnvironment(home string) (mode string, env []string, codexHom
 	if gateway == "" {
 		gateway = filepath.Join(home, ".codex")
 	}
-	codexHome, err = prepareGatewayHome(home, gateway)
+	codexHome, err = prepareGatewayHome(ctx, home, gateway)
 	if err != nil {
 		return "", nil, "", err
 	}
@@ -70,14 +70,23 @@ func codexAppServerEnvironment(home string) (mode string, env []string, codexHom
 // and model settings come from the Magpie-routed gateway home shared with Codex
 // CLI, while the ChatGPT identity links to the user's synchronized native
 // account, so ChatGPT shows the same account and limits as on the Mac. The
-// gateway home's own credentials are never read or changed.
-func prepareGatewayHome(home, gateway string) (string, error) {
+// gateway home's own credentials are never read or changed. Magpie's Codex
+// model catalog is kept beside ChatGPT's config, as Magpie keeps it beside
+// Codex's on the Mac.
+func prepareGatewayHome(ctx context.Context, home, gateway string) (string, error) {
 	directory := filepath.Join(home, ".local/fennec/chatgpt/codex")
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return "", err
 	}
 	links := map[string]string{}
-	if err := syncChatGPTConfig(filepath.Join(directory, "config.toml"), filepath.Join(gateway, "config.toml")); err != nil {
+	catalog := func() string {
+		path := filepath.Join(directory, magpieCatalogName)
+		if !syncMagpieCatalog(ctx, path) {
+			return ""
+		}
+		return path
+	}
+	if err := syncChatGPTConfig(filepath.Join(directory, "config.toml"), filepath.Join(gateway, "config.toml"), catalog); err != nil {
 		return "", err
 	}
 	for _, name := range []string{"AGENTS.md", "skills", "plugins", "rules", "prompts"} {
@@ -138,27 +147,32 @@ func (conn appServerConn) StreamLabel() string { return conn.mode }
 // desktop threads survive terminal-channel reconnects. No version is compared
 // and nothing is installed here.
 func DialCodexAppServer(ctx context.Context, home string) (net.Conn, error) {
-	mode, env, codexHome, err := codexAppServerEnvironment(home)
+	mode, env, codexHome, err := codexAppServerEnvironment(ctx, home)
 	if err != nil {
 		return nil, err
 	}
 	var overrides []string
+	signature := ""
 	managed := mode == CodexAppServerGateway
 	if managed {
 		overrides = gatewayOverrides(codexHome)
+		signature = strings.Join(overrides, "\n")
+		// Codex reads the model catalog only at startup.
+		if catalog := catalogSignature(codexHome); catalog != "" {
+			signature += "\n" + catalog
+		}
 	}
 	socket := CodexAppServerSocket(codexHome)
-	conn, err := dialCodexAppServer(ctx, home, socket, env, overrides, managed)
+	conn, err := dialCodexAppServer(ctx, home, socket, env, overrides, signature, managed)
 	if err != nil {
 		return nil, err
 	}
 	return appServerConn{Conn: conn, mode: mode, codexHome: codexHome}, nil
 }
 
-func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides []string, managed bool) (net.Conn, error) {
+func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides []string, signature string, managed bool) (net.Conn, error) {
 	directory := filepath.Dir(socket)
 	signaturePath := filepath.Join(directory, "fennec-app-server.args")
-	signature := strings.Join(overrides, "\n")
 	current := func() bool {
 		if !managed {
 			return true
