@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,6 +33,15 @@ type Operator func(context.Context, cloudruntime.LocalOperation) (json.RawMessag
 // SocketDialer opens the named remote socket for a "socket" stream. Only
 // targets accepted by Frame.validateOpen reach it.
 type SocketDialer func(context.Context, string) (net.Conn, error)
+
+type socketDeviceKey struct{}
+
+// SocketDevice is the Mac device ID the client sent when opening a socket
+// stream, or empty for clients that did not send one.
+func SocketDevice(ctx context.Context) string {
+	device, _ := ctx.Value(socketDeviceKey{}).(string)
+	return device
+}
 
 type serverSession struct {
 	ctx           context.Context
@@ -112,7 +122,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -464,7 +474,7 @@ func (session *serverSession) write(data []byte) error {
 // stream. Output obeys the same credit window as a PTY; input reuses the
 // session input budget, so one busy socket cannot starve other streams.
 func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit func(Frame) error) {
-	conn, err := dial(session.ctx, frame.Target)
+	conn, err := dial(context.WithValue(session.ctx, socketDeviceKey{}, frame.Message), frame.Target)
 	if err != nil {
 		emit(Frame{Type: "error", ID: frame.ID, Message: "remote socket unavailable"})
 		return
@@ -478,12 +488,29 @@ func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit f
 	if labeled, ok := conn.(interface{ StreamLabel() string }); ok {
 		receipt.Message = labeled.StreamLabel()
 	}
+	var encoder *zstd.Encoder
+	var compressed bytes.Buffer
+	if frame.Term == SocketCompressionZstd {
+		encoder, err = zstd.NewWriter(&compressed, zstd.WithWindowSize(SocketCompressionWindow), zstd.WithEncoderConcurrency(1))
+		if err == nil {
+			receipt.Term = SocketCompressionZstd
+			defer encoder.Close()
+		}
+	}
 	if emit(receipt) != nil {
 		session.cancel()
 		return
 	}
 	inputDone := make(chan struct{})
 	go func() { defer close(inputDone); session.pumpInput(frame.ID, emit) }()
+	if encoder != nil {
+		session.relayCompressed(frame.ID, conn, encoder, &compressed, emit)
+		session.cancel()
+		conn.Close()
+		<-inputDone
+		emit(Frame{Type: "exit", ID: frame.ID})
+		return
+	}
 	buffer := make([]byte, Chunk)
 	for {
 		count := session.window.take(Chunk)
@@ -521,4 +548,45 @@ func operationFailure(err error) string {
 		return base
 	}
 	return base + ": " + cause
+}
+
+// relayCompressed sends the socket's output as one zstd stream, flushed after
+// every read so each message is decodable on arrival. The large window lets
+// repeated replies (ChatGPT re-reads its apps tool catalog) compress to almost
+// nothing. Credits count compressed bytes, so the window stays 64 KiB and the
+// stream cannot crowd out terminals sharing the channel.
+func (session *serverSession) relayCompressed(id string, conn net.Conn, encoder *zstd.Encoder, compressed *bytes.Buffer, emit func(Frame) error) {
+	send := func() bool {
+		data := compressed.Bytes()
+		for len(data) > 0 {
+			count := session.window.take(min(len(data), Chunk))
+			if count == 0 {
+				return false
+			}
+			if emit(Frame{Type: "data", ID: id, Data: append([]byte(nil), data[:count]...)}) != nil {
+				return false
+			}
+			data = data[count:]
+		}
+		compressed.Reset()
+		return true
+	}
+	buffer := make([]byte, 64<<10)
+	for {
+		length, err := conn.Read(buffer)
+		if length > 0 {
+			if _, writeErr := encoder.Write(buffer[:length]); writeErr != nil {
+				return
+			}
+			if encoder.Flush() != nil || !send() {
+				return
+			}
+		}
+		if err != nil {
+			if encoder.Close() == nil {
+				send()
+			}
+			return
+		}
+	}
 }

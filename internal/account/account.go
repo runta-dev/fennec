@@ -48,6 +48,10 @@ type Manager struct {
 	token       string
 	changed     chan struct{}
 	revision    uint64
+
+	// The signed-in identity (/v2/me), shared by profile and billing.
+	meMu    sync.Mutex
+	meCache meEntry
 }
 
 func New(ctx context.Context, credentials Credentials, endpoint string) *Manager {

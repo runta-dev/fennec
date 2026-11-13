@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 )
@@ -65,7 +66,7 @@ func BuildProfile(policy Policy, home string) (profile string, params []string) 
 		for _, r := range writeRoots {
 			seen[r] = true
 		}
-		var gitProtectedRoots []string
+		var metadataRoots []string
 		for _, raw := range policy.WritableRoots {
 			if raw == "" {
 				continue
@@ -74,7 +75,7 @@ func BuildProfile(policy Policy, home string) (profile string, params []string) 
 				if filepath.IsAbs(candidate) && candidate != "/" && !seen[candidate] {
 					seen[candidate] = true
 					writeRoots = append(writeRoots, candidate)
-					gitProtectedRoots = append(gitProtectedRoots, candidate)
+					metadataRoots = append(metadataRoots, candidate)
 				}
 			}
 		}
@@ -82,20 +83,34 @@ func BuildProfile(policy Policy, home string) (profile string, params []string) 
 			param := addParam("WRITABLE_ROOT", root)
 			fmt.Fprintf(&b, "(allow file-write* (subpath (param %q)))\n", param)
 		}
-		// Protect .git/hooks and .git/config inside writable workspaces against sandbox escape.
-		for _, root := range gitProtectedRoots {
-			hooksParam := addParam("GIT_HOOKS", filepath.Join(root, ".git/hooks"))
-			cfgParam := addParam("GIT_CONFIG", filepath.Join(root, ".git/config"))
-			fmt.Fprintf(&b, "(deny file-write* (subpath (param %q)) (literal (param %q)))\n", hooksParam, cfgParam)
+		// Codex protected metadata: .git, .agents, .codex and .aws stay read-only
+		// inside every writable root (.codex always, the others when present).
+		for _, root := range metadataRoots {
+			for _, path := range protectedMetadataPaths(root) {
+				param := addParam("PROTECTED_METADATA", path)
+				fmt.Fprintf(&b, "(deny file-write* (subpath (param %q)))\n", param)
+			}
 		}
+	}
+	if mode == ModeEscalated {
+		// Approved escalation: full-disk write; deny-read credential paths below still apply.
+		b.WriteString("(allow file-write* (regex #\"^/\"))\n")
 	}
 
 	// High-priority blocklist: sensitive credentials, SSH keys, Keychains, LaunchAgents, and Fennec IPC/state.
 	for _, protected := range ProtectedPaths(home) {
 		param := addParam("PROTECTED", protected)
+		if mode == ModeEscalated && filepath.Base(protected) == ".ssh" {
+			// An approved escalation may list ~/.ssh and read public material
+			// (public keys, config, known_hosts, authorized_keys); private keys
+			// stay unreadable and nothing in ~/.ssh is writable.
+			fmt.Fprintf(&b, "(deny file-write* (subpath (param %q)))\n", param)
+			fmt.Fprintf(&b, "(deny file-read* (require-all (subpath (param %q)) (require-not (literal (param %q))) (require-not (regex #\"%s\"))))\n", param, param, sshPublicPattern(protected))
+			continue
+		}
 		fmt.Fprintf(&b, "(deny file-read* file-write* (subpath (param %q)))\n", param)
 	}
-	if home != "" {
+	if home != "" && mode != ModeEscalated {
 		for _, rc := range []string{".zshrc", ".zshenv", ".zprofile", ".bashrc", ".bash_profile", ".profile"} {
 			rcPath := canonicalOrClean(filepath.Join(home, rc))
 			param := addParam("SHELL_RC", rcPath)
@@ -154,4 +169,9 @@ func chooseWorkdir(policy Policy, home, preferred string) string {
 		}
 	}
 	return os.TempDir()
+}
+
+// sshPublicPattern matches the non-secret files directly inside ~/.ssh.
+func sshPublicPattern(dir string) string {
+	return "^" + regexp.QuoteMeta(dir) + "/([^/]+\\.pub|config[^/]*(/.*)?|known_hosts[^/]*|authorized_keys[^/]*)$"
 }

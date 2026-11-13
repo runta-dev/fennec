@@ -3,6 +3,7 @@ package terminalstream
 import (
 	"bytes"
 	"context"
+	"github.com/klauspost/compress/zstd"
 	"io"
 	"net"
 	"strings"
@@ -142,5 +143,121 @@ func TestSocketReceiptReportsServedMode(t *testing.T) {
 	defer session.Close()
 	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" || frame.Message != "native" {
 		t.Fatal(frame, err)
+	}
+}
+
+// Compressed socket output decodes to the exact bytes, arrives message by
+// message, and repeated replies cost far less than their size.
+func TestSocketStreamCompressesOutputWhenRequested(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	reply := []byte(strings.Repeat(`{"name":"tool","inputSchema":{"type":"object"}},`, 20000))
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(context.Context, string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go func() {
+			remote.Write(reply)
+			remote.Write(reply)
+			remote.Close()
+		}()
+		return local, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("a", 32), Target: SocketCodexAppServer, Term: SocketCompressionZstd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" || frame.Term != SocketCompressionZstd {
+		t.Fatal(frame, err)
+	}
+	reader, writer := io.Pipe()
+	decoded := make(chan []byte, 1)
+	go func() {
+		decoder, _ := zstd.NewReader(reader, zstd.WithDecoderConcurrency(1))
+		data, _ := io.ReadAll(decoder)
+		decoded <- data
+	}()
+	wire := 0
+	for {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == "exit" {
+			break
+		}
+		if frame.Type == "data" {
+			wire += len(frame.Data)
+			writer.Write(frame.Data)
+			session.Send(Frame{Type: "credit", Bytes: len(frame.Data)})
+		}
+	}
+	writer.Close()
+	if got := <-decoded; !bytes.Equal(got, append(append([]byte(nil), reply...), reply...)) {
+		t.Fatal("decoded output differs", len(got))
+	}
+	if wire*20 > 2*len(reply) {
+		t.Fatal("output not compressed:", wire, "bytes for", 2*len(reply))
+	}
+}
+
+// The ChatGPT bridge sends the WebSocket upgrade together with the open; input
+// that arrives while the socket is still being dialed must reach it in order.
+func TestSocketInputSentBeforeReceiptIsDelivered(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	serverInput, clientInput := io.Pipe()
+	serverOutput, clientOutput := io.Pipe()
+	defer clientInput.Close()
+	defer serverOutput.Close()
+	dialing := make(chan struct{})
+	release := make(chan struct{})
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, nil, func(ctx context.Context, target string) (net.Conn, error) {
+		close(dialing)
+		<-release // a slow dial: input is already on its way
+		local, remote := net.Pipe()
+		go func() { io.Copy(remote, remote) }()
+		return local, nil
+	})
+	transport := startTransport(clientInput, serverOutput, func() error { return nil }, func() error { return nil }, nil)
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session, err := transport.Launch(Frame{Type: "socket", ID: strings.Repeat("e", 32), Target: SocketCodexAppServer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := []byte("GET /rpc HTTP/1.1\r\n\r\n")
+	if err := session.Send(Frame{Type: "input", Data: request[:9]}); err != nil {
+		t.Fatal(err)
+	}
+	<-dialing
+	if err := session.Send(Frame{Type: "input", Data: request[9:]}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // both frames reach the server before the dial finishes
+	close(release)
+	if frame, err := session.Next(ctx); err != nil || frame.Type != "receipt" {
+		t.Fatal(frame, err)
+	}
+	var received []byte
+	for len(received) < len(request) {
+		frame, err := session.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == "data" {
+			received = append(received, frame.Data...)
+			session.Send(Frame{Type: "credit", Bytes: len(frame.Data)})
+		}
+	}
+	if !bytes.Equal(received, request) {
+		t.Fatalf("%q", received)
 	}
 }

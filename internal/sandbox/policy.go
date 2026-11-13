@@ -85,41 +85,9 @@ func PolicyForPreset(preset string, writableRoots []string) Policy {
 	}
 }
 
-// RequiresPrompt reports whether an edge operation in "Approve for me" ("auto")
-// mode looks potentially unsafe (network access, privilege escalation, or
-// touching protected/outside-workspace paths) and should still ask the user.
-// Seatbelt remains enforced on execution regardless of this heuristic.
-func RequiresPrompt(policy Policy, home, command, kind string) bool {
-	approval := strings.TrimSpace(strings.ToLower(policy.Approval))
-	if approval == "never" || NormalizeMode(policy.Mode) == ModeFull {
-		return false
-	}
-	if approval != PresetAuto {
-		return true
-	}
-	if kind == "tcp_forward" || kind == "hook" {
-		return true
-	}
-	if kind == "sftp" {
-		return false
-	}
-	lower := " " + strings.ToLower(command) + " "
-	for _, token := range []string{
-		" sudo ", " su ", " osascript ", " security ", " launchctl ",
-		" curl ", " wget ", " nc ", " ncat ", " ssh ", " scp ", " rsync ",
-		"/.ssh", "~/.ssh", "/.gnupg", "~/.gnupg", "/.aws", "~/.aws",
-		"keychains", "/.config/fennec", "~/.config/fennec", ".git/hooks", ".git/config",
-	} {
-		if strings.Contains(lower, token) {
-			return true
-		}
-	}
-	return false
-}
-
 func ValidMode(mode string) bool {
 	switch mode {
-	case "", ModeReadOnly, ModeWorkspace, ModeFull:
+	case "", ModeReadOnly, ModeWorkspace, ModeFull, ModeEscalated:
 		return true
 	default:
 		return false
@@ -133,9 +101,23 @@ func NormalizeMode(mode string) string {
 		return ModeReadOnly
 	case ModeFull, "full-access", "danger-full-access":
 		return ModeFull
+	case ModeEscalated:
+		return ModeEscalated
 	default:
 		return ModeWorkspace
 	}
+}
+
+// protectedMetadataPaths lists the read-only metadata inside a writable root.
+func protectedMetadataPaths(root string) []string {
+	var paths []string
+	for _, name := range ProtectedMetadataNames {
+		path := filepath.Join(root, name)
+		if _, err := os.Lstat(path); err == nil || name == ".codex" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 // NormalizeRoots validates, resolves symlinks where possible, deduplicates, and
@@ -260,10 +242,15 @@ func GuardPath(policy Policy, home, target string, write bool) error {
 	if mode == ModeReadOnly {
 		return fmt.Errorf("sandbox is in read-only mode; file modification denied")
 	}
+	if mode == ModeEscalated {
+		return nil
+	}
 	for _, rawRoot := range policy.WritableRoots {
 		root := canonicalOrClean(rawRoot)
-		if isWithin(resolved, filepath.Join(root, ".git/hooks")) || resolved == filepath.Join(root, ".git/config") {
-			return fmt.Errorf("sandbox denied modification of protected Git metadata")
+		for _, name := range ProtectedMetadataNames {
+			if isWithin(resolved, filepath.Join(root, name)) {
+				return fmt.Errorf("sandbox denied modification of protected %s metadata", name)
+			}
 		}
 	}
 	allowedRoots := append([]string{}, SystemTempRoots()...)

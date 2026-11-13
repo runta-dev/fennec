@@ -35,21 +35,3 @@ func TestPermissionPresetsKeepCodexSemantics(t *testing.T) {
 		}
 	}
 }
-
-func TestAutoModeRequiresApprovalForCredentialsAndHooks(t *testing.T) {
-	policy := PolicyForPreset(PresetAuto, nil)
-	for _, kind := range []string{"hook", "tcp_forward", "exec"} {
-		if !RequiresPrompt(policy, "/Users/test", "cat ~/.ssh/config", kind) {
-			t.Fatalf("credentials should still require approval in auto mode (%s)", kind)
-		}
-	}
-	if RequiresPrompt(policy, "/Users/test", "git status", "sftp") {
-		t.Fatal("file transfer in auto mode must remain gated by the sandbox, not a blanket trust bypass")
-	}
-	if RequiresPrompt(policy, "/Users/test", "git status", "exec") {
-		t.Fatal("ordinary workspace reads should not require repeated approval in auto mode")
-	}
-	if RequiresPrompt(PolicyForPreset(PresetFull, nil), "/Users/test", "cat ~/.ssh/config", "exec") {
-		t.Fatal("full mode must not prompt again")
-	}
-}

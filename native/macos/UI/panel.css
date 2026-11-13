@@ -378,6 +378,8 @@ main{min-height:0}
 :root[data-theme=dark] .update-hide{border-color:rgba(255,255,255,.16)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .update-hide{border-color:rgba(255,255,255,.16)}}
 .update-hide svg{width:8px;height:8px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
+/* The badge sits beside the title; keep the brand icon colour off its icons */
+.brand .update-wrap{margin-left:2px}.brand .update-wrap svg{color:inherit}
 .update-wrap:hover .update-hide,.update-hide:focus-visible{opacity:1;pointer-events:auto}
 .update-hide:hover{color:var(--text);filter:none}
 .update-pill[hidden]+.update-hide,.update-pill.busy+.update-hide{display:none!important}
@@ -594,7 +596,7 @@ nav button{padding:3px 7px}
 .audit-entry+.audit-entry{border-top:1px solid var(--line)}
 .audit-entry-head{width:100%;display:flex;align-items:flex-start;gap:9px;padding:9px 0;border:0;border-radius:0;background:transparent;text-align:left}
 .audit-entry-head.is-expandable{cursor:pointer}
-.audit-entry-head.is-expandable:hover{background:transparent;filter:none}.audit-entry-head.is-expandable:hover .audit-command{color:var(--text);text-decoration:underline dotted var(--muted)}
+.audit-entry-head.is-expandable:hover{background:transparent;filter:none}
 .audit-status-icon{width:16px;height:16px;flex:0 0 16px;margin-top:1px;color:#4f9a65}
 .audit-status-icon.is-blocked{color:#d26b27}
 :root[data-theme=dark] .audit-status-icon{color:#6dbe84}
@@ -603,16 +605,15 @@ nav button{padding:3px 7px}
 .audit-entry-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .audit-entry-top{display:flex;align-items:center;gap:8px;min-width:0}
 .audit-command{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}
+.audit-command.is-expanded{white-space:pre-wrap;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.45}
 .audit-action-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;color:var(--text)}
 .audit-time{flex:none;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.audit-repeat{flex:none;font-size:10.5px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
 .audit-entry-meta{display:flex;align-items:center;gap:6px;min-width:0}
 .audit-meta-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}
 .audit-entry.is-blocked .audit-meta-text{color:#b06014}
 :root[data-theme=dark] .audit-entry.is-blocked .audit-meta-text{color:#f3a865}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .audit-entry.is-blocked .audit-meta-text{color:#f3a865}}
-.audit-entry-detail{padding:0 0 9px 25px;display:flex;flex-direction:column;gap:5px;background:var(--expanded);border-top:1px dashed var(--line)}
-.audit-detail-code{margin:0;padding:6px 8px;border-radius:6px;background:var(--card);border:1px solid var(--line);font:10.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
-.audit-entry-detail>.audit-detail-code:first-child{margin-top:7px}
 #codex-desktop-dialog:focus,#codex-desktop-dialog button:focus:not(:focus-visible){outline:none}
 /* Bundled third-party notices: flat rows inside the Licenses disclosure, opened in a native window. */
 .license-links{display:flex;flex-direction:column;margin:8px 0 6px;border-top:1px solid var(--line)}

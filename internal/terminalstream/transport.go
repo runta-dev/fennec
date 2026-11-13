@@ -185,6 +185,9 @@ func (transport *Transport) Supports(capability string) bool {
 	return transport.capabilities[capability]
 }
 
+// deadChannelAfter is how long a channel may go without a pong.
+var deadChannelAfter = 45 * time.Second
+
 func (transport *Transport) heartbeat() {
 	select {
 	case <-transport.ready:
@@ -199,7 +202,10 @@ func (transport *Transport) heartbeat() {
 		case <-transport.done:
 			return
 		case <-ticker.C:
-			if time.Since(time.Unix(0, transport.lastPong.Load())) >= 120*time.Second {
+			// A network change leaves the old TCP connection half-open with no
+			// error; three missed pongs (pinged every 15 s) retire it so the
+			// daemon reconnects instead of waiting minutes.
+			if time.Since(time.Unix(0, transport.lastPong.Load())) >= deadChannelAfter {
 				transport.Close()
 				return
 			}

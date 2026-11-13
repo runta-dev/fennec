@@ -43,6 +43,19 @@ const ProtocolVersion = 7
 const (
 	SocketCodexAppServer     = "codex-app-server"
 	CapabilityCodexAppServer = "codex_app_server"
+	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that
+	// follow the WebSocket upgrade request until the app-server has answered
+	// it (codex app-server drops a connection whose request arrives together
+	// with frames), so the Mac may complete the handshake for ChatGPT itself.
+	CapabilityCodexAppServerEarlyInput = "codex_app_server_early_input"
+)
+
+// A socket stream opened with Term SocketCompressionZstd receives its output as
+// a zstd stream when the receipt echoes the same Term; older services ignore
+// the request and send plain bytes.
+const (
+	SocketCompressionZstd   = "zstd"
+	SocketCompressionWindow = 8 << 20
 )
 
 func (frame Frame) validateOpen() error {
@@ -50,7 +63,7 @@ func (frame Frame) validateOpen() error {
 		return fmt.Errorf("invalid stream identity")
 	}
 	if frame.Type == "socket" {
-		if frame.Target == SocketCodexAppServer {
+		if frame.Target == SocketCodexAppServer && (frame.Message == "" || regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(frame.Message)) {
 			return nil
 		}
 		return fmt.Errorf("invalid socket target")

@@ -62,6 +62,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var localMonitor: Any?
     private var web: WKWebView!
     private var authorized = false
+    // The page learns the sign-in state once after every load, signed in or not,
+    // so it never guesses from its own default.
+    private var authorizationRendered = false
     private var isOnline = true
     private var profileLoaded = false
     private var activeDashboardURL = "https://dashboard.runta.com"
@@ -559,6 +562,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let title = NSTextField(labelWithString: permissionText(request["kind"] == "hook" ? "permission.hookTitle" : "permission.title"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
         stack.addArrangedSubview(title)
+        // Codex shows the agent's escalation justification as the question.
+        if let reason = request["reason"], !reason.isEmpty, request["kind"] != "hook" {
+            let reasonLabel = NSTextField(wrappingLabelWithString: reason)
+            reasonLabel.font = .systemFont(ofSize: 12)
+            reasonLabel.preferredMaxLayoutWidth = innerWidth
+            stack.addArrangedSubview(reasonLabel)
+            reasonLabel.widthAnchor.constraint(equalToConstant: innerWidth).isActive = true
+        }
         let scroll = NSScrollView()
         scroll.verticalScroller = PermissionScroller()
         scroll.scrollerStyle = .overlay
@@ -666,7 +677,11 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let reconnected = online && !isOnline
         isOnline = online
         let isAuthorized = account["status"] as? String == "authorized"
-        if isAuthorized != authorized {
+        // While credentials are still being restored the sign-in state is unknown;
+        // showing sign-in then would flash it on every launch.
+        let authorizationKnown = account["status"] as? String != "restoring"
+        if authorizationKnown, isAuthorized != authorized || !authorizationRendered {
+            authorizationRendered = true
             authorized = isAuthorized
             if !authorized { profileLoaded = false; lastSessionsData = nil }
             render(authorized ? "renderAuthorized" : "renderSignedOut")
@@ -714,6 +729,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         for (kind,field,function) in [("route_results","results","renderRouteResults"),("provider_catalog","candidates","renderProviderCatalog")] {
             if let text = events[kind]?[field], let data = text.data(using: .utf8), let value = try? JSONSerialization.jsonObject(with: data) { render(function,[value]) }
         }
+        if (state["services"] as? [String:Any])?["prepared_before"] as? Bool == true { preparationState["prepared_before"] = "true" }
         render("renderPreparation", [preparationState])
         let services = state["services"] as? [String:Any] ?? [:]
         takeoverAgents = Set(services["selected"] as? [String] ?? [])
@@ -1018,6 +1034,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if let request = popupPresentationID { presentPopup(request, remaining: 40) }
         if popup.isVisible { web.evaluateJavaScript("window.requestFoxMotion?.()", completionHandler:nil) }
 	    authorized = false
+	    authorizationRendered = false
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.2.0"
         render("renderAppVersion", ["Fennec " + version])
         importPreferences();lastState = nil; pollState(); refreshAgents(); renderLoginItem()

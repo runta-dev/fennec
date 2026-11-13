@@ -7,6 +7,7 @@ require (
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/klauspost/compress v1.18.2
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pkg/sftp v1.13.7 // indirect

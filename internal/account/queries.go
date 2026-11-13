@@ -77,7 +77,7 @@ func (m *Manager) Profile(parent context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	defer done()
-	result, err := m.get(ctx, token, m.Endpoint()+"/v2/me", epoch)
+	result, err := m.me(ctx, token, m.Endpoint(), epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func classifyBillingHTTPFailure(err error) (map[string]any, bool) {
 }
 
 func (m *Manager) resolveBillingOrganization(ctx context.Context, token, endpoint string, epoch uint64) (string, map[string]any, error) {
-	meResp, err := m.get(ctx, token, endpoint+"/v2/me", epoch)
+	meResp, err := m.me(ctx, token, endpoint, epoch)
 	if err == nil {
 		me, _ := meResp["data"].(map[string]any)
 		if me == nil {
@@ -299,5 +299,37 @@ func (m *Manager) billing(parent context.Context, apiOrigin string) (map[string]
 			result[measure.field] = fmt.Sprintf("%.2f %s", total, measure.unit)
 		}
 	}
+	return result, nil
+}
+
+// meFresh is how long the signed-in identity is reused. Opening the popup asks
+// for the profile and the account tab for billing; both need /v2/me, and the
+// billing request could only start after it, adding an API round trip.
+const meFresh = 5 * time.Minute
+
+type meEntry struct {
+	endpoint string
+	epoch    uint64
+	at       time.Time
+	data     map[string]any
+}
+
+// me returns /v2/me for this credential, reusing a recent answer. Callers only
+// read the result. Failures are never stored, so a rejected credential is
+// noticed on the next request.
+func (m *Manager) me(ctx context.Context, token, endpoint string, epoch uint64) (map[string]any, error) {
+	m.meMu.Lock()
+	cached := m.meCache
+	m.meMu.Unlock()
+	if cached.data != nil && cached.endpoint == endpoint && cached.epoch == epoch && time.Since(cached.at) < meFresh {
+		return cached.data, nil
+	}
+	result, err := m.get(ctx, token, endpoint+"/v2/me", epoch)
+	if err != nil {
+		return nil, err
+	}
+	m.meMu.Lock()
+	m.meCache = meEntry{endpoint: endpoint, epoch: epoch, at: time.Now(), data: result}
+	m.meMu.Unlock()
 	return result, nil
 }

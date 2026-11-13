@@ -602,20 +602,20 @@
       "zh-TW": "重新啟動 ChatGPT？"
     },
     "ui.codex_desktop_restart_to_cloud": {
-      "en-GB": "ChatGPT.app will restart to run Codex Desktop on the cloud computer, interrupting every conversation in progress.",
-      "en-US": "ChatGPT.app will restart to run Codex Desktop on the cloud computer, interrupting every conversation in progress.",
-      "ja": "Codex Desktop をクラウドコンピューターで実行します。ChatGPT.app が再起動し、進行中の会話はすべて中断されます。続行しますか？",
-      "ko": "Codex Desktop을 클라우드 컴퓨터에서 실행하기 위해 ChatGPT.app이 다시 시작되며, 진행 중인 모든 대화가 중단됩니다.",
-      "zh-CN": "Codex Desktop 将切换到云电脑运行。ChatGPT.app 会重启，所有正在进行的会话都会中断。是否继续？",
-      "zh-TW": "Codex Desktop 將切換到雲端電腦執行。ChatGPT.app 會重新啟動，所有進行中的對話都會中斷。是否繼續？"
+      "en-GB": "ChatGPT.app will restart to run on the cloud computer, interrupting every conversation in progress.",
+      "en-US": "ChatGPT.app will restart to run on the cloud computer, interrupting every conversation in progress.",
+      "ja": "ChatGPT.app を再起動してクラウドコンピューターで実行します。進行中の会話はすべて中断されます。続行しますか？",
+      "ko": "ChatGPT.app이 다시 시작되어 클라우드 컴퓨터에서 실행되며, 진행 중인 모든 대화가 중단됩니다.",
+      "zh-CN": "ChatGPT.app 将重启并切换到云电脑运行，所有正在进行的会话都会中断，是否继续？",
+      "zh-TW": "ChatGPT.app 將重新啟動並切換到雲端電腦執行，所有進行中的對話都會中斷，是否繼續？"
     },
     "ui.codex_desktop_restart_to_local": {
-      "en-GB": "ChatGPT.app will restart to run Codex Desktop on this Mac again, interrupting every conversation in progress.",
-      "en-US": "ChatGPT.app will restart to run Codex Desktop on this Mac again, interrupting every conversation in progress.",
-      "ja": "Codex Desktop をこの Mac での実行に戻します。ChatGPT.app が再起動し、進行中の会話はすべて中断されます。続行しますか？",
-      "ko": "Codex Desktop을 이 Mac에서 다시 실행하기 위해 ChatGPT.app이 다시 시작되며, 진행 중인 모든 대화가 중단됩니다.",
-      "zh-CN": "Codex Desktop 将切回本机运行。ChatGPT.app 会重启，所有正在进行的会话都会中断。是否继续？",
-      "zh-TW": "Codex Desktop 將切回本機執行。ChatGPT.app 會重新啟動，所有進行中的對話都會中斷。是否繼續？"
+      "en-GB": "ChatGPT.app will restart to run on this Mac again, interrupting every conversation in progress.",
+      "en-US": "ChatGPT.app will restart to run on this Mac again, interrupting every conversation in progress.",
+      "ja": "ChatGPT.app を再起動してこの Mac での実行に戻します。進行中の会話はすべて中断されます。続行しますか？",
+      "ko": "ChatGPT.app이 다시 시작되어 이 Mac에서 다시 실행되며, 진행 중인 모든 대화가 중단됩니다.",
+      "zh-CN": "ChatGPT.app 将重启并切回本机运行，所有正在进行的会话都会中断，是否继续？",
+      "zh-TW": "ChatGPT.app 將重新啟動並切回本機執行，所有進行中的對話都會中斷，是否繼續？"
     },
     "ui.coming_soon": {
       "en-US": "Coming soon",
@@ -2636,6 +2636,38 @@
       "zh-CN": "清空活动",
       "zh-TW": "清除活動"
     },
+    "ui.audit_decision_auto_review_approved": {
+      "en-GB": "Approved by auto-review",
+      "en-US": "Approved by auto-review",
+      "ja": "自動レビューで承認",
+      "ko": "자동 검토로 허용됨",
+      "zh-CN": "自动审查已放行",
+      "zh-TW": "自動審查已放行"
+    },
+    "ui.audit_decision_auto_review_denied": {
+      "en-GB": "Denied by auto-review",
+      "en-US": "Denied by auto-review",
+      "ja": "自動レビューで拒否",
+      "ko": "자동 검토로 거부됨",
+      "zh-CN": "自动审查已拒绝",
+      "zh-TW": "自動審查已拒絕"
+    },
+    "ui.audit_decision_auto_review_timeout": {
+      "en-GB": "Auto-review timed out",
+      "en-US": "Auto-review timed out",
+      "ja": "自動レビューがタイムアウト",
+      "ko": "자동 검토 시간 초과",
+      "zh-CN": "自动审查超时",
+      "zh-TW": "自動審查逾時"
+    },
+    "ui.audit_decision_policy_forbidden": {
+      "en-GB": "Blocked in Full access",
+      "en-US": "Blocked in Full access",
+      "ja": "フルアクセスでブロック",
+      "ko": "전체 접근에서 차단됨",
+      "zh-CN": "完全访问模式下已拦截",
+      "zh-TW": "完全存取模式下已攔截"
+    },
     "ui.permission_menu_title": {
       "en-GB": "How should agent actions be approved?",
       "en-US": "How should agent actions be approved?",
@@ -2811,6 +2843,14 @@
       "ko": "거부됨",
       "zh-CN": "已拒绝",
       "zh-TW": "已拒絕"
+    },
+    "ui.audit_decision_chatgpt_cloud": {
+      "en-GB": "Allowed for ChatGPT in the cloud",
+      "en-US": "Allowed for ChatGPT in the cloud",
+      "ja": "クラウドの ChatGPT に許可",
+      "ko": "클라우드 ChatGPT에 허용됨",
+      "zh-CN": "已允许（云端 ChatGPT）",
+      "zh-TW": "已允許（雲端 ChatGPT）"
     },
     "ui.audit_decision_user_approved": {
       "en-GB": "Allowed",

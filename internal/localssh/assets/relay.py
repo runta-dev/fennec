@@ -20,7 +20,7 @@ waiting = queue.Queue(maxsize=16)
 def listen():
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
-    sock.listen(16)
+    sock.listen(64)
     return sock
 
 
@@ -91,7 +91,8 @@ def forward(agent):
 
 
 threading.Thread(target=receive_bridges, daemon=True).start()
-capacity = threading.BoundedSemaphore(16)
+# Matches the device side: long-lived connections must not starve new ones.
+capacity = threading.BoundedSemaphore(64)
 while True:
     agent, _ = agents.accept()
     if capacity.acquire(blocking=False):

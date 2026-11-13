@@ -61,6 +61,10 @@ test-connector: build
 test-e2e-ops:
 	FENNEC_LIVE_E2E=1 FENNEC_E2E_BINARY="$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" go test -count=1 -timeout=4m -v ./internal/ope2e
 
+# Live permission-mode matrix through the installed app and real cloud computer.
+test-e2e-permissions:
+	go run ./cmd/verify-permissions
+
 .PHONY: test-e2e-startup test-e2e-performance test-e2e-configuration
 test-e2e-configuration:
 	go run ./cmd/profile-launch --binary "$(CURDIR)/build/Fennec.app/Contents/MacOS/fen" --mode daemon-cold --invalidate-configuration --samples 3

@@ -82,3 +82,70 @@ func TestStoreRolling7DayRetentionRedactionAndFiltering(t *testing.T) {
 		t.Fatalf("expected empty store after Clear, got %+v", afterClear)
 	}
 }
+
+// ChatGPT starts the same desktop tool for every conversation; back-to-back
+// repeats show as one row with a count, while the log keeps every entry.
+func TestQueryGroupsRepeatedActivity(t *testing.T) {
+	base := time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)
+	now := base
+	store := NewStore(t.TempDir())
+	store.Now = func() time.Time { return now }
+	tool := Entry{Kind: "exec", Command: "ChatGPT desktop tool node_repl", SandboxMode: "full", Decision: "chatgpt_cloud"}
+	record := func(at time.Duration, e Entry) {
+		now = base.Add(at)
+		e.TimestampMS = now.UnixMilli()
+		if err := store.Record(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(0, tool)
+	record(time.Minute, tool)
+	record(2*time.Minute, tool)
+	record(3*time.Minute, Entry{Kind: "sftp", Command: "sftp", SandboxMode: "workspace", Decision: "auto_sandbox"})
+	record(4*time.Minute, tool)
+	record(30*time.Minute, tool) // beyond the repeat window
+	result, err := store.Query(QueryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var counts []int
+	for _, e := range result.Entries {
+		counts = append(counts, e.Count)
+	}
+	if len(counts) != 4 || counts[0] != 1 || counts[1] != 1 || counts[2] != 1 || counts[3] != 3 {
+		t.Fatalf("rows %v, want [1 1 1 3]", counts)
+	}
+	if result.Entries[3].TimestampMS != base.Add(2*time.Minute).UnixMilli() {
+		t.Fatal("grouped row must show the latest time")
+	}
+	if result.Summary.Total7d != 6 {
+		t.Fatalf("summary counts every entry, got %d", result.Summary.Total7d)
+	}
+	page, _ := store.Query(QueryOptions{Limit: 2})
+	if len(page.Entries) != 2 {
+		t.Fatalf("limit applies to rows, got %d", len(page.Entries))
+	}
+}
+
+// `true` and similar no-op reachability checks are not activity; a blocked or
+// failed one still is.
+func TestConnectivityProbesAreNotActivity(t *testing.T) {
+	store := NewStore(t.TempDir())
+	for _, e := range []Entry{
+		{Kind: "exec", Command: "true", SandboxMode: "workspace", Decision: "auto_sandbox"},
+		{Kind: "exec", Command: " : ", SandboxMode: "workspace", Decision: "auto_sandbox"},
+		{Kind: "exec", Command: "true", SandboxMode: "workspace", Decision: "sandbox_blocked", Blocked: true, ExitCode: 1},
+		{Kind: "exec", Command: "true && rm -rf build", SandboxMode: "workspace", Decision: "auto_sandbox"},
+	} {
+		if err := store.Record(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := store.Query(QueryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Total7d != 2 || len(result.Entries) != 2 {
+		t.Fatalf("got %d entries (%d total), want the blocked probe and the real command", len(result.Entries), result.Summary.Total7d)
+	}
+}

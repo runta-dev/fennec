@@ -37,6 +37,10 @@ type prefixedInput struct {
 }
 
 func run() (int, error) {
+	// ~/.local/bin/fennec-escalate links here; agents run it on the cloud computer.
+	if filepath.Base(os.Args[0]) == "fennec-escalate" {
+		return localssh.RunCloudEscalate(os.Args[1:])
+	}
 	serving, err := serveMode(os.Args[1:])
 	if err != nil {
 		return 1, err
@@ -45,9 +49,23 @@ func run() (int, error) {
 		fmt.Fprintln(os.Stdout, terminalstream.ProtocolVersion)
 		return 0, nil
 	}
+	// Upgrades arrive as a patch against this binary; the installer verifies
+	// the result's SHA-256 before using it.
+	if len(os.Args) == 3 && os.Args[1] == "apply-patch" {
+		return 0, setup.ApplyTerminalPatch(os.Args[2], os.Stdin, os.Stdout)
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 1, err
+	}
+	// ProxyCommand of the Mac device alias; see localssh.ServeMacRelay. It
+	// serves a ControlMaster that outlives the terminal and the client that
+	// started it, so only the end of its stdio or SIGTERM stops it.
+	if len(os.Args) == 4 && os.Args[1] == localssh.MacRelayCommand {
+		signal.Ignore(syscall.SIGHUP, syscall.SIGINT, syscall.SIGPIPE)
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+		defer stop()
+		return 0, localssh.ServeMacRelay(ctx, home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
 	}
 	if len(os.Args) == 4 && os.Args[1] == "hook" {
 		response := hookbridge.Invoke(context.Background(), home, os.Args[2], os.Args[3], os.Stdin)
@@ -119,6 +137,10 @@ func run() (int, error) {
 		alias, err := localssh.RegisterAlias(home, request)
 		if err != nil {
 			return 1, err
+		}
+		// Agents request Mac escalation with this command; pairing does not depend on it.
+		if err := localssh.InstallEscalateEntry(home); err != nil {
+			fmt.Fprintln(os.Stderr, "fennec-escalate entry unavailable:", err)
 		}
 		return 0, json.NewEncoder(os.Stdout).Encode(alias)
 	}
@@ -220,7 +242,11 @@ func run() (int, error) {
 			if target != terminalstream.SocketCodexAppServer {
 				return nil, fmt.Errorf("unsupported socket target")
 			}
-			return cloudruntime.DialCodexAppServer(ctx, home)
+			conn, err := cloudruntime.DialCodexAppServer(ctx, home)
+			if err != nil {
+				return nil, err
+			}
+			return cloudruntime.NewChatGPTPathFilter(conn, home, terminalstream.SocketDevice(ctx)), nil
 		})
 	}
 	if len(os.Args) == 4 && os.Args[1] == "attach" {

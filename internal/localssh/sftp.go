@@ -35,9 +35,15 @@ func fileTransfer(parent context.Context, paired func(ssh.PublicKey) bool, broke
 		mode := sandbox.NormalizeMode(policy.Mode)
 		summary := "SFTP: file transfer session (" + mode + ")"
 		decisionType := "auto_sandbox"
-		if requireApproval {
+		// Codex parity: file access runs inside the same Seatbelt boundary
+		// without review; only an unsandboxed transfer outside Full access asks.
+		// Presets run SFTP inside the sandbox without prompts; a connector
+		// without a preset, or without a sandbox, asks. Full access never asks.
+		full := policy.Approval == "never"
+		onRequest := policy.Approval == sandbox.PresetAsk || policy.Approval == sandbox.PresetAuto
+		if requireApproval && !full && (!onRequest || (mode != sandbox.ModeFull && !sandbox.Available())) {
 			approval, done := context.WithTimeout(ctx, 2*time.Minute)
-			allowed, dec := broker.approveWithDecision(approval, "SFTP: read and write files accessible to the current user", crypto.FingerprintSHA256(session.PublicKey()), "sftp", false)
+			allowed, dec := broker.approveWithDecision(approval, "SFTP: read and write files accessible to the current user", crypto.FingerprintSHA256(session.PublicKey()), "sftp", "")
 			decisionType = dec
 			done()
 			if !allowed {

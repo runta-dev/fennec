@@ -23,7 +23,7 @@ func TestStrictAliasConfig(t *testing.T) {
 	key, _ := ssh.NewPublicKey(pub)
 	text := string(ssh.MarshalAuthorizedKey(key))
 	cfg, known, e := AliasConfig("macbook", "127.0.0.1:3022", "aabbccdd", text, true)
-	if e != nil || !strings.Contains(cfg, "Host macbook fennec-device-aabbccdd machine\n") || !strings.Contains(cfg, "StrictHostKeyChecking yes") || !strings.HasPrefix(known, "fennec-aabbccdd ") {
+	if e != nil || !strings.Contains(cfg, "Host macbook fennec-device-aabbccdd machine\n") || !strings.Contains(cfg, "StrictHostKeyChecking yes") || !strings.Contains(cfg, "ProxyCommand ~/.local/fennec/bin/fennec-terminal mac-relay aabbccdd %p\n  HostKeyAlias fennec-relay\n  UserKnownHostsFile ~/.ssh/fennec/relay_known_hosts\n") || !strings.Contains(cfg, "ControlMaster auto\n  ControlPath ~/.ssh/fennec/relay-%C\n") || !strings.HasPrefix(known, "fennec-aabbccdd ") {
 		t.Fatalf("%s %s %v", cfg, known, e)
 	}
 	for _, alias := range []string{"-oProxyCommand=bad", "mac\nHost *", "mac book"} {

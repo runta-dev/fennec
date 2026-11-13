@@ -28,6 +28,32 @@ Auto-updater background staging, non-`.app` payload staging, and quiet header pi
 - `@xterm/addon-fit` 0.10.0, MIT; license: `native/macos/UI/vendor/addon-fit-LICENSE`.
 - Distributed locally in the app; no CDN scripts are loaded.
 
+## OpenAI Codex
+
+Source: https://github.com/openai/codex
+Revision: c0cc9fc
+License: Apache License 2.0, reproduced in `docs/licenses/codex-Apache-2.0.txt`.
+Copyright 2025 OpenAI.
+
+Copied unchanged into `internal/guardian/prompts/`:
+- `policy_template.md` and `policy.md` from `codex-rs/prompts/templates/guardian/`
+
+The auto-review output contract, review request layout, rejection, timeout and
+failure messages in `internal/guardian` reproduce text from
+`codex-rs/ext/guardian-reviewer`, `codex-rs/guardian-context` and
+`codex-rs/prompts/src/model_messages/guardian.rs`. Permission-mode semantics,
+protected metadata names, the dangerous-command rule and the sandbox-denial
+heuristic in `internal/sandbox` are reimplemented in Go from `codex-rs`.
+The Responses API request shape, guardian headers and ChatGPT token refresh in
+`internal/guardian/responses.go` follow `codex-rs/core/src/client.rs`,
+`codex-rs/codex-api` and `codex-rs/login`.
+
+## klauspost/compress
+
+- `github.com/klauspost/compress` v1.18.2 (zstd), BSD 3-Clause; license:
+  `docs/licenses/klauspost-compress-LICENSE.txt`.
+- Compiled into the Go daemon and cloud terminal service to compress
+  ChatGPT app-server traffic on the resident channel.
 ## Chromium (fennec-cua's agent browser)
 
 - Source: open-source Chromium snapshot builds from the public `chromium-browser-snapshots` bucket, pinned in `cua/internal/chromium/pin.go` (macOS arm64 r1743750, commit `2c8bee4ceb39a8f0ebf674b3327138b5e0ebea57`, 160.0.8159.0; Fennec ships for Apple silicon only), verified by SHA-256 before use. Bundled in Fennec.app as `Contents/Helpers/Chromium.app`. Not Google Chrome and not Chrome for Testing.

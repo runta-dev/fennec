@@ -89,7 +89,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
-cp docs/licenses/magpie-MIT.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
+cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
 # fennec-cua (computer use) and the pinned open-source Chromium it drives,
 # Apple silicon only. cua-package stages and signs Chromium.app once per pin,
 # packager source and identity (its downloads and generated notices stay in

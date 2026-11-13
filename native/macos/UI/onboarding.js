@@ -186,6 +186,15 @@
   }
 
   let isAuthorized = false;
+  // The native shell reports the sign-in state after each load; until then
+  // nothing is shown, so a signed-in user never sees the sign-in splash flash.
+  let authKnown = false;
+  // Only a sign-in that follows a signed-out splash in this page is a fresh
+  // login that earns the full-screen cloud setup.
+  let sawSignedOut = false;
+  const setupCompletedKey = 'fennec.cloudSetupCompleted';
+  const setupCompletedBefore = () => { try { return localStorage.getItem(setupCompletedKey) === '1'; } catch (_) { return false; } };
+  const markSetupCompleted = () => { try { localStorage.setItem(setupCompletedKey, '1'); } catch (_) {} };
   let signedInTransition = false;
   let setupDismissedForSession = false;
   let loginMessage = '';
@@ -373,6 +382,11 @@
     if (alwaysOnEl) alwaysOnEl.textContent = t('[[i18n:ui.always_on]]');
     if (cloudCaptionEl) cloudCaptionEl.textContent = t('[[i18n:ui.cloud_computer]]');
 
+    if (!authKnown) {
+      stage.hidden = true;
+      return;
+    }
+
     if (!isAuthorized) {
       stopStoryCarousel();
       resetProgressBar();
@@ -405,6 +419,7 @@
     const isFailed = st === 'failed';
     const isOffline = st === 'offline' || prepState.status === 'network_offline';
     const done = st === 'agents_installed' || st === 'disabled';
+    if (done) markSetupCompleted();
     if (!done && finishTimer) {
       clearTimeout(finishTimer);
       finishTimer = null;
@@ -456,8 +471,10 @@
 
     // Show setup screen immediately after interactive sign-in, or if initial
     // cold runtime setup takes longer than 300ms on launch.
+    // Routine background preparation (daemon restart, reconfiguration) after
+    // setup has completed once on this Mac stays in the panel, not full screen.
     if (!signedInTransition && stage.hidden) {
-      if (!st || st === 'idle') return;
+      if (!st || st === 'idle' || setupCompletedBefore()) return;
       if (!delayedSetupTimer) {
         delayedSetupTimer = setTimeout(() => {
           delayedSetupTimer = null;
@@ -570,6 +587,8 @@
   const origSignedOut = window.renderSignedOut;
   window.renderSignedOut = () => {
     origSignedOut?.();
+    authKnown = true;
+    sawSignedOut = true;
     isAuthorized = false;
     signedInTransition = false;
     setupDismissedForSession = false;
@@ -581,8 +600,10 @@
 
   const origAuthorized = window.renderAuthorized;
   window.renderAuthorized = () => {
-    const wasSignedOut = !isAuthorized && !stage.hidden;
+    const wasSignedOut = sawSignedOut && !isAuthorized;
     origAuthorized?.();
+    authKnown = true;
+    sawSignedOut = false;
     isAuthorized = true;
     if (wasSignedOut) {
       signedInTransition = true;
@@ -603,6 +624,9 @@
   window.renderPreparation = st => {
     origPrep?.(st);
     prepState = st || {};
+    // The daemon has completed a preparation on this Mac before (existing users
+    // updating to this version included).
+    if (prepState.prepared_before === true || prepState.prepared_before === 'true') markSetupCompleted();
     renderOnboarding();
   };
 
@@ -623,6 +647,7 @@
   };
 
   window.showOnboardingPreview = mode => {
+    authKnown = true;
     if (finishTimer) { clearTimeout(finishTimer); finishTimer = null; stage.classList.remove('is-finishing'); }
     if (asyncHandoffTimer) { clearTimeout(asyncHandoffTimer); asyncHandoffTimer = null; }
     if (delayedSetupTimer) { clearTimeout(delayedSetupTimer); delayedSetupTimer = null; }

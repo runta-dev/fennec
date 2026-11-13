@@ -59,7 +59,7 @@
   }
 
   function inferBlockReason(entry) {
-    if (entry.decision === 'user_denied') return '';
+    if (['user_denied', 'auto_review_denied', 'auto_review_timeout', 'policy_forbidden'].includes(entry.decision)) return '';
     const hay = (String(entry.command || '') + ' ' + String(entry.detail || '')).toLowerCase();
     if (/(\.ssh|\.gnupg|\.aws|\.azure|\.kube|keychains|gcloud|\.config\/fennec|\.config\/gh)/.test(hay)) {
       return t('[[i18n:ui.audit_reason_credentials]]');
@@ -79,8 +79,19 @@
         return t('[[i18n:ui.audit_decision_seatbelt_blocked]]');
       case 'user_denied':
         return t('[[i18n:ui.audit_decision_user_denied]]');
+      case 'chatgpt_cloud':
+        return t('[[i18n:ui.audit_decision_chatgpt_cloud]]');
       case 'user_approved':
+      case 'previously_approved':
         return t('[[i18n:ui.audit_decision_user_approved]]');
+      case 'auto_review_approved':
+        return t('[[i18n:ui.audit_decision_auto_review_approved]]');
+      case 'auto_review_denied':
+        return t('[[i18n:ui.audit_decision_auto_review_denied]]');
+      case 'auto_review_timeout':
+        return t('[[i18n:ui.audit_decision_auto_review_timeout]]');
+      case 'policy_forbidden':
+        return t('[[i18n:ui.audit_decision_policy_forbidden]]');
       default:
         return t('[[i18n:ui.audit_decision_auto_sandbox]]');
     }
@@ -154,12 +165,21 @@
       const top = document.createElement('div');
       top.className = 'audit-entry-top';
       const cmd = document.createElement(titleInfo.code ? 'code' : 'span');
-      cmd.className = titleInfo.code ? 'audit-command' : 'audit-action-title';
+      cmd.className = (titleInfo.code ? 'audit-command' : 'audit-action-title') + (isExpanded ? ' is-expanded' : '');
       cmd.textContent = titleInfo.text;
       const timeEl = document.createElement('span');
       timeEl.className = 'audit-time';
       timeEl.textContent = formatTimestamp(entry.timestamp_ms);
-      top.append(cmd, timeEl);
+      top.append(cmd);
+      // Back-to-back repeats arrive grouped from the store; show how many as quiet metadata.
+      const repeats = Number(entry.count || 1);
+      if (repeats > 1) {
+        const countEl = document.createElement('span');
+        countEl.className = 'audit-repeat';
+        countEl.textContent = '\u00d7' + repeats;
+        top.append(countEl);
+      }
+      top.append(timeEl);
 
       const meta = document.createElement('div');
       meta.className = 'audit-entry-meta';
@@ -189,16 +209,7 @@
       }
       item.append(head);
 
-      if (isExpanded) {
-        const detail = document.createElement('div');
-        detail.className = 'audit-entry-detail';
-
-        const fullCmd = document.createElement('pre');
-        fullCmd.className = 'audit-detail-code';
-        fullCmd.textContent = titleInfo.text;
-        detail.append(fullCmd);
-        item.append(detail);
-      }
+      // Expanded rows show the full command in place, wrapped in the title column.
       return item;
     });
     const clear = document.createElement('button');

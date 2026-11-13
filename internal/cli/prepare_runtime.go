@@ -101,6 +101,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		_ = json.Unmarshal(data, &hint)
 	}
 	var runtime runta.Runtime
+	connectDone := launchprofile.Begin("prepare.connect")
 	connection, err := client.ConnectResolved(ctx, hint.RuntimeID, filepath.Join(home, ".config", "fennec", "cloud"), func(ctx context.Context) (string, error) {
 		var err error
 		runtime, err = client.EnsureShared(ctx)
@@ -138,6 +139,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		emit("failed", runtime.ID, reason)
 		return err
 	}
+	connectDone()
 	retained := false
 	if len(retain) == 1 && retain[0].Connection != nil {
 		retained = retain[0].Connection(runtime.ID, connection)
@@ -168,7 +170,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			}
 		}
 	}
+	gatherDone := launchprofile.Begin("prepare.native_gather")
 	nativeRequest, err := setup.GatherNativeAccounts(ctx, home, sourceIDs, magpie)
+	gatherDone()
 	nativeRequest.Agents = ids
 
 	if err != nil {
@@ -279,21 +283,23 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	// npm global agent CLI installations are offloaded after the UI workspace unlocks!
 	if !installationReady {
 		emit("installing_session_service", runtime.ID, "")
+		installDone := launchprofile.Begin("prepare.install")
 		type setupStep struct {
 			reason string
+			stage  string
 			run    func(context.Context) error
 		}
 		coreSteps := []setupStep{
-			{"cloud resource allocation has not taken effect", func(stepCtx context.Context) error {
+			{"cloud resource allocation has not taken effect", "capacity", func(stepCtx context.Context) error {
 				return setup.Exec(stepCtx, connection, setup.GuestCapacityScript)
 			}},
-			{"agent version manifest sync failed", func(stepCtx context.Context) error {
+			{"agent version manifest sync failed", "manifest", func(stepCtx context.Context) error {
 				return setup.SyncAgentManifest(stepCtx, connection, versions)
 			}},
-			{"session service reconciliation failed", func(stepCtx context.Context) error {
+			{"session service reconciliation failed", "herdr", func(stepCtx context.Context) error {
 				return setup.Exec(stepCtx, connection, setup.HerdrSetupScript)
 			}},
-			{"Go terminal service installation failed", func(stepCtx context.Context) error {
+			{"Go terminal service installation failed", "terminal_binary", func(stepCtx context.Context) error {
 				return setup.InstallTerminalBinary(stepCtx, connection, filepath.Join(filepath.Dir(executable), "..", "Resources"))
 			}},
 		}
@@ -306,6 +312,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			stepWG.Add(1)
 			go func(st setupStep) {
 				defer stepWG.Done()
+				defer launchprofile.Begin("prepare.install." + st.stage)()
 				if runErr := st.run(stepCtx); runErr != nil {
 					stepMu.Lock()
 					if firstErr == nil {
@@ -318,6 +325,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			}(step)
 		}
 		stepWG.Wait()
+		installDone()
 		cancelSteps()
 		if firstErr != nil {
 			emit("failed", runtime.ID, firstReason)
