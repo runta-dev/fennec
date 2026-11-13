@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os/exec"
 	"strings"
 
@@ -23,13 +24,16 @@ func driverApps(c *driver.Client) engine.AppLister {
 		if err != nil {
 			return nil, err
 		}
-		return parseApps(raw), nil
+		return parseApps(raw)
 	}
 }
 
-// parseApps reads list_apps' answer: a list, or an object holding one
-// under apps.
-func parseApps(raw json.RawMessage) []protocol.AppInfo {
+// parseApps reads list_apps' answer. The driver replies with an MCP tool
+// result whose structuredContent holds {"apps":[...]}; a bare list or a
+// bare {"apps":[...]} is read too. A reply without an app list is an
+// error, so an unexpected shape is reported instead of reading as an
+// empty desktop.
+func parseApps(raw json.RawMessage) ([]protocol.AppInfo, error) {
 	type entry struct {
 		Name       string `json:"name"`
 		AppName    string `json:"app_name"`
@@ -42,15 +46,16 @@ func parseApps(raw json.RawMessage) []protocol.AppInfo {
 		LastUsed   string `json:"last_used"`
 		UseCount   int    `json:"use_count"`
 	}
+	raw = driver.Payload(raw)
 	var list []entry
 	if json.Unmarshal(raw, &list) != nil {
 		var wrapped struct {
-			Apps []entry `json:"apps"`
+			Apps *[]entry `json:"apps"`
 		}
-		if json.Unmarshal(raw, &wrapped) != nil {
-			return nil
+		if json.Unmarshal(raw, &wrapped) != nil || wrapped.Apps == nil {
+			return nil, errors.New("list_apps answered without an app list")
 		}
-		list = wrapped.Apps
+		list = *wrapped.Apps
 	}
 	out := make([]protocol.AppInfo, 0, len(list))
 	for _, e := range list {
@@ -73,7 +78,7 @@ func parseApps(raw json.RawMessage) []protocol.AppInfo {
 		}
 		out = append(out, protocol.AppInfo{Name: name, BundleID: e.BundleID, Path: path, PID: e.PID, Running: running, LastUsed: e.LastUsed, UseCount: e.UseCount})
 	}
-	return out
+	return out, nil
 }
 
 // pasteboard is the general pasteboard's text through pbpaste and pbcopy.
