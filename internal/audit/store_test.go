@@ -126,3 +126,26 @@ func TestQueryGroupsRepeatedActivity(t *testing.T) {
 		t.Fatalf("limit applies to rows, got %d", len(page.Entries))
 	}
 }
+
+// `true` and similar no-op reachability checks are not activity; a blocked or
+// failed one still is.
+func TestConnectivityProbesAreNotActivity(t *testing.T) {
+	store := NewStore(t.TempDir())
+	for _, e := range []Entry{
+		{Kind: "exec", Command: "true", SandboxMode: "workspace", Decision: "auto_sandbox"},
+		{Kind: "exec", Command: " : ", SandboxMode: "workspace", Decision: "auto_sandbox"},
+		{Kind: "exec", Command: "true", SandboxMode: "workspace", Decision: "sandbox_blocked", Blocked: true, ExitCode: 1},
+		{Kind: "exec", Command: "true && rm -rf build", SandboxMode: "workspace", Decision: "auto_sandbox"},
+	} {
+		if err := store.Record(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := store.Query(QueryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Total7d != 2 || len(result.Entries) != 2 {
+		t.Fatalf("got %d entries (%d total), want the blocked probe and the real command", len(result.Entries), result.Summary.Total7d)
+	}
+}

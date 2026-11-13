@@ -42,6 +42,20 @@ type Entry struct {
 	Count int `json:"count,omitempty"`
 }
 
+// connectivityProbe reports a successful no-op command such as `true`,
+// which clients run only to check that the Mac is reachable. It changes
+// nothing, so it is not activity; blocked or failed runs are still kept.
+func connectivityProbe(e Entry) bool {
+	if e.Kind != "exec" || e.Blocked || e.ExitCode != 0 {
+		return false
+	}
+	switch strings.TrimSpace(e.Command) {
+	case "true", ":", "/usr/bin/true", "/bin/true", "exit 0", "exit":
+		return true
+	}
+	return false
+}
+
 // RepeatWindow groups back-to-back identical activity (for example ChatGPT
 // starting the same desktop tool for each conversation) into one row. The
 // log itself keeps every entry.
@@ -119,7 +133,7 @@ func (s *Store) now() time.Time {
 
 // Record appends a sanitized Entry to today's shard and prunes expired shards (>7d).
 func (s *Store) Record(e Entry) error {
-	if s == nil || s.Directory == "" {
+	if s == nil || s.Directory == "" || connectivityProbe(e) {
 		return nil
 	}
 	now := s.now().UTC()
@@ -263,7 +277,7 @@ func (s *Store) Query(opts QueryOptions) (QueryResult, error) {
 		scanner.Buffer(make([]byte, 4096), 256<<10)
 		for scanner.Scan() {
 			var e Entry
-			if json.Unmarshal(scanner.Bytes(), &e) != nil {
+			if json.Unmarshal(scanner.Bytes(), &e) != nil || connectivityProbe(e) {
 				continue
 			}
 			res.Summary.Total7d++
