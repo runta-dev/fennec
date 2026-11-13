@@ -86,6 +86,17 @@ await app.click(1); await app.typeText("hello"); await app.getAXState()
 // ~	1 text entry area (settable) Value: hello, Secondary Actions: Show Menu
 ```
 
+Web pages go through the reference's browser API (`cua.listBrowsers`, `getBrowser`, `createBrowserTab`, `getTab`, `listTabs`, and tabs with element-index-first input, navigation, marks and a Playwright locator subset), served from ego lite, a Chromium browser for agents, through its public SDK: one bridge script per MCP session runs in ego's Node runtime and dials back to the daemon (`internal/ego`, [docs/codex-parity.md](docs/codex-parity.md) section 8). Agent tabs live in their own task space; the allowlist (as the app `ego lite`), confirmations, Stop and secret redaction apply to them. `FENNEC_CUA_EGO` names the `ego-browser` binary (`off` turns the surface off).
+
+```js
+var tab = await cua.createBrowserTab("ego", "https://example.com", { sessionName: "🔎 Example" })
+// Browser tab: 1, Title: "Example Domain", URL: "https://example.com/".
+// 0 AXWebArea Example Domain, URL: example.com/
+// 	1 heading Example Domain, Value: 1
+// ...
+await tab.click(4); await tab.typeText(null, "hello"); await tab.getAXState()   // a diff, as for apps
+```
+
 The `cua` object (`getState`, `listApps`, `getApp`, and the app methods `getAXState`, `getScreenshot`, `click`, `drag`, `scroll`, `selectText`, `setValue`, `performSecondaryAction`, `paste`, `pressKey`, `typeText`) is built on the engine tools below through the same host the `run` tool uses, so the allowlist, the desk turn (held for the whole call), Stop, confirmations and secret redaction apply to every call. fennec-cua's own capabilities sit on a separate `fennec` global and never shadow a reference name: `fennec.status`, `fennec.act` (plans with read-back), `fennec.wait`, `fennec.observe`, `fennec.flows`, `fennec.record`, `fennec.model`, `fennec.run`, `fennec.tools`/`fennec.call` (plugins and services).
 
 The six engine tools of 3.2 are neither listed nor callable by name: an agent session that calls `act` gets "unknown tool". Only a script plugin's own session, which presents its run's token, calls them back by name as that run. `fennec-cua do TOOL` and the scenario harness reach them through `js` (`fennec.call`, wrapped by `mcpclient.EngineTool`), so they pass the same path agents do.

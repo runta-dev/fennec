@@ -32,6 +32,21 @@ type Platform interface {
 // Tool runs one tool's request after the engine's checks.
 type Tool func(ctx context.Context, call *Call, args json.RawMessage) (any, *protocol.Error)
 
+// Browsers is the REPL's browser surface (internal/ego). Keys are MCP
+// sessions: each has its own bridge, task space and tabs.
+type Browsers interface {
+	Call(ctx context.Context, key any, args json.RawMessage) (any, *protocol.Error)
+	// Reset forgets a runtime's tab bindings (js_reset); tabs stay.
+	Reset(key any)
+	// TurnEnded closes the unmarked agent tabs of the turn.
+	TurnEnded(ctx context.Context, key any)
+	// Close ends the session's browser state.
+	Close(ctx context.Context, key any)
+}
+
+// BrowsersOff is the error of a browser call when the surface is off.
+const BrowsersOff = `browser surfaces are not enabled; use cua.getApp("<browser>")`
+
 // Call is what a tool knows about its caller.
 type Call struct {
 	Session *mcpserver.Session
@@ -70,6 +85,9 @@ type Engine struct {
 	// Models answers model calls from the REPL; nil answers them
 	// unavailable.
 	Models Models
+	// Browsers answers the REPL's browser calls (ego lite); nil leaves
+	// the browser surface off.
+	Browsers Browsers
 	// JSTimeout bounds each js call; zero means script.ReplTimeout.
 	JSTimeout time.Duration
 

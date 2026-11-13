@@ -78,8 +78,18 @@ func (r *repls) drop(s *mcpserver.Session) bool {
 	return true
 }
 
-// CloseSession discards the session's runtime when its connection ends.
-func (e *Engine) CloseSession(s *mcpserver.Session) { e.repl.drop(s) }
+// CloseSession discards the session's runtime when its connection ends,
+// and its browser state (its task space is finished in the background).
+func (e *Engine) CloseSession(s *mcpserver.Session) {
+	e.repl.drop(s)
+	if b := e.Browsers; b != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			b.Close(ctx, s)
+		}()
+	}
+}
 
 // HiddenTool names tools that are callable over MCP but never listed:
 // turn_ended for every session, and the engine and extension tools only for
@@ -120,8 +130,14 @@ func (e *Engine) replCall(ctx context.Context, s *mcpserver.Session, name string
 	switch name {
 	case protocol.ToolJSReset:
 		e.repl.drop(s)
+		if e.Browsers != nil {
+			e.Browsers.Reset(s)
+		}
 		return mcpserver.Result{Text: "The REPL runtime was reset; the next js call starts a fresh one."}, true
 	case protocol.ToolTurnEnded:
+		if e.Browsers != nil {
+			e.Browsers.TurnEnded(ctx, s)
+		}
 		return mcpserver.Result{Text: "ok"}, true
 	case protocol.ToolJS:
 	default:
@@ -269,6 +285,18 @@ func (h *replHost) Tool(ctx context.Context, name string, args json.RawMessage) 
 			return report, &protocol.Error{Code: code, Message: report.Error.Kind + ": " + report.Error.Message}
 		}
 		return report, nil
+	case protocol.ToolBrowser:
+		if e.Browsers == nil {
+			var req struct {
+				Op string `json:"op"`
+			}
+			_ = json.Unmarshal(args, &req)
+			if req.Op == "state" {
+				return []any{}, nil
+			}
+			return nil, &protocol.Error{Code: protocol.ErrUnavailable, Message: BrowsersOff}
+		}
+		return e.Browsers.Call(ctx, h.call.Session, args)
 	case "extensions":
 		type tool struct {
 			Name        string          `json:"name"`

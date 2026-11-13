@@ -32,6 +32,7 @@ import (
 	"fennec/cua/internal/daemon"
 	"fennec/cua/internal/desk"
 	"fennec/cua/internal/driver"
+	"fennec/cua/internal/ego"
 	"fennec/cua/internal/engine"
 	"fennec/cua/internal/extensions"
 	"fennec/cua/internal/flows"
@@ -318,6 +319,24 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 	eng.Impl[protocol.ToolApps] = eng.AppsTool(driverApps(client))
 	eng.Impl[protocol.ToolPaste] = eng.PasteTool(pasteboard{})
 	px.Models, px.VisionModel = mdl, cfg.Model.Models.Verify != nil
+	// Browser tabs: ego lite through its SDK bridge, one per REPL session.
+	// Its input is CDP input into the agent's own tabs, so it needs no desk
+	// turn; the allowlist (as the app "ego lite"), confirmations and Stop
+	// apply to it.
+	if bin := ego.FindBin(); bin != "" {
+		browsers := ego.NewManager(ego.Options{
+			Bin: bin, Dir: paths.Dir, Log: logger.Printf, Gate: pol.Gate,
+			Allowed: func() bool { return pol.Allow.Admits(ego.AppName) },
+		})
+		eng.Browsers = browsers
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			browsers.CloseAll(ctx)
+		}()
+	} else {
+		logger.Printf("ego lite (ego-browser) not found; browser tabs are unavailable")
+	}
 	fl.Decider, fl.Caption = mdl, flows.ModelCaptioner(mdl)
 
 	d := &daemon.Daemon{
