@@ -517,11 +517,16 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 			} else if credentialHash(previous) != old.Remote && compatibleNativeNonModel(name, previousPolicy, data) {
 				data = previousPolicy
 			} else if credentialHash(previous) != old.Remote {
+				// Settings are preferences: local edits win, cloud model choice
+				// stays. OAuth credentials keep the most recently refreshed copy.
 				merged, ok := mergeNativeSettings(name, previousPolicy, data)
+				if !ok {
+					merged, ok = newerNativeCredential(name, previousPolicy, data)
+				}
 				if !ok {
 					return result, fmt.Errorf("native credentials changed on both computers (%s); cloud copy preserved", name)
 				}
-				data = merged // Settings are preferences: local edits win, cloud model choice stays.
+				data = merged
 			}
 		}
 		if name == "pi/settings.json" {
