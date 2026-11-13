@@ -74,6 +74,10 @@ type chatgptBridge struct {
 	lastErr  string
 	conns    map[net.Conn]string
 	upgrade  []byte // last app-server 101 response, without its accept value
+
+	reads       chatgptReads // answers to ChatGPT's startup reads
+	readsDirty  bool
+	readsSaving bool
 }
 
 func newChatGPTBridge(home string, services *daemonServices) *chatgptBridge {
@@ -108,6 +112,7 @@ func (b *chatgptBridge) run(ctx context.Context) {
 	b.mu.Lock()
 	b.ctx = ctx
 	b.pref = b.load()
+	b.loadReadsLocked()
 	if b.pref.Upgrade != "" {
 		b.upgrade = []byte(b.pref.Upgrade)
 	}
@@ -323,14 +328,12 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	pending := append(head, buffered...)
 	reader.Discard(len(buffered))
 	// ChatGPT's file requests for Mac paths are answered on this Mac; only the
-	// rest of its traffic goes to the cloud.
-	// The shield answers initialize while the cloud is away; it sees every
-	// byte to ChatGPT after the local file answers are placed.
-	shield := newInitializeShield(b, conn, answered)
-	defer shield.close()
-	shield.observeInput(buffered)
-	files := cloudruntime.NewChatGPTLocalFiles(shield.output(), true)
+	// rest of its traffic goes to the cloud. The shield answers initialize and
+	// startup reads while the cloud is away.
+	files := cloudruntime.NewChatGPTLocalFiles(conn, !answered)
 	defer files.Close()
+	shield := newChatGPTShield(b, files, answered)
+	defer shield.close()
 	if pending, err = files.Feed(pending); err != nil {
 		return unavailable(err)
 	}
@@ -343,7 +346,6 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		for {
 			length, readErr := reader.Read(buffer)
 			if length > 0 {
-				shield.observeInput(buffer[:length])
 				forward, feedErr := files.Feed(buffer[:length])
 				if feedErr != nil {
 					return
@@ -386,6 +388,8 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 				return err
 			}
 			answered = true
+			files.ExpectHead(false)
+			shield.handshakeAnswered()
 		}
 		credit := terminalstream.NewCreditWindow()
 		forwarder := newChatGPTForwarder(opened, credit)
@@ -397,7 +401,7 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		frame, err := opened.Next(wait)
 		stopWaiting()
 		if err == nil && frame.Type == "receipt" {
-			shield.confirm()
+			shield.confirm(frame.Message)
 			forwarder.confirm()
 			session, window, receipt = opened, credit, frame
 			break
@@ -549,11 +553,16 @@ func (b *chatgptBridge) reconcileMode(magpie bool) int {
 }
 
 func writePrivateJSON(path string, value any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
 	data, err := json.Marshal(value)
 	if err != nil {
+		return err
+	}
+	return writePrivateRaw(path, data)
+}
+
+// writePrivateRaw replaces path atomically with data readable only by the user.
+func writePrivateRaw(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	file, err := os.CreateTemp(filepath.Dir(path), ".chatgpt-*")

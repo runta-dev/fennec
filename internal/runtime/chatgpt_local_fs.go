@@ -46,7 +46,9 @@ type ChatGPTLocalFiles struct {
 	checked    bool   // the cloud output started like WebSocket frames
 	raw        bool   // not WebSocket: passed through, nothing answered here
 	queued     [][]byte
-	cloudRoots []string // the cloud computer's home and CODEX_HOME
+	observe    func([]byte)      // each request that continues to the cloud
+	filter     func([]byte) bool // whether a cloud message is withheld from ChatGPT
+	cloudRoots []string          // the cloud computer's home and CODEX_HOME
 	closed     bool
 
 	watchMu sync.Mutex
@@ -68,11 +70,34 @@ func (files *ChatGPTLocalFiles) ExpectHead(expect bool) {
 	files.mu.Lock()
 	defer files.mu.Unlock()
 	files.headWanted = expect
+	files.flushLocked()
+}
+
+// Intercept installs, before the first Feed or Write, a function that sees
+// each ChatGPT request continuing to the cloud and one that sees each complete
+// text message from the cloud and reports whether to withhold it from ChatGPT.
+// Neither may call back into files.
+func (files *ChatGPTLocalFiles) Intercept(observe func([]byte), filter func([]byte) bool) {
+	files.mu.Lock()
+	defer files.mu.Unlock()
+	files.observe, files.filter = observe, filter
+}
+
+// Answer gives ChatGPT a result produced on the Mac for its request id,
+// placed between whole messages. It reports whether the answer was taken.
+func (files *ChatGPTLocalFiles) Answer(id, result json.RawMessage) bool {
+	return files.send(map[string]any{"id": id, "result": result})
 }
 
 // Feed takes bytes from ChatGPT and returns the bytes to send to the cloud.
 func (files *ChatGPTLocalFiles) Feed(data []byte) ([]byte, error) {
-	return files.client.feed(data, files.request)
+	return files.client.feed(data, func(message []byte) []byte {
+		forward := files.request(message)
+		if forward != nil && files.observe != nil {
+			files.observe(forward)
+		}
+		return forward
+	})
 }
 
 // Write takes the cloud's output for ChatGPT. Answers produced on the Mac are
@@ -118,8 +143,11 @@ func (files *ChatGPTLocalFiles) Write(data []byte) (int, error) {
 		if size == 0 {
 			break
 		}
-		if _, err := files.output.Write(frame.raw); err != nil {
-			return 0, err
+		withheld := frame.opcode == 0x1 && frame.fin && files.filter != nil && files.filter(frame.payload)
+		if !withheld {
+			if _, err := files.output.Write(frame.raw); err != nil {
+				return 0, err
+			}
 		}
 		files.frames = files.frames[size:]
 		if frame.opcode < 0x8 {
@@ -151,18 +179,18 @@ func (files *ChatGPTLocalFiles) flushLocked() error {
 }
 
 // send delivers one message from the Mac to ChatGPT.
-func (files *ChatGPTLocalFiles) send(message any) {
+func (files *ChatGPTLocalFiles) send(message any) bool {
 	payload, err := json.Marshal(message)
 	if err != nil {
-		return
+		return false
 	}
 	files.mu.Lock()
 	defer files.mu.Unlock()
 	if files.closed {
-		return
+		return false
 	}
 	files.queued = append(files.queued, encodeWebSocketFrame(0x1, payload, false))
-	files.flushLocked()
+	return files.flushLocked() == nil
 }
 
 // Close stops this connection's watches.

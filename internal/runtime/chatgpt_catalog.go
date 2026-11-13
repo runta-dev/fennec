@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -34,6 +35,41 @@ var magpieCatalogURL = "http://127.0.0.1:3425/v1/codex/models"
 var codexClientVersion = installedCodexVersion
 
 const magpieCatalogLimit = 32 << 20
+
+// magpieCatalogRefresh is how often ChatGPT connections ask the gateway for
+// the catalog. Every ChatGPT connection prepares its server, and fetching and
+// laying out the catalog (about 2 MB) on each would add tens of milliseconds
+// to every connection for a list that changes only when Magpie's models do.
+var magpieCatalogRefresh = time.Minute
+
+var catalogRefreshes struct {
+	sync.Mutex
+	last map[string]time.Time
+}
+
+// refreshMagpieCatalog syncs the catalog at path at most once per
+// magpieCatalogRefresh while one is in place; without one every call asks
+// the gateway.
+func refreshMagpieCatalog(ctx context.Context, path string) bool {
+	catalogRefreshes.Lock()
+	last := catalogRefreshes.last[path]
+	catalogRefreshes.Unlock()
+	if time.Since(last) < magpieCatalogRefresh {
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	if !syncMagpieCatalog(ctx, path) {
+		return false
+	}
+	catalogRefreshes.Lock()
+	defer catalogRefreshes.Unlock()
+	if catalogRefreshes.last == nil {
+		catalogRefreshes.last = map[string]time.Time{}
+	}
+	catalogRefreshes.last[path] = time.Now()
+	return true
+}
 
 // syncMagpieCatalog writes Magpie's Codex model catalog to path the way Magpie
 // does on the Mac, so ChatGPT running with the magpie provider shows Magpie's
@@ -161,10 +197,41 @@ func catalogSignature(codexHome string) string {
 	if toml.Unmarshal(data, &config) != nil || config.Catalog == "" {
 		return ""
 	}
+	info, err := os.Stat(config.Catalog)
+	if err != nil {
+		return ""
+	}
+	// The catalog is replaced by rename, so an unchanged file keeps its
+	// identity, size and time and its digest is not computed again.
+	catalogDigests.Lock()
+	known := catalogDigests.entries[config.Catalog]
+	catalogDigests.Unlock()
+	if known.info != nil && os.SameFile(known.info, info) && known.info.Size() == info.Size() && known.info.ModTime().Equal(info.ModTime()) {
+		return known.signature
+	}
 	catalog, err := os.ReadFile(config.Catalog)
 	if err != nil {
 		return ""
 	}
 	digest := sha256.Sum256(catalog)
-	return "model_catalog_json sha256:" + hex.EncodeToString(digest[:])
+	signature := "model_catalog_json sha256:" + hex.EncodeToString(digest[:])
+	if after, err := os.Stat(config.Catalog); err == nil && os.SameFile(after, info) && after.Size() == int64(len(catalog)) && after.ModTime().Equal(info.ModTime()) {
+		catalogDigests.Lock()
+		if catalogDigests.entries == nil {
+			catalogDigests.entries = map[string]catalogDigest{}
+		}
+		catalogDigests.entries[config.Catalog] = catalogDigest{info: after, signature: signature}
+		catalogDigests.Unlock()
+	}
+	return signature
+}
+
+type catalogDigest struct {
+	info      os.FileInfo
+	signature string
+}
+
+var catalogDigests struct {
+	sync.Mutex
+	entries map[string]catalogDigest
 }

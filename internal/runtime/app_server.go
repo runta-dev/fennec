@@ -81,7 +81,7 @@ func prepareGatewayHome(ctx context.Context, home, gateway string) (string, erro
 	links := map[string]string{}
 	catalog := func() string {
 		path := filepath.Join(directory, magpieCatalogName)
-		if !syncMagpieCatalog(ctx, path) {
+		if !refreshMagpieCatalog(ctx, path) {
 			return ""
 		}
 		return path

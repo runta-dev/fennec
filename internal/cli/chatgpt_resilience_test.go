@@ -249,6 +249,7 @@ func TestChatGPTBridgeAnswersInitializeWhileTheCloudIsAway(t *testing.T) {
 
 	services := &daemonServices{}
 	bridge := newChatGPTBridge(t.TempDir(), services)
+	t.Cleanup(func() { waitReadsSaved(bridge) })
 	bridge.pref.Token = bridgeTestToken
 	bridge.pref.EarlyInput = true
 	bridge.pref.Initialize = `{"from":"remembered"}`

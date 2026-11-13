@@ -215,11 +215,70 @@ func TestGatewayHomeCarriesMagpieCatalog(t *testing.T) {
 	if !strings.HasPrefix(first, "model_catalog_json sha256:") {
 		t.Fatal("signature", first)
 	}
+	// A changed model set is picked up once the refresh period has passed.
+	previous := magpieCatalogRefresh
+	magpieCatalogRefresh = 0
+	t.Cleanup(func() { magpieCatalogRefresh = previous })
 	body.Store(strings.Replace(gatewayCatalog, "GLM-5.3 · Z.ai", "GLM-5.4 · Z.ai", 2))
 	if _, _, _, err := codexAppServerEnvironment(context.Background(), home); err != nil {
 		t.Fatal(err)
 	}
 	if second := catalogSignature(codexHome); second == first || second == "" {
 		t.Fatal("signature did not follow the catalog")
+	}
+}
+
+// Every ChatGPT connection prepares its server; the gateway is asked for the
+// catalog at most once per refresh period while a catalog is in place.
+func TestRefreshMagpieCatalogAsksTheGatewayOncePerPeriod(t *testing.T) {
+	var body atomic.Value
+	var status atomic.Int32
+	body.Store(gatewayCatalog)
+	requests := fakeCatalogGateway(t, &body, &status)
+	path := filepath.Join(t.TempDir(), magpieCatalogName)
+	ctx := context.Background()
+	status.Store(http.StatusBadGateway)
+	if refreshMagpieCatalog(ctx, path) || refreshMagpieCatalog(ctx, path) || requests.Load() != 2 {
+		t.Fatalf("without a catalog every connection must ask the gateway (%d requests)", requests.Load())
+	}
+	status.Store(0)
+	for range 5 {
+		if !refreshMagpieCatalog(ctx, path) {
+			t.Fatal("catalog missing")
+		}
+	}
+	if requests.Load() != 3 {
+		t.Fatalf("gateway asked %d times; want once after the catalog arrived", requests.Load()-2)
+	}
+	previous := magpieCatalogRefresh
+	magpieCatalogRefresh = 0
+	t.Cleanup(func() { magpieCatalogRefresh = previous })
+	body.Store(strings.Replace(gatewayCatalog, `"priority":61`, `"priority":7`, 1))
+	if !refreshMagpieCatalog(ctx, path) || requests.Load() != 4 {
+		t.Fatal("catalog not refreshed after the period")
+	}
+	if updated, _ := os.ReadFile(path); !strings.Contains(string(updated), `"priority": 7`) {
+		t.Fatalf("catalog not refreshed: %s", updated)
+	}
+}
+
+// The restart signature follows the catalog's content without hashing an
+// unchanged file on every connection.
+func TestCatalogSignatureFollowsReplacedCatalog(t *testing.T) {
+	home := t.TempDir()
+	catalog := filepath.Join(home, magpieCatalogName)
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte("model_catalog_json = \""+catalog+"\"\n"), 0600)
+	if err := writeFileAtomic(catalog, []byte(`{"models":[1]}`)); err != nil {
+		t.Fatal(err)
+	}
+	first := catalogSignature(home)
+	if first == "" || catalogSignature(home) != first {
+		t.Fatalf("signature %q unstable", first)
+	}
+	if err := writeFileAtomic(catalog, []byte(`{"models":[2]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if second := catalogSignature(home); second == "" || second == first {
+		t.Fatalf("replaced catalog kept signature %q", second)
 	}
 }
