@@ -289,31 +289,14 @@ func quoteAll(ss []string) []string {
 }
 
 // grant grants the TCC services to client and approves its direct screen
-// capture: macOS 15 and later otherwise ask once per app, and cua-driver
-// embedded in an app refuses captures until then. An app is approved by
-// its bundle's file URL, so a bundle id is resolved to the apps in the
-// VM's Applications folders that carry it.
+// capture (vm.Session.Grant).
 func grant(ctx context.Context, s *vm.Session, client string) error {
-	if err := s.GrantTCC(ctx, client); err != nil {
+	keys, err := s.Grant(ctx, client)
+	if err != nil {
 		return err
 	}
-	keys := []string{client}
-	if !strings.HasPrefix(client, "/") {
-		find := `for a in /Applications/*.app "$HOME"/Applications/*.app; do ` +
-			`[ "$(defaults read "$a/Contents/Info" CFBundleIdentifier 2>/dev/null)" = ` + vm.Quote(client) + ` ] && echo "$a"; done; true`
-		paths, err := s.Output(ctx, find)
-		if err != nil {
-			return err
-		}
-		for _, p := range strings.Split(strings.TrimSpace(paths), "\n") {
-			if p == "" {
-				continue
-			}
-			keys = append(keys, "file://"+p+"/")
-		}
-		if len(keys) == 1 {
-			fmt.Fprintf(os.Stderr, "cua-vm: no app with bundle id %s is installed yet; install it and run grant again to approve its screen capture\n", client)
-		}
+	if !strings.HasPrefix(client, "/") && len(keys) == 1 {
+		fmt.Fprintf(os.Stderr, "cua-vm: no app with bundle id %s is installed yet; install it and run grant again to approve its screen capture\n", client)
 	}
-	return s.ApproveScreenCapture(ctx, keys...)
+	return nil
 }

@@ -189,13 +189,11 @@ func golden(ctx context.Context, args []string) error {
 		}
 	}
 
-	// Permissions: Accessibility and Screen Recording for every backend
-	// binary and the shuttle bundle; Automation and app data for grading.
+	// Permissions: the backends' grants and capture approvals; Automation
+	// and app data for grading.
 	log.Printf("granting permissions")
-	for _, c := range []string{bench.GuestFennec, bench.GuestDriver, bench.ShuttleID, bench.GuestShuttle + "/Contents/MacOS/shuttle", bench.GuestShuttle + "/Contents/MacOS/cua-driver"} {
-		if err := s.GrantTCC(ctx, c); err != nil {
-			return fmt.Errorf("grant %s: %w", c, err)
-		}
+	if err := grantBackends(ctx, s); err != nil {
+		return err
 	}
 	agent, err := s.Output(ctx, "readlink -f \"$(command -v tart-guest-agent)\"")
 	if err != nil {
@@ -213,8 +211,7 @@ func golden(ctx context.Context, args []string) error {
 			}
 		}
 	}
-	if err := s.ApproveScreenCapture(ctx, strings.TrimSpace(agent), "/usr/sbin/screencapture", bench.GuestFennec, bench.GuestDriver, bench.ShuttleID,
-		bench.GuestShuttle+"/Contents/MacOS/shuttle", bench.GuestShuttle+"/Contents/MacOS/cua-driver"); err != nil {
+	if err := s.ApproveScreenCapture(ctx, strings.TrimSpace(agent), "/usr/sbin/screencapture"); err != nil {
 		return err
 	}
 
@@ -507,9 +504,25 @@ func buildFennec(ctx context.Context, dir string) error {
 	return nil
 }
 
+// grantBackends grants Accessibility, Screen Recording and input to every
+// backend binary and the shuttle bundle, and approves their direct screen
+// capture (vm.Session.Grant, as cua-vm grant does): without that consent
+// macOS 15 and later refuse cua-driver's captures, whichever backend runs
+// it. The same for every backend, so none is favoured.
+func grantBackends(ctx context.Context, s *vm.Session) error {
+	for _, c := range []string{bench.GuestFennec, bench.GuestDriver, bench.ShuttleID, bench.GuestShuttle + "/Contents/MacOS/shuttle", bench.GuestShuttle + "/Contents/MacOS/cua-driver"} {
+		if _, err := s.Grant(ctx, c); err != nil {
+			return fmt.Errorf("grant %s: %w", c, err)
+		}
+	}
+	return nil
+}
+
 // refreshFennec replaces only the fennec-cua binary in an existing golden
-// image, keeping the desktop state, the other backends and every grant (TCC
-// grants and capture approvals are keyed by path, which does not change).
+// image, keeping the desktop state and the other backends. TCC grants and
+// capture approvals are keyed by path, which does not change; they are
+// applied again for every backend so an image built before an approval was
+// added gets it.
 func refreshFennec(ctx context.Context, v *vm.VM) error {
 	stage, err := os.MkdirTemp("", "cua-bench-golden")
 	if err != nil {
@@ -534,7 +547,7 @@ func refreshFennec(ctx context.Context, v *vm.VM) error {
 	if err := s.Push(ctx, bench.HomeDir+"/bench", "-C", stage, "bin/fennec-cua"); err != nil {
 		return err
 	}
-	if err := s.GrantTCC(ctx, bench.GuestFennec); err != nil {
+	if err := grantBackends(ctx, s); err != nil {
 		return err
 	}
 	if out, err := s.Output(ctx, "shasum -a 256 "+vm.Quote(bench.GuestFennec)); err == nil {

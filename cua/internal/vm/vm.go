@@ -321,6 +321,34 @@ func (s *Session) ApproveScreenCapture(ctx context.Context, clients ...string) e
 	return err
 }
 
+// Grant grants the TCC services to client (GrantTCC) and approves its
+// direct screen capture (ApproveScreenCapture): macOS 15 and later
+// otherwise ask once per app, and cua-driver refuses captures until then.
+// An app is approved by its bundle's file URL as well, so a bundle id is
+// resolved to the apps in the VM's Applications folders (and one folder
+// below them) that carry it. It returns the capture keys it approved;
+// for a bundle id, only the id itself means no app carries it yet.
+func (s *Session) Grant(ctx context.Context, client string) ([]string, error) {
+	if err := s.GrantTCC(ctx, client); err != nil {
+		return nil, err
+	}
+	keys := []string{client}
+	if !strings.HasPrefix(client, "/") {
+		find := `for a in /Applications/*.app "$HOME"/Applications/*.app "$HOME"/Applications/*/*.app; do ` +
+			`[ "$(defaults read "$a/Contents/Info" CFBundleIdentifier 2>/dev/null)" = ` + Quote(client) + ` ] && echo "$a"; done; true`
+		paths, err := s.Output(ctx, find)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range strings.Split(strings.TrimSpace(paths), "\n") {
+			if p != "" {
+				keys = append(keys, "file://"+p+"/")
+			}
+		}
+	}
+	return keys, s.ApproveScreenCapture(ctx, keys...)
+}
+
 // Shutdown shuts the guest down from inside, so apps, preferences and the
 // page cache are saved, and waits until the VM has stopped. tart stop may
 // end the VM before that.
