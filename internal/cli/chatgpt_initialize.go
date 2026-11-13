@@ -110,17 +110,22 @@ type chatgptShield struct {
 	mode      string // the cloud app-server mode serving the stream
 	held      map[string]*heldRequest
 	answered  map[string]*heldRequest // answered here; the cloud's answer is dropped
+	// pending are all of ChatGPT's requests still waiting for an answer from
+	// the cloud, by id, and lastRequest when ChatGPT last sent one; a daemon
+	// that stops waits for them (see drain).
+	pending     map[string]bool
+	lastRequest time.Time
 }
 
 func newChatGPTShield(bridge *chatgptBridge, files *cloudruntime.ChatGPTLocalFiles, early bool) *chatgptShield {
-	shield := &chatgptShield{bridge: bridge, files: files, early: early, held: map[string]*heldRequest{}, answered: map[string]*heldRequest{}}
+	shield := &chatgptShield{bridge: bridge, files: files, early: early, held: map[string]*heldRequest{}, answered: map[string]*heldRequest{}, pending: map[string]bool{}}
 	files.Intercept(shield.observe, shield.filter)
 	return shield
 }
 
 // observe sees each of ChatGPT's requests on its way to the cloud.
 func (s *chatgptShield) observe(message []byte) {
-	if len(message) > chatgptReadRequestLimit || !bytes.Contains(message, []byte(`"method"`)) {
+	if !bytes.Contains(message, []byte(`"method"`)) {
 		return
 	}
 	var request struct {
@@ -128,21 +133,36 @@ func (s *chatgptShield) observe(message []byte) {
 		Method string          `json:"method"`
 		Params json.RawMessage `json:"params"`
 	}
-	if json.Unmarshal(message, &request) != nil || len(request.ID) == 0 || string(request.ID) == "null" {
-		return
-	}
-	held := &heldRequest{id: request.ID, initialize: request.Method == "initialize", since: time.Now()}
-	if !held.initialize {
-		key, ok := chatgptReadKey(request.Method, request.Params)
-		if !ok {
+	if len(message) > chatgptReadRequestLimit {
+		// Large requests (attachments) are only counted, never answered here.
+		var head struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if json.Unmarshal(message, &head) != nil {
 			return
 		}
-		held.key = key
+		request.ID, request.Method = head.ID, head.Method
+	} else if json.Unmarshal(message, &request) != nil {
+		return
+	}
+	if request.Method == "" || len(request.ID) == 0 || string(request.ID) == "null" {
+		return // a notification, or ChatGPT's answer to the app-server
 	}
 	id := string(bytes.TrimSpace(request.ID))
+	held := &heldRequest{id: request.ID, initialize: request.Method == "initialize", since: time.Now()}
+	tracked := held.initialize
+	if !held.initialize && len(message) <= chatgptReadRequestLimit {
+		held.key, tracked = chatgptReadKey(request.Method, request.Params)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
+		return
+	}
+	s.pending[id] = true
+	s.lastRequest = held.since
+	if !tracked {
 		return
 	}
 	if previous := s.held[id]; previous != nil && previous.timer != nil {
@@ -196,7 +216,11 @@ func (s *chatgptShield) answerLocally(id string, held *heldRequest) {
 		s.mu.Unlock()
 		return
 	}
+	if held.timer != nil {
+		held.timer.Stop()
+	}
 	delete(s.held, id)
+	delete(s.pending, id)
 	s.answered[id] = held
 	s.mu.Unlock()
 	// The lock is released first: the answer goes out under the connection's
@@ -225,6 +249,12 @@ func (s *chatgptShield) filter(message []byte) bool {
 		}
 		tracked = bytes.Contains(message, []byte(id))
 	}
+	for id := range s.pending {
+		if tracked {
+			break
+		}
+		tracked = bytes.Contains(message, []byte(id))
+	}
 	s.mu.Unlock()
 	if !tracked {
 		return false
@@ -239,6 +269,7 @@ func (s *chatgptShield) filter(message []byte) bool {
 	}
 	id := string(bytes.TrimSpace(response.ID))
 	s.mu.Lock()
+	delete(s.pending, id)
 	held, drop := s.held[id], false
 	if held != nil {
 		delete(s.held, id)
@@ -296,6 +327,40 @@ func (s *chatgptShield) close() {
 	}
 	clear(s.held)
 	clear(s.answered)
+	clear(s.pending)
+}
+
+// settled reports that every request ChatGPT sent has its answer and ChatGPT
+// has sent nothing for quiet.
+func (s *chatgptShield) settled(quiet time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.pending) == 0 && time.Since(s.lastRequest) >= quiet
+}
+
+// answerRemembered answers every startup read still waiting for the cloud
+// from its remembered answer at once. Initialize is left alone: answering it
+// on a connection about to close would only start ChatGPT's clocks on reads
+// that can no longer be answered.
+func (s *chatgptShield) answerRemembered() {
+	s.mu.Lock()
+	waiting := make(map[string]*heldRequest, len(s.held))
+	for id, held := range s.held {
+		if !held.initialize {
+			waiting[id] = held
+		}
+	}
+	s.mu.Unlock()
+	for id, held := range waiting {
+		s.answerLocally(id, held)
+	}
+}
+
+// unanswered counts ChatGPT's requests that still wait for the cloud.
+func (s *chatgptShield) unanswered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.pending)
 }
 
 func (b *chatgptBridge) cachedInitialize() json.RawMessage {

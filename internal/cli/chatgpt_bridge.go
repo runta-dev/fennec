@@ -74,6 +74,8 @@ type chatgptBridge struct {
 	lastErr  string
 	conns    map[net.Conn]string
 	upgrade  []byte // last app-server 101 response, without its accept value
+	live     map[net.Conn]*chatgptLive
+	draining bool // the daemon is stopping (see drain)
 
 	reads       chatgptReads // answers to ChatGPT's startup reads
 	readsDirty  bool
@@ -130,7 +132,7 @@ func (b *chatgptBridge) run(ctx context.Context) {
 }
 
 func (b *chatgptBridge) enableLocked() error {
-	if b.listener == nil {
+	if b.listener == nil && !b.draining {
 		listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(b.pref.Port))
 		if err != nil {
 			listener, err = net.Listen("tcp", "127.0.0.1:0")
@@ -334,6 +336,10 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	defer files.Close()
 	shield := newChatGPTShield(b, files, answered)
 	defer shield.close()
+	if !b.join(conn, &chatgptLive{shield: shield, files: files, end: cancel}) {
+		return nil // the daemon is stopping; ChatGPT reconnects to the next one
+	}
+	defer b.leave(conn)
 	if pending, err = files.Feed(pending); err != nil {
 		return unavailable(err)
 	}

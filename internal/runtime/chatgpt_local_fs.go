@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,6 +51,7 @@ type ChatGPTLocalFiles struct {
 	filter     func([]byte) bool // whether a cloud message is withheld from ChatGPT
 	cloudRoots []string          // the cloud computer's home and CODEX_HOME
 	closed     bool
+	ended      bool // ChatGPT got a close frame; nothing follows it
 
 	watchMu sync.Mutex
 	watches map[string]chan struct{}
@@ -105,6 +107,9 @@ func (files *ChatGPTLocalFiles) Feed(data []byte) ([]byte, error) {
 func (files *ChatGPTLocalFiles) Write(data []byte) (int, error) {
 	files.mu.Lock()
 	defer files.mu.Unlock()
+	if files.ended {
+		return len(data), nil
+	}
 	input := data
 	if files.headWanted {
 		files.head = append(files.head, input...)
@@ -191,6 +196,24 @@ func (files *ChatGPTLocalFiles) send(message any) bool {
 	}
 	files.queued = append(files.queued, encodeWebSocketFrame(0x1, payload, false))
 	return files.flushLocked() == nil
+}
+
+// Goodbye sends ChatGPT a WebSocket close frame with code after the answers
+// already queued, once the output is between whole messages; nothing reaches
+// ChatGPT after it. It reports false, sending nothing, while the cloud is in
+// the middle of a message.
+func (files *ChatGPTLocalFiles) Goodbye(code uint16) bool {
+	files.mu.Lock()
+	defer files.mu.Unlock()
+	if files.ended {
+		return true
+	}
+	if files.raw || !files.atBoundaryLocked() || files.flushLocked() != nil || len(files.queued) > 0 {
+		return false
+	}
+	files.ended, files.closed = true, true
+	files.output.Write(encodeWebSocketFrame(0x8, binary.BigEndian.AppendUint16(nil, code), false))
+	return true
 }
 
 // Close stops this connection's watches.

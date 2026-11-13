@@ -62,7 +62,9 @@ func serveControl(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signals, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -70,6 +72,18 @@ func serveControl(arguments []string) error {
 	}
 	manager, services, controller := newControlApplication(ctx, home, executable)
 	defer func() { cancel(); services.close() }()
+	// A stop request (launchctl bootout when Fennec is upgraded or restarted)
+	// first lets ChatGPT's requests in flight finish over the still-open cloud
+	// link, then stops everything; a second signal stops at once.
+	go func() {
+		select {
+		case <-signals.Done():
+			stopSignals()
+			services.chatgpt.drain(chatgptDrainLimit)
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	// Acquire the control socket before any Keychain access so competing starts
 	// cannot create duplicate system authorization prompts.
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
