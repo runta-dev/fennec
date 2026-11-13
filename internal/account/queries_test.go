@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"net/http"
 	"net/http/httptest"
@@ -183,5 +184,49 @@ func TestBillingDetectsMissingScopeForReauthAndScopedCredentialsIsolation(t *tes
 	}
 	if tok, _ := m.Token(); tok != "prod-legacy-token" {
 		t.Fatalf("switching back to production lost original token: %q", tok)
+	}
+}
+
+// Billing could only start after /v2/me answered; the identity is reused for
+// the same credential, so billing costs one API round trip.
+func TestIdentityIsSharedByProfileAndBilling(t *testing.T) {
+	var identityRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var data any
+		switch r.URL.Path {
+		case "/v2/me":
+			identityRequests.Add(1)
+			data = map[string]any{"user_id": "owner", "organization_id": "org", "role": "owner"}
+		case "/v2/organizations/org/billing/account":
+			data = map[string]any{"currency": "USD", "credit_balance": map[string]any{"amount_minor": 1}}
+		case "/v2/organizations/org/billing/usage":
+			data = map[string]any{"freshness": "fresh"}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": data})
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m := New(ctx, &memoryCredentials{token: "private"}, server.URL)
+	if err := m.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := m.Profile(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := m.billing(ctx, server.URL); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := identityRequests.Load(); got != 1 {
+		t.Fatalf("identity fetched %d times", got)
+	}
+	// Another sign-in asks again.
+	m.meMu.Lock()
+	m.meCache.epoch++
+	m.meMu.Unlock()
+	if _, err := m.Profile(ctx); err != nil || identityRequests.Load() != 2 {
+		t.Fatal("identity reused across credentials", err)
 	}
 }
