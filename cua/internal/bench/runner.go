@@ -143,6 +143,9 @@ type TrialResult struct {
 	// SafetyOutput what the dialog printed.
 	Safety       string `json:"safety,omitempty"`
 	SafetyOutput string `json:"safety_output,omitempty"`
+	// AfterAgent is what the task's after-agent command printed (the
+	// browser set's snapshot).
+	AfterAgent string `json:"after_agent,omitempty"`
 	// Sealed runs keep only scores and counts.
 	Sealed bool `json:"sealed,omitempty"`
 }
@@ -240,7 +243,7 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 		defer f.Close()
 		logFile = f
 	}
-	bin, args := v.ExecCommand(true, vm.InGUI(serve))
+	bin, args := v.ExecCommand(true, vm.InGUI(c.Task.BackendEnv+serve))
 	client, cmd, instructions, err := startMCP(ctx, bin, args, logFile)
 	if err != nil {
 		return fail("backend start: %v", err)
@@ -297,6 +300,13 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 	}
 	if h := agentHarnessError(tr); h != "" {
 		return fail("%s", h)
+	}
+	if c.Task.AfterAgent != "" {
+		out, ok := guestShell(ctx, s, c.Task.AfterAgent, 2*time.Minute)
+		res.AfterAgent = clip(out, 500)
+		if !ok {
+			return fail("after the agent: %s", clip(out, 500))
+		}
 	}
 	stop()
 
@@ -459,14 +469,19 @@ type PreResult struct {
 	Output string // clipped
 }
 
-// Prepare readies a fresh VM for a task: Automation grants for the apps
-// its commands script that the golden image does not cover, the setup
-// step if any, then the pre_command with macOSWorld's three tries. A
-// failing setup step, or a failing pre_command of a task that demands an
-// error-free preparation, is an error.
+// Prepare readies a fresh VM for a task: the task's own files (Install),
+// Automation grants for the apps its commands script that the golden
+// image does not cover, the setup step if any, then the pre_command with
+// macOSWorld's three tries. A failing setup step, or a failing pre_command
+// of a task that demands an error-free preparation, is an error.
 func Prepare(ctx context.Context, s *vm.Session, t Task, setup string) (PreResult, error) {
 	var r PreResult
-	if err := grantAutomation(ctx, s, scriptedBy(t)); err != nil {
+	if t.Install != nil {
+		if err := t.Install(ctx, s); err != nil {
+			return r, fmt.Errorf("install: %v", err)
+		}
+	}
+	if err := grantAutomation(ctx, s, append(scriptedBy(t), t.Automation...)); err != nil {
 		return r, fmt.Errorf("automation grants: %v", err)
 	}
 	if setup != "" {
@@ -493,7 +508,7 @@ func Prepare(ctx context.Context, s *vm.Session, t Task, setup string) (PreResul
 // steps or final message, no command output, no screenshot.
 func seal(r *TrialResult) {
 	r.Sealed = true
-	r.PreOutput, r.SafetyOutput, r.Screenshot = "", "", ""
+	r.PreOutput, r.SafetyOutput, r.Screenshot, r.AfterAgent = "", "", "", ""
 	for i := range r.Grading {
 		r.Grading[i].Command, r.Grading[i].Output = "", ""
 	}

@@ -2,12 +2,15 @@ package bench
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"fennec/cua/internal/vm"
 )
 
 // Task is one macOSWorld task (showlab/macosworld). Task texts and grading
@@ -30,6 +33,26 @@ type Task struct {
 	// Corrected names the harness corrections applied to the task
 	// (corrections.go); empty for the task as upstream wrote it.
 	Corrected string
+
+	// The fields below serve our own browser set (browser.go); macOSWorld
+	// tasks leave them empty.
+
+	// Install puts what the task's commands need into a fresh VM (the
+	// page server), before the setup step and the pre_command.
+	Install func(ctx context.Context, s *vm.Session) error
+	// Automation lists bundle ids the task's commands send Apple events
+	// to, granted per trial beside those scriptedBy finds by name.
+	Automation []string
+	// AfterAgent runs when the agent stops, before the backend shuts
+	// down (the browser snapshot: fennec-cua closes its agent tabs when
+	// its session ends).
+	AfterAgent string
+	// Solve is a scripted solution, run by check -solve instead of
+	// AfterAgent; the grader should then score 100.
+	Solve string
+	// BackendEnv is shell run before the backend's serve command, such as
+	// exports that point fennec-cua at the image's Chromium.
+	BackendEnv string
 }
 
 // InProcess is macOSWorld's in-process event: a command, usually an

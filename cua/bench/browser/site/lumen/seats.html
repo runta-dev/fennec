@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Choose a seat - Lumen Hall</title><link rel="stylesheet" href="/static/site.css">
+<style>canvas { border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; } .legend span { margin-right: 16px; }</style>
+</head>
+<body>
+<header><span class="brand">Lumen Hall</span><nav><a href="#">What's on</a><a href="#">Visit</a></nav></header>
+<main>
+<div class="card">
+<h1>The Lantern Quartet, Friday 4 December 2026, 19:30</h1>
+<p class="legend muted small"><span>White: free</span><span>Grey: taken</span><span>Green: your choice</span></p>
+<canvas id="map" width="560" height="400"></canvas>
+<p id="status" class="muted">No seat selected.</p>
+<form id="reserve" method="post" action="/lumen/reserve">
+  <input type="hidden" name="seat" id="seat">
+  <p><button type="submit">Reserve selected seat</button></p>
+</form>
+</div>
+</main>
+<script>
+const rows = "ABCDEFGHIJ";
+const cv = document.getElementById("map"), ctx = cv.getContext("2d");
+const sx = (c) => 40 + (c - 1) * 40 + (c > 6 ? 16 : 0);
+const sy = (r) => 60 + r * 32;
+const taken = (r, c) => (r * 5 + c * 7) % 4 === 0;
+let sel = null;
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = "#e9e7e0"; ctx.fillRect(140, 8, 296, 22);
+  ctx.fillStyle = "#6a6f76"; ctx.font = "12px -apple-system, Arial"; ctx.textAlign = "center"; ctx.fillText("STAGE", 288, 23);
+  for (let c = 1; c <= 12; c++) ctx.fillText(String(c), sx(c) + 16, 50);
+  for (let r = 0; r < 10; r++) {
+    ctx.textAlign = "center"; ctx.fillStyle = "#6a6f76"; ctx.fillText(rows[r], 18, sy(r) + 16);
+    for (let c = 1; c <= 12; c++) {
+      const id = rows[r] + c;
+      ctx.fillStyle = id === sel ? "#2f6f5e" : taken(r, c) ? "#b9b7b0" : "#ffffff";
+      ctx.strokeStyle = "#8d8a82"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(sx(c), sy(r), 32, 24, 5); ctx.fill(); ctx.stroke();
+    }
+  }
+}
+cv.addEventListener("click", (e) => {
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * cv.width / rect.width, y = (e.clientY - rect.top) * cv.height / rect.height;
+  for (let r = 0; r < 10; r++) for (let c = 1; c <= 12; c++) {
+    if (x >= sx(c) && x <= sx(c) + 32 && y >= sy(r) && y <= sy(r) + 24) {
+      const id = rows[r] + c;
+      if (taken(r, c)) { document.getElementById("status").textContent = "That seat is taken."; return; }
+      sel = id; document.getElementById("seat").value = id;
+      document.getElementById("status").textContent = "One seat selected.";
+      draw(); return;
+    }
+  }
+});
+document.getElementById("reserve").addEventListener("submit", (e) => { if (!sel) { e.preventDefault(); document.getElementById("status").textContent = "Choose a seat first."; } });
+draw();
+</script>
+</body>
+</html>

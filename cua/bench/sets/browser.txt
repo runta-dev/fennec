@@ -1,0 +1,24 @@
+# set: browser
+# Our own browser tasks on local pages (bench/sets/browser.md): no live
+# internet, fictional sites, served on 127.0.0.1 inside the VM. Instruction,
+# setup and grader of each task are in bench/browser/tasks.json; bench-pages
+# (cmd/bench-pages) serves, sets up, snapshots and grades in the VM. Not
+# sealed: the tasks are ours and their transcripts may be read.
+# A trailing "# Apps [family: NAME]" names the apps and the task family.
+browser/form-shipping             # Chromium [family: forms]
+browser/form-wizard               # Chromium [family: forms]
+browser/extract-shipment          # Chromium [family: extraction]
+browser/extract-invoice-total     # Chromium [family: extraction]
+browser/download-pick-rename      # Chromium, Finder [family: downloads]
+browser/tabs-keep-two             # Chromium [family: tabs]
+browser/tabs-popup-code           # Chromium [family: tabs]
+browser/widget-datepicker         # Chromium [family: widgets]
+browser/widget-combobox-slider    # Chromium [family: widgets]
+browser/widget-drag-reorder       # Chromium [family: widgets]
+browser/widget-iframe-shadow      # Chromium [family: widgets]
+browser/widget-canvas-seat        # Chromium [family: widgets]
+browser/settings-download-folder  # Chromium [family: settings]
+browser/crossapp-textedit-form    # Chromium, TextEdit [family: cross-app]
+browser/crossapp-page-notes       # Chromium, Notes [family: cross-app]
+browser/distract-overlay          # Chromium [family: distractions]
+browser/distract-notification     # Chromium [family: distractions]

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Checkout - Fernhollow Seed Co.</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Fernhollow Seed Co.</span><nav><a href="#">Seeds</a><a href="#">Bulbs</a><a href="#">Basket (3)</a></nav></header>
+<main>
+<div class="card">
+<h1>Shipping details</h1>
+<p class="muted">Your basket: Heirloom tomato mix, Sweet pea 'Dusk', Lavender plugs (x6).</p>
+<form id="ship" method="post" action="/fernhollow/checkout">
+  <label for="full_name">Full name</label>
+  <input type="text" id="full_name" name="full_name" required autocomplete="off">
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" value="j.doe@oldmail.test" required autocomplete="off">
+  <label for="street">Street address</label>
+  <input type="text" id="street" name="street" required autocomplete="off">
+  <label for="city">City</label>
+  <input type="text" id="city" name="city" required autocomplete="off">
+  <label for="postal">Postal code</label>
+  <input type="text" id="postal" name="postal" required pattern="[0-9]{5}" title="Five digits" autocomplete="off">
+  <label for="country">Country</label>
+  <select id="country" name="country" required>
+    <option value="">Choose a country</option>
+    <option value="AT">Austria</option><option value="BE">Belgium</option><option value="CA">Canada</option>
+    <option value="HR">Croatia</option><option value="CZ">Czechia</option><option value="DK">Denmark</option>
+    <option value="EE">Estonia</option><option value="FI">Finland</option><option value="FR">France</option>
+    <option value="DE">Germany</option><option value="GR">Greece</option><option value="HU">Hungary</option>
+    <option value="IS">Iceland</option><option value="IE">Ireland</option><option value="IT">Italy</option>
+    <option value="LV">Latvia</option><option value="LT">Lithuania</option><option value="LU">Luxembourg</option>
+    <option value="MT">Malta</option><option value="NL">Netherlands</option><option value="NO">Norway</option>
+    <option value="PL">Poland</option><option value="PT">Portugal</option><option value="PR">Puerto Rico</option>
+    <option value="RO">Romania</option><option value="SK">Slovakia</option><option value="SI">Slovenia</option>
+    <option value="ES">Spain</option><option value="SE">Sweden</option><option value="CH">Switzerland</option>
+    <option value="GB">United Kingdom</option><option value="US">United States</option>
+  </select>
+  <label>Delivery</label>
+  <div class="inline">
+    <input type="radio" id="d_std" name="delivery" value="standard" checked><label for="d_std">Standard (4-6 days)</label>
+    <input type="radio" id="d_exp" name="delivery" value="express"><label for="d_exp">Express (1-2 days)</label>
+    <input type="radio" id="d_pick" name="delivery" value="pickup"><label for="d_pick">Pick up at the nursery</label>
+  </div>
+  <div class="inline" style="margin-top:10px">
+    <input type="checkbox" id="gift" name="gift" value="yes"><label for="gift">This order is a gift (no prices on the packing slip)</label>
+  </div>
+  <label for="note">Delivery note</label>
+  <textarea id="note" name="note"></textarea>
+  <p><button type="submit">Place order</button></p>
+</form>
+</div>
+</main>
+</body>
+</html>

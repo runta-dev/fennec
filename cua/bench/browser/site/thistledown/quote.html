@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Get a quote - Thistledown Pet Cover</title><link rel="stylesheet" href="/static/site.css">
+<style>
+.combo { position: relative; max-width: 420px; }
+.combo ul { display: none; position: absolute; left: 0; right: 0; max-height: 180px; overflow-y: auto; margin: 2px 0 0; padding: 0; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: 4px; z-index: 5; }
+.combo.open ul { display: block; }
+.combo li { padding: 5px 9px; cursor: pointer; }
+.combo li.hl { background: #dcebe6; }
+.slider { position: relative; width: 320px; height: 28px; margin: 6px 0; touch-action: none; cursor: pointer; }
+.slider .track { position: absolute; top: 12px; left: 0; right: 0; height: 4px; background: var(--line); border-radius: 2px; }
+.slider .fill { position: absolute; top: 12px; left: 0; height: 4px; background: var(--accent); border-radius: 2px; }
+.slider .thumb { position: absolute; top: 4px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); }
+.slider:focus { outline: 2px solid #9cc5b8; outline-offset: 4px; }
+.switch { display: inline-flex; align-items: center; gap: 10px; background: none; border: none; color: var(--ink); padding: 0; }
+.switch .knob { width: 40px; height: 22px; border-radius: 11px; background: var(--line); position: relative; }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .1s; }
+.switch[aria-checked=true] .knob { background: var(--accent); }
+.switch[aria-checked=true] .knob::after { left: 21px; }
+</style>
+</head>
+<body>
+<header><span class="brand">Thistledown Pet Cover</span><nav><a href="#">Dogs</a><a href="#">Cats</a></nav></header>
+<main>
+<div class="card">
+<h1>Get a quote for your dog</h1>
+<form id="quote" method="post" action="/thistledown/quote">
+  <label for="pet_name">Your dog's name</label>
+  <input type="text" id="pet_name" name="pet_name" required autocomplete="off">
+  <label for="breed_input">Breed</label>
+  <div class="combo" id="combo">
+    <input type="text" id="breed_input" role="combobox" aria-expanded="false" aria-controls="breeds" aria-autocomplete="list" autocomplete="off" placeholder="Start typing a breed">
+    <ul id="breeds" role="listbox" aria-label="Breeds"></ul>
+  </div>
+  <input type="hidden" name="breed" id="breed">
+  <label id="ded_label">Annual deductible: <span id="ded_text">$500</span></label>
+  <div class="slider" id="slider" role="slider" tabindex="0" aria-labelledby="ded_label" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="500" aria-valuetext="$500">
+    <div class="track"></div><div class="fill" id="fill"></div><div class="thumb" id="thumb"></div>
+  </div>
+  <input type="hidden" name="deductible" id="deductible" value="500">
+  <p class="muted small">From $0 to $1,000 in steps of $50. A higher deductible lowers the monthly price.</p>
+  <button type="button" class="switch" id="dental" role="switch" aria-checked="false"><span class="knob"></span><span>Include dental cover</span></button>
+  <input type="hidden" name="dental" id="dental_v" value="no">
+  <p class="error" id="err"></p>
+  <p><button type="submit">Get my quote</button></p>
+</form>
+</div>
+</main>
+<script>
+const breeds = ["Afghan Hound","Airedale Terrier","Akita","Alaskan Malamute","Australian Shepherd","Basenji","Basset Hound","Beagle","Bearded Collie","Bernese Mountain Dog","Bichon Frise","Border Collie","Border Terrier","Boston Terrier","Boxer","Brittany","Bull Terrier","Cairn Terrier","Cavalier King Charles Spaniel","Chihuahua","Chow Chow","Cocker Spaniel","Collie","Dachshund","Dalmatian","Doberman Pinscher","English Setter","English Springer Spaniel","French Bulldog","German Shepherd","German Shorthaired Pointer","Golden Retriever","Great Dane","Greyhound","Havanese","Irish Setter","Irish Wolfhound","Jack Russell Terrier","Labrador Retriever","Lhasa Apso","Maltese","Miniature Schnauzer","Newfoundland","Norfolk Terrier","Old English Sheepdog","Papillon","Pembroke Welsh Corgi","Pomeranian","Poodle","Pug","Rhodesian Ridgeback","Rottweiler","Saint Bernard","Samoyed","Schipperke","Scottish Terrier","Shar Pei","Shetland Sheepdog","Shiba Inu","Shih Tzu","Siberian Husky","Staffordshire Bull Terrier","Vizsla","Weimaraner","West Highland White Terrier","Whippet","Yorkshire Terrier"];
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const $ = (id) => document.getElementById(id);
+const input = $("breed_input"), list = $("breeds"), combo = $("combo");
+let hl = -1;
+function fill() {
+  const q = input.value.trim().toLowerCase();
+  list.innerHTML = ""; hl = -1;
+  for (const b of breeds.filter((b) => b.toLowerCase().includes(q))) {
+    const li = document.createElement("li"); li.setAttribute("role", "option"); li.textContent = b; li.id = "opt-" + slug(b);
+    li.addEventListener("mousedown", (e) => { e.preventDefault(); choose(b); });
+    list.append(li);
+  }
+  open(list.children.length > 0);
+}
+function open(on) { combo.classList.toggle("open", on); input.setAttribute("aria-expanded", on); }
+function choose(b) { input.value = b; $("breed").value = slug(b); open(false); }
+function highlight(i) {
+  const items = list.children; if (!items.length) return;
+  hl = (i + items.length) % items.length;
+  for (let k = 0; k < items.length; k++) items[k].classList.toggle("hl", k === hl);
+  items[hl].scrollIntoView({ block: "nearest" }); input.setAttribute("aria-activedescendant", items[hl].id);
+}
+input.addEventListener("input", () => { $("breed").value = ""; fill(); });
+input.addEventListener("focus", fill);
+input.addEventListener("blur", () => setTimeout(() => open(false), 100));
+input.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); if (!combo.classList.contains("open")) fill(); highlight(hl + 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); highlight(hl - 1); }
+  else if (e.key === "Enter" && combo.classList.contains("open") && hl >= 0) { e.preventDefault(); choose(list.children[hl].textContent); }
+  else if (e.key === "Escape") open(false);
+});
+
+const slider = $("slider");
+let value = 500;
+function setValue(v) {
+  value = Math.max(0, Math.min(1000, Math.round(v / 50) * 50));
+  const pct = value / 10;
+  $("thumb").style.left = pct + "%"; $("fill").style.width = pct + "%";
+  slider.setAttribute("aria-valuenow", value); slider.setAttribute("aria-valuetext", "$" + value);
+  $("ded_text").textContent = "$" + value.toLocaleString("en-US"); $("deductible").value = value;
+}
+function fromPointer(e) { const r = slider.getBoundingClientRect(); setValue((e.clientX - r.left) / r.width * 1000); }
+slider.addEventListener("pointerdown", (e) => { slider.setPointerCapture(e.pointerId); slider.focus(); fromPointer(e); });
+slider.addEventListener("pointermove", (e) => { if (slider.hasPointerCapture(e.pointerId)) fromPointer(e); });
+slider.addEventListener("keydown", (e) => {
+  const step = { ArrowRight: 50, ArrowUp: 50, ArrowLeft: -50, ArrowDown: -50, PageUp: 200, PageDown: -200 }[e.key];
+  if (step) { e.preventDefault(); setValue(value + step); }
+  else if (e.key === "Home") { e.preventDefault(); setValue(0); }
+  else if (e.key === "End") { e.preventDefault(); setValue(1000); }
+});
+setValue(500);
+
+$("dental").onclick = () => {
+  const on = $("dental").getAttribute("aria-checked") !== "true";
+  $("dental").setAttribute("aria-checked", on); $("dental_v").value = on ? "yes" : "no";
+};
+$("quote").addEventListener("submit", (e) => { if (!$("breed").value) { e.preventDefault(); $("err").textContent = "Choose a breed from the list."; } });
+</script>
+</body>
+</html>

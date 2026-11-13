@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Join - Harbor Lantern Book Club</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Harbor Lantern Book Club</span><nav><a href="#">This month</a><a href="#">Join</a></nav></header>
+<main>
+<div class="card">
+<h1>Member registration</h1>
+<p class="muted">For club volunteers: register a new member from their sign-up sheet.</p>
+<form method="post" action="/harborlantern/join">
+  <label for="first">First name</label>
+  <input type="text" id="first" name="first_name" required autocomplete="off">
+  <label for="last">Last name</label>
+  <input type="text" id="last" name="last_name" required autocomplete="off">
+  <label for="phone">Phone</label>
+  <input type="tel" id="phone" name="phone" required autocomplete="off">
+  <label for="genre">Favourite genre</label>
+  <select id="genre" name="genre" required>
+    <option value="">Choose a genre</option>
+    <option value="crime">Crime and mystery</option>
+    <option value="fantasy">Fantasy</option>
+    <option value="history">History</option>
+    <option value="literary">Literary fiction</option>
+    <option value="nature">Nature writing</option>
+    <option value="poetry">Poetry</option>
+    <option value="scifi">Science fiction</option>
+    <option value="travel">Travel</option>
+  </select>
+  <label>Meetings</label>
+  <div class="inline">
+    <input type="radio" id="m_in" name="meetings" value="in-person" required><label for="m_in">In person</label>
+    <input type="radio" id="m_on" name="meetings" value="online"><label for="m_on">Online</label>
+    <input type="radio" id="m_both" name="meetings" value="both"><label for="m_both">Either</label>
+  </div>
+  <label for="member_since">Member since (year)</label>
+  <input type="text" id="member_since" name="member_since" value="2026" autocomplete="off">
+  <p><button type="submit">Register member</button></p>
+</form>
+</div>
+</main>
+</body>
+</html>

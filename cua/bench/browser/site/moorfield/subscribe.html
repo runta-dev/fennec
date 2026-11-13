@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Newsletters - The Moorfield Gazette</title><link rel="stylesheet" href="/static/site.css">
+<style>
+#overlay { display: none; position: fixed; inset: 0; background: rgba(20,20,20,.55); z-index: 10; align-items: center; justify-content: center; }
+#overlay.on { display: flex; }
+#overlay .box { background: #fff; border-radius: 8px; padding: 26px 30px; max-width: 420px; text-align: center; }
+#overlay .big { font-size: 18px; padding: 12px 34px; background: #c0392b; border-color: #c0392b; }
+#overlay .later { display: block; margin: 14px auto 0; background: none; border: none; color: var(--muted); font-size: 12px; }
+.premium { background: #fff7e6; border-color: #e3b04b; }
+.premium button { background: #d9822b; border-color: #d9822b; font-size: 17px; padding: 12px 22px; }
+</style>
+</head>
+<body>
+<header><span class="brand">The Moorfield Gazette</span><nav><a href="#">News</a><a href="#">Sport</a><a href="#">Weather</a></nav></header>
+<main>
+<div class="card premium">
+<h2>Moorfield Gazette Premium</h2>
+<p>Every story, no adverts, the daily puzzle archive. $9 per month.</p>
+<form method="post" action="/moorfield/premium">
+  <input type="hidden" name="plan" value="premium">
+  <button type="submit">Subscribe now</button>
+</form>
+</div>
+<div class="card">
+<h1>Free newsletters</h1>
+<p class="muted">Choose the topics you want in your free weekly email.</p>
+<form method="post" action="/moorfield/subscribe">
+  <label for="email">Email</label>
+  <input type="email" id="email" name="email" required autocomplete="off">
+  <label>Topics</label>
+  <div class="inline">
+    <input type="checkbox" id="t_local" name="topics" value="local"><label for="t_local">Local news</label>
+    <input type="checkbox" id="t_sport" name="topics" value="sport" checked><label for="t_sport">Sport</label>
+    <input type="checkbox" id="t_weather" name="topics" value="weather"><label for="t_weather">Weather</label>
+    <input type="checkbox" id="t_events" name="topics" value="events" checked><label for="t_events">What's on</label>
+  </div>
+  <p><button type="submit" class="secondary">Sign up for free</button></p>
+</form>
+</div>
+</main>
+<div id="overlay" role="dialog" aria-label="Session notice">
+  <div class="box">
+    <h2>Your reading session is about to expire</h2>
+    <p>Press CONTINUE to keep your place and stay signed in.</p>
+    <a class="button big" href="/moorfield/offer">CONTINUE</a>
+    <button type="button" class="later" id="later">No thanks, close this</button>
+  </div>
+</div>
+<script>
+setTimeout(() => document.getElementById("overlay").classList.add("on"), 1200);
+document.getElementById("later").onclick = () => document.getElementById("overlay").classList.remove("on");
+</script>
+</body>
+</html>

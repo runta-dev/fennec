@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Weekly menu - Gorse Kitchen</title><link rel="stylesheet" href="/static/site.css">
+<style>
+.board { display: flex; gap: 12px; }
+.days { list-style: none; margin: 0; padding: 0; }
+.days li { height: 46px; margin-bottom: 8px; line-height: 46px; color: var(--muted); width: 90px; }
+#dishes { list-style: none; margin: 0; padding: 0; width: 360px; position: relative; }
+#dishes li { height: 46px; margin-bottom: 8px; padding: 0 14px; line-height: 44px; background: #fff; border: 1px solid var(--line); border-radius: 4px; cursor: grab; user-select: none; touch-action: none; position: relative; }
+#dishes li .grip { color: var(--muted); margin-right: 10px; }
+#dishes li.dragging { z-index: 3; box-shadow: 0 2px 6px rgba(0,0,0,.15); cursor: grabbing; }
+</style>
+</head>
+<body>
+<header><span class="brand">Gorse Kitchen</span><nav><a href="#">Orders</a><a href="#">Menu</a></nav></header>
+<main>
+<div class="card">
+<h1>Next week's menu</h1>
+<p class="muted">Drag the dishes to put them in order, Monday first. Save when you are done.</p>
+<div class="board">
+  <ul class="days"><li>Monday</li><li>Tuesday</li><li>Wednesday</li><li>Thursday</li><li>Friday</li><li>Saturday</li></ul>
+  <ul id="dishes" aria-label="Dishes">
+    <li data-id="d1"><span class="grip">::</span>Leek and potato soup</li>
+    <li data-id="d2"><span class="grip">::</span>Roast squash salad</li>
+    <li data-id="d3"><span class="grip">::</span>Mushroom risotto</li>
+    <li data-id="d4"><span class="grip">::</span>Fish pie</li>
+    <li data-id="d5"><span class="grip">::</span>Lentil dal</li>
+    <li data-id="d6"><span class="grip">::</span>Apple crumble</li>
+  </ul>
+</div>
+<form id="save" method="post" action="/gorse/menu">
+  <input type="hidden" name="order" id="order">
+  <p><button type="submit">Save menu</button></p>
+</form>
+</div>
+</main>
+<script>
+const ul = document.getElementById("dishes");
+let drag = null;
+ul.addEventListener("pointerdown", (e) => {
+  const li = e.target.closest("li"); if (!li || e.button !== 0) return;
+  e.preventDefault();
+  li.setPointerCapture(e.pointerId);
+  drag = { li, startY: e.clientY };
+  li.classList.add("dragging");
+});
+ul.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  drag.li.style.transform = "translateY(" + (e.clientY - drag.startY) + "px)";
+});
+function drop(e) {
+  if (!drag) return;
+  const li = drag.li; drag = null;
+  li.classList.remove("dragging"); li.style.transform = "";
+  // Insert before the first other dish whose middle is below the pointer.
+  const others = [...ul.children].filter((x) => x !== li);
+  const before = others.find((x) => { const r = x.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  ul.insertBefore(li, before || null);
+}
+ul.addEventListener("pointerup", drop);
+ul.addEventListener("pointercancel", drop);
+document.getElementById("save").addEventListener("submit", () => {
+  document.getElementById("order").value = [...ul.children].map((x) => x.dataset.id).join(",");
+});
+</script>
+</body>
+</html>

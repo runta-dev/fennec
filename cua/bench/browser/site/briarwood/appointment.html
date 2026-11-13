@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Appointment - Briarwood Veterinary Practice</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Briarwood Veterinary Practice</span><nav><a href="#">Appointments</a><a href="#">Pets</a></nav></header>
+<main>
+<div class="card">
+<h1>Your appointment is booked</h1>
+<table>
+<tr><th>Pet</th><td>Pepper (cat)</td></tr>
+<tr><th>Reason</th><td>Annual vaccination</td></tr>
+<tr><th>Date</th><td>Wednesday 9 December 2026</td></tr>
+<tr><th>Time</th><td>10:40</td></tr>
+<tr><th>Vet</th><td>Dr Ama Lindqvist</td></tr>
+<tr><th>Reference</th><td id="ref"><button type="button" class="secondary" id="show">Show reference</button></td></tr>
+</table>
+<p class="muted small">Previous visit: 14 November 2025 at 16:20, reference BV-41377.</p>
+</div>
+</main>
+<script>
+document.getElementById("show").onclick = () => { document.getElementById("ref").textContent = "BV-58213"; };
+</script>
+</body>
+</html>

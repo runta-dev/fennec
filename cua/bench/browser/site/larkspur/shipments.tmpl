@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Shipments (page {{.Page}} of {{.Pages}}) - Larkspur Freight</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Larkspur Freight</span><nav><a href="/larkspur/shipments">Shipments</a><a href="#">Invoices</a><a href="#">Support</a></nav></header>
+<main>
+<div class="card">
+<h1>Shipments</h1>
+<p class="muted">All shipments of account LF-2207, newest first. {{.Total}} shipments.</p>
+<table>
+<thead><tr><th>Tracking ID</th><th>Shipped</th><th>From</th><th>To</th><th>Weight (kg)</th><th>Status</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><td>{{.ID}}</td><td>{{.Date}}</td><td>{{.From}}</td><td>{{.To}}</td><td>{{.Weight}}</td><td>{{.Status}}</td></tr>
+{{end}}</tbody>
+</table>
+<p class="pager">{{if gt .Page 1}}<a href="/larkspur/shipments?page={{.Prev}}">Previous</a>{{end}}{{range .Links}}{{if .Current}}<span>{{.N}}</span>{{else}}<a href="/larkspur/shipments?page={{.N}}">{{.N}}</a>{{end}}{{end}}{{if lt .Page .Pages}}<a href="/larkspur/shipments?page={{.Next}}">Next</a>{{end}}</p>
+</div>
+<div class="card">
+<h2>Report a weight discrepancy</h2>
+<form method="post" action="/larkspur/report">
+  <label for="tracking">Tracking ID</label>
+  <input type="text" id="tracking" name="tracking" required autocomplete="off">
+  <label for="weight">Weight on the shipment record (kg)</label>
+  <input type="text" id="weight" name="weight" required autocomplete="off">
+  <p><button type="submit">Send report</button></p>
+</form>
+</div>
+</main>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Collect a parcel - Pebblestone Parcel Lockers</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Pebblestone Parcel Lockers</span><nav><a href="#">Send</a><a href="#">Collect</a></nav></header>
+<main>
+<div class="card">
+<h1>Collect parcel PP-30917</h1>
+<p>Your parcel is waiting in locker bank <strong>Quayside 4</strong>. To reserve the locker for collection, enter your pickup code below.</p>
+<p>Your pickup code is shown in a separate window for your security.</p>
+<p><button type="button" class="secondary" id="show">Show my pickup code</button></p>
+<form method="post" action="/pebblestone/pickup">
+  <input type="hidden" name="parcel" value="PP-30917">
+  <label for="code">Pickup code</label>
+  <input type="text" id="code" name="code" required autocomplete="off">
+  <p><button type="submit">Reserve locker</button></p>
+</form>
+</div>
+</main>
+<script>
+document.getElementById("show").onclick = () => {
+  window.open("/pebblestone/code", "pebblestone-code", "popup,width=420,height=320,left=200,top=200");
+};
+</script>
+</body>
+</html>

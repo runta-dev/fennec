@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Book a room - Saltmarsh Inn</title><link rel="stylesheet" href="/static/site.css">
+<style>
+.dates { display: flex; gap: 12px; }
+.dates input { width: 190px; cursor: pointer; }
+#cal { display: none; position: absolute; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-top: 6px; z-index: 5; }
+#cal.on { display: block; }
+#cal .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#cal .head button { padding: 2px 10px; }
+#cal .grid { display: grid; grid-template-columns: repeat(7, 36px); gap: 2px; }
+#cal .grid div { text-align: center; font-size: 12px; color: var(--muted); }
+#cal .grid button { width: 36px; height: 30px; padding: 0; background: #fff; color: var(--ink); border: 1px solid transparent; }
+#cal .grid button:disabled { color: #bbb; text-decoration: line-through; cursor: default; }
+#cal .grid button.sel { background: var(--accent); color: #fff; }
+#cal .grid button.mid { background: #dcebe6; }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper button { width: 34px; padding: 4px 0; }
+</style>
+</head>
+<body>
+<header><span class="brand">Saltmarsh Inn</span><nav><a href="#">Rooms</a><a href="#">Dining</a></nav></header>
+<main>
+<div class="card">
+<h1>Book a room</h1>
+<form id="book" method="post" action="/saltmarsh/book">
+  <label for="room">Room</label>
+  <select id="room" name="room">
+    <option value="harbour-double">Harbour view double</option>
+    <option value="garden-twin">Garden twin</option>
+    <option value="loft-suite">Loft suite</option>
+  </select>
+  <label>Dates</label>
+  <div class="dates">
+    <input type="text" id="in_label" readonly placeholder="Check-in" aria-label="Check-in date">
+    <input type="text" id="out_label" readonly placeholder="Check-out" aria-label="Check-out date">
+  </div>
+  <div id="cal" role="dialog" aria-label="Choose dates">
+    <div class="head"><button type="button" class="secondary" id="prev" aria-label="Previous month">&lsaquo;</button><strong id="month"></strong><button type="button" class="secondary" id="next" aria-label="Next month">&rsaquo;</button></div>
+    <div class="grid" id="grid"></div>
+    <p class="muted small" id="hint">Choose the check-in date.</p>
+  </div>
+  <input type="hidden" name="checkin" id="checkin">
+  <input type="hidden" name="checkout" id="checkout">
+  <label>Guests</label>
+  <div class="stepper"><button type="button" class="secondary" id="minus" aria-label="Fewer guests">-</button><span id="gcount">2</span><button type="button" class="secondary" id="plus" aria-label="More guests">+</button></div>
+  <input type="hidden" name="guests" id="guests" value="2">
+  <p class="error" id="err"></p>
+  <p><button type="submit">Request booking</button></p>
+</form>
+</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const booked = new Set(["2027-03-13", "2027-03-20", "2027-02-14", "2026-12-24", "2026-12-25"]);
+// The calendar opens at November 2026 whatever the clock says, so the page
+// is the same on every run.
+let y = 2026, m = 10, start = null, end = null;
+const iso = (yy, mm, dd) => yy + "-" + String(mm + 1).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+const label = (s) => { const [yy, mm, dd] = s.split("-").map(Number); const wd = days[(new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay() + 6) % 7]; return wd + " " + dd + " " + months[mm - 1].slice(0, 3) + " " + yy; };
+function render() {
+  $("month").textContent = months[m] + " " + y;
+  const g = $("grid"); g.innerHTML = "";
+  for (const d of days) { const h = document.createElement("div"); h.textContent = d; g.append(h); }
+  const first = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;
+  const n = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  for (let i = 0; i < first; i++) g.append(document.createElement("div"));
+  for (let d = 1; d <= n; d++) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = d;
+    const s = iso(y, m, d);
+    if (booked.has(s) || s < "2026-11-13") b.disabled = true;
+    if (s === start || s === end) b.classList.add("sel");
+    else if (start && end && s > start && s < end) b.classList.add("mid");
+    b.onclick = () => pick(s);
+    g.append(b);
+  }
+  $("hint").textContent = start && !end ? "Choose the check-out date." : "Choose the check-in date.";
+}
+function pick(s) {
+  if (!start || end || s <= start) { start = s; end = null; }
+  else {
+    for (const b of booked) if (b > start && b < s) { $("err").textContent = "Those dates include a night that is already booked."; start = s; end = null; sync(); return; }
+    end = s;
+  }
+  $("err").textContent = "";
+  sync();
+  if (end) $("cal").classList.remove("on");
+}
+function sync() {
+  $("checkin").value = start || ""; $("checkout").value = end || "";
+  $("in_label").value = start ? label(start) : ""; $("out_label").value = end ? label(end) : "";
+  render();
+}
+$("in_label").onclick = $("out_label").onclick = () => { $("cal").classList.add("on"); render(); };
+$("prev").onclick = () => { m--; if (m < 0) { m = 11; y--; } render(); };
+$("next").onclick = () => { m++; if (m > 11) { m = 0; y++; } render(); };
+const setGuests = (n) => { n = Math.max(1, Math.min(6, n)); $("gcount").textContent = n; $("guests").value = n; };
+$("minus").onclick = () => setGuests(+$("guests").value - 1);
+$("plus").onclick = () => setGuests(+$("guests").value + 1);
+$("book").addEventListener("submit", (e) => { if (!start || !end) { e.preventDefault(); $("err").textContent = "Choose both dates."; } });
+render();
+</script>
+</body>
+</html>

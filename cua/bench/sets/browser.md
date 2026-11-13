@@ -1,8 +1,22 @@
-# Browser set: proposal
+# Browser set
 
-Status: proposal only. Nothing here is built yet; the golden image has no Chromium.
+Status: built and checked on the host; not yet run in a VM. The tasks, pages, page server, graders and scripted solutions exist, and every task scores 0 untouched and 100 after its scripted solution against the pinned Chromium, headless on the host (`go test -tags chromiumlive ./internal/bench/browserset`). Still to do: the golden-image step that installs Chromium at `/Applications/Chromium.app`, and `cua-bench check -set browser` (and `-solve`) in VM clones, which exercise the parts the host test stands in for (the AppleScript snapshot, Notes, TextEdit, Chromium's settings page).
 
-## What macOSWorld offers
+## What was built
+
+- **Tasks.** 17 original tasks on fictional sites, listed in `browser.txt` with their family; instruction, setup and grader of each in `bench/browser/tasks.json`, pages in `bench/browser/site/`. Families: forms (2), extraction (2), downloads (1), tabs (2), widgets (5: custom date picker, combobox and slider, drag reorder, iframe plus shadow DOM, canvas seat map), settings (1), cross-app (2: TextEdit, Notes), distractions (2: a timed overlay with a premium lure, a notification permission prompt).
+- **bench-pages** (`cmd/bench-pages`, package `internal/bench/browserset`): `serve` (the page server on `127.0.0.1:8765`, logging every page, form post, download and page event to `/tmp/bench-pages/log.jsonl`), `setup TASK` (quits Chromium, resets its default profile with first-run prompts off, restarts the server with an empty log, makes the task's files, opens the start page), `snapshot` (records Chromium's windows and tabs through its AppleScript dictionary, then quits it so `Preferences` is on disk), `grade TASK` (prints `true` or `false: reasons`), `solve TASK` (the scripted solution, through its own Chromium connection). Each trial cross-builds it and pushes it into the clone; nothing of it is in the golden image.
+- **Grading** never uses a backend's CDP connection: the server log (latest submission's fields, submission counts, pages and events seen or not), downloaded file bytes against what the server served, the snapshot's tab URLs, Chromium's `Preferences`, Notes through `osascript`. A failure's reasons never contain the word "true", which macOSWorld's grading convention would score as a pass.
+- **Backends.** All three use `/Applications/Chromium.app` and its default profile (`~/Library/Application Support/Chromium`): the setup opens it there, and fennec-cua's browser surface is pointed at the same app and profile (`FENNEC_CUA_CHROMIUM`, `FENNEC_CUA_CHROMIUM_PROFILE`) before its serve command. cua-driver and shuttle see it as an ordinary app. The snapshot runs when the agent stops and before the backend shuts down, because fennec-cua closes its agent tabs when its session ends.
+- **cua-bench.** `run -set browser` and `check -set browser` need no `-macosworld`; `check -solve` runs each task's scripted solution before grading, which should then score 100.
+
+Known limit: the settings task's scripted solution sets the download prompt through Chromium's settings API but writes the download folder into `Preferences` after the browser exits, because the settings API refuses that preference; it proves the grader, not the native folder picker.
+
+The original proposal follows.
+
+## Proposal
+
+### What macOSWorld offers
 
 Ten macOSWorld tasks point the agent at a web page (in Safari). Nine depend on the live internet, so they cannot join a set that runs in our offline VM as written:
 
@@ -20,7 +34,7 @@ Two Maps tasks (`multi_apps/a3250600`, `sys_apps/5024b5cb`) have the same proble
 
 Serving stand-ins for these sites inside the VM would mean impersonating third-party sites (DNS overrides, a private CA for their hostnames). We propose not to; the badge tasks are the only ones a stand-in could grade faithfully, and they are two tasks.
 
-## Proposal: our own local-page tasks
+### Proposal: our own local-page tasks
 
 A small set (about 15 tasks) of our own, written in this repository under our license, served inside the VM so it needs no network:
 

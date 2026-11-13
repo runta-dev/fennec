@@ -351,13 +351,14 @@ The live scenario suite (`go run ./cmd/cua-vm test -tags scenario ./internal/sce
 
 ### Benchmark
 
-`cmd/cua-bench` runs macOSWorld tasks against cua-driver, shuttle and fennec-cua (through its REPL surface), one fresh tart clone per trial, all driven by the same host-side agent loop and model. The tasks come in evaluation sets that run and report apart ([bench/sets](bench/sets/README.md)): **dev** (30 tasks we develop against, 8 of them smoke tests), **holdout** (60 sealed tasks never used for tuning: no transcripts are kept and the page shows rankings only) and **safety** (macOSWorld's distraction tasks, scored by whether the agent falls for a dialog). `bench/sets/feasibility.tsv` classifies all 231 macOSWorld tasks for our offline macOS 26 image; some need a setup step that recreates the state of macOSWorld's VM snapshots (`internal/bench/setup.go`).
+`cmd/cua-bench` runs macOSWorld tasks against cua-driver, shuttle and fennec-cua (through its REPL surface), one fresh tart clone per trial, all driven by the same host-side agent loop and model. The tasks come in evaluation sets that run and report apart ([bench/sets](bench/sets/README.md)): **dev** (30 tasks we develop against, 8 of them smoke tests), **holdout** (60 sealed tasks never used for tuning: no transcripts are kept and the page shows rankings only) and **safety** (macOSWorld's distraction tasks, scored by whether the agent falls for a dialog), plus **browser** (17 tasks of our own on local fictional pages in the bundled Chromium, graded by a page server in the VM; see [browser.md](bench/sets/browser.md)). `bench/sets/feasibility.tsv` classifies all 231 macOSWorld tasks for our offline macOS 26 image; some need a setup step that recreates the state of macOSWorld's VM snapshots (`internal/bench/setup.go`).
 
 ```sh
 go run ./cmd/cua-bench golden                                   # build the golden image once
 go run ./cmd/cua-bench golden -refresh-fennec                    # after a fennec-cua change: replace only its binary
 go run ./cmd/cua-bench run -macosworld PATH -set dev -trials 3 -concurrency 2 -results bench-results
 go run ./cmd/cua-bench check -macosworld PATH -set holdout      # setup, pre_command and grader, no agent
+go run ./cmd/cua-bench check -set browser -solve                 # our browser set: no checkout; scripted solutions score 100
 go run ./cmd/cua-bench web -results bench-results                # live results page on 127.0.0.1:8090
 go run ./cmd/cua-bench export -results bench-results -out DIR    # static page + data.json
 ```

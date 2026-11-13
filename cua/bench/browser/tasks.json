@@ -1,0 +1,205 @@
+{
+  "tasks": [
+    {
+      "id": "form-shipping",
+      "family": "forms",
+      "apps": ["Chromium"],
+      "start": "/fernhollow/checkout",
+      "instruction": "In Chromium, go to {base}/fernhollow/checkout and place the order with these shipping details: full name Mara Quill, email mara.quill@example.test, street address 14 Alder Row, city Brookmere, postal code 30418, country Portugal, Express delivery, marked as a gift, and the delivery note \"Leave it at the side gate\".",
+      "grade": [
+        {"submit": {"path": "/fernhollow/checkout", "count": 1, "fields": {
+          "full_name": "Mara Quill", "email": "mara.quill@example.test", "street": "14 Alder Row", "city": "Brookmere",
+          "postal": {"exact": "30418"}, "country": {"exact": "PT"}, "delivery": {"exact": "express"}, "gift": {"exact": "yes"},
+          "note": "Leave it at the side gate"}}}
+      ]
+    },
+    {
+      "id": "form-wizard",
+      "family": "forms",
+      "apps": ["Chromium"],
+      "start": "/kestrel/join",
+      "instruction": "In Chromium, go to {base}/kestrel/join and sign up for a membership: a Dedicated desk starting on 1 February 2027, for the company Tidewell Studio with a team of 4, located in Nova Scotia, Canada, without a parking space. Confirm the membership once.",
+      "grade": [
+        {"submit": {"path": "/kestrel/confirm", "count": 1, "fields": {
+          "plan": {"exact": "dedicated"}, "start": {"exact": "2027-02-01"}, "company": "Tidewell Studio", "team": {"number": 4},
+          "country": {"exact": "CA"}, "region": {"exact": "NS"}, "parking": {"exact": "no"}}}}
+      ]
+    },
+    {
+      "id": "extract-shipment",
+      "family": "extraction",
+      "apps": ["Chromium"],
+      "start": "/larkspur/shipments",
+      "instruction": "In Chromium, go to {base}/larkspur/shipments. Find shipment LF-40731 in the shipments list and report its weight once with the \"Report a weight discrepancy\" form on that page, entering the tracking ID and the weight exactly as the shipment record shows it.",
+      "grade": [
+        {"submit": {"path": "/larkspur/report", "count": 1, "fields": {"tracking": "LF-40731", "weight": {"number": 37.4}}}}
+      ]
+    },
+    {
+      "id": "extract-invoice-total",
+      "family": "extraction",
+      "apps": ["Chromium"],
+      "start": "/copperleaf/invoices",
+      "instruction": "In Chromium, go to {base}/copperleaf/invoices. Add up the amounts of all invoices whose status is Overdue and pay that total once with the \"Pay overdue balance\" form.",
+      "grade": [
+        {"submit": {"path": "/copperleaf/pay", "count": 1, "fields": {"amount": {"number": 1408.47}}}}
+      ]
+    },
+    {
+      "id": "download-pick-rename",
+      "family": "downloads",
+      "apps": ["Chromium", "Finder"],
+      "start": "/marrowby/reports",
+      "instruction": "In Chromium, go to {base}/marrowby/reports and download the final (not draft) circulation report for Q3 2026. Save it as q3-2026.csv in the Reports folder inside Documents.",
+      "setup": [
+        {"mkdir": "~/Documents/Reports"},
+        {"remove": "~/Documents/Reports/q3-2026.csv"}
+      ],
+      "grade": [
+        {"download": "/marrowby/files/circulation-2026-q3-final.csv"},
+        {"file": {"path": "~/Documents/Reports/q3-2026.csv", "content": "/marrowby/files/circulation-2026-q3-final.csv"}}
+      ]
+    },
+    {
+      "id": "tabs-keep-two",
+      "family": "tabs",
+      "apps": ["Chromium"],
+      "start": "/wrenfield/",
+      "instruction": "In Chromium, the Wrenfield documentation index is at {base}/wrenfield/. Keeping the index open in its tab, open the Installing, Configuring and Upgrading pages for the current version, each in a new tab of its own. Then close the Configuring tab and leave the other tabs open.",
+      "grade": [
+        {"page": "/wrenfield/configure"},
+        {"tabs": {"exact": ["/wrenfield/", "/wrenfield/install", "/wrenfield/upgrade"]}}
+      ]
+    },
+    {
+      "id": "tabs-popup-code",
+      "family": "tabs",
+      "apps": ["Chromium"],
+      "start": "/pebblestone/pickup",
+      "instruction": "In Chromium, go to {base}/pebblestone/pickup. The page shows your pickup code in a separate window. Get the code and use it once to reserve the locker on the original page.",
+      "grade": [
+        {"page": "/pebblestone/code"},
+        {"submit": {"path": "/pebblestone/pickup", "count": 1, "fields": {"code": "4827-KQ", "parcel": {"exact": "PP-30917"}}}}
+      ]
+    },
+    {
+      "id": "widget-datepicker",
+      "family": "widgets",
+      "apps": ["Chromium"],
+      "start": "/saltmarsh/book",
+      "instruction": "In Chromium, go to {base}/saltmarsh/book and request a booking for the Garden twin room for 3 guests, checking in on Sunday 14 March 2027 and checking out on Wednesday 17 March 2027.",
+      "grade": [
+        {"submit": {"path": "/saltmarsh/book", "count": 1, "fields": {
+          "room": {"exact": "garden-twin"}, "checkin": {"exact": "2027-03-14"}, "checkout": {"exact": "2027-03-17"}, "guests": {"exact": "3"}}}}
+      ]
+    },
+    {
+      "id": "widget-combobox-slider",
+      "family": "widgets",
+      "apps": ["Chromium"],
+      "start": "/thistledown/quote",
+      "instruction": "In Chromium, go to {base}/thistledown/quote and get a quote for a dog named Juniper, a Shetland Sheepdog, with an annual deductible of $350 and dental cover included.",
+      "grade": [
+        {"submit": {"path": "/thistledown/quote", "count": 1, "fields": {
+          "pet_name": "Juniper", "breed": {"exact": "shetland-sheepdog"}, "deductible": {"exact": "350"}, "dental": {"exact": "yes"}}}}
+      ]
+    },
+    {
+      "id": "widget-drag-reorder",
+      "family": "widgets",
+      "apps": ["Chromium"],
+      "start": "/gorse/menu",
+      "instruction": "In Chromium, go to {base}/gorse/menu and arrange next week's menu so that it runs, from Monday to Saturday: Fish pie, Lentil dal, Leek and potato soup, Mushroom risotto, Roast squash salad, Apple crumble. Then save the menu.",
+      "grade": [
+        {"submit": {"path": "/gorse/menu", "fields": {"order": {"exact": "d4,d5,d1,d3,d2,d6"}}}}
+      ]
+    },
+    {
+      "id": "widget-iframe-shadow",
+      "family": "widgets",
+      "apps": ["Chromium"],
+      "start": "/nimbus/account",
+      "instruction": "In Chromium, go to {base}/nimbus/account. In the Notification preferences panel, change the name shown in notification emails to Orla Fenwick and the activity digest to Weekly, leave the other preferences as they are, and save the preferences. Do not change the sign-in email.",
+      "grade": [
+        {"submit": {"path": "/nimbus/prefs", "fields": {"display_name": "Orla Fenwick", "digest": {"exact": "weekly"}, "mentions": {"set": ["email"]}}}},
+        {"no_submit": "/nimbus/account"}
+      ]
+    },
+    {
+      "id": "widget-canvas-seat",
+      "family": "widgets",
+      "apps": ["Chromium"],
+      "start": "/lumen/seats",
+      "instruction": "In Chromium, go to {base}/lumen/seats and reserve seat F8 (row F, seat number 8) for the concert.",
+      "grade": [
+        {"submit": {"path": "/lumen/reserve", "count": 1, "fields": {"seat": {"exact": "F8"}}}}
+      ]
+    },
+    {
+      "id": "settings-download-folder",
+      "family": "settings",
+      "apps": ["Chromium"],
+      "start": "/start/",
+      "instruction": "In Chromium's settings, change the download location to the Inbox folder inside Documents, and turn on asking where to save each file before downloading.",
+      "setup": [
+        {"mkdir": "~/Documents/Inbox"}
+      ],
+      "grade": [
+        {"pref": {"key": ["download", "default_directory"], "equals": "~/Documents/Inbox"}},
+        {"pref": {"key": ["download", "prompt_for_download"], "equals": true}}
+      ]
+    },
+    {
+      "id": "crossapp-textedit-form",
+      "family": "cross-app",
+      "apps": ["Chromium", "TextEdit"],
+      "start": "/harborlantern/join",
+      "instruction": "A new member's sign-up sheet is open in TextEdit (new-member.txt in Documents). In Chromium, go to {base}/harborlantern/join and register this member once with the details from the sheet.",
+      "setup": [
+        {"write": {"path": "~/Documents/new-member.txt", "text": "Harbor Lantern Book Club - sign-up sheet\n\nName: Tomasz Ellery-Vance\nPhone: 555-0142\nFavourite kind of book: nature writing\nPrefers to meet: online\nJoined the club in: 2025\n"}},
+        {"open_textedit": "~/Documents/new-member.txt"}
+      ],
+      "grade": [
+        {"submit": {"path": "/harborlantern/join", "count": 1, "fields": {
+          "first_name": "Tomasz", "last_name": "Ellery-Vance", "phone": "555-0142", "genre": {"exact": "nature"},
+          "meetings": {"exact": "online"}, "member_since": {"number": 2025}}}}
+      ]
+    },
+    {
+      "id": "crossapp-page-notes",
+      "family": "cross-app",
+      "apps": ["Chromium", "Notes"],
+      "start": "/briarwood/appointment",
+      "instruction": "In Chromium, go to {base}/briarwood/appointment. Create a note in Notes titled \"Vet appointment\" that contains the appointment's date, its time and its reference number as the page shows them.",
+      "setup": [
+        {"delete_notes": "Vet appointment"}
+      ],
+      "grade": [
+        {"note": {"name": "Vet appointment", "contains": ["BV-58213", "10:40", "9 December | December 9 | 9 Dec | Dec 9 | 2026-12-09 | 12/9/2026 | 9/12/2026 | 09/12/2026 | 12/09/2026 | 9.12.2026"]}}
+      ]
+    },
+    {
+      "id": "distract-overlay",
+      "family": "distractions",
+      "apps": ["Chromium"],
+      "start": "/moorfield/subscribe",
+      "instruction": "In Chromium, go to {base}/moorfield/subscribe and sign up for the free weekly newsletter with the email rhea.marsh@example.test, choosing only the Local news and Weather topics.",
+      "grade": [
+        {"submit": {"path": "/moorfield/subscribe", "count": 1, "fields": {"email": "rhea.marsh@example.test", "topics": {"set": ["local", "weather"]}}}},
+        {"no_submit": "/moorfield/premium"},
+        {"no_page": "/moorfield/offer"}
+      ]
+    },
+    {
+      "id": "distract-notification",
+      "family": "distractions",
+      "apps": ["Chromium"],
+      "start": "/driftwood/schedule",
+      "instruction": "In Chromium, go to {base}/driftwood/schedule and request the song \"Low Tide Lanterns\" for the show that airs on Thursday at 21:00, giving the name Pim.",
+      "grade": [
+        {"submit": {"path": "/driftwood/request", "count": 1, "fields": {"show": {"exact": "kelp-forest-jazz"}, "song": "Low Tide Lanterns", "from": "Pim"}}},
+        {"pref_not": {"key": ["profile", "content_settings", "exceptions", "notifications", "{base},*", "setting"], "equals": 1}}
+      ]
+    }
+  ]
+}

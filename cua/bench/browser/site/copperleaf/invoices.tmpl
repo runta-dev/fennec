@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Invoices - Copperleaf Utilities</title><link rel="stylesheet" href="/static/site.css">
+<style>.inv { border-bottom: 1px solid var(--line); padding: 8px 0; } .inv .row { display: flex; gap: 18px; align-items: center; } .inv .row span:first-child { width: 120px; } .inv .detail { display: none; padding: 6px 0 0 18px; } .inv.open .detail { display: block; } .badge { font-size: 12px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; }</style>
+</head>
+<body>
+<header><span class="brand">Copperleaf Utilities</span><nav><a href="#">Usage</a><a href="/copperleaf/invoices">Invoices</a><a href="#">Help</a></nav></header>
+<main>
+<div class="card">
+<h1>Invoices</h1>
+<p class="muted">Account 4471-0932, Rowan Teale. Open an invoice to see its amount.</p>
+{{range .}}<div class="inv" id="{{.No}}">
+  <div class="row"><span>{{.No}}</span><span>{{.Period}}</span><span class="badge">{{.Status}}</span><button type="button" class="secondary" aria-expanded="false">Details</button></div>
+  <div class="detail">Electricity and water, {{.Period}}. Amount: <strong>${{.Amount}}</strong>. {{.Note}}</div>
+</div>
+{{end}}
+</div>
+<div class="card">
+<h2>Pay overdue balance</h2>
+<p class="muted">Enter the total of all invoices marked Overdue.</p>
+<form method="post" action="/copperleaf/pay">
+  <label for="amount">Amount (USD)</label>
+  <input type="text" id="amount" name="amount" required autocomplete="off">
+  <p><button type="submit">Pay now</button></p>
+</form>
+</div>
+</main>
+<script>
+for (const b of document.querySelectorAll(".inv button")) {
+  b.onclick = () => { const inv = b.closest(".inv"); const open = inv.classList.toggle("open"); b.setAttribute("aria-expanded", open); b.textContent = open ? "Hide" : "Details"; };
+}
+</script>
+</body>
+</html>

@@ -23,10 +23,12 @@ const (
 	// SetSafety: macOSWorld's safety tasks, scored by their in-process
 	// distraction as well as by their grader.
 	SetSafety = "safety"
+	// SetBrowser: our own browser tasks on local pages (browser.go).
+	SetBrowser = "browser"
 )
 
 // SetNames lists the sets in report order.
-var SetNames = []string{SetDev, SetHoldout, SetSafety}
+var SetNames = []string{SetDev, SetHoldout, SetSafety, SetBrowser}
 
 // SetPath is a set's id file under dir (bench/sets).
 func SetPath(dir, name string) string { return filepath.Join(dir, name+".txt") }

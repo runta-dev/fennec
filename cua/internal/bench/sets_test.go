@@ -178,7 +178,7 @@ func TestCommittedSets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sets) != 3 {
+	if len(sets) != 4 {
 		t.Fatalf("sets: %d", len(sets))
 	}
 	seen := map[string]string{}
@@ -188,7 +188,8 @@ func TestCommittedSets(t *testing.T) {
 				t.Errorf("%s is in %s and %s", id, other, s.Name)
 			}
 			seen[id] = s.Name
-			if _, ok := table.ByID[id]; !ok {
+			// The browser set is our own, outside macOSWorld.
+			if _, ok := table.ByID[id]; !ok && !IsBrowserTask(id) {
 				t.Errorf("%s (%s) is not in the feasibility table", id, s.Name)
 			}
 		}

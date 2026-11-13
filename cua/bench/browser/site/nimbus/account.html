@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Account - Nimbus Notebook</title><link rel="stylesheet" href="/static/site.css">
+<style>iframe { width: 100%; height: 330px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }</style>
+</head>
+<body>
+<header><span class="brand">Nimbus Notebook</span><nav><a href="#">Notebooks</a><a href="#">Account</a></nav></header>
+<main>
+<div class="card">
+<h1>Account</h1>
+<form method="post" action="/nimbus/account">
+  <label for="acct_email">Sign-in email</label>
+  <input type="email" id="acct_email" name="email" value="orla@example.test" autocomplete="off">
+  <p><button type="submit" class="secondary">Save sign-in email</button></p>
+</form>
+</div>
+<div class="card">
+<h2>Notification preferences</h2>
+<p class="muted">Managed by the Nimbus notifications service.</p>
+<iframe src="/nimbus/prefs-frame" title="Notification preferences"></iframe>
+</div>
+</main>
+</body>
+</html>

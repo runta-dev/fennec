@@ -252,7 +252,7 @@ type job struct {
 
 func runBench(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	mw := fs.String("macosworld", "", "macOSWorld checkout (showlab/macosworld)")
+	mw := fs.String("macosworld", "", "macOSWorld checkout (showlab/macosworld); not needed for the browser set")
 	sel := addSetFlags(fs)
 	feas := fs.String("feasibility", "bench/sets/feasibility.tsv", "feasibility table: which tasks need a setup step")
 	corrected := fs.Bool("corrected", false, "run only the set's [corrected] tasks, with their harness corrections, scored apart")
@@ -271,14 +271,16 @@ func runBench(ctx context.Context, args []string) error {
 	wall := fs.Duration("wall", 10*time.Minute, "agent wall clock per trial")
 	retries := fs.Int("retries", 2, "retries of a trial after a harness failure")
 	_ = fs.Parse(args)
-	if *mw == "" {
-		return errors.New("run needs -macosworld")
-	}
 	list, err := sel.list()
 	if err != nil {
 		return err
 	}
-	if head, err := exec.Command("git", "-C", *mw, "rev-parse", "HEAD").Output(); err == nil && list.Commit != "" && strings.TrimSpace(string(head)) != list.Commit {
+	if *mw == "" && !allBrowser(list.Runnable()) {
+		return errors.New("run needs -macosworld")
+	}
+	if *mw == "" {
+		// a browser-only set: nothing to compare
+	} else if head, err := exec.Command("git", "-C", *mw, "rev-parse", "HEAD").Output(); err == nil && list.Commit != "" && strings.TrimSpace(string(head)) != list.Commit {
 		log.Printf("warning: the checkout is at %s, the id list was made at %s", strings.TrimSpace(string(head)), list.Commit)
 	}
 	table, err := bench.ReadFeasibility(*feas)
@@ -297,7 +299,7 @@ func runBench(ctx context.Context, args []string) error {
 		if *corrected && !list.HasTag(id, bench.TagCorrected) {
 			continue
 		}
-		t, err := bench.LoadTask(*mw, id, "en")
+		t, err := bench.LoadAnyTask(*mw, id)
 		if err != nil {
 			return err
 		}
@@ -383,6 +385,17 @@ func runBench(ctx context.Context, args []string) error {
 	wg.Wait()
 	log.Printf("finished in %s", time.Since(start).Round(time.Second))
 	return writeSummary(*results, list)
+}
+
+// allBrowser reports whether every id is a browser-set task, which needs no
+// macOSWorld checkout.
+func allBrowser(ids []string) bool {
+	for _, id := range ids {
+		if !bench.IsBrowserTask(id) {
+			return false
+		}
+	}
+	return len(ids) > 0
 }
 
 func matches(id, filter string) bool {

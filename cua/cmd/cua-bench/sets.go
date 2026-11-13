@@ -133,7 +133,7 @@ func selectHeldOut(args []string) error {
 // since every task's preparation resets what it uses.
 func checkTasks(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	mw := fs.String("macosworld", "", "macOSWorld checkout (showlab/macosworld)")
+	mw := fs.String("macosworld", "", "macOSWorld checkout (showlab/macosworld); not needed for the browser set")
 	sel := addSetFlags(fs)
 	feas := fs.String("feasibility", "bench/sets/feasibility.tsv", "feasibility table")
 	only := fs.String("tasks", "", "comma-separated task ids or uuid prefixes (default the set's runnable tasks)")
@@ -143,10 +143,8 @@ func checkTasks(ctx context.Context, args []string) error {
 	concurrency := fs.Int("concurrency", 1, "clones at once (at most 2 macOS VMs run per host)")
 	corrected := fs.Bool("corrected", false, "apply the harness corrections to [corrected] tasks")
 	keep := fs.Bool("keep", false, "leave the clones running for a look (tart stop and tart delete them afterwards)")
+	solve := fs.Bool("solve", false, "run each task's scripted solution (browser set) before grading: the grader should then score 100")
 	_ = fs.Parse(args)
-	if *mw == "" {
-		return errors.New("check needs -macosworld")
-	}
 	table, err := bench.ReadFeasibility(*feas)
 	if err != nil {
 		return err
@@ -169,9 +167,12 @@ func checkTasks(ctx context.Context, args []string) error {
 			}
 		}
 	}
+	if *mw == "" && !allBrowser(ids) {
+		return errors.New("check needs -macosworld")
+	}
 	var tasks []bench.Task
 	for _, id := range ids {
-		t, err := bench.LoadTask(*mw, id, "en")
+		t, err := bench.LoadAnyTask(*mw, id)
 		if err != nil {
 			return err
 		}
@@ -199,7 +200,7 @@ func checkTasks(ctx context.Context, args []string) error {
 		go func(w int) {
 			defer wg.Done()
 			for batch := range queue {
-				for _, l := range checkBatch(ctx, *golden, table, batch, w, *keep) {
+				for _, l := range checkBatch(ctx, *golden, table, batch, w, *keep, *solve) {
 					mu.Lock()
 					lines = append(lines, l)
 					log.Print(l)
@@ -229,7 +230,7 @@ func checkTasks(ctx context.Context, args []string) error {
 
 // checkBatch checks tasks one after another in one fresh clone and returns
 // one tab-separated line per task.
-func checkBatch(ctx context.Context, golden string, table bench.FeasibilityTable, tasks []bench.Task, worker int, keep bool) []string {
+func checkBatch(ctx context.Context, golden string, table bench.FeasibilityTable, tasks []bench.Task, worker int, keep, solve bool) []string {
 	name := fmt.Sprintf("cua-bench-check-%d-%d", worker, time.Now().UnixNano()%1e9)
 	v := &vm.VM{Name: name, User: vm.DefaultUser, Tart: tartBin()}
 	fail := func(msg string) []string {
@@ -282,6 +283,19 @@ func checkBatch(ctx context.Context, golden string, table bench.FeasibilityTable
 		}
 		if err == nil {
 			time.Sleep(time.Duration(t.BeforeAction) * time.Second)
+			// A task with an after-agent step (the browser snapshot) runs
+			// it on the untouched state, or its scripted solution with
+			// -solve, which takes the snapshot itself.
+			after, what := t.AfterAgent, "after-agent"
+			if solve && t.Solve != "" {
+				after, what = t.Solve, "solve"
+			}
+			if after != "" {
+				if out, ok := bench.GuestRun(ctx, s, after, 4*time.Minute); !ok {
+					note = what + ": " + out
+				}
+				time.Sleep(time.Duration(t.BeforeGrading) * time.Second)
+			}
 		}
 		score, outs, evalErr := bench.GradeIn(ctx, s, t)
 		if note == "" && len(outs) > 0 {

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Notification preferences</title>
+<style>body { margin: 0; font: 14px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1f2328; }</style>
+</head>
+<body>
+<nimbus-prefs></nimbus-prefs>
+<script>
+class NimbusPrefs extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <style>
+        form { padding: 14px 18px; }
+        label { display: block; margin: 8px 0 4px; font-weight: 500; }
+        input[type=text] { width: 280px; padding: 6px 8px; border: 1px solid #d9d7d0; border-radius: 4px; font: inherit; }
+        .opt label { display: inline; font-weight: 400; margin-right: 12px; }
+        button { margin-top: 14px; padding: 7px 14px; border-radius: 4px; border: 1px solid #2f6f5e; background: #2f6f5e; color: #fff; font: inherit; }
+      </style>
+      <form method="post" action="/nimbus/prefs">
+        <label for="display">Name shown in notification emails</label>
+        <input type="text" id="display" name="display_name" value="Orla" autocomplete="off">
+        <label>Activity digest</label>
+        <div class="opt">
+          <input type="radio" id="g_never" name="digest" value="never"><label for="g_never">Never</label>
+          <input type="radio" id="g_daily" name="digest" value="daily" checked><label for="g_daily">Daily</label>
+          <input type="radio" id="g_weekly" name="digest" value="weekly"><label for="g_weekly">Weekly</label>
+        </div>
+        <label>Mentions</label>
+        <div class="opt">
+          <input type="checkbox" id="m_email" name="mentions" value="email" checked><label for="m_email">Email me when someone mentions me</label>
+        </div>
+        <button type="submit">Save preferences</button>
+      </form>`;
+  }
+}
+customElements.define("nimbus-prefs", NimbusPrefs);
+</script>
+</body>
+</html>

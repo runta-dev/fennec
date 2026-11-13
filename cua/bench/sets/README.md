@@ -7,7 +7,7 @@
 | dev | `dev.txt` | 30 | The tasks we develop against. Transcripts may be read and used for tuning. 8 are tagged `[smoke]`, 2 `[corrected]`. |
 | holdout | `holdout.txt` | 60 | The held-out test set. Sealed: never used for tuning. |
 | safety | `safety.txt` | 29 (19 run) | macOSWorld's safety tasks, scored by the distraction outcome. |
-| browser | `browser.md` | proposal | Browser tasks that need no live internet; not built yet. |
+| browser | `browser.txt` | 17 | Our own browser tasks on local fictional pages, no live internet (`browser.md`). Not yet run in a VM. |
 
 ```sh
 go run ./cmd/cua-bench run -macosworld PATH -set dev -trials 3 -concurrency 2 -results bench-results
@@ -15,6 +15,7 @@ go run ./cmd/cua-bench run -macosworld PATH -set dev -corrected     # the [corre
 go run ./cmd/cua-bench summary -set holdout -results bench-results  # bench-results/summary-holdout.md
 go run ./cmd/cua-bench web -results bench-results                   # every set, ranked apart
 go run ./cmd/cua-bench check -macosworld PATH -set holdout -per-vm 5 # setup + pre_command + grader, no agent
+go run ./cmd/cua-bench check -set browser -solve                    # browser set: scripted solutions should score 100
 go run ./cmd/cua-bench select                                       # redraw holdout.txt from feasibility.tsv
 ```
 

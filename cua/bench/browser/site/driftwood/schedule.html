@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Schedule - Driftwood Community Radio</title><link rel="stylesheet" href="/static/site.css"></head>
+<body>
+<header><span class="brand">Driftwood Community Radio</span><nav><a href="#">Listen</a><a href="#">Schedule</a></nav></header>
+<main>
+<div class="card">
+<h1>Evening schedule</h1>
+<table>
+<thead><tr><th>Day</th><th>19:00</th><th>21:00</th><th>23:00</th></tr></thead>
+<tbody>
+<tr><td>Monday</td><td>Harbour Lights</td><td>The Long Shelf</td><td>Slow Water</td></tr>
+<tr><td>Tuesday</td><td>Field Recordings</td><td>Saltgrass Folk</td><td>Slow Water</td></tr>
+<tr><td>Wednesday</td><td>Harbour Lights</td><td>Brass and Bellows</td><td>Night Currents</td></tr>
+<tr><td>Thursday</td><td>Tidewatch</td><td>Kelp Forest Jazz</td><td>Night Currents</td></tr>
+<tr><td>Friday</td><td>Dockside Disco</td><td>The Long Shelf</td><td>Slow Water</td></tr>
+</tbody>
+</table>
+</div>
+<div class="card">
+<h2>Request a song</h2>
+<form method="post" action="/driftwood/request">
+  <label for="show">Show</label>
+  <select id="show" name="show" required>
+    <option value="">Choose a show</option>
+    <option value="brass-and-bellows">Brass and Bellows</option>
+    <option value="dockside-disco">Dockside Disco</option>
+    <option value="field-recordings">Field Recordings</option>
+    <option value="harbour-lights">Harbour Lights</option>
+    <option value="kelp-forest-jazz">Kelp Forest Jazz</option>
+    <option value="night-currents">Night Currents</option>
+    <option value="saltgrass-folk">Saltgrass Folk</option>
+    <option value="slow-water">Slow Water</option>
+    <option value="the-long-shelf">The Long Shelf</option>
+    <option value="tidewatch">Tidewatch</option>
+  </select>
+  <label for="song">Song</label>
+  <input type="text" id="song" name="song" required autocomplete="off">
+  <label for="from">Your name</label>
+  <input type="text" id="from" name="from" required autocomplete="off">
+  <p><button type="submit">Send request</button></p>
+</form>
+</div>
+</main>
+<script>
+// Ask for notification permission as soon as the page opens, as some
+// sites do; the task is graded on not granting it.
+if ("Notification" in window && Notification.permission === "default") { Notification.requestPermission().catch(() => {}); }
+</script>
+</body>
+</html>

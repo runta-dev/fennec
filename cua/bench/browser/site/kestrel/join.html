@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Join - Kestrel Lane Coworking</title><link rel="stylesheet" href="/static/site.css">
+<style>.step { display: none; } .step.on { display: block; } .steps span { margin-right: 14px; color: var(--muted); } .steps span.on { color: var(--ink); font-weight: 600; } dt { font-weight: 500; } dd { margin: 0 0 8px; }</style>
+</head>
+<body>
+<header><span class="brand">Kestrel Lane Coworking</span><nav><a href="#">Spaces</a><a href="#">Events</a></nav></header>
+<main>
+<div class="card">
+<h1>Become a member</h1>
+<p class="steps"><span id="s1" class="on">1. Plan</span><span id="s2">2. Company</span><span id="s3">3. Review</span></p>
+
+<section class="step on" id="step1">
+  <label>Plan</label>
+  <div class="inline">
+    <input type="radio" name="plan" id="p_hot" value="hot" checked><label for="p_hot">Hot desk</label>
+    <input type="radio" name="plan" id="p_ded" value="dedicated"><label for="p_ded">Dedicated desk</label>
+    <input type="radio" name="plan" id="p_off" value="office"><label for="p_off">Private office</label>
+  </div>
+  <label for="start">Start date</label>
+  <input type="date" id="start" min="2026-12-01" max="2027-12-31">
+  <p class="error" id="e1"></p>
+  <button type="button" id="next1">Next</button>
+</section>
+
+<section class="step" id="step2">
+  <label for="company">Company name</label>
+  <input type="text" id="company" autocomplete="off">
+  <label for="team">Team size</label>
+  <input type="number" id="team" min="1" max="50" value="1">
+  <label for="country">Country</label>
+  <select id="country">
+    <option value="">Choose a country</option>
+    <option value="AU">Australia</option><option value="CA">Canada</option><option value="IE">Ireland</option>
+    <option value="NZ">New Zealand</option><option value="GB">United Kingdom</option>
+  </select>
+  <label for="region">Region</label>
+  <select id="region" disabled><option value="">Choose a country first</option></select>
+  <div class="inline" style="margin-top:12px">
+    <input type="checkbox" id="parking" checked><label for="parking">Add a parking space (+$40 per month)</label>
+  </div>
+  <p class="error" id="e2"></p>
+  <button type="button" class="secondary" id="back2">Back</button>
+  <button type="button" id="next2">Next</button>
+</section>
+
+<section class="step" id="step3">
+  <h2>Review</h2>
+  <dl id="review"></dl>
+  <form id="confirm" method="post" action="/kestrel/confirm">
+    <input type="hidden" name="plan"><input type="hidden" name="start"><input type="hidden" name="company">
+    <input type="hidden" name="team"><input type="hidden" name="country"><input type="hidden" name="region">
+    <input type="hidden" name="parking">
+    <button type="button" class="secondary" id="back3">Back</button>
+    <button type="submit">Confirm membership</button>
+  </form>
+</section>
+</div>
+</main>
+<script>
+const regions = {
+  AU: [["NSW","New South Wales"],["QLD","Queensland"],["TAS","Tasmania"],["VIC","Victoria"]],
+  CA: [["AB","Alberta"],["BC","British Columbia"],["NB","New Brunswick"],["NL","Newfoundland and Labrador"],["NS","Nova Scotia"],["ON","Ontario"],["QC","Quebec"]],
+  IE: [["C","Connacht"],["L","Leinster"],["M","Munster"],["U","Ulster"]],
+  NZ: [["AUK","Auckland"],["CAN","Canterbury"],["OTA","Otago"],["WGN","Wellington"]],
+  GB: [["ENG","England"],["NIR","Northern Ireland"],["SCT","Scotland"],["WLS","Wales"]],
+};
+const $ = (id) => document.getElementById(id);
+function show(n) {
+  for (const i of [1, 2, 3]) { $("step" + i).classList.toggle("on", i === n); $("s" + i).classList.toggle("on", i === n); }
+}
+$("country").addEventListener("change", () => {
+  const r = $("region"); r.innerHTML = "";
+  const list = regions[$("country").value];
+  if (!list) { r.disabled = true; r.add(new Option("Choose a country first", "")); return; }
+  r.disabled = false; r.add(new Option("Choose a region", ""));
+  for (const [v, t] of list) r.add(new Option(t, v));
+});
+const plan = () => document.querySelector("input[name=plan]:checked").value;
+$("next1").onclick = () => {
+  if (!$("start").value) { $("e1").textContent = "Choose a start date."; return; }
+  $("e1").textContent = ""; show(2);
+};
+$("back2").onclick = () => show(1);
+$("back3").onclick = () => show(2);
+$("next2").onclick = () => {
+  if (!$("company").value.trim() || !$("country").value || !$("region").value) { $("e2").textContent = "Fill in the company, country and region."; return; }
+  $("e2").textContent = "";
+  const f = $("confirm");
+  const vals = { plan: plan(), start: $("start").value, company: $("company").value.trim(), team: $("team").value,
+    country: $("country").value, region: $("region").value, parking: $("parking").checked ? "yes" : "no" };
+  for (const k in vals) f.elements[k].value = vals[k];
+  const names = { hot: "Hot desk", dedicated: "Dedicated desk", office: "Private office" };
+  const rows = [["Plan", names[vals.plan]], ["Start date", vals.start], ["Company", vals.company], ["Team size", vals.team],
+    ["Location", $("country").selectedOptions[0].text + ", " + $("region").selectedOptions[0].text], ["Parking", vals.parking === "yes" ? "Yes (+$40 per month)" : "No"]];
+  $("review").innerHTML = "";
+  for (const [k, v] of rows) { const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; $("review").append(dt, dd); }
+  show(3);
+};
+</script>
+</body>
+</html>
