@@ -356,12 +356,15 @@ The live scenario suite (`go run ./cmd/cua-vm test -tags scenario ./internal/sce
 ```sh
 go run ./cmd/cua-bench golden                                   # build the golden image once
 go run ./cmd/cua-bench golden -refresh-fennec                    # after a fennec-cua change: replace only its binary
+go run ./cmd/cua-bench warm                                     # after every golden change: suspended warm images, one per worker
 go run ./cmd/cua-bench run -macosworld PATH -set dev -trials 3 -concurrency 2 -results bench-results
 go run ./cmd/cua-bench check -macosworld PATH -set holdout      # setup, pre_command and grader, no agent
 go run ./cmd/cua-bench check -set browser -solve                 # our browser set: no checkout; scripted solutions score 100
 go run ./cmd/cua-bench web -results bench-results                # live results page on 127.0.0.1:8090
 go run ./cmd/cua-bench export -results bench-results -out DIR    # static page + data.json
 ```
+
+**Warm starts.** `cua-bench warm` clones the golden image into `cua-bench-golden-warm-1` and `-2`, boots each to the same settled desktop a cold trial waits for (`WaitDesktop`), and suspends it with its memory saved (`tart run --suspendable`, `tart suspend`). `run` then clones a worker's warm image and resumes it instead of booting: about 11 s to a ready desktop instead of about 40 s. Every trial is still a fresh copy-on-write clone that is deleted afterwards, and the setup step, pre_command, backend start and grading still run after the resume; the guest clock is set to the host's first, since a resumed guest keeps the time it was suspended at. Each worker needs its own image: a resumed clone keeps the MAC address it was suspended with, and Virtualization.framework refuses to restore while another VM with the same machine identifier runs. Slot 1 keeps the golden image's identifier; slot 2 gets a new one and copies the golden image's per-host preferences (`~/Library/Preferences/ByHost`, keyed by hardware UUID) before it is suspended. A warm image records the golden image it came from (configuration, NVRAM, disk size and modification time, tart version) and is ignored once that changes; a worker without a valid image, a resume that fails, or `run -cold` boots cold. `start` in each result says which way the VM came up.
 
 The results page (`bench/index.html`, embedded in the binary) shows each set's ranking, per-app and per-task scores, the safety distraction outcomes and the live feed; `web` also serves each run's transcript and final screenshot, except for the sealed held-out set. macOSWorld is CC BY-NC 4.0: task texts and grading commands stay in the local checkout and never reach the page or the repository.
 

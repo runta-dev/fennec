@@ -3,6 +3,7 @@
 // golden macOS image, all driven by the same LLM agent loop on the host.
 //
 //	go run ./cmd/cua-bench golden [flags]   build the golden image
+//	go run ./cmd/cua-bench warm [flags]     suspend booted clones of it for fast trial starts
 //	go run ./cmd/cua-bench run [flags]      run trials, then write summary.md
 //	go run ./cmd/cua-bench summary [flags]  rewrite summary.md from results
 //	go run ./cmd/cua-bench web [flags]      serve the live results page
@@ -44,13 +45,19 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cua-bench golden | run | summary | web | export | select | check [flags]")
+		return errors.New("usage: cua-bench golden | warm | run | summary | web | export | select | check [flags]")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	switch args[0] {
 	case "golden":
 		return golden(ctx, args[1:])
+	case "warm":
+		fs := flag.NewFlagSet("warm", flag.ExitOnError)
+		name := fs.String("golden", "cua-bench-golden", "golden VM the warm images are cloned from")
+		slots := fs.Int("slots", 2, "warm images to build, one per concurrent worker")
+		_ = fs.Parse(args[1:])
+		return bench.BuildWarm(ctx, tartBin(), *name, *slots, log.Printf)
 	case "run":
 		return runBench(ctx, args[1:])
 	case "summary":
@@ -270,6 +277,7 @@ func runBench(ctx context.Context, args []string) error {
 	maxTurns := fs.Int("max-turns", 40, "agent turns per trial")
 	wall := fs.Duration("wall", 10*time.Minute, "agent wall clock per trial")
 	retries := fs.Int("retries", 2, "retries of a trial after a harness failure")
+	cold := fs.Bool("cold", false, "boot every trial from the golden image even when valid warm images exist (cua-bench warm)")
 	_ = fs.Parse(args)
 	list, err := sel.list()
 	if err != nil {
@@ -348,6 +356,20 @@ func runBench(ctx context.Context, args []string) error {
 		}
 	}
 	log.Printf("%d trials to run, %d at a time", len(jobs), *concurrency)
+	// Each worker resumes its own warm image (one MAC address per running
+	// VM), or boots cold without a valid one.
+	warm := make([]string, *concurrency)
+	if !*cold {
+		for w := range warm {
+			name, err := bench.ValidWarm(ctx, tartBin(), *golden, w+1)
+			if err != nil {
+				log.Printf("worker %d boots cold: %v", w+1, err)
+				continue
+			}
+			warm[w] = name
+			log.Printf("worker %d resumes %s", w+1, name)
+		}
+	}
 	start := time.Now()
 	queue := make(chan job)
 	var wg sync.WaitGroup
@@ -355,12 +377,12 @@ func runBench(ctx context.Context, args []string) error {
 	done := 0
 	for w := 0; w < *concurrency; w++ {
 		wg.Add(1)
-		go func() {
+		go func(warm string) {
 			defer wg.Done()
 			for j := range queue {
 				r := runJob(ctx, j, bench.TrialConfig{
 					Task: j.task, Backend: j.backend, Trial: j.trial,
-					Golden: *golden, Tart: tartBin(), Model: model, Access: access,
+					Golden: *golden, Warm: warm, Tart: tartBin(), Model: model, Access: access,
 					MaxTurns: *maxTurns, WallClock: *wall,
 					Setup: table.ByID[j.task.ID].SetupStep(), Sealed: sealed,
 					Dir: trialDir(j.backend, j.task),
@@ -370,7 +392,7 @@ func runBench(ctx context.Context, args []string) error {
 				log.Printf("[%d/%d] %s %s trial %d: %s", done, len(jobs), j.backend, j.task.ID, j.trial, r)
 				mu.Unlock()
 			}
-		}()
+		}(warm[w])
 	}
 	for _, j := range jobs {
 		select {

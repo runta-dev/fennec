@@ -94,9 +94,12 @@ type TrialConfig struct {
 	Backend string
 	Trial   int
 	Golden  string // the image every trial clones
-	Tart    string // the tart binary
-	Model   Model  // the agent's model, called from the host
-	Access  ModelAccess
+	// Warm is a suspended warm image of Golden (warm.go) to clone and
+	// resume instead of booting; empty boots Golden cold.
+	Warm   string
+	Tart   string // the tart binary
+	Model  Model  // the agent's model, called from the host
+	Access ModelAccess
 	// Agent bounds.
 	MaxTurns  int
 	WallClock time.Duration
@@ -130,10 +133,13 @@ type TrialResult struct {
 	Instructions int           `json:"instructions_bytes,omitempty"`
 	Transcript   *Transcript   `json:"transcript,omitempty"`
 	BootMs       int64         `json:"boot_ms"`
-	AgentMs      int64         `json:"agent_ms"`
-	TotalMs      int64         `json:"total_ms"`
-	Started      time.Time     `json:"started"`
-	Screenshot   string        `json:"screenshot,omitempty"`
+	// Start is how the VM came up: "warm" (resumed from a warm image) or
+	// "cold" (booted).
+	Start      string    `json:"start,omitempty"`
+	AgentMs    int64     `json:"agent_ms"`
+	TotalMs    int64     `json:"total_ms"`
+	Started    time.Time `json:"started"`
+	Screenshot string    `json:"screenshot,omitempty"`
 	// Setup is the setup step that recreated snapshot state, if any.
 	Setup string `json:"setup,omitempty"`
 	// Corrected says which harness correction the task ran with; such
@@ -192,21 +198,42 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 		return res
 	}
 
-	if err := v.Clone(ctx, c.Golden); err != nil {
-		return fail("clone: %v", err)
+	var s *vm.Session
+	if c.Warm != "" {
+		var err error
+		if s, err = resumeWarm(ctx, v, c.Warm, logf); err != nil {
+			// A warm image that does not restore costs one cold boot,
+			// in a fresh clone of the golden image.
+			logf("%s: resume of %s failed, booting cold: %v", name, c.Warm, err)
+			s = nil
+			dctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			_ = v.Stop(dctx)
+			err := v.Delete(dctx)
+			cancel()
+			if err != nil {
+				return fail("delete after a failed resume: %v", err)
+			}
+		} else {
+			res.Start = "warm"
+		}
 	}
-	bctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-	_, err := v.Start(bctx)
-	cancel()
-	if err != nil {
-		return fail("boot: %v", err)
-	}
-	s, err := v.Connect(ctx)
-	if err != nil {
-		return fail("connect: %v", err)
-	}
-	if err := WaitDesktop(ctx, s); err != nil {
-		return fail("desktop: %v", err)
+	if s == nil {
+		if err := v.Clone(ctx, c.Golden); err != nil {
+			return fail("clone: %v", err)
+		}
+		bctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+		_, err := v.Start(bctx)
+		cancel()
+		if err != nil {
+			return fail("boot: %v", err)
+		}
+		if s, err = v.Connect(ctx); err != nil {
+			return fail("connect: %v", err)
+		}
+		if err := WaitDesktop(ctx, s); err != nil {
+			return fail("desktop: %v", err)
+		}
+		res.Start = "cold"
 	}
 	res.BootMs = time.Since(start).Milliseconds()
 
@@ -355,12 +382,15 @@ func guestShell(ctx context.Context, s *vm.Session, command string, timeout time
 	return text, err == nil
 }
 
+// desktopUp succeeds when the logged-in desktop runs.
+const desktopUp = "pgrep -x Dock >/dev/null && pgrep -x Finder >/dev/null && pgrep -x WindowServer >/dev/null"
+
 // WaitDesktop waits until the logged-in desktop is up (Dock and Finder run)
 // and gives login-time banners a moment to pass.
 func WaitDesktop(ctx context.Context, s *vm.Session) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		if _, ok := guestShell(ctx, s, "pgrep -x Dock >/dev/null && pgrep -x Finder >/dev/null && pgrep -x WindowServer >/dev/null", 20*time.Second); ok {
+		if _, ok := guestShell(ctx, s, desktopUp, 20*time.Second); ok {
 			break
 		}
 		if time.Now().After(deadline) {
