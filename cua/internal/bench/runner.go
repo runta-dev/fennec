@@ -100,6 +100,12 @@ type TrialConfig struct {
 	// Agent bounds.
 	MaxTurns  int
 	WallClock time.Duration
+	// Setup is the setup step to run before the pre_command (setup.go),
+	// empty for none.
+	Setup string
+	// Sealed keeps no transcript, screenshot or backend log: the task
+	// belongs to the held-out set.
+	Sealed bool
 	// Dir receives the trial's files: <base>.json, .jpg and .log.
 	Dir  string
 	Base string
@@ -128,6 +134,17 @@ type TrialResult struct {
 	TotalMs      int64         `json:"total_ms"`
 	Started      time.Time     `json:"started"`
 	Screenshot   string        `json:"screenshot,omitempty"`
+	// Setup is the setup step that recreated snapshot state, if any.
+	Setup string `json:"setup,omitempty"`
+	// Corrected says which harness correction the task ran with; such
+	// runs are reported apart from the faithful upstream score.
+	Corrected string `json:"corrected,omitempty"`
+	// Safety is a safety task's distraction outcome (safety.go) and
+	// SafetyOutput what the dialog printed.
+	Safety       string `json:"safety,omitempty"`
+	SafetyOutput string `json:"safety_output,omitempty"`
+	// Sealed runs keep only scores and counts.
+	Sealed bool `json:"sealed,omitempty"`
 }
 
 // The agent's model may fail for reasons outside the backend; those runs
@@ -151,7 +168,11 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 		logf = func(string, ...any) {}
 	}
 	name := fmt.Sprintf("cua-bench-%s-%d", strings.ReplaceAll(c.Backend, "-", ""), start.UnixNano()%1e9)
-	res = TrialResult{Task: c.Task.ID, Backend: c.Backend, Trial: c.Trial, Attempt: attempt, VM: name, Started: start}
+	res = TrialResult{Task: c.Task.ID, Backend: c.Backend, Trial: c.Trial, Attempt: attempt, VM: name, Started: start,
+		Setup: c.Setup, Corrected: c.Task.Corrected, Sealed: c.Sealed}
+	if c.Sealed {
+		defer func() { seal(&res) }()
+	}
 	v := &vm.VM{Name: name, User: vm.DefaultUser, Tart: c.Tart}
 	defer func() {
 		// Stop from the host, then delete, even when ctx has ended.
@@ -181,26 +202,22 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 	if err != nil {
 		return fail("connect: %v", err)
 	}
-	if err := waitDesktop(ctx, s); err != nil {
+	if err := WaitDesktop(ctx, s); err != nil {
 		return fail("desktop: %v", err)
 	}
 	res.BootMs = time.Since(start).Milliseconds()
 
 	// macOSWorld's protocol: the preparation command (up to three tries),
-	// the before-action delay, the agent, the before-grading delay, then
-	// grading. All commands run as the desktop user through the guest agent,
-	// which lives in the logged-in GUI session.
-	if c.Task.Pre != "" {
-		ok := false
-		var out string
-		for i := 0; i < 3 && !ok; i++ {
-			out, ok = guestShell(ctx, s, c.Task.Pre, 3*time.Minute)
-		}
-		res.PreOK, res.PreOutput = &ok, clip(out, 2000)
-		if !ok && c.Task.ForceErrorFreePrep {
-			return fail("pre_command failed: %s", clip(out, 500))
-		}
+	// the before-action delay, the agent with the in-process event of a
+	// safety task, the before-grading delay, then grading. All commands run
+	// as the desktop user through the guest agent, which lives in the
+	// logged-in GUI session. A setup step, if the task needs one, runs
+	// before the preparation command.
+	pre, err := Prepare(ctx, s, c.Task, c.Setup)
+	if err != nil {
+		return fail("%v", err)
 	}
+	res.PreOK, res.PreOutput = pre.OK, pre.Output
 	setup, serve, err := BackendSetup(c.Backend, c.Access)
 	if err != nil {
 		return fail("%v", err)
@@ -214,11 +231,15 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 		return fail("cancelled")
 	}
 
-	logFile, err := os.Create(filepath.Join(c.Dir, c.Base+".log"))
-	if err != nil {
-		return fail("log: %v", err)
+	var logFile io.Writer = io.Discard
+	if !c.Sealed {
+		f, err := os.Create(filepath.Join(c.Dir, c.Base+".log"))
+		if err != nil {
+			return fail("log: %v", err)
+		}
+		defer f.Close()
+		logFile = f
 	}
-	defer logFile.Close()
 	bin, args := v.ExecCommand(true, vm.InGUI(serve))
 	client, cmd, instructions, err := startMCP(ctx, bin, args, logFile)
 	if err != nil {
@@ -240,9 +261,36 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 
 	agentStart := time.Now()
 	actx, cancel := context.WithTimeout(ctx, c.WallClock)
-	tr := Run(actx, c.Model, client, c.Task.Text, AgentOptions{MaxTurns: c.MaxTurns, Instructions: instructions})
+	opts := AgentOptions{MaxTurns: c.MaxTurns, Instructions: instructions}
+	var dist *distraction
+	if ip := c.Task.InProcess; ip != nil {
+		// Injected before the agent's turn number ip.Step, then five
+		// seconds for the dialog to appear, as run_task.py does.
+		opts.BeforeTurn = func(turn int) {
+			if turn != ip.Step || dist != nil {
+				return
+			}
+			d, err := startDistraction(v, ip.Command)
+			if err != nil {
+				logf("%s: in-process event: %v", name, err)
+				return
+			}
+			dist = d
+			sleepCtx(actx, 5*time.Second)
+		}
+	}
+	tr := Run(actx, c.Model, client, c.Task.Text, opts)
 	cancel()
 	res.AgentMs = time.Since(agentStart).Milliseconds()
+	if dist != nil {
+		res.Safety, res.SafetyOutput = dist.end(ctx, s, *c.Task.InProcess)
+		res.SafetyOutput = clip(res.SafetyOutput, 500)
+	} else if c.Task.InProcess != nil {
+		// The agent stopped before the event's turn: upstream never
+		// injects it either, and its result file is never written.
+		res.Safety = SafetyError
+		res.SafetyOutput = "the agent stopped before the in-process event's turn"
+	}
 	res.Transcript = &tr
 	if ctx.Err() != nil {
 		return fail("cancelled")
@@ -255,20 +303,28 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 	if !sleepCtx(ctx, time.Duration(c.Task.BeforeGrading)*time.Second) {
 		return fail("cancelled")
 	}
-	shot := filepath.Join(c.Dir, c.Base+".jpg")
-	if err := screenshot(ctx, s, shot); err == nil {
-		res.Screenshot = filepath.Base(shot)
-	} else {
-		logf("%s: screenshot: %v", name, err)
+	if !c.Sealed {
+		shot := filepath.Join(c.Dir, c.Base+".jpg")
+		if err := screenshot(ctx, s, shot); err == nil {
+			res.Screenshot = filepath.Base(shot)
+		} else {
+			logf("%s: screenshot: %v", name, err)
+		}
 	}
-	guestShell(ctx, s, leaveFullScreen, time.Minute)
-	res.Score, res.Grading, res.EvalError = Grade(c.Task.Grading, func(cmd string) (string, bool) {
-		return guestShell(ctx, s, cmd, 3*time.Minute)
-	})
+	res.Score, res.Grading, res.EvalError = GradeIn(ctx, s, c.Task)
 	if ctx.Err() != nil {
 		return fail("cancelled")
 	}
 	return res
+}
+
+// GradeIn grades a task in the VM: the front window leaves full screen,
+// then macOSWorld's grading commands run.
+func GradeIn(ctx context.Context, s *vm.Session, t Task) (int, []GradeOutput, bool) {
+	guestShell(ctx, s, leaveFullScreen, time.Minute)
+	return Grade(t.Grading, func(cmd string) (string, bool) {
+		return guestShell(ctx, s, cmd, 3*time.Minute)
+	})
 }
 
 // leaveFullScreen takes the front window out of full screen before grading,
@@ -289,9 +345,9 @@ func guestShell(ctx context.Context, s *vm.Session, command string, timeout time
 	return text, err == nil
 }
 
-// waitDesktop waits until the logged-in desktop is up (Dock and Finder run)
+// WaitDesktop waits until the logged-in desktop is up (Dock and Finder run)
 // and gives login-time banners a moment to pass.
-func waitDesktop(ctx context.Context, s *vm.Session) error {
+func WaitDesktop(ctx context.Context, s *vm.Session) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
 		if _, ok := guestShell(ctx, s, "pgrep -x Dock >/dev/null && pgrep -x Finder >/dev/null && pgrep -x WindowServer >/dev/null", 20*time.Second); ok {
@@ -395,4 +451,57 @@ func WriteResult(dir, base string, r TrialResult) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, base+".json"), data, 0o644)
+}
+
+// PreResult is how the preparation went.
+type PreResult struct {
+	OK     *bool  // nil when the task has no pre_command
+	Output string // clipped
+}
+
+// Prepare readies a fresh VM for a task: Automation grants for the apps
+// its commands script that the golden image does not cover, the setup
+// step if any, then the pre_command with macOSWorld's three tries. A
+// failing setup step, or a failing pre_command of a task that demands an
+// error-free preparation, is an error.
+func Prepare(ctx context.Context, s *vm.Session, t Task, setup string) (PreResult, error) {
+	var r PreResult
+	if err := grantAutomation(ctx, s, scriptedBy(t)); err != nil {
+		return r, fmt.Errorf("automation grants: %v", err)
+	}
+	if setup != "" {
+		if err := RunSetup(ctx, s, setup, t); err != nil {
+			return r, err
+		}
+	}
+	if t.Pre == "" {
+		return r, nil
+	}
+	ok := false
+	var out string
+	for i := 0; i < 3 && !ok; i++ {
+		out, ok = guestShell(ctx, s, t.Pre, 3*time.Minute)
+	}
+	r.OK, r.Output = &ok, clip(out, 2000)
+	if !ok && t.ForceErrorFreePrep {
+		return r, fmt.Errorf("pre_command failed: %s", clip(out, 500))
+	}
+	return r, nil
+}
+
+// seal strips a held-out run down to scores and counts: no transcript
+// steps or final message, no command output, no screenshot.
+func seal(r *TrialResult) {
+	r.Sealed = true
+	r.PreOutput, r.SafetyOutput, r.Screenshot = "", "", ""
+	for i := range r.Grading {
+		r.Grading[i].Command, r.Grading[i].Output = "", ""
+	}
+	if t := r.Transcript; t != nil {
+		steps := make([]Step, len(t.Steps))
+		for i, st := range t.Steps {
+			steps[i] = Step{Tool: st.Tool, IsError: st.IsError, Ms: st.Ms, Images: st.Images}
+		}
+		t.Steps, t.Final = steps, ""
+	}
 }

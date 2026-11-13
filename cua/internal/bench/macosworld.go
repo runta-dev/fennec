@@ -25,6 +25,22 @@ type Task struct {
 	// ForceErrorFreePrep makes a failing preparation a harness failure.
 	ForceErrorFreePrep bool
 	Grading            []GradingCommand
+	// InProcess is a safety task's distraction, nil for other tasks.
+	InProcess *InProcess
+	// Corrected names the harness corrections applied to the task
+	// (corrections.go); empty for the task as upstream wrote it.
+	Corrected string
+}
+
+// InProcess is macOSWorld's in-process event: a command, usually an
+// osascript dialog, started while the agent works. Its outcome is graded by
+// the button the agent pressed: one of Gold handled the distraction, one of
+// Distracting fell for it.
+type InProcess struct {
+	Command     string
+	Step        int
+	Gold        []string
+	Distracting []string
 }
 
 // GradingCommand is one [shell command, score] pair.
@@ -42,6 +58,7 @@ type taskFile struct {
 	BeforeGrading      *int              `json:"before_grading_delay_seconds"`
 	ForceErrorFreePrep bool              `json:"force_error_free_prep"`
 	RawGrading         json.RawMessage   `json:"grading_command"`
+	InProcess          json.RawMessage   `json:"in_process"`
 }
 
 // UpstreamHome is the guest user's home in the upstream environment; the
@@ -105,6 +122,21 @@ func LoadTask(root, id, lang string) (Task, error) {
 	if len(t.Grading) == 0 {
 		return Task{}, fmt.Errorf("%s: no grading command", id)
 	}
+	if len(f.InProcess) > 0 && string(f.InProcess) != "null" {
+		// [command, start step, gold elements, distracting elements]
+		var raw []json.RawMessage
+		if err := json.Unmarshal(f.InProcess, &raw); err != nil || len(raw) != 4 {
+			return Task{}, fmt.Errorf("%s: in_process is not [command, step, gold, distracting]", id)
+		}
+		var ip InProcess
+		for i, dst := range []any{&ip.Command, &ip.Step, &ip.Gold, &ip.Distracting} {
+			if err := json.Unmarshal(raw[i], dst); err != nil {
+				return Task{}, fmt.Errorf("%s: in_process[%d]: %w", id, i, err)
+			}
+		}
+		ip.Command = localize(ip.Command)
+		t.InProcess = &ip
+	}
 	return t, nil
 }
 
@@ -113,14 +145,56 @@ func localize(cmd string) string { return strings.ReplaceAll(cmd, UpstreamHome, 
 // IDList is a committed task selection: task ids and the upstream commit.
 type IDList struct {
 	Commit string
+	// Name is the evaluation set ("# set: NAME"), empty for a plain list.
+	Name string
+	// Sealed marks a held-out set ("# sealed"): its runs keep no
+	// transcripts or screenshots and the page shows no per-task details.
+	Sealed bool
 	IDs    []string
-	Apps   map[string]string // id -> the app the task is about
+	Apps   map[string]string   // id -> the app the task is about
+	Tags   map[string][]string // id -> tags such as "smoke" or "corrected"
+}
+
+// Task tags a set file may carry.
+const (
+	// TagSmoke marks a task every backend solved in every trial: a quick
+	// check that the harness works, not a measure of a backend.
+	TagSmoke = "smoke"
+	// TagCorrected marks a task with a broken upstream grader or
+	// pre_command and a harness correction (corrections.go). Its corrected
+	// runs are scored apart from the faithful upstream score.
+	TagCorrected = "corrected"
+	// TagSkip marks a task that is listed for completeness but not run;
+	// "[skip: reason]" says why.
+	TagSkip = "skip"
+)
+
+// HasTag reports whether a task carries a tag (the part before any ':').
+func (l IDList) HasTag(id, tag string) bool {
+	for _, t := range l.Tags[id] {
+		if name, _, _ := strings.Cut(t, ":"); strings.TrimSpace(name) == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// Runnable is the ids without the skip tag, in file order.
+func (l IDList) Runnable() []string {
+	var out []string
+	for _, id := range l.IDs {
+		if !l.HasTag(id, TagSkip) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // ReadIDList reads a selection file: one "category/uuid" per line, blank
-// lines and "#" comments ignored, and a "# commit: SHA" line naming the
-// upstream commit the ids come from. A trailing "# Name" on an id line
-// names the task's app.
+// lines and "#" comments ignored, a "# commit: SHA" line naming the upstream
+// commit the ids come from, and for an evaluation set a "# set: NAME" line
+// and an optional "# sealed" line. A trailing "# Name [tag] [tag: note]" on
+// an id line names the task's app and its tags.
 func ReadIDList(path string) (IDList, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -135,17 +209,32 @@ func ReadIDList(path string) (IDList, error) {
 			l.Commit = strings.TrimSpace(c)
 			continue
 		}
+		if c, ok := strings.CutPrefix(line, "# set:"); ok {
+			l.Name = strings.TrimSpace(c)
+			continue
+		}
+		if line == "# sealed" {
+			l.Sealed = true
+			continue
+		}
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		id, app, _ := strings.Cut(line, "#")
-		id, app = strings.TrimSpace(id), strings.TrimSpace(app)
+		id, rest, _ := strings.Cut(line, "#")
+		id = strings.TrimSpace(id)
+		app, tags := splitTags(rest)
 		l.IDs = append(l.IDs, id)
 		if app != "" {
 			if l.Apps == nil {
 				l.Apps = map[string]string{}
 			}
 			l.Apps[id] = app
+		}
+		if len(tags) > 0 {
+			if l.Tags == nil {
+				l.Tags = map[string][]string{}
+			}
+			l.Tags[id] = tags
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -155,6 +244,32 @@ func ReadIDList(path string) (IDList, error) {
 		return IDList{}, errors.New(path + ": no task ids")
 	}
 	return l, nil
+}
+
+// splitTags splits "Calculator [smoke] [skip: needs Pages]" into the app
+// and its bracketed tags.
+func splitTags(s string) (app string, tags []string) {
+	s = strings.TrimSpace(s)
+	i := strings.Index(s, "[")
+	if i < 0 {
+		return s, nil
+	}
+	app, s = strings.TrimSpace(s[:i]), s[i:]
+	for {
+		open := strings.Index(s, "[")
+		if open < 0 {
+			break
+		}
+		end := strings.Index(s[open:], "]")
+		if end < 0 {
+			break
+		}
+		if t := strings.TrimSpace(s[open+1 : open+end]); t != "" {
+			tags = append(tags, t)
+		}
+		s = s[open+end+1:]
+	}
+	return app, tags
 }
 
 // GradeOutput is what one grading command printed (stdout and stderr

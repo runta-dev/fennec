@@ -7,9 +7,12 @@
 //	go run ./cmd/cua-bench summary [flags]  rewrite summary.md from results
 //	go run ./cmd/cua-bench web [flags]      serve the live results page
 //	go run ./cmd/cua-bench export [flags]   write the page and data.json to a folder
+//	go run ./cmd/cua-bench select [flags]   draw the held-out set from feasibility.tsv
+//	go run ./cmd/cua-bench check [flags]    run setup, pre_command and grader without an agent
 //
 // Task texts and grading commands come from a local macOSWorld checkout
-// (-macosworld); this repository holds only the ids (bench/macosworld.txt).
+// (-macosworld); this repository holds only the ids, in evaluation sets
+// (bench/sets: dev, holdout, safety) and the feasibility table.
 package main
 
 import (
@@ -41,7 +44,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: cua-bench golden | run | summary | web | export [flags]")
+		return errors.New("usage: cua-bench golden | run | summary | web | export | select | check [flags]")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -53,17 +56,21 @@ func run(args []string) error {
 	case "summary":
 		fs := flag.NewFlagSet("summary", flag.ExitOnError)
 		results := fs.String("results", "bench-results", "results directory")
-		ids := fs.String("ids", "bench/macosworld.txt", "task id list")
+		sel := addSetFlags(fs)
 		_ = fs.Parse(args[1:])
-		l, err := bench.ReadIDList(*ids)
+		l, err := sel.list()
 		if err != nil {
 			return err
 		}
-		return writeSummary(*results, l.IDs)
+		return writeSummary(*results, l)
 	case "web":
 		return serveWeb(ctx, args[1:])
 	case "export":
 		return exportWeb(args[1:])
+	case "select":
+		return selectHeldOut(args[1:])
+	case "check":
+		return checkTasks(ctx, args[1:])
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
@@ -87,6 +94,9 @@ var taskApps = []struct {
 }{
 	{"Calculator", nil}, {"Contacts", nil}, {"Reminders", []int{36, 49}}, {"Chess", nil}, {"Dictionary", nil},
 	{"Activity Monitor", nil}, {"Freeform", []int{36, 36, 49}}, {"Notes", []int{36, 49}}, {"System Settings", nil},
+	// Return accepts "Welcome to Apple Music", then Continue on the
+	// notifications pitch.
+	{"Music", []int{36, 36}},
 }
 
 // Apps grading commands script, by bundle id: the guest agent (the process
@@ -96,6 +106,11 @@ var scriptedApps = []string{
 	"com.apple.systemevents", "com.apple.AddressBook", "com.apple.reminders", "com.apple.Notes",
 	"com.apple.systempreferences", "com.apple.Chess", "com.apple.calculator", "com.apple.freeform",
 	"com.apple.Dictionary", "com.apple.ActivityMonitor", "com.apple.finder", "com.apple.dock",
+	// The held-out and safety sets' apps (internal/bench/setup.go grants
+	// them per trial in an image built before they were added).
+	"com.apple.ScriptEditor2", "com.apple.Music", "com.apple.Stickies", "com.apple.QuickTimePlayerX",
+	"com.apple.Automator", "com.apple.DiskUtility", "com.apple.TextEdit", "com.apple.Maps",
+	"com.apple.FontBook", "com.apple.weather", "com.apple.stocks",
 }
 
 func golden(ctx context.Context, args []string) error {
@@ -238,7 +253,10 @@ type job struct {
 func runBench(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	mw := fs.String("macosworld", "", "macOSWorld checkout (showlab/macosworld)")
-	ids := fs.String("ids", "bench/macosworld.txt", "task id list")
+	sel := addSetFlags(fs)
+	feas := fs.String("feasibility", "bench/sets/feasibility.tsv", "feasibility table: which tasks need a setup step")
+	corrected := fs.Bool("corrected", false, "run only the set's [corrected] tasks, with their harness corrections, scored apart")
+	unseal := fs.Bool("unseal", false, "keep transcripts and screenshots of a sealed (held-out) set: makes its results unusable as a held-out score")
 	only := fs.String("tasks", "", "comma-separated task ids or uuid prefixes to run (default all)")
 	limit := fs.Int("limit", 0, "run only the first N tasks")
 	backends := fs.String("backends", strings.Join(bench.Backends, ","), "backends to run")
@@ -256,26 +274,52 @@ func runBench(ctx context.Context, args []string) error {
 	if *mw == "" {
 		return errors.New("run needs -macosworld")
 	}
-	list, err := bench.ReadIDList(*ids)
+	list, err := sel.list()
 	if err != nil {
 		return err
 	}
 	if head, err := exec.Command("git", "-C", *mw, "rev-parse", "HEAD").Output(); err == nil && list.Commit != "" && strings.TrimSpace(string(head)) != list.Commit {
 		log.Printf("warning: the checkout is at %s, the id list was made at %s", strings.TrimSpace(string(head)), list.Commit)
 	}
+	table, err := bench.ReadFeasibility(*feas)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	sealed := list.Sealed && !*unseal
+	if list.Sealed && *unseal {
+		log.Printf("warning: -unseal keeps transcripts of the sealed set %q; its results no longer count as held out", list.Name)
+	}
 	var tasks []bench.Task
-	for _, id := range list.IDs {
+	for _, id := range list.Runnable() {
 		if *only != "" && !matches(id, *only) {
+			continue
+		}
+		if *corrected && !list.HasTag(id, bench.TagCorrected) {
 			continue
 		}
 		t, err := bench.LoadTask(*mw, id, "en")
 		if err != nil {
 			return err
 		}
+		if *corrected {
+			if err := bench.Correct(&t); err != nil {
+				return err
+			}
+		}
 		tasks = append(tasks, t)
 		if *limit > 0 && len(tasks) == *limit {
 			break
 		}
+	}
+	if *corrected && len(tasks) == 0 {
+		return errors.New("-corrected: the set has no [corrected] tasks")
+	}
+	trialDir := func(backend string, t bench.Task) string {
+		d := bench.TrialDir(*results, backend, t.ID)
+		if t.Corrected != "" {
+			d = filepath.Join(d, bench.CorrectedDir)
+		}
+		return d
 	}
 	model := bench.Model{BaseURL: *modelURL, Name: *modelName}
 	access := bench.ModelAccess{}
@@ -293,7 +337,7 @@ func runBench(ctx context.Context, args []string) error {
 		for _, t := range tasks {
 			for _, b := range strings.Split(*backends, ",") {
 				b = strings.TrimSpace(b)
-				dir := bench.TrialDir(*results, b, t.ID)
+				dir := trialDir(b, t)
 				if _, err := os.Stat(filepath.Join(dir, bench.TrialBase(tr)+".json")); err == nil {
 					continue // already scored
 				}
@@ -316,7 +360,8 @@ func runBench(ctx context.Context, args []string) error {
 					Task: j.task, Backend: j.backend, Trial: j.trial,
 					Golden: *golden, Tart: tartBin(), Model: model, Access: access,
 					MaxTurns: *maxTurns, WallClock: *wall,
-					Dir: bench.TrialDir(*results, j.backend, j.task.ID),
+					Setup: table.ByID[j.task.ID].SetupStep(), Sealed: sealed,
+					Dir: trialDir(j.backend, j.task),
 				}, *retries)
 				mu.Lock()
 				done++
@@ -337,11 +382,7 @@ func runBench(ctx context.Context, args []string) error {
 	close(queue)
 	wg.Wait()
 	log.Printf("finished in %s", time.Since(start).Round(time.Second))
-	ids2 := make([]string, len(tasks))
-	for i, t := range tasks {
-		ids2[i] = t.ID
-	}
-	return writeSummary(*results, ids2)
+	return writeSummary(*results, list)
 }
 
 func matches(id, filter string) bool {
@@ -397,13 +438,22 @@ func stopOf(r bench.TrialResult) string {
 	return r.Transcript.Stop
 }
 
-func writeSummary(results string, ids []string) error {
+// writeSummary writes summary.md for a set (summary-SET.md for a named set)
+// from every result under results.
+func writeSummary(results string, list bench.IDList) error {
 	scored, harness, err := bench.LoadResults(results)
 	if err != nil {
 		return err
 	}
-	md := bench.Summary(ids, scored, harness)
-	p := filepath.Join(results, "summary.md")
+	md := bench.Summary(list.Runnable(), scored, harness)
+	if list.Name != "" {
+		md = "Set: " + list.Name + "\n\n" + md
+	}
+	name := "summary.md"
+	if list.Name != "" {
+		name = "summary-" + list.Name + ".md"
+	}
+	p := filepath.Join(results, name)
 	if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 		return err
 	}

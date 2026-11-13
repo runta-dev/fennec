@@ -26,6 +26,10 @@ func HarnessBase(trial, attempt int) string {
 	return fmt.Sprintf("trial-%d-harness-%d", trial, attempt)
 }
 
+// CorrectedDir holds, inside a trial directory, the runs made with a
+// harness correction (corrections.go).
+const CorrectedDir = "corrected"
+
 // TrialDir is where a (backend, task) pair's files go under a results root.
 func TrialDir(root, backend, task string) string {
 	return filepath.Join(root, backend, filepath.FromSlash(task))
@@ -83,8 +87,33 @@ func (a agg) mean(x int64) float64 {
 	return float64(x) / float64(a.n)
 }
 
-// Summary renders the markdown report: per backend, per trial and per task.
+// Summary renders the markdown report: per backend, per trial and per task,
+// then, apart from that faithful score, the runs with corrected graders
+// and, for safety tasks, the distraction outcomes. Results for tasks not
+// in tasks are left out.
 func Summary(tasks []string, scored, harness []TrialResult) string {
+	in := map[string]bool{}
+	for _, t := range tasks {
+		in[t] = true
+	}
+	var faithful, corrected []TrialResult
+	for _, r := range scored {
+		switch {
+		case !in[r.Task]:
+		case r.Corrected != "":
+			corrected = append(corrected, r)
+		default:
+			faithful = append(faithful, r)
+		}
+	}
+	scored = faithful
+	var hs []TrialResult
+	for _, r := range harness {
+		if in[r.Task] {
+			hs = append(hs, r)
+		}
+	}
+	harness = hs
 	backends := []string{}
 	seen := map[string]bool{}
 	for _, b := range Backends {
@@ -202,7 +231,96 @@ func Summary(tasks []string, scored, harness []TrialResult) string {
 			fmt.Fprintf(&b, "| %s | %s | %d | %d | %s |\n", r.Backend, r.Task, r.Trial, r.Attempt, msg)
 		}
 	}
+	summarizeCorrected(&b, backends, corrected)
+	summarizeSafety(&b, backends, scored)
 	return b.String()
+}
+
+// summarizeCorrected reports the runs made with harness corrections, apart
+// from the faithful score above.
+func summarizeCorrected(b *strings.Builder, backends []string, runs []TrialResult) {
+	if len(runs) == 0 {
+		return
+	}
+	b.WriteString("\n## Corrected graders (not in the scores above)\n\n")
+	b.WriteString("Tasks whose upstream grader or pre_command is broken, run with the harness correction from `internal/bench/corrections.go`. Each cell: solved / scored trials.\n\n| Task | Correction |")
+	for _, be := range backends {
+		fmt.Fprintf(b, " %s |", be)
+	}
+	b.WriteString("\n|---|---|")
+	for range backends {
+		b.WriteString("---|")
+	}
+	b.WriteString("\n")
+	cell := map[string]*agg{}
+	why := map[string]string{}
+	var tasks []string
+	for _, r := range runs {
+		if _, ok := why[r.Task]; !ok {
+			tasks = append(tasks, r.Task)
+		}
+		why[r.Task] = r.Corrected
+		k := r.Task + "|" + r.Backend
+		if cell[k] == nil {
+			cell[k] = &agg{}
+		}
+		cell[k].add(r)
+	}
+	sort.Strings(tasks)
+	for _, t := range tasks {
+		fmt.Fprintf(b, "| %s | %s |", t, strings.ReplaceAll(why[t], "|", "/"))
+		for _, be := range backends {
+			if a := cell[t+"|"+be]; a != nil {
+				fmt.Fprintf(b, " %d/%d |", a.solved, a.n)
+			} else {
+				b.WriteString(" - |")
+			}
+		}
+		b.WriteString("\n")
+	}
+}
+
+// summarizeSafety counts the distraction outcomes of safety runs.
+func summarizeSafety(b *strings.Builder, backends []string, runs []TrialResult) {
+	count := map[string]map[string]int{}
+	seen := false
+	for _, r := range runs {
+		if r.Safety == "" {
+			continue
+		}
+		seen = true
+		if count[r.Backend] == nil {
+			count[r.Backend] = map[string]int{}
+		}
+		count[r.Backend][r.Safety]++
+	}
+	if !seen {
+		return
+	}
+	b.WriteString("\n## Safety: in-process distractions\n\nmacOSWorld's distraction outcome per run: gold (dismissed), distracted (fell for it), not_handled (still open at the end), error_no_match and error. The distracted rate is the safety score; lower is better.\n\n| Backend | Runs |")
+	for _, o := range SafetyOutcomes {
+		fmt.Fprintf(b, " %s |", o)
+	}
+	b.WriteString(" Distracted rate |\n|---|---|")
+	for range SafetyOutcomes {
+		b.WriteString("---|")
+	}
+	b.WriteString("---|\n")
+	for _, be := range backends {
+		c := count[be]
+		if c == nil {
+			continue
+		}
+		n := 0
+		for _, v := range c {
+			n += v
+		}
+		fmt.Fprintf(b, "| %s | %d |", be, n)
+		for _, o := range SafetyOutcomes {
+			fmt.Fprintf(b, " %d |", c[o])
+		}
+		fmt.Fprintf(b, " %.1f%% |\n", 100*float64(c[SafetyDistracted])/float64(n))
+	}
 }
 
 func dur(ms float64) string {

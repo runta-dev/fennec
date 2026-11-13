@@ -20,7 +20,7 @@ func TestNewBoardKeepsOnlySelectedTasksAndNoTaskText(t *testing.T) {
 		{Task: "other/zz", Backend: BackendDriver, Trial: 1},
 	}
 	harness := []TrialResult{{Task: "sys_apps/a1", Backend: BackendShuttle, Trial: 1, Attempt: 1, HarnessError: "boot"}}
-	b := NewBoard(list, scored, harness, 0, "m")
+	b := NewBoard([]IDList{list}, scored, harness, 0, "m")
 	if len(b.Runs) != 2 || b.Runs[0].Task != "sys_apps/a1" || b.Trials != 2 {
 		t.Fatalf("runs %+v trials %d", b.Runs, b.Trials)
 	}
@@ -49,7 +49,7 @@ func TestLoadRunDetailAndShotPathRefuseEscapes(t *testing.T) {
 	if err := WriteResult(dir, TrialBase(1), r); err != nil {
 		t.Fatal(err)
 	}
-	d, err := LoadRunDetail(root, BackendFennec, "sys_apps/a1", 1)
+	d, err := LoadRunDetail(root, BackendFennec, "sys_apps/a1", 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestLoadRunDetailAndShotPathRefuseEscapes(t *testing.T) {
 	if strings.Contains(string(data), "grading command") {
 		t.Error("the detail carries a grading command")
 	}
-	if _, err := LoadRunDetail(root, "../x", "sys_apps/a1", 1); err == nil {
+	if _, err := LoadRunDetail(root, "../x", "sys_apps/a1", 1, false); err == nil {
 		t.Error("a backend with .. was read")
 	}
 	if p, ok := ShotPath(root, d.Screenshot); !ok || p != filepath.Join(dir, "trial-1.jpg") {

@@ -260,7 +260,10 @@ h1, h2, h3, p { margin: 0; }
    cua-bench web, which also serves each run's transcript at run?...). */
 var COLORS = { "cua-driver": "var(--baseline)", "shuttle": "var(--accent)", "fennec-cua": "var(--frontier)" };
 var POLL_MS = 15000;
-var state = { data: null, view: "leaderboard", sort: { key: "mean", dir: "desc" }, mx: { apps: { metric: "score", sort: null }, tasks: { metric: "score", sort: null } }, lastOK: 0 };
+var state = { raw: null, set: null, data: null, view: "leaderboard", sort: { key: "mean", dir: "desc" }, mx: { apps: { metric: "score", sort: null }, tasks: { metric: "score", sort: null } }, lastOK: 0 };
+try { state.set = localStorage.getItem("cua-bench-set"); } catch (e) {}
+/* ?set=NAME picks a set, for links. */
+(function () { var m = /[?&]set=([\w-]+)/.exec(location.search); if (m) state.set = m[1]; })();
 
 function $(id) { return document.getElementById(id); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -289,6 +292,45 @@ function taskOf(id) { return state.data.tasksById[id] || { id: id, app: "", cate
 function taskLabel(id) { var t = taskOf(id); return (t.app || t.category) + " · " + short(id); }
 
 /* ------------------------------------------------------------- data */
+/* Evaluation sets (bench/sets): each ranks on its own. scoped() narrows the
+   raw data to one set; runs made with a corrected grader and tasks the set
+   skips are kept apart from the ranking. A sealed (held-out) set shows
+   rankings only. */
+function hasTag(t, tag) { return (t.tags || []).some(function (x) { return x.split(":")[0].trim() === tag; }); }
+function currentSet(raw) {
+  var sets = raw.sets || [];
+  if (!sets.length) return null;
+  return sets.filter(function (s) { return s.name === state.set; })[0] || sets[0];
+}
+function scoped(raw, set) {
+  var d = Object.assign({}, raw);
+  d.set = set;
+  d.skipped = 0;
+  if (set) {
+    var inSet = {};
+    set.tasks.forEach(function (id) { inSet[id] = true; });
+    var all = raw.tasks.filter(function (t) { return inSet[t.id]; });
+    d.tasks = all.filter(function (t) { return !hasTag(t, "skip"); });
+    d.skipped = all.length - d.tasks.length;
+    var run = {};
+    d.tasks.forEach(function (t) { run[t.id] = true; });
+    d.runs = raw.runs.filter(function (r) { return run[r.task]; });
+    d.harness_failures = raw.harness_failures.filter(function (r) { return run[r.task]; });
+    d.details = raw.details && !set.sealed;
+  }
+  d.corrected = d.runs.filter(function (r) { return r.corrected; });
+  d.runs = d.runs.filter(function (r) { return !r.corrected; });
+  return d;
+}
+function sealed() { return !!(state.data.set && state.data.set.sealed); }
+function setPicker() {
+  var sets = state.raw.sets || [];
+  if (sets.length < 2) return "";
+  var cur = state.data.set ? state.data.set.name : "";
+  return '<div class="seg" role="group" aria-label="Evaluation set">' + sets.map(function (s) {
+    return '<button data-set="' + esc(s.name) + '" class="' + (s.name === cur ? "on" : "") + '" aria-pressed="' + (s.name === cur) + '">' + esc(s.name) + (s.sealed ? " (sealed)" : "") + "</button>";
+  }).join("") + "</div>";
+}
 function prepare(d) {
   state.data = d; /* taskOf reads it while the stats are built */
   d.tasksById = {};
@@ -383,8 +425,10 @@ function viewLeaderboard() {
   var d = state.data;
   var byMean = d.stats.slice().sort(function (a, b) { return (b.mean || 0) - (a.mean || 0); });
   var lead = byMean[0], second = byMean[1];
-  var h = '<div class="page-head"><div><h1 class="page-title">macOSWorld<span class="muted">' + d.tasks.length + " tasks · " + d.backends.length + " backends · " + d.trials + ' trials</span></h1>' +
-    '<p class="page-sub">The same agent loop and model (' + esc(d.model || "unknown") + ') drives each backend through its own MCP tools, in a fresh tart VM per trial. Scores come from macOSWorld\'s grading commands only.</p></div></div>';
+  var setNote = d.set ? " The " + esc(d.set.name) + " set" + (d.skipped ? " (" + d.skipped + " of its tasks cannot run in our image and are not counted)" : "") + "." : "";
+  if (sealed()) setNote += " It is the held-out set: rankings only, no per-task results or transcripts.";
+  var h = '<div class="page-head"><div><h1 class="page-title">macOSWorld' + (d.set ? " · " + esc(d.set.name) : "") + '<span class="muted">' + d.tasks.length + " tasks · " + d.backends.length + " backends · " + d.trials + ' trials</span></h1>' +
+    '<p class="page-sub">The same agent loop and model (' + esc(d.model || "unknown") + ') drives each backend through its own MCP tools, in a fresh tart VM per trial. Scores come from macOSWorld\'s grading commands only.' + setNote + "</p></div>" + setPicker() + "</div>";
   h += '<div class="kpis">' +
     kpi("leader", lead ? lead.backend : "–", lead && second ? "+" + fmt1(lead.mean - second.mean) + " over " + second.backend : "") +
     kpi("top mean score", lead ? fmt1(lead.mean) : "–", lead ? "±" + fmt1(lead.ci) + " (95% CI)" : "") +
@@ -393,6 +437,7 @@ function viewLeaderboard() {
     kpi("model", (d.model || "–").split("/").pop(), d.model || "") +
     "</div>";
 
+  h += safetySection();
   h += '<div class="section"><div class="section-title">Ranking<span class="muted">click a column to sort</span></div><div class="card table-wrap"><table class="tbl" id="lb"><thead><tr>' +
     '<th></th>' + th("backend", "backend") + th("mean", "mean score", 1) + th("solved", "solved runs", 1) + th("all", "pass^k", 1, "tasks solved in every trial") + th("any", "pass@k", 1, "tasks solved in at least one trial") +
     th("turns", "turns", 1) + th("calls", "tool calls", 1) + th("errRate", "tool errors", 1) + th("tokens", "tokens", 1) + th("agent", "agent time", 1) + th("n", "runs", 1) +
@@ -416,8 +461,64 @@ function viewLeaderboard() {
       '<div class="pbar-text"><span>' + s.tasksDone + "/" + d.tasks.length + " tasks finished</span><span>" + s.harness + " harness failures</span></div></div></div>";
   });
   h += "</div></div>";
-  h += '<div class="section"><div class="section-title">By app<span class="muted">every backend on every app, ' + d.tasks.length + " tasks</span></div>" + appMatrix() + "</div>";
+  h += correctedSection() + setsSection();
+  /* A sealed set's per-app cells would come close to per-task results. */
+  if (!sealed()) h += '<div class="section"><div class="section-title">By app<span class="muted">every backend on every app, ' + d.tasks.length + " tasks</span></div>" + appMatrix() + "</div>";
   return h;
+}
+
+/* Safety: macOSWorld's in-process distraction outcome per run. */
+var SAFETY = ["gold", "distracted", "not_handled", "error_no_match", "error"];
+function safetySection() {
+  var d = state.data;
+  var runs = d.runs.filter(function (r) { return r.safety; });
+  if (!runs.length) return "";
+  var h = '<div class="section"><div class="section-title">Distractions<span class="muted">the dialog shown at the first turn: gold = dismissed, distracted = fell for it; lower distracted is better</span></div><div class="card table-wrap"><table class="tbl"><thead><tr><th>backend</th><th class="num">distracted rate</th>' +
+    SAFETY.map(function (o) { return '<th class="num">' + esc(o.replace(/_/g, " ")) + "</th>"; }).join("") + '<th class="num">runs</th></tr></thead><tbody>';
+  d.backends.forEach(function (b) {
+    var rs = runs.filter(function (r) { return r.backend === b; });
+    if (!rs.length) return;
+    var c = {};
+    rs.forEach(function (r) { c[r.safety] = (c[r.safety] || 0) + 1; });
+    h += "<tr><td>" + swatch(b) + esc(b) + '</td><td class="num mono">' + pct((c.distracted || 0) / rs.length) + "</td>" +
+      SAFETY.map(function (o) { return '<td class="num mono">' + (c[o] || 0) + "</td>"; }).join("") + '<td class="num mono">' + rs.length + "</td></tr>";
+  });
+  return h + "</tbody></table></div></div>";
+}
+
+/* Runs with a corrected grader, apart from the faithful score. */
+function correctedSection() {
+  var d = state.data;
+  if (!d.corrected || !d.corrected.length) return "";
+  var tasks = [];
+  d.corrected.forEach(function (r) { if (tasks.indexOf(r.task) < 0) tasks.push(r.task); });
+  var h = '<div class="section"><div class="section-title">Corrected graders<span class="muted">tasks whose upstream grader or pre_command is broken, run with a harness correction; not in the ranking above</span></div><div class="card table-wrap"><table class="tbl"><thead><tr><th>task</th>' +
+    d.backends.map(function (b) { return '<th class="num">' + swatch(b) + esc(b) + "</th>"; }).join("") + "</tr></thead><tbody>";
+  tasks.forEach(function (t) {
+    h += "<tr><td>" + esc(taskLabel(t)) + "</td>" + d.backends.map(function (b) {
+      var rs = d.corrected.filter(function (r) { return r.task === t && r.backend === b; });
+      var ok = rs.filter(function (r) { return r.score >= 100; }).length;
+      return '<td class="num mono">' + (rs.length ? ok + "/" + rs.length : "–") + "</td>";
+    }).join("") + "</tr>";
+  });
+  return h + "</tbody></table></div></div>";
+}
+
+/* Every set's ranking at a glance: mean score per backend. */
+function setsSection() {
+  var raw = state.raw, sets = raw.sets || [];
+  if (sets.length < 2) return "";
+  var h = '<div class="section"><div class="section-title">By set<span class="muted">mean score per backend in each evaluation set; click a set above for its details</span></div><div class="card table-wrap"><table class="tbl"><thead><tr><th>set</th><th class="num">tasks</th>' +
+    raw.backends.map(function (b) { return '<th class="num">' + swatch(b) + esc(b) + "</th>"; }).join("") + "</tr></thead><tbody>";
+  sets.forEach(function (s) {
+    var d = scoped(raw, s);
+    h += "<tr><td>" + esc(s.name) + (s.sealed ? ' <span class="muted">sealed</span>' : "") + '</td><td class="num mono">' + d.tasks.length + "</td>" + raw.backends.map(function (b) {
+      var rs = d.runs.filter(function (r) { return r.backend === b; });
+      var m = avg(rs, function (r) { return r.score; });
+      return '<td class="num mono">' + (rs.length ? fmt1(m) + ' <span class="muted">(' + rs.length + ")</span>" : "–") + "</td>";
+    }).join("") + "</tr>";
+  });
+  return h + "</tbody></table></div></div>";
 }
 
 function kpi(k, v, s) { return '<div class="kpi"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div><div class="s">' + esc(s) + "</div></div>"; }
@@ -434,8 +535,10 @@ function appOrder() {
 /* ------------------------------------------------------------ tasks */
 function viewTasks() {
   var d = state.data;
+  if (sealed()) return '<div class="page-head"><div><h1 class="page-title">Tasks · ' + esc(d.set.name) + '<span class="muted">' + d.tasks.length + " tasks</span></h1>" +
+    '<p class="page-sub">This is the held-out set: its per-task results stay hidden so that nobody tunes against them. The leaderboard shows its ranking.</p></div>' + setPicker() + "</div>";
   return '<div class="page-head"><div><h1 class="page-title">Tasks<span class="muted">' + d.tasks.length + ' macOSWorld tasks by app</span></h1>' +
-    '<p class="page-sub">Each cell is one backend on one task over its finished trials. Task texts stay in the macOSWorld checkout; open a cell for its runs.</p></div></div>' +
+    '<p class="page-sub">Each cell is one backend on one task over its finished trials. Task texts stay in the macOSWorld checkout; open a cell for its runs.</p></div>' + setPicker() + "</div>" +
     taskMatrix();
 }
 
@@ -561,7 +664,7 @@ function viewLive() {
   var d = state.data;
   var runs = d.runs.slice().sort(function (a, b) { return Date.parse(b.started) - Date.parse(a.started); });
   var h = '<div class="page-head"><div><h1 class="page-title">Live<span class="muted">' + d.runs.length + " scored · " + d.harness_failures.length + ' harness failures</span></h1>' +
-    '<p class="page-sub">Newest first. ' + (d.done ? "The run has finished." : "The page refreshes every " + POLL_MS / 1000 + " seconds.") + "</p></div></div>";
+    '<p class="page-sub">Newest first. ' + (d.done ? "The run has finished." : "The page refreshes every " + POLL_MS / 1000 + " seconds.") + "</p></div>" + setPicker() + "</div>";
   h += '<div class="grid g2" style="grid-template-columns:minmax(0,1.85fr) minmax(0,1fr)"><div class="card"><div class="card-head"><div class="card-title">Scored runs</div><div class="card-note">click for the transcript</div></div><div class="feed-list">';
   if (!runs.length) h += '<div class="empty-state">No runs yet.</div>';
   runs.forEach(function (r) { h += feedItem(r); });
@@ -576,6 +679,8 @@ function viewLive() {
 }
 function feedItem(r) {
   var ok = r.score >= 100;
+  if (sealed()) return '<div class="tl-item" style="cursor:default"><span class="tl-time">' + clock(r.started) + '</span><span class="tl-backend">' + swatch(r.backend) + esc(r.backend) + '</span><span class="tl-task dim">held-out task</span>' +
+    '<span><span class="badge"><i style="background:' + (ok ? "var(--pass)" : "var(--fail)") + '"></i>' + r.score + "</span></span><span class=\"tl-meta\"></span></div>";
   return '<div class="tl-item" data-run="' + esc(r.backend + "|" + r.task + "|" + r.trial) + '"><span class="tl-time">' + clock(r.started) + '</span><span class="tl-backend">' + swatch(r.backend) + esc(r.backend) + '</span><span class="tl-task">' + esc(taskLabel(r.task)) + ' <span class="muted">trial ' + r.trial + "</span></span>" +
     '<span><span class="badge"><i style="background:' + (ok ? "var(--pass)" : "var(--fail)") + '"></i>' + r.score + "</span></span>" +
     '<span class="tl-meta">' + r.turns + " turns · " + dur(r.agent_ms) + "</span></div>";
@@ -586,7 +691,7 @@ function viewAbout() {
   var d = state.data;
   return '<div class="prose"><h1 class="page-title">About this run</h1>' +
     "<h2>What is compared</h2><p>Three computer-use backends for macOS: <b>cua-driver</b> (the raw driver's MCP tools), <b>shuttle</b> and <b>fennec-cua</b>. Each is reached over MCP by the same host-side agent loop with the same model (" + esc(d.model || "unknown") + "), system prompt and turn budget. The backend's own MCP instructions are added to the prompt, as an MCP host would.</p>" +
-    "<h2>Tasks</h2><p>" + d.tasks.length + " tasks from <a class=\"link\" href=\"https://github.com/showlab/macOSWorld\" target=\"_blank\" rel=\"noopener\">macOSWorld</a> (CC BY-NC 4.0, internal evaluation only): built-in apps only, no network, no prepared files, so each one starts from a clean VM. The ids and apps are in <code>cua/bench/macosworld.txt</code>; task texts and grading commands stay in a local checkout and are never shown here.</p>" +
+    "<h2>Tasks</h2><p>Tasks from <a class=\"link\" href=\"https://github.com/showlab/macOSWorld\" target=\"_blank\" rel=\"noopener\">macOSWorld</a> (CC BY-NC 4.0, internal evaluation only), in evaluation sets that run and rank apart: <b>dev</b> (the tasks we develop against), <b>holdout</b> (sealed: never used for tuning, so the page shows its rankings only) and <b>safety</b> (tasks with a distracting dialog; the distracted rate is their score). Only tasks that run faithfully offline in our macOS 26 image are used; some need a setup step that recreates the state of macOSWorld's VM snapshot. The ids, apps and feasibility table are in <code>cua/bench/sets</code>; task texts and grading commands stay in a local checkout and are never shown here.</p>" +
     "<h2>Scoring</h2><p>Each trial clones a golden macOS image with tart, runs the task's setup, lets the agent work, then runs macOSWorld's grading commands in the VM. Only the grading result counts; what the model claims does not. A run that fails for reasons outside the backend (VM boot, model gateway) is a harness failure: it is retried and never scored. pass^k is the share of tasks solved in every trial, pass@k in at least one.</p>" +
     "<h2>Reproduce</h2><p><code>go run ./cmd/cua-bench run -macosworld PATH -trials " + d.trials + " -concurrency 2</code>, then <code>go run ./cmd/cua-bench web</code> for this page, or <code>export</code> for a static copy.</p>" +
     '<p class="muted">Data generated ' + esc(new Date(d.generated).toLocaleString()) + ".</p></div>";
@@ -662,7 +767,8 @@ function load() {
   fetch("data.json", { cache: "no-store" })
     .then(function (res) { if (!res.ok) throw new Error(res.status); return res.json(); })
     .then(function (d) {
-      state.data = prepare(d);
+      state.raw = d;
+      state.data = prepare(scoped(d, currentSet(d)));
       state.lastOK = Date.now();
       $("status-pill").classList.add("hidden");
       draw();
@@ -699,6 +805,13 @@ document.addEventListener("click", function (e) {
       else st.sort = null;
       return draw();
     }
+  }
+  var pick = t.closest("[data-set]");
+  if (pick) {
+    state.set = pick.dataset.set;
+    try { localStorage.setItem("cua-bench-set", state.set); } catch (e) {}
+    state.data = prepare(scoped(state.raw, currentSet(state.raw)));
+    return draw();
   }
   var cell = t.closest("td[data-task]");
   if (cell) return openCell(cell.dataset.task, cell.dataset.backend);

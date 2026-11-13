@@ -13,24 +13,36 @@ import (
 
 // Board is the data the results page draws: every task, every scored run
 // and every harness failure, without task texts or grading commands (the
-// macOSWorld license keeps those out of anything shared).
+// macOSWorld license keeps those out of anything shared). With evaluation
+// sets, Sets says which tasks each holds; the page ranks each set apart.
 type Board struct {
 	Generated time.Time   `json:"generated"`
 	Model     string      `json:"model,omitempty"`
 	Trials    int         `json:"trials"`
 	Backends  []string    `json:"backends"`
+	Sets      []BoardSet  `json:"sets,omitempty"`
 	Tasks     []BoardTask `json:"tasks"`
 	Runs      []BoardRun  `json:"runs"`
 	Harness   []BoardRun  `json:"harness_failures"`
-	// Details says whether /run/... serves each run's transcript.
+	// Details says whether /run/... serves each run's transcript. It never
+	// does for a sealed set's tasks.
 	Details bool `json:"details"`
+}
+
+// BoardSet is one evaluation set.
+type BoardSet struct {
+	Name string `json:"name"`
+	// Sealed: a held-out set; the page shows its rankings only.
+	Sealed bool     `json:"sealed,omitempty"`
+	Tasks  []string `json:"tasks"`
 }
 
 // BoardTask is one selected task.
 type BoardTask struct {
-	ID       string `json:"id"`
-	Category string `json:"category"`
-	App      string `json:"app,omitempty"`
+	ID       string   `json:"id"`
+	Category string   `json:"category"`
+	App      string   `json:"app,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
 // BoardRun is one trial, reduced to what the page shows.
@@ -53,16 +65,30 @@ type BoardRun struct {
 	AgentMs      int64          `json:"agent_ms"`
 	TotalMs      int64          `json:"total_ms"`
 	Started      time.Time      `json:"started"`
+	// Corrected runs used a harness correction and are ranked apart.
+	Corrected bool `json:"corrected,omitempty"`
+	// Safety is a safety run's distraction outcome.
+	Safety string `json:"safety,omitempty"`
 }
 
-// NewBoard builds the page data from an id list and loaded results.
-func NewBoard(list IDList, scored, harness []TrialResult, trials int, model string) Board {
+// NewBoard builds the page data from id lists and loaded results. Each
+// evaluation set (a list with a name), or each list when there are
+// several, becomes a BoardSet.
+func NewBoard(lists []IDList, scored, harness []TrialResult, trials int, model string) Board {
 	b := Board{Generated: time.Now().UTC(), Model: model, Trials: trials, Backends: Backends, Runs: []BoardRun{}, Harness: []BoardRun{}}
 	known := map[string]bool{}
-	for _, id := range list.IDs {
-		cat, _, _ := strings.Cut(id, "/")
-		b.Tasks = append(b.Tasks, BoardTask{ID: id, Category: cat, App: list.Apps[id]})
-		known[id] = true
+	for _, list := range lists {
+		if list.Name != "" || len(lists) > 1 {
+			b.Sets = append(b.Sets, BoardSet{Name: list.Name, Sealed: list.Sealed, Tasks: list.IDs})
+		}
+		for _, id := range list.IDs {
+			if known[id] {
+				continue
+			}
+			cat, _, _ := strings.Cut(id, "/")
+			b.Tasks = append(b.Tasks, BoardTask{ID: id, Category: cat, App: list.Apps[id], Tags: list.Tags[id]})
+			known[id] = true
+		}
 	}
 	for _, r := range scored {
 		if known[r.Task] {
@@ -90,6 +116,7 @@ func boardRun(r TrialResult) BoardRun {
 		Task: r.Task, Backend: r.Backend, Trial: r.Trial, Attempt: r.Attempt, Score: r.Score,
 		EvalError: r.EvalError, HarnessError: r.HarnessError,
 		BootMs: r.BootMs, AgentMs: r.AgentMs, TotalMs: r.TotalMs, Started: r.Started,
+		Corrected: r.Corrected != "", Safety: r.Safety,
 	}
 	if t := r.Transcript; t != nil {
 		o.Stop, o.Turns, o.ToolCalls = t.Stop, t.Turns, t.ToolCalls
@@ -127,12 +154,17 @@ type GradeResult struct {
 	Output string `json:"output,omitempty"`
 }
 
-// LoadRunDetail reads one scored run (trial) of backend on task.
-func LoadRunDetail(root, backend, task string, trial int) (RunDetail, error) {
+// LoadRunDetail reads one scored run (trial) of backend on task, the run
+// made with the harness correction when corrected is set. A sealed run has
+// no details.
+func LoadRunDetail(root, backend, task string, trial int, corrected bool) (RunDetail, error) {
 	if !validName(backend) || !validTask(task) || trial < 1 {
 		return RunDetail{}, fmt.Errorf("bad run %s %s %d", backend, task, trial)
 	}
 	dir := TrialDir(root, backend, task)
+	if corrected {
+		dir = filepath.Join(dir, CorrectedDir)
+	}
 	data, err := os.ReadFile(filepath.Join(dir, TrialBase(trial)+".json"))
 	if err != nil {
 		return RunDetail{}, err
@@ -140,6 +172,9 @@ func LoadRunDetail(root, backend, task string, trial int) (RunDetail, error) {
 	var r TrialResult
 	if err := json.Unmarshal(data, &r); err != nil {
 		return RunDetail{}, err
+	}
+	if r.Sealed {
+		return RunDetail{}, fmt.Errorf("%s: a sealed run has no details", task)
 	}
 	d := RunDetail{BoardRun: boardRun(r), Steps: []Step{}}
 	if t := r.Transcript; t != nil {
@@ -154,14 +189,20 @@ func LoadRunDetail(root, backend, task string, trial int) (RunDetail, error) {
 	}
 	if r.Screenshot != "" && validName(strings.TrimSuffix(r.Screenshot, ".jpg")) {
 		d.Screenshot = path.Join(backend, task, r.Screenshot)
+		if corrected {
+			d.Screenshot = path.Join(backend, task, CorrectedDir, r.Screenshot)
+		}
 	}
 	return d, nil
 }
 
 // ShotPath resolves a /shot/ path under root, refusing anything that is not
-// backend/category/uuid/trial-N.jpg.
+// backend/category/uuid/trial-N.jpg, or backend/category/uuid/corrected/trial-N.jpg.
 func ShotPath(root, rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
+	if len(parts) == 5 && parts[3] == CorrectedDir {
+		parts = []string{parts[0], parts[1], parts[2], parts[4]}
+	}
 	if len(parts) != 4 || !validName(parts[0]) || !validTask(parts[1]+"/"+parts[2]) || !scoredShot(parts[3]) {
 		return "", false
 	}

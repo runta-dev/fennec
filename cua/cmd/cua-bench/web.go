@@ -19,21 +19,42 @@ import (
 )
 
 type webFlags struct {
-	results, ids, model *string
-	trials              *int
+	results, ids, set, sets, model *string
+	trials                         *int
 }
 
 func addWebFlags(fs *flag.FlagSet) webFlags {
 	return webFlags{
 		results: fs.String("results", "bench-results", "results directory"),
-		ids:     fs.String("ids", "bench/macosworld.txt", "task id list"),
+		ids:     fs.String("ids", "", "task id file to show instead of the evaluation sets"),
+		set:     fs.String("set", "", "show only this evaluation set (default every set in -sets)"),
+		sets:    fs.String("sets", "bench/sets", "directory of the set files"),
 		model:   fs.String("model", "zai/glm-5.3-flashx", "the agent model the runs used"),
 		trials:  fs.Int("trials", 3, "trials planned per task and backend"),
 	}
 }
 
+func (f webFlags) lists() ([]bench.IDList, error) {
+	switch {
+	case *f.ids != "":
+		l, err := bench.ReadIDList(*f.ids)
+		return []bench.IDList{l}, err
+	case *f.set != "":
+		l, err := bench.ReadIDList(bench.SetPath(*f.sets, *f.set))
+		if l.Name == "" {
+			l.Name = *f.set
+		}
+		return []bench.IDList{l}, err
+	}
+	ls, err := bench.ReadSets(*f.sets)
+	if err == nil && len(ls) == 0 {
+		err = errors.New(*f.sets + ": no set files")
+	}
+	return ls, err
+}
+
 func (f webFlags) board() (bench.Board, error) {
-	list, err := bench.ReadIDList(*f.ids)
+	lists, err := f.lists()
 	if err != nil {
 		return bench.Board{}, err
 	}
@@ -41,7 +62,25 @@ func (f webFlags) board() (bench.Board, error) {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return bench.Board{}, err
 	}
-	return bench.NewBoard(list, scored, harness, *f.trials, *f.model), nil
+	return bench.NewBoard(lists, scored, harness, *f.trials, *f.model), nil
+}
+
+// sealedTasks are the tasks of sealed sets, whose runs the page never
+// details.
+func (f webFlags) sealedTasks() (map[string]bool, error) {
+	lists, err := f.lists()
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]bool{}
+	for _, l := range lists {
+		if l.Sealed {
+			for _, id := range l.IDs {
+				m[id] = true
+			}
+		}
+	}
+	return m, nil
 }
 
 // serveWeb serves the results page with data read fresh from the results
@@ -82,7 +121,11 @@ func serveWeb(ctx context.Context, args []string) error {
 	mux.HandleFunc("GET /run", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		trial, _ := strconv.Atoi(q.Get("trial"))
-		d, err := bench.LoadRunDetail(*f.results, q.Get("backend"), q.Get("task"), trial)
+		if sealed, err := f.sealedTasks(); err != nil || sealed[q.Get("task")] {
+			http.Error(w, "the held-out set's runs have no details", http.StatusForbidden)
+			return
+		}
+		d, err := bench.LoadRunDetail(*f.results, q.Get("backend"), q.Get("task"), trial, q.Get("corrected") == "1")
 		if err != nil {
 			http.Error(w, "no such run", http.StatusNotFound)
 			return
@@ -93,7 +136,13 @@ func serveWeb(ctx context.Context, args []string) error {
 		writeJSON(w, d)
 	})
 	mux.HandleFunc("GET /shot/", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := bench.ShotPath(*f.results, strings.TrimPrefix(r.URL.Path, "/shot/"))
+		rel := strings.TrimPrefix(r.URL.Path, "/shot/")
+		p, ok := bench.ShotPath(*f.results, rel)
+		if parts := strings.Split(rel, "/"); ok && len(parts) >= 3 {
+			if sealed, err := f.sealedTasks(); err != nil || sealed[parts[1]+"/"+parts[2]] {
+				ok = false
+			}
+		}
 		if !ok {
 			http.NotFound(w, r)
 			return

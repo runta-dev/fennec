@@ -1,0 +1,68 @@
+# set: holdout
+# sealed
+# The held-out test set. Sealed: cua-bench run keeps no transcripts or
+# screenshots of it and the results page shows only its rankings. Never
+# read its runs to tune a backend, prompt or harness (bench/sets/README.md).
+# Drawn by: go run ./cmd/cua-bench select -seed 20261113 -quotas advanced=all,multi_apps=all,file_management=all,media=all,sys_apps=10,productivity=10,sys_and_interface=10 -classes asis,setup,rebuild
+# A trailing "# App [setup: step]" names the app and the setup step, if any.
+# commit: e2ca8334b3765537e5c1c428ce57990248a1bb5f
+advanced/5a219d2f-1c42-1bec-a7a2-2ef80e41c657  # Script Editor
+advanced/6f31a7d9-30c4-3c49-1e62-feb5b6774522  # Automator
+advanced/75ae61f4-5cde-2e6b-28f0-5bbf8303726d  # Script Editor
+advanced/86b5d27f-e61e-1eb1-3b5c-267952a90cd3  # Script Editor
+advanced/8887a199-469d-c544-09d4-bb32d5b285b4  # Script Editor
+advanced/95266846-5e3a-b067-e251-28b26fbb47a5  # Script Editor
+multi_apps/3af2b777-d1a3-7501-c9db-85dc6a837e4c  # Calculator
+multi_apps/48a16605-74e7-c9d8-01d7-3001bc0b0c1d  # Reminders
+multi_apps/4fb31f99-0748-3a41-a11f-e166f194e4c8  # TextEdit
+multi_apps/ab666698-0401-ac57-0c86-376e3c3da225  # Stickies
+multi_apps/ce4957b4-6ace-7407-c1b7-1b15a728a06a  # Contacts [setup: me-card]
+multi_apps/f0147143-27e5-e942-cd8c-ab723dc6e490  # Contacts
+file_management/0156a050-0e42-591d-7dda-e64caa2f8ae6  # Finder [setup: files-sources]
+file_management/35098129-c9eb-6f96-b23d-385dd6108d3e  # Finder [setup: files-separated-images]
+file_management/356ebc2d-27a6-8b64-0239-124ef2d6f71c  # Finder [setup: files-zipped]
+file_management/4c97119f-df06-35cf-1957-4285e7d1e405  # Finder [setup: files-zipped]
+file_management/6fec56ac-f003-a621-332b-e08f50d600c3  # Finder [setup: files-zipped]
+file_management/93909e6f-6727-d1af-29db-e66b2ca4a733  # Finder [setup: files-faces]
+file_management/a68cd48b-e4ac-8d65-9327-c21b72d21eca  # Finder [setup: files-separated-images]
+file_management/b54a5de1-587e-4a8e-a787-ffa939cdf04a  # Finder [setup: files-zipped]
+file_management/c4ee6a68-4523-5d02-dbae-2b898b35f741  # Finder [setup: files-sources]
+file_management/cdf109b7-98be-630a-b713-a168c41a1e46  # Finder [setup: files-skeleton]
+file_management/e02839ef-afae-ab1f-0837-61f81d1605a0  # Finder [setup: files-skeleton]
+file_management/f576f917-0978-582a-231f-a34fec1f957a  # Finder
+file_management/f6a38c91-f207-dc9f-429d-21e290ad6b7b  # Finder [setup: files-zipped]
+media/09a146c8-d1cf-dbdb-54ce-b60ede93cdab  # Music [setup: music-primed]
+media/21bf043d-935e-1499-b374-9c2f483df890  # Music [setup: music-primed]
+media/79520236-7b21-20e7-7b23-1d4d2b98e2b9  # Music [setup: music-primed]
+media/9e3fc2a6-d0f4-5c7a-999a-b01ebcacaf94  # Music [setup: music-primed]
+media/daa28096-f9e8-879a-b3a0-2b90aa0e2f83  # Music [setup: music-primed]
+sys_apps/07709761-78b1-8043-ffb2-eebaeed08109  # Voice Memos
+sys_apps/12fea1c8-55ec-f895-a1a4-89b79ec7b838  # Calculator
+sys_apps/1329d65e-b10c-28b7-e3bf-7b6560918a97  # Maps
+sys_apps/2f72dba5-c364-d21b-7040-684f4d6d40b7  # Reminders [setup: reminder]
+sys_apps/64824755-362d-64b6-fcac-e7c5348a09f0  # Contacts [setup: contacts-group]
+sys_apps/6a3522ba-299b-4ee0-be1d-fa17e6ead0f9  # Disk Utility
+sys_apps/858e1ef5-3c42-4f8b-1ebf-5ade12c8e5fc  # Spotlight
+sys_apps/bdbe892c-f5e3-1776-56f7-628596fbfae0  # Chess
+sys_apps/eef70218-8332-65fd-47a9-8d5b7531e8db  # ColorSync Utility
+sys_apps/ff9779d1-c51a-a478-68c4-1ba547a11adc  # Font Book
+productivity/000d01d7-75ba-86fc-7f91-41cf48c1fcdd  # Notes
+productivity/05eb3ac3-9c69-8be8-a5d7-06c150839d29  # Notes
+productivity/0a1b981d-bcb2-a54b-97b5-1cc7c5f0cb37  # Notes
+productivity/60428663-7708-6cc0-4641-057953786a0f  # Notes
+productivity/6a40e62d-c990-7d55-81fb-f2ced53664b7  # Notes
+productivity/7cf47313-5280-71d5-2a14-ac8e1826cd69  # Notes
+productivity/a1b99040-318f-518c-fede-db68251787a9  # Notes
+productivity/ae422233-d749-32b5-4e02-d1a9e668c7c9  # Notes
+productivity/c1651287-3e1b-f24f-1b5d-439842e71c46  # Notes
+productivity/d4826b7e-3a4f-8338-9985-f9964517488a  # Notes
+sys_and_interface/1d90419a-1022-93ea-d9bf-a6bab0c94eee  # System Information
+sys_and_interface/1dac89be-62ba-6311-f6c4-19f4e5fad534  # Dock [setup: dock]
+sys_and_interface/2624f017-eaaa-7cab-0ba4-4fed26f2c812  # System Settings
+sys_and_interface/5a6b33d6-271f-4857-25ad-1962636c11d5  # Dock [setup: dock]
+sys_and_interface/6500f659-237d-c3fc-ced4-1d2c1ec28dc4  # Dock [setup: dock]
+sys_and_interface/a44cfca3-22d9-1091-4f95-d54029665c62  # System Settings
+sys_and_interface/bce6df41-71cf-1e73-cb3c-243dcf7058c2  # System Settings
+sys_and_interface/c92420a8-812d-fee1-db6b-c4d21d5af7f7  # System Settings
+sys_and_interface/dacf1d33-ed34-025b-dc74-a6f08258325c  # Dock [setup: dock]
+sys_and_interface/eac769c0-29e9-062a-765d-9d352738e176  # System Settings

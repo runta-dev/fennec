@@ -129,6 +129,9 @@ type AgentOptions struct {
 	// Instructions are the MCP server's own instructions from its
 	// initialize result; MCP hosts add them to the system prompt.
 	Instructions string
+	// BeforeTurn, when set, runs before each model call with the 1-based turn
+	// number: macOSWorld injects its in-process events this way.
+	BeforeTurn func(turn int)
 }
 
 const systemPrompt = `You operate a macOS computer through the tools you are given. Complete the user's task on that computer, then reply with a short final message that starts with DONE, or with FAIL and the reason if the task cannot be done. Look before you act, check that each action had the effect you wanted, and do not ask the user questions: nobody will answer.`
@@ -170,6 +173,9 @@ func Run(ctx context.Context, m Model, backend *mcpclient.Client, task string, o
 			return tr
 		}
 		tr.Turns++
+		if opt.BeforeTurn != nil {
+			opt.BeforeTurn(tr.Turns)
+		}
 		start := time.Now()
 		resp, err := m.chatRetry(ctx, trimImages(msgs, opt.KeepImages), tools)
 		if err != nil {
