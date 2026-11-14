@@ -29,7 +29,7 @@ func TestVersionComparisonAndReleasedDetection(t *testing.T) {
 	if !Newer("0.2.1", "0.2.1-rc.2") || !Newer("0.2.1-rc.10", "0.2.1-rc.9") {
 		t.Fatal("prerelease ordering broken")
 	}
-	if Released("dev") || Released("0.2.0") || Released("0.2.1-3-gabcdef1") || Released("0.2.1-dirty") {
+	if Released("dev") || Released("0.2.0") || Released("0.2.1-3-gabcdef1") || Released("0.2.1-dirty") || Released("0.3.11141342-dev") {
 		t.Fatal("development build treated as released")
 	}
 	if !Released("0.2.11121023") {

@@ -19,6 +19,10 @@ FENNEC_DAEMON_BINARY="$PWD/bin/fennec" ./scripts/build-macos.sh
 open build/Fennec.app
 ```
 
+Local builds are versioned `0.3.<MMDDHHMM>-dev` (Singapore time), shown in the menu
+and Settings, and never install a release over themselves. Release packaging sets
+`FENNEC_RELEASE=1` and drops the suffix.
+
 `make dev` serves the separate read-only development preview on
 http://127.0.0.1:7420. It is not the desktop control client. Ctrl+C stops that
 preview server, not remote agent sessions.

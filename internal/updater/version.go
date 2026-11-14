@@ -49,7 +49,7 @@ func NormalizeVersion(raw string) (string, bool) {
 }
 
 // Released reports whether v is a published release version rather than a
-// local development fallback ("0.2.0", "dev", or git-describe suffixes).
+// local development build ("0.2.0", "dev", a "-dev" suffix, or git-describe suffixes).
 func Released(v string) bool {
 	s := parseVersion(v)
 	if s == nil {
@@ -58,7 +58,7 @@ func Released(v string) bool {
 	if s.n == [3]int{0, 2, 0} && s.pre == "" {
 		return false
 	}
-	return !gitDescribePre.MatchString(s.pre) && !strings.Contains(s.pre, "dirty")
+	return s.pre != "dev" && !gitDescribePre.MatchString(s.pre) && !strings.Contains(s.pre, "dirty")
 }
 
 // Newer reports whether version a is strictly newer than version b.

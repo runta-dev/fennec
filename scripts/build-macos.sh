@@ -11,9 +11,12 @@ swift_target="$(uname -m)-apple-macos$deployment_target"
 sign_keychain="${FENNEC_SIGN_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 # One build timestamp shared by bundle metadata and every version label.
 build_stamp=$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')
-app_version="${FENNEC_VERSION:-0.3.$build_stamp}"
+# Local builds say so in their version; release packaging passes FENNEC_RELEASE=1.
+dev_suffix=-dev
+[ "${FENNEC_RELEASE:-0}" = 1 ] && dev_suffix=
+app_version="${FENNEC_VERSION:-0.3.$build_stamp$dev_suffix}"
 build_number="${FENNEC_BUILD_NUMBER:-1}"
-printf '%s\n' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo 'Invalid FENNEC_VERSION' >&2; exit 1; }
+printf '%s\n' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-dev)?$' || { echo 'Invalid FENNEC_VERSION' >&2; exit 1; }
 printf '%s\n' "$build_number" | grep -Eq '^[0-9]+$' || { echo 'Invalid FENNEC_BUILD_NUMBER' >&2; exit 1; }
 if [ "${FENNEC_RELEASE:-0}" = 1 ] && [ "$identity" = - ]; then
   echo "Release builds require FENNEC_SIGN_IDENTITY (Developer ID Application)." >&2
