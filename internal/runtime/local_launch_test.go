@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/clipboardbridge"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,11 +89,13 @@ func TestNativeLaunchDoesNotReplayUnconfirmedSpawn(t *testing.T) {
 // launcher that points KIMI_CODE_HOME at its synchronized configuration.
 func TestKimiLaunchCommand(t *testing.T) {
 	var command []string
+	var launchArgs []string
 	home := t.TempDir()
 	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/kimi", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
 		if args[0] == "ls" {
 			return []byte(`{"terminals":[]}`), nil
 		}
+		launchArgs = append([]string{}, args...)
 		for i, arg := range args {
 			if arg == "--" {
 				command = append([]string{}, args[i+1:]...)
@@ -101,10 +104,24 @@ func TestKimiLaunchCommand(t *testing.T) {
 		return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
 	}}
 	request := LocalLaunch{ID: strings.Repeat("c", 32), Agent: "kimi", LocalDirectory: "/project", Device: "1234abcd", Arguments: []string{"--plan"}}
-	if _, err := backend.Launch(context.Background(), request); err != nil {
+	terminal, err := backend.Launch(context.Background(), request)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if terminal.Labels[clipboardbridge.Label] != clipboardbridge.Version || !strings.Contains(strings.Join(launchArgs, " "), "--label "+clipboardbridge.Label+"="+clipboardbridge.Version) {
+		t.Fatal("missing persisted clipboard capability", launchArgs, terminal.Labels)
+	}
 	joined := strings.Join(command, " ")
+	bin, _ := clipboardbridge.Bin(home, request.ID)
+	if !strings.Contains(joined, clipboardbridge.SessionEnv+"="+request.ID) || !strings.Contains(joined, "XDG_SESSION_TYPE=wayland") || !strings.Contains(joined, "PATH="+bin+":") {
+		t.Fatal("missing private clipboard environment", joined)
+	}
+	for _, name := range []string{"wl-paste", "xclip"} {
+		target, err := os.Readlink(filepath.Join(bin, name))
+		if err != nil || target != filepath.Join(home, ".local/fennec/bin/fennec-terminal") {
+			t.Fatal("missing clipboard adapter", name, err)
+		}
+	}
 	if !strings.Contains(joined, "env KIMI_CODE_TRUST_WORKSPACE=1 ") || !strings.Contains(joined, "native-agent kimi --auto --plan") {
 		t.Fatalf("kimi command %q", joined)
 	}

@@ -18,6 +18,11 @@
   fit=new FitAddon.FitAddon();terminal.loadAddon(fit);terminal.open(element);fit.fit();
   window.installTerminalLinks?.(terminal,url=>{if(generation===current)send({type:'terminal-link',generation:current,url});});
   terminal.onData(data=>{if(generation===current && connected)send({type:'terminal-input',generation:current,data});});
+  terminal.textarea?.addEventListener('paste',event=>{
+   if(generation!==current || !connected || !Array.from(event.clipboardData?.items || []).some(item=>item.type.startsWith('image/')))return;
+   event.preventDefault();event.stopImmediatePropagation();
+   send({type:'terminal-input',generation:current,data:'\x16'});
+  },true);
   terminal.onResize(size=>{if(generation===current && connected)send({type:'terminal-resize',generation:current,...size});});
   send({type:'terminal-open',generation:current,...identity,cols:terminal.cols,rows:terminal.rows});
   observer=new ResizeObserver(()=>{if(generation===current)fit.fit();});observer.observe(element);

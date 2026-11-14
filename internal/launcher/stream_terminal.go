@@ -85,9 +85,26 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		defer writeMu.Unlock()
 		return encoder.Encode(frame)
 	}
-	interaction := terminalstream.InteractionEncoder{}
+	interaction := terminalstream.InteractionEncoder{ImagePaste: true}
+	var imagePaste atomic.Bool
+	receiptReady := make(chan struct{})
+	pasteNotice := func() { fmt.Fprint(os.Stderr, "\a\r\nCould not paste image, try copying it again\r\n") }
 	sendInput := func(data []byte) error {
 		for _, frame := range interaction.Frames(data) {
+			if frame.Type == "clipboard" {
+				select {
+				case <-receiptReady:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				if imagePaste.Load() {
+					if err := sendClipboardImage(ctx, frame.Data, window, send, readClipboardImage, pasteNotice); err != nil {
+						return err
+					}
+					continue
+				}
+				frame.Type = "input"
+			}
 			if err := send(frame); err != nil {
 				return err
 			}
@@ -283,6 +300,12 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				return saveErr
 			}
 			confirmed = true
+			for _, capability := range frame.Capabilities {
+				if capability == terminalstream.CapabilityImagePaste {
+					imagePaste.Store(true)
+				}
+			}
+			close(receiptReady)
 			for _, stage := range []string{"journal_lock", "session_lookup", "workspace_prepare", "journal_sync", "herdr_spawn", "attach_lookup"} {
 				if value, ok := frame.Terminal.Timings[stage]; ok {
 					elapsed := time.Duration(value * float64(time.Millisecond))
@@ -308,6 +331,12 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				if err := send(terminalstream.Frame{Type: "credit", Bytes: len(frame.Data)}); err != nil {
 					connection.SetReadDeadline(time.Now().Add(2 * time.Second))
 				}
+			}
+		case "paste_error":
+			if frame.Message == "Start a new Kimi session to enable image paste" {
+				fmt.Fprint(os.Stderr, "\a\r\nStart a new Kimi session to enable image paste\r\n")
+			} else {
+				pasteNotice()
 			}
 		case "input_credit":
 			if !window.Add(frame.Bytes) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/clipboardbridge"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
 	cloudruntime "fennec/internal/runtime"
@@ -37,6 +38,20 @@ type prefixedInput struct {
 }
 
 func run() (int, error) {
+	if name := filepath.Base(os.Args[0]); name == "wl-paste" || name == "xclip" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return 1, err
+		}
+		args := os.Args[1:]
+		if name == "xclip" {
+			args = clipboardbridge.XclipArgs(args)
+		}
+		if err := clipboardbridge.Read(home, os.Getenv(clipboardbridge.SessionEnv), args, os.Stdout); err != nil {
+			return 1, nil
+		}
+		return 0, nil
+	}
 	// ~/.local/bin/fennec-escalate links here; agents run it on the cloud computer.
 	if filepath.Base(os.Args[0]) == "fennec-escalate" {
 		return localssh.RunCloudEscalate(os.Args[1:])
@@ -79,6 +94,13 @@ func run() (int, error) {
 		return hookbridge.CodexExit(binding, response), nil
 	}
 	os.Setenv("PATH", filepath.Join(home, ".local/fennec/node/bin")+":"+filepath.Join(home, ".local/fennec/agents/bin")+":"+filepath.Join(home, ".local/bin")+":"+os.Getenv("PATH"))
+	if id := os.Getenv(clipboardbridge.SessionEnv); id != "" {
+		bin, err := clipboardbridge.Bin(home, id)
+		if err != nil {
+			return 1, err
+		}
+		os.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 	runtime := cloudruntime.NewLocalRuntime(home)

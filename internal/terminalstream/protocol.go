@@ -35,7 +35,7 @@ type Frame struct {
 
 const Window = 65536
 const Chunk = 16384
-const ProtocolVersion = 7
+const ProtocolVersion = 9
 
 // SocketCodexAppServer is the only remote socket a "socket" stream may open:
 // the runtime owner's codex app-server control socket. Peers advertise it as

@@ -302,6 +302,10 @@ func (session *Session) Next(ctx context.Context) (Frame, error) {
 }
 func (session *Session) Send(frame Frame) error {
 	switch frame.Type {
+	case "image":
+		if !session.transport.Supports(CapabilityImagePaste) {
+			return fmt.Errorf("remote terminal does not support image paste")
+		}
 	case "input", "focus", "credit", "resize", "close", "hook_reply":
 	default:
 		return fmt.Errorf("invalid terminal control frame")

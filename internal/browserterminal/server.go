@@ -199,8 +199,11 @@ func (s *Server) socket(w http.ResponseWriter, r *http.Request) {
 			}
 			frame.ID = streamID
 			switch frame.Type {
-			case "input":
+			case "input", "image":
 				if len(frame.Data) > 16384 {
+					return
+				}
+				if frame.Type == "image" && (len(frame.Data) == 0 || frame.Bytes < 0 || frame.Bytes > 20<<20) {
 					return
 				}
 			case "credit":

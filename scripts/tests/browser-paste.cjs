@@ -5,7 +5,7 @@ const source = fs.readFileSync('native/macos/UI/browser.js', 'utf8');
 const nodes = {};
 const node = id => (nodes[id] = nodes[id] || { id, hidden: true, textContent: '', disabled: false });
 const listeners = {};
-const textarea = { addEventListener: (type, fn) => { listeners[type] = fn; } };
+const textarea = { addEventListener: (type, fn, capture) => { listeners[type+(capture ? ':capture' : '')] = fn; } };
 let dataHandler = null;
 class Terminal {
   constructor() { this.cols = 80; this.rows = 24; this.textarea = textarea; }
@@ -51,4 +51,32 @@ assert.ok(socket.sent.some(frame => frame.type === 'input'), 'input forwarded');
 timers.forEach(fn => fn());
 assert.equal(nodes.pasted.hidden, true, 'notice hides after a moment');
 
-console.log('PASS browser terminal confirms pastes that the program may not show');
+(async()=>{
+  socket.onmessage({data:JSON.stringify({type:'receipt',capabilities:['image_paste_v1']})});
+  socket.sent=[];
+  let complete;
+  const payload=new Uint8Array(100000).fill(42);
+  const file={size:payload.length,arrayBuffer:()=>new Promise(resolve=>{complete=resolve;})};
+  let prevented=false;
+  const uploading=listeners['paste:capture']({clipboardData:{items:[{type:'image/png',getAsFile:()=>file}]},preventDefault(){prevented=true;},stopImmediatePropagation(){}});
+  dataHandler('after\r');
+  assert.equal(socket.sent.length,0,'typing must wait behind the asynchronous clipboard read');
+  complete(payload.buffer);await uploading;
+  assert.equal(prevented,true);
+  assert.equal(socket.sent.reduce((n,f)=>n+Buffer.from(f.data||'','base64').length,0),65536,'image respects credit window');
+  socket.onmessage({data:JSON.stringify({type:'input_credit',bytes:65536})});
+  const images=socket.sent.filter(f=>f.type==='image');
+  assert.equal(images[0].bytes,payload.length);
+  assert.ok(images.slice(1).every(f=>f.bytes===0));
+  assert.deepEqual(Buffer.concat(images.map(f=>Buffer.from(f.data,'base64'))),Buffer.from(payload));
+  assert.equal(socket.sent.at(-1).type,'input');
+  assert.equal(Buffer.from(socket.sent.at(-1).data,'base64').toString(),'after\r');
+
+  // A clipboard read that resolves after reconnect must not enter the new session.
+  const stale=listeners['paste:capture']({clipboardData:{items:[{type:'image/png',getAsFile:()=>file}]},preventDefault(){},stopImmediatePropagation(){}});
+  nodes.reconnect.onclick();const replacement=sockets.at(-1);
+  replacement.onmessage({data:JSON.stringify({type:'receipt',capabilities:['image_paste_v1']})});
+  complete(payload.buffer);await stale;
+  assert.equal(replacement.sent.length,0,'stale clipboard image crossed sessions');
+  console.log('PASS browser terminal text/image paste, ordering, credits, and reconnect isolation');
+})().catch(error=>{console.error(error);process.exitCode=1;});

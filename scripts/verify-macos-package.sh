@@ -9,7 +9,7 @@ go run ./cmd/check-bundle-permissions "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" == 13.0 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
-for binary in Fennec fennec-daemon fennec-credentials fennec-cua; do
+for binary in Fennec fennec-daemon fennec-credentials fennec-clipboard fennec-cua; do
   [[ -x "$app/Contents/MacOS/$binary" ]]
   lipo -archs "$app/Contents/MacOS/$binary" | grep -qw arm64
   codesign --verify --strict "$app/Contents/MacOS/$binary"

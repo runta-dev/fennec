@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/audit"
+	"fennec/internal/clipboardbridge"
 	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
@@ -44,17 +45,20 @@ func SocketDevice(ctx context.Context) string {
 }
 
 type serverSession struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	window        *flowWindow
-	input         chan []byte
-	mu            sync.Mutex
-	inputWriteMu  sync.Mutex
-	file          *os.File
-	conn          net.Conn
-	closed        bool
-	inputBudget   int
-	rows, columns uint16
+	ctx                      context.Context
+	cancel                   context.CancelFunc
+	window                   *flowWindow
+	input                    chan Frame
+	images                   bool
+	imageAgent, imageSession string
+	imageClipboard           bool
+	mu                       sync.Mutex
+	inputWriteMu             sync.Mutex
+	file                     *os.File
+	conn                     net.Conn
+	closed                   bool
+	inputBudget              int
+	rows, columns            uint16
 }
 
 func Serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, attachers ...Attacher) error {
@@ -117,7 +121,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"hook_bridge_v1"}
+	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste}
 	if operate != nil {
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics", "native_credential_set", "native_credential_watch")
 	}
@@ -161,7 +165,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				continue
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
-			session := &serverSession{ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan []byte, 256), inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			session := &serverSession{ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
 			sessions[frame.ID] = session
 			sessionsMu.Unlock()
 			workers.Add(1)
@@ -232,9 +236,11 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					emit(Frame{Type: "error", ID: frame.ID, Message: "remote launch failed; inspect session before retrying"})
 					return
 				}
-				emit, finishReceipt := coalesceReceipt(emitFrames, Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal})
+				emit, finishReceipt := coalesceReceipt(emitFrames, Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal, Capabilities: []string{CapabilityImagePaste}})
 				defer finishReceipt()
 				session.mu.Lock()
+				session.imageAgent, session.imageSession = terminal.Agent, terminal.ID
+				session.imageClipboard = terminal.Labels[clipboardbridge.Label] == clipboardbridge.Version
 				if command.Env == nil {
 					command.Env = os.Environ()
 				}
@@ -351,16 +357,16 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				session.cancel()
 				emit(Frame{Type: "error", ID: frame.ID, Message: "invalid output credit"})
 			}
-		case "input":
+		case "input", "image":
 			session.mu.Lock()
-			valid := len(frame.Data) > 0 && len(frame.Data) <= Chunk && len(frame.Data) <= session.inputBudget
+			valid := (frame.Type != "image" || session.images) && len(frame.Data) > 0 && len(frame.Data) <= Chunk && len(frame.Data) <= session.inputBudget
 			if valid {
 				session.inputBudget -= len(frame.Data)
 			}
 			session.mu.Unlock()
 			if valid {
 				select {
-				case session.input <- frame.Data:
+				case session.input <- frame:
 				default:
 					valid = false
 				}
@@ -413,23 +419,58 @@ func (session *serverSession) read(data []byte) (int, error) {
 }
 
 func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
+	var image imageUpload
+	defer image.reset()
 	for {
 		select {
 		case <-session.ctx.Done():
 			return
-		case data := <-session.input:
-			length := len(data)
-			if err := session.write(data); err != nil {
-				return
-			}
-			data = nil
-			if len(data) == 0 {
-				session.mu.Lock()
-				session.inputBudget += length
-				session.mu.Unlock()
-				if emit(Frame{Type: "input_credit", ID: id, Bytes: length}) != nil {
+		case frame := <-session.input:
+			length := len(frame.Data)
+			if frame.Type == "image" {
+				path, err := image.accept(frame)
+				if err != nil {
+					if emit(Frame{Type: "paste_error", ID: id, Message: "Could not paste image, try copying it again"}) != nil {
+						return
+					}
+				} else if path != "" {
+					if session.imageAgent == "kimi" {
+						message := "Could not paste image, focus the message composer and try again"
+						var pasteErr error
+						if !session.imageClipboard {
+							pasteErr = fmt.Errorf("legacy Kimi session")
+							message = "Start a new Kimi session to enable image paste"
+						} else {
+							home, homeErr := os.UserHomeDir()
+							pasteErr = homeErr
+							if pasteErr == nil {
+								pasteErr = clipboardbridge.Deliver(session.ctx, home, session.imageSession, path, func() error { return session.write([]byte{22}) })
+							}
+						}
+						os.Remove(path)
+						if pasteErr != nil {
+							if emit(Frame{Type: "paste_error", ID: id, Message: message}) != nil {
+								return
+							}
+						}
+					} else {
+						if err := session.write(imagePaste(path)); err != nil {
+							os.Remove(path)
+							return
+						}
+					}
+				}
+			} else {
+				image.reset()
+				if err := session.write(frame.Data); err != nil {
 					return
 				}
+			}
+			session.mu.Lock()
+			session.inputBudget += length
+			session.mu.Unlock()
+			if emit(Frame{Type: "input_credit", ID: id, Bytes: length}) != nil {
+				return
 			}
 		}
 	}

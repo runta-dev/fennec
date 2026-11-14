@@ -49,6 +49,8 @@ if [ ! -f "$helper" ]; then
 fi
 codesign --verify --strict "$helper"
 cp "$helper" "$app/Contents/MacOS/fennec-credentials"
+swiftc -target "$swift_target" native/macos/ClipboardHelper.swift -o "$app/Contents/MacOS/fennec-clipboard" -framework AppKit
+sign_artifact "$app/Contents/MacOS/fennec-clipboard"
 mkdir -p "$app/Contents/Resources"
 go run ./cmd/fennec-terminal protocol-version > "$app/Contents/Resources/terminal-protocol-version"
 for remote_arch in amd64 arm64; do

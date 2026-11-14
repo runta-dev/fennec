@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/clipboardbridge"
 	"fennec/internal/hookbridge"
 	"fennec/internal/setup"
 	"fmt"
@@ -233,6 +234,14 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = []string{filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal"), "native-login", request.Agent, request.ID}
 	}
 	mark("workspace_prepare")
+	clipboardReady := request.Agent == "kimi" && !request.NativeLogin
+	if clipboardReady {
+		if err := clipboardbridge.Prepare(runtime.Home, request.ID, filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal")); err != nil {
+			return LocalTerminal{}, err
+		}
+		bin, _ := clipboardbridge.Bin(runtime.Home, request.ID)
+		command = append([]string{"env", clipboardbridge.SessionEnv + "=" + request.ID, "XDG_SESSION_TYPE=wayland", "PATH=" + bin + ":" + os.Getenv("PATH")}, command...)
+	}
 	if err := ctx.Err(); err != nil {
 		return LocalTerminal{}, err
 	}
@@ -240,7 +249,11 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		return LocalTerminal{}, err
 	}
 	mark("journal_sync")
-	arguments := []string{"run", "--bg", "--no-parent", "--outlive-parent", "--json", "--cwd", cwd, "--label", "fennec.session=" + request.ID, "--label", "fennec.agent=" + request.Agent, "--"}
+	arguments := []string{"run", "--bg", "--no-parent", "--outlive-parent", "--json", "--cwd", cwd, "--label", "fennec.session=" + request.ID, "--label", "fennec.agent=" + request.Agent}
+	if clipboardReady {
+		arguments = append(arguments, "--label", clipboardbridge.Label+"="+clipboardbridge.Version)
+	}
+	arguments = append(arguments, "--")
 	raw, err = runtime.Run(ctx, append(arguments, command...)...)
 	if err != nil {
 		return LocalTerminal{}, fmt.Errorf("Herdr launch outcome unknown; inspect session before retrying")
@@ -251,6 +264,12 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	}
 	terminal.ID = request.ID
 	terminal.Agent = request.Agent
+	if clipboardReady {
+		if terminal.Labels == nil {
+			terminal.Labels = map[string]string{}
+		}
+		terminal.Labels[clipboardbridge.Label] = clipboardbridge.Version
+	}
 	mark("herdr_spawn")
 	terminal.Timings = timings
 	return terminal, nil

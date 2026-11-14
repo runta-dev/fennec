@@ -1,11 +1,17 @@
 package terminalstream
 
-import "bytes"
+import (
+	"bytes"
+	"fennec/internal/terminalinput"
+)
 
 // InteractionEncoder separates focus reports from human keystrokes, preserving
 // byte order and bracketed paste. The terminal input decoder has already joined
 // fragmented escape sequences before these bytes reach this boundary.
-type InteractionEncoder struct{ pasted bool }
+type InteractionEncoder struct {
+	pasted     bool
+	ImagePaste bool
+}
 
 func (e *InteractionEncoder) Frames(data []byte) []Frame {
 	var frames []Frame
@@ -20,6 +26,28 @@ func (e *InteractionEncoder) Frames(data []byte) []Frame {
 			e.pasted = false
 			i += 5
 			continue
+		}
+		if e.ImagePaste && !e.pasted {
+			length := 1
+			if data[i] == 27 && i+1 < len(data) && data[i+1] == '[' {
+				length = 2
+				for i+length < len(data) {
+					c := data[i+length]
+					length++
+					if c >= 0x40 && c <= 0x7e {
+						break
+					}
+				}
+			}
+			if terminalinput.ImagePasteShortcut(data[i : i+length]) {
+				if i > start {
+					frames = append(frames, Frame{Type: "input", Data: data[start:i]})
+				}
+				frames = append(frames, Frame{Type: "clipboard", Data: data[i : i+length]})
+				i += length - 1
+				start = i + 1
+				continue
+			}
 		}
 		if !e.pasted && i+3 <= len(data) && data[i] == 27 && data[i+1] == '[' && (data[i+2] == 'I' || data[i+2] == 'O') {
 			if i > start {

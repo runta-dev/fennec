@@ -199,6 +199,52 @@ fresh-user login, Keychain, reboot, or real cloud-session acceptance.
 `check-bundle-permissions` gates public application/volume permissions in the
 release pipeline. Signing key material remains private outside the app bundle.
 
+## Image paste acceptance
+
+In a Mac terminal, Ctrl-V reads a clipboard image through the bundled
+`fennec-clipboard` AppKit helper. The embedded terminal also accepts Command-V;
+the browser terminal accepts a PNG paste event. PNG and native TIFF clipboard
+representations become a PNG upload, limited to 20 MB and 32 megapixels. Plain
+text paste and control bytes inside bracketed text remain unchanged.
+
+Terminal protocol 9 carries images in the existing credited input queue and
+delivers a complete private cloud file to Codex as a bracketed path paste.
+Partial/invalid uploads never reach the composer. Completed files remain in the
+cloud temporary directory after detach, allowing pending drafts and reattached
+sessions to use them. No clipboard polling or X11 server is needed. Reattach
+existing Codex terminals with the updated client after installing the complete bundle.
+
+Kimi uses a private clipboard adapter scoped to its session. Its `wl-paste` and
+`xclip` readers consume the uploaded PNG after a native Ctrl-V, creating Kimi's
+`[image #1 (width×height)]` attachment. Delivery is serialized per session and
+unconsumed images are removed on cancellation or timeout. Existing Kimi processes
+need a new session to acquire the adapter environment; reattaching alone cannot
+add it. Old processes receive an actionable paste notice instead of a plain path.
+
+Run the focused Go tests and `make check-ui`:
+
+```sh
+go test -race ./internal/clipboardbridge ./internal/runtime ./internal/terminalinput ./internal/terminalstream ./internal/launcher ./internal/browserterminal
+```
+
+On a logged-in Mac, run
+`swift scripts/tests/clipboard-helper.swift /path/to/Fennec.app/Contents/MacOS/fennec-clipboard`
+to verify PNG/TIFF/text behavior while preserving the clipboard. With a configured
+Codex executable on the cloud, the following checks the real composer's
+attachment marker without submitting a prompt. This last check does not replace
+acceptance through the installed Mac client and shared resident connection.
+
+```sh
+FENNEC_LIVE_IMAGE_PASTE=1 go test -run TestLiveCodexImagePaste -v ./internal/terminalstream
+go build -o /tmp/fennec-image-adapter ./cmd/fennec-terminal
+FENNEC_LIVE_IMAGE_PASTE=1 FENNEC_LIVE_CLIPBOARD_ADAPTER=/tmp/fennec-image-adapter go test -run TestLiveKimiImagePaste -v ./internal/terminalstream
+```
+
+For installed Mac acceptance, set `FENNEC_LIVE_IMAGE_CLIENT_BINARY` to the installed
+`fen` when running the Swift clipboard test above. It checks three attachments
+through the resident channel. Repeat with `FENNEC_LIVE_IMAGE_AGENT=kimi` to verify
+Kimi, without submitting a message or disturbing existing user sessions.
+
 ## Source language and UI messages
 
 Implementation, comments, developer documentation, and project skills are written in
