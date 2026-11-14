@@ -18,7 +18,9 @@ func TestLiveKeychainRoundTrip(t *testing.T) {
 		t.Skip("set FENNEC_LIVE_KEYCHAIN=1 on macOS")
 	}
 	service, account := "Fennec Probe-credentials", "fennec-probe"
-	cleanup := func() { exec.Command("/usr/bin/security", "delete-generic-password", "-s", service, "-a", account).Run() }
+	cleanup := func() {
+		exec.Command("/usr/bin/security", "delete-generic-password", "-s", service, "-a", account).Run()
+	}
 	cleanup()
 	t.Cleanup(cleanup)
 	if err := exec.Command("/usr/bin/security", "add-generic-password", "-a", account, "-s", service, "-w", `{"claudeAiOauth":{"accessToken":"probe-1"}}`).Run(); err != nil {
