@@ -7,8 +7,8 @@
 <style>
 /* Fennec's menu-bar panel tokens (native/macos/UI/panel.css): one flat
    layer of cards with hairlines on the window background. */
-:root{color-scheme:light dark;--bg:#f2f2f5;--card:#fff;--text:#1c1c21;--muted:#85858d;--line:rgba(0,0,0,.07);--orange:#f38d25;--tint:#fff2e5;--ok:#5f9a59}
-@media(prefers-color-scheme:dark){:root{--bg:#1b1c20;--card:#25262c;--text:#eeeef0;--muted:#9c9ca6;--line:rgba(255,255,255,.07);--tint:#392c21;--ok:#86bb7f}}
+:root{color-scheme:light dark;--bg:#f2f2f5;--card:#fff;--text:#1c1c21;--muted:#85858d;--line:rgba(0,0,0,.07);--orange:#f38d25;--tint:#fff2e5;--ok:#5f9a59;--warn:#c25b2c}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1c20;--card:#25262c;--text:#eeeef0;--muted:#9c9ca6;--line:rgba(255,255,255,.07);--tint:#392c21;--ok:#86bb7f;--warn:#e58a5f}}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;display:flex;flex-direction:column;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
@@ -22,12 +22,18 @@ header{height:46px;min-height:46px;display:flex;align-items:center;gap:7px;paddi
 .icon:hover{background:var(--line);color:var(--text)}
 .icon svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
 main{flex:1;padding:0 12px 12px}
-h2{font-size:12px;font-weight:400;color:var(--muted);margin:4px 2px 7px}
+.lead{margin:0 2px 12px;font-size:12px;line-height:1.5;color:var(--muted)}
+h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;margin:0 2px 7px}
+.step{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:600;color:var(--muted);border:1px solid var(--line);background:var(--card)}
+.step svg{width:9px;height:9px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.done .step{background:var(--orange);border-color:var(--orange)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px #0000000a}
-.row{display:flex;align-items:center;justify-content:space-between;height:46px;padding:0 10px 0 12px}
+.row{display:flex;align-items:center;gap:10px;height:54px;padding:0 10px 0 12px}
 .row+.row{border-top:1px solid var(--line)}
-.row span{font-weight:500}
-.action{width:92px;display:flex;justify-content:flex-end}
+.text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.text strong{font-weight:500}
+.text small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.action{flex:none;width:92px;display:flex;justify-content:flex-end}
 .allow{color:#b06014;border-color:#f38d2570;background:transparent}
 .allow:hover{background:var(--tint)}
 @media(prefers-color-scheme:dark){.allow{color:#f5a24e}}
@@ -39,7 +45,10 @@ h2{font-size:12px;font-weight:400;color:var(--muted);margin:4px 2px 7px}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 .copy{width:92px;white-space:nowrap}
 .copied{display:inline-flex;align-items:center;justify-content:center;gap:5px;color:var(--ok)}
-.error{height:22px;margin:0;padding:5px 2px 0;white-space:nowrap;text-overflow:ellipsis;font-size:11px;line-height:1.4;color:#c25b2c;overflow:hidden}
+/* The hint keeps its two lines whether or not it has text: no layout shift. */
+.hint{height:50px;margin:0;padding:8px 2px 0;font-size:11.5px;line-height:1.45;color:var(--muted);overflow:hidden}
+.hint.ok{color:var(--ok)}
+.hint.warn{color:var(--warn)}
 </style>
 </head>
 <body>
@@ -50,13 +59,20 @@ h2{font-size:12px;font-weight:400;color:var(--muted);margin:4px 2px 7px}
   <button class="icon" id="close" aria-label="Close"><svg viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
 </header>
 <main>
-  <h2>Permissions</h2>
+  <p class="lead">Lets your AI agents see and use the apps on this Mac. Two steps: allow access, then connect your agent.</p>
+  <h2 id="step-access"><span class="step"></span>Allow access</h2>
   <div class="card">
-    <div class="row"><span>Accessibility</span><div class="action" id="accessibility"></div></div>
-    <div class="row"><span>Screen Recording</span><div class="action" id="screen"></div></div>
+    <div class="row">
+      <div class="text"><strong>Accessibility</strong><small>Lets agents click, type and read app controls</small></div>
+      <div class="action" id="accessibility"></div>
+    </div>
+    <div class="row">
+      <div class="text"><strong>Screen Recording</strong><small>Lets agents see app windows</small></div>
+      <div class="action" id="screen"></div>
+    </div>
   </div>
-  <p class="error" id="error"></p>
-  <h2>Connect an agent</h2>
+  <p class="hint" id="hint"></p>
+  <h2 id="step-connect"><span class="step"></span>Connect your agent</h2>
   <div class="card" id="agents"></div>
 </main>
 <script>
@@ -66,6 +82,9 @@ const tick = '<svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-4.9"/></svg
 document.getElementById("close").onclick = () => post("close");
 document.getElementById("minimize").onclick = () => post("minimize");
 
+// The last Allow clicked, so the hint can say where to go next.
+let asked = "";
+
 // Each action slot is redrawn only when its content changes, so a click
 // is never lost to the once-a-second refresh.
 function slot(id, html) {
@@ -74,11 +93,17 @@ function slot(id, html) {
   el.dataset.html = html;
   el.innerHTML = html;
   const b = el.querySelector("button");
-  if (b) b.onclick = () => post(b.dataset.action);
+  if (b) b.onclick = () => { asked = b.dataset.action; post(b.dataset.action); };
 }
 const allow = (action, label) => `<button class="allow" data-action="${action}">${label || "Allow"}</button>`;
 const allowed = `<span class="state ok">${tick}Allowed</span>`;
-const working = '<span class="state"><span class="spin"></span></span>';
+const working = '<span class="state"><span class="spin"></span>Checking</span>';
+
+function step(id, n, done) {
+  const h = document.getElementById(id);
+  h.classList.toggle("done", done);
+  h.querySelector(".step").innerHTML = done ? tick : String(n);
+}
 
 let copied = "";
 let agentsShown = "";
@@ -91,8 +116,13 @@ function renderAgents(commands) {
   for (const c of commands) {
     const row = document.createElement("div");
     row.className = "row";
-    const name = document.createElement("span");
+    const text = document.createElement("div");
+    text.className = "text";
+    const name = document.createElement("strong");
     name.textContent = c.name;
+    const help = document.createElement("small");
+    help.textContent = copied === c.id ? "Paste into Terminal, then restart " + c.name : "Copy a command, then paste it into Terminal";
+    text.append(name, help);
     const button = document.createElement("button");
     button.className = "copy";
     button.title = c.command;
@@ -105,24 +135,42 @@ function renderAgents(commands) {
       post("copy", {text: c.command});
       copied = c.id;
       renderAgents(commands);
+      if (last) window.setupRender(last);
     };
-    row.append(name, button);
+    row.append(text, button);
     box.append(row);
   }
 }
 
+let last = null;
 window.setupRender = s => {
+  last = s;
   slot("accessibility", s.accessibility ? allowed : allow("accessibility"));
-  let screen, error = s.notice || "";
+  let screen, hint = "", tone = "";
   if (!s.screen) screen = allow("screen");
-  else if (s.capture === "ok") screen = allowed;
+  else if (s.capture === "ok" || !s.accessibility) screen = allowed;
   else if (s.capture === "consent") screen = allow("capture");
-  else if (s.capture === "error") { screen = allow("retry", "Try again"); error = error || s.captureDetail || "The test capture failed."; }
-  else if (!s.accessibility) screen = allowed;
+  else if (s.capture === "error") screen = allow("retry", "Try again");
   else screen = working;
   slot("screen", screen);
-  const err = document.getElementById("error");
-  err.textContent = err.title = error || s.daemonError || "";
+
+  const ready = s.accessibility && s.screen && s.capture === "ok";
+  if (s.notice) { hint = s.notice; tone = "warn"; }
+  else if (s.capture === "error" && s.accessibility && s.screen) { hint = s.captureDetail || "The test screenshot failed. Click Try again."; tone = "warn"; }
+  else if (s.daemonError) { hint = s.daemonError; tone = "warn"; }
+  else if (ready) { hint = copied ? "All set. Your agent can use this Mac after it restarts." : "Access allowed. Next, connect your agent."; tone = "ok"; }
+  else if (asked === "accessibility" && !s.accessibility) hint = "In System Settings › Accessibility, turn on “Fennec CUA”. This window updates by itself.";
+  else if (asked === "screen" && !s.screen) hint = "In System Settings › Screen & System Audio Recording, turn on “Fennec CUA”. This window updates by itself.";
+  else if (s.capture === "consent" && s.accessibility && s.screen) hint = "One more: click Allow, then choose Allow in the macOS alert.";
+  else if (s.accessibility && s.screen) hint = "Taking a test screenshot…";
+  else hint = "Each Allow opens System Settings: turn on “Fennec CUA” there, then come back here.";
+  const h = document.getElementById("hint");
+  h.textContent = hint;
+  h.title = hint;
+  h.className = "hint" + (tone ? " " + tone : "");
+
+  step("step-access", 1, ready);
+  step("step-connect", 2, copied !== "");
   renderAgents(s.commands);
 };
 </script>

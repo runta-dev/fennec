@@ -58,7 +58,7 @@ struct Doctor {
 }
 
 final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
-    let window = SetupWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 322), styleMask: [.borderless, .miniaturizable], backing: .buffered, defer: false)
+    let window = SetupWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 432), styleMask: [.borderless, .miniaturizable], backing: .buffered, defer: false)
     var web: WKWebView!
     var timer: Timer?
     var loaded = false
