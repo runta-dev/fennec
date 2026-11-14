@@ -198,7 +198,9 @@ window.renderAgents = agents => {
     // ChatGPT (Codex Desktop) shares Codex's Magpie, account and model settings
     // for the computer it runs on.
     const configAgent = desktop ? 'codex' : agent.id;
-    if(!agent.cloudSupported || !['codex-desktop','claude','codex','pi','kimi'].includes(agent.id)){
+    const nativeOnly = ['cursor','grok'].includes(configAgent);
+    const agentMagpie = magpieEnabled && !nativeOnly;
+    if(!agent.cloudSupported || !['codex-desktop','claude','codex','pi','kimi','cursor','grok'].includes(agent.id)){
       head.disabled=true;
       head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
       head.classList.add('agent-coming-soon');
@@ -221,8 +223,8 @@ window.renderAgents = agents => {
     if (!agent.installed) state.textContent = "[[i18n:ui.not_installed]]";
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
-      if(expandedAgent && magpieEnabled && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
-      if(expandedAgent && !magpieEnabled){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id))loadNativeModel(configAgent);}
+      if(expandedAgent && agentMagpie && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
+      if(expandedAgent && !agentMagpie){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&!nativeOnly)loadNativeModel(configAgent);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -285,18 +287,18 @@ window.renderAgents = agents => {
       }
       statusNode.hidden = !statusNode.textContent;
       if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;if(window.fennecPreparationStage!=='offline')state.classList.add('loading-shimmer');}
-      if (magpieEnabled && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
-      {
+      if (agentMagpie && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
+      if(!nativeOnly){
         const row=document.createElement('div');row.className='agent-integration-row';
         const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
         const label=document.createElement('span');label.textContent='Magpie';
         const info=document.querySelector('#magpie-label')?.parentElement?.querySelector('.setting-info')?.cloneNode(true);
         if(info){const tooltip=info.querySelector('[role="tooltip"]');const button=info.querySelector('.setting-info-button');if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}}
-        const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(magpieEnabled));
+        const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(agentMagpie));
         toggle.onclick=()=>toggleMagpie();
         if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
       }
-      if(!magpieEnabled){
+      if(!agentMagpie){
         const location=enabled?'cloud':'local';const key=configAgent+':'+location;const account=nativeAccountStates.get(key);
         if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(configAgent,location);
         statusNode.hidden=true;statusNode.textContent='';
@@ -320,21 +322,21 @@ window.renderAgents = agents => {
         }
         detail.append(card);
       }
-      if (magpieEnabled || (enabled && ['codex','claude','pi','kimi'].includes(configAgent))) {
+      if (agentMagpie || (enabled && ['codex','claude','pi','kimi'].includes(configAgent))) {
         const native=nativeModelStates.get(configAgent);
-        const local=magpieEnabled&&!enabled;const localModel=localGatewayModels.get(configAgent);
+        const local=agentMagpie&&!enabled;const localModel=localGatewayModels.get(configAgent);
         if(local && expandedAgent===agent.id && !localModel && !localGatewayPending.has(configAgent))loadLocalGatewayModel(configAgent);
-        if(!magpieEnabled && !native && expandedAgent===agent.id && !nativeModelRequests.has(configAgent))loadNativeModel(configAgent);
+        if(!agentMagpie && !native && expandedAgent===agent.id && !nativeModelRequests.has(configAgent))loadNativeModel(configAgent);
         const localCatalogLookup=Array.isArray(localModel?.catalog)?new Map(localModel.catalog.map(m=>[m.id,m])):gatewayCatalogByID;
-        const models=magpieEnabled ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>describeGatewayModel(id,local?localCatalogLookup:(gatewayCatalogByID.size?gatewayCatalogByID:localCatalogLookup))) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
-        const current=magpieEnabled ? (local?localModel?.model:route?.model) || '' : native?.model || '';
+        const models=agentMagpie ? (localModel?.models?.length&&local?localModel.models:gatewayModels).map(id=>describeGatewayModel(id,local?localCatalogLookup:(gatewayCatalogByID.size?gatewayCatalogByID:localCatalogLookup))) : native?.models || [{id:'',name:"[[i18n:ui.default]]"}];
+        const current=agentMagpie ? (local?localModel?.model:route?.model) || '' : native?.model || '';
         const row=document.createElement('div');row.className='agent-model-row';
         const select=document.createElement('select');select.hidden=true;select.setAttribute('aria-label',"[[i18n:ui.model]]");
         for(const model of models){
           const option=document.createElement('option');
           option.value=model.id;
           option.textContent=model.name;
-          if(magpieEnabled){
+          if(agentMagpie){
             if(model.group)option.dataset.group=model.group;
             if(model.account)option.dataset.account=model.account;
             const spec=gatewayProviderIconSpec(model.provider);
@@ -345,16 +347,16 @@ window.renderAgents = agents => {
         }
         select.value=current;
         const trigger=document.createElement('button');trigger.type='button';trigger.className='choice-trigger agent-model-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
-        trigger.disabled=modelSaving || (local && !localModel) || (!magpieEnabled && !native && nativeModelRequests.get(configAgent)!=='failed') || models.length===0;
+        trigger.disabled=modelSaving || (local && !localModel) || (!agentMagpie && !native && nativeModelRequests.get(configAgent)!=='failed') || models.length===0;
         const label=document.createElement('span');label.className='field-label';label.textContent="[[i18n:ui.model]]";
         const currentEntry=models.find(m=>m.id===current);
-        const value=document.createElement('span');value.className='field-value';value.textContent= !magpieEnabled && !native ? (nativeModelRequests.get(configAgent)==='failed'?"[[i18n:ui.retry]]":'') : currentEntry?.name || current || (magpieEnabled?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
+        const value=document.createElement('span');value.className='field-value';value.textContent= !agentMagpie && !native ? (nativeModelRequests.get(configAgent)==='failed'?"[[i18n:ui.retry]]":'') : currentEntry?.name || current || (agentMagpie?"[[i18n:ui.choose_a_model]]":"[[i18n:ui.default]]");
         if(local&&localModel?.error)value.textContent="[[i18n:ui.retry]]";
-        if(!magpieEnabled && !native && nativeModelRequests.get(configAgent)==='pending')value.classList.add('setting-skeleton');
+        if(!agentMagpie && !native && nativeModelRequests.get(configAgent)==='pending')value.classList.add('setting-skeleton');
         let modelIconNode;
-        const provider=magpieEnabled ? (currentEntry?.provider || current.split('/')[0]) : currentEntry?.provider;
+        const provider=agentMagpie ? (currentEntry?.provider || current.split('/')[0]) : currentEntry?.provider;
         const spec=gatewayProviderIconSpec(provider);
-        if(magpieEnabled && spec.svg){
+        if(agentMagpie && spec.svg){
           modelIconNode=document.createElement('span');
           modelIconNode.className='model-provider-svg';
           modelIconNode.setAttribute('aria-hidden','true');
@@ -368,12 +370,12 @@ window.renderAgents = agents => {
         }
         const chevron=document.createElementNS('http://www.w3.org/2000/svg','svg');chevron.setAttribute('viewBox','0 0 16 16');chevron.innerHTML='<path d="m5 6 3 3 3-3"/>';
         trigger.append(label,value,modelIconNode,chevron);
-        trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(configAgent);trigger.disabled=true;}else if(!magpieEnabled && !native){loadNativeModel(configAgent);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
+        trigger.onclick=()=>{if(local&&localModel?.error){loadLocalGatewayModel(configAgent);trigger.disabled=true;}else if(!agentMagpie && !native){loadNativeModel(configAgent);window.renderAgents(detectedAgents);}else openChoiceMenu(select,trigger,{optimistic:false});};
         trigger.onkeydown=event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();trigger.click();}};
         select.onchange=()=>{window.renderModelSaving(true);send('select-model:'+JSON.stringify({agent:configAgent,model:select.value,location:local?'local':'cloud'}));};
-        row.append(select,trigger);if(magpieEnabled)detail.append(row);
+        row.append(select,trigger);if(agentMagpie)detail.append(row);
         const selected=models.find(m=>m.id===current);
-        if(!magpieEnabled && selected?.efforts?.length){
+        if(!agentMagpie && selected?.efforts?.length){
           const levels=['',...selected.efforts];
           const effort=document.createElement('div');effort.className='agent-effort';
           const caption=document.createElement('label');caption.textContent="[[i18n:ui.reasoning_effort]]";

@@ -426,7 +426,7 @@ func (l transportCredentialLink) Watch(ctx context.Context, watch setup.NativeCr
 }
 
 // credentialSyncAgents are the agents preparation synchronizes natively.
-var credentialSyncAgents = []string{"claude", "codex", "pi", "kimi"}
+var credentialSyncAgents = []string{"claude", "codex", "pi", "kimi", "cursor", "grok"}
 
 // runCredentialSync starts once the runtime is known and runs for the epoch.
 // It only uses the resident channel after preparation has made the shared

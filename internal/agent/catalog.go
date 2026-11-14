@@ -31,15 +31,15 @@ var catalog = []definition{
 	{"opencode", "OpenCode", "opencode.svg", []string{"opencode"}, []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc"}, nil, true},
 	{"devin", "Devin", "devin.svg", []string{"devin"}, []string{".config/devin/config.json", "Library/Application Support/devin/config.json"}, nil, false},
 	// 'grok' is also an unrelated program: do not treat PATH alone as evidence.
-	{"grok", "Grok Build", "xai.svg", nil, []string{".grok/config.toml"}, nil, false},
+	{"grok", "Grok Build", "xai.svg", nil, []string{".grok/config.toml", ".grok/auth.json"}, nil, true},
 	{"gemini", "Gemini CLI", "geminicli-color.svg", []string{"gemini"}, []string{".gemini/settings.json"}, nil, false},
-	{"cursor", "Cursor CLI", "cursor.svg", []string{"cursor-agent"}, []string{".cursor/cli-config.json"}, nil, false},
+	{"cursor", "Cursor CLI", "cursor.svg", []string{"cursor-agent"}, []string{".cursor/cli-config.json"}, nil, true},
 	{"copilot", "Copilot CLI", "copilot-color.svg", []string{"copilot"}, []string{".copilot/config.json"}, nil, false},
 }
 
 func searchPaths(home string) []string {
 	paths := filepath.SplitList(os.Getenv("PATH"))
-	for _, p := range []string{".local/bin", ".bun/bin", ".npm-global/bin", ".volta/bin", ".cargo/bin", "Library/pnpm", ".opencode/bin", ".kimi-code/bin"} {
+	for _, p := range []string{".local/bin", ".bun/bin", ".npm-global/bin", ".volta/bin", ".cargo/bin", "Library/pnpm", ".opencode/bin", ".kimi-code/bin", ".grok/bin"} {
 		paths = append(paths, filepath.Join(home, p))
 	}
 	paths = append(paths, "/opt/homebrew/bin", "/usr/local/bin")
@@ -53,6 +53,9 @@ func discoverAt(home string, paths []string, appRoots []string) []Agent {
 	result := []Agent{}
 	for _, d := range catalog {
 		evidence := ""
+		if d.id == "grok" && originalExecutable(home, filepath.Join(home, ".grok/bin/grok")) {
+			evidence = "executable"
+		}
 		for _, bin := range d.bins {
 			for _, dir := range paths {
 				if !filepath.IsAbs(dir) {
@@ -116,7 +119,7 @@ func PanelCatalog(discovered []Agent) []Agent {
 }
 
 // These cloud agents are available even when this Mac has no CLI installation.
-func CloudAgentIDs() []string { return []string{"claude", "codex", "pi", "kimi"} }
+func CloudAgentIDs() []string { return []string{"claude", "codex", "pi", "kimi", "cursor", "grok"} }
 
 // CodexDesktopID is ChatGPT.app's Codex (bundle com.openai.codex). Its codex
 // app-server can run on the cloud computer through Fennec's loopback bridge.

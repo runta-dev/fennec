@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/agentcmd"
 	"fennec/internal/cloudstate"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -44,11 +45,11 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	magpie := newDesktopSettings(s.home).value.Magpie
 	ids := agent.CloudAgentIDs()
 	sourceIDs := ids
-	if !magpie {
+	{
 		sourceIDs = nil
 		cloud := setup.NativeCloudPreferences(filepath.Join(s.home, ".config/fennec"), user, runtimeID)
 		for _, id := range ids {
-			if !cloud[id] {
+			if !cloud[id] || (magpie && !agentcmd.NativeOnly(id)) {
 				sourceIDs = append(sourceIDs, id)
 			}
 		}
@@ -66,9 +67,11 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	}}
 	if magpie {
 		jobs = append(jobs, func(ctx context.Context) error {
-			routes := make([]setup.AgentRoute, len(ids))
-			for i, id := range ids {
-				routes[i] = setup.AgentRoute{Agent: id}
+			routes := []setup.AgentRoute{}
+			for _, id := range ids {
+				if !agentcmd.NativeOnly(id) {
+					routes = append(routes, setup.AgentRoute{Agent: id})
+				}
 			}
 			routes, err := setup.ApplyModelPreferences(filepath.Join(s.home, ".config/fennec"), user, routes)
 			if err != nil {

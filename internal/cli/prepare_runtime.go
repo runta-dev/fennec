@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/agentcmd"
 	"fennec/internal/cloudstate"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
@@ -50,13 +51,13 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		if id == "opencode" {
 			continue
 		}
-		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] {
+		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && !agentcmd.NativeOnly(id) {
 			continue
 		}
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
-		ids = []string{"claude", "codex", "pi", "kimi"}
+		ids = agent.CloudAgentIDs()
 	}
 	for _, id := range ids {
 		versions = append(versions, setup.Agent{ID: id, Version: "latest"})
@@ -71,7 +72,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			workers.Add(1)
 			go func(i int, version setup.Agent) {
 				defer workers.Done()
-				if magpie {
+				if magpie && !agentcmd.NativeOnly(version.ID) {
 					localRoutes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{version})[0]
 					if localRoutes[i].Problem == "local_gateway_not_found" {
 						localRoutes[i].Problem = "model_selection_required"
@@ -161,11 +162,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	routes := localRoutes
 	var plugins []setup.ModelPlugin
 	sourceIDs := ids
-	if !magpie {
+	{
 		cloudAccounts := setup.NativeCloudPreferences(filepath.Join(home, ".config/fennec"), runtime.Owner, runtime.ID)
 		sourceIDs = nil
 		for _, id := range ids {
-			if !cloudAccounts[id] {
+			if !cloudAccounts[id] || (magpie && !agentcmd.NativeOnly(id)) {
 				sourceIDs = append(sourceIDs, id)
 			}
 		}
@@ -466,7 +467,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		},
 		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
 			defer launchprofile.Begin("prepare.route." + route.Agent)()
-			if !magpie {
+			if !magpie || agentcmd.NativeOnly(route.Agent) {
 				status := "credentials_required"
 				if nativeRequest.NativeProblems[route.Agent] != "" {
 					status = nativeRequest.NativeProblems[route.Agent]

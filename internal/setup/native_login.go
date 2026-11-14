@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"encoding/json"
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"io"
 	"os"
@@ -44,7 +45,7 @@ type NativeLogin struct {
 }
 
 func (p NativeLogin) Validate() error {
-	if !sessionid.Valid(p.ID) || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true}[p.Agent] {
+	if !sessionid.Valid(p.ID) || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "cursor": true, "grok": true}[p.Agent] {
 		return fmt.Errorf("invalid agent login")
 	}
 	return nil
@@ -130,7 +131,7 @@ func prepareNativeLogin(home string, plan NativeLogin) error {
 	if err := plan.Validate(); err != nil {
 		return err
 	}
-	if !NativeAgentMode(home) {
+	if !NativeAgentMode(home) && !agents.NativeOnly(plan.Agent) {
 		return fmt.Errorf("switch off Magpie before signing in to an agent")
 	}
 	parent := ".local/fennec/native-logins"
@@ -193,7 +194,7 @@ func NativeLoginCommand(home string, plan NativeLogin) ([]string, []string, erro
 		return nil, nil, fmt.Errorf("login expired; start again")
 	}
 	ensureCloudSearchTools(home)
-	args := map[string][]string{"codex": {"login", "--device-auth"}, "claude": {"auth", "login", "--claudeai"}, "pi": {"--no-extensions", "--no-skills", "--no-context-files", "--no-session", "--no-tools"}, "kimi": {"login"}}[plan.Agent]
+	args := map[string][]string{"codex": {"login", "--device-auth"}, "claude": {"auth", "login", "--claudeai"}, "pi": {"--no-extensions", "--no-skills", "--no-context-files", "--no-session", "--no-tools"}, "kimi": {"login"}, "cursor": {"login"}, "grok": {"login", "--device-auth"}}[plan.Agent]
 	pathParts := []string{
 		filepath.Join(home, ".local/fennec/node/bin"),
 		filepath.Join(home, ".local/fennec/agents/bin"),
@@ -210,6 +211,10 @@ func NativeLoginCommand(home string, plan NativeLogin) ([]string, []string, erro
 	}
 	env = ensureDefaultSystemCerts(env)
 	switch plan.Agent {
+	case "cursor":
+		env = append(env, "CURSOR_CONFIG_DIR="+filepath.Join(root, "cursor"), "XDG_CONFIG_HOME="+root, "NO_OPEN_BROWSER=1", "AGENT_CLI_CREDENTIAL_STORE=file", "CURSOR_DATA_DIR="+filepath.Join(root, "cursor"))
+	case "grok":
+		env = append(env, "GROK_HOME="+filepath.Join(root, "grok"))
 	case "codex":
 		env = append(env, "CODEX_HOME="+filepath.Join(root, "codex"))
 	case "claude":
@@ -229,14 +234,14 @@ func activateNativeLogin(home string, plan NativeLogin) error {
 		return err
 	}
 	root := nativeLoginDirectory(home, plan.ID)
-	credential := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json", "kimi": kimiCredentialFile}[plan.Agent]
+	credential := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json", "kimi": kimiCredentialFile, "cursor": cursorAuthFile, "grok": grokAuthFile}[plan.Agent]
 	if _, err := readNativeFile(filepath.Join(root, credential)); err != nil {
 		return fmt.Errorf("finish signing in before continuing")
 	}
 	if !nativeHasCredentials(root, plan.Agent) {
 		return fmt.Errorf("finish signing in before continuing")
 	}
-	if !NativeAgentMode(home) {
+	if !NativeAgentMode(home) && !agents.NativeOnly(plan.Agent) {
 		return fmt.Errorf("agent settings changed; sign in again")
 	}
 	pending, err := readLoginSelections(home, ".pending-logins.json")
@@ -291,7 +296,7 @@ func RunNativeLogin(ctx context.Context, home string, plan NativeLogin, input io
 	if err != nil {
 		return err
 	}
-	binary, err := exec.LookPath(plan.Agent)
+	binary, err := exec.LookPath(agents.BinaryName(plan.Agent))
 	if err != nil {
 		return fmt.Errorf("agent is not installed on the cloud computer")
 	}

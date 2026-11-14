@@ -41,7 +41,7 @@ func (o LocalOperation) Validate() error {
 		return o.Login.Validate()
 	}
 	if o.Kind == "native_models" || o.Kind == "native_model_set" || o.Kind == "native_account" {
-		if o.NativeModel == nil || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true}[o.NativeModel.Agent] {
+		if o.NativeModel == nil || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "cursor": true, "grok": true}[o.NativeModel.Agent] {
 			return fmt.Errorf("unsupported native model agent")
 		}
 		if o.Kind == "native_model_set" && !setup.NativeModelFamily(o.NativeModel.Agent, o.NativeModel.Model) {

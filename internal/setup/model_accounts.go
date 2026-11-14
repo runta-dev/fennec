@@ -140,12 +140,16 @@ func ApplyModelAccounts(ctx context.Context, home string, request ModelAccountsR
 	if request.Native {
 		return ApplyNativeAccounts(ctx, home, request)
 	}
+	var nativeResult ModelAccountsResult
 	if len(request.NativeFiles) > 0 {
-		if _, err := ApplyNativeAccounts(ctx, home, ModelAccountsRequest{Version: 1, Native: true, Files: request.NativeFiles, Agents: request.Agents}); err != nil {
+		var err error
+		if nativeResult, err = ApplyNativeAccounts(ctx, home, ModelAccountsRequest{Version: 1, Native: true, Files: request.NativeFiles, Agents: request.Agents, NativeProblems: request.NativeProblems}); err != nil {
 			return ModelAccountsResult{}, err
 		}
 	}
 	result, err := reconcileModelAccounts(ctx, home, request, ReconcileLocalModelPlugins, RestoreLocalCodexIdentity)
+	result.NativeReady = nativeResult.NativeReady
+	result.NativeDeferred = nativeResult.NativeDeferred
 	if err != nil {
 		return result, err
 	}

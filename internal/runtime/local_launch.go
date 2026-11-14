@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	agents "fennec/internal/agentcmd"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/hookbridge"
 	"fennec/internal/setup"
@@ -58,7 +59,7 @@ func (request LocalLaunch) Validate() error {
 	if !sessionIDPattern.MatchString(request.ID) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(request.Device) || !filepath.IsAbs(request.LocalDirectory) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
 		return fmt.Errorf("invalid local session identity")
 	}
-	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}[request.Agent] {
+	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[request.Agent] {
 		return fmt.Errorf("unsupported agent")
 	}
 	size := 0
@@ -160,12 +161,12 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	if readErr == nil {
 		return LocalTerminal{}, fmt.Errorf("launch outcome unknown; inspect before retrying")
 	}
-	binary, err := runtime.Lookup(request.Agent)
+	binary, err := runtime.Lookup(agents.BinaryName(request.Agent))
 	if err != nil {
 		// If background agent warmup is still finishing after fast 5s onboarding,
 		// wait on the per-agent installation flock / install on demand seamlessly.
 		if ensureErr := ensureLocalAgentBinary(ctx, runtime.Home, request.Agent); ensureErr == nil {
-			binary, err = runtime.Lookup(request.Agent)
+			binary, err = runtime.Lookup(agents.BinaryName(request.Agent))
 		}
 	}
 	if err != nil {
@@ -177,6 +178,10 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	}
 	command := []string{binary}
 	switch request.Agent {
+	case "cursor":
+		command = append(command, "--force", "--trust", "--sandbox", "disabled")
+	case "grok":
+		command = append(command, "--always-approve")
 	case "codex":
 		command = append(command, "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`)
 	case "claude":
@@ -208,7 +213,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
-	if setup.NativeAgentMode(runtime.Home) {
+	if setup.NativeAgentMode(runtime.Home) || agents.NativeOnly(request.Agent) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]

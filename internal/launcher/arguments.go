@@ -25,6 +25,30 @@ func ResolveLaunchDirectory(agent, cwd string, args []string) (string, []string,
 		if arg == "--add-dir" || strings.HasPrefix(arg, "--add-dir=") {
 			return "", nil, fmt.Errorf("additional local directories must be registered for cloud sync before launch")
 		}
+		cwdOption := map[string]string{"cursor": "--workspace", "grok": "--cwd"}[agent]
+		if cwdOption != "" && (arg == cwdOption || strings.HasPrefix(arg, cwdOption+"=")) {
+			if override {
+				return "", nil, fmt.Errorf("multiple working-directory overrides")
+			}
+			override = true
+			value := strings.TrimPrefix(arg, cwdOption+"=")
+			if arg == cwdOption {
+				i++
+				if i >= len(args) {
+					return "", nil, fmt.Errorf("working-directory argument missing")
+				}
+				value = args[i]
+			}
+			if value == "" || strings.ContainsAny(value, "\x00\r\n") {
+				return "", nil, fmt.Errorf("invalid working directory")
+			}
+			if filepath.IsAbs(value) {
+				directory = filepath.Clean(value)
+			} else {
+				directory = filepath.Join(cwd, value)
+			}
+			continue
+		}
 		if agent == "codex" && (arg == "-C" || arg == "--cd" || strings.HasPrefix(arg, "--cd=") || strings.HasPrefix(arg, "-C") && len(arg) > 2) {
 			if override {
 				return "", nil, fmt.Errorf("multiple working-directory overrides")
@@ -53,7 +77,7 @@ func ResolveLaunchDirectory(agent, cwd string, args []string) (string, []string,
 			continue
 		}
 		result = append(result, arg)
-		if agent == "codex" && codexValueOption(arg) {
+		if (agent == "codex" && codexValueOption(arg)) || vendorValueOption(agent, arg) {
 			i++
 			if i >= len(args) {
 				return "", nil, fmt.Errorf("value missing for %s", arg)
@@ -62,6 +86,28 @@ func ResolveLaunchDirectory(agent, cwd string, args []string) (string, []string,
 		}
 	}
 	return directory, result, nil
+}
+
+func vendorValueOption(agent, value string) bool {
+	if agent != "cursor" && agent != "grok" {
+		return false
+	}
+	switch value {
+	case "--model", "--output-format", "--sandbox":
+		return true
+	}
+	if agent == "cursor" {
+		switch value {
+		case "--api-key", "--auth-token", "-H", "--header", "-e", "--endpoint", "--mode", "--plugin-dir", "--worktree-base":
+			return true
+		}
+	} else {
+		switch value {
+		case "-m", "--effort", "--allow", "--deny", "--rules", "--system-prompt-override", "--tools", "--disallowed-tools", "-s", "--session-id", "--ref":
+			return true
+		}
+	}
+	return false
 }
 
 // Keep option values opaque, even if they resemble a directory flag. This list

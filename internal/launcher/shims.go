@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"encoding/json"
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func InstallShims(directory, executable string, searchPath ...string) error {
 		paths = searchPath[0]
 	}
 	for agent, dispatch := range commands {
-		path := filepath.Join(directory, agent)
+		path := filepath.Join(directory, agents.BinaryName(agent))
 		if info, err := os.Lstat(path); err == nil {
 			if !info.Mode().IsRegular() {
 				return fmt.Errorf("refusing to replace unmanaged shim")

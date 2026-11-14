@@ -88,6 +88,32 @@ func resolveNativeCredential(ctx context.Context, name string, cloud, local []by
 		return nil, false
 	}
 	switch name {
+	case cursorAuthFile:
+		return pick(chooseNativeCredential(ctx, cursorEntry(c), cursorEntry(l)))
+	case grokAuthFile:
+		merged := map[string]any{}
+		for scope, value := range l {
+			merged[scope] = value
+		}
+		for scope, cv := range c {
+			lv, exists := l[scope]
+			if !exists || jsonEqual(cv, lv) {
+				merged[scope] = cv
+				continue
+			}
+			cm, _ := cv.(map[string]any)
+			lm, _ := lv.(map[string]any)
+			switch chooseNativeCredential(ctx, grokEntry(cm), grokEntry(lm)) {
+			case keepCloudCredential:
+				merged[scope] = cv
+			case keepMacCredential:
+				merged[scope] = lv
+			default:
+				return nil, false
+			}
+		}
+		out, err := json.Marshal(merged)
+		return out, err == nil
 	case "claude/.credentials.json":
 		return pick(chooseNativeCredential(ctx, claudeEntry(c), claudeEntry(l)))
 	case "codex/auth.json":

@@ -13,6 +13,15 @@ It never sends an inference request to decide whether the TUI may start.
 | Pi | `PI_CODING_AGENT_DIR` or `~/.pi/agent`; auth.json, model settings and models.json | Isolated PI_CODING_AGENT_DIR |
 | OpenCode | XDG data/config roots; auth.json and provider/model fields | Isolated XDG data/config roots |
 | Kimi Code | `KIMI_CODE_HOME` or `~/.kimi-code`; credentials/kimi-code.json (OAuth), the region file, and from config.toml the default model, thinking settings, services and remote providers with their models (no hooks, no loopback or Magpie providers) | Isolated KIMI_CODE_HOME; launched with `--auto` (Never Ask) |
+| Cursor CLI | Keychain `cursor-access-token`, `cursor-refresh-token`, `cursor-api-key` for `cursor-user`, or `~/.cursor/auth.json` with file storage; selected preferences from `CURSOR_CONFIG_DIR/cli-config.json` | Isolated `CURSOR_CONFIG_DIR`, `CURSOR_DATA_DIR`, and `XDG_CONFIG_HOME`; file credential storage, `cursor-agent --force --trust --sandbox disabled` |
+| Grok Build | `GROK_HOME` or `~/.grok`; `auth.json` (honoring `GROK_AUTH_PATH`), model configuration from `config.toml`, or `XAI_API_KEY` | Isolated `GROK_HOME`; `grok --always-approve`; cloud sign-in uses `login --device-auth` |
+
+Cursor CLI and Grok Build retain native authentication when Magpie is enabled.
+Their model selection stays in the native CLI (`/model` or `--model`). Their
+installers publish only `cursor-agent` and `grok`, never `cursor` or `agent`.
+Configuration migration excludes hooks, plugins, MCP commands, trust grants and
+session history. Conflicting credentials preserve the cloud refresh or defer
+the conflict rather than overwriting an unverified login.
 
 Supported provider environment variables are explicitly allowlisted in
 `internal/setup/native_accounts.go`. The daemon reads these variables and custom

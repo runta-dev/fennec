@@ -89,6 +89,18 @@ func (st NativeCredentialStore) Locations(agents []string) []NativeCredentialLoc
 	var out []NativeCredentialLocation
 	for _, agent := range agents {
 		switch agent {
+		case "cursor":
+			location := NativeCredentialLocation{Name: cursorAuthFile, File: filepath.Join(s.Home, ".cursor/auth.json")}
+			if s.Keychain != nil && s.Env("AGENT_CLI_CREDENTIAL_STORE") != "file" {
+				location.Service, location.Account = "cursor-access-token", "cursor-user"
+			}
+			out = append(out, location)
+		case "grok":
+			path := filepath.Join(s.dir("GROK_HOME", ".grok"), "auth.json")
+			if value := s.Env("GROK_AUTH_PATH"); filepath.IsAbs(value) {
+				path = value
+			}
+			out = append(out, NativeCredentialLocation{Name: grokAuthFile, File: path, Lock: filepath.Join(filepath.Dir(path), "auth.json.lock")})
 		case "claude":
 			dir := s.dir("CLAUDE_CONFIG_DIR", ".claude")
 			location := NativeCredentialLocation{Name: "claude/.credentials.json", File: filepath.Join(dir, ".credentials.json")}
@@ -147,11 +159,17 @@ func (st NativeCredentialStore) WatchPaths(locations []NativeCredentialLocation)
 func (st NativeCredentialStore) Modified(ctx context.Context, location NativeCredentialLocation) string {
 	var stamp strings.Builder
 	if location.Service != "" && st.KeychainModified != nil {
-		modified, err := st.KeychainModified(ctx, location.Service, location.Account)
-		if err != nil {
-			modified = "absent"
+		services := []string{location.Service}
+		if location.Name == cursorAuthFile {
+			services = []string{"cursor-access-token", "cursor-refresh-token", "cursor-api-key"}
 		}
-		stamp.WriteString(modified)
+		for _, service := range services {
+			modified, err := st.KeychainModified(ctx, service, location.Account)
+			if err != nil {
+				modified = "absent"
+			}
+			fmt.Fprintf(&stamp, "%s:%s|", service, modified)
+		}
 	}
 	if location.File != "" {
 		signature := statSignature(location.File)
@@ -188,6 +206,10 @@ func (st NativeCredentialStore) Read(ctx context.Context, name string) ([]byte, 
 		return nil, NativeCredentialLocation{}, os.ErrNotExist
 	}
 	location := locations[0]
+	if name == cursorAuthFile && location.Service != "" {
+		data, err := st.Source.cursorCredentials(ctx)
+		return data, location, err
+	}
 	if location.Service != "" && st.Source.Keychain != nil {
 		data, err := st.Source.Keychain(ctx, location.Service, location.Account)
 		if err == nil && len(data) > 0 {
@@ -212,6 +234,34 @@ func (st NativeCredentialStore) Read(ctx context.Context, name string) ([]byte, 
 func (st NativeCredentialStore) Write(ctx context.Context, location NativeCredentialLocation, expected, data []byte) error {
 	if location.ReadOnly {
 		return fmt.Errorf("native credential store is read-only")
+	}
+	if location.Name == cursorAuthFile && location.Service != "" {
+		if st.KeychainWrite == nil {
+			return ErrNativeKeychainDenied
+		}
+		current, err := st.Source.cursorCredentials(ctx)
+		if err != nil || !jsonEqual(jsonObject(current), jsonObject(expected)) {
+			return ErrNativeCredentialChanged
+		}
+		before, after := jsonObject(expected), jsonObject(data)
+		for _, field := range []struct{ name, service string }{{"accessToken", "cursor-access-token"}, {"refreshToken", "cursor-refresh-token"}, {"apiKey", "cursor-api-key"}} {
+			old, next := stringValue(before[field.name]), stringValue(after[field.name])
+			if old == next {
+				continue
+			}
+			// A refresh never removes a key; do not turn synchronization into logout.
+			if next == "" {
+				return ErrNativeCredentialChanged
+			}
+			actual, err := st.Source.Keychain(ctx, field.service, "cursor-user")
+			if err != nil && !os.IsNotExist(err) || string(actual) != old {
+				return ErrNativeCredentialChanged
+			}
+			if err := st.KeychainWrite(ctx, field.service, "cursor-user", []byte(next)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if location.Service != "" {
 		if st.Source.Keychain == nil || st.KeychainWrite == nil {

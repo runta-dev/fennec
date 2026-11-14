@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	agents "fennec/internal/agentcmd"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
@@ -34,7 +35,7 @@ func (s *daemonServices) nativeLogin(ctx context.Context, raw json.RawMessage, o
 	if channel == nil || current != epoch {
 		return nil, &control.Fault{Code: "not_ready", Message: "Cloud computer is connecting", Retryable: true}
 	}
-	if operation != "cancel" && newDesktopSettings(s.home).value.Magpie {
+	if operation != "cancel" && newDesktopSettings(s.home).value.Magpie && !agents.NativeOnly(plan.Agent) {
 		return nil, &control.Fault{Code: "mode_changed", Message: "Switch off Magpie to connect a native account"}
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -152,7 +153,13 @@ func (s *daemonServices) acceptNativeAccounts(ctx context.Context, runtime strin
 		return err
 	}
 	if newDesktopSettings(s.home).value.Magpie {
-		return nil
+		hasNative := false
+		for id := range accounts {
+			hasNative = hasNative || agents.NativeOnly(id)
+		}
+		if !hasNative {
+			return nil
+		}
 	}
 	_, err := controller.Reconcile(ctx)
 	return err

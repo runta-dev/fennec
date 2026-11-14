@@ -98,6 +98,8 @@ func nativeAccountView(agent string, read func(string) []byte) NativeAccountView
 	view := NativeAccountView{Agent: agent, Status: "signed_out", Accounts: []NativeAccountIdentity{}}
 	env := jsonObject(read("env.json"))
 	switch agent {
+	case "cursor", "grok":
+		view.Accounts = vendorAccounts(agent, read)
 	case "codex":
 		auth := jsonObject(read("codex/auth.json"))
 		var config map[string]any

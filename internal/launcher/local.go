@@ -3,6 +3,7 @@ package launcher
 
 import (
 	"errors"
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"syscall"
 )
 
-var Supported = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}
+var Supported = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}
 
 // ResolveOriginal excludes the shim directory and every alias of the running
 // executable, including symlinks and hard links. Relative PATH entries are
@@ -32,7 +33,7 @@ func ResolveOriginal(agent, path, shimDir, self string) (string, error) {
 		if resolved == shim || filepath.Clean(directory) == filepath.Clean(shimDir) {
 			continue
 		}
-		candidate := filepath.Join(directory, agent)
+		candidate := filepath.Join(directory, agents.BinaryName(agent))
 		info, err := os.Stat(candidate)
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
 			continue

@@ -101,6 +101,7 @@ func TestAlreadyInstalledVersionSkipsNetwork(t *testing.T) {
 	tools := filepath.Join(home, "tools")
 	os.MkdirAll(tools, 0700)
 	// npm exists, but any invocation fails: a correct no-op must not call it.
+	linkInstallTestFlock(t, tools)
 	os.WriteFile(filepath.Join(tools, "npm"), []byte("#!/bin/sh\nexit 99\n"), 0700)
 	script, err := AgentInstallScript(Agent{ID: "codex", Version: "0.166.0"})
 	if err != nil {
@@ -128,6 +129,7 @@ func TestUpgradePreservesActiveVersionUntilVerified(t *testing.T) {
 			os.WriteFile(active, []byte("#!/bin/sh\necho 'codex-cli 0.165.0'\n"), 0700)
 			tools := filepath.Join(home, "tools")
 			os.MkdirAll(tools, 0700)
+			linkInstallTestFlock(t, tools)
 			npm := `#!/bin/sh
 while [ "$1" != --prefix ]; do shift; done
 shift
@@ -174,6 +176,7 @@ func TestConcurrentSameVersionInstallsOnce(t *testing.T) {
 	home := t.TempDir()
 	tools := filepath.Join(home, "tools")
 	os.MkdirAll(tools, 0700)
+	linkInstallTestFlock(t, tools)
 	npm := `#!/bin/sh
 while [ "$1" != --prefix ]; do shift; done
 shift
@@ -211,6 +214,19 @@ chmod +x "$prefix/bin/codex"
 	count, err := os.ReadFile(filepath.Join(home, "install-count"))
 	if err != nil || string(count) != "install\n" {
 		t.Fatalf("duplicate installation: %q %v", count, err)
+	}
+}
+
+// The child PATH is deliberately minimal. macOS installs flock outside /usr/bin;
+// retain the real lock implementation so concurrent installer tests stay real.
+func linkInstallTestFlock(t *testing.T, directory string) {
+	t.Helper()
+	path, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("cloud installer test requires flock")
+	}
+	if err := os.Symlink(path, filepath.Join(directory, "flock")); err != nil {
+		t.Fatal(err)
 	}
 }
 

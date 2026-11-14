@@ -2,6 +2,7 @@ package setup
 
 import (
 	"encoding/json"
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,11 +30,11 @@ func NativeAgentMode(home string) bool {
 	return e != nil || json.Unmarshal(b, &mode) != nil || mode.Native
 }
 func ExecNativeAgent(home, agent string, args []string) error {
-	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true}[agent] {
+	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[agent] {
 		return fmt.Errorf("unsupported native agent")
 	}
 	ensureCloudSearchTools(home)
-	binary, err := exec.LookPath(agent)
+	binary, err := exec.LookPath(agents.BinaryName(agent))
 	if err != nil {
 		return fmt.Errorf("native agent binary missing")
 	}
@@ -64,7 +65,7 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 	env := []string{}
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if !allowed[key] && !nativeInheritedModelOverride(key) && key != "CODEX_HOME" && key != "CLAUDE_CONFIG_DIR" && key != "PI_CODING_AGENT_DIR" && key != kimiHomeEnv && key != "XDG_CONFIG_HOME" && key != "XDG_DATA_HOME" {
+		if !allowed[key] && !nativeInheritedModelOverride(key) && key != "CODEX_HOME" && key != "CLAUDE_CONFIG_DIR" && key != "PI_CODING_AGENT_DIR" && key != kimiHomeEnv && key != "AGENT_CLI_CREDENTIAL_STORE" && !strings.HasPrefix(key, "CURSOR_") && !strings.HasPrefix(key, "GROK_") && key != "XDG_CONFIG_HOME" && key != "XDG_DATA_HOME" {
 			env = append(env, entry)
 		}
 	}
@@ -79,6 +80,10 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 		env = append(env, key+"="+value)
 	}
 	switch agent {
+	case "cursor":
+		env = append(env, "CURSOR_CONFIG_DIR="+filepath.Join(root, "cursor"), "XDG_CONFIG_HOME="+root, "AGENT_CLI_CREDENTIAL_STORE=file", "CURSOR_DATA_DIR="+filepath.Join(root, "cursor"))
+	case "grok":
+		env = append(env, "GROK_HOME="+filepath.Join(root, "grok"))
 	case "codex":
 		env = append(env, "CODEX_HOME="+filepath.Join(root, "codex"))
 	case "claude":

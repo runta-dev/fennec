@@ -91,13 +91,13 @@ func TestGatewayReconfigurationReadsBackCatalogAfterMutation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"codex", "magpie"} {
+	for _, name := range []string{"codex", "magpie", "cursor-agent", "grok"} {
 		if err = os.Symlink(binary, filepath.Join(bin, name)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("PATH", bin)
-	request := RuntimeConfiguration{Accounts: ModelAccountsRequest{Version: 1, Agents: []string{"codex"}}, Routes: []AgentRoute{{Agent: "codex", Model: "provider/new"}}}
+	request := RuntimeConfiguration{Accounts: ModelAccountsRequest{Version: 1, Agents: []string{"codex", "cursor", "grok"}}, Routes: []AgentRoute{{Agent: "codex", Model: "provider/new"}}}
 	reads, writes := 0, 0
 	ops := runtimeConfigurationOps{
 		models: func(context.Context) ([]string, error) {
@@ -112,15 +112,21 @@ func TestGatewayReconfigurationReadsBackCatalogAfterMutation(t *testing.T) {
 			if !r.DeferCatalog {
 				t.Fatal("duplicate catalog fetch")
 			}
-			return ModelAccountsResult{}, nil
+			return ModelAccountsResult{NativeReady: map[string]bool{"grok": true}}, nil
 		},
-		routes: func(context.Context, string, []AgentRoute) ([]RouteResult, error) {
+		routes: func(_ context.Context, _ string, routes []AgentRoute) ([]RouteResult, error) {
+			if len(routes) != 1 || routes[0].Agent != "codex" {
+				t.Fatal("native agents were routed through the gateway", routes)
+			}
 			return []RouteResult{{Agent: "codex", Model: "provider/new", Status: "configured"}}, nil
 		},
 	}
 	result, err := reconfigureRuntimeWith(context.Background(), home, request, ops)
 	if err != nil || result.NeedsSetup || writes != 1 || reads != 2 || len(result.Models) != 1 || result.Models[0] != "provider/new" {
 		t.Fatal(result, reads, writes, err)
+	}
+	if len(result.Routes) != 3 || result.Routes[1].Agent != "cursor" || result.Routes[1].Status != "credentials_required" || result.Routes[2].Agent != "grok" || result.Routes[2].Status != "configured" {
+		t.Fatal("native account readiness was lost in mixed mode", result.Routes)
 	}
 	reads, writes = 0, 0
 	ops.models = func(context.Context) ([]string, error) { return nil, context.DeadlineExceeded }

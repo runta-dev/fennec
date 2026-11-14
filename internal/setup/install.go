@@ -35,6 +35,9 @@ func AgentInstallScript(agent Agent) (string, error) {
 // EnsureAgentScript reuses any existing cloud binary. Only a missing binary
 // is installed from the publisher's current latest stable release.
 func EnsureAgentScript(agent Agent) (string, error) {
+	if (agent.ID == "cursor" || agent.ID == "grok") && agent.Version == "latest" {
+		return ensureVendorAgentScript(agent.ID), nil
+	}
 	pkg, ok := map[string]string{"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "pi": "@earendil-works/pi-coding-agent", "opencode": "@opencode/cli", "kimi": "@moonshot-ai/kimi-code"}[agent.ID]
 	if !ok || agent.Version != "latest" {
 		return "", fmt.Errorf("unsupported agent or install-if-missing request")

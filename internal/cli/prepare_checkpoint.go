@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/agentcmd"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -149,10 +150,10 @@ herdr-core server status >/dev/null 2>&1
 		script += "command -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
 	}
 	for _, id := range agents {
-		if !strings.Contains("|claude|codex|pi|opencode|kimi|", "|"+id+"|") || id == "" {
+		if !strings.Contains("|claude|codex|pi|opencode|kimi|cursor|grok|", "|"+id+"|") || id == "" {
 			return "exit 1"
 		}
-		script += "command -v " + id + " >/dev/null\n"
+		script += "command -v " + agentcmd.BinaryName(id) + " >/dev/null\n"
 	}
 	return script
 }

@@ -34,6 +34,7 @@ import (
 // nativeCredentialFiles maps each credential file that carries a refresh grant
 // to its agent.
 var nativeCredentialFiles = map[string]string{
+	cursorAuthFile: "cursor", grokAuthFile: "grok",
 	"claude/.credentials.json":         "claude",
 	"codex/auth.json":                  "codex",
 	"pi/auth.json":                     "pi",
@@ -332,6 +333,23 @@ func ResolveMacCredential(ctx context.Context, name string, mac, cloud []byte, m
 	}
 	changed := false
 	switch name {
+	case cursorAuthFile:
+		if decide(cursorEntry(whole(c)), cursorEntry(whole(m))) {
+			replace("accessToken", "refreshToken", "apiKey")
+			changed = true
+		}
+	case grokAuthFile:
+		for scope, cv := range c {
+			mv, ok := m[scope]
+			if !ok || bytes.Equal(cv, mv) {
+				continue
+			}
+			cm, mm := jsonObject(cv), jsonObject(mv)
+			if stringValue(mm["refresh_token"]) != "" && decide(grokEntry(cm), grokEntry(mm)) {
+				out[scope] = cv
+				changed = true
+			}
+		}
 	case "claude/.credentials.json":
 		if decide(claudeEntry(whole(c)), claudeEntry(whole(m))) {
 			replace("claudeAiOauth")

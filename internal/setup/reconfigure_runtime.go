@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/agentcmd"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,7 +37,9 @@ func (r RuntimeConfiguration) Validate() error {
 	if !r.Accounts.Native {
 		wanted := map[string]bool{}
 		for _, id := range r.Accounts.Agents {
-			wanted[id] = true
+			if !agentcmd.NativeOnly(id) {
+				wanted[id] = true
+			}
 		}
 		for _, route := range r.Routes {
 			if !wanted[route.Agent] {
@@ -174,6 +177,19 @@ func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeCon
 		mark("routes")
 		if err != nil {
 			return result, fmt.Errorf("configuration readback failed: %w", err)
+		}
+		for _, id := range request.Accounts.Agents {
+			if !agentcmd.NativeOnly(id) {
+				continue
+			}
+			status := "credentials_required"
+			if problem := request.Accounts.NativeProblems[id]; problem != "" {
+				status = problem
+			}
+			if accounts.NativeReady[id] {
+				status = "configured"
+			}
+			result.Routes = append(result.Routes, RouteResult{Agent: id, Status: status})
 		}
 		// Return the catalog after credentials/routes have been applied, not the
 		// preflight snapshot from the previous configuration.

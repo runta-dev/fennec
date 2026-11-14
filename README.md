@@ -38,7 +38,9 @@ Cloud sessions can keep working around the clock while their cloud computer is r
 
 Cloud execution needs a Runta account and model access configured for the agent. Cloud compute and model-provider charges are separate.
 
-Cloud controls are currently available for **Claude Code, Codex, Pi, and Kimi Code**. Other discovered agents are shown as **Coming soon**. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
+Cloud controls are currently available for **Claude Code, Codex, Pi, Kimi Code, Cursor CLI, and Grok Build**. Other discovered agents are shown as **Coming soon**. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
+
+Cursor CLI uses `cursor-agent` and Grok Build uses `grok`; Fennec leaves the Cursor editor's `cursor` command and the shared `agent` alias alone. Both use their own accounts, including when Magpie is enabled for other agents. Sign in from the agent card or with `fen agent login cursor` / `fen agent login grok`, and choose models inside the CLI with `/model` or `--model`.
 
 Magpie is optional and **off by default**. Sign in to your agent locally; Fennec copies its supported native credentials into an isolated configuration directory in your cloud sandbox. Enable **Settings → Magpie** only if you want to select cloud models through Magpie. The same setting is available with `fen settings magpie on|off`.
 

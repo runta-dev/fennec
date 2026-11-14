@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"fennec/internal/agentcmd"
 	"io"
 	"os"
 	"path/filepath"
@@ -46,11 +47,17 @@ func EntryPath(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if id == "grok" {
+		path := filepath.Join(home, ".grok/bin/grok")
+		if originalExecutable(home, path) {
+			return path, nil
+		}
+	}
 	for _, dir := range searchPaths(home) {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		candidate := filepath.Join(dir, id)
+		candidate := filepath.Join(dir, agentcmd.BinaryName(id))
 		if originalExecutable(home, candidate) {
 			return candidate, nil
 		}
@@ -67,8 +74,8 @@ func ManagedEntryPaths(home string) []string {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		for _, id := range []string{"claude", "codex", "pi", "opencode", "kimi"} {
-			path := filepath.Join(dir, id)
+		for _, id := range []string{"claude", "codex", "pi", "opencode", "kimi", "cursor", "grok"} {
+			path := filepath.Join(dir, agentcmd.BinaryName(id))
 			if seen[path] {
 				continue
 			}

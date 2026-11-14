@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fennec/internal/agentcmd"
 	"fennec/internal/launcher"
 	"fmt"
 	"os"
@@ -23,6 +24,9 @@ type VersionInfo struct {
 var semver = regexp.MustCompile(`(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\s|$)`)
 
 func parseVersion(output string) (string, error) {
+	if version := strings.TrimSpace(output); regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}-[a-zA-Z0-9]+$`).MatchString(version) {
+		return version, nil
+	}
 	match := semver.FindStringSubmatch(output)
 	if len(match) != 2 {
 		return "", fmt.Errorf("unrecognized version output")
@@ -61,7 +65,7 @@ func DetectVersions(ctx context.Context) []VersionInfo {
 			if dir == "" || !filepath.IsAbs(dir) {
 				continue
 			}
-			candidate := filepath.Join(dir, id)
+			candidate := filepath.Join(dir, agentcmd.BinaryName(id))
 			if originalExecutable(home, candidate) {
 				path, err = launcher.OriginalEntry(candidate)
 				if err != nil {

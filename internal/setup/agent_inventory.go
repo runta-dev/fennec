@@ -1,6 +1,7 @@
 package setup
 
 import (
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,7 +12,7 @@ func validateAgentInventory(ids []string) error {
 	seen := map[string]bool{}
 	for _, id := range ids {
 		switch id {
-		case "claude", "codex", "pi", "opencode", "kimi":
+		case "claude", "codex", "pi", "opencode", "kimi", "cursor", "grok":
 		default:
 			return fmt.Errorf("unsupported agent inventory")
 		}
@@ -35,6 +36,7 @@ func availableAgentInventory(home string, ids []string) map[string]bool {
 // back to the existing installer/repair path. Other executable installations are
 // reusable without probing or comparing their versions.
 func agentBinaryAvailable(home, id string, lookup func(string) (string, error)) bool {
+	id = agents.BinaryName(id)
 	managed := filepath.Join(home, ".local/fennec/agents/bin", id)
 	if info, err := os.Stat(managed); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
 		alias, err := os.Stat(filepath.Join(home, ".local/bin", id))

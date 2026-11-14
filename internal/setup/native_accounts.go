@@ -28,6 +28,7 @@ import (
 // Native files are private to Fennec's sandbox agent configuration. No sessions,
 // shell hooks, MCP commands, or arbitrary local directories are copied.
 var nativeFiles = map[string]bool{
+	cursorAuthFile: true, cursorConfigFile: true, grokAuthFile: true, grokConfigFile: true,
 	"codex/auth.json": true, "codex/config.toml": true,
 	"claude/.credentials.json": true, "claude/settings.json": true, "claude/.claude.json": true,
 	"pi/auth.json": true, "pi/settings.json": true, "pi/models.json": true,
@@ -35,7 +36,7 @@ var nativeFiles = map[string]bool{
 	kimiConfigFile: true, kimiCredentialFile: true, kimiRegionFile: true,
 	"env.json": true,
 }
-var nativeEnvKeys = []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"}
+var nativeEnvKeys = []string{"CURSOR_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"}
 
 type NativeSource struct {
 	Gateway  bool
@@ -92,6 +93,9 @@ func readNativeKeychain(ctx context.Context, service, account string) ([]byte, e
 		return nil, fmt.Errorf("allow access to the agent's macOS Keychain credential to continue")
 	}
 	data = bytes.TrimSpace(data)
+	if strings.HasPrefix(service, "cursor-") {
+		return data, nil
+	}
 	if !json.Valid(data) {
 		decoded, e := hex.DecodeString(string(data))
 		if e != nil || !json.Valid(decoded) {
@@ -414,6 +418,39 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 					return r, e
 				}
 			}
+		case "cursor":
+			data, err := s.cursorCredentials(ctx)
+			if err != nil {
+				return r, err
+			}
+			if len(data) > 0 {
+				if err := add(cursorAuthFile, data); err != nil {
+					return r, err
+				}
+			}
+			if err := read(cursorConfigFile, filepath.Join(s.cursorConfigDirectory(), "cli-config.json"), []string{"version", "model", "editor", "display", "notifications", "hints", "maxMode", "hasChangedDefaultModel"}); err != nil {
+				return r, err
+			}
+		case "grok":
+			dir := s.dir("GROK_HOME", ".grok")
+			authPath := filepath.Join(dir, "auth.json")
+			if value := s.Env("GROK_AUTH_PATH"); filepath.IsAbs(value) {
+				authPath = value
+			}
+			if err := read(grokAuthFile, authPath, nil); err != nil {
+				return r, err
+			}
+			if data, err := readNativeFile(filepath.Join(dir, "config.toml")); err == nil {
+				data, err = grokCloudConfig(data)
+				if err != nil {
+					return r, err
+				}
+				if err := add(grokConfigFile, data); err != nil {
+					return r, err
+				}
+			} else if !os.IsNotExist(err) {
+				return r, err
+			}
 		case "opencode":
 			if e := read("opencode/data/opencode/auth.json", filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json"), nil); e != nil {
 				return r, e
@@ -638,6 +675,9 @@ func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, 
 	return nil, false, nil
 }
 func nativeHasCredentials(root, agent string) bool {
+	if agent == "cursor" || agent == "grok" {
+		return len(vendorAccounts(agent, func(name string) []byte { data, _ := readNativeFile(filepath.Join(root, name)); return data })) > 0
+	}
 	env := map[string]string{}
 	b, _ := os.ReadFile(filepath.Join(root, "env.json"))
 	_ = json.Unmarshal(b, &env)
@@ -798,6 +838,10 @@ func validateNativePortability(value any) error {
 
 func nativeEnvForAgent(agent, key string) bool {
 	switch agent {
+	case "cursor":
+		return key == "CURSOR_API_KEY"
+	case "grok":
+		return key == "XAI_API_KEY"
 	case "codex":
 		return strings.HasPrefix(key, "OPENAI_") || strings.HasPrefix(key, "AZURE_OPENAI_")
 	case "claude":
