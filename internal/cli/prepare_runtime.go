@@ -48,10 +48,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	versions := []setup.Agent{}
 	var ids []string
 	for _, id := range agent.CloudAgentIDs() {
-		if id == "opencode" {
-			continue
-		}
-		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && id != "cursor" && id != "grok" {
+		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && id != "cursor" && id != "grok" && id != "opencode" {
 			continue
 		}
 		ids = append(ids, id)

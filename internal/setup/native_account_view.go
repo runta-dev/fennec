@@ -98,6 +98,25 @@ func nativeAccountView(agent string, read func(string) []byte) NativeAccountView
 	view := NativeAccountView{Agent: agent, Status: "signed_out", Accounts: []NativeAccountIdentity{}}
 	env := jsonObject(read("env.json"))
 	switch agent {
+	case "opencode":
+		auth := jsonObject(read("opencode/data/opencode/auth.json"))
+		providers := make([]string, 0, len(auth))
+		for provider := range auth {
+			providers = append(providers, provider)
+		}
+		sort.Strings(providers)
+		for _, provider := range providers {
+			entry, _ := auth[provider].(map[string]any)
+			kind := stringValue(entry["type"])
+			if kind == "api" && stringValue(entry["key"]) != "" {
+				view.Accounts = append(view.Accounts, NativeAccountIdentity{Provider: provider, AuthType: "api_key"})
+			} else if kind == "oauth" && stringValue(entry["access"]) != "" {
+				view.Accounts = append(view.Accounts, NativeAccountIdentity{Provider: provider, AuthType: "oauth"})
+			}
+			if len(view.Accounts) == 32 {
+				break
+			}
+		}
 	case "cursor", "grok":
 		view.Accounts = vendorAccounts(agent, read)
 	case "codex":

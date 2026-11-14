@@ -66,9 +66,11 @@ Fennec 将编程代理的工作循环放到云电脑上运行，让它按你的�
 
 云端执行需要 Runta 账户，以及为代理配置好的模型访问权限。**云计算费用与模型服务商费用分开计算。**
 
-目前支持云端控制的代理包括 **Claude Code、Codex、Pi、Kimi Code、Cursor CLI 和 Grok Build**。其他已发现的代理会显示为 **Coming soon（即将支持）**。Fennec 会同步受支持的本地模型设置和凭据，无需本地与云端 CLI 使用完全相同的版本。
+目前支持云端控制的代理包括 **Claude Code、Codex、Pi、Kimi Code、Cursor CLI、Grok Build 和 OpenCode**。其他已发现的代理会显示为 **Coming soon（即将支持）**。Fennec 会同步受支持的本地模型设置和凭据，无需本地与云端 CLI 使用完全相同的版本。
 
 Cursor CLI 使用 `cursor-agent`，Grok Build 使用 `grok`；Fennec 不接管 Cursor 编辑器的 `cursor` 命令或共用的 `agent` 别名。开启 Magpie 时，Grok Build 通过 Magpie 接管，并可在 Fennec 中选择模型；关闭时使用原生账号。Magpie 尚不支持接管 Cursor CLI，因此 Cursor 保留原生账号：可以从代理卡片或通过 `fen agent login cursor` 登录，并在 Cursor 内通过 `/model` 或 `--model` 选择模型。
+
+OpenCode 的两个 CLI 版本均支持云端启动、Magpie 模型选择和持久终端会话。版本 2 为每个 Fennec 会话启动独立服务。原生凭据迁移目前支持旧版 `auth.json` 格式，不同步仅存于 OpenCode 2 数据库中的凭据；OpenCode 2 账号请使用 Magpie。尚未支持的 Coming soon 项统一排在列表末尾。
 
 Magpie 是可选功能，**默认关闭**。先在本地登录代理，Fennec 会把受支持的原生凭据同步到云端沙箱中的隔离配置目录。只有需要通过 Magpie 选择云端模型时，才需启用 **Settings → Magpie**；也可以使用 `fen settings magpie on|off` 调整同一设置。
 

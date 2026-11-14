@@ -119,7 +119,9 @@ func PanelCatalog(discovered []Agent) []Agent {
 }
 
 // These cloud agents are available even when this Mac has no CLI installation.
-func CloudAgentIDs() []string { return []string{"claude", "codex", "pi", "kimi", "cursor", "grok"} }
+func CloudAgentIDs() []string {
+	return []string{"claude", "codex", "pi", "kimi", "cursor", "grok", "opencode"}
+}
 
 // CodexDesktopID is ChatGPT.app's Codex (bundle com.openai.codex). Its codex
 // app-server can run on the cloud computer through Fennec's loopback bridge.
@@ -141,7 +143,12 @@ func panelList(discovered []Agent, appRoots []string) []Agent {
 		desktop.Installed, desktop.Evidence = true, "application"
 	}
 	result := append([]Agent{desktop}, PanelCatalog(discovered)...)
-	sort.SliceStable(result, func(i, j int) bool { return rank(result[i].ID) < rank(result[j].ID) })
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Cloud != result[j].Cloud {
+			return result[i].Cloud
+		}
+		return rank(result[i].ID) < rank(result[j].ID)
+	})
 	return result
 }
 

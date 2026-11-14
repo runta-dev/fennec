@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,20 @@ func ResolveLaunchDirectory(agent, cwd string, args []string) (string, []string,
 	result := []string{}
 	directory := cwd
 	override := false
+	if agent == "opencode" {
+		if i, subcommand := agents.OpenCodeRootArgument(args); i >= 0 && !subcommand {
+			value := args[i]
+			if value == "" || strings.ContainsAny(value, "\x00\r\n") {
+				return "", nil, fmt.Errorf("invalid working directory")
+			}
+			directory = filepath.Join(cwd, value)
+			if filepath.IsAbs(value) {
+				directory = filepath.Clean(value)
+			}
+			args = append(append([]string{}, args[:i]...), args[i+1:]...)
+		}
+		return directory, args, nil
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {

@@ -177,6 +177,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		return LocalTerminal{}, err
 	}
 	command := []string{binary}
+	agentArguments := request.Arguments
 	switch request.Agent {
 	case "cursor":
 		command = append(command, "--force", "--trust", "--sandbox", "disabled")
@@ -199,15 +200,15 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		if err != nil {
 			return LocalTerminal{}, fmt.Errorf("cannot determine OpenCode permission mode")
 		}
-		if regexp.MustCompile(`\b2\.`).Match(version) {
-			command = append(command, "--auto")
-		} else if regexp.MustCompile(`\b1\.`).Match(version) {
+		if regexp.MustCompile(`(?:^|\s)v?2\.`).Match(version) {
+			agentArguments = agents.OpenCodeV2Arguments(agentArguments)
+		} else if regexp.MustCompile(`(?:^|\s)v?1\.`).Match(version) {
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		} else {
 			return LocalTerminal{}, fmt.Errorf("unsupported OpenCode permission mode")
 		}
 	}
-	command = append(command, request.Arguments...)
+	command = append(command, agentArguments...)
 	if len(request.Hooks) > 0 {
 		if err := hookbridge.SaveBindings(runtime.Home, request.ID, request.Hooks); err != nil {
 			return LocalTerminal{}, err
