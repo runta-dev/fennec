@@ -97,13 +97,35 @@ type Listing struct {
 	Shown map[int]map[uint32]Rect
 }
 
-// ListApps keeps the normal app windows (layer 0, visible) of a
-// window-server list, dropping every window skip names, such as the bundled
-// driver's overlay. Skipped processes are never read.
+// DockLayer is the Dock's window server layer (kCGDockWindowLevel). App
+// windows, floating panels and modal panels sit below it; system chrome
+// (the Dock, the menu bar, Notification Center) sits on it and above.
+const DockLayer = 20
+
+// SpotlightOwner is the process that owns the Spotlight search window. It
+// floats above the Dock's layer, yet it is a window the user asks agents to
+// type into and move, so it is listed like an app's.
+const SpotlightOwner = "Spotlight"
+
+// AppLayer reports whether a visible window on layer belongs to the windows
+// an agent sees and drives: normal windows and the floating and modal panels
+// below the Dock's layer (an alert or a dialog another process raised, such
+// as osascript's display dialog), and the Spotlight window below the
+// overlays.
+func AppLayer(w ServerWindow) bool {
+	if w.Layer >= 0 && w.Layer < DockLayer {
+		return true
+	}
+	return w.Owner == SpotlightOwner && w.Layer >= 0 && w.Layer < OverlayLayer
+}
+
+// ListApps keeps the app windows (AppLayer, visible) of a window-server
+// list, dropping every window skip names, such as the bundled driver's
+// overlay. Skipped processes are never read.
 func ListApps(server []ServerWindow, skip func(ServerWindow) bool) Listing {
 	l := Listing{Names: map[int]string{}, Rank: map[uint32]int{}, Shown: map[int]map[uint32]Rect{}}
 	for i, w := range server {
-		if w.Layer != 0 || w.Alpha <= 0 || (skip != nil && skip(w)) {
+		if !AppLayer(w) || w.Alpha <= 0 || (skip != nil && skip(w)) {
 			continue
 		}
 		l.Rank[w.ID] = i

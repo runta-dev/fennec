@@ -51,14 +51,14 @@ const MagpieSetupScript = `set -eu
 base="$HOME/.local/fennec"
 mkdir -p "$base" "$HOME/.local/bin"
 case "$(uname -m)" in
- x86_64) arch=amd64; sum=0895e20d8187bbcc70e12ea25a6975ed6b9ffd6fd2d515e8786e421100171f38 ;;
- aarch64|arm64) arch=arm64; sum=7d4a30c8846992226d7a8b241a8b5f2186f42a8d4dd79380f6420c31424d06f0 ;;
+ x86_64) arch=amd64; sum=d05f9e43aeadbdc0572e689cca2b102522fd2f4d3bd52208b94a6f6d5c80b7ac ;;
+ aarch64|arm64) arch=arm64; sum=2b1f28bc6e4a928cba135707fd0d2a8405287eb05ef8a6db4e62ab9bec872582 ;;
  *) exit 69 ;;
 esac
 if [ -f "$HOME/.local/bin/magpie" ] && printf '%s  %s\n' "$sum" "$HOME/.local/bin/magpie" | sha256sum -c - >/dev/null 2>&1; then exit 0; fi
 work=$(mktemp -d "$base/magpie-download.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-curl --fail --location --retry 2 --max-time 180 "https://github.com/yetone/magpie-releases/releases/download/v0.1.3142/magpie-cli-linux-$arch" -o "$work/magpie"
+curl --fail --location --retry 2 --max-time 180 "https://github.com/yetone/magpie-releases/releases/download/v0.1.4177/magpie-cli-linux-$arch" -o "$work/magpie"
 printf '%s  %s\n' "$sum" "$work/magpie" | sha256sum -c -
 chmod 755 "$work/magpie"
 mv "$work/magpie" "$HOME/.local/bin/magpie"
@@ -96,6 +96,7 @@ while :; do
 done
 SUPERVISOR
 chmod 700 "$base/magpie-supervisor.sh"
+"$base/bin/fennec-terminal" refresh-magpie
 pidfile="$HOME/.config/fennec/magpie-supervisor.pid"
 alive=false
 if [ -f "$pidfile" ]; then

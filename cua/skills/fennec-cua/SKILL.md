@@ -77,7 +77,7 @@ await app.paste("long text");                     // via the pasteboard, which i
 nodeRepl.write("note");                           // add text to the output
 ```
 
-Exact text: `typeText` goes through macOS text input, so autocorrect can change it (`"cua"` became `"cut"` in TextEdit). Use `setValue(id, text)` or `paste(text)` for text that must be exact, and check the value in the next state. A pop-up that refuses `setValue`: `performSecondaryAction(id, "Show Menu")`, read the state, then `performSecondaryAction(<item id>, "Pick")`.
+Exact text: `typeText` goes through macOS text input, so autocorrect can change it (`"cua"` became `"cut"` in TextEdit). Use `setValue(id, text)` or `paste(text)` for text that must be exact, and check the value in the next state. Rich-text editors are the exception: `setValue` and `paste` skip their own formatting, so in Notes, TextEdit, Mail or Pages the first line of a new note does not become its title. There, type with `typeText` and `pressKey("Return")` between lines, then check the state. A pop-up that refuses `setValue`: `performSecondaryAction(id, "Show Menu")`, read the state, then `performSecondaryAction(<item id>, "Pick")`.
 
 Observation calls print their own result; do not print it again. Pass `{ emit: false }` to keep one quiet. A bare last expression is not echoed: use `nodeRepl.write(...)` or `console.log(...)`. Prefer element ids, then `setValue`, and use `[x, y]` points only for content the tree does not show (canvas, images). Full reference: [references/api.md](references/api.md).
 
@@ -85,7 +85,8 @@ Observation calls print their own result; do not print it again. Pass `{ emit: f
 
 - A sheet on the window (a save or open panel, an alert sheet) shows inside the window's state as `sheet` with its controls. Drive it with the same binding: `setValue` on the name field, `click(<Save>)`, `pressKey("Escape")` to cancel. The diff after an action is reliable: "no change" means the app shows no change.
 - A separate dialog window of the app becomes the front window, and `getAXState()` prints it with its own header.
-- Another app in front (a macOS permission prompt, for example) refuses input with `window "X" is not frontmost (the front window is "Y" of Z); nothing was sent`. Ask the user to deal with that window, then read the state again.
+- Another app in front refuses input with `window "X" is not frontmost (the front window is "Y" of Z); nothing was sent`. A macOS permission prompt is the user's to answer: ask them, then read the state again.
+- A dialog another process raised (a script's alert, a "click here" offer, a prompt to change a setting) can appear at any moment. `cua.getState()` lists the processes that show a window but are not installed apps first (`osascript`, for example), and Spotlight's search window as `Spotlight`; read one with `cua.getApp("osascript")`. Unless following it is part of the user's task, close it with its Cancel, Not Now, Later, Dismiss or Close button and go on.
 - Apps keep their own defaults. TextEdit, for example, opens new documents as rich text: `pressKey("super+shift+t")` makes one plain text before you save a `.txt` file.
 
 ## 5. Web pages: the bundled Chromium

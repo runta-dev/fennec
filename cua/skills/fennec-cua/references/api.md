@@ -44,7 +44,7 @@ type AppInfo = { displayName?: string; id: string; isRunning?: boolean; lastUsed
 | `drag(from, to)` | press at `from`, move, release at `to` (points) |
 | `scroll(target, direction, distance?)` | element id or point; `distance` in pages (default 1) or `{ pixels: N }` |
 | `selectText(id, text, opts?)` | select `text` in an editable element; `prefix`/`suffix` pick the occurrence; `selectionType` places the caret before/after instead |
-| `setValue(id, value)` | set through accessibility: text fields, sliders, steppers, pop-ups, check boxes. The way to enter exact text: `typeText` is subject to macOS autocorrect in text views (`"cua"` can become `"cut"`). When a pop-up refuses it, use `performSecondaryAction(id, "Show Menu")`, read the state, then `"Pick"` on the item |
+| `setValue(id, value)` | set through accessibility: text fields, sliders, steppers, pop-ups, check boxes. The way to enter exact text: `typeText` is subject to macOS autocorrect in text views (`"cua"` can become `"cut"`). It skips a rich-text editor's formatting (in Notes the first line of a new note does not become its title): there, use `typeText` with `"Return"` between lines. When a pop-up refuses it, use `performSecondaryAction(id, "Show Menu")`, read the state, then `"Pick"` on the item |
 | `performSecondaryAction(id, name)` | one of the names in the element's `Secondary Actions` (`"Raise"`, `"Show Menu"`, `"Increment"`, ...); an unlisted name throws, listing the valid ones |
 | `paste(text, { format? })` | puts text on the pasteboard, pastes into the focus, restores the previous pasteboard text |
 | `pressKey(key, { durationMs? })` | xdotool names and chords |
@@ -124,7 +124,7 @@ fennec-cua's own capabilities, apart from `cua`:
 fennec.status();                         // { version, permissions: {accessibility, screen_recording}, input, stopped, screen, ... }
 fennec.wait(app, { window_opens: "Export", timeout_ms: 5000 });   // also window_gone, exists/gone/reads(+equals) with { select: 'button "Save"' }, still
 fennec.act(app, steps, options?);        // multi-step plan, each step confirmed / unconfirmed / refused, stops at the first surprise
-fennec.observe(request);                 // { app } (an App or name), { window: ref or title } or { scope: "desktop" }; plus find, text, image
+fennec.observe(request);                 // { app } (an App or name), { window: ref or title } or { scope: "desktop" } (every window, dialogs of other processes included); plus find, text, image, emit (shows the result unless false)
                                          // the raw outline with refs (e12), a find, a hit test, a capture
 fennec.flows.list(query?); fennec.flows.show(name); fennec.flows.run(name, params?);
 fennec.flows.save(name, { steps | from: "last", description }); fennec.flows.delete(name);

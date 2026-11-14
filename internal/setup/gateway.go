@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -26,7 +27,7 @@ func gatewayRouteScript(route GatewayRoute, configurationOnly bool) (string, err
 	if route.Provider == "" || route.Model == "" || strings.ContainsAny(route.Provider, "/\r\n\x00") || strings.ContainsAny(route.Model, "\r\n\x00") {
 		return "", fmt.Errorf("valid provider/model required")
 	}
-	allowed := map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}
+	allowed := map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}
 	seen := map[string]bool{}
 	if len(route.Agents) == 0 {
 		return "", fmt.Errorf("at least one agent required")
@@ -35,7 +36,7 @@ func gatewayRouteScript(route GatewayRoute, configurationOnly bool) (string, err
 	script.WriteString("set -eu\nexport PATH=\"$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH\"\n")
 	// Check the route is exposed before changing any agent configuration.
 	if !configurationOnly {
-		script.WriteString("python3 - " + shellQuote(route.Provider+"/"+route.Model) + " <<'VERIFY'\nimport json,sys,urllib.request\nmodels=json.load(urllib.request.urlopen('http://127.0.0.1:3425/v1/models',timeout=10)).get('data',[])\nif not any(m.get('id')==sys.argv[1] for m in models):\n raise SystemExit('selected model is not exposed by the gateway')\nVERIFY\n")
+		script.WriteString("\"$HOME/.local/fennec/bin/fennec-terminal\" verify-gateway-model " + shellQuote(route.Provider+"/"+route.Model) + "\n")
 	}
 	for _, id := range route.Agents {
 		if !allowed[id] || seen[id] {
@@ -47,4 +48,17 @@ func gatewayRouteScript(route GatewayRoute, configurationOnly bool) (string, err
 		script.WriteString("if [ \"$current\" != " + shellQuote(route.Provider+"/"+route.Model) + " ]; then\nmagpie " + shellQuote(id) + " model " + shellQuote(route.Provider+"/"+route.Model) + "\nfi\n")
 	}
 	return script.String(), nil
+}
+
+func VerifyGatewayModel(ctx context.Context, model string) error {
+	models, err := LocalGatewayModels(ctx)
+	if err != nil {
+		return err
+	}
+	for _, candidate := range models {
+		if candidate == model {
+			return nil
+		}
+	}
+	return fmt.Errorf("selected model is not exposed by the gateway")
 }

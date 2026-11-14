@@ -97,7 +97,7 @@ func TestGatewayReconfigurationReadsBackCatalogAfterMutation(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", bin)
-	request := RuntimeConfiguration{Accounts: ModelAccountsRequest{Version: 1, Agents: []string{"codex", "cursor", "grok"}}, Routes: []AgentRoute{{Agent: "codex", Model: "provider/new"}}}
+	request := RuntimeConfiguration{Accounts: ModelAccountsRequest{Version: 1, Agents: []string{"codex", "cursor", "grok"}}, Routes: []AgentRoute{{Agent: "codex", Model: "provider/new"}, {Agent: "grok", Model: "provider/new"}}}
 	reads, writes := 0, 0
 	ops := runtimeConfigurationOps{
 		models: func(context.Context) ([]string, error) {
@@ -112,20 +112,20 @@ func TestGatewayReconfigurationReadsBackCatalogAfterMutation(t *testing.T) {
 			if !r.DeferCatalog {
 				t.Fatal("duplicate catalog fetch")
 			}
-			return ModelAccountsResult{NativeReady: map[string]bool{"grok": true}}, nil
+			return ModelAccountsResult{}, nil
 		},
 		routes: func(_ context.Context, _ string, routes []AgentRoute) ([]RouteResult, error) {
-			if len(routes) != 1 || routes[0].Agent != "codex" {
+			if len(routes) != 2 || routes[0].Agent != "codex" || routes[1].Agent != "grok" {
 				t.Fatal("native agents were routed through the gateway", routes)
 			}
-			return []RouteResult{{Agent: "codex", Model: "provider/new", Status: "configured"}}, nil
+			return []RouteResult{{Agent: "codex", Model: "provider/new", Status: "configured"}, {Agent: "grok", Model: "provider/new", Status: "configured"}}, nil
 		},
 	}
 	result, err := reconfigureRuntimeWith(context.Background(), home, request, ops)
 	if err != nil || result.NeedsSetup || writes != 1 || reads != 2 || len(result.Models) != 1 || result.Models[0] != "provider/new" {
 		t.Fatal(result, reads, writes, err)
 	}
-	if len(result.Routes) != 3 || result.Routes[1].Agent != "cursor" || result.Routes[1].Status != "credentials_required" || result.Routes[2].Agent != "grok" || result.Routes[2].Status != "configured" {
+	if len(result.Routes) != 3 || result.Routes[2].Agent != "cursor" || result.Routes[2].Status != "credentials_required" || result.Routes[1].Agent != "grok" || result.Routes[1].Status != "configured" {
 		t.Fatal("native account readiness was lost in mixed mode", result.Routes)
 	}
 	reads, writes = 0, 0

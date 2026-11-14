@@ -92,11 +92,11 @@ func TestVendorNativeAccountsIsolation(t *testing.T) {
 	}
 }
 
-func TestVendorLoginsWithMagpie(t *testing.T) {
+func TestVendorNativeLogins(t *testing.T) {
 	for _, id := range []string{"cursor", "grok"} {
 		t.Run(id, func(t *testing.T) {
 			home := t.TempDir()
-			if err := ConfigureAgentMode(home, false); err != nil {
+			if err := ConfigureAgentMode(home, id == "grok"); err != nil {
 				t.Fatal(err)
 			}
 			plan := NativeLogin{Agent: id, ID: "vendor-login"}
@@ -130,7 +130,7 @@ func TestVendorLoginsWithMagpie(t *testing.T) {
 			if err != nil || !cloud {
 				t.Fatal(cloud, err)
 			}
-			if NativeAgentMode(home) {
+			if NativeAgentMode(home) != (id == "grok") {
 				t.Fatal("changed global Magpie mode")
 			}
 		})

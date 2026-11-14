@@ -51,7 +51,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		if id == "opencode" {
 			continue
 		}
-		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && !agentcmd.NativeOnly(id) {
+		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && id != "cursor" && id != "grok" {
 			continue
 		}
 		ids = append(ids, id)

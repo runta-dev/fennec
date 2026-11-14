@@ -43,6 +43,28 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 		return "", false
 	}
 	switch agentID {
+	case "grok":
+		path := filepath.Join(resolveAgentConfigDir(home, "GROK_HOME", ".grok"), "config.toml")
+		data, err := readNativeFile(path)
+		var cfg struct {
+			Models struct {
+				Default string `toml:"default"`
+			} `toml:"models"`
+			Model map[string]struct {
+				Model   string `toml:"model"`
+				BaseURL string `toml:"base_url"`
+				APIKey  string `toml:"api_key"`
+			} `toml:"model"`
+		}
+		if err != nil || toml.Unmarshal(data, &cfg) != nil || !strings.HasPrefix(cfg.Models.Default, "magpie/") {
+			return "", false
+		}
+		selected, ok := cfg.Model[cfg.Models.Default]
+		if !ok || !isLocalMagpieGatewayURL(selected.BaseURL) || selected.APIKey == "" {
+			return "", false
+		}
+		model, err := ParseAgentModel("Grok Build model " + cfg.Models.Default)
+		return model, err == nil && selected.Model == model
 	case "codex":
 		data, err := readNativeFile(filepath.Join(resolveAgentConfigDir(home, "CODEX_HOME", ".codex"), "config.toml"))
 		if err != nil {

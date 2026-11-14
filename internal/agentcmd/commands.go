@@ -10,4 +10,4 @@ func BinaryName(id string) string {
 }
 
 // NativeOnly agents use their own accounts even when Magpie serves other agents.
-func NativeOnly(id string) bool { return id == "cursor" || id == "grok" }
+func NativeOnly(id string) bool { return id == "cursor" }

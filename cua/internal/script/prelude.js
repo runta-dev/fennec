@@ -799,18 +799,34 @@
     status: function () { return host.call("status", {}); },
     // observe takes the engine's observe request ({ scope: "desktop" },
     // { window, find, text, image, ... }); an App binding, or { app } with
-    // an App or an app name, stands for that app's front window.
+    // an App or an app name, stands for that app's front window. Like the
+    // cua reads it shows its result (the image as an image, the rest as
+    // compact JSON) unless emit is false.
     observe: async function (request) {
       let req = request || {};
       if (req instanceof App) {
         req = { app: req };
+      }
+      const emit = req.emit !== false;
+      if (req.emit !== undefined) {
+        req = Object.assign({}, req);
+        delete req.emit;
       }
       if (req.app !== undefined) {
         const self = req.app instanceof App ? req.app : { _app: { name: String(req.app), pid: 0, bundleId: "" } };
         req = Object.assign({}, req, { window: (await App.prototype._window.call(self)).ref });
         delete req.app;
       }
-      return host.call("observe", req);
+      const res = await host.call("observe", req);
+      if (emit && res) {
+        let shown = res;
+        if (res.image && res.image.data) {
+          await host.emitImage({ data: res.image.data, mime: res.image.mime });
+          shown = Object.assign({}, res, { image: Object.assign({}, res.image, { data: undefined }) });
+        }
+        host.write(JSON.stringify(shown));
+      }
+      return res;
     },
     // act resolves to the plan's result and does not throw when a step is
     // refused or unconfirmed: the result's ok says whether every step was

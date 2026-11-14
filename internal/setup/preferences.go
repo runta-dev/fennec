@@ -18,7 +18,7 @@ func preferencePath(directory, user string) (string, error) {
 	return filepath.Join(directory, "users", hex.EncodeToString(sum[:]), "models.json"), nil
 }
 func SaveModelPreference(directory, user, agent, model string) error {
-	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}[agent] {
+	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}[agent] {
 		return fmt.Errorf("unsupported agent")
 	}
 	provider, name, ok := strings.Cut(model, "/")
