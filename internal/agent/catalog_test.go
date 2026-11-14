@@ -90,3 +90,18 @@ func TestPanelListOrdersCodexDesktopFirst(t *testing.T) {
 		}
 	}
 }
+
+func TestComingSoonFollowsEverySupportedHarness(t *testing.T) {
+	panel := panelList([]Agent{{ID: "gemini", Installed: true}, {ID: "copilot", Installed: true}}, nil)
+	unsupported := false
+	for _, entry := range panel {
+		if !entry.Cloud {
+			unsupported = true
+		} else if unsupported {
+			t.Fatalf("supported harness %s follows Coming soon", entry.ID)
+		}
+	}
+	if !unsupported {
+		t.Fatal("missing Coming soon entries")
+	}
+}

@@ -35,7 +35,7 @@ func LocalMagpieBinary(home string) string {
 	return ""
 }
 func localMagpieCommand(ctx context.Context, home, agentID string, args ...string) (string, error) {
-	if !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "grok": true}[agentID] {
+	if !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "grok": true, "opencode": true}[agentID] {
 		return "", fmt.Errorf("unsupported agent")
 	}
 	binary := LocalMagpieBinary(home)
@@ -54,7 +54,7 @@ func localMagpieCommand(ctx context.Context, home, agentID string, args ...strin
 	return output.String(), nil
 }
 func LocalMagpieModel(ctx context.Context, home, agentID string) (string, error) {
-	if !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "grok": true}[agentID] {
+	if !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true, "grok": true, "opencode": true}[agentID] {
 		return "", fmt.Errorf("unsupported agent")
 	}
 	if LocalMagpieBinary(home) == "" {

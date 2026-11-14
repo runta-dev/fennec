@@ -10,6 +10,7 @@ require (
 	github.com/klauspost/compress v1.18.2
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/pkg/sftp v1.13.7
+	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	golang.org/x/crypto v0.31.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/term v0.27.0

@@ -142,3 +142,46 @@ func TestKimiLaunchCommand(t *testing.T) {
 		t.Fatal("cloud launch script does not trust the Kimi session directory")
 	}
 }
+
+func TestOpenCodeLaunchVersionAndSubcommand(t *testing.T) {
+	for _, version := range []string{"1.18.18", "opencode v2.3.0"} {
+		t.Run(version, func(t *testing.T) {
+			home := t.TempDir()
+			binary := filepath.Join(home, "opencode")
+			if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\n' '"+version+"'\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(home, ".local/fennec"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, ".local/fennec/agent-mode.json"), []byte(`{"native":false}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var command []string
+			backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return binary, nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+				if args[0] == "ls" {
+					return []byte(`{"terminals":[]}`), nil
+				}
+				for i, arg := range args {
+					if arg == "--" {
+						command = args[i+1:]
+						break
+					}
+				}
+				return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+			}}
+			_, err := backend.Launch(context.Background(), LocalLaunch{ID: "opencode-probe", Agent: "opencode", LocalDirectory: "/project", Device: "1234abcd", Arguments: []string{"run", "hello"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Join(command, " ")
+			if strings.Contains(version, "v2") {
+				if got != binary+" run --auto --standalone hello" {
+					t.Fatal(got)
+				}
+			} else if got != "env OPENCODE_PERMISSION={\"*\":\"allow\"} "+binary+" run hello" {
+				t.Fatal(got)
+			}
+		})
+	}
+}

@@ -20,7 +20,7 @@ import (
 // gateway HTTP endpoint is unreachable, allowing callers to fall back cleanly
 // to the `magpie` CLI.
 func writeConfiguredMagpieModel(ctx context.Context, home, agentID, model string) (bool, error) {
-	if !filepath.IsAbs(home) || !map[string]bool{"codex": true, "claude": true, "pi": true, "grok": true}[agentID] {
+	if !filepath.IsAbs(home) || !map[string]bool{"codex": true, "claude": true, "pi": true, "grok": true, "opencode": true}[agentID] {
 		return false, nil
 	}
 	if _, ok := readConfiguredMagpieModel(home, agentID); !ok {
@@ -78,6 +78,8 @@ func writeConfiguredMagpieModel(ctx context.Context, home, agentID, model string
 	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
 
 	switch agentID {
+	case "opencode":
+		return writeConfiguredOpenCodeModel(home, model)
 	case "grok":
 		return writeConfiguredGrokModel(home, model)
 	case "codex":

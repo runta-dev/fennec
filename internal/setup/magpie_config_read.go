@@ -43,6 +43,8 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 		return "", false
 	}
 	switch agentID {
+	case "opencode":
+		return readConfiguredOpenCodeModel(home)
 	case "grok":
 		path := filepath.Join(resolveAgentConfigDir(home, "GROK_HOME", ".grok"), "config.toml")
 		data, err := readNativeFile(path)

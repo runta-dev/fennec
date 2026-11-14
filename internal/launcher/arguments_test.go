@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +39,24 @@ func TestCodexAttachedDirectory(t *testing.T) {
 		cwd, args, err := ResolveLaunchDirectory("codex", "/work", []string{option, "prompt"})
 		if err != nil || cwd != "/repo" || !reflect.DeepEqual(args, []string{"prompt"}) {
 			t.Fatal(option, cwd, args, err)
+		}
+	}
+}
+
+func TestOpenCodeDirectoryAndPromptArguments(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		cwd  string
+		rest []string
+	}{
+		{[]string{"../other"}, "/other", nil},
+		{[]string{"--prompt", "run", "/work/project"}, "/work/project", []string{"--prompt", "run"}},
+		{[]string{"run", "../other"}, "/work", []string{"run", "../other"}},
+		{[]string{"--", "../other"}, "/work", []string{"--", "../other"}},
+	} {
+		cwd, args, err := ResolveLaunchDirectory("opencode", "/work", tc.args)
+		if err != nil || cwd != tc.cwd || strings.Join(args, "|") != strings.Join(tc.rest, "|") {
+			t.Fatal(cwd, args, err)
 		}
 	}
 }
