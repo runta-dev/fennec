@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	cloudruntime "fennec/internal/runtime"
 	"io"
@@ -113,11 +115,30 @@ func TestSessionImportResidentProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "af4ac027-381a-48d8-9cbc-32ba6f82c5fb"
+	cursorFile := filepath.Join(t.TempDir(), "store.db")
+	db, err := sql.Open("sqlite", cursorFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT); CREATE TABLE blobs(id TEXT PRIMARY KEY,data BLOB)")
+	if err == nil {
+		_, err = db.Exec("INSERT INTO meta VALUES('0', ?)", hex.EncodeToString([]byte(`{"agentId":"`+id+`","latestRootBlobId":""}`)))
+	}
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursorData, err := os.ReadFile(cursorFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fixtures := map[string][]cloudruntime.SessionFile{
 		"claude": {{Path: id + ".jsonl", Data: []byte(`{"type":"user","uuid":"tip","cwd":"/local","message":"fixture"}` + "\n")}},
 		"codex":  {{Path: "sessions/2026/11/14/rollout-2026-11-14T10-00-00-" + id + ".jsonl", Data: []byte(`{"type":"session_meta","payload":{"id":"` + id + `","cwd":"/local"}}` + "\n")}},
 		"pi":     {{Path: id + ".jsonl", Data: []byte(`{"type":"session","version":3,"id":"` + id + `","cwd":"/local"}` + "\n")}},
 		"kimi":   {{Path: "state.json", Data: []byte(`{"version":2,"id":"session_` + id + `","cwd":"/local"}`)}, {Path: "agents/main/wire.jsonl", Data: []byte(`{"type":"metadata","protocol_version":"1.0"}` + "\n")}},
+		"cursor": {{Path: "store.db", Data: cursorData}},
+		"grok":   {{Path: "summary.json", Data: []byte(`{"info":{"id":"` + id + `","cwd":"/local"}}`)}, {Path: "chat_history.jsonl", Data: []byte(`{"type":"system","content":"fixture"}` + "\n")}},
 	}
 	for agent, files := range fixtures {
 		conversation := id
