@@ -70,7 +70,28 @@ func LocalMagpieModel(ctx context.Context, home, agentID string) (string, error)
 	if strings.HasSuffix(strings.TrimSpace(output), " model default") {
 		return "", nil
 	}
-	return ParseAgentModel(output)
+	model, err := ParseAgentModel(output)
+	if err != nil {
+		// The agent runs a model of its own (Claude Code's "opus"), not a
+		// Magpie route: that is its current model, not a failure to retry.
+		if native, ok := nativeAgentModel(output); ok {
+			return native, nil
+		}
+		return "", err
+	}
+	return model, nil
+}
+
+// nativeAgentModel reads a plain model name, such as an alias without a
+// provider, from Magpie's "<Agent> model <name>" answer.
+func nativeAgentModel(output string) (string, bool) {
+	line := strings.TrimSpace(output)
+	_, model, found := strings.Cut(line, " model ")
+	model = strings.TrimSpace(model)
+	if !found || model == "" || model == "default" || len(model) > 128 || strings.ContainsAny(model, " \t\r\n\x00/") {
+		return "", false
+	}
+	return model, true
 }
 func SetLocalMagpieModel(ctx context.Context, home, agentID, model string) error {
 	if _, err := ParseAgentModel("Agent model " + model); err != nil || strings.HasPrefix(model, "-") || strings.ContainsAny(model, " \t\r\n\x00") {
