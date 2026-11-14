@@ -441,3 +441,18 @@ func TestWindowPixelsNeedUniqueTitle(t *testing.T) {
 		t.Fatalf("a screen point works: %+v", r.Error)
 	}
 }
+
+// A dialog of another process over a text field whose press action fails:
+// the refusal names the dialog, the window the agent has to deal with.
+func TestPressCoveredByDialogNamesIt(t *testing.T) {
+	d := scene()
+	d.Win("cg:30", "osascript", "Keyboard Settings", 300, [4]int{150, 150, 300, 150}, false)
+	d.Hits[[2]int{200, 210}] = fakedesk.Hit{Node: "name", Win: "cg:10", Covered: "cg:30"}
+	d.PerformErr["name:AXPress"] = unsupported
+	r := newRig(t, d, "").step(protocol.Step{Press: tgt(`textbox "Name"`)})
+	wantStatus(t, r, protocol.StatusRefused)
+	wantCode(t, r, protocol.ErrCovered)
+	if !strings.Contains(r.Error.Message, `osascript's window "Keyboard Settings" covers`) || len(calls(d, "click")) != 0 {
+		t.Fatalf("%+v\n%s", r.Error, d)
+	}
+}

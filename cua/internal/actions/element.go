@@ -180,7 +180,8 @@ func (c *stepCtx) press(ctx context.Context) policy.Attempt {
 		}
 		// The app refused the action: a click may still work.
 	}
-	if x, y, ok := c.reachable(ctx, e); ok {
+	x, y, ok, cover := c.reachable(ctx, e)
+	if ok {
 		a := c.clickWindow(ctx, e.win, x, y, "left", 1, nil)
 		if a.Result.Status != protocol.StatusRefused {
 			a.Result.Evidence = fmt.Sprintf("clicked the centre of %s at (%d, %d), where a hit test found it on top", e.describe(), x, y)
@@ -189,6 +190,12 @@ func (c *stepCtx) press(ctx context.Context) policy.Attempt {
 		return a
 	}
 	if err := c.x.B.Perform(ctx, e.h, "AXPress"); err != nil {
+		if cover != nil && axCode(err) != AXCannotComplete {
+			// Another process's window (a dialog it raised) sits on the
+			// element: say so, since that window is what the agent must
+			// deal with, not the press action.
+			return refuse(coveredError(e, *cover, err), policy.ReasonPolicy)
+		}
 		return axFailure(e, err, "the press action")
 	}
 	return confirmed("pressed " + e.describe() + " by its accessibility action")
@@ -256,37 +263,53 @@ func (c *stepCtx) selectText(ctx context.Context) policy.Attempt {
 }
 
 // reachable is the element's centre when a hit test there lands on the
-// element, inside it or on one of its ancestors.
-func (c *stepCtx) reachable(ctx context.Context, e element) (int, int, bool) {
+// element, inside it or on one of its ancestors; otherwise the window of
+// another process that covers the centre, if any.
+func (c *stepCtx) reachable(ctx context.Context, e element) (int, int, bool, *view.RawWindow) {
 	x, y, ok := center(e.node.Bounds)
 	if !ok || !view.Showing(e.node) {
-		return 0, 0, false
+		return 0, 0, false, nil
 	}
 	hit, path, _, covered, err := c.x.B.At(ctx, x, y)
 	if err != nil || hit == nil {
-		return 0, 0, false
+		return 0, 0, false, nil
 	}
 	if covered != nil && covered.PID != e.win.PID {
-		return 0, 0, false
+		return 0, 0, false, covered
 	}
 	if c.x.B.Same(hit.Handle, e.h) {
-		return x, y, true
+		return x, y, true, nil
 	}
 	chain, err := c.x.B.Ancestors(ctx, e.h)
 	if err == nil {
 		for _, a := range chain {
 			if c.x.B.Same(hit.Handle, a.Handle) {
-				return x, y, true
+				return x, y, true, nil
 			}
 		}
 	}
 	// The hit is inside the element.
 	for _, a := range path {
 		if c.x.B.Same(a.Handle, e.h) {
-			return x, y, true
+			return x, y, true, nil
 		}
 	}
-	return 0, 0, false
+	return 0, 0, false, nil
+}
+
+// coveredError is the refusal of a press whose element another process's
+// window covers and whose press action failed: it names the covering window
+// so the agent deals with it (a dialog to close) before trying again.
+func coveredError(e element, cover view.RawWindow, err error) *protocol.Error {
+	what := orApp(cover.App) + "'s window"
+	if cover.Title != "" {
+		what = fmt.Sprintf("%s's window %q", orApp(cover.App), cover.Title)
+	}
+	return &protocol.Error{
+		Code:    protocol.ErrCovered,
+		Message: fmt.Sprintf("%s covers %s, and its press action failed (%v); nothing was sent", what, e.describe(), err),
+		Hint:    "read that window (it may be a dialog to close), then try again",
+	}
 }
 
 // security refuses input aimed at a macOS security or consent prompt.
