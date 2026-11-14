@@ -71,7 +71,7 @@ func TestClaudeConversationMovesToTheCloudWorkspace(t *testing.T) {
 	project := filepath.Join(mac, "projects", ClaudeProjectDirectory("/Users/me/repo"))
 	old := time.Now().Add(-time.Hour)
 	writeFixture(t, filepath.Join(project, conversationB+".jsonl"), `{"cwd":"/Users/me/repo"}`+"\n", old)
-	writeFixture(t, filepath.Join(project, conversationA+".jsonl"), `{"type":"user","cwd":"/Users/me/repo","message":"hi"}`+"\n"+`{"type":"assistant","cwd":"/Users/me/repo/sub"}`+"\n", time.Now())
+	writeFixture(t, filepath.Join(project, conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"/Users/me/repo","message":"hi"}`+"\n"+`{"type":"assistant","uuid":"u2","cwd":"/Users/me/repo/sub"}`+"\n", time.Now())
 	writeFixture(t, filepath.Join(project, conversationA, "subagents", "agent-1.jsonl"), `{"cwd":"/Users/me/repo"}`+"\n", time.Time{})
 	writeFixture(t, filepath.Join(mac, "projects", "-elsewhere", "unrelated.jsonl"), "{}\n", time.Time{})
 
@@ -105,8 +105,15 @@ func TestClaudeConversationMovesToTheCloudWorkspace(t *testing.T) {
 		t.Fatal("subagent transcript not moved")
 	}
 
-	// A copy continued in the cloud (more records) is kept on a retry.
-	longer := string(data) + `{"type":"user","cwd":"x"}` + "\n"
+	// The cloud now has the latest record: the Mac checks first and sends
+	// nothing, and an import that arrives anyway changes nothing.
+	if !HasCloudSession(cloud, "claude", conversationA, bundle.Marker) {
+		t.Fatal("imported conversation not found by marker")
+	}
+	if HasCloudSession(cloud, "claude", conversationA, "u9") || HasCloudSession(cloud, "codex", conversationA, bundle.Marker) {
+		t.Fatal("presence check matched the wrong record or agent")
+	}
+	longer := string(data) + `{"type":"user","uuid":"u3","cwd":"x"}` + "\n"
 	os.WriteFile(filepath.Join(target, conversationA+".jsonl"), []byte(longer), 0o600)
 	if written, _ = ApplySessionImport(cloud, *bundle); written != 0 {
 		t.Fatalf("cloud copy replaced: %d", written)
@@ -129,7 +136,7 @@ func TestClaudeConversationMovesToTheCloudWorkspace(t *testing.T) {
 
 func TestCodexConversationMovesWithItsProvider(t *testing.T) {
 	mac, cloud := t.TempDir(), t.TempDir()
-	rollout := `{"type":"session_meta","payload":{"id":"` + conversationA + `","cwd":"/Users/me/repo","model_provider":"openai"}}` + "\n" + `{"type":"turn_context","payload":{"cwd":"/Users/me/repo"}}` + "\n"
+	rollout := `{"type":"session_meta","payload":{"id":"` + conversationA + `","cwd":"/Users/me/repo","model_provider":"openai"}}` + "\n" + `{"timestamp":"2026-11-14T10:00:05.123Z","type":"turn_context","payload":{"cwd":"/Users/me/repo"}}` + "\n"
 	name := "sessions/2026/11/14/rollout-2026-11-14T10-00-00-" + conversationA + ".jsonl"
 	writeFixture(t, filepath.Join(mac, name), rollout, time.Now())
 	writeFixture(t, filepath.Join(mac, "sessions/2026/11/13/rollout-2026-11-13T10-00-00-"+conversationB+".jsonl"), `{"type":"session_meta","payload":{"id":"`+conversationB+`","cwd":"/Users/me/other"}}`+"\n", time.Now().Add(time.Hour))
@@ -149,21 +156,59 @@ func TestCodexConversationMovesWithItsProvider(t *testing.T) {
 	if !strings.Contains(string(data), `"model_provider":"magpie"`) || strings.Contains(string(data), "/Users/me") || strings.Count(string(data), workspace) != 2 {
 		t.Fatalf("rollout: %s", data)
 	}
+	if bundle.Marker != "2026-11-14T10:00:05.123Z" || !HasCloudSession(cloud, "codex", conversationA, bundle.Marker) {
+		t.Fatalf("codex marker %q not found in the cloud copy", bundle.Marker)
+	}
+}
+
+func TestTrimClaudeTranscriptKeepsWhatResumeLoads(t *testing.T) {
+	lines := []string{
+		`{"type":"mode","mode":"default"}`,
+		`{"type":"user","uuid":"old1","parentUuid":null,"message":"old screenshot AAAA"}`,
+		`{"type":"api-request-blob","data":"huge"}`,
+		`{"type":"assistant","uuid":"keep1","parentUuid":"old1"}`,
+		`{"type":"user","uuid":"keep2","parentUuid":"keep1"}`,
+		`{"type":"assistant","uuid":"seg1","parentUuid":"keep2"}`,
+		`{"type":"user","uuid":"seg2","parentUuid":"seg1"}`,
+		`{"type":"ai-title","title":"t"}`,
+		`not json`,
+		`{"type":"system","subtype":"compact_boundary","parentUuid":null,"uuid":"b","compactMetadata":{"preservedMessages":{"allUuids":["keep1","keep2"]},"preservedSegment":{"headUuid":"seg1","tailUuid":"seg2"}}}`,
+		`{"type":"user","uuid":"s","parentUuid":"b","isCompactSummary":true}`,
+		`{"type":"api-request","after":"kept"}`,
+		`{"type":"assistant","uuid":"last","parentUuid":"s"}`,
+	}
+	got := string(trimClaudeTranscript([]byte(strings.Join(lines, "\n") + "\n")))
+	want := strings.Join([]string{lines[0], lines[3], lines[4], lines[5], lines[6], lines[7], lines[9], lines[10], lines[11], lines[12]}, "\n") + "\n"
+	if got != want {
+		t.Fatalf("trimmed:\n%s\nwant:\n%s", got, want)
+	}
+	if sessionMarker("claude", []byte(got)) != "last" {
+		t.Fatal("marker is not the last record")
+	}
+	// Without a compaction the transcript is sent whole.
+	whole := strings.Join(lines[:9], "\n") + "\n"
+	if string(trimClaudeTranscript([]byte(whole))) != whole {
+		t.Fatal("uncompacted transcript changed")
+	}
 }
 
 func TestSessionImportRejectsUnsafePaths(t *testing.T) {
 	for _, file := range []string{"../x.jsonl", "/etc/passwd", conversationA + "/../../x", "other.jsonl"} {
-		bundle := SessionImport{Version: 1, Agent: "claude", LaunchID: launchID, Conversation: conversationA, Files: []SessionFile{{Path: file, Data: []byte("{}\n")}}}
+		bundle := SessionImport{Version: 1, Agent: "claude", LaunchID: launchID, Conversation: conversationA, Marker: "u1", Files: []SessionFile{{Path: file, Data: []byte("{}\n")}}}
 		if _, err := ApplySessionImport(t.TempDir(), bundle); err == nil {
 			t.Errorf("accepted %q", file)
 		}
 	}
-	bundle := SessionImport{Version: 1, Agent: "codex", LaunchID: launchID, Conversation: conversationA, Files: []SessionFile{{Path: "config.toml", Data: []byte("x")}}}
+	bundle := SessionImport{Version: 1, Agent: "codex", LaunchID: launchID, Conversation: conversationA, Marker: "u1", Files: []SessionFile{{Path: "config.toml", Data: []byte("x")}}}
 	if _, err := ApplySessionImport(t.TempDir(), bundle); err == nil {
 		t.Error("codex accepted a non-rollout path")
 	}
-	bundle = SessionImport{Version: 1, Agent: "claude", LaunchID: "../x", Conversation: conversationA, Files: []SessionFile{{Path: conversationA + ".jsonl"}}}
+	bundle = SessionImport{Version: 1, Agent: "claude", LaunchID: "../x", Conversation: conversationA, Marker: "u1", Files: []SessionFile{{Path: conversationA + ".jsonl"}}}
 	if _, err := ApplySessionImport(t.TempDir(), bundle); err == nil {
 		t.Error("accepted an invalid launch ID")
+	}
+	bundle = SessionImport{Version: 1, Agent: "claude", LaunchID: launchID, Conversation: conversationA, Marker: "x; rm -rf /", Files: []SessionFile{{Path: conversationA + ".jsonl"}}}
+	if _, err := ApplySessionImport(t.TempDir(), bundle); err == nil {
+		t.Error("accepted a marker outside the command-line character set")
 	}
 }

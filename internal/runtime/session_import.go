@@ -37,6 +37,7 @@ type SessionImport struct {
 	Agent        string        `json:"agent"`
 	LaunchID     string        `json:"launch_id"`
 	Conversation string        `json:"conversation"`
+	Marker       string        `json:"marker"`
 	Files        []SessionFile `json:"files"`
 }
 
@@ -261,6 +262,13 @@ func collectClaude(configDir, directory string, request resumeRequest) (*Session
 	if err := add(transcript, id+".jsonl"); err != nil {
 		return nil, err
 	}
+	// Only what Claude loads to continue crosses the link: a long transcript
+	// is mostly history from before its last compaction (screenshots, request
+	// dumps) that the model never sees again.
+	bundle.Files[0].Data = trimClaudeTranscript(bundle.Files[0].Data)
+	if bundle.Marker = sessionMarker("claude", bundle.Files[0].Data); bundle.Marker == "" {
+		return nil, nil
+	}
 	// Subagent transcripts and saved tool results live next to the transcript.
 	sidecar := filepath.Join(filepath.Dir(transcript), id)
 	err := filepath.WalkDir(sidecar, func(file string, entry fs.DirEntry, err error) error {
@@ -309,7 +317,11 @@ func collectCodex(codexHome, directory string, request resumeRequest) (*SessionI
 	if err != nil {
 		return nil, err
 	}
-	return &SessionImport{Conversation: id, Files: []SessionFile{{Path: filepath.ToSlash(relative), Data: data}}}, nil
+	marker := sessionMarker("codex", data)
+	if marker == "" {
+		return nil, nil
+	}
+	return &SessionImport{Conversation: id, Marker: marker, Files: []SessionFile{{Path: filepath.ToSlash(relative), Data: data}}}, nil
 }
 
 type codexMeta struct {
@@ -413,7 +425,7 @@ func EncodeSessionImport(bundle *SessionImport) ([]byte, error) {
 		return nil, err
 	}
 	var output bytes.Buffer
-	encoder, err := zstd.NewWriter(&output, zstd.WithEncoderConcurrency(1))
+	encoder, err := zstd.NewWriter(&output, zstd.WithEncoderLevel(zstd.SpeedBetterCompression), zstd.WithEncoderConcurrency(1))
 	if err != nil {
 		return nil, err
 	}
@@ -457,58 +469,32 @@ func ReceiveSessionImport(home string, input io.Reader) (int, error) {
 }
 
 // ApplySessionImport writes a conversation from the Mac where the cloud agent
-// looks for it. A copy already in the cloud with at least as many records is
-// kept: it was continued there, or it is this same conversation.
+// looks for it, unless a cloud copy already holds its latest record (the same
+// conversation, or one continued in an earlier cloud session).
 func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 	if err := bundle.validate(); err != nil {
 		return 0, err
 	}
+	if HasCloudSession(home, bundle.Agent, bundle.Conversation, bundle.Marker) {
+		return 0, nil
+	}
 	workspace := filepath.Join(home, ".fen", bundle.LaunchID)
-	native := setup.NativeAgentMode(home)
 	written := 0
 	switch bundle.Agent {
 	case "claude":
-		configDir := filepath.Join(home, ".claude")
-		if native {
-			configDir = filepath.Join(home, ".local/fennec/native/claude")
-		}
-		project := filepath.Join(configDir, "projects", ClaudeProjectDirectory(workspace))
-		// Claude finds a resumed ID in any project folder but prefers the
-		// current one: a cloud copy that is at least as long (continued in an
-		// earlier cloud session) must not be shadowed by the older Mac copy.
-		transcript := bundle.Files[0].Data
-		for _, file := range bundle.Files {
-			if file.Path == bundle.Conversation+".jsonl" {
-				transcript = file.Data
-			}
-		}
-		existing, _ := filepath.Glob(filepath.Join(configDir, "projects", "*", bundle.Conversation+".jsonl"))
-		for _, copy := range existing {
-			if filepath.Dir(copy) == project {
-				continue
-			}
-			if data, err := os.ReadFile(copy); err == nil && lineCount(data) >= lineCount(transcript) {
-				return 0, nil
-			}
-		}
+		project := filepath.Join(cloudAgentHome(home, "claude"), "projects", ClaudeProjectDirectory(workspace))
 		for _, file := range bundle.Files {
 			data := file.Data
 			if strings.HasSuffix(file.Path, ".jsonl") {
 				data = mapWorkingDirectory(data, workspace)
 			}
-			ok, err := writeImported(filepath.Join(project, filepath.FromSlash(file.Path)), data)
-			if err != nil {
+			if err := writeImported(filepath.Join(project, filepath.FromSlash(file.Path)), data); err != nil {
 				return written, err
 			}
-			if ok {
-				written++
-			}
+			written++
 		}
 	case "codex":
-		codexHome := filepath.Join(home, ".codex")
-		if native {
-			codexHome = filepath.Join(home, ".local/fennec/native/codex")
-		}
+		codexHome := cloudAgentHome(home, "codex")
 		provider := codexConfiguredProvider(codexHome)
 		file := bundle.Files[0]
 		data, err := transformRolloutFile(path.Base(file.Path), file.Data, func(plain []byte) []byte {
@@ -525,26 +511,192 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 		}
 		destination := filepath.Join(codexHome, filepath.FromSlash(file.Path))
 		if existing, err := localssh.FindCodexRollout(codexHome, bundle.Conversation); err == nil {
-			destination = existing
 			if strings.HasSuffix(existing, ".zst") || path.Ext(existing) != path.Ext(file.Path) {
-				// Compressed or recompressed in the cloud: lines cannot be compared
-				// cheaply, and the cloud copy was written or continued there.
+				// Compressed in the cloud: Codex wrote or continued it there.
 				return 0, nil
 			}
+			destination = existing
 		}
-		ok, err := writeImported(destination, data)
-		if err != nil {
+		if err := writeImported(destination, data); err != nil {
 			return 0, err
 		}
-		if ok {
-			written++
-		}
+		written++
 	}
 	return written, nil
 }
 
+// cloudAgentHome is where the cloud agent keeps conversations: the isolated
+// native configuration, or the default directory under the gateway.
+func cloudAgentHome(home, agent string) string {
+	native := setup.NativeAgentMode(home)
+	switch agent {
+	case "claude":
+		if native {
+			return filepath.Join(home, ".local/fennec/native/claude")
+		}
+		return filepath.Join(home, ".claude")
+	case "codex":
+		if native {
+			return filepath.Join(home, ".local/fennec/native/codex")
+		}
+		return filepath.Join(home, ".codex")
+	}
+	return ""
+}
+
+// markerPattern bounds a conversation marker: a Claude record UUID or a Codex
+// RFC 3339 timestamp. It is passed as a command argument, so only these
+// characters are accepted.
+var markerPattern = regexp.MustCompile(`^[0-9A-Za-z:.+-]{1,64}$`)
+
+// markerField is how the marker appears in a transcript line.
+func markerField(agent, marker string) []byte {
+	if agent == "codex" {
+		return []byte(`"timestamp":"` + marker + `"`)
+	}
+	return []byte(`"uuid":"` + marker + `"`)
+}
+
+// sessionMarker names a conversation's latest record: Claude's last record
+// UUID, or the timestamp of Codex's last rollout line.
+func sessionMarker(agent string, transcript []byte) string {
+	lines := bytes.Split(bytes.TrimRight(transcript, "\n"), []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		var record struct {
+			UUID      string `json:"uuid"`
+			Timestamp string `json:"timestamp"`
+		}
+		if json.Unmarshal(lines[i], &record) != nil {
+			continue
+		}
+		value := record.UUID
+		if agent == "codex" {
+			value = record.Timestamp
+		}
+		if value != "" {
+			if !markerPattern.MatchString(value) {
+				return ""
+			}
+			return value
+		}
+	}
+	return ""
+}
+
+// HasCloudSession reports whether the cloud computer already has conversation
+// up to marker, so the Mac need not send it again.
+func HasCloudSession(home, agent, conversation, marker string) bool {
+	if !conversationPattern.MatchString(conversation) || !markerPattern.MatchString(marker) {
+		return false
+	}
+	var copies []string
+	switch agent {
+	case "claude":
+		copies, _ = filepath.Glob(filepath.Join(cloudAgentHome(home, "claude"), "projects", "*", conversation+".jsonl"))
+	case "codex":
+		if found, err := localssh.FindCodexRollout(cloudAgentHome(home, "codex"), conversation); err == nil {
+			copies = []string{found}
+		}
+	}
+	field := markerField(agent, marker)
+	for _, copy := range copies {
+		if strings.HasSuffix(copy, ".zst") {
+			return true
+		}
+		if data, err := os.ReadFile(copy); err == nil && bytes.Contains(data, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// trimClaudeTranscript keeps what Claude Code loads to continue a compacted
+// conversation: everything from the last compact boundary on, the messages
+// that compaction preserved from before it, and small session metadata (title,
+// mode, file-history snapshots for rewind). Earlier messages and the request
+// dumps Claude records for its own diagnostics stay on the Mac. A transcript
+// without a compaction is sent whole.
+func trimClaudeTranscript(data []byte) []byte {
+	lines := bytes.SplitAfter(data, []byte("\n"))
+	boundary := -1
+	preserved := map[string]bool{}
+	var head, tail string
+	for i := len(lines) - 1; i >= 0; i-- {
+		if !bytes.Contains(lines[i], []byte(`"compact_boundary"`)) {
+			continue
+		}
+		var record struct {
+			Type     string `json:"type"`
+			Subtype  string `json:"subtype"`
+			Metadata struct {
+				Messages struct {
+					All   []string `json:"allUuids"`
+					Uuids []string `json:"uuids"`
+				} `json:"preservedMessages"`
+				Segment struct {
+					Head string `json:"headUuid"`
+					Tail string `json:"tailUuid"`
+				} `json:"preservedSegment"`
+			} `json:"compactMetadata"`
+		}
+		if json.Unmarshal(lines[i], &record) != nil || record.Type != "system" || record.Subtype != "compact_boundary" {
+			continue
+		}
+		boundary = i
+		for _, id := range append(record.Metadata.Messages.All, record.Metadata.Messages.Uuids...) {
+			preserved[id] = true
+		}
+		head, tail = record.Metadata.Segment.Head, record.Metadata.Segment.Tail
+		break
+	}
+	if boundary <= 0 {
+		return data
+	}
+	type entry struct {
+		Type   string  `json:"type"`
+		UUID   *string `json:"uuid"`
+		Parent *string `json:"parentUuid"`
+	}
+	records := make([]entry, boundary)
+	parents := map[string]string{}
+	for i, line := range lines[:boundary] {
+		if json.Unmarshal(line, &records[i]) != nil {
+			records[i].Type = "\x00invalid"
+			continue
+		}
+		if records[i].UUID != nil && records[i].Parent != nil {
+			parents[*records[i].UUID] = *records[i].Parent
+		}
+	}
+	// A preserved segment is the chain from its tail back to its head.
+	for id, steps := tail, 0; id != "" && steps < boundary; steps++ {
+		preserved[id] = true
+		if id == head {
+			break
+		}
+		id = parents[id]
+	}
+	output := make([]byte, 0, len(data)/8)
+	for i, line := range lines[:boundary] {
+		record := records[i]
+		switch {
+		case record.Type == "\x00invalid" || strings.HasPrefix(record.Type, "api-request"):
+		case record.UUID != nil && *record.UUID != "":
+			if preserved[*record.UUID] {
+				output = append(output, line...)
+			}
+		default:
+			output = append(output, line...)
+		}
+	}
+	for _, line := range lines[boundary:] {
+		output = append(output, line...)
+	}
+	return output
+}
+
 func (bundle SessionImport) validate() error {
-	if bundle.Version != 1 || !sessionIDPattern.MatchString(bundle.LaunchID) || !conversationPattern.MatchString(bundle.Conversation) || len(bundle.Files) == 0 || len(bundle.Files) > sessionImportFiles {
+	if bundle.Version != 1 || !markerPattern.MatchString(bundle.Marker) || !sessionIDPattern.MatchString(bundle.LaunchID) || !conversationPattern.MatchString(bundle.Conversation) || len(bundle.Files) == 0 || len(bundle.Files) > sessionImportFiles {
 		return fmt.Errorf("invalid conversation import")
 	}
 	total := 0
@@ -599,31 +751,13 @@ func codexConfiguredProvider(codexHome string) string {
 	return ""
 }
 
-// writeImported writes data unless the file already holds at least as many
-// lines, reporting whether it wrote.
-func writeImported(destination string, data []byte) (bool, error) {
-	if info, err := os.Lstat(destination); err == nil {
-		if !info.Mode().IsRegular() {
-			return false, fmt.Errorf("conversation destination is not a regular file")
-		}
-		existing, err := os.ReadFile(destination)
-		if err != nil {
-			return false, err
-		}
-		if lineCount(existing) >= lineCount(data) {
-			return false, nil
-		}
+// writeImported writes one conversation file atomically.
+func writeImported(destination string, data []byte) error {
+	if info, err := os.Lstat(destination); err == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("conversation destination is not a regular file")
 	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
-		return false, err
+		return err
 	}
-	return true, writeFileAtomic(destination, data)
-}
-
-func lineCount(data []byte) int {
-	count := bytes.Count(data, []byte("\n"))
-	if len(data) > 0 && data[len(data)-1] != '\n' {
-		count++
-	}
-	return count
+	return writeFileAtomic(destination, data)
 }

@@ -124,6 +124,9 @@ func run() (int, error) {
 		}
 		return 0, json.NewEncoder(os.Stdout).Encode(results)
 	}
+	if len(os.Args) == 6 && os.Args[1] == "import-session" && os.Args[2] == "--check" {
+		return 0, json.NewEncoder(os.Stdout).Encode(map[string]bool{"present": cloudruntime.HasCloudSession(home, os.Args[3], os.Args[4], os.Args[5])})
+	}
 	if len(os.Args) == 2 && os.Args[1] == "import-session" {
 		written, err := cloudruntime.ReceiveSessionImport(home, os.Stdin)
 		if err != nil {

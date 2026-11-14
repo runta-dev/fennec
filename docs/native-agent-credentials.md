@@ -117,8 +117,23 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
   the Mac). The rollout keeps its relative path under CODEX_HOME and adopts the
   cloud Codex's configured provider.
 
-Every `cwd` field is mapped to the cloud workspace. A cloud copy with at least as
-many records, in any cloud project folder, is kept. Conversations that started in
+Every `cwd` field is mapped to the cloud workspace.
+
+The link to the cloud computer is slow (about 130 KB/s), so only what the agent
+needs to continue is sent:
+
+- Before sending, the Mac asks the cloud (`import-session --check`) whether any
+  cloud copy already holds the conversation's latest record (Claude: the last
+  record UUID; Codex: the last line's timestamp). If so, nothing is sent, and a
+  copy that arrives anyway is not written. This also keeps a conversation that
+  was continued in the cloud from being replaced by the older Mac copy.
+- A compacted Claude transcript is trimmed to what `--resume` loads: everything
+  from the last compact boundary on, the messages that compaction preserved
+  (`preservedMessages` and the `preservedSegment` chain), and small metadata
+  records. Earlier history and the `api-request*` dumps stay on the Mac; a
+  rewind past the last compaction is not available in the cloud.
+- The transfer is zstd at the "better" level. A 90 MB transcript with
+  screenshots goes from 30 MB to 0.3 MB. Conversations that started in
 the cloud need no copy: Claude Code finds a resumed ID in any project folder, so
 `claude --resume <cloud id>` works from a new takeover session. The transfer is zstd-compressed on the shared SSH
 connection (`fennec-terminal import-session`), never in argv or a protocol frame.

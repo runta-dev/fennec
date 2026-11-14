@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fennec/internal/launcher"
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
@@ -31,12 +32,25 @@ func resumeLocalSession(ctx context.Context, channel *terminalChannel, intent la
 	if bundle == nil {
 		return intent, nil
 	}
+	operation, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	// Resuming the same conversation again sends nothing when the cloud
+	// already has its latest record. Agent, ID and marker are validated to a
+	// shell-safe character set before they reach this command line.
+	check := cloudruntime.SessionImportCommand + " --check " + intent.Agent + " " + bundle.Conversation + " " + bundle.Marker
+	if output, err := channel.remote(operation, check, nil); err == nil {
+		var reply struct {
+			Present bool `json:"present"`
+		}
+		if json.Unmarshal(output, &reply) == nil && reply.Present {
+			intent.Arguments = args
+			return intent, nil
+		}
+	}
 	payload, err := cloudruntime.EncodeSessionImport(bundle)
 	if err != nil {
 		return intent, err
 	}
-	operation, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
 	if _, err := channel.remote(operation, cloudruntime.SessionImportCommand, payload); err != nil {
 		return intent, fmt.Errorf("could not move conversation %s to the cloud computer: %v", bundle.Conversation, err)
 	}
