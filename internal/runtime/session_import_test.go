@@ -112,6 +112,14 @@ func TestClaudeConversationMovesToTheCloudWorkspace(t *testing.T) {
 		t.Fatalf("cloud copy replaced: %d", written)
 	}
 
+	// Resumed again from the Mac in a new cloud session: the cloud copy that was
+	// continued (in the earlier session's folder) stays the one Claude loads.
+	next := *bundle
+	next.LaunchID = "quiet-otter"
+	if written, _ = ApplySessionImport(cloud, next); written != 0 {
+		t.Fatalf("older Mac copy shadowed the continued cloud copy: %d", written)
+	}
+
 	// A conversation the Mac does not have is left for the cloud to resolve.
 	bundle, args, err = CollectLocalSession(mac, "claude", "/Users/me/repo", launchID, []string{"--resume", "11111111-2222-4333-8444-555555555555"})
 	if bundle != nil || err != nil || len(args) != 2 {

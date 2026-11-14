@@ -473,6 +473,24 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 			configDir = filepath.Join(home, ".local/fennec/native/claude")
 		}
 		project := filepath.Join(configDir, "projects", ClaudeProjectDirectory(workspace))
+		// Claude finds a resumed ID in any project folder but prefers the
+		// current one: a cloud copy that is at least as long (continued in an
+		// earlier cloud session) must not be shadowed by the older Mac copy.
+		transcript := bundle.Files[0].Data
+		for _, file := range bundle.Files {
+			if file.Path == bundle.Conversation+".jsonl" {
+				transcript = file.Data
+			}
+		}
+		existing, _ := filepath.Glob(filepath.Join(configDir, "projects", "*", bundle.Conversation+".jsonl"))
+		for _, copy := range existing {
+			if filepath.Dir(copy) == project {
+				continue
+			}
+			if data, err := os.ReadFile(copy); err == nil && lineCount(data) >= lineCount(transcript) {
+				return 0, nil
+			}
+		}
 		for _, file := range bundle.Files {
 			data := file.Data
 			if strings.HasSuffix(file.Path, ".jsonl") {

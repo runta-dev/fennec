@@ -118,7 +118,9 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
   cloud Codex's configured provider.
 
 Every `cwd` field is mapped to the cloud workspace. A cloud copy with at least as
-many records is kept. The transfer is zstd-compressed on the shared SSH
+many records, in any cloud project folder, is kept. Conversations that started in
+the cloud need no copy: Claude Code finds a resumed ID in any project folder, so
+`claude --resume <cloud id>` works from a new takeover session. The transfer is zstd-compressed on the shared SSH
 connection (`fennec-terminal import-session`), never in argv or a protocol frame.
 A picker (`--resume` with no ID, `codex resume`) lists cloud conversations only.
 Pi, Kimi Code and OpenCode conversations are not moved yet.
