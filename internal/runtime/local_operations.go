@@ -261,6 +261,36 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	if len(rows) > 4096 {
 		return nil, fmt.Errorf("too many terminal rows")
 	}
+	for i, detail := range rows {
+		// Keep the existing session surface small. In particular, a complete
+		// Herdr record includes argv, which can contain the agent's prompt.
+		row := map[string]any{}
+		for _, key := range []string{"address", "name", "template", "parent", "state", "turn", "exit_code", "signal", "reason", "cwd", "title", "labels", "status", "status_ms", "created_ms", "finished_ms"} {
+			if value, ok := detail[key]; ok {
+				row[key] = value
+			}
+		}
+		if status, ok := detail["status"].(map[string]any); ok {
+			row["agent"] = status["app"]
+		}
+		if row["agent"] == nil || row["agent"] == "" {
+			if argv, ok := detail["argv"].([]any); ok && len(argv) > 0 {
+				if program, ok := argv[0].(string); ok {
+					row["agent"] = filepath.Base(program)
+				}
+			}
+		}
+		if labels, ok := detail["labels"].(map[string]any); ok {
+			if where, ok := labels["where"].(string); ok && where != "" {
+				row["where"] = where
+			}
+		}
+		rows[i] = row
+	}
+	listing["terminals"], err = json.Marshal(rows)
+	if err != nil {
+		return nil, err
+	}
 	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
 		listing["native_accounts"], _ = json.Marshal(accounts)
 	}

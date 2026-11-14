@@ -274,7 +274,7 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 			if err != nil {
 				return nil, err
 			}
-			data, err := measuredSessionOperation(operation, transport, cloudruntime.LocalOperation{Kind: "list"})
+			data, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "list"})
 			channels[0].mu.Lock()
 			observe := channels[0].onListing
 			channels[0].mu.Unlock()

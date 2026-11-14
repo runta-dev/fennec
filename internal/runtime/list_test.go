@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,7 @@ func TestSessionListUsesOneCompleteSnapshot(t *testing.T) {
 		if method != "terminal.list" {
 			t.Fatal(method)
 		}
-		return json.RawMessage(`{"terminals":[{"address":"t1","state":"live","title":"Fix login redirect","status":"working","labels":{"fennec.session":"quiet-river"}},{"address":"t2","state":"live"}],"hidden_finished":3}`), nil
+		return json.RawMessage(`{"terminals":[{"address":"t1","state":"live","title":"Fix login redirect","status":"working","labels":{"fennec.session":"quiet-river","where":"workspace"},"argv":["/bin/codex","private-input"],"foreground":{"argv":["private-input"]}},{"address":"t2","state":"live"}],"hidden_finished":3}`), nil
 	}, Run: func(context.Context, ...string) ([]byte, error) {
 		t.Fatal("snapshot must not issue per-terminal CLI queries")
 		return nil, nil
@@ -38,6 +39,9 @@ func TestSessionListUsesOneCompleteSnapshot(t *testing.T) {
 	}
 	if result.Terminals[1]["address"] != "t2" || result.Terminals[1]["state"] != "live" {
 		t.Fatal(result)
+	}
+	if bytes.Contains(output, []byte("private-input")) || result.Terminals[0]["agent"] != "codex" || result.Terminals[0]["where"] != "workspace" {
+		t.Fatal(string(output))
 	}
 }
 
