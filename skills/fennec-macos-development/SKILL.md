@@ -1,11 +1,37 @@
 ---
 name: fennec-macos-development
-description: Build, sign, restart, and debug the Fennec macOS companion, shared-channel session operations, UI state synchronization, Keychain access, cloud takeover, and CLI launch errors. Use for Fennec macOS development or recurring signing, session latency, and takeover problems; not for unrelated Runta runtime work.
+description: Build, sign, publish, and debug the Fennec macOS companion, shared-channel session operations, UI state synchronization, Keychain access, cloud takeover, and CLI launch errors. Use for Fennec macOS development, version releases, or recurring signing, session latency, and takeover problems; not for unrelated Runta runtime work.
 ---
 
 # Fennec macOS development
 
 Preserve existing source changes, user credentials, cloud sessions, and unrelated processes. Do not rebuild credentials, reset model preferences, or blindly retry an uncertain launch.
+
+## Release publication and user-controlled installation
+
+For a requested version update or release, automatically finish publication to
+GitHub Releases in `runta-dev/fennec` after verifying the artifacts. The user's
+standing preference authorizes this publication; do not stop at CI artifacts or
+a draft release, or ask again for permission to publish the requested version.
+
+Build the intended merged main commit with `runta-dev/errand`'s
+`fennec-release.yml`, passing its full `source_sha` and the intended `version`.
+That workflow builds artifacts but does not publish them. Verify checksums,
+provenance, signing and notarization, then publish the release with the full
+installers, incremental-update components, component manifest, checksums and
+provenance. Confirm the public latest-release feed exposes the intended version
+and assets. Release notes must disclose known validation or performance limits.
+
+Do not install release builds on the user's Mac, replace `/Applications/Fennec.app`,
+invoke `update.install`, or restart the app/daemon to apply a release. The user
+chooses when to click **Update**. Do not change their automatic-update preference
+or trigger an update download or installation as a verification shortcut. Check
+the public release feed and, only if needed, use `update.check` with
+`{"download":false}` to verify discovery without downloading or installing.
+
+The installation and restart procedures below apply to development builds when
+local development testing is authorized. Release completion requires publication
+and update-feed verification, not installation on the user's Mac.
 
 ## Reuse the local signing identity
 
