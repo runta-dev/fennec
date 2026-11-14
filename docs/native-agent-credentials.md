@@ -142,6 +142,10 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
   `GROK_HOME/sessions`. Ambiguous titles require an explicit ID.
 
 Every `cwd` field is mapped to the cloud workspace.
+Import uses the same active account directory as native launch, including
+separate cloud logins. Cursor and Grok retain their isolated native directories
+even when Magpie is enabled for other agents. Invalid account selections fail
+without publishing the conversation into a different account.
 
 The link to the cloud computer is slow (about 130 KB/s), so only what the agent
 needs to continue is sent:

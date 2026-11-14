@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fennec/internal/agentcmd"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
 	"fmt"
@@ -505,6 +506,9 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 	if err := bundle.validate(); err != nil {
 		return 0, err
 	}
+	if cloudAgentHome(home, bundle.Agent) == "" {
+		return 0, fmt.Errorf("native conversation storage is unavailable")
+	}
 	lockDir := filepath.Join(home, ".local/fennec/session-import-locks")
 	if err := safeConversationDestination(home, filepath.Join(lockDir, "lock")); err != nil {
 		return 0, err
@@ -599,36 +603,34 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 // cloudAgentHome is where the cloud agent keeps conversations: the isolated
 // native configuration, or the default directory under the gateway.
 func cloudAgentHome(home, agent string) string {
-	native := setup.NativeAgentMode(home)
+	native := setup.NativeAgentMode(home) || agentcmd.NativeOnly(agent)
+	if native {
+		switch agent {
+		case "claude", "codex", "pi", "kimi", "opencode", "cursor", "grok":
+		default:
+			return ""
+		}
+		root, _, err := setup.NativeAccountRoot(home, agent)
+		if err != nil {
+			return ""
+		}
+		root = filepath.Join(root, agent)
+		if agent == "opencode" {
+			return filepath.Join(root, "data")
+		}
+		return root
+	}
 	switch agent {
 	case "claude":
-		if native {
-			return filepath.Join(home, ".local/fennec/native/claude")
-		}
 		return filepath.Join(home, ".claude")
 	case "codex":
-		if native {
-			return filepath.Join(home, ".local/fennec/native/codex")
-		}
 		return filepath.Join(home, ".codex")
-	case "pi", "kimi", "opencode", "cursor", "grok":
-		if native {
-			root := filepath.Join(home, ".local/fennec/native", agent)
-			if agent == "opencode" {
-				return filepath.Join(root, "data")
-			}
-			return root
-		}
-		switch agent {
-		case "pi":
-			return filepath.Join(home, ".pi/agent")
-		case "kimi":
-			return filepath.Join(home, ".kimi-code")
-		case "cursor", "grok":
-			return filepath.Join(home, "."+agent)
-		default:
-			return filepath.Join(home, ".local/share")
-		}
+	case "pi":
+		return filepath.Join(home, ".pi/agent")
+	case "kimi":
+		return filepath.Join(home, ".kimi-code")
+	case "opencode":
+		return filepath.Join(home, ".local/share")
 	}
 	return ""
 }
@@ -666,7 +668,7 @@ func sessionMarker(agent string, transcript []byte) string {
 // cloud compaction may have removed the original marker; that never permits
 // an older Mac copy to overwrite the cloud conversation.
 func HasCloudSession(home, agent, conversation, marker string) bool {
-	if !validConversation(agent, conversation) || !markerPattern.MatchString(marker) {
+	if !validConversation(agent, conversation) || !markerPattern.MatchString(marker) || cloudAgentHome(home, agent) == "" {
 		return false
 	}
 	var copies []string
