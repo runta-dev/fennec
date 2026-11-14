@@ -126,6 +126,9 @@ func (t *Target) UnmarshalJSON(data []byte) error {
 		*t = TargetFromString(text)
 		return nil
 	}
+	if s := bytes.TrimSpace(data); len(s) == 0 || s[0] != '{' {
+		return fmt.Errorf("a target is a ref (\"e12\"), a selector string (\"button \\\"Save\\\"\") or an object with ref, select or point, not %s", clipJSON(s))
+	}
 	type plain Target
 	var p plain
 	if err := json.Unmarshal(data, &p); err != nil {
@@ -133,6 +136,14 @@ func (t *Target) UnmarshalJSON(data []byte) error {
 	}
 	*t = Target(p)
 	return t.Validate()
+}
+
+// clipJSON shortens a JSON value for an error message.
+func clipJSON(b []byte) string {
+	if len(b) > 40 {
+		return string(b[:40]) + "…"
+	}
+	return string(b)
 }
 
 // TargetFromString reads the string shorthand.

@@ -52,6 +52,7 @@ The first call of a runtime prints the full API documentation before your output
 4. After the first full read, `getAXState()` prints a **diff**: `~` changed lines, `+` new lines, `Removed element IDs: ...`. Unchanged ids stay valid; new elements get new, higher ids. `getAXState({ disableDiffing: true })` prints the whole tree again.
 5. Use ids only from the latest state. A stale id throws `<id> is an invalid element ID` or `element N is no longer in the app; call getAXState() again...`: read the state and use a fresh id.
 6. Batch a few steps in one call only when you are sure of them; stop as soon as the requested result is visible.
+7. Finish with the result where the user expects it. A window, panel or document they asked to open, show or reach stays open (do not close it after checking), and do that in the app's UI rather than through a shell shortcut. Something they asked you to write or make goes into the app the task names or implies, not only into your reply.
 
 ## 4. API essentials
 

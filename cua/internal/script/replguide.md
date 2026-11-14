@@ -1,6 +1,6 @@
 # fennec-cua: driving Mac apps from this JavaScript REPL
 
-This REPL operates native macOS apps through their accessibility tree, and web pages in browser tabs: read an app's or a tab's state, act on its elements, read again. Use it for tasks that need a real app's or website's UI. When a command-line tool, a file edit or an API does the job, prefer that instead. The runtime persists between calls: top-level `var`, `let`, `const`, `function` and `class` bindings stay until `js_reset`, and top-level `await` works. There is no `require`, `process`, file system or network.
+This REPL operates native macOS apps through their accessibility tree, and web pages in browser tabs: read an app's or a tab's state, act on its elements, read again. Use it for tasks that need a real app's or website's UI. A command-line tool, a file edit or an API can be the better way to work on data and files; when the user asks to open, show, view or navigate to something, do it in the app's UI, as they would. The runtime persists between calls: top-level `var`, `let`, `const`, `function` and `class` bindings stay until `js_reset`, and top-level `await` works. There is no `require`, `process`, file system or network.
 
 ## API
 
@@ -79,7 +79,7 @@ A dialog that another process raised (a script's alert, a "click here" offer, a 
 2. Every method waits for the UI to settle before it reads; do not add sleeps.
 3. Prefer element ids. Use `[x, y]` points (pixels of `getScreenshot()`) only for things the tree does not show, such as canvas content.
 4. Group a few dependent steps in one call when you are sure of them; read the state before anything you are not sure of.
-5. Stop as soon as the result you were asked for is visible.
+5. Stop as soon as the result you were asked for is visible, and leave it where the user expects it: a window, panel or document they asked to open or reach stays open (do not close it after checking), and something they asked you to write or make goes into the app the task names or implies, not only into your reply.
 
 ## Output
 
