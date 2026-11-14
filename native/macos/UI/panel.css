@@ -374,15 +374,8 @@ main{min-height:0}
 .update-pill:active:not(:disabled){transform:scale(.96)}
 .update-pill.busy{pointer-events:none;opacity:.65}
 .update-pill[hidden]{display:none!important}
-.update-hide{position:absolute;top:-6px;right:-5px;width:14px;height:14px;padding:0;border:1px solid rgba(0,0,0,.14);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);background:var(--card);box-shadow:0 1px 3px #0000001f;opacity:0;pointer-events:none;transition:opacity .12s ease,color .12s ease}
-:root[data-theme=dark] .update-hide{border-color:rgba(255,255,255,.16)}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .update-hide{border-color:rgba(255,255,255,.16)}}
-.update-hide svg{width:8px;height:8px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
 /* The badge sits beside the title; keep the brand icon colour off its icons */
 .brand .update-wrap{margin-left:2px}.brand .update-wrap svg{color:inherit}
-.update-wrap:hover .update-hide,.update-hide:focus-visible{opacity:1;pointer-events:auto}
-.update-hide:hover{color:var(--text);filter:none}
-.update-pill[hidden]+.update-hide,.update-pill.busy+.update-hide{display:none!important}
 .settings-version-meta{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted)}
 .settings-version-number{color:var(--muted)}
 .settings-version-sub{color:var(--muted)}
@@ -393,24 +386,10 @@ main{min-height:0}
 :root[data-theme=dark] .version-action.is-primary{color:#f5bc7e}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .version-action.is-primary{color:#f5bc7e}}
 .version-action.is-primary:hover:not(:disabled){background:var(--orange);border-color:var(--orange);color:#fff}
-.update-dialog{width:min(380px,calc(100vw - 28px));max-height:calc(100vh - 32px);padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);box-shadow:0 14px 44px #0004}
-.update-dialog::backdrop{background:#0005}
-.update-dialog-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
-.update-dialog-head strong{font-size:13.5px;font-weight:500}
-.update-dialog-version{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.update-dialog-notes{max-height:150px;overflow-y:auto;padding:8px 10px;margin:8px 0;border:1px solid var(--line);border-radius:8px;background:var(--expanded);font-size:11.5px;line-height:1.5}
-.update-dialog-notes ul{margin:4px 0;padding-left:16px}
-.update-dialog-notes li{margin:2px 0}
-.update-dialog-notes p{margin:4px 0;font-size:11.5px;color:var(--text)}
 .update-note-heading{font-size:11.5px;font-weight:500;margin:6px 0 3px;color:var(--text)}
 .update-note-heading:first-child{margin-top:0}
-.update-dialog-notes code{padding:1px 4px;border-radius:4px;background:var(--bg);font:10.5px ui-monospace,SFMono-Regular,Menlo,monospace}
 .update-note-link{display:inline;padding:0;border:0;border-radius:3px;background:none;color:var(--orange);font:inherit;text-decoration:underline;text-underline-offset:2px}
 .update-note-link:hover{filter:brightness(.92)}
-.update-dialog-hint{margin:6px 0 12px;font-size:11px;line-height:1.45;color:var(--muted)}
-.update-dialog-actions{display:flex;justify-content:flex-end;gap:8px}
-.update-dialog-actions button{height:28px;padding:0 12px;border-radius:7px;font-size:12px}
-.update-dialog-confirm{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:500}
 
 /* Developer environment & transport debug modal (Ctrl + 5 clicks on Fennec mark). */
 .env-badge{height:18px;padding:0 6px;margin-left:2px;border:1px solid #f38d2560;border-radius:999px;background:var(--tint);color:#b06014;font-size:10px;font-weight:500;letter-spacing:.04em;line-height:16px}

@@ -2204,14 +2204,6 @@
       "zh-CN": "正在下载…",
       "zh-TW": "正在下載…"
     },
-    "ui.hide_update_until_next_version": {
-      "en-GB": "Hide until the next version",
-      "en-US": "Hide until the next version",
-      "ja": "次のバージョンまで非表示",
-      "ko": "다음 버전까지 숨기기",
-      "zh-CN": "在此版本下隐藏",
-      "zh-TW": "在此版本下隱藏"
-    },
     "ui.reconnecting": {
       "en-GB": "Reconnecting…",
       "en-US": "Reconnecting…",
@@ -2299,14 +2291,6 @@
       "ko": "업데이트 실패",
       "zh-CN": "更新失败",
       "zh-TW": "更新失敗"
-    },
-    "ui.update_keeps_sessions": {
-      "en-GB": "Cloud sessions keep running across the restart",
-      "en-US": "Cloud sessions keep running across the restart",
-      "ja": "再起動中もクラウドセッションは継続します",
-      "ko": "재시작 중에도 클라우드 세션은 계속 실행됩니다",
-      "zh-CN": "云端会话在重启期间继续运行，不会中断",
-      "zh-TW": "雲端工作階段在重新啟動期間繼續執行，不會中斷"
     },
     "ui.update_ready": {
       "en-GB": "Ready to update",

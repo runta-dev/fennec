@@ -34,7 +34,6 @@ function el(tag) { const n = makeNode(tag); n.classList.owner = n; return n; }
 
 const pill = el('button'); pill.hidden = true;
 const pillLabel = el('span');
-const hideBtn = el('button');
 const autoSwitch = el('button');
 const versionBox = el('div');
 const versionNumber = el('span');
@@ -52,7 +51,6 @@ let createdDialog = null;
 const bySelector = {
   '#update-pill': pill,
   '#update-pill-label': pillLabel,
-  '#update-hide': hideBtn,
   '#auto-update': autoSwitch,
   '.settings-version': versionBox,
   '.settings-version-number': versionNumber,
@@ -76,42 +74,49 @@ const context = vm.createContext({
   send: msg => sent.push(msg)
 });
 
+
 vm.runInContext(source, context);
 
-// 1. Ready update displays header pill and Settings Restart to update action.
-context.window.renderUpdateState({ state: 'ready', current: '0.2.100', latest: '0.2.200', notes: '### Features\n- Fast updates via `fen update` and [Changelog](https://github.com/runta-dev/fennec/releases).' });
+// 1. A ready update shows the header pill and the Settings action.
+context.window.renderUpdateState({ state: 'ready', current: '0.2.100', latest: '0.2.200', notes: '' });
 assert.equal(pill.hidden, false, 'header pill visible when update is ready');
 assert.equal(versionActions.children.length, 1);
 assert.equal(versionActions.children[0].textContent, '[[i18n:ui.restart_to_update]]');
 
-// 2. Clicking pill opens confirmation dialog with parsed release notes; confirming triggers update-install.
+// 2. One click updates: no dialog, the install starts at once.
 pill.onclick();
-assert.equal(createdDialog.open, true);
-assert.equal(dialogNodes['.update-dialog-notes'].children.length, 2);
-const bulletItem = dialogNodes['.update-dialog-notes'].children[1].children[0];
-assert.equal(bulletItem.children.some(c => c.tag === 'code' && c.textContent === 'fen update'), true, 'inline code rendered safely');
-const linkBtn = bulletItem.children.find(c => c.tag === 'button' && c.textContent === 'Changelog');
-assert.ok(linkBtn, 'inline HTTPS release link rendered');
-linkBtn.onclick();
-assert.equal(sent.pop(), 'update-open-url:{"url":"https://github.com/runta-dev/fennec/releases"}');
-dialogNodes['.update-dialog-confirm'].onclick();
 assert.equal(sent.pop(), 'update-install');
+assert.equal(createdDialog, null, 'no confirmation dialog');
+assert.equal(pillLabel.textContent, '[[i18n:ui.restarting]]');
+pill.onclick();
+assert.equal(sent.length, 0, 'a second click does not install twice');
 
-// 3. Hiding pill skips only the current version while leaving Settings action intact.
+// 3. A failed install lets the user try again from the pill.
 context.window.renderUpdateInstallFailed();
-createdDialog.close();
-hideBtn.onclick({ stopPropagation() {} });
-assert.equal(pill.hidden, true, 'pill hidden after clicking x');
-assert.equal(sent.pop(), 'settings:{"update_skip":"0.2.200"}');
-assert.equal(versionActions.children[0].textContent, '[[i18n:ui.restart_to_update]]', 'Settings still retains Restart to update');
+assert.equal(pillLabel.textContent, '[[i18n:ui.update_failed]]');
+pill.onclick();
+assert.equal(sent.pop(), 'update-install');
+context.window.renderUpdateInstallFailed();
 
-// 4. A newer version re-exposes the header pill automatically.
-context.window.renderUpdateState({ state: 'ready', current: '0.2.100', latest: '0.2.300', notes: '' });
-assert.equal(pill.hidden, false, 'newer version shows pill again');
+// 4. An update not downloaded yet: one click downloads it, then installs
+// as soon as it is ready, without a second click.
+context.window.renderUpdateState({ state: 'found', current: '0.2.100', latest: '0.2.300', size: 33e6 });
+assert.equal(versionActions.children[0].textContent, '[[i18n:ui.update]]');
+versionActions.children[0].onclick();
+assert.equal(sent.pop(), 'update-download');
+context.window.renderUpdateState({ state: 'downloading', current: '0.2.100', latest: '0.2.300', done: 1, total: 2 });
+assert.equal(sent.length, 0);
+context.window.renderUpdateState({ state: 'ready', current: '0.2.100', latest: '0.2.300' });
+assert.equal(sent.pop(), 'update-install', 'installs once the download is ready');
 
-// 5. Toggling Automatic updates switch sends settings update.
+// 5. Without a click, a downloaded update waits for the user.
+context.window.renderUpdateInstallFailed();
+context.window.renderUpdateState({ state: 'ready', current: '0.2.100', latest: '0.2.400' });
+assert.equal(sent.length, 0, 'no install without a click');
+
+// 6. Toggling Automatic updates switch sends settings update.
 autoSwitch.onclick();
 assert.equal(sent.pop(), 'settings:{"auto_update":false}');
 assert.equal(autoSwitch.attrs['aria-checked'], 'false');
 
-console.log('PASS updater pill, skip-until-next-version, release-notes dialog, and settings controls');
+console.log('PASS updater pill, one-click update without a dialog, and settings controls');

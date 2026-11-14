@@ -1,8 +1,8 @@
-// Magpie-style quiet header update pill, release-notes dialog, and Settings version bar.
+// Magpie-style quiet header update pill and Settings version bar. One click
+// updates: no confirmation dialog.
 (() => {
   const pill = document.querySelector('#update-pill');
   const pillLabel = document.querySelector('#update-pill-label');
-  const hideBtn = document.querySelector('#update-hide');
   const autoSwitch = document.querySelector('#auto-update');
   const versionBox = document.querySelector('.settings-version');
   const versionNumber = document.querySelector('.settings-version-number');
@@ -11,35 +11,13 @@
 
   let currentUpdate = { state: '', current: '' };
   let autoUpdateEnabled = true;
-  let skippedVersion = '';
   let actionPending = false;
   let restarting = false;
+  // Set by a click on an update that is still downloading: restart into it
+  // as soon as it is ready.
+  let installWhenReady = false;
 
   const t = token => (typeof translate === 'function' ? translate(token) : token);
-
-  const dialog = document.createElement('dialog');
-  dialog.id = 'update-dialog';
-  dialog.className = 'update-dialog';
-  dialog.setAttribute('aria-labelledby', 'update-dialog-title');
-  dialog.innerHTML =
-    '<div class="update-dialog-head"><strong id="update-dialog-title"></strong><span class="update-dialog-version"></span></div>' +
-    '<div class="update-dialog-notes"></div>' +
-    '<p class="update-dialog-hint"></p>' +
-    '<div class="update-dialog-actions">' +
-    '<button type="button" class="update-dialog-cancel"></button>' +
-    '<button type="button" class="update-dialog-confirm"></button>' +
-    '</div>';
-  document.body?.append(dialog);
-
-  const dialogTitle = dialog.querySelector('#update-dialog-title');
-  const dialogVersion = dialog.querySelector('.update-dialog-version');
-  const dialogNotes = dialog.querySelector('.update-dialog-notes');
-  const dialogHint = dialog.querySelector('.update-dialog-hint');
-  const dialogCancel = dialog.querySelector('.update-dialog-cancel');
-  const dialogConfirm = dialog.querySelector('.update-dialog-confirm');
-
-  dialogCancel.onclick = () => { if (!restarting) dialog.close(); };
-  dialog.addEventListener('cancel', event => { if (restarting) event.preventDefault(); });
 
   function formatSpeed(bytesPerSec) {
     if (!bytesPerSec || bytesPerSec <= 0) return '';
@@ -65,100 +43,30 @@
     return text;
   }
 
-  function appendInlineMarkdown(parent, rawText) {
-    const cleaned = String(rawText || '').replace(/[.。]$/, '');
-    const tokenRe = /`([^`]+)`|\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g;
-    let cursor = 0;
-    let match;
-    while ((match = tokenRe.exec(cleaned)) !== null) {
-      if (match.index > cursor) {
-        parent.append(document.createTextNode(cleaned.slice(cursor, match.index)));
+  // install downloads the update when needed and restarts into it.
+  function install() {
+    if (restarting || actionPending) return;
+    const u = currentUpdate;
+    if (u.state === 'ready') {
+      installWhenReady = false;
+      restarting = true;
+      draw();
+      send('update-install');
+    } else if (u.state === 'found' || u.state === 'downloading') {
+      installWhenReady = true;
+      if (u.state === 'found') {
+        actionPending = true;
+        send('update-download');
       }
-      if (match[1] !== undefined) {
-        const code = document.createElement('code');
-        code.textContent = match[1];
-        parent.append(code);
-      } else {
-        const url = match[3];
-        const link = document.createElement('button');
-        link.type = 'button';
-        link.className = 'update-note-link';
-        link.textContent = match[2];
-        link.onclick = () => send('update-open-url:' + JSON.stringify({ url }));
-        parent.append(link);
-      }
-      cursor = match.index + match[0].length;
+      draw();
     }
-    if (cursor < cleaned.length) {
-      parent.append(document.createTextNode(cleaned.slice(cursor)));
-    }
-  }
-
-  function renderMarkdownNotes(container, md) {
-    container.replaceChildren();
-    const raw = String(md || '').trim();
-    if (!raw) {
-      container.hidden = true;
-      return;
-    }
-    container.hidden = false;
-    let list = null;
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed) { list = null; continue; }
-      const heading = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(trimmed);
-      const bullet = /^[-*+]\s+(.*)$/.exec(trimmed);
-      if (heading) {
-        list = null;
-        const h = document.createElement('div');
-        h.className = 'update-note-heading';
-        appendInlineMarkdown(h, heading[1]);
-        container.append(h);
-      } else if (bullet) {
-        if (!list) { list = document.createElement('ul'); container.append(list); }
-        const li = document.createElement('li');
-        appendInlineMarkdown(li, bullet[1]);
-        list.append(li);
-      } else {
-        list = null;
-        const p = document.createElement('p');
-        appendInlineMarkdown(p, trimmed);
-        container.append(p);
-      }
-    }
-  }
-
-  function triggerInstall() {
-    if (restarting) return;
-    restarting = true;
-    dialogConfirm.disabled = true;
-    dialogCancel.disabled = true;
-    dialogConfirm.textContent = t('[[i18n:ui.restarting]]');
-    draw();
-    send('update-install');
-  }
-
-  function openConfirmDialog() {
-    if (!currentUpdate.latest) return;
-    dialogTitle.textContent = t('[[i18n:ui.restart_to_update]]');
-    dialogVersion.textContent = (currentUpdate.current ? currentUpdate.current + ' → ' : '') + currentUpdate.latest;
-    renderMarkdownNotes(dialogNotes, currentUpdate.notes);
-    dialogHint.textContent = t('[[i18n:ui.update_keeps_sessions]]');
-    dialogCancel.textContent = t('[[i18n:ui.cloud_cancel]]');
-    dialogConfirm.textContent = t('[[i18n:ui.restart_to_update]]');
-    dialogCancel.disabled = false;
-    dialogConfirm.disabled = false;
-    dialogConfirm.onclick = triggerInstall;
-    if (!dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
-    dialogConfirm.focus();
   }
 
   function drawPill() {
     if (!pill || !pillLabel) return;
     const u = currentUpdate;
     const showStates = ['ready', 'found', 'downloading'];
-    const hiddenBySkip = !!u.latest && skippedVersion === u.latest && u.state !== 'downloading' && !restarting;
-    const visible = showStates.includes(u.state) && !hiddenBySkip;
+    const visible = showStates.includes(u.state);
     pill.hidden = !visible;
     pill.classList.toggle('busy', u.state === 'downloading' || actionPending || restarting);
     if (!visible) return;
@@ -179,16 +87,7 @@
     pill.title = u.state === 'ready'
       ? t('[[i18n:ui.restart_to_update]]') + ' · ' + u.latest
       : u.latest;
-    pill.onclick = () => {
-      if (restarting || actionPending) return;
-      if (u.state === 'ready') {
-        openConfirmDialog();
-      } else if (u.state === 'found') {
-        actionPending = true;
-        draw();
-        send('update-download');
-      }
-    };
+    pill.onclick = install;
   }
 
   function drawSettingsBar() {
@@ -232,15 +131,11 @@
         break;
       case 'ready':
         versionSub.textContent = ' · ' + u.latest + ' ' + t('[[i18n:ui.update_ready]]');
-        addBtn(t('[[i18n:ui.restart_to_update]]'), openConfirmDialog, false, true);
+        addBtn(t('[[i18n:ui.restart_to_update]]'), install, false, true);
         break;
       case 'found':
         versionSub.textContent = ' · ' + u.latest + (u.size > 0 ? ' (' + (u.size / 1e6).toFixed(1) + ' MB)' : '');
-        addBtn(t('[[i18n:ui.download]]'), () => {
-          actionPending = true;
-          draw();
-          send('update-download');
-        }, actionPending, true);
+        addBtn(t('[[i18n:ui.update]]'), install, actionPending, true);
         break;
       case 'available':
         versionSub.textContent = u.latest ? ' · ' + u.latest + ' ' + t('[[i18n:ui.update_available]]') : '';
@@ -275,16 +170,6 @@
     drawSettingsBar();
   }
 
-  if (hideBtn) {
-    hideBtn.onclick = event => {
-      event.stopPropagation();
-      if (!currentUpdate.latest) return;
-      skippedVersion = currentUpdate.latest;
-      drawPill();
-      send('settings:' + JSON.stringify({ update_skip: skippedVersion }));
-    };
-  }
-
   if (autoSwitch) {
     autoSwitch.onclick = () => {
       autoUpdateEnabled = !autoUpdateEnabled;
@@ -300,7 +185,6 @@
   window.renderUpdatePreferences = prefs => {
     if (!prefs) return;
     autoUpdateEnabled = prefs.no_auto_update !== true;
-    skippedVersion = typeof prefs.update_skip === 'string' ? prefs.update_skip : '';
     draw();
   };
 
@@ -308,17 +192,18 @@
     actionPending = false;
     if (!state || typeof state !== 'object') return;
     currentUpdate = state;
+    if (state.state === 'error' || state.state === 'latest') installWhenReady = false;
+    if (installWhenReady && state.state === 'ready' && !state.error) {
+      install();
+      return;
+    }
     draw();
   };
 
   window.renderUpdateInstallFailed = () => {
     restarting = false;
     actionPending = false;
-    if (dialog.open) {
-      dialogConfirm.disabled = false;
-      dialogCancel.disabled = false;
-      dialogConfirm.textContent = t('[[i18n:ui.restart_to_update]]');
-    }
+    installWhenReady = false;
     currentUpdate = { ...currentUpdate, error: 'install_failed' };
     draw();
   };
