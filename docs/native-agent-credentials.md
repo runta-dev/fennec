@@ -148,8 +148,8 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
 
 Every `cwd` field is mapped to the cloud workspace.
 Import uses the same active account directory as native launch, including
-separate cloud logins. Cursor and Grok retain their isolated native directories
-even when Magpie is enabled for other agents. Invalid account selections fail
+separate cloud logins. Cursor retains its isolated native directory even when
+Magpie is enabled; Grok uses its gateway home in Magpie mode. Invalid native account selections fail
 without publishing the conversation into a different account.
 
 The link to the cloud computer is slow (about 130 KB/s), so only what the agent

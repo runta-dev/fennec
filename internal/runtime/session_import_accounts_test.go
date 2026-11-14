@@ -19,7 +19,7 @@ func TestSessionStorageMatchesNativeLaunchAccount(t *testing.T) {
 				home := t.TempDir()
 				base := filepath.Join(home, ".local/fennec/native")
 				root := base
-				if err := setup.ConfigureAgentMode(home, agent != "cursor" && agent != "grok"); err != nil {
+				if err := setup.ConfigureAgentMode(home, agent != "cursor"); err != nil {
 					t.Fatal(err)
 				}
 				if selected {
@@ -46,6 +46,21 @@ func TestSessionStorageMatchesNativeLaunchAccount(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestGrokImportUsesGatewayHomeWhenMagpieEnabled(t *testing.T) {
+	home := t.TempDir()
+	if err := setup.ConfigureAgentMode(home, false); err != nil {
+		t.Fatal(err)
+	}
+	b := SessionImport{Version: 1, Agent: "grok", Conversation: conversationA, LaunchID: launchID, Marker: "fixture", Files: grokFixture()}
+	if _, err := ApplySessionImport(home, b); err != nil {
+		t.Fatal(err)
+	}
+	copies := vendorCandidates(filepath.Join(home, ".grok"), "grok")
+	if len(copies) != 1 || copies[0].id != conversationA || !HasCloudSession(home, "grok", conversationA, b.Marker) {
+		t.Fatal("Grok gateway launch cannot find the imported conversation")
 	}
 }
 

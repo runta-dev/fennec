@@ -629,6 +629,8 @@ func cloudAgentHome(home, agent string) string {
 		return filepath.Join(home, ".pi/agent")
 	case "kimi":
 		return filepath.Join(home, ".kimi-code")
+	case "grok":
+		return filepath.Join(home, ".grok")
 	case "opencode":
 		return filepath.Join(home, ".local/share")
 	}
