@@ -149,7 +149,7 @@ herdr-core server status >/dev/null 2>&1
 		script += "command -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
 	}
 	for _, id := range agents {
-		if !strings.Contains("|claude|codex|pi|opencode|", "|"+id+"|") || id == "" {
+		if !strings.Contains("|claude|codex|pi|opencode|kimi|", "|"+id+"|") || id == "" {
 			return "exit 1"
 		}
 		script += "command -v " + id + " >/dev/null\n"

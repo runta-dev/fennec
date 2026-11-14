@@ -165,6 +165,8 @@ func nativeAccountView(agent string, read func(string) []byte) NativeAccountView
 			}
 			view.Accounts = append(view.Accounts, identity)
 		}
+	case "kimi":
+		view.Accounts = kimiAccounts(read)
 	}
 	if len(view.Accounts) > 0 {
 		view.Status = "signed_in"

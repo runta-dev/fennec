@@ -12,6 +12,7 @@ It never sends an inference request to decide whether the TUI may start.
 | Claude Code | `CLAUDE_CONFIG_DIR` or `~/.claude`; macOS Keychain first, then .credentials.json; model and supported provider environment settings | Isolated CLAUDE_CONFIG_DIR, Linux credential file and onboarding profile |
 | Pi | `PI_CODING_AGENT_DIR` or `~/.pi/agent`; auth.json, model settings and models.json | Isolated PI_CODING_AGENT_DIR |
 | OpenCode | XDG data/config roots; auth.json and provider/model fields | Isolated XDG data/config roots |
+| Kimi Code | `KIMI_CODE_HOME` or `~/.kimi-code`; credentials/kimi-code.json (OAuth), the region file, and from config.toml the default model, thinking settings, services and remote providers with their models (no hooks, no loopback or Magpie providers) | Isolated KIMI_CODE_HOME; launched with `--auto` (Never Ask) |
 
 Supported provider environment variables are explicitly allowlisted in
 `internal/setup/native_accounts.go`. The daemon reads these variables and custom

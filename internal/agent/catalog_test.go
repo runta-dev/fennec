@@ -18,7 +18,13 @@ func TestDiscoveryEvidence(t *testing.T) {
 	if len(found) != 1 || found[0].ID != "pi" {
 		t.Fatalf("false positives: %+v", found)
 	}
+	// ~/.kimi is the legacy Python kimi-cli, another product: not evidence.
 	os.WriteFile(filepath.Join(home, ".kimi/config.toml"), []byte(""), 0600)
+	if found = discoverAt(home, []string{bin}, nil); len(found) != 1 {
+		t.Fatalf("legacy kimi-cli taken for Kimi Code: %+v", found)
+	}
+	os.MkdirAll(filepath.Join(home, ".kimi-code"), 0700)
+	os.WriteFile(filepath.Join(home, ".kimi-code/config.toml"), []byte(""), 0600)
 	found = discoverAt(home, []string{bin}, nil)
 	if len(found) != 2 || found[1].ID != "kimi" {
 		t.Fatalf("missing config evidence: %+v", found)

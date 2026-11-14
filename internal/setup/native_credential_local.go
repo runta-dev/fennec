@@ -114,6 +114,8 @@ func (st NativeCredentialStore) Locations(agents []string) []NativeCredentialLoc
 			out = append(out, location)
 		case "pi":
 			out = append(out, NativeCredentialLocation{Name: "pi/auth.json", File: filepath.Join(s.dir("PI_CODING_AGENT_DIR", ".pi/agent"), "auth.json")})
+		case "kimi":
+			out = append(out, NativeCredentialLocation{Name: kimiCredentialFile, File: filepath.Join(s.dir(kimiHomeEnv, kimiHomeDefault), "credentials", "kimi-code.json")})
 		case "opencode":
 			out = append(out, NativeCredentialLocation{Name: "opencode/data/opencode/auth.json", File: filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json")})
 		}

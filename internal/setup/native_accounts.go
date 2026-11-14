@@ -32,6 +32,7 @@ var nativeFiles = map[string]bool{
 	"claude/.credentials.json": true, "claude/settings.json": true, "claude/.claude.json": true,
 	"pi/auth.json": true, "pi/settings.json": true, "pi/models.json": true,
 	"opencode/data/opencode/auth.json": true, "opencode/config/opencode/opencode.json": true,
+	kimiConfigFile: true, kimiCredentialFile: true, kimiRegionFile: true,
 	"env.json": true,
 }
 var nativeEnvKeys = []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"}
@@ -152,6 +153,15 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 	add := func(name string, b []byte) error {
 		if !nativeFiles[name] {
 			return fmt.Errorf("unsupported native file")
+		}
+		if name == kimiRegionFile {
+			// One plain word, not JSON: validated and stored as is.
+			region, ok := kimiRegion(b)
+			if !ok {
+				return fmt.Errorf("invalid native configuration for kimi")
+			}
+			r.Files[name] = base64.StdEncoding.EncodeToString(region)
+			return nil
 		}
 		if !strings.HasSuffix(name, ".toml") && !json.Valid(b) {
 			return fmt.Errorf("invalid native configuration for %s", strings.Split(name, "/")[0])
@@ -381,6 +391,29 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 					return r, e
 				}
 			}
+		case "kimi":
+			dir := s.dir(kimiHomeEnv, kimiHomeDefault)
+			if e := read(kimiCredentialFile, filepath.Join(dir, "credentials", "kimi-code.json"), nil); e != nil {
+				return r, e
+			}
+			b, e := readNativeFile(filepath.Join(dir, "config.toml"))
+			if e != nil && !os.IsNotExist(e) {
+				return r, fmt.Errorf("cannot read native kimi configuration")
+			}
+			if e == nil {
+				config, err := kimiCloudConfig(b)
+				if err != nil {
+					return r, err
+				}
+				if e := add(kimiConfigFile, config); e != nil {
+					return r, e
+				}
+			}
+			if b, e := readNativeFile(filepath.Join(dir, "region")); e == nil {
+				if e := add(kimiRegionFile, b); e != nil {
+					return r, e
+				}
+			}
 		case "opencode":
 			if e := read("opencode/data/opencode/auth.json", filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json"), nil); e != nil {
 				return r, e
@@ -526,7 +559,11 @@ func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, 
 	if e != nil || len(data) > 4<<20 {
 		return nil, false, fmt.Errorf("invalid native credential envelope")
 	}
-	if strings.HasSuffix(name, ".toml") {
+	if name == kimiRegionFile {
+		if _, ok := kimiRegion(data); !ok {
+			return nil, false, fmt.Errorf("invalid native region")
+		}
+	} else if strings.HasSuffix(name, ".toml") {
 		var v map[string]any
 		if toml.Unmarshal(data, &v) != nil {
 			return nil, false, fmt.Errorf("invalid native TOML")
@@ -560,7 +597,7 @@ func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, 
 	}
 	source := credentialHash(data)
 	old := baseline[name]
-	if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" {
+	if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" && name != kimiConfigFile {
 		return nil, false, nil
 	}
 	if exists && !bytes.Equal(previous, data) {
@@ -604,7 +641,7 @@ func nativeHasCredentials(root, agent string) bool {
 	env := map[string]string{}
 	b, _ := os.ReadFile(filepath.Join(root, "env.json"))
 	_ = json.Unmarshal(b, &env)
-	file := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json", "opencode": "opencode/data/opencode/auth.json"}[agent]
+	file := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json", "opencode": "opencode/data/opencode/auth.json", "kimi": kimiCredentialFile}[agent]
 	b, _ = os.ReadFile(filepath.Join(root, file))
 	v := map[string]any{}
 	_ = json.Unmarshal(b, &v)
@@ -634,6 +671,21 @@ func nativeHasCredentials(root, agent string) bool {
 		b, _ := os.ReadFile(filepath.Join(root, "claude/settings.json"))
 		_ = json.Unmarshal(b, &cfg)
 		return cfg.Env["ANTHROPIC_API_KEY"] != "" || cfg.Env["ANTHROPIC_AUTH_TOKEN"] != "" || cfg.Env["CLAUDE_CODE_OAUTH_TOKEN"] != ""
+	case "kimi":
+		if text(v["access_token"]) || text(v["refresh_token"]) {
+			return true
+		}
+		var config map[string]any
+		b, _ = os.ReadFile(filepath.Join(root, kimiConfigFile))
+		_ = toml.Unmarshal(b, &config)
+		providers, _ := config["providers"].(map[string]any)
+		for _, value := range providers {
+			provider, _ := value.(map[string]any)
+			if text(provider["api_key"]) {
+				return true
+			}
+		}
+		return false
 	case "pi", "opencode":
 		for _, entry := range v {
 			m, _ := entry.(map[string]any)

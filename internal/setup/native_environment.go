@@ -72,7 +72,7 @@ func copyStringMap(in map[string]string) map[string]string {
 // roots. Read only this fixed allowlist; never print it or execute credential
 // helper commands referenced inside agent configuration.
 func nativeSourceEnvironment(ctx context.Context) map[string]string {
-	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "ZDOTDIR", "USER")
+	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "KIMI_CODE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "ZDOTDIR", "USER")
 	result := map[string]string{}
 	for _, key := range keys {
 		if value := os.Getenv(key); value != "" {

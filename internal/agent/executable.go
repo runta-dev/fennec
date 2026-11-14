@@ -67,7 +67,7 @@ func ManagedEntryPaths(home string) []string {
 		if !filepath.IsAbs(dir) {
 			continue
 		}
-		for _, id := range []string{"claude", "codex", "pi", "opencode"} {
+		for _, id := range []string{"claude", "codex", "pi", "opencode", "kimi"} {
 			path := filepath.Join(dir, id)
 			if seen[path] {
 				continue

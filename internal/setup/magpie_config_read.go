@@ -114,7 +114,7 @@ func readConfiguredMagpieModelOutput(home, agentID string) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	label := map[string]string{"claude": "Claude Code", "codex": "Codex", "pi": "Pi"}[agentID]
+	label := map[string]string{"claude": "Claude Code", "codex": "Codex", "pi": "Pi", "kimi": "Kimi Code"}[agentID]
 	if label == "" {
 		label = agentID
 	}

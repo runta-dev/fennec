@@ -55,7 +55,7 @@ func main() {
 	defer terminals.Close()
 	mux.HandleFunc("/preview-login", func(w http.ResponseWriter, r *http.Request) {
 		agent := r.URL.Query().Get("agent")
-		if !map[string]bool{"codex": true, "claude": true, "pi": true}[agent] {
+		if !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true}[agent] {
 			http.Error(w, "Unknown preview agent", 400)
 			return
 		}
@@ -129,7 +129,7 @@ const previewAgents=[
  {id:'codex',name:'Codex',icon:'codex-color.svg',installed:true,cloudSupported:true},
  {id:'claude',name:'Claude Code',icon:'claudecode-color.svg',installed:true,cloudSupported:true},
  {id:'pi',name:'Pi',icon:'pi.svg',installed:true,cloudSupported:true},
- {id:'kimi',name:'Kimi Code',icon:'kimi.svg',installed:false,cloudSupported:false},
+ {id:'kimi',name:'Kimi Code',icon:'kimi.svg',installed:true,cloudSupported:true},
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},
  {id:'opencode',name:'OpenCode',icon:'opencode.svg',installed:false,cloudSupported:false}];
 const nowMS=Date.now();

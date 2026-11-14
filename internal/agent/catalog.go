@@ -26,7 +26,7 @@ var catalog = []definition{
 	{"claude", "Claude Code", "claudecode-color.svg", []string{"claude"}, []string{".claude/settings.json"}, nil, true},
 	{"codex", "Codex", "codex-color.svg", []string{"codex"}, []string{".codex/config.toml"}, nil, true},
 	{"pi", "Pi", "pi.svg", []string{"pi"}, []string{".pi/agent/settings.json"}, nil, true},
-	{"kimi", "Kimi Code", "kimi.svg", []string{"kimi"}, []string{".kimi-code/config.toml", ".kimi/config.toml"}, nil, false},
+	{"kimi", "Kimi Code", "kimi.svg", []string{"kimi"}, []string{".kimi-code/config.toml"}, nil, true},
 	{"claude-desktop", "Claude Desktop", "claude-color.svg", nil, []string{"Library/Application Support/Claude/claude_desktop_config.json"}, []string{"Claude.app"}, false},
 	{"opencode", "OpenCode", "opencode.svg", []string{"opencode"}, []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc"}, nil, true},
 	{"devin", "Devin", "devin.svg", []string{"devin"}, []string{".config/devin/config.json", "Library/Application Support/devin/config.json"}, nil, false},
@@ -116,17 +116,17 @@ func PanelCatalog(discovered []Agent) []Agent {
 }
 
 // These cloud agents are available even when this Mac has no CLI installation.
-func CloudAgentIDs() []string { return []string{"claude", "codex", "pi"} }
+func CloudAgentIDs() []string { return []string{"claude", "codex", "pi", "kimi"} }
 
 // CodexDesktopID is ChatGPT.app's Codex (bundle com.openai.codex). Its codex
 // app-server can run on the cloud computer through Fennec's loopback bridge.
 // It is a desktop application, never a CLI agent prepared on the runtime.
 const CodexDesktopID = "codex-desktop"
 
-var panelOrder = map[string]int{CodexDesktopID: 0, "codex": 1, "claude": 2, "pi": 3}
+var panelOrder = map[string]int{CodexDesktopID: 0, "codex": 1, "claude": 2, "pi": 3, "kimi": 4}
 
 // PanelList is the Agents tab: Codex Desktop first, then the CLI catalog with
-// the cloud-capable agents ordered Codex, Claude Code, Pi.
+// the cloud-capable agents ordered Codex, Claude Code, Pi, Kimi Code.
 func PanelList(discovered []Agent) []Agent {
 	home, _ := os.UserHomeDir()
 	return panelList(discovered, []string{"/Applications", filepath.Join(home, "Applications")})

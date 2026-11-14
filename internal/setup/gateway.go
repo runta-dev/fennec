@@ -26,7 +26,7 @@ func gatewayRouteScript(route GatewayRoute, configurationOnly bool) (string, err
 	if route.Provider == "" || route.Model == "" || strings.ContainsAny(route.Provider, "/\r\n\x00") || strings.ContainsAny(route.Model, "\r\n\x00") {
 		return "", fmt.Errorf("valid provider/model required")
 	}
-	allowed := map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true}
+	allowed := map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}
 	seen := map[string]bool{}
 	if len(route.Agents) == 0 {
 		return "", fmt.Errorf("at least one agent required")

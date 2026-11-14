@@ -56,7 +56,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
-		ids = []string{"claude", "codex", "pi"}
+		ids = []string{"claude", "codex", "pi", "kimi"}
 	}
 	for _, id := range ids {
 		versions = append(versions, setup.Agent{ID: id, Version: "latest"})

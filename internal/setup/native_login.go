@@ -44,7 +44,7 @@ type NativeLogin struct {
 }
 
 func (p NativeLogin) Validate() error {
-	if !sessionid.Valid(p.ID) || !map[string]bool{"codex": true, "claude": true, "pi": true}[p.Agent] {
+	if !sessionid.Valid(p.ID) || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true}[p.Agent] {
 		return fmt.Errorf("invalid agent login")
 	}
 	return nil
@@ -193,7 +193,7 @@ func NativeLoginCommand(home string, plan NativeLogin) ([]string, []string, erro
 		return nil, nil, fmt.Errorf("login expired; start again")
 	}
 	ensureCloudSearchTools(home)
-	args := map[string][]string{"codex": {"login", "--device-auth"}, "claude": {"auth", "login", "--claudeai"}, "pi": {"--no-extensions", "--no-skills", "--no-context-files", "--no-session", "--no-tools"}}[plan.Agent]
+	args := map[string][]string{"codex": {"login", "--device-auth"}, "claude": {"auth", "login", "--claudeai"}, "pi": {"--no-extensions", "--no-skills", "--no-context-files", "--no-session", "--no-tools"}, "kimi": {"login"}}[plan.Agent]
 	pathParts := []string{
 		filepath.Join(home, ".local/fennec/node/bin"),
 		filepath.Join(home, ".local/fennec/agents/bin"),
@@ -216,6 +216,8 @@ func NativeLoginCommand(home string, plan NativeLogin) ([]string, []string, erro
 		env = append(env, "CLAUDE_CONFIG_DIR="+filepath.Join(root, "claude"))
 	case "pi":
 		env = append(env, "PI_CODING_AGENT_DIR="+filepath.Join(root, "pi"))
+	case "kimi":
+		env = append(env, kimiHomeEnv+"="+filepath.Join(root, "kimi"))
 	}
 	return args, env, nil
 }
@@ -227,7 +229,7 @@ func activateNativeLogin(home string, plan NativeLogin) error {
 		return err
 	}
 	root := nativeLoginDirectory(home, plan.ID)
-	credential := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json"}[plan.Agent]
+	credential := map[string]string{"codex": "codex/auth.json", "claude": "claude/.credentials.json", "pi": "pi/auth.json", "kimi": kimiCredentialFile}[plan.Agent]
 	if _, err := readNativeFile(filepath.Join(root, credential)); err != nil {
 		return fmt.Errorf("finish signing in before continuing")
 	}

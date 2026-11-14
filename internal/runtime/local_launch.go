@@ -57,7 +57,7 @@ func (request LocalLaunch) Validate() error {
 	if !sessionIDPattern.MatchString(request.ID) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(request.Device) || !filepath.IsAbs(request.LocalDirectory) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
 		return fmt.Errorf("invalid local session identity")
 	}
-	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true}[request.Agent] {
+	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}[request.Agent] {
 		return fmt.Errorf("unsupported agent")
 	}
 	size := 0
@@ -181,6 +181,8 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	case "claude":
 		command = append(command, "--permission-mode", "bypassPermissions")
 		command = append([]string{"env", "IS_SANDBOX=1"}, command...)
+	case "kimi":
+		command = append(command, "--auto")
 	case "opencode":
 		step, cancel := context.WithTimeout(ctx, 5*time.Second)
 		version, err := exec.CommandContext(step, binary, "--version").Output()

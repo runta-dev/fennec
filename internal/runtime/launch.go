@@ -61,6 +61,8 @@ func launchScript(id, agent, cwd string, arguments []string, version string, att
 		"codex":    {"codex", "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 		"pi":       {"pi"}, // Pi's built-in tools do not have a sandbox/approval gate.
 		"opencode": {"opencode"},
+		// Never Ask: Kimi decides tool calls itself; plans still wait.
+		"kimi": {"kimi", "--auto"},
 	}
 	command, ok := commands[agent]
 	if !ok || !sessionIDPattern.MatchString(id) {

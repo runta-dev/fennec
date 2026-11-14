@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -80,5 +81,44 @@ func TestNativeLaunchDoesNotReplayUnconfirmedSpawn(t *testing.T) {
 	}
 	if launches != 1 {
 		t.Fatal("unconfirmed launch replayed", launches)
+	}
+}
+
+// Kimi Code runs in Never Ask mode on the cloud computer, through the native
+// launcher that points KIMI_CODE_HOME at its synchronized configuration.
+func TestKimiLaunchCommand(t *testing.T) {
+	var command []string
+	home := t.TempDir()
+	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/kimi", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ls" {
+			return []byte(`{"terminals":[]}`), nil
+		}
+		for i, arg := range args {
+			if arg == "--" {
+				command = append([]string{}, args[i+1:]...)
+			}
+		}
+		return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+	}}
+	request := LocalLaunch{ID: strings.Repeat("c", 32), Agent: "kimi", LocalDirectory: "/project", Device: "1234abcd", Arguments: []string{"--plan"}}
+	if _, err := backend.Launch(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(command, " ")
+	if !strings.Contains(joined, "native-agent kimi --auto --plan") {
+		t.Fatalf("kimi command %q", joined)
+	}
+	script, err := LaunchScriptWithArgs(strings.Repeat("d", 32), "kimi", "/tmp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, _ := strings.Cut(script, "python3 - '")
+	encoded, _, _ := strings.Cut(rest, "'")
+	raw, _ := base64.StdEncoding.DecodeString(encoded)
+	var payload struct {
+		Command []string `json:"command"`
+	}
+	if json.Unmarshal(raw, &payload) != nil || strings.Join(payload.Command, " ") != "kimi --auto" {
+		t.Fatalf("cloud launch command for kimi: %s", raw)
 	}
 }

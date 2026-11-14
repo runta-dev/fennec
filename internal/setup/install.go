@@ -19,7 +19,7 @@ var exactVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+
 // AgentInstallScript uses only a fixed package allowlist and validated versions.
 // A dedicated prefix avoids overwriting other software in a reused runtime.
 func AgentInstallScript(agent Agent) (string, error) {
-	pkg, ok := map[string]string{"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "pi": "@earendil-works/pi-coding-agent", "opencode": "opencode-ai"}[agent.ID]
+	pkg, ok := map[string]string{"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "pi": "@earendil-works/pi-coding-agent", "opencode": "opencode-ai", "kimi": "@moonshot-ai/kimi-code"}[agent.ID]
 	if !ok || !exactVersion.MatchString(agent.Version) {
 		return "", fmt.Errorf("unsupported agent or non-exact version")
 	}
@@ -35,7 +35,7 @@ func AgentInstallScript(agent Agent) (string, error) {
 // EnsureAgentScript reuses any existing cloud binary. Only a missing binary
 // is installed from the publisher's current latest stable release.
 func EnsureAgentScript(agent Agent) (string, error) {
-	pkg, ok := map[string]string{"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "pi": "@earendil-works/pi-coding-agent", "opencode": "@opencode/cli"}[agent.ID]
+	pkg, ok := map[string]string{"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "pi": "@earendil-works/pi-coding-agent", "opencode": "@opencode/cli", "kimi": "@moonshot-ai/kimi-code"}[agent.ID]
 	if !ok || agent.Version != "latest" {
 		return "", fmt.Errorf("unsupported agent or install-if-missing request")
 	}

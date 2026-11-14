@@ -38,6 +38,7 @@ var nativeCredentialFiles = map[string]string{
 	"codex/auth.json":                  "codex",
 	"pi/auth.json":                     "pi",
 	"opencode/data/opencode/auth.json": "opencode",
+	kimiCredentialFile:                 "kimi",
 }
 
 // NativeCredentialNames lists the credential files in a stable order.
@@ -339,6 +340,11 @@ func ResolveMacCredential(ctx context.Context, name string, mac, cloud []byte, m
 	case "codex/auth.json":
 		if decide(codexEntry(whole(c)), codexEntry(whole(m))) {
 			replace("tokens", "last_refresh")
+			changed = true
+		}
+	case kimiCredentialFile:
+		if decide(kimiEntry(whole(c)), kimiEntry(whole(m))) {
+			replace(kimiCredentialKeys...)
 			changed = true
 		}
 	case "pi/auth.json", "opencode/data/opencode/auth.json":

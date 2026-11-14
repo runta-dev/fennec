@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -49,6 +50,9 @@ func NativeModelFamily(agent, model string) bool {
 	case "pi":
 		provider, id, ok := strings.Cut(model, "/")
 		return ok && provider != "" && provider != "magpie" && id != ""
+	case "kimi":
+		// A key of config.toml's [models] table, e.g. "kimi-code/k3.1-pro".
+		return !strings.HasPrefix(model, "magpie/") && regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@/-]*$`).MatchString(model)
 	}
 	return false
 }
@@ -118,7 +122,7 @@ func sanitizeNativeModelFile(name string, data []byte) ([]byte, error) {
 }
 
 func nativeModelFile(agent string) string {
-	return map[string]string{"codex": "codex/config.toml", "claude": "claude/settings.json", "pi": "pi/settings.json"}[agent]
+	return map[string]string{"codex": "codex/config.toml", "claude": "claude/settings.json", "pi": "pi/settings.json", "kimi": kimiConfigFile}[agent]
 }
 func nativeSettings(root, agent string) (map[string]any, []byte, error) {
 	name := nativeModelFile(agent)
@@ -132,7 +136,7 @@ func nativeSettings(root, agent string) (map[string]any, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if agent == "codex" {
+	if strings.HasSuffix(name, ".toml") {
 		var value map[string]any
 		if toml.Unmarshal(raw, &value) != nil {
 			return nil, nil, fmt.Errorf("invalid native model settings")
@@ -170,6 +174,12 @@ func NativeModels(ctx context.Context, home, agent string, refresh bool) (Native
 		provider, model := stringValue(cfg["defaultProvider"]), stringValue(cfg["defaultModel"])
 		if provider != "" && model != "" {
 			state.Model = provider + "/" + model
+		}
+	}
+	if agent == "kimi" {
+		state.Model = stringValue(cfg["default_model"])
+		if !NativeModelFamily(agent, state.Model) {
+			state.Model = ""
 		}
 	}
 	add := func(choice NativeModelChoice) {
@@ -277,6 +287,20 @@ func NativeModels(ctx context.Context, home, agent string, refresh bool) (Native
 					add(choice)
 				}
 			}
+		}
+	case "kimi":
+		models, _ := cfg["models"].(map[string]any)
+		names := make([]string, 0, len(models))
+		for name := range models {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			model, _ := models[name].(map[string]any)
+			add(NativeModelChoice{ID: name, Name: stringValue(model["display_name"]), Provider: stringValue(model["provider"])})
+		}
+		if state.Model != "" && models[state.Model] == nil {
+			state.Model = ""
 		}
 	}
 	return state, nil
@@ -418,9 +442,19 @@ func writeNativeSelection(home string, choice NativeModelSelection) error {
 			provider, id, _ := strings.Cut(choice.Model, "/")
 			cfg["defaultProvider"], cfg["defaultModel"] = provider, id
 		}
+	case "kimi":
+		if choice.Model == "" {
+			delete(cfg, "default_model")
+		} else {
+			models, _ := cfg["models"].(map[string]any)
+			if models[choice.Model] == nil {
+				return fmt.Errorf("unsupported native model")
+			}
+			cfg["default_model"] = choice.Model
+		}
 	}
 	var data []byte
-	if choice.Agent == "codex" {
+	if strings.HasSuffix(nativeModelFile(choice.Agent), ".toml") {
 		data, err = toml.Marshal(cfg)
 	} else {
 		data, err = json.Marshal(cfg)
@@ -583,6 +617,8 @@ func nativeSettingsModelKeys(name string) ([]string, bool) {
 		return []string{"model"}, true
 	case "pi/settings.json":
 		return []string{"defaultProvider", "defaultModel", "defaultThinkingLevel"}, true
+	case kimiConfigFile:
+		return []string{"default_model", "thinking"}, true
 	case "claude/.claude.json":
 		// The Mac sends only the account identity; Claude Code keeps its own
 		// runtime state (projects, counters, tips) in the cloud copy.
@@ -603,7 +639,7 @@ func mergeNativeSettings(name string, cloud, local []byte) ([]byte, bool) {
 	decode := func(data []byte) (map[string]any, bool) {
 		var cfg map[string]any
 		var err error
-		if name == "codex/config.toml" {
+		if strings.HasSuffix(name, ".toml") {
 			err = toml.Unmarshal(data, &cfg)
 		} else {
 			err = json.Unmarshal(data, &cfg)
@@ -623,6 +659,23 @@ func mergeNativeSettings(name string, cloud, local []byte) ([]byte, bool) {
 			merged[key] = value
 		}
 	}
+	if name == kimiConfigFile {
+		// Providers and models are tables of named entries: the Mac's
+		// entries win, and entries only the cloud has (the cloud Magpie
+		// gateway's) stay.
+		for _, table := range []string{"providers", "models"} {
+			cloudTable, _ := cloudCfg[table].(map[string]any)
+			localTable, _ := merged[table].(map[string]any)
+			if cloudTable == nil || localTable == nil {
+				continue
+			}
+			for key, value := range cloudTable {
+				if _, exists := localTable[key]; !exists {
+					localTable[key] = value
+				}
+			}
+		}
+	}
 	for _, key := range modelKeys {
 		if value, exists := cloudCfg[key]; exists {
 			merged[key] = value
@@ -630,7 +683,7 @@ func mergeNativeSettings(name string, cloud, local []byte) ([]byte, bool) {
 	}
 	var out []byte
 	var err error
-	if name == "codex/config.toml" {
+	if strings.HasSuffix(name, ".toml") {
 		out, err = toml.Marshal(merged)
 	} else {
 		out, err = json.Marshal(merged)

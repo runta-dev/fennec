@@ -20,7 +20,7 @@ func (s *daemonServices) nativeAccount(ctx context.Context, raw json.RawMessage)
 		Location string `json:"location"`
 		Refresh  bool   `json:"refresh"`
 	}
-	if json.Unmarshal(raw, &request) != nil || !map[string]bool{"codex": true, "claude": true, "pi": true}[request.Agent] || (request.Location != "local" && request.Location != "cloud") {
+	if json.Unmarshal(raw, &request) != nil || !map[string]bool{"codex": true, "claude": true, "pi": true, "kimi": true}[request.Agent] || (request.Location != "local" && request.Location != "cloud") {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Choose an agent and run location"}
 	}
 	if request.Location == "local" {

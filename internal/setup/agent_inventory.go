@@ -11,7 +11,7 @@ func validateAgentInventory(ids []string) error {
 	seen := map[string]bool{}
 	for _, id := range ids {
 		switch id {
-		case "claude", "codex", "pi", "opencode":
+		case "claude", "codex", "pi", "opencode", "kimi":
 		default:
 			return fmt.Errorf("unsupported agent inventory")
 		}

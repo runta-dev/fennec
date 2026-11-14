@@ -84,6 +84,7 @@ export MAGPIE_ADDR=127.0.0.1:3425
 export CODEX_HOME="$HOME/.local/fennec/native/codex"
 export CLAUDE_CONFIG_DIR="$HOME/.local/fennec/native/claude"
 export PI_CODING_AGENT_DIR="$HOME/.local/fennec/native/pi"
+export KIMI_CODE_HOME="$HOME/.local/fennec/native/kimi"
 child=
 trap 'test -z "$child" || kill "$child" 2>/dev/null; exit 0' TERM INT
 while :; do

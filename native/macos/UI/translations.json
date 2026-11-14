@@ -1079,6 +1079,13 @@
       "zh-CN": "正在安装 OpenCode",
       "zh-TW": "正在安裝 OpenCode"
     },
+    "ui.installing_kimi": {
+      "en-US": "Installing Kimi Code",
+      "ja": "Kimi Code をインストール中",
+      "ko": "Kimi Code 설치 중",
+      "zh-CN": "正在安装 Kimi Code",
+      "zh-TW": "正在安裝 Kimi Code"
+    },
     "ui.installing_pi": {
       "en-US": "Installing Pi",
       "ja": "Pi をインストール中",
