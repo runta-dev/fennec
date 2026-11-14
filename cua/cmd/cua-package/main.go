@@ -469,7 +469,9 @@ func headless(ctx context.Context, bin string, fn func(c *cdp.Conn) error) error
 	}
 	defer os.RemoveAll(dir)
 	// The mock keychain: these runs never touch the user's Keychain.
-	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, MockKeychain: true, IdleTimeout: -1})
+	// The first start from a freshly mounted disk image waits while macOS
+	// assesses the whole bundle, minutes on a slow CI runner.
+	b := chromium.New(chromium.Options{Bin: bin, ProfileDir: dir, Headless: true, MockKeychain: true, IdleTimeout: -1, StartTimeout: 5 * time.Minute})
 	defer b.Close()
 	c, _, err := b.Conn(ctx)
 	if err != nil {

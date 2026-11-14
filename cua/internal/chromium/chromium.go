@@ -368,11 +368,21 @@ func (b *Browser) launch(ctx context.Context) (*process, error) {
 	defer cancel()
 	v, err := p.conn.Call(hctx, "", "Browser.getVersion", nil)
 	if err != nil {
+		// Ask before killing it: afterwards every process has exited.
+		// A crash closes the pipe a moment before Wait returns.
+		exited := p.exited()
+		if !exited {
+			select {
+			case <-p.done:
+				exited = true
+			case <-time.After(time.Second):
+			}
+		}
 		p.kill()
-		if p.exited() {
+		if exited {
 			return nil, fmt.Errorf("Chromium exited before it answered (%s)", strings.TrimSpace(t.String()))
 		}
-		return nil, fmt.Errorf("Chromium did not answer: %w", err)
+		return nil, fmt.Errorf("Chromium did not answer within %s: %w (%s)", b.opts.StartTimeout, err, strings.TrimSpace(t.String()))
 	}
 	var ver struct {
 		Product string `json:"product"`

@@ -59,6 +59,7 @@ import (
 	"fennec/cua/internal/protocol"
 	"fennec/cua/internal/record"
 	"fennec/cua/internal/sched"
+	"fennec/cua/internal/standalone"
 	"fennec/cua/internal/view"
 	"fennec/cua/internal/vision"
 )
@@ -77,6 +78,7 @@ const usage = `usage: fennec-cua COMMAND
   js [--session NAME] [CODE | -]       run REPL code from a shell; the session persists across calls
   js-reset | js-end [--session NAME]   reset or end that session
   doctor [--json] [--no-start]         check install, daemon, permissions, driver and browser
+  setup                                open the setup window (permissions, connecting an agent)
   permissions [--request] [--open]     the macOS permissions and how to grant them
   mcp-config [claude|codex|json|http]  how to connect an agent
   skill path | install [--claude] [--codex] [--dest DIR]
@@ -95,9 +97,14 @@ func run(args []string) error {
 	if r, err := filepath.EvalSymlinks(self); err == nil {
 		self = r
 	}
-	// LaunchServices opening the app (no arguments, launchd as parent)
-	// serves the daemon in place.
+	// LaunchServices opening the app without arguments is the user
+	// opening it (Finder, Spotlight, `fennec-cua setup`): it shows the setup
+	// window. Agents start the daemon with "serve"; an app without the
+	// setup window serves in place, as before.
 	if cli.LaunchedByLaunchd(os.Getppid(), self, args) {
+		if app := currentApp(self); app != "" && standalone.SetupHelper(app) != "" {
+			return standalone.ExecSetup(app)
+		}
 		args = []string{"serve"}
 	}
 	if len(args) == 0 {
@@ -147,6 +154,8 @@ func run(args []string) error {
 		return uninstallCmd(ctx, paths, args[1:], os.Stdout)
 	case "doctor":
 		return doctorCmd(ctx, paths, self, args[1:], os.Stdout)
+	case "setup":
+		return setupCmd(self, args[1:], os.Stdout)
 	case "permissions":
 		return permissionsCmd(ctx, paths, self, args[1:], os.Stdout)
 	case "mcp-config":
@@ -515,6 +524,7 @@ func serve(ctx context.Context, paths daemon.Paths, self, httpAddr string) error
 		logger.Printf("serving MCP over HTTP on %s", httpAddr)
 	}
 	logger.Printf("serving %s", paths.MCP)
+	offerSetup(self, logger)
 	d.Ops = daemonOps(func() daemonInfo {
 		di := daemonInfo{PID: os.Getpid(), Executable: self, Version: engine.Version, Driver: bin, Chromium: chromiumBin, Browser: browsers != nil, Sessions: named.Names()}
 		if sup != nil && sup.PID() > 0 {

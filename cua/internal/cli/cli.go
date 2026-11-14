@@ -70,7 +70,9 @@ func startCommand(exe string, getenv func(string) string) *exec.Cmd {
 				args = append(args, "--env", k+"="+v)
 			}
 		}
-		cmd = exec.Command("/usr/bin/open", append(args, "-a", bundle)...)
+		// "serve" says it is a start for an agent: a launch without
+		// arguments is the user opening the app, which shows its setup.
+		cmd = exec.Command("/usr/bin/open", append(args, "-a", bundle, "--args", "serve")...)
 	} else if ok {
 		cmd = exec.Command("/usr/bin/open", "-g", "-a", bundle)
 	} else {

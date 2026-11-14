@@ -208,6 +208,10 @@ func dist(ctx context.Context, o options, build chromium.Build) error {
 			return err
 		}
 	}
+	step("building the setup window")
+	if err := buildSetup(ctx, contents, build.Arch); err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(licenses, "cua-driver-LICENSE.txt"), driverFiles["LICENSE"], 0o644); err != nil {
 		return err
 	}
@@ -266,7 +270,7 @@ func dist(ctx context.Context, o options, build chromium.Build) error {
 		"cua-driver": map[string]any{"version": rel.Version, "url": rel.URL, "archiveSha256": rel.SHA256, "license": "MIT (licenses/cua-driver-LICENSE.txt, licenses/cua-driver-THIRD_PARTY_NOTICES.md)"},
 		"signed":     id.Label(),
 		"notarized":  o.notarizeProfile != "",
-		"layout": map[string]string{"fennec-cua": "Contents/MacOS/fennec-cua", "cua-driver": "Contents/MacOS/cua-driver", "skill": "Contents/Resources/skills/" + standalone.SkillName,
+		"layout": map[string]string{"fennec-cua": "Contents/MacOS/fennec-cua", "cua-driver": "Contents/MacOS/cua-driver", "setup": "Contents/MacOS/" + standalone.SetupName, "skill": "Contents/Resources/skills/" + standalone.SkillName,
 			"licenses": "Contents/Resources/licenses"},
 	}
 	if stageManifest != nil {
@@ -283,6 +287,9 @@ func dist(ctx context.Context, o options, build chromium.Build) error {
 		if err := macsign.Sign(filepath.Join(macosDir, name), id, "", macsign.AppleEvents); err != nil {
 			return err
 		}
+	}
+	if err := macsign.Sign(filepath.Join(macosDir, standalone.SetupName), id, standalone.BundleID+".setup"); err != nil {
+		return err
 	}
 	// The bundle's signature covers its main executable (fennec-cua) and
 	// seals everything else; Chromium.app keeps its own signature.
@@ -723,4 +730,27 @@ func writeTarGz(dst, root, top string, mtime time.Time) error {
 		return err
 	}
 	return f.Close()
+}
+
+// buildSetup compiles the setup window (native/setup/main.swift) into
+// Contents/MacOS and puts its page under Resources/setup.
+func buildSetup(ctx context.Context, contents, arch string) error {
+	exe := filepath.Join(contents, "MacOS", standalone.SetupName)
+	cmd := exec.CommandContext(ctx, "xcrun", "swiftc", "-O", "-target", arch+"-apple-macos13", "-o", exe, filepath.Join("native", "setup", "main.swift"))
+	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("swiftc (Xcode command-line tools): %w", err)
+	}
+	dir := filepath.Join(contents, "Resources", "setup")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	page, err := os.ReadFile(filepath.Join("native", "setup", "index.html"))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), page, 0o644); err != nil {
+		return err
+	}
+	return nil
 }

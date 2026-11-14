@@ -27,6 +27,8 @@ Gatekeeper: development archives are signed with a local certificate and not not
 
 ## Permissions (the user must grant them)
 
+The app has a setup window that walks the user through them: `fennec-cua setup` opens it (install and the daemon open it on their own when a grant is missing). Prefer pointing the user at it over the commands below.
+
 | Permission | Why | Pane |
 |---|---|---|
 | Accessibility (required) | read accessibility trees, click, type, press keys | `x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility` |

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -295,8 +296,9 @@ func installCmd(ctx context.Context, paths daemon.Paths, self string, args []str
 	fs.SetOutput(io.Discard)
 	var lf layoutFlags
 	lf.register(fs)
+	noSetup := fs.Bool("no-setup", false, "do not open the setup window")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
-		return errors.New("usage: fennec-cua install [--app-dir DIR] [--bin-dir DIR]")
+		return errors.New("usage: fennec-cua install [--app-dir DIR] [--bin-dir DIR] [--no-setup]")
 	}
 	lay, err := lf.layout()
 	if err != nil {
@@ -324,6 +326,13 @@ func installCmd(ctx context.Context, paths daemon.Paths, self string, args []str
 	}
 	fmt.Fprintf(out, "\n%s\nConnect an agent (details: fennec-cua mcp-config):\n  claude mcp add --scope user fennec-cua -- %s mcp\n  codex mcp add fennec-cua -- %s mcp\n", standalone.PermissionGuide(res.App), res.Link, res.Link)
 	fmt.Fprintf(out, "\nInstall the agent skill: fennec-cua skill install --claude (or --codex, or --dest DIR)\n")
+	if !*noSetup && !standalone.SetupDisabled() && standalone.SetupHelper(res.App) != "" {
+		if err := standalone.OpenSetup(res.App); err != nil {
+			fmt.Fprintf(out, "\nsetup window: %v (run `fennec-cua setup`)\n", err)
+		} else {
+			fmt.Fprintf(out, "\nOpened the setup window: it walks through the permissions (`fennec-cua setup` opens it again).\n")
+		}
+	}
 	return nil
 }
 
@@ -631,4 +640,39 @@ func captureCheck(client *driver.Client) func(context.Context) error {
 		_, err := vision.DriverCapturer{Client: client}.Desktop(ctx, "", 64)
 		return err
 	}
+}
+
+// setupCmd is `fennec-cua setup`: the app's setup window.
+func setupCmd(self string, args []string, out io.Writer) error {
+	if len(args) != 0 {
+		return errors.New("usage: fennec-cua setup")
+	}
+	app := currentApp(self)
+	if app == "" {
+		return fmt.Errorf("this fennec-cua (%s) is not inside %s, which holds the setup window; `fennec-cua permissions` prints the steps", self, standalone.AppName)
+	}
+	if err := standalone.OpenSetup(app); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "opened the %s setup window\n", standalone.DisplayName)
+	return nil
+}
+
+// offerSetup opens the setup window when the standalone app's daemon starts
+// without a permission it needs, so the user sees what to allow the first
+// time an agent calls. The window is the app's, and it comes up at most
+// once per daemon.
+func offerSetup(self string, logger *log.Logger) {
+	app := currentApp(self)
+	if app == "" || standalone.SetupDisabled() || cli.Embedded() {
+		return
+	}
+	if macos.AccessibilityTrusted() && macos.ScreenCaptureAllowed() {
+		return
+	}
+	if err := standalone.StartSetupChild(app); err != nil {
+		logger.Printf("setup window: %v", err)
+		return
+	}
+	logger.Printf("a permission is missing: opened the setup window")
 }

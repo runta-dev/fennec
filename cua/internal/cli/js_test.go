@@ -70,7 +70,7 @@ func TestStartCommandStandaloneApp(t *testing.T) {
 	exe := standalone.Executable(app)
 	cmd := startCommand(exe, env(map[string]string{"FENNEC_CUA_DIR": "/d", "FENNEC_CUA_HTTP_TOKEN": "secret"}))
 	got := strings.Join(cmd.Args[1:], " ")
-	if cmd.Path != "/usr/bin/open" || got != "-n -g --env FENNEC_CUA_DIR=/d -a "+app {
+	if cmd.Path != "/usr/bin/open" || got != "-n -g --env FENNEC_CUA_DIR=/d -a "+app+" --args serve" {
 		t.Fatalf("standalone start: %s %s", cmd.Path, got)
 	}
 	if strings.Contains(got, "secret") {

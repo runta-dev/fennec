@@ -41,6 +41,8 @@ The extracted folder's `INSTALL.txt` repeats these steps. `install` copies the a
 
 The grants belong to the app "Fennec CUA" (the daemon is started through LaunchServices and cua-driver runs as its child), not to your terminal or agent.
 
+**The setup window does it for you.** `install` opens it, and so do opening FennecCUA.app (Finder, Spotlight) and `fennec-cua setup`; the daemon opens it too when it starts without a grant (`FENNEC_CUA_NO_SETUP=1` or `install --no-setup` turns that off). It shows each permission live with an Allow button (the macOS prompt plus the right System Settings pane), runs the test capture and, on macOS 15 and later, the one-time direct-capture alert, and lists the commands that connect Claude Code and Codex. The steps below are the same thing by hand.
+
 | Permission | Needed for | Open |
 |---|---|---|
 | Accessibility | reading apps, clicking, typing | `open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"` |
