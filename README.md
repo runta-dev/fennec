@@ -25,58 +25,7 @@ Fennec runs the agent loop on a cloud computer while connecting it to approved f
 
 Cloud sessions can keep working around the clock while their cloud computer is running. Closing your laptop ends its availability as a local tool, not the cloud session. Work that needs your Mac waits until it is reachable again.
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🔌 Keep your favorite tools
-
-Fennec integrates seamlessly with the tools you already use, including **tmux**, **cmux**, and **Herdr**. Keep your existing terminal setup and workflows while adding persistent cloud sessions and access to approved local tools.
-
-</td>
-<td width="50%" valign="top">
-
-### 💻 Work on your local project
-
-Keep your editor, repository, and tools on your Mac. Choose **Cloud computer** for the agent loop, and approve the local files and commands it needs.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### ☁️ Step away from a long task
-
-Once a task has what it needs in the cloud, detach and close your Mac—even shut it down. The cloud process keeps running without an open terminal.
-
-</td>
-<td width="50%" valign="top">
-
-### 🛡️ Your Mac, your rules
-
-Give agents room to work while keeping control of your Mac. **Governance & Sandbox** confines sandboxed writes to approved folders and blocks direct access to protected credentials, SSH keys, and Keychain data.
-
-With **Ask for approval**, broader access and destructive commands such as forced file deletion require your authorization. Choose **Approve for me** to delegate review, or explicitly enable **Full access** to lift the sandbox. You decide how much autonomy to grant.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### ↩️ Pick up where you left off
-
-Come back, run `fen`, and select the same session. Review its output, answer a question, or continue the work from your own terminal.
-
-</td>
-<td width="50%" valign="top">
-
-### 🦊 Keep track of your agents
-
-See **Idle**, **Working**, **Needs input**, and **Errored** sessions in the menu bar. Copy their attach commands or explicitly stop work you no longer need.
-
-</td>
-</tr>
-</table>
+<p align="center"><img src="docs/features.svg" width="1120" alt="Fennec features: familiar terminal tools, local projects, persistent cloud work, Governance and Sandbox with credential protection and approval controls, session reattachment, and agent status tracking" /></p>
 
 ## Get started
 
