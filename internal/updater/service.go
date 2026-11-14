@@ -4,6 +4,7 @@ import (
 	"context"
 	"fennec/internal/connectivity"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,9 +13,14 @@ import (
 )
 
 const (
-	CheckInterval = 6 * time.Hour
+	// CheckInterval spaces background checks; one costs a single
+	// unauthenticated GitHub API call (60 per hour per address).
+	CheckInterval = time.Hour
 	FreshAfter    = 5 * time.Minute
-	rateWindow    = 5 * time.Second
+	// RetryAfterError retries a check that failed (offline, a release
+	// being published) soon instead of a whole CheckInterval later.
+	RetryAfterError = 5 * time.Minute
+	rateWindow      = 5 * time.Second
 )
 
 type progressSample struct {
@@ -117,7 +123,8 @@ func (s *Service) Start(ctx context.Context) {
 		for ctx.Err() == nil {
 			if s.autoEnabled() && (s.cfg.Network == nil || s.cfg.Network.Online()) {
 				s.mu.Lock()
-				due := s.askedAt.IsZero() || time.Since(s.askedAt) >= s.cfg.CheckInterval
+				since := time.Since(s.askedAt)
+				due := s.askedAt.IsZero() || since >= s.cfg.CheckInterval || (s.state == "error" && s.retryable && since >= RetryAfterError)
 				s.mu.Unlock()
 				if due {
 					_ = s.Check(ctx, true)
@@ -148,7 +155,7 @@ func (s *Service) autoEnabled() bool {
 // the cached "latest" state is older than FreshAfter, it triggers an async check.
 func (s *Service) Snapshot(ctx context.Context, refreshStale bool) Snapshot {
 	s.mu.Lock()
-	stale := refreshStale && s.autoEnabled() && s.state == "latest" && time.Since(s.askedAt) >= FreshAfter
+	stale := refreshStale && s.autoEnabled() && (s.state == "latest" || (s.state == "error" && s.retryable)) && time.Since(s.askedAt) >= FreshAfter
 	snap := s.snapshotLocked(time.Now())
 	s.mu.Unlock()
 	if stale && (s.cfg.Network == nil || s.cfg.Network.Online()) {
@@ -239,6 +246,7 @@ func (s *Service) Check(ctx context.Context, downloadIfFound bool) Snapshot {
 		s.networkErr = s.cfg.Network != nil && !s.cfg.Network.Refresh()
 		s.retryable = true
 		s.errText = "Unable to check for updates"
+		log.Printf("update check: %v", err)
 		snap := s.snapshotLocked(time.Now())
 		s.mu.Unlock()
 		return snap

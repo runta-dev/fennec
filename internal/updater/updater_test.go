@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestVersionComparisonAndReleasedDetection(t *testing.T) {
@@ -247,4 +248,35 @@ func TestTamperedArchiveRejectedBeforeUnpack(t *testing.T) {
 	if snap.State != "error" {
 		t.Fatalf("expected checksum mismatch to fail with error state, got %+v", snap)
 	}
+}
+
+// A failed check (a release mid-publish, a network blip) must not wait a
+// whole CheckInterval: a fresh status read retries it once FreshAfter has
+// passed, as it does for a "latest" state.
+func TestFreshStatusRetriesFailedCheck(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			http.Error(w, "busy", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v0.2.100", "assets": []map[string]any{}})
+	}))
+	defer srv.Close()
+	s := NewService(Config{Current: "0.2.100", Feed: func() string { return srv.URL }, Arch: "arm64", HTTPClient: srv.Client(), AutoEnabled: func() bool { return true }})
+	if snap := s.Check(context.Background(), false); snap.State != "error" || !snap.Retry {
+		t.Fatalf("first check: %+v", snap)
+	}
+	s.mu.Lock()
+	s.askedAt = time.Now().Add(-FreshAfter - time.Second)
+	s.mu.Unlock()
+	s.Snapshot(context.Background(), true)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if snap := s.Snapshot(context.Background(), false); snap.State == "latest" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("the failed check was not retried: %+v (feed hits %d)", s.Snapshot(context.Background(), false), hits.Load())
 }
