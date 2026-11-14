@@ -59,7 +59,7 @@ func brokerRequest(config brokerConfiguration, intent launcher.LaunchIntent) (la
 				return launchProjectRequest{}, fmt.Errorf("cloud takeover is enabled, but this agent's model or runtime is not ready; refresh preparation in Fennec")
 			}
 		}
-		return launchProjectRequest{}, fmt.Errorf("cloud takeover not enabled for this agent")
+		return launchProjectRequest{}, fmt.Errorf("this agent runs on this Mac; set its run location to Cloud computer in Fennec first")
 	}
 	cwd, err := filepath.EvalSymlinks(intent.Directory)
 	if err != nil {

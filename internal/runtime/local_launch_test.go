@@ -105,7 +105,7 @@ func TestKimiLaunchCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(command, " ")
-	if !strings.Contains(joined, "native-agent kimi --auto --plan") {
+	if !strings.Contains(joined, "env KIMI_CODE_TRUST_WORKSPACE=1 ") || !strings.Contains(joined, "native-agent kimi --auto --plan") {
 		t.Fatalf("kimi command %q", joined)
 	}
 	script, err := LaunchScriptWithArgs(strings.Repeat("d", 32), "kimi", "/tmp", nil)
@@ -120,5 +120,8 @@ func TestKimiLaunchCommand(t *testing.T) {
 	}
 	if json.Unmarshal(raw, &payload) != nil || strings.Join(payload.Command, " ") != "kimi --auto" {
 		t.Fatalf("cloud launch command for kimi: %s", raw)
+	}
+	if !strings.Contains(script, `if request['agent']=='kimi':command=['env','KIMI_CODE_TRUST_WORKSPACE=1']+command`) {
+		t.Fatal("cloud launch script does not trust the Kimi session directory")
 	}
 }

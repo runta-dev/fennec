@@ -180,6 +180,8 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  # child command, not only in this SSH client's environment. Never set it on
  # the user's local Claude entrypoint or for other agents.
  if request['agent']=='claude':command=['env','IS_SANDBOX=1']+command
+ # Fennec made the session directory: Kimi Code trusts it up front.
+ if request['agent']=='kimi':command=['env','` + kimiTrustWorkspace + `']+command
  args=['herdr-core','run','--bg','--no-parent','--outlive-parent','--json','--cwd',request['cwd'],'--label','fennec.session='+request['id'],'--label','fennec.agent='+request['agent'],'--']+command
  launched=subprocess.run(args,capture_output=True,text=True,timeout=80)
  if launched.returncode:raise SystemExit('Herdr launch failed; inspect before retrying')
@@ -191,3 +193,7 @@ LAUNCH
 `
 	return script, nil
 }
+
+// kimiTrustWorkspace trusts the session's working directory, which Fennec
+// creates, so Kimi Code does not stop at its "Trust this folder?" prompt.
+const kimiTrustWorkspace = "KIMI_CODE_TRUST_WORKSPACE=1"

@@ -25,7 +25,9 @@ func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, opera
 	if operation == "launch" {
 		receipt, err := launcher.RequestLaunch(ctx, config.Socket, launcher.LaunchIntent{RequestID: params.SessionID, Agent: params.Agent, Directory: params.Directory, Arguments: params.Arguments})
 		if err != nil {
-			return nil, err
+			// The broker's reasons are written for the user (run location,
+			// preparation, an unknown outcome to inspect); keep them.
+			return nil, &control.Fault{Code: "launch_failed", Message: err.Error()}
 		}
 		if err := launcher.SaveReceipt(filepath.Join(s.home, ".config/fennec/launches"), receipt); err != nil {
 			return nil, err

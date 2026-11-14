@@ -182,7 +182,10 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append(command, "--permission-mode", "bypassPermissions")
 		command = append([]string{"env", "IS_SANDBOX=1"}, command...)
 	case "kimi":
+		// Fennec made the session's working directory: trust it, as Kimi
+		// otherwise stops at "Trust this folder?" before the first prompt.
 		command = append(command, "--auto")
+		command = append([]string{"env", kimiTrustWorkspace}, command...)
 	case "opencode":
 		step, cancel := context.WithTimeout(ctx, 5*time.Second)
 		version, err := exec.CommandContext(step, binary, "--version").Output()
@@ -206,7 +209,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	}
 	if setup.NativeAgentMode(runtime.Home) {
 		// The launcher reads secrets from private files, never command arguments.
-		if request.Agent == "claude" {
+		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]
 		}
 		if request.Agent == "opencode" && len(command) > 0 && command[0] == "env" {
@@ -215,6 +218,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append([]string{filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal"), "native-agent", request.Agent}, command[1:]...)
 		if request.Agent == "claude" {
 			command = append([]string{"env", "IS_SANDBOX=1"}, command...)
+		}
+		if request.Agent == "kimi" {
+			command = append([]string{"env", kimiTrustWorkspace}, command...)
 		}
 		if request.Agent == "opencode" {
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
