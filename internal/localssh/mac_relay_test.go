@@ -199,8 +199,12 @@ func run(t *testing.T, client *gossh.Client, command, input string) (string, str
 func TestMacRelayRunsCommandsWithOutputAndStatus(t *testing.T) {
 	h := newMacServer(t, 0)
 	client := h.client(t, h.options())
-	if out, _, err := run(t, client, "uname -a", ""); err != nil || out != "ran uname -a\n" {
-		t.Fatal(out, err)
+	// Exercise immediate exits repeatedly: the exec reply must reach the
+	// client before the relay closes even when output and exit arrive together.
+	for i := 0; i < 32; i++ {
+		if out, _, err := run(t, client, "uname -a", ""); err != nil || out != "ran uname -a\n" {
+			t.Fatal(out, err)
+		}
 	}
 	payload := strings.Repeat("0123456789", 300_000) // beyond one SSH window
 	if out, _, err := run(t, client, "cat", payload); err != nil || out != payload {

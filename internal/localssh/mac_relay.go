@@ -420,13 +420,16 @@ func (u *macUpstream) relayChannel(incoming gossh.NewChannel) {
 // relayStreams copies data, stderr, EOF and channel requests both ways until
 // the Mac closes the channel or the client goes away.
 func relayStreams(local gossh.Channel, localRequests <-chan *gossh.Request, remote gossh.Channel, remoteRequests <-chan *gossh.Request) {
+	var requestReply sync.Mutex
 	go func() {
 		// Requests keep their order; one awaiting a reply holds the next.
 		for request := range localRequests {
+			requestReply.Lock()
 			ok, err := remote.SendRequest(request.Type, request.WantReply, request.Payload)
 			if request.WantReply {
 				request.Reply(ok && err == nil, nil)
 			}
+			requestReply.Unlock()
 		}
 		remote.Close() // the client is gone
 	}()
@@ -445,6 +448,11 @@ func relayStreams(local gossh.Channel, localRequests <-chan *gossh.Request, remo
 		}
 	}
 	output.Wait()
+	// A fast command can close the remote channel while its exec reply is
+	// still being forwarded. Send that reply before closing the local side,
+	// or the client reports EOF instead of accepting the command's result.
+	requestReply.Lock()
+	defer requestReply.Unlock()
 	local.CloseWrite()
 }
 
