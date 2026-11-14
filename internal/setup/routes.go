@@ -46,7 +46,7 @@ func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
 			routes = append(routes, route)
 			continue
 		}
-		if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true}[agent.ID] {
+		if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}[agent.ID] {
 			route.Problem = "unsupported_agent"
 			routes = append(routes, route)
 			continue

@@ -104,6 +104,12 @@ func run() (int, error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 	runtime := cloudruntime.NewLocalRuntime(home)
+	if len(os.Args) == 2 && os.Args[1] == "refresh-magpie" {
+		return 0, setup.RefreshMagpieProcess(ctx, home)
+	}
+	if len(os.Args) == 3 && os.Args[1] == "verify-gateway-model" {
+		return 0, setup.VerifyGatewayModel(ctx, os.Args[2])
+	}
 	if len(os.Args) == 3 && os.Args[1] == "reconcile-routes" {
 		if len(os.Args[2]) > 65536 {
 			return 1, fmt.Errorf("oversized route request")

@@ -198,7 +198,8 @@ window.renderAgents = agents => {
     // ChatGPT (Codex Desktop) shares Codex's Magpie, account and model settings
     // for the computer it runs on.
     const configAgent = desktop ? 'codex' : agent.id;
-    const nativeOnly = ['cursor','grok'].includes(configAgent);
+    const nativeOnly = configAgent === 'cursor';
+    const nativeModelPicker = !['cursor','grok'].includes(configAgent);
     const agentMagpie = magpieEnabled && !nativeOnly;
     if(!agent.cloudSupported || !['codex-desktop','claude','codex','pi','kimi','cursor','grok'].includes(agent.id)){
       head.disabled=true;
@@ -224,7 +225,7 @@ window.renderAgents = agents => {
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
       if(expandedAgent && agentMagpie && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
-      if(expandedAgent && !agentMagpie){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&!nativeOnly)loadNativeModel(configAgent);}
+      if(expandedAgent && !agentMagpie){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&nativeModelPicker)loadNativeModel(configAgent);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;

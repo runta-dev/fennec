@@ -21,7 +21,7 @@ func TestGatewayRouteQuotesAndPreflights(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s, `'"'"'`) || strings.Index(s, "selected model is not exposed") > strings.Index(s, "magpie 'claude'") {
+	if !strings.Contains(s, `'"'"'`) || !strings.Contains(s, "verify-gateway-model") || strings.Index(s, "verify-gateway-model") > strings.Index(s, "magpie 'claude'") {
 		t.Fatal("missing quote/preflight")
 	}
 }
@@ -34,7 +34,9 @@ func TestGatewayReconcileSkipsMatchingModels(t *testing.T) {
 			home := t.TempDir()
 			bin := filepath.Join(home, ".local/bin")
 			os.MkdirAll(bin, 0700)
-			os.WriteFile(filepath.Join(bin, "python3"), []byte("#!/bin/sh\ncat >/dev/null\n"), 0700)
+			terminal := filepath.Join(home, ".local/fennec/bin/fennec-terminal")
+			os.MkdirAll(filepath.Dir(terminal), 0700)
+			os.WriteFile(terminal, []byte("#!/bin/sh\ntest \"$1\" = verify-gateway-model\n"), 0700)
 			current := "other/model"
 			if matching {
 				current = "magpie/provider/model"

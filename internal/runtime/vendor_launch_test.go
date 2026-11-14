@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestVendorLaunchUsesNativeIdentityWithMagpie(t *testing.T) {
+func TestVendorLaunchRespectsMagpieSupport(t *testing.T) {
 	for _, id := range []string{"cursor", "grok"} {
 		t.Run(id, func(t *testing.T) {
 			home := t.TempDir()
@@ -42,8 +42,11 @@ func TestVendorLaunchUsesNativeIdentityWithMagpie(t *testing.T) {
 			if _, err := backend.Launch(context.Background(), request); err != nil {
 				t.Fatal(err)
 			}
-			if command[0] != filepath.Join(home, ".local/fennec/bin/fennec-terminal") || command[1] != "native-agent" || command[2] != id {
+			if id == "cursor" && (command[0] != filepath.Join(home, ".local/fennec/bin/fennec-terminal") || command[1] != "native-agent" || command[2] != id) {
 				t.Fatal(command)
+			}
+			if id == "grok" && command[0] != "/bin/grok" {
+				t.Fatal("Grok did not use its Magpie configuration", command)
 			}
 			if !strings.HasSuffix(strings.Join(command, " "), "--model native-model") {
 				t.Fatal("lost user model", command)
