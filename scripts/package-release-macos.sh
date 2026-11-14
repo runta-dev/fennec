@@ -75,7 +75,7 @@ else
   identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
   [[ "$identity" != - ]] || { echo 'A dry run still needs a signing identity' >&2; exit 1; }
 fi
-version="${FENNEC_VERSION:-0.2.$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')}"
+version="${FENNEC_VERSION:-0.3.$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version' >&2; exit 1; }
 export FENNEC_VERSION="$version" FENNEC_SIGN_IDENTITY="$identity" FENNEC_RELEASE=1
 export FENNEC_BUILD_DIR="$release_work/build" FENNEC_DAEMON_BINARY="$release_work/fennec-daemon"

@@ -11,7 +11,7 @@ swift_target="$(uname -m)-apple-macos$deployment_target"
 sign_keychain="${FENNEC_SIGN_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 # One build timestamp shared by bundle metadata and every version label.
 build_stamp=$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')
-app_version="${FENNEC_VERSION:-0.2.$build_stamp}"
+app_version="${FENNEC_VERSION:-0.3.$build_stamp}"
 build_number="${FENNEC_BUILD_NUMBER:-1}"
 printf '%s\n' "$app_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo 'Invalid FENNEC_VERSION' >&2; exit 1; }
 printf '%s\n' "$build_number" | grep -Eq '^[0-9]+$' || { echo 'Invalid FENNEC_BUILD_NUMBER' >&2; exit 1; }
