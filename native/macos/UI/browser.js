@@ -35,6 +35,10 @@
   socket.onclose=()=>{if(epoch!==generation)return;ready=false;loading.hidden=true;reconnect.hidden=false;};
   socket.onerror=()=>socket.close();
  }
+ // Some prompts (Claude Code's sign-in code) do not show what is pasted:
+ // confirm the paste here so it does not look ignored.
+ const pasted=document.querySelector('#pasted');let pastedTimer=0;
+ terminal.textarea?.addEventListener('paste',event=>{const count=(event.clipboardData?.getData('text')||'').length;if(!count||!ready||!pasted)return;pasted.textContent='Pasted '+count+' characters. Press Return to send.';pasted.hidden=false;clearTimeout(pastedTimer);pastedTimer=setTimeout(()=>{pasted.hidden=true;},4000);});
  reconnect.onclick=()=>connect();window.addEventListener('pagehide',()=>socket?.close());
  connect();
 })();

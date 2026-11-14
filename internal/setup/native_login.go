@@ -306,6 +306,11 @@ func RunNativeLogin(ctx context.Context, home string, plan NativeLogin, input io
 	if plan.Agent == "pi" {
 		fmt.Fprintln(diagnostic, "Enter /login to connect a provider. After signing in, exit Pi to continue.")
 	}
+	if plan.Agent == "claude" {
+		// Claude Code's "Paste code here" prompt does not show the code, so
+		// a paste looks as if nothing happened.
+		fmt.Fprintln(diagnostic, "After signing in, paste the authentication code and press Return. The code stays hidden while you paste it.")
+	}
 	if err = command.Run(); err != nil {
 		return fmt.Errorf("agent sign-in was not completed")
 	}

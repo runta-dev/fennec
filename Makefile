@@ -44,6 +44,7 @@ check-ui:
 	node scripts/tests/takeover-state.cjs
 	node scripts/tests/fox-motion.cjs
 	node scripts/tests/updater-state.cjs
+	node scripts/tests/browser-paste.cjs
 	node scripts/tests/developer-mode.cjs
 	node scripts/tests/sandbox-audit-state.cjs
 	node scripts/tests/onboarding-state.cjs
