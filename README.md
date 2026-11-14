@@ -50,6 +50,15 @@ Keep your editor, repository, and tools on your Mac. Choose **Cloud computer** f
 Once a task has what it needs in the cloud, detach and close your Mac—even shut it down. The cloud process keeps running without an open terminal.
 
 </td>
+<td width="50%" valign="top">
+
+### 🛡️ Your Mac, your rules
+
+Give agents room to work while keeping control of your Mac. **Governance & Sandbox** confines sandboxed writes to approved folders and blocks direct access to protected credentials, SSH keys, and Keychain data.
+
+With **Ask for approval**, broader access and destructive commands such as forced file deletion require your authorization. Choose **Approve for me** to delegate review, or explicitly enable **Full access** to lift the sandbox. You decide how much autonomy to grant.
+
+</td>
 </tr>
 <tr>
 <td width="50%" valign="top">
