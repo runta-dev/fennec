@@ -29,9 +29,16 @@ var fixtures = map[string]string{
 	"scripts/tests/terminal-bridge.cjs":       "UTF-8 split across terminal frames",
 }
 
+// Only the explicit documentation selector may use a native language label in
+// the English README. Other prose and developer documentation stay English.
+var readmeLanguageLink = regexp.MustCompile(`<a href="docs/README_ZH\.md" lang="zh-CN">[^<\r\n]*</a>`)
+
 func sourceLanguage(path string, data []byte) error {
-	if path == "native/macos/UI/translations.json" || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+	if path == "native/macos/UI/translations.json" || path == "docs/README_ZH.md" || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil
+	}
+	if path == "README.md" {
+		data = readmeLanguageLink.ReplaceAll(data, nil)
 	}
 	if fixtures[path] != "" {
 		if filepath.Ext(path) == ".go" {
@@ -165,7 +172,7 @@ func run() error {
 			return err
 		}
 	}
-	fmt.Println("PASS English source/docs, explicit Unicode fixtures, and localization references")
+	fmt.Println("PASS English source/docs, localized README, explicit Unicode fixtures, and localization references")
 	return nil
 }
 func main() {

@@ -5,6 +5,8 @@
 <h1 align="center">Fennec</h1>
 <h3 align="center">Run your coding agents in the cloud, connected to your Mac.</h3>
 
+<p align="center">English · <a href="docs/README_ZH.md" lang="zh-CN">简体中文</a></p>
+
 <p align="center">
   <a href="#meet-fennec"><img src="https://img.shields.io/badge/macOS-menu_bar-181818?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS menu-bar app" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Apple_Silicon-arm64-F38D25?style=flat-square" alt="Apple Silicon arm64" /></a>
@@ -36,7 +38,7 @@ Cloud sessions can keep working around the clock while their cloud computer is r
 
 Cloud execution needs a Runta account and model access configured for the agent. Cloud compute and model-provider charges are separate.
 
-Cloud controls are currently available for **Claude Code, Codex, and Pi**. Other discovered agents are shown as **Coming soon**. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
+Cloud controls are currently available for **Claude Code, Codex, Pi, and Kimi Code**. Other discovered agents are shown as **Coming soon**. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
 
 Magpie is optional and **off by default**. Sign in to your agent locally; Fennec copies its supported native credentials into an isolated configuration directory in your cloud sandbox. Enable **Settings → Magpie** only if you want to select cloud models through Magpie. The same setting is available with `fen settings magpie on|off`.
 

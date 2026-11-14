@@ -30,3 +30,21 @@ func TestUnknownMessageReferenceFails(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLocalizedReadmeDoesNotExemptOtherDocumentation(t *testing.T) {
+	link := []byte(`<a href="docs/README_ZH.md" lang="zh-CN">简体中文</a>`)
+	if err := sourceLanguage("README.md", link); err != nil {
+		t.Fatal("native language selector rejected", err)
+	}
+	if err := sourceLanguage("docs/README_ZH.md", []byte("# 认识 Fennec\n简体中文使用指南")); err != nil {
+		t.Fatal("translated user guide rejected", err)
+	}
+	for _, path := range []string{"AGENTS.md", "docs/developer.md", "docs/README_ZH.go"} {
+		if sourceLanguage(path, link) == nil {
+			t.Fatal("selector exemption escaped the README", path)
+		}
+	}
+	if sourceLanguage("README.md", append(link, []byte("\n其他中文正文")...)) == nil {
+		t.Fatal("selector exemption allowed translated English README prose")
+	}
+}

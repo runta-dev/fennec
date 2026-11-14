@@ -3,6 +3,7 @@
 ## Source language and localization
 
 - Write implementation code, comments, developer documentation, task records, and project skills in English.
+- The Simplified Chinese user guide at `docs/README_ZH.md` and its native-language selector in `README.md` are intentional documentation translations; keep them aligned with the English README.
 - Keep translated UI copy in `native/macos/UI/translations.json`, addressed by stable English message IDs. Do not use Chinese sentences or mutable English copy as translation keys.
 - WebView dynamic copy uses `[[i18n:ui.message_id]]` tokens. Static HTML uses `data-i18n` and English fallback text. Native UI uses `L10n.text` with the same catalog. The build generates the WebView payload and compiled English fallback.
 - Preserve Unicode fixtures that specifically test multilingual text, paths, titles, punctuation, or byte boundaries. Keep their surrounding code and comments in English.
