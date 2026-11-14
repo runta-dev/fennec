@@ -104,9 +104,15 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$release_dir/Fennec-$version-ma
 # Incremental updates: the stapled app split into core plus the Chromium
 # component, then reassembled from those archives and compared with the app.
 previous_components="${FENNEC_PREVIOUS_COMPONENTS:-}"
-if [[ -z "$previous_components" && $dry_run == 0 ]] && command -v gh >/dev/null 2>&1; then
-  if gh release download --repo "${GITHUB_REPOSITORY:-runta-dev/fennec}" --pattern '*-components.json' --dir "$release_work/previous" >/dev/null 2>&1; then
-    previous_components=$(find "$release_work/previous" -name '*-components.json' | head -n 1)
+# The latest published release is the one users update from. It lives in
+# the public Fennec repository, not the repository running the build (CI
+# runs in another one), and is read without credentials.
+release_repository="${FENNEC_RELEASE_REPOSITORY:-runta-dev/fennec}"
+if [[ -z "$previous_components" && $dry_run == 0 ]]; then
+  mkdir -p "$release_work/previous"
+  previous_url=$(curl -fsSL "https://api.github.com/repos/$release_repository/releases/latest" | jq -r '[.assets[] | select(.name | endswith("-components.json")) | .browser_download_url][0] // empty' || true)
+  if [[ -n "$previous_url" ]] && curl -fsSL -o "$release_work/previous/previous-components.json" "$previous_url"; then
+    previous_components="$release_work/previous/previous-components.json"
   fi
 fi
 [[ -n "$previous_components" ]] || echo 'No previous component manifest: cannot prove Chromium reuse against the last release' >&2
