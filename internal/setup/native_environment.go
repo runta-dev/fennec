@@ -141,6 +141,25 @@ func (b *nativeEnvironmentOutput) Write(p []byte) (int, error) {
 	return b.Builder.Write(p)
 }
 
+// LocalAgentHome is the Mac's configuration directory for claude or codex,
+// honoring CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell.
+func LocalAgentHome(ctx context.Context, agent string) string {
+	locations := map[string][2]string{"claude": {"CLAUDE_CONFIG_DIR", ".claude"}, "codex": {"CODEX_HOME", ".codex"}}
+	location, ok := locations[agent]
+	if !ok {
+		return ""
+	}
+	variable, fallback := location[0], location[1]
+	if value := nativeSourceEnvironment(ctx)[variable]; filepath.IsAbs(value) {
+		return filepath.Clean(value)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, fallback)
+}
+
 // LocalShellDirectories returns only shell configuration locations, never keys.
 func LocalShellDirectories(ctx context.Context) (string, string) {
 	env := nativeSourceEnvironment(ctx)

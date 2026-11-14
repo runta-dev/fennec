@@ -258,7 +258,7 @@ display_name = "K3.1 Pro"
 func TestLocalAgentRoutesRetriesAColdMagpie(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
 	marker := filepath.Join(home, "called")
-	script := "#!/bin/sh\nif [ ! -f '" + marker + "' ]; then touch '" + marker + "'; exit 1; fi\necho 'Kimi Code model kimi-code/k3'\n"
+	script := "#!/bin/sh\nif [ ! -f '" + marker + "' ]; then /usr/bin/touch '" + marker + "'; exit 1; fi\necho 'Kimi Code model kimi-code/k3'\n"
 	if err := os.WriteFile(filepath.Join(bin, "magpie"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

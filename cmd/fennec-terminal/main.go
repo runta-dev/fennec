@@ -102,6 +102,13 @@ func run() (int, error) {
 		}
 		return 0, json.NewEncoder(os.Stdout).Encode(results)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "import-session" {
+		written, err := cloudruntime.ReceiveSessionImport(home, os.Stdin)
+		if err != nil {
+			return 1, err
+		}
+		return 0, json.NewEncoder(os.Stdout).Encode(map[string]int{"written": written})
+	}
 	if len(os.Args) == 2 && os.Args[1] == "sync-model-accounts" {
 		result, err := setup.ReceiveModelAccounts(ctx, home, os.Stdin)
 		if err != nil {

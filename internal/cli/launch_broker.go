@@ -196,6 +196,12 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		if err != nil {
 			return launcher.LaunchReceipt{}, err
 		}
+		if request.CloudWorkspace {
+			if intent, err = resumeLocalSession(operation, channel, intent); err != nil {
+				return launcher.LaunchReceipt{}, err
+			}
+			request.Arguments = intent.Arguments
+		}
 		return journal.Do(operation, intent, func(operation context.Context, intent launcher.LaunchIntent) (launcher.LaunchReceipt, error) {
 			if request.CloudWorkspace {
 				transport, err := channel.get(operation)
@@ -223,6 +229,9 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		}
 		if !request.CloudWorkspace {
 			return launcher.LaunchPlan{}, fmt.Errorf("direct terminal requires cloud workspace")
+		}
+		if intent, err = resumeLocalSession(operation, channel, intent); err != nil {
+			return launcher.LaunchPlan{}, err
 		}
 		native := cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks}
 		if err := native.Validate(); err != nil {

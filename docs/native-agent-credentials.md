@@ -101,3 +101,24 @@ completion selects the cloud account without modifying the Mac's credentials.
 The daemon observes completed login IDs through its existing session channel,
 including when the UI is closed. Canceling invalidates the pending login before
 stopping it; temporary credentials are removed only after stop is confirmed.
+
+### Resuming a Mac conversation in a takeover session
+
+A takeover launch runs the agent in a fresh cloud workspace (`~/.fen/<session>`),
+so resuming a conversation that exists only on the Mac would fail with "No
+conversation found". Before such a launch the broker copies the conversation to
+the cloud computer, as cloud ChatGPT does for Mac threads:
+
+- Claude Code: `--resume <id>`, `-r <id>`, `--resume=<id>`, and `--continue`/`-c`
+  (the newest conversation for the directory, launched as `--resume <id>`). The
+  transcript and its `<id>/` folder (subagents, tool results) are written under
+  the cloud workspace's project folder.
+- Codex: `resume <id>` and `resume --last [--all]` (launched with the ID found on
+  the Mac). The rollout keeps its relative path under CODEX_HOME and adopts the
+  cloud Codex's configured provider.
+
+Every `cwd` field is mapped to the cloud workspace. A cloud copy with at least as
+many records is kept. The transfer is zstd-compressed on the shared SSH
+connection (`fennec-terminal import-session`), never in argv or a protocol frame.
+A picker (`--resume` with no ID, `codex resume`) lists cloud conversations only.
+Pi, Kimi Code and OpenCode conversations are not moved yet.
