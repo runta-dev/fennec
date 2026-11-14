@@ -30,6 +30,7 @@ type Frame struct {
 	Bytes             int                          `json:"bytes,omitempty"`
 	Code              int                          `json:"code,omitempty"`
 	Message           string                       `json:"message,omitempty"`
+	ErrorCode         string                       `json:"error_code,omitempty"`
 	Target            string                       `json:"target,omitempty"`
 }
 

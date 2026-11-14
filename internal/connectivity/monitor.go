@@ -81,8 +81,9 @@ func IsOfflineError(err error, online bool) bool {
 }
 
 type Monitor struct {
-	probe    func() bool
-	interval time.Duration
+	probe        func() bool
+	interval     time.Duration
+	watchChanges func(context.Context) <-chan struct{}
 
 	mu      sync.Mutex
 	started bool
@@ -91,17 +92,20 @@ type Monitor struct {
 }
 
 func NewMonitor(probe func() bool, interval time.Duration) *Monitor {
+	var watch func(context.Context) <-chan struct{}
 	if probe == nil {
 		probe = ProbeRoutingTable
+		watch = WatchChanges
 	}
 	if interval <= 0 {
 		interval = 2 * time.Second
 	}
 	return &Monitor{
-		probe:    probe,
-		interval: interval,
-		online:   probe(),
-		changed:  make(chan struct{}),
+		probe:        probe,
+		interval:     interval,
+		online:       probe(),
+		changed:      make(chan struct{}),
+		watchChanges: watch,
 	}
 }
 
@@ -117,6 +121,10 @@ func (m *Monitor) Start(ctx context.Context) {
 	m.started = true
 	m.online = m.probe()
 	m.mu.Unlock()
+	var events <-chan struct{}
+	if m.watchChanges != nil {
+		events = m.watchChanges(ctx)
+	}
 
 	go func() {
 		ticker := time.NewTicker(m.interval)
@@ -127,6 +135,12 @@ func (m *Monitor) Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 				m.Refresh()
+			case _, ok := <-events:
+				if !ok {
+					events = nil
+					continue
+				}
+				m.refresh(true)
 			}
 		}
 	}()
@@ -135,13 +149,17 @@ func (m *Monitor) Start(ctx context.Context) {
 // Refresh re-evaluates local route availability immediately and notifies
 // subscribers if the online state changed.
 func (m *Monitor) Refresh() bool {
+	return m.refresh(false)
+}
+
+func (m *Monitor) refresh(pathChanged bool) bool {
 	if m == nil {
 		return ProbeRoutingTable()
 	}
 	now := m.probe()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if now != m.online {
+	if now != m.online || pathChanged {
 		m.online = now
 		close(m.changed)
 		m.changed = make(chan struct{})

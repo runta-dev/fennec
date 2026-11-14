@@ -233,6 +233,11 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					terminal, command, err = start(session.ctx, *frame.Launch)
 				}
 				if err != nil {
+					var reference cloudruntime.SessionReferenceError
+					if errors.As(err, &reference) {
+						emit(Frame{Type: "error", ID: frame.ID, ErrorCode: reference.Code, Message: reference.Message})
+						return
+					}
 					emit(Frame{Type: "error", ID: frame.ID, Message: "remote launch failed; inspect session before retrying"})
 					return
 				}

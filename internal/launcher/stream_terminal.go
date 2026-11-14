@@ -51,7 +51,10 @@ func (err StreamLostError) Error() string {
 	return terminalDisconnectMessage(err.Receipt.SessionID)
 }
 
-func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func()) error {
+func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), recovery ...StreamRecovery) error {
+	if len(recovery) > 0 {
+		return executeRecoveringStream(plan, intent, home, ready, nil, recovery[0])
+	}
 	return executeStream(plan, intent, home, ready, nil)
 }
 
@@ -60,8 +63,12 @@ type preparedDisplay struct {
 	input []byte
 }
 
-func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), prepared *preparedDisplay) error {
+func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), prepared *preparedDisplay, owners ...*streamOwner) error {
 	launchprofile.Record("stream.enter", time.Now(), 0)
+	var owner *streamOwner
+	if len(owners) > 0 {
+		owner = owners[0]
+	}
 	streamID := plan.StreamID
 	if streamID == "" {
 		streamID = intent.RequestID
@@ -69,14 +76,23 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	if plan.StreamPath != filepath.Join(home, ".config/fennec/ipc", "terminal-"+streamID) || plan.SessionID != intent.RequestID || plan.Agent != intent.Agent {
 		return fmt.Errorf("invalid terminal stream identity")
 	}
-	connection, err := net.DialTimeout("unix", plan.StreamPath, 5*time.Second)
+	parent := context.Background()
+	if owner != nil {
+		parent = owner.ctx
+	}
+	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer cancel()
+	connection, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", plan.StreamPath)
 	if err != nil {
+		if owner != nil && owner.receipt.SessionID != "" {
+			return StreamLostError{owner.receipt}
+		}
 		return err
 	}
 	defer connection.Close()
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	defer cancel()
 	window := terminalstream.NewCreditWindow()
+	stop := context.AfterFunc(ctx, func() { window.Close(); connection.Close() })
+	defer stop()
 	var writeMu sync.Mutex
 	encoder := json.NewEncoder(connection)
 	send := func(frame terminalstream.Frame) error {
@@ -116,7 +132,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		columns, rows = 120, 40
 	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
-	if interactive {
+	if interactive && owner == nil {
 		state, err := term.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
 			return err
@@ -145,16 +161,23 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	}
 	defer hooks.close()
 	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, HookBridge: hooks != nil}); err != nil {
+		if owner != nil && owner.receipt.SessionID != "" {
+			return StreamLostError{owner.receipt}
+		}
 		return err
 	}
 	inputDone := make(chan struct{})
 	var hookWorkers sync.WaitGroup
 	defer hookWorkers.Wait()
 	var detached atomic.Bool
-	stop := context.AfterFunc(ctx, func() { window.Close(); connection.Close() })
-	defer stop()
 	go func() {
 		defer close(inputDone)
+		if owner != nil {
+			if owner.pumpInput(ctx, window, sendInput) != nil {
+				cancel()
+			}
+			return
+		}
 		buffer := make([]byte, terminalstream.Chunk)
 		keys := terminalinput.Decoder{}
 		for len(earlyInput) > 0 {
@@ -259,6 +282,9 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	defer titles.Flush()
 	var receipt LaunchReceipt
 	connection.SetReadDeadline(time.Now().Add(90 * time.Second))
+	if owner != nil && plan.Resume {
+		connection.SetReadDeadline(time.Now().Add(15 * time.Second))
+	}
 	for scanner.Scan() {
 		var frame terminalstream.Frame
 		if json.Unmarshal(scanner.Bytes(), &frame) != nil || frame.ID != streamID {
@@ -290,6 +316,12 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			launchprofile.Session("stream.receipt", frame.Terminal.ID)
 			receipt = LaunchReceipt{RuntimeID: plan.RuntimeID, SessionID: intent.RequestID, Agent: intent.Agent, Address: frame.Terminal.Address}
+			if owner != nil {
+				if owner.receipt.SessionID != "" && receipt != owner.receipt {
+					return ReconnectStopped{Message: "The reconnected session identity could not be verified."}
+				}
+				owner.receipt = receipt
+			}
 			var saveErr error
 			if plan.Resume {
 				saveErr = SaveReceipt(filepath.Join(home, ".config/fennec/launches"), receipt)
@@ -312,7 +344,9 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 					launchprofile.Record("guest."+stage, time.Now().Add(-elapsed), elapsed)
 				}
 			}
-			connection.SetReadDeadline(time.Time{})
+			if owner == nil {
+				connection.SetReadDeadline(time.Time{})
+			}
 		case "data":
 			for stage, value := range frame.Timings {
 				if stage == "first_pty_read" || stage == "first_visible_output" {
@@ -324,6 +358,10 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				return fmt.Errorf("terminal output before receipt")
 			}
 			ready()
+			if owner != nil {
+				owner.usable()
+				connection.SetReadDeadline(time.Time{})
+			}
 			if _, err := titles.Write(frame.Data); err != nil {
 				return err
 			}
@@ -355,12 +393,26 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			return nil
 		case "error":
+			if frame.ErrorCode == "session_unavailable" || frame.ErrorCode == "session_identity_mismatch" {
+				return ReconnectStopped{Message: frame.Message}
+			}
 			if confirmed {
 				return StreamLostError{receipt}
+			}
+			if owner != nil && owner.receipt.SessionID != "" {
+				return StreamLostError{owner.receipt}
 			}
 			return fmt.Errorf("%s; inspect request %s before retrying", frame.Message, intent.RequestID)
 		default:
 			return fmt.Errorf("unexpected terminal frame")
+		}
+	}
+	if owner != nil {
+		if owner.ctx.Err() != nil {
+			return DetachedError{SessionID: intent.RequestID}
+		}
+		if owner.receipt.SessionID != "" {
+			return StreamLostError{owner.receipt}
 		}
 	}
 	if detached.Load() || (confirmed && ctx.Err() != nil) {

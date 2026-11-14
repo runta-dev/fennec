@@ -17,7 +17,7 @@ import (
 // ExecuteColdStream opens one non-PTY SSH session after the broker's ownership
 // check. Its first remote command carries the authorized launch frame, removing
 // the separate PTY request and ready-then-launch network round trips.
-func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent, home string, ready func(), connection *ColdConnection) error {
+func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent, home string, ready func(), connection *ColdConnection, recovery ...StreamRecovery) error {
 	if connection == nil || !connection.Ready(ctx, plan) || plan.Launch == nil || plan.Launch.ID != intent.RequestID || plan.Launch.Agent != intent.Agent {
 		return fmt.Errorf("cold launch identity was not verified")
 	}
@@ -85,5 +85,8 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 		return err
 	}
 	plan.StreamPath = path
+	if len(recovery) > 0 {
+		return executeRecoveringStream(plan, intent, home, ready, &preparedDisplay{facts: facts, input: early}, recovery[0])
+	}
 	return executeStream(plan, intent, home, ready, &preparedDisplay{facts: facts, input: early})
 }

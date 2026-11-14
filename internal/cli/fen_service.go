@@ -29,6 +29,7 @@ type fenServiceRequest struct {
 }
 
 type fenServiceReply struct {
+	ErrorCode   string                  `json:"error_code,omitempty"`
 	Timings     map[string]float64      `json:"timings_ms,omitempty"`
 	Plan        *launcher.LaunchPlan    `json:"plan,omitempty"`
 	Sessions    []fenSession            `json:"sessions"`
@@ -120,7 +121,7 @@ func (service *fenSessionService) update(ctx context.Context) {
 
 func (service *fenSessionService) handle(ctx context.Context, request fenServiceRequest) fenServiceReply {
 	if request.RuntimeID != "" && request.RuntimeID != service.runtimeID {
-		return fenServiceReply{Error: "Session belongs to a different runtime."}
+		return fenServiceReply{Error: "Session belongs to a different runtime.", ErrorCode: "runtime_mismatch"}
 	}
 	if request.Operation == "list" || request.Operation == "refresh" {
 		if request.Operation == "refresh" {
@@ -365,12 +366,19 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 func fenLocalRequest(home string, request fenServiceRequest) (fenServiceReply, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
+	return fenLocalRequestContext(ctx, home, request)
+}
+
+func fenLocalRequestContext(ctx context.Context, home string, request fenServiceRequest) (fenServiceReply, error) {
 	var reply fenServiceReply
 	err := (control.Client{Socket: filepath.Join(home, ".config/fennec/ipc/control.sock")}).Call(ctx, "sessions.dispatch", request, &reply)
 	if err != nil {
 		return reply, err
 	}
 	if reply.Error != "" && request.Operation != "list" && request.Operation != "refresh" {
+		if reply.ErrorCode == "runtime_mismatch" {
+			return reply, launcher.ReconnectStopped{Message: reply.Error}
+		}
 		return reply, fmt.Errorf("%s", reply.Error)
 	}
 	return reply, nil

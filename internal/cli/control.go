@@ -87,6 +87,9 @@ func serveControl(arguments []string) error {
 	// Acquire the control socket before any Keychain access so competing starts
 	// cannot create duplicate system authorization prompts.
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
+		if err := refreshInstalledLaunchers(home, executable); err != nil {
+			_ = writePublicJSON(filepath.Join(home, ".config/fennec/diagnostics/launchers.json"), map[string]string{"error": err.Error()})
+		}
 		controller.Start(ctx)
 		if controller.UpdateState != nil {
 			startControlUpdater(ctx, controller)

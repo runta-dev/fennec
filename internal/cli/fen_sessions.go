@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fennec/internal/launcher"
 	"fennec/internal/launchprofile"
 	"fmt"
@@ -193,12 +192,7 @@ func fenCommand(arguments []string, output io.Writer) error {
 		return err
 	}
 	if reply.Plan != nil && reply.Plan.StreamPath != "" {
-		err := launcher.ExecuteStream(*reply.Plan, launcher.LaunchIntent{RequestID: id, Agent: receipt.Agent}, home, loading.Clear)
-		var lost launcher.StreamLostError
-		if errors.As(err, &lost) {
-			return reconnectResident(ctx, lost.Receipt, home, loading.Clear)
-		}
-		return err
+		return launcher.ExecuteStream(*reply.Plan, launcher.LaunchIntent{RequestID: id, Agent: receipt.Agent}, home, loading.Clear, residentRecovery(home, loading.Clear))
 	}
 	return fmt.Errorf("resident terminal channel unavailable; inspect fen status")
 }

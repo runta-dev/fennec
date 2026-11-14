@@ -12,17 +12,44 @@ import (
 	"regexp"
 )
 
+// SessionReferenceError is only returned after an authoritative identity check.
+// A failed transport or an unavailable local cache is not evidence of deletion.
+type SessionReferenceError struct{ Code, Message string }
+
+func (e SessionReferenceError) Error() string { return e.Message }
+
 func (runtime *LocalRuntime) Terminal(ctx context.Context, address, id string) (LocalTerminal, error) {
 	if !sessionIDPattern.MatchString(id) || !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(address) {
 		return LocalTerminal{}, fmt.Errorf("invalid terminal identity")
 	}
 	raw, err := runtime.Run(ctx, "get", address)
 	if err != nil {
+		if runtime.Query != nil {
+			listing, listErr := runtime.List(ctx)
+			var rows struct {
+				Terminals []LocalTerminal `json:"terminals"`
+			}
+			if listErr == nil && json.Unmarshal(listing, &rows) == nil {
+				found := false
+				for _, row := range rows.Terminals {
+					if row.Address == address {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return LocalTerminal{}, SessionReferenceError{Code: "session_unavailable", Message: "This cloud session is no longer available."}
+				}
+			}
+		}
 		return LocalTerminal{}, err
 	}
 	var terminal LocalTerminal
-	if len(raw) > 2<<20 || json.Unmarshal(raw, &terminal) != nil || terminal.Labels["fennec.session"] != id {
+	if len(raw) > 2<<20 || json.Unmarshal(raw, &terminal) != nil {
 		return LocalTerminal{}, fmt.Errorf("terminal is not the requested Fennec session")
+	}
+	if terminal.Labels["fennec.session"] != id {
+		return LocalTerminal{}, SessionReferenceError{Code: "session_identity_mismatch", Message: "The cloud session identity could not be verified."}
 	}
 	terminal.ID = id
 	if agent := terminal.Labels["fennec.agent"]; agent != "" {

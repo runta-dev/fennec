@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"encoding/json"
+	"errors"
 	agents "fennec/internal/agentcmd"
 	"fmt"
 	"os"
@@ -33,48 +34,55 @@ func InstallShims(directory, executable string, searchPath ...string) error {
 	if len(searchPath) > 0 {
 		paths = searchPath[0]
 	}
+	var failures []error
 	for agent, dispatch := range commands {
-		path := filepath.Join(directory, agents.BinaryName(agent))
-		if info, err := os.Lstat(path); err == nil {
-			if !info.Mode().IsRegular() {
-				return fmt.Errorf("refusing to replace unmanaged shim")
+		err := func() error {
+			path := filepath.Join(directory, agents.BinaryName(agent))
+			if info, err := os.Lstat(path); err == nil {
+				if !info.Mode().IsRegular() {
+					return fmt.Errorf("refusing to replace unmanaged shim")
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				if !strings.HasPrefix(string(data), "#!/bin/sh\n"+marker) {
+					return fmt.Errorf("refusing to replace unmanaged shim")
+				}
+			} else if !os.IsNotExist(err) {
+				return err
 			}
-			data, err := os.ReadFile(path)
+			original := ""
+			if Supported[agent] {
+				original, _ = ResolveOriginal(agent, paths, directory, executable)
+			}
+			script := "#!/bin/sh\n" + marker + removedApplicationFallback(executable, original) + "exec " + quote(executable) + dispatch + " \"$@\"\n"
+			file, err := os.CreateTemp(directory, ".shim-")
 			if err != nil {
 				return err
 			}
-			if !strings.HasPrefix(string(data), "#!/bin/sh\n"+marker) {
-				return fmt.Errorf("refusing to replace unmanaged shim")
+			_, err = file.WriteString(script)
+			if err == nil {
+				err = file.Chmod(0700)
 			}
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-		original := ""
-		if Supported[agent] {
-			original, _ = ResolveOriginal(agent, paths, directory, executable)
-		}
-		script := "#!/bin/sh\n" + marker + removedApplicationFallback(executable, original) + "exec " + quote(executable) + dispatch + " \"$@\"\n"
-		file, err := os.CreateTemp(directory, ".shim-")
+			closeErr := file.Close()
+			if err == nil {
+				err = closeErr
+			}
+			if err == nil {
+				err = os.Rename(file.Name(), path)
+			}
+			os.Remove(file.Name())
+			if err != nil {
+				return err
+			}
+			return nil
+		}()
 		if err != nil {
-			return err
-		}
-		_, err = file.WriteString(script)
-		if err == nil {
-			err = file.Chmod(0700)
-		}
-		closeErr := file.Close()
-		if err == nil {
-			err = closeErr
-		}
-		if err == nil {
-			err = os.Rename(file.Name(), path)
-		}
-		os.Remove(file.Name())
-		if err != nil {
-			return err
+			failures = append(failures, fmt.Errorf("%s: %w", agent, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // EnabledAgents is configuration, not a readiness claim. An enabled agent with

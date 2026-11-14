@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fennec/internal/hookplugins"
 	"fennec/internal/sessionid"
 	"fmt"
@@ -75,18 +74,14 @@ func runAgentOriginal(arguments []string, original string) error {
 			connection = nil
 		}
 		if intent.Cold && connection != nil {
-			err = launcher.ExecuteColdStream(ctx, plan, intent, home, loading.Clear, connection)
+			err = launcher.ExecuteColdStream(ctx, plan, intent, home, loading.Clear, connection, residentRecovery(home, loading.Clear))
 		} else if plan.StreamPath != "" {
-			err = launcher.ExecuteStream(plan, intent, home, loading.Clear)
+			err = launcher.ExecuteStream(plan, intent, home, loading.Clear, residentRecovery(home, loading.Clear))
 		} else {
 			err = launcher.ExecutePlan(plan, intent, home, loading.Clear, connection)
 		}
 	}
 	if err != nil {
-		var lost launcher.StreamLostError
-		if errors.As(err, &lost) {
-			return reconnectResident(ctx, lost.Receipt, home, loading.Clear)
-		}
 		loading.Fail()
 	} else if intent.Agent == "codex" && len(intent.Arguments) == 0 && isTerminal(os.Stdout) {
 		loading.Clear()
