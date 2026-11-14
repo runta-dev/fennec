@@ -15,7 +15,7 @@ func TestSessionListUsesOneCompleteSnapshot(t *testing.T) {
 		if method != "terminal.list" {
 			t.Fatal(method)
 		}
-		return json.RawMessage(`{"terminals":[{"address":"t1","state":"live","title":"Fix login redirect","status":"working","labels":{"fennec.session":"quiet-river","where":"workspace"},"argv":["/bin/codex","private-input"],"foreground":{"argv":["private-input"]}},{"address":"t2","state":"live"}],"hidden_finished":3}`), nil
+		return json.RawMessage(`{"terminals":[{"address":"t1","state":"live","title":"Fix login redirect","status":"working","labels":{"fennec.session":"quiet-river","where":"workspace"},"argv":["/bin/codex","private-input"],"foreground":{"argv":["private-input"]}},{"address":"t2","state":"live"}],"hidden_finished":3,"machines":[{"name":"peer","state":"connected","via":["private-input"]}]}`), nil
 	}, Run: func(context.Context, ...string) ([]byte, error) {
 		t.Fatal("snapshot must not issue per-terminal CLI queries")
 		return nil, nil

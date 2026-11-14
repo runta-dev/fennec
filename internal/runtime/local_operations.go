@@ -291,6 +291,23 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Match ls's public machine summary, excluding connection configuration.
+	if raw, ok := listing["machines"]; ok {
+		var machines []map[string]json.RawMessage
+		if json.Unmarshal(raw, &machines) != nil {
+			return nil, fmt.Errorf("invalid machine rows")
+		}
+		for i, machine := range machines {
+			public := map[string]json.RawMessage{}
+			for _, key := range []string{"name", "state", "since_ms", "why"} {
+				if value, ok := machine[key]; ok {
+					public[key] = value
+				}
+			}
+			machines[i] = public
+		}
+		listing["machines"], _ = json.Marshal(machines)
+	}
 	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
 		listing["native_accounts"], _ = json.Marshal(accounts)
 	}
