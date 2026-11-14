@@ -176,7 +176,7 @@ var _ view.Source = (*Desk)(nil)
 
 // dockLayer is the Dock's window server layer (kCGDockWindowLevel); app,
 // floating and modal panel windows sit below it.
-const dockLayer = 20
+const dockLayer = ax.DockLayer
 
 // appName is the name of the app with pid, as its accessibility element
 // gives it.

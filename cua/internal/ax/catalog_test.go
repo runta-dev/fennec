@@ -423,6 +423,33 @@ func TestSkipsDriverWindows(t *testing.T) {
 	}
 }
 
+// Dialogs another process raises (osascript's display dialog sits on the
+// modal panel layer) and the Spotlight window are listed; the Dock, the menu
+// bar and overlays are not.
+func TestListsPanelsAndSpotlight(t *testing.T) {
+	server := []ServerWindow{
+		{ID: 1, PID: 90, Owner: "osascript", Title: "Keyboard Settings", Layer: 8, Alpha: 1},
+		{ID: 2, PID: 91, Owner: "Spotlight", Layer: 25, Alpha: 1},
+		{ID: 3, PID: 60, Owner: "TextEdit", Layer: 0, Alpha: 1},
+		{ID: 4, PID: 92, Owner: "Inspector", Layer: 3, Alpha: 1},
+		{ID: 5, PID: 70, Owner: "Dock", Layer: 20, Alpha: 1},
+		{ID: 6, PID: 71, Owner: "Window Server", Layer: 24, Alpha: 1},
+		{ID: 7, PID: 72, Owner: "Control Center", Layer: 25, Alpha: 1},
+		{ID: 8, PID: 91, Owner: "Spotlight", Layer: OverlayLayer, Alpha: 1},
+		{ID: 9, PID: 93, Owner: "osascript", Layer: 8, Alpha: 0},
+	}
+	l := ListApps(server, nil)
+	if !reflect.DeepEqual(l.PIDs, []int{90, 91, 60, 92}) {
+		t.Errorf("apps read %v", l.PIDs)
+	}
+	if _, ok := l.Rank[8]; ok {
+		t.Error("a Spotlight overlay is listed")
+	}
+	if l.Rank[1] != 0 || l.Names[90] != "osascript" {
+		t.Errorf("listing %+v", l)
+	}
+}
+
 func TestSpaceSymbolsOptional(t *testing.T) {
 	if Symbol("fennecCuaNoSuchSymbol") != nil {
 		t.Error("a missing symbol resolved")

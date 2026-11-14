@@ -15,7 +15,7 @@ type AppLister func(ctx context.Context) ([]protocol.AppInfo, error)
 
 // AppsTool answers the app inventory the REPL's cua.getState, listApps and
 // getApp read: the lister's apps, marked running when they own an admitted
-// window, plus every app with an admitted window the lister missed. It
+// window, after every app with an admitted window the lister missed. It
 // reads only; the windows come from observe, so the allowlist applies.
 func (e *Engine) AppsTool(list AppLister) Tool {
 	return func(ctx context.Context, call *Call, args json.RawMessage) (any, *protocol.Error) {
@@ -43,19 +43,30 @@ func (e *Engine) AppsTool(list AppLister) Tool {
 		for i, a := range out.Apps {
 			seen[strings.ToLower(a.Name)] = i
 		}
+		// Apps the lister missed but that show a window come first, in the
+		// windows' front-to-back order: they are processes that are not
+		// installed apps yet put something on screen (a dialog osascript
+		// raised, Spotlight), which an agent must notice before the long
+		// list of installed apps.
+		var extra []protocol.AppInfo
 		for _, w := range out.Windows {
 			if w.App == "" {
 				continue
 			}
 			if i, ok := seen[strings.ToLower(w.App)]; ok {
-				out.Apps[i].Running = true
-				if out.Apps[i].PID == 0 {
-					out.Apps[i].PID = w.PID
+				if i >= 0 {
+					out.Apps[i].Running = true
+					if out.Apps[i].PID == 0 {
+						out.Apps[i].PID = w.PID
+					}
 				}
 				continue
 			}
-			seen[strings.ToLower(w.App)] = len(out.Apps)
-			out.Apps = append(out.Apps, protocol.AppInfo{Name: w.App, PID: w.PID, Running: true})
+			seen[strings.ToLower(w.App)] = -1
+			extra = append(extra, protocol.AppInfo{Name: w.App, PID: w.PID, Running: true})
+		}
+		if len(extra) > 0 {
+			out.Apps = append(extra, out.Apps...)
 		}
 		return out, nil
 	}
