@@ -125,26 +125,65 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
 - Codex: `resume <id>` and `resume --last [--all]` (launched with the ID found on
   the Mac). The rollout keeps its relative path under CODEX_HOME and adopts the
   cloud Codex's configured provider.
+- Pi: `--session <id-or-path>`, `--session-id <id>`, and `--continue`/`-c`.
+  Explicit session directories and paths are resolved locally, then replaced
+  with the selected ID in the cloud workspace's native session directory.
+- Kimi Code: `--session <id>`/`-S <id>` and `--continue`/`-c`. Session state, agent journals,
+  attachments and the session index are restored under `KIMI_CODE_HOME`, with
+  agent and attachment paths mapped to the imported session.
+- OpenCode: `--session <id>`/`-s <id>` and `--continue`/`-c`. Its native
+  export/import commands handle database schemas and media storage. Both the
+  v1 commands and v2 `session export`/`session import` interface are recognized.
 
 Every `cwd` field is mapped to the cloud workspace.
 
 The link to the cloud computer is slow (about 130 KB/s), so only what the agent
 needs to continue is sent:
 
-- Before sending, the Mac asks the cloud (`import-session --check`) whether any
-  cloud copy already holds the conversation's latest record (Claude: the last
-  record UUID; Codex: the last line's timestamp). If so, nothing is sent, and a
-  copy that arrives anyway is not written. This also keeps a conversation that
-  was continued in the cloud from being replaced by the older Mac copy.
+- Before sending, the Mac asks whether a native cloud copy already exists.
+  An existing cloud conversation is authoritative, including after a later
+  cloud compaction removes the original Mac marker. Repeated resumes do not
+  upload or overwrite it. Local edits to an already imported conversation are
+  not merged into the cloud copy; use a separate conversation to migrate a fork.
 - A compacted Claude transcript is trimmed to what `--resume` loads: everything
   from the last compact boundary on, the messages that compaction preserved
   (`preservedMessages` and the `preservedSegment` chain), and small metadata
   records. Earlier history and the `api-request*` dumps stay on the Mac; a
   rewind past the last compaction is not available in the cloud.
+- Codex keeps the latest `replacement_history` checkpoint, its retained
+  messages and subsequent records. Session, turn and window metadata survive;
+  old response bodies and screenshot duplicates are omitted. Plain and zstd
+  rollouts are supported. Legacy checkpoints without replacement history and
+  rollouts containing rollback records travel whole.
+- Pi preserves parent IDs, model/thinking settings, extension state, context
+  edits, the latest summary and its `firstKeptEntryId` range. Earlier message
+  bodies are removed. Branched trees and unresolved retained IDs travel whole.
+- Kimi Code preserves the wire's event positions and the exact user messages
+  from which modern compaction recomputes its retained context. Covered
+  assistant/tool payloads become small placeholders while tool-call identities,
+  summaries, injections and side state survive. Legacy tail compaction and
+  journals with undo records travel whole.
+- OpenCode keeps the latest completed summary, its compaction parent, retained
+  tail and subsequent messages in chronological storage order. Failed summaries,
+  missing retained references, reverted sessions and provider-native windows
+  that may need the original transcript are not trimmed.
 - The transfer is zstd at the "better" level. A 90 MB transcript with
-  screenshots goes from 30 MB to 0.3 MB. Conversations that started in
-the cloud need no copy: Claude Code finds a resumed ID in any project folder, so
-`claude --resume <cloud id>` works from a new takeover session. The transfer is zstd-compressed on the shared SSH
-connection (`fennec-terminal import-session`), never in argv or a protocol frame.
-A picker (`--resume` with no ID, `codex resume`) lists cloud conversations only.
-Pi, Kimi Code and OpenCode conversations are not moved yet.
+  screenshots went from 30 MB to 0.3 MB in the Claude example; savings depend on
+  what each agent retains. Original local files remain unchanged. Unsupported
+  or incomplete formats are sent without trimming rather than guessing a cut.
+
+Transfers use a dedicated, credit-controlled stream on the resident terminal
+connection (protocol 10), with bounded framing and private atomic file writes.
+They do not open another SSH exec channel or place transcripts in argv. Other
+terminals and control operations share the connection during an upload.
+Pickers without a selected ID list cloud conversations only.
+
+Compaction rules follow the native implementations: Codex's
+`session/rollout_reconstruction.rs`, Pi's `buildSessionContext`, Kimi Code's
+`restoreLoopJournal`, and OpenCode's `filterCompacted`/session history loader.
+Optional acceptance tests use installed loaders without inference requests:
+`FENNEC_PI_SESSION_MODULE`, `FENNEC_KIMI_BUNDLE`, and
+`FENNEC_OPENCODE_BINARY` enable the corresponding tests in
+`internal/runtime/session_compaction_test.go`; `FENNEC_KIMI_BINARY` additionally
+checks native session discovery. `FENNEC_TERMINAL_BINARY` exercises transfer
+through a freshly built resident terminal process.

@@ -35,13 +35,14 @@ type Frame struct {
 
 const Window = 65536
 const Chunk = 16384
-const ProtocolVersion = 9
+const ProtocolVersion = 10
 
-// SocketCodexAppServer is the only remote socket a "socket" stream may open:
-// the runtime owner's codex app-server control socket. Peers advertise it as
-// CapabilityCodexAppServer so older remote services are never asked for it.
+// Socket targets are a fixed allowlist: the owner's Codex app-server and the
+// bounded conversation import service. Peers advertise each capability.
 const (
 	SocketCodexAppServer     = "codex-app-server"
+	SocketSessionImport      = "session-import"
+	CapabilitySessionImport  = "session_import"
 	CapabilityCodexAppServer = "codex_app_server"
 	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that
 	// follow the WebSocket upgrade request until the app-server has answered
@@ -63,6 +64,9 @@ func (frame Frame) validateOpen() error {
 		return fmt.Errorf("invalid stream identity")
 	}
 	if frame.Type == "socket" {
+		if frame.Target == SocketSessionImport && frame.Message == "" && frame.Term == "" {
+			return nil
+		}
 		if frame.Target == SocketCodexAppServer && (frame.Message == "" || regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(frame.Message)) {
 			return nil
 		}

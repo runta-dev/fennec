@@ -141,10 +141,9 @@ func (b *nativeEnvironmentOutput) Write(p []byte) (int, error) {
 	return b.Builder.Write(p)
 }
 
-// LocalAgentHome is the Mac's configuration directory for claude or codex,
-// honoring CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell.
+// LocalAgentHome is the native session storage root from the login shell.
 func LocalAgentHome(ctx context.Context, agent string) string {
-	locations := map[string][2]string{"claude": {"CLAUDE_CONFIG_DIR", ".claude"}, "codex": {"CODEX_HOME", ".codex"}}
+	locations := map[string][2]string{"claude": {"CLAUDE_CONFIG_DIR", ".claude"}, "codex": {"CODEX_HOME", ".codex"}, "pi": {"PI_CODING_AGENT_DIR", ".pi/agent"}, "kimi": {"KIMI_CODE_HOME", ".kimi-code"}, "opencode": {"XDG_DATA_HOME", ".local/share"}}
 	location, ok := locations[agent]
 	if !ok {
 		return ""
