@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type Agent struct {
@@ -27,9 +28,9 @@ var catalog = []definition{
 	{"codex", "Codex", "codex-color.svg", []string{"codex"}, []string{".codex/config.toml"}, nil, true},
 	{"pi", "Pi", "pi.svg", []string{"pi"}, []string{".pi/agent/settings.json"}, nil, true},
 	{"kimi", "Kimi Code", "kimi.svg", []string{"kimi"}, []string{".kimi-code/config.toml"}, nil, true},
-	{"claude-desktop", "Claude Desktop", "claude-color.svg", nil, []string{"Library/Application Support/Claude/claude_desktop_config.json"}, []string{"Claude.app"}, false},
+	{"claude-desktop", "Claude Desktop", "claude-color.svg", nil, nil, []string{"Claude.app"}, false},
 	{"opencode", "OpenCode", "opencode.svg", []string{"opencode"}, []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc"}, nil, true},
-	{"devin", "Devin", "devin.svg", []string{"devin"}, []string{".config/devin/config.json", "Library/Application Support/devin/config.json"}, nil, false},
+	{"devin", "Devin", "devin.svg", []string{"devin"}, nil, nil, false},
 	// 'grok' is also an unrelated program: do not treat PATH alone as evidence.
 	{"grok", "Grok Build", "xai.svg", nil, []string{".grok/config.toml", ".grok/auth.json"}, nil, true},
 	{"gemini", "Gemini CLI", "geminicli-color.svg", []string{"gemini"}, []string{".gemini/settings.json"}, nil, false},
@@ -81,7 +82,7 @@ func discoverAt(home string, paths []string, appRoots []string) []Agent {
 		if evidence == "" {
 			for _, app := range d.apps {
 				for _, root := range appRoots {
-					if info, err := os.Stat(filepath.Join(root, app, "Contents/Info.plist")); err == nil && info.Mode().IsRegular() {
+					if info, err := os.Stat(filepath.Join(root, app, "Contents/Info.plist")); err == nil && info.Mode().IsRegular() && originalExecutable(home, filepath.Join(root, app, "Contents/MacOS", strings.TrimSuffix(app, ".app"))) {
 						evidence = "application"
 						break
 					}
@@ -99,12 +100,16 @@ func Discover() []Agent {
 	return discoverAt(home, searchPaths(home), []string{"/Applications", filepath.Join(home, "Applications")})
 }
 
-// PanelCatalog keeps the announced integrations visible without claiming that
-// they are installed. Discovery remains factual for runtime preparation.
+// PanelCatalog keeps cloud entry points visible without claiming installation.
+// Local-only Claude Desktop and Devin require an installed application/binary;
+// a saved configuration or placeholder must not advertise them to every user.
 func PanelCatalog(discovered []Agent) []Agent {
-	fixed := map[string]bool{"claude": true, "codex": true, "pi": true, "kimi": true, "claude-desktop": true, "opencode": true, "devin": true, "grok": true, "cursor": true}
+	fixed := map[string]bool{"claude": true, "codex": true, "pi": true, "kimi": true, "opencode": true, "grok": true, "cursor": true}
 	byID := map[string]Agent{}
 	for _, item := range discovered {
+		if item.ID == "claude-desktop" && (!item.Installed || item.Evidence != "application") || item.ID == "devin" && (!item.Installed || item.Evidence != "executable") {
+			continue
+		}
 		byID[item.ID] = item
 	}
 	result := []Agent{}

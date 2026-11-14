@@ -31,8 +31,8 @@ func TestDiscoveryEvidence(t *testing.T) {
 	}
 }
 
-func TestComingSoonCatalogDoesNotDependOnInstallation(t *testing.T) {
-	expected := []string{"claude", "codex", "pi", "kimi", "claude-desktop", "opencode", "devin", "grok", "cursor"}
+func TestCloudCatalogDoesNotDependOnInstallation(t *testing.T) {
+	expected := []string{"claude", "codex", "pi", "kimi", "opencode", "grok", "cursor"}
 	empty := PanelCatalog(nil)
 	if len(empty) != len(expected) {
 		t.Fatal(empty)
@@ -43,7 +43,7 @@ func TestComingSoonCatalogDoesNotDependOnInstallation(t *testing.T) {
 		}
 	}
 	present := PanelCatalog([]Agent{{ID: "codex", Installed: true, Name: "Codex", Evidence: "executable"}, {ID: "kimi", Installed: true, Name: "Kimi Code", Evidence: "configuration"}})
-	if len(present) != 9 || present[1].ID != "codex" || !present[1].Installed || !present[3].Installed || present[3].ID != "kimi" {
+	if len(present) != len(expected) || present[1].ID != "codex" || !present[1].Installed || !present[3].Installed || present[3].ID != "kimi" {
 		t.Fatal("missing or duplicate catalog entries", present)
 	}
 	if got := discoverAt(t.TempDir(), nil, nil); len(got) != 0 {
@@ -103,5 +103,64 @@ func TestComingSoonFollowsEverySupportedHarness(t *testing.T) {
 	}
 	if !unsupported {
 		t.Fatal("missing Coming soon entries")
+	}
+}
+
+func TestLocalOnlyEntriesRequireInstalledApplicationsOrExecutables(t *testing.T) {
+	home, apps := t.TempDir(), t.TempDir()
+	bin := filepath.Join(home, "bin")
+	write := func(path, data string, mode os.FileMode) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(data), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(claude, devin bool) {
+		t.Helper()
+		entries := panelList(discoverAt(home, []string{bin}, []string{apps}), []string{apps})
+		found := map[string]bool{}
+		for _, item := range entries {
+			found[item.ID] = true
+		}
+		if found["claude-desktop"] != claude || found["devin"] != devin {
+			t.Fatalf("unexpected local-only entries: %+v", entries)
+		}
+	}
+	check(false, false)
+	// Configuration remnants and incomplete application bundles are not installs.
+	for _, file := range []string{"Library/Application Support/Claude/claude_desktop_config.json", ".config/devin/config.json", "Library/Application Support/devin/config.json"} {
+		write(filepath.Join(home, file), "{}", 0600)
+	}
+	write(filepath.Join(apps, "Claude.app/Contents/Info.plist"), "plist", 0600)
+	check(false, false)
+	claudeBinary := filepath.Join(apps, "Claude.app/Contents/MacOS/Claude")
+	devinBinary := filepath.Join(bin, "devin")
+	write(claudeBinary, "installed application", 0700)
+	write(devinBinary, "not executable yet", 0600)
+	check(true, false)
+	if err := os.Chmod(devinBinary, 0700); err != nil {
+		t.Fatal(err)
+	}
+	check(true, true)
+	if err := os.Remove(claudeBinary); err != nil {
+		t.Fatal(err)
+	}
+	write(devinBinary, "#!/bin/sh\n# Fennec managed launcher v1\n", 0700)
+	check(false, false)
+}
+
+func TestPanelRejectsLocalOnlyPlaceholdersAndConfigurationEvidence(t *testing.T) {
+	for _, evidence := range []string{"", "configuration"} {
+		for _, installed := range []bool{false, true} {
+			entries := PanelCatalog([]Agent{{ID: "claude-desktop", Installed: installed, Evidence: evidence}, {ID: "devin", Installed: installed, Evidence: evidence}})
+			for _, item := range entries {
+				if item.ID == "claude-desktop" || item.ID == "devin" {
+					t.Fatalf("unverified local entry: %+v", item)
+				}
+			}
+		}
 	}
 }
