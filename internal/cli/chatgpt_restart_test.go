@@ -43,11 +43,12 @@ type fakeChatGPT struct {
 	inits  int
 	next   int
 	// pending requests by id; timedOut, failed and closes record outcomes
-	pending  map[string]*fakeRequest
-	timedOut []string
-	failed   []string
-	closes   []int
-	modal    bool
+	pending    map[string]*fakeRequest
+	timedOut   []string
+	failed     []string
+	closes     []int
+	firstClose chan struct{}
+	modal      bool
 }
 
 type fakeRequest struct {
@@ -57,7 +58,7 @@ type fakeRequest struct {
 }
 
 func newFakeChatGPT(address string, timeout time.Duration) *fakeChatGPT {
-	return &fakeChatGPT{address: address, timeout: timeout, backoff: 100 * time.Millisecond, maxBackoff: time.Second, pending: map[string]*fakeRequest{}}
+	return &fakeChatGPT{address: address, timeout: timeout, backoff: 100 * time.Millisecond, maxBackoff: time.Second, pending: map[string]*fakeRequest{}, firstClose: make(chan struct{})}
 }
 
 func (c *fakeChatGPT) run(ctx context.Context) {
@@ -167,6 +168,9 @@ func (c *fakeChatGPT) serve(conn net.Conn) bool {
 				}
 				c.mu.Lock()
 				c.closes = append(c.closes, code)
+				if len(c.closes) == 1 {
+					close(c.firstClose)
+				}
 				c.mu.Unlock()
 				err = io.EOF
 			}
@@ -467,6 +471,13 @@ func TestChatGPTDrainAnswersRememberedReadsAtItsLimit(t *testing.T) {
 		t.Fatalf("%d unanswered; want only command/exec", lost)
 	}
 	_ = exec
+	// drain has written the response and close frame, but receiving the
+	// response does not mean the client reader has processed the close yet.
+	select {
+	case <-chatgpt.firstClose:
+	case <-time.After(5 * time.Second):
+		t.Fatal("client did not receive the service restart close frame")
+	}
 	if _, _, _, _, closes, _ := chatgpt.state(); len(closes) != 1 || closes[0] != websocketServiceRestart {
 		t.Fatalf("close codes %v", closes)
 	}

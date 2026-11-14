@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fennec/internal/agentcmd"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"io/fs"
 	"os"
@@ -27,8 +29,8 @@ import (
 // cloud writes it where the agent looks (ApplySessionImport), with working
 // directories mapped to the launch's cloud workspace.
 
-// SessionImportCommand is the cloud command that reads one zstd-compressed
-// SessionImport from stdin.
+// SessionImportCommand is the diagnostic command that reads an import from
+// stdin. Normal takeover resumes use the resident session-import stream.
 const SessionImportCommand = `"$HOME/.local/fennec/bin/fennec-terminal" import-session`
 
 // SessionImport carries one conversation from the Mac.
@@ -62,7 +64,8 @@ var cwdField = regexp.MustCompile(`"cwd"\s*:\s*"(?:[^"\\]|\\.)*"`)
 type resumeRequest struct {
 	id      string
 	latest  bool
-	all     bool // codex --all: latest across every directory
+	all     bool   // codex --all: latest across every directory
+	root    string // explicit native session directory
 	rewrite func(id string) []string
 }
 
@@ -78,6 +81,10 @@ func parseResume(agent string, args []string) (resumeRequest, bool) {
 		return parseClaudeResume(args)
 	case "codex":
 		return parseCodexResume(args)
+	case "pi", "kimi", "opencode":
+		return parseNativeResume(agent, args)
+	case "cursor", "grok":
+		return parseVendorResume(agent, args)
 	}
 	return resumeRequest{}, false
 }
@@ -174,7 +181,7 @@ func parseCodexResume(args []string) (resumeRequest, bool) {
 // the arguments to launch with ("continue latest" becomes the explicit ID it
 // found on the Mac). It returns nil when the launch resumes nothing, or names
 // a conversation this Mac does not have (it may already be in the cloud).
-func CollectLocalSession(agentHome, agent, directory, launchID string, args []string) (*SessionImport, []string, error) {
+func CollectLocalSession(agentHome, agent, directory, launchID string, args []string, executable ...string) (*SessionImport, []string, error) {
 	request, ok := parseResume(agent, args)
 	if !ok || agentHome == "" {
 		return nil, args, nil
@@ -186,12 +193,18 @@ func CollectLocalSession(agentHome, agent, directory, launchID string, args []st
 		bundle, err = collectClaude(agentHome, directory, request)
 	case "codex":
 		bundle, err = collectCodex(agentHome, directory, request)
+	case "pi", "kimi":
+		bundle, err = collectNativeSession(agentHome, agent, directory, request)
+	case "opencode":
+		bundle, err = collectOpenCode(agentHome, directory, request, executable...)
+	case "cursor", "grok":
+		bundle, err = collectVendorSession(agentHome, agent, directory, request)
 	}
 	if err != nil || bundle == nil {
 		return nil, args, err
 	}
 	bundle.Version, bundle.Agent, bundle.LaunchID = 1, agent, launchID
-	if request.latest {
+	if request.rewrite != nil {
 		args = request.rewrite(bundle.Conversation)
 	}
 	return bundle, args, nil
@@ -313,11 +326,19 @@ func collectCodex(codexHome, directory string, request resumeRequest) (*SessionI
 	if err != nil {
 		return nil, err
 	}
+	marker := ""
+	data, err = transformSessionRollout(filepath.Base(file), data, func(plain []byte) []byte {
+		plain = trimCodexTranscript(plain)
+		marker = sessionMarker("codex", plain)
+		return plain
+	})
+	if err != nil {
+		return nil, err
+	}
 	relative, err := filepath.Rel(codexHome, file)
 	if err != nil {
 		return nil, err
 	}
-	marker := sessionMarker("codex", data)
 	if marker == "" {
 		return nil, nil
 	}
@@ -336,7 +357,16 @@ func codexSessionMeta(file string) (codexMeta, bool) {
 		return codexMeta{}, false
 	}
 	defer handle.Close()
-	line, err := bufio.NewReaderSize(handle, 64<<10).ReadSlice('\n')
+	var input io.Reader = handle
+	if strings.HasSuffix(file, ".zst") {
+		decoder, err := zstd.NewReader(handle, zstd.WithDecoderMaxMemory(sessionImportLimit), zstd.WithDecoderConcurrency(1))
+		if err != nil {
+			return codexMeta{}, false
+		}
+		defer decoder.Close()
+		input = decoder
+	}
+	line, err := bufio.NewReaderSize(input, 64<<10).ReadSlice('\n')
 	if err != nil && err != io.EOF {
 		return codexMeta{}, false
 	}
@@ -355,7 +385,7 @@ func codexSessionMeta(file string) (codexMeta, bool) {
 func latestCodexRollout(codexHome, directory string, all bool) string {
 	var files []string
 	filepath.WalkDir(filepath.Join(codexHome, "sessions"), func(file string, entry fs.DirEntry, err error) error {
-		if err == nil && entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+		if err == nil && entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && (strings.HasSuffix(entry.Name(), ".jsonl") || strings.HasSuffix(entry.Name(), ".jsonl.zst")) {
 			files = append(files, file)
 		}
 		return nil
@@ -441,22 +471,23 @@ func EncodeSessionImport(bundle *SessionImport) ([]byte, error) {
 
 // ReceiveSessionImport reads one import from the Mac and applies it.
 func ReceiveSessionImport(home string, input io.Reader) (int, error) {
-	decoder, err := zstd.NewReader(input, zstd.WithDecoderConcurrency(1))
+	decoder, err := zstd.NewReader(input, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(sessionImportLimit))
 	if err != nil {
 		return 0, err
 	}
 	defer decoder.Close()
-	reader := bufio.NewReader(io.LimitReader(decoder, sessionImportLimit+(4<<20)))
-	line, err := reader.ReadBytes('\n')
+	reader := bufio.NewReaderSize(io.LimitReader(decoder, sessionImportLimit+(4<<20)), 4<<20)
+	line, err := reader.ReadSlice('\n')
 	var header sessionImportHeader
 	if err != nil || len(line) > 4<<20 || json.Unmarshal(line, &header) != nil || len(header.Sizes) != len(header.Files) || len(header.Files) > sessionImportFiles {
 		return 0, fmt.Errorf("invalid conversation import")
 	}
 	total := int64(0)
 	for i, size := range header.Sizes {
-		if total += size; size < 0 || total > sessionImportLimit {
+		if size < 0 || size > sessionImportLimit-total {
 			return 0, fmt.Errorf("conversation import is too large")
 		}
+		total += size
 		header.Files[i].Data = make([]byte, size)
 		if _, err := io.ReadFull(reader, header.Files[i].Data); err != nil {
 			return 0, fmt.Errorf("incomplete conversation import")
@@ -475,20 +506,55 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 	if err := bundle.validate(); err != nil {
 		return 0, err
 	}
+	if cloudAgentHome(home, bundle.Agent) == "" {
+		return 0, fmt.Errorf("native conversation storage is unavailable")
+	}
+	lockDir := filepath.Join(home, ".local/fennec/session-import-locks")
+	if err := safeConversationDestination(home, filepath.Join(lockDir, "lock")); err != nil {
+		return 0, err
+	}
+	if err := os.MkdirAll(lockDir, 0700); err != nil {
+		return 0, err
+	}
+	lock, err := os.OpenFile(filepath.Join(lockDir, bundle.Agent+"-"+bundle.Conversation+".lock"), os.O_CREATE|os.O_RDWR|unix.O_NOFOLLOW, 0600)
+	if err != nil {
+		return 0, err
+	}
+	defer lock.Close()
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+		return 0, err
+	}
+	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
 	if HasCloudSession(home, bundle.Agent, bundle.Conversation, bundle.Marker) {
 		return 0, nil
 	}
 	workspace := filepath.Join(home, ".fen", bundle.LaunchID)
+	if err := safeConversationDestination(home, filepath.Join(cloudAgentHome(home, bundle.Agent), "sessions", "placeholder")); err != nil {
+		return 0, err
+	}
+	if err := safeConversationDestination(home, filepath.Join(workspace, "placeholder")); err != nil {
+		return 0, err
+	}
 	written := 0
 	switch bundle.Agent {
 	case "claude":
 		project := filepath.Join(cloudAgentHome(home, "claude"), "projects", ClaudeProjectDirectory(workspace))
-		for _, file := range bundle.Files {
+		files := append([]SessionFile(nil), bundle.Files...)
+		// Publish the root last. An interrupted sidecar write must not make a
+		// partial import appear authoritative to the next resume attempt.
+		sort.SliceStable(files, func(i, j int) bool {
+			return files[i].Path != bundle.Conversation+".jsonl" && files[j].Path == bundle.Conversation+".jsonl"
+		})
+		for _, file := range files {
 			data := file.Data
 			if strings.HasSuffix(file.Path, ".jsonl") {
 				data = mapWorkingDirectory(data, workspace)
 			}
-			if err := writeImported(filepath.Join(project, filepath.FromSlash(file.Path)), data); err != nil {
+			destination := filepath.Join(project, filepath.FromSlash(file.Path))
+			if err := safeConversationDestination(home, destination); err != nil {
+				return written, err
+			}
+			if err := writeImported(destination, data); err != nil {
 				return written, err
 			}
 			written++
@@ -497,7 +563,7 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 		codexHome := cloudAgentHome(home, "codex")
 		provider := codexConfiguredProvider(codexHome)
 		file := bundle.Files[0]
-		data, err := transformRolloutFile(path.Base(file.Path), file.Data, func(plain []byte) []byte {
+		data, err := transformSessionRollout(path.Base(file.Path), file.Data, func(plain []byte) []byte {
 			plain = mapWorkingDirectory(plain, workspace)
 			if provider != "" && provider != "openai" {
 				for _, field := range []string{"model_provider", "model_provider_id"} {
@@ -517,10 +583,19 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 			}
 			destination = existing
 		}
+		if err := safeConversationDestination(home, destination); err != nil {
+			return 0, err
+		}
 		if err := writeImported(destination, data); err != nil {
 			return 0, err
 		}
 		written++
+	case "pi", "kimi":
+		return applyNativeSession(home, workspace, bundle)
+	case "opencode":
+		return applyOpenCode(home, workspace, bundle)
+	case "cursor", "grok":
+		return applyVendorSession(home, workspace, bundle)
 	}
 	return written, nil
 }
@@ -528,34 +603,42 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 // cloudAgentHome is where the cloud agent keeps conversations: the isolated
 // native configuration, or the default directory under the gateway.
 func cloudAgentHome(home, agent string) string {
-	native := setup.NativeAgentMode(home)
+	native := setup.NativeAgentMode(home) || agentcmd.NativeOnly(agent)
+	if native {
+		switch agent {
+		case "claude", "codex", "pi", "kimi", "opencode", "cursor", "grok":
+		default:
+			return ""
+		}
+		root, _, err := setup.NativeAccountRoot(home, agent)
+		if err != nil {
+			return ""
+		}
+		root = filepath.Join(root, agent)
+		if agent == "opencode" {
+			return filepath.Join(root, "data")
+		}
+		return root
+	}
 	switch agent {
 	case "claude":
-		if native {
-			return filepath.Join(home, ".local/fennec/native/claude")
-		}
 		return filepath.Join(home, ".claude")
 	case "codex":
-		if native {
-			return filepath.Join(home, ".local/fennec/native/codex")
-		}
 		return filepath.Join(home, ".codex")
+	case "pi":
+		return filepath.Join(home, ".pi/agent")
+	case "kimi":
+		return filepath.Join(home, ".kimi-code")
+	case "grok":
+		return filepath.Join(home, ".grok")
+	case "opencode":
+		return filepath.Join(home, ".local/share")
 	}
 	return ""
 }
 
-// markerPattern bounds a conversation marker: a Claude record UUID or a Codex
-// RFC 3339 timestamp. It is passed as a command argument, so only these
-// characters are accepted.
+// Markers are bounded native record IDs, timestamps or source fingerprints.
 var markerPattern = regexp.MustCompile(`^[0-9A-Za-z:.+-]{1,64}$`)
-
-// markerField is how the marker appears in a transcript line.
-func markerField(agent, marker string) []byte {
-	if agent == "codex" {
-		return []byte(`"timestamp":"` + marker + `"`)
-	}
-	return []byte(`"uuid":"` + marker + `"`)
-}
 
 // sessionMarker names a conversation's latest record: Claude's last record
 // UUID, or the timestamp of Codex's last rollout line.
@@ -583,10 +666,11 @@ func sessionMarker(agent string, transcript []byte) string {
 	return ""
 }
 
-// HasCloudSession reports whether the cloud computer already has conversation
-// up to marker, so the Mac need not send it again.
+// HasCloudSession reports whether a native cloud copy already exists. A later
+// cloud compaction may have removed the original marker; that never permits
+// an older Mac copy to overwrite the cloud conversation.
 func HasCloudSession(home, agent, conversation, marker string) bool {
-	if !conversationPattern.MatchString(conversation) || !markerPattern.MatchString(marker) {
+	if !validConversation(agent, conversation) || !markerPattern.MatchString(marker) || cloudAgentHome(home, agent) == "" {
 		return false
 	}
 	var copies []string
@@ -597,17 +681,42 @@ func HasCloudSession(home, agent, conversation, marker string) bool {
 		if found, err := localssh.FindCodexRollout(cloudAgentHome(home, "codex"), conversation); err == nil {
 			copies = []string{found}
 		}
+	case "pi", "kimi":
+		return nativeSessionExists(cloudAgentHome(home, agent), agent, conversation)
+	case "opencode":
+		return openCodeSessionExists(cloudAgentHome(home, agent), conversation)
+	case "cursor", "grok":
+		return vendorSessionExists(cloudAgentHome(home, agent), agent, conversation)
 	}
-	field := markerField(agent, marker)
 	for _, copy := range copies {
-		if strings.HasSuffix(copy, ".zst") {
-			return true
-		}
-		if data, err := os.ReadFile(copy); err == nil && bytes.Contains(data, field) {
+		// A later cloud compaction can remove the Mac's marker. The existing
+		// native conversation remains authoritative even after that happens.
+		if info, err := os.Lstat(copy); err == nil && info.Mode().IsRegular() {
 			return true
 		}
 	}
 	return false
+}
+
+func transformSessionRollout(name string, data []byte, transform func([]byte) []byte) ([]byte, error) {
+	if !strings.HasSuffix(name, ".zst") {
+		return transform(data), nil
+	}
+	decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(sessionImportLimit))
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+	plain, err := decoder.DecodeAll(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid compressed conversation: %w", err)
+	}
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+	if err != nil {
+		return nil, err
+	}
+	defer encoder.Close()
+	return encoder.EncodeAll(transform(plain), nil), nil
 }
 
 // trimClaudeTranscript keeps what Claude Code loads to continue a compacted
@@ -659,22 +768,36 @@ func trimClaudeTranscript(data []byte) []byte {
 	}
 	records := make([]entry, boundary)
 	parents := map[string]string{}
+	known := map[string]bool{}
 	for i, line := range lines[:boundary] {
 		if json.Unmarshal(line, &records[i]) != nil {
 			records[i].Type = "\x00invalid"
 			continue
+		}
+		if records[i].UUID != nil {
+			known[*records[i].UUID] = true
 		}
 		if records[i].UUID != nil && records[i].Parent != nil {
 			parents[*records[i].UUID] = *records[i].Parent
 		}
 	}
 	// A preserved segment is the chain from its tail back to its head.
+	reachedHead := tail == "" && head == ""
 	for id, steps := tail, 0; id != "" && steps < boundary; steps++ {
 		preserved[id] = true
 		if id == head {
+			reachedHead = true
 			break
 		}
 		id = parents[id]
+	}
+	if !reachedHead {
+		return data
+	}
+	for id := range preserved {
+		if !known[id] {
+			return data
+		}
 	}
 	output := make([]byte, 0, len(data)/8)
 	for i, line := range lines[:boundary] {
@@ -696,13 +819,18 @@ func trimClaudeTranscript(data []byte) []byte {
 }
 
 func (bundle SessionImport) validate() error {
-	if bundle.Version != 1 || !markerPattern.MatchString(bundle.Marker) || !sessionIDPattern.MatchString(bundle.LaunchID) || !conversationPattern.MatchString(bundle.Conversation) || len(bundle.Files) == 0 || len(bundle.Files) > sessionImportFiles {
+	if bundle.Version != 1 || !markerPattern.MatchString(bundle.Marker) || !sessionIDPattern.MatchString(bundle.LaunchID) || !validConversation(bundle.Agent, bundle.Conversation) || len(bundle.Files) == 0 || len(bundle.Files) > sessionImportFiles {
 		return fmt.Errorf("invalid conversation import")
 	}
 	total := 0
+	paths := map[string]bool{}
 	for _, file := range bundle.Files {
 		total += len(file.Data)
 		clean := path.Clean(file.Path)
+		if paths[clean] {
+			return fmt.Errorf("duplicate conversation file")
+		}
+		paths[clean] = true
 		if clean != file.Path || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") || strings.ContainsAny(clean, "\x00\\") {
 			return fmt.Errorf("invalid conversation file path")
 		}
@@ -715,12 +843,31 @@ func (bundle SessionImport) validate() error {
 			if len(bundle.Files) != 1 || !strings.HasPrefix(clean, "sessions/") && !strings.HasPrefix(clean, "archived_sessions/") || !localssh.IsCodexRolloutName(path.Base(clean), bundle.Conversation) {
 				return fmt.Errorf("invalid conversation file path")
 			}
+		case "pi":
+			if len(bundle.Files) != 1 || clean != bundle.Conversation+".jsonl" {
+				return fmt.Errorf("invalid conversation file path")
+			}
+		case "kimi":
+			if clean != "state.json" && !strings.HasPrefix(clean, "agents/") && !strings.HasPrefix(clean, "attachments/") {
+				return fmt.Errorf("invalid conversation file path")
+			}
+		case "opencode":
+			if len(bundle.Files) != 1 || clean != bundle.Conversation+".json" {
+				return fmt.Errorf("invalid conversation file path")
+			}
+		case "cursor", "grok":
+			if !vendorSessionFile(bundle.Agent, clean) {
+				return fmt.Errorf("invalid conversation file path")
+			}
 		default:
 			return fmt.Errorf("unsupported agent")
 		}
 	}
 	if total > sessionImportLimit {
 		return fmt.Errorf("conversation import is too large")
+	}
+	if bundle.Agent == "claude" && !paths[bundle.Conversation+".jsonl"] {
+		return fmt.Errorf("conversation transcript is missing")
 	}
 	return nil
 }
@@ -760,4 +907,28 @@ func writeImported(destination string, data []byte) error {
 		return err
 	}
 	return writeFileAtomic(destination, data)
+}
+
+// Never traverse a conversation-controlled symlink when importing into a
+// trusted agent home. The home itself can be a legitimate platform alias.
+func safeConversationDestination(home, destination string) error {
+	rel, err := filepath.Rel(home, destination)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("conversation destination escapes home")
+	}
+	current := home
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("conversation destination contains a symlink")
+		}
+	}
+	return nil
 }

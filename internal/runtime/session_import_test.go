@@ -49,7 +49,7 @@ func TestParseResume(t *testing.T) {
 		{"codex", []string{"resume"}, "", false},
 		{"codex", []string{"exec", "resume", conversationA}, "", false},
 		{"codex", []string{"say", conversationA}, "", false},
-		{"pi", []string{"--session", conversationA}, "", false},
+		{"pi", []string{"--session", conversationA}, conversationA, true},
 	} {
 		request, ok := parseResume(test.agent, test.args)
 		if ok != test.ok || request.id != test.id {
@@ -110,8 +110,8 @@ func TestClaudeConversationMovesToTheCloudWorkspace(t *testing.T) {
 	if !HasCloudSession(cloud, "claude", conversationA, bundle.Marker) {
 		t.Fatal("imported conversation not found by marker")
 	}
-	if HasCloudSession(cloud, "claude", conversationA, "u9") || HasCloudSession(cloud, "codex", conversationA, bundle.Marker) {
-		t.Fatal("presence check matched the wrong record or agent")
+	if !HasCloudSession(cloud, "claude", conversationA, "u9") || HasCloudSession(cloud, "codex", conversationA, bundle.Marker) {
+		t.Fatal("presence check lost the authoritative cloud copy or matched another agent")
 	}
 	longer := string(data) + `{"type":"user","uuid":"u3","cwd":"x"}` + "\n"
 	os.WriteFile(filepath.Join(target, conversationA+".jsonl"), []byte(longer), 0o600)
