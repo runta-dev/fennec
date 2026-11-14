@@ -13,6 +13,7 @@ import (
 )
 
 func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
+	started := time.Now()
 	if err := ctx.Err(); err != nil {
 		return cloudruntime.LocalTerminal{}, err
 	}
@@ -21,6 +22,7 @@ func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTermin
 		return cloudruntime.LocalTerminal{}, err
 	}
 	session, err := t.Launch(Frame{Type: "stop", ID: hex.EncodeToString(nonce[:]), Terminal: &reference})
+	written := time.Now()
 	if err != nil {
 		return cloudruntime.LocalTerminal{}, err
 	}
@@ -32,6 +34,11 @@ func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTermin
 	if frame.Type != "result" || frame.Terminal == nil || frame.Terminal.ID != reference.ID || frame.Terminal.State != "finished" {
 		return cloudruntime.LocalTerminal{}, fmt.Errorf("stop not confirmed; inspect before retrying")
 	}
+	if frame.Terminal.Timings == nil {
+		frame.Terminal.Timings = map[string]float64{}
+	}
+	frame.Terminal.Timings["request_write"] = float64(written.Sub(started).Microseconds()) / 1000
+	frame.Terminal.Timings["response_wait"] = float64(time.Since(written).Microseconds()) / 1000
 	return *frame.Terminal, nil
 }
 

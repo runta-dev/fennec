@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -246,9 +245,8 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	}})
 }
 func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
-	// Session surfaces show live programs. Enumerating every historical terminal
-	// added a separate local get process for each completed test or old session.
-	raw, err := r.Run(ctx, "ls", "--json")
+	// One live snapshot contains the labels, title and status of every row.
+	raw, err := r.Query(ctx, "terminal.list", map[string]any{})
 	if err != nil {
 		return nil, err
 	}
@@ -262,49 +260,6 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	}
 	if len(rows) > 4096 {
 		return nil, fmt.Errorf("too many terminal rows")
-	}
-	jobs := make(chan int)
-	var workers sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			for index := range jobs {
-				row := rows[index]
-				address, _ := row["address"].(string)
-				if !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(address) {
-					continue
-				}
-				data, err := r.Run(ctx, "get", address)
-				if err != nil {
-					continue
-				}
-				var detail map[string]any
-				if len(data) > 1<<20 || json.Unmarshal(data, &detail) != nil || detail["address"] != address {
-					continue
-				}
-				for _, key := range []string{"title", "name", "parent", "labels", "status", "status_ms", "created_ms", "finished_ms", "state", "exit_code"} {
-					if value, ok := detail[key]; ok {
-						row[key] = value
-					}
-				}
-			}
-		}()
-	}
-	for i := range rows {
-		select {
-		case jobs <- i:
-		case <-ctx.Done():
-			close(jobs)
-			workers.Wait()
-			return nil, ctx.Err()
-		}
-	}
-	close(jobs)
-	workers.Wait()
-	listing["terminals"], err = json.Marshal(rows)
-	if err != nil {
-		return nil, err
 	}
 	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
 		listing["native_accounts"], _ = json.Marshal(accounts)
