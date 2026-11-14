@@ -21,7 +21,7 @@ var openCodeConversationPattern = regexp.MustCompile(`^ses_[A-Za-z0-9]{1,96}$`)
 
 func validConversation(agent, id string) bool {
 	switch agent {
-	case "claude", "codex":
+	case "claude", "codex", "cursor", "grok":
 		return conversationPattern.MatchString(id)
 	case "pi":
 		return nativeConversationPattern.MatchString(id)

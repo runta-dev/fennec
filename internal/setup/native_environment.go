@@ -143,14 +143,20 @@ func (b *nativeEnvironmentOutput) Write(p []byte) (int, error) {
 
 // LocalAgentHome is the native session storage root from the login shell.
 func LocalAgentHome(ctx context.Context, agent string) string {
-	locations := map[string][2]string{"claude": {"CLAUDE_CONFIG_DIR", ".claude"}, "codex": {"CODEX_HOME", ".codex"}, "pi": {"PI_CODING_AGENT_DIR", ".pi/agent"}, "kimi": {"KIMI_CODE_HOME", ".kimi-code"}, "opencode": {"XDG_DATA_HOME", ".local/share"}}
+	locations := map[string][2]string{"claude": {"CLAUDE_CONFIG_DIR", ".claude"}, "codex": {"CODEX_HOME", ".codex"}, "pi": {"PI_CODING_AGENT_DIR", ".pi/agent"}, "kimi": {"KIMI_CODE_HOME", ".kimi-code"}, "opencode": {"XDG_DATA_HOME", ".local/share"}, "cursor": {"CURSOR_CONFIG_DIR", ".cursor"}, "grok": {"GROK_HOME", ".grok"}}
 	location, ok := locations[agent]
 	if !ok {
 		return ""
 	}
 	variable, fallback := location[0], location[1]
-	if value := nativeSourceEnvironment(ctx)[variable]; filepath.IsAbs(value) {
+	env := nativeSourceEnvironment(ctx)
+	if value := env[variable]; filepath.IsAbs(value) {
 		return filepath.Clean(value)
+	}
+	// Cursor's resumable chats use its config root; CURSOR_DATA_DIR is
+	// reserved for workspace transcripts and terminal output.
+	if agent == "cursor" && filepath.IsAbs(env["XDG_CONFIG_HOME"]) {
+		return filepath.Join(env["XDG_CONFIG_HOME"], "cursor")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

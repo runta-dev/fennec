@@ -82,6 +82,8 @@ func parseResume(agent string, args []string) (resumeRequest, bool) {
 		return parseCodexResume(args)
 	case "pi", "kimi", "opencode":
 		return parseNativeResume(agent, args)
+	case "cursor", "grok":
+		return parseVendorResume(agent, args)
 	}
 	return resumeRequest{}, false
 }
@@ -194,6 +196,8 @@ func CollectLocalSession(agentHome, agent, directory, launchID string, args []st
 		bundle, err = collectNativeSession(agentHome, agent, directory, request)
 	case "opencode":
 		bundle, err = collectOpenCode(agentHome, directory, request, executable...)
+	case "cursor", "grok":
+		bundle, err = collectVendorSession(agentHome, agent, directory, request)
 	}
 	if err != nil || bundle == nil {
 		return nil, args, err
@@ -586,6 +590,8 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 		return applyNativeSession(home, workspace, bundle)
 	case "opencode":
 		return applyOpenCode(home, workspace, bundle)
+	case "cursor", "grok":
+		return applyVendorSession(home, workspace, bundle)
 	}
 	return written, nil
 }
@@ -605,7 +611,7 @@ func cloudAgentHome(home, agent string) string {
 			return filepath.Join(home, ".local/fennec/native/codex")
 		}
 		return filepath.Join(home, ".codex")
-	case "pi", "kimi", "opencode":
+	case "pi", "kimi", "opencode", "cursor", "grok":
 		if native {
 			root := filepath.Join(home, ".local/fennec/native", agent)
 			if agent == "opencode" {
@@ -618,6 +624,8 @@ func cloudAgentHome(home, agent string) string {
 			return filepath.Join(home, ".pi/agent")
 		case "kimi":
 			return filepath.Join(home, ".kimi-code")
+		case "cursor", "grok":
+			return filepath.Join(home, "."+agent)
 		default:
 			return filepath.Join(home, ".local/share")
 		}
@@ -673,6 +681,8 @@ func HasCloudSession(home, agent, conversation, marker string) bool {
 		return nativeSessionExists(cloudAgentHome(home, agent), agent, conversation)
 	case "opencode":
 		return openCodeSessionExists(cloudAgentHome(home, agent), conversation)
+	case "cursor", "grok":
+		return vendorSessionExists(cloudAgentHome(home, agent), agent, conversation)
 	}
 	for _, copy := range copies {
 		// A later cloud compaction can remove the Mac's marker. The existing
@@ -839,6 +849,10 @@ func (bundle SessionImport) validate() error {
 			}
 		case "opencode":
 			if len(bundle.Files) != 1 || clean != bundle.Conversation+".json" {
+				return fmt.Errorf("invalid conversation file path")
+			}
+		case "cursor", "grok":
+			if !vendorSessionFile(bundle.Agent, clean) {
 				return fmt.Errorf("invalid conversation file path")
 			}
 		default:

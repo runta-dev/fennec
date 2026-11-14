@@ -134,6 +134,12 @@ the cloud computer, as cloud ChatGPT does for Mac threads:
 - OpenCode: `--session <id>`/`-s <id>` and `--continue`/`-c`. Its native
   export/import commands handle database schemas and media storage. Both the
   v1 commands and v2 `session export`/`session import` interface are recognized.
+- Cursor CLI: `--resume <id>`, `--continue`, `--resume=-1`, and `resume`.
+  A consistent SQLite snapshot includes committed WAL pages. Chats are restored
+  beneath the cloud workspace's native hash in `CURSOR_CONFIG_DIR/chats`.
+- Grok Build: `--resume`/`-r` (ID, exact title, or latest) and `--continue`/`-c`.
+  Native history, summary, checkpoints and session side state are restored in
+  `GROK_HOME/sessions`. Ambiguous titles require an explicit ID.
 
 Every `cwd` field is mapped to the cloud workspace.
 
@@ -167,6 +173,17 @@ needs to continue is sent:
   tail and subsequent messages in chronological storage order. Failed summaries,
   missing retained references, reverted sessions and provider-native windows
   that may need the original transcript are not trimmed.
+- Cursor CLI keeps the current root and every reachable blob, including retained
+  images, summary archives, tools and subagent state. Unreachable historical
+  checkpoints are omitted from the transferred SQLite snapshot. Native archives
+  still referenced by the current state remain; reduction depends on the native
+  reference graph. Unknown database schemas and mutable blob IDs travel whole.
+- Grok Build already stores the active model context in `chat_history.jsonl`.
+  Fennec preserves it unchanged and removes covered message/tool payloads from
+  `updates.jsonl` before the latest complete compaction checkpoint, preserving
+  subsequent events and side state. Obsolete checkpoint files are omitted.
+  Rewound journals, missing checkpoints and unknown checkpoint versions travel
+  whole; pre-compaction scrollback/rewind is not migrated after a safe trim.
 - The transfer is zstd at the "better" level. A 90 MB transcript with
   screenshots went from 30 MB to 0.3 MB in the Claude example; savings depend on
   what each agent retains. Original local files remain unchanged. Unsupported
@@ -187,3 +204,8 @@ Optional acceptance tests use installed loaders without inference requests:
 `internal/runtime/session_compaction_test.go`; `FENNEC_KIMI_BINARY` additionally
 checks native session discovery. `FENNEC_TERMINAL_BINARY` exercises transfer
 through a freshly built resident terminal process.
+`FENNEC_CURSOR_BUNDLE` (the installed `index.js`) and `FENNEC_GROK_BINARY`
+enable native Cursor loader and Grok export acceptance tests in
+`internal/runtime/session_import_vendor_test.go`. Cursor's SQLite adapter uses
+pure-Go SQLite so consistent snapshots work without a system sqlite3 executable
+or a C toolchain. No provider inference is required by these checks.
