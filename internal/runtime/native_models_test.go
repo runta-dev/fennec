@@ -89,7 +89,9 @@ func TestResidentListingCarriesOnlyPublicLoginIdentities(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".cloud-logins.json"), []byte(`{"codex":"login-fixture"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	backend := LocalRuntime{Home: home, Run: func(context.Context, ...string) ([]byte, error) { return []byte(`{"terminals":[]}`), nil }}
+	backend := LocalRuntime{Home: home, Query: func(context.Context, string, any) (json.RawMessage, error) {
+		return json.RawMessage(`{"terminals":[]}`), nil
+	}}
 	raw, err := backend.List(context.Background())
 	if err != nil {
 		t.Fatal(err)

@@ -46,6 +46,7 @@ type LocalTerminal struct {
 type LocalRuntime struct {
 	Home   string
 	Run    func(context.Context, ...string) ([]byte, error)
+	Query  func(context.Context, string, any) (json.RawMessage, error)
 	Lookup func(string) (string, error)
 }
 
@@ -76,7 +77,7 @@ func (request LocalLaunch) Validate() error {
 }
 
 func NewLocalRuntime(home string) *LocalRuntime {
-	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
+	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Query: herdrQuery(home), Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
 		step, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		command := exec.CommandContext(step, filepath.Join(home, ".local/bin/herdr-core"), arguments...)

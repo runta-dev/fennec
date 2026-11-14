@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -246,9 +245,8 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	}})
 }
 func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
-	// Session surfaces show live programs. Enumerating every historical terminal
-	// added a separate local get process for each completed test or old session.
-	raw, err := r.Run(ctx, "ls", "--json")
+	// One live snapshot contains the labels, title and status of every row.
+	raw, err := r.Query(ctx, "terminal.list", map[string]any{})
 	if err != nil {
 		return nil, err
 	}
@@ -263,48 +261,52 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	if len(rows) > 4096 {
 		return nil, fmt.Errorf("too many terminal rows")
 	}
-	jobs := make(chan int)
-	var workers sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			for index := range jobs {
-				row := rows[index]
-				address, _ := row["address"].(string)
-				if !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(address) {
-					continue
-				}
-				data, err := r.Run(ctx, "get", address)
-				if err != nil {
-					continue
-				}
-				var detail map[string]any
-				if len(data) > 1<<20 || json.Unmarshal(data, &detail) != nil || detail["address"] != address {
-					continue
-				}
-				for _, key := range []string{"title", "name", "parent", "labels", "status", "status_ms", "created_ms", "finished_ms", "state", "exit_code"} {
-					if value, ok := detail[key]; ok {
-						row[key] = value
-					}
+	for i, detail := range rows {
+		// Keep the existing session surface small. In particular, a complete
+		// Herdr record includes argv, which can contain the agent's prompt.
+		row := map[string]any{}
+		for _, key := range []string{"address", "name", "template", "parent", "state", "turn", "exit_code", "signal", "reason", "cwd", "title", "labels", "status", "status_ms", "created_ms", "finished_ms"} {
+			if value, ok := detail[key]; ok {
+				row[key] = value
+			}
+		}
+		if status, ok := detail["status"].(map[string]any); ok {
+			row["agent"] = status["app"]
+		}
+		if row["agent"] == nil || row["agent"] == "" {
+			if argv, ok := detail["argv"].([]any); ok && len(argv) > 0 {
+				if program, ok := argv[0].(string); ok {
+					row["agent"] = filepath.Base(program)
 				}
 			}
-		}()
-	}
-	for i := range rows {
-		select {
-		case jobs <- i:
-		case <-ctx.Done():
-			close(jobs)
-			workers.Wait()
-			return nil, ctx.Err()
 		}
+		if labels, ok := detail["labels"].(map[string]any); ok {
+			if where, ok := labels["where"].(string); ok && where != "" {
+				row["where"] = where
+			}
+		}
+		rows[i] = row
 	}
-	close(jobs)
-	workers.Wait()
 	listing["terminals"], err = json.Marshal(rows)
 	if err != nil {
 		return nil, err
+	}
+	// Match ls's public machine summary, excluding connection configuration.
+	if raw, ok := listing["machines"]; ok {
+		var machines []map[string]json.RawMessage
+		if json.Unmarshal(raw, &machines) != nil {
+			return nil, fmt.Errorf("invalid machine rows")
+		}
+		for i, machine := range machines {
+			public := map[string]json.RawMessage{}
+			for _, key := range []string{"name", "state", "since_ms", "why"} {
+				if value, ok := machine[key]; ok {
+					public[key] = value
+				}
+			}
+			machines[i] = public
+		}
+		listing["machines"], _ = json.Marshal(machines)
 	}
 	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
 		listing["native_accounts"], _ = json.Marshal(accounts)

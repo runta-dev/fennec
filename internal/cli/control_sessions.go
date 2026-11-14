@@ -7,6 +7,7 @@ import (
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
 	r "fennec/internal/runtime"
+	"fennec/internal/terminalstream"
 	"path/filepath"
 )
 
@@ -91,11 +92,34 @@ func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, opera
 	if err != nil {
 		return nil, err
 	}
-	result, err := transport.Operate(ctx, r.LocalOperation{Kind: operation, Address: address, SessionID: params.SessionID, Text: params.Text})
+	result, err := measuredSessionOperation(ctx, transport, r.LocalOperation{Kind: operation, Address: address, SessionID: params.SessionID, Text: params.Text})
 	if err != nil {
 		return nil, err
 	}
 	return json.RawMessage(result), nil
+}
+
+// Keep nested timing boundaries in internal diagnostics, never input contents.
+// This distinguishes a slow remote operation from write contention and WAN RTT.
+func measuredSessionOperation(ctx context.Context, transport *terminalstream.Transport, operation r.LocalOperation) (json.RawMessage, error) {
+	raw, timings, err := transport.OperateMeasured(ctx, operation)
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &result); err != nil || result == nil {
+		return raw, nil
+	}
+	existing := map[string]float64{}
+	_ = json.Unmarshal(result["timings_ms"], &existing)
+	if existing == nil {
+		existing = map[string]float64{}
+	}
+	for key, value := range timings {
+		existing[key] = value
+	}
+	result["timings_ms"], _ = json.Marshal(existing)
+	return json.Marshal(result)
 }
 
 func (s *daemonServices) dispatchSession(ctx context.Context, raw json.RawMessage) (any, error) {

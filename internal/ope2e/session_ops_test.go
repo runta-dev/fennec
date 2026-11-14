@@ -409,6 +409,9 @@ func TestSessionOperations500ms(t *testing.T) {
 		command.Dir = root
 		output, err := command.Output()
 		if err != nil {
+			if exit, ok := err.(*exec.ExitError); ok {
+				t.Fatalf("real TUI launch failed: %v: %s\n%s", err, exit.Stderr, output)
+			}
 			t.Fatalf("real TUI launch failed: %v", err)
 		}
 		decoder := json.NewDecoder(bytes.NewReader(output))

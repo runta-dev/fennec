@@ -559,3 +559,80 @@ RPCs took about 698ms, with remote work 303–332ms. These distinguish actual re
 CLI work from remaining transport latency; neither is excused from the 5s gate.
 Remote duration fields are observations at receipt, not synchronized spans.
 UI reopened afterward.
+
+## November 14 follow-up: complete session snapshots and send boundaries
+
+The 500ms gate is still **FAIL**. No time limit or fresh-terminal coverage was
+relaxed. Read/send diagnostics now include resident request-write, response-wait,
+and remote-operation durations; stop also reports write/wait durations. Failed
+TUI profiling includes its stderr and partial sample output instead of discarding
+the failure reason.
+
+Session refresh now makes one `terminal.list` API request through the installed
+Herdr `connect` command. The old `ls` formatter omitted labels and titles, so
+Fennec launched another `get` process per live terminal. The new path retains
+those fields from a single current snapshot, validates the RPC response identity,
+and fails without returning partial data if the query fails. Agent argv,
+foreground process details, and machine connection settings are excluded from
+the session surface. Diagnostic timings are not added to the cached listing,
+where they would invalidate UI state on otherwise unchanged refreshes.
+
+The first complete installed-path run (`/tmp/fennec-perf-snapshot-e2e.log`) had:
+
+| Boundary | Samples (ms) |
+| --- | --- |
+| Model change / restore | 215.114 / 209.331 |
+| Mature send | 407.729 / 429.917 / 455.495 |
+| Fresh-terminal send | 962.779 / 1114.860 / 958.996 |
+| Repeated send during startup | 851.119 / 577.305 / 811.338 |
+| Stop, confirmed | 268.557 / 323.402 / 264.713 |
+| Usable Codex composer | 348.894 / 314.849 / 364.690 |
+
+Every subtest except fresh/repeated startup sends passed in that run. This does
+not establish stable WAN latency or attribute all improvements to the snapshot
+change: a later interrupted run observed a 556.381ms model change (521.077ms
+resident round trip). That incomplete run is not acceptance evidence.
+
+The installed Herdr Core 0.1.18 implementation was inspected at upstream tag
+`v0.1.18`, commit `3965a46caae095a3ead01de237fa13955e52b8c6`.
+In `crates/herdr-core/src/input.rs`, `send_message` calls `settle` before entering
+the input queue. For the first 10 seconds, it requires 800ms without output, then
+uses a default 200ms paste-to-submit gap. In the failed fresh samples, Herdr alone
+took 613–820ms; request writes took less than 1ms. Its supported send API offers
+no readiness-confirmed alternative to that settling heuristic. Sending raw input,
+using keys in place of send, changing global settle timeouts, or acknowledging a
+queued send would weaken the existing delivery/protection contract and were not
+used. Completing this gate needs a proven readiness/delivery path in the terminal
+dependency, plus further work on WAN tail latency; the current patch does not
+claim to solve either constraint.
+
+Focused Go tests, macOS race tests for runtime/terminalstream/CLI, `make check-ui`,
+English-source checks and `go vet` passed. Full staged application signatures and
+the bundled Chromium smoke test passed; the installed backend matched the staged
+build ID, credentials restored, and the broker and resident channel became ready.
+The development credential helper stayed byte-identical across rebuilds.
+
+Final complete run: `/tmp/fennec-perf-accept.log`, explicit exit status **1** in
+`/tmp/fennec-perf-accept.exit`. Installed version `0.3.11150006-dev`, source
+`c73d696`, backend PID 68258 and build ID
+`3cbb02dcf414d1fa2a6975e04509035678a45a9bd18067909e78474f8c03203f` remained
+unchanged; resident generation stayed 1. Automatic updates were temporarily held
+because a previous validation build was replaced by release `0.3.11142333`; the
+original `no_auto_update=false` setting was restored after the final run.
+
+| Final boundary | Samples (ms) |
+| --- | --- |
+| Refresh | 309.538 / 302.583 / 347.624 |
+| Model change / restore | 628.855 / 193.529 |
+| Mature send | 404.214 / 792.825 / 410.974 |
+| Fresh-terminal send | 979.784 / 981.454 / 1040.263 |
+| Repeated send during startup | 812.264 / 890.231 / 744.220 |
+| Attach, usable | 230.940 / 560.663 / 230.611 |
+| Resume, usable | 232.456 / 436.518 / 253.924 |
+| Stop, confirmed | 238.721 / 415.754 / 238.252 |
+| Usable Codex composer | 299.683 / 327.218 / 279.332 |
+
+One read also exceeded the gate at 537.481ms. These final failures supersede any
+claim that the earlier run's passing categories are stable: both protected input
+delivery and transport tail latency remain unresolved. This work is a draft
+improvement, not release acceptance; no new release is published from this patch.
