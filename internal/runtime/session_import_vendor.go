@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
@@ -90,6 +91,7 @@ func vendorSessionFile(agent, name string) bool {
 type vendorCandidate struct {
 	dir, id, cwd, title string
 	modified            int64
+	canContinue         bool
 }
 
 func vendorCandidates(home, agent string) []vendorCandidate {
@@ -113,7 +115,7 @@ func vendorCandidates(home, agent string) []vendorCandidate {
 			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			c := vendorCandidate{dir: dir, id: entry.Name(), modified: info.ModTime().UnixNano()}
+			c := vendorCandidate{dir: dir, id: entry.Name(), modified: info.ModTime().UnixNano(), canContinue: true}
 			if agent == "grok" {
 				data, err := readSessionFile(filepath.Join(dir, marker))
 				if err != nil {
@@ -124,11 +126,17 @@ func vendorCandidates(home, agent string) []vendorCandidate {
 					SessionSummary string `json:"session_summary"`
 					GeneratedTitle string `json:"generated_title"`
 					Updated        string `json:"updated_at"`
+					Hidden         *bool  `json:"hidden"`
+					Kind           string `json:"session_kind"`
 				}
 				if json.Unmarshal(data, &meta) != nil || meta.Info.ID != c.id {
 					continue
 				}
 				c.cwd, c.title = meta.Info.Cwd, meta.SessionSummary
+				c.canContinue = meta.Kind != "subagent" && meta.Kind != "subagent_fork"
+				if meta.Hidden != nil {
+					c.canContinue = !*meta.Hidden
+				}
 				if meta.GeneratedTitle != "" {
 					c.title = meta.GeneratedTitle
 				}
@@ -141,6 +149,19 @@ func vendorCandidates(home, agent string) []vendorCandidate {
 				for _, name := range []string{"store.db-wal", "meta.json"} {
 					if stat, err := os.Lstat(filepath.Join(dir, name)); err == nil && stat.ModTime().UnixNano() > c.modified {
 						c.modified = stat.ModTime().UnixNano()
+					}
+				}
+				if data, e := readSessionFile(filepath.Join(dir, "meta.json")); e == nil {
+					var meta struct {
+						Subagent        bool  `json:"isSubagent"`
+						HasConversation *bool `json:"hasConversation"`
+						Updated         int64 `json:"updatedAtMs"`
+					}
+					if json.Unmarshal(data, &meta) == nil {
+						c.canContinue = !meta.Subagent && (meta.HasConversation == nil || *meta.HasConversation)
+						if meta.Updated > 0 && meta.Updated < 1<<43 {
+							c.modified = meta.Updated * int64(time.Millisecond)
+						}
 					}
 				}
 			}
@@ -169,6 +190,9 @@ func collectVendorSession(home, agent, cwd string, r resumeRequest) (*SessionImp
 	var candidates []vendorCandidate
 	for _, c := range vendorCandidates(home, agent) {
 		if r.latest {
+			if !c.canContinue {
+				continue
+			}
 			match := r.all
 			for _, dir := range directoryVariants(cwd) {
 				if agent == "cursor" && filepath.Base(filepath.Dir(c.dir)) == cursorWorkspaceBucket(dir) || agent == "grok" && filepath.Clean(c.cwd) == dir {
@@ -176,6 +200,15 @@ func collectVendorSession(home, agent, cwd string, r resumeRequest) (*SessionImp
 				}
 			}
 			if match {
+				if agent == "cursor" {
+					eligible, err := cursorCanContinue(filepath.Join(c.dir, "store.db"), c.id)
+					if err != nil {
+						return nil, err
+					}
+					if !eligible {
+						continue
+					}
+				}
 				candidates = append(candidates, c)
 				break
 			}
@@ -259,6 +292,28 @@ func collectVendorSession(home, agent, cwd string, r resumeRequest) (*SessionImp
 	return b, nil
 }
 
+func cursorCanContinue(file, id string) (bool, error) {
+	db, err := openCursorDB(file, true)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	data, err := cursorMetadata(ctx, db, id)
+	if err != nil {
+		return false, err
+	}
+	var meta struct {
+		Root     string          `json:"latestRootBlobId"`
+		Subagent json.RawMessage `json:"subagentInfo"`
+	}
+	if err = json.Unmarshal(data, &meta); err != nil {
+		return false, err
+	}
+	return meta.Root != "" && (len(meta.Subagent) == 0 || string(meta.Subagent) == "null"), nil
+}
+
 func applyVendorSession(home, workspace string, b SessionImport) (int, error) {
 	root := cloudAgentHome(home, b.Agent)
 	bucket := strings.ReplaceAll(url.QueryEscape(workspace), "+", "%20")
@@ -288,7 +343,8 @@ func applyVendorSession(home, workspace string, b SessionImport) (int, error) {
 	}
 	if b.Agent == "grok" {
 		var meta struct{ Info struct{ ID string } }
-		if json.Unmarshal(files[required], &meta) != nil || meta.Info.ID != b.Conversation || len(files["chat_history.jsonl"]) == 0 {
+		_, hasHistory := files["chat_history.jsonl"]
+		if json.Unmarshal(files[required], &meta) != nil || meta.Info.ID != b.Conversation || !hasHistory {
 			return 0, fmt.Errorf("invalid Grok conversation state")
 		}
 	}
@@ -369,6 +425,22 @@ func trimGrokSession(files []SessionFile) []SessionFile {
 			}
 			name := recordString(u, "checkpoint_file")
 			if records[i].Method != "_x.ai/session/update" || path.Dir(name) != "compaction_checkpoints" || json.Unmarshal(byPath[name], &cp) != nil || cp.Version != 1 || cp.ID != recordString(u, "checkpoint_id") || len(cp.History) == 0 {
+				continue
+			}
+			known := true
+			for _, item := range cp.History {
+				var entry map[string]json.RawMessage
+				if json.Unmarshal(item, &entry) != nil {
+					known = false
+					break
+				}
+				switch recordString(entry, "type") {
+				case "system", "user", "assistant", "tool_result", "backend_tool_call", "reasoning":
+				default:
+					known = false
+				}
+			}
+			if !known {
 				continue
 			}
 			var version, index int

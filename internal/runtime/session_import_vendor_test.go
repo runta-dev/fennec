@@ -303,3 +303,60 @@ func TestCursorNativeLoader(t *testing.T) {
 		t.Fatalf("native restore differs: %s / %s", before, after)
 	}
 }
+
+func TestVendorContinueSkipsEmptyAndHiddenSessions(t *testing.T) {
+	for _, kind := range []string{"cursor-empty", "cursor-subagent", "grok-hidden"} {
+		t.Run(kind, func(t *testing.T) {
+			local := t.TempDir()
+			cwd := "/Users/me/repo"
+			agent := "cursor"
+			if kind == "grok-hidden" {
+				agent = "grok"
+				for _, id := range []string{conversationA, conversationB} {
+					for _, f := range grokFixture() {
+						data := bytes.ReplaceAll(f.Data, []byte(conversationA), []byte(id))
+						if id == conversationB && f.Path == "summary.json" {
+							var m map[string]any
+							json.Unmarshal(data, &m)
+							m["hidden"] = true
+							m["updated_at"] = "2030-01-01T00:00:00Z"
+							data = encodeAny(m)
+						}
+						writeFixture(t, filepath.Join(local, "sessions", "bucket", id, f.Path), string(data), time.Time{})
+					}
+				}
+			} else {
+				for _, id := range []string{conversationA, conversationB} {
+					file := filepath.Join(local, "chats", cursorWorkspaceBucket(cwd), id, "store.db")
+					db, _ := cursorTestDB(t, file)
+					data, err := cursorMetadata(context.Background(), db, conversationA)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var m map[string]any
+					json.Unmarshal(data, &m)
+					m["agentId"] = id
+					if id == conversationB {
+						if kind == "cursor-empty" {
+							m["latestRootBlobId"] = ""
+						} else {
+							m["subagentInfo"] = map[string]string{"parentAgentId": conversationA}
+						}
+					}
+					if _, err = db.Exec("UPDATE meta SET value=? WHERE key='0'", hex.EncodeToString(encodeAny(m))); err != nil {
+						t.Fatal(err)
+					}
+					db.Close()
+					if id == conversationB {
+						future := time.Now().Add(time.Hour)
+						os.Chtimes(file, future, future)
+					}
+				}
+			}
+			b, _, err := CollectLocalSession(local, agent, cwd, launchID, []string{"--continue"})
+			if err != nil || b == nil || b.Conversation != conversationA {
+				t.Fatalf("selected empty/hidden conversation: %v %v", b, err)
+			}
+		})
+	}
+}
