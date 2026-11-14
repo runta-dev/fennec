@@ -58,7 +58,7 @@ struct Doctor {
 }
 
 final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
-    let window = SetupWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 588), styleMask: [.borderless, .miniaturizable], backing: .buffered, defer: false)
+    let window = SetupWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 322), styleMask: [.borderless, .miniaturizable], backing: .buffered, defer: false)
     var web: WKWebView!
     var timer: Timer?
     var loaded = false
@@ -270,9 +270,9 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             "daemonError": doctor.daemonError,
             "notice": notice,
             "commands": [
-                ["id": "claude", "name": "Claude Code", "command": "claude mcp add --scope user fennec-cua -- \(link) mcp"],
-                ["id": "codex", "name": "Codex", "command": "codex mcp add fennec-cua -- \(link) mcp"],
-                ["id": "skill", "name": "Agent skill", "command": "\(link) skill install --claude --codex"],
+                // One paste in a terminal: the MCP server and the skill.
+                ["id": "claude", "name": "Claude Code", "command": "claude mcp add --scope user fennec-cua -- \(link) mcp && \(link) skill install --claude"],
+                ["id": "codex", "name": "Codex", "command": "codex mcp add fennec-cua -- \(link) mcp && \(link) skill install --codex"],
             ],
         ]
     }

@@ -7,192 +7,123 @@
 <style>
 /* Fennec's menu-bar panel tokens (native/macos/UI/panel.css): one flat
    layer of cards with hairlines on the window background. */
-:root{color-scheme:light dark;--bg:#f2f2f5;--card:#fff;--expanded:#f8f8fa;--text:#1c1c21;--muted:#85858d;--line:rgba(0,0,0,.07);--orange:#f38d25;--tint:#fff2e5;--ok:#5f9a59}
-@media(prefers-color-scheme:dark){:root{--bg:#1b1c20;--card:#25262c;--expanded:#212227;--text:#eeeef0;--muted:#9c9ca6;--line:rgba(255,255,255,.07);--tint:#392c21;--ok:#86bb7f}}
+:root{color-scheme:light dark;--bg:#f2f2f5;--card:#fff;--text:#1c1c21;--muted:#85858d;--line:rgba(0,0,0,.07);--orange:#f38d25;--tint:#fff2e5;--ok:#5f9a59}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1c20;--card:#25262c;--text:#eeeef0;--muted:#9c9ca6;--line:rgba(255,255,255,.07);--tint:#392c21;--ok:#86bb7f}}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:13px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;display:flex;flex-direction:column;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
-button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);border-radius:7px;background:var(--card);padding:0 10px;height:26px;font-weight:500}
+button{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);border-radius:7px;background:var(--card);height:26px;padding:0 10px;font-weight:500}
 button:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
-button:disabled{cursor:default;opacity:.45}
-strong{font-weight:500}
 header{height:46px;min-height:46px;display:flex;align-items:center;gap:7px;padding:0 10px 0 14px}
-.brand{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;letter-spacing:.01em}
-.brand .mark-fox{width:20px;height:20px;display:block;flex:none}
-.brand span{color:var(--muted);font-weight:400}
+.brand{display:flex;align-items:center;gap:7px;font-weight:600;letter-spacing:.01em}
+.brand svg{width:20px;height:20px;display:block;flex:none}
 .spacer{flex:1}
 .icon{width:26px;height:26px;padding:0;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;border-radius:6px}
 .icon:hover{background:var(--line);color:var(--text)}
 .icon svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
-main{flex:1;padding:0 12px;overflow:auto}
-.lead{margin:2px 2px 12px;color:var(--muted);font-size:12px;line-height:1.55}
-.heading{display:flex;align-items:center;font-size:12px;color:var(--muted);padding:0 2px 7px}
-.heading em{margin-left:auto;font-style:normal;font-size:11px}
+main{flex:1;padding:0 12px 12px}
+h2{font-size:12px;font-weight:400;color:var(--muted);margin:4px 2px 7px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 1px 2px #0000000a}
-.row{display:flex;align-items:center;gap:10px;min-height:56px;padding:9px 12px}
+.row{display:flex;align-items:center;justify-content:space-between;height:46px;padding:0 10px 0 12px}
 .row+.row{border-top:1px solid var(--line)}
-.mark{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:var(--muted);border:1px solid var(--line);background:var(--expanded)}
-.mark svg{width:11px;height:11px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.done .mark{background:var(--orange);border-color:var(--orange)}
-.info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.info strong{font-size:13px}
-.info span{font-size:11px;color:var(--muted);line-height:1.4}
-.action{flex:none;width:86px;display:flex;justify-content:flex-end}
+.row span{font-weight:500}
+.action{width:92px;display:flex;justify-content:flex-end}
 .allow{color:#b06014;border-color:#f38d2570;background:transparent}
-.allow:hover:not(:disabled){background:var(--tint)}
+.allow:hover{background:var(--tint)}
 @media(prefers-color-scheme:dark){.allow{color:#f5a24e}}
-.state{font-size:12px;color:var(--muted);height:26px;display:flex;align-items:center;gap:6px}
+.state{height:26px;display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
 .state.ok{color:var(--ok)}
+.state svg,.copied svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .spin{width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--orange);border-radius:50%;animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
-.notice{min-height:34px;margin:0;padding:7px 2px 9px;font-size:11px;line-height:1.45;color:var(--muted)}
-.notice.warn{color:#c25b2c}
-.cmd{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.cmd strong{font-size:12.5px}
-.cmd code{font:10.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text;-webkit-user-select:text;cursor:text}
-.copy{width:66px}
-.connect .row{min-height:50px}
-footer{height:36px;min-height:36px;border-top:1px solid var(--line);margin-top:10px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11.5px}
-.status{display:flex;align-items:center;gap:6px}
-.status i{width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block}
-.status.ready{color:var(--text)}
-.status.ready i{background:var(--ok)}
-::-webkit-scrollbar{width:5px;background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(110,110,122,.24);border-radius:999px}
+.copy{width:92px;white-space:nowrap}
+.copied{display:inline-flex;align-items:center;justify-content:center;gap:5px;color:var(--ok)}
+.error{height:22px;margin:0;padding:5px 2px 0;white-space:nowrap;text-overflow:ellipsis;font-size:11px;line-height:1.4;color:#c25b2c;overflow:hidden}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand"><svg class="mark-fox" aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#FFD8A1"/><path d="m8 6 24 16-12 9Z" fill="#FFB953"/><path d="m56 6-24 16 12 9Z" fill="#F7A136"/><path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#F38D25"/><path d="m5 39 27-17v36L30 57Z" fill="#FFA83F"/><circle cx="24" cy="40" r="2.6" fill="#3B332E"/><circle cx="40" cy="40" r="2.6" fill="#3B332E"/><ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/></svg><strong>Fennec CUA</strong><span>Setup</span></div>
+  <div class="brand"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#FFD8A1"/><path d="m8 6 24 16-12 9Z" fill="#FFB953"/><path d="m56 6-24 16 12 9Z" fill="#F7A136"/><path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#F38D25"/><path d="m5 39 27-17v36L30 57Z" fill="#FFA83F"/><circle cx="24" cy="40" r="2.6" fill="#3B332E"/><circle cx="40" cy="40" r="2.6" fill="#3B332E"/><ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/></svg>Fennec CUA</div>
   <div class="spacer"></div>
-  <button class="icon" id="minimize" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 14 14"><path d="M3 7h8"/></svg></button>
-  <button class="icon" id="close" title="Close" aria-label="Close"><svg viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
+  <button class="icon" id="minimize" aria-label="Minimize"><svg viewBox="0 0 14 14"><path d="M3 7h8"/></svg></button>
+  <button class="icon" id="close" aria-label="Close"><svg viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
 </header>
 <main>
-  <p class="lead">Fennec CUA lets the agents you connect see and operate apps on this Mac. macOS asks you to allow that once, for the app &ldquo;Fennec CUA&rdquo;.</p>
-  <div class="heading">Permissions<em id="left"></em></div>
-  <div class="card" id="permissions">
-    <div class="row" id="row-accessibility">
-      <div class="mark"></div>
-      <div class="info"><strong>Accessibility</strong><span>Read app interfaces; send clicks and typing.</span></div>
-      <div class="action"></div>
-    </div>
-    <div class="row" id="row-screen">
-      <div class="mark"></div>
-      <div class="info"><strong>Screen Recording</strong><span>See app windows in screenshots.</span></div>
-      <div class="action"></div>
-    </div>
-    <div class="row" id="row-capture">
-      <div class="mark"></div>
-      <div class="info"><strong id="capture-title">Screen capture</strong><span id="capture-text"></span></div>
-      <div class="action"></div>
-    </div>
+  <h2>Permissions</h2>
+  <div class="card">
+    <div class="row"><span>Accessibility</span><div class="action" id="accessibility"></div></div>
+    <div class="row"><span>Screen Recording</span><div class="action" id="screen"></div></div>
   </div>
-  <p class="notice" id="notice"></p>
-  <div class="heading">Connect an agent</div>
-  <div class="card connect" id="commands"></div>
+  <p class="error" id="error"></p>
+  <h2>Connect an agent</h2>
+  <div class="card" id="agents"></div>
 </main>
-<footer>
-  <span id="version"></span>
-  <span class="status" id="status"><i></i><span></span></span>
-</footer>
 <script>
 "use strict";
 const post = (action, extra) => window.webkit.messageHandlers.setup.postMessage(Object.assign({action}, extra || {}));
-const check = '<svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-4.9"/></svg>';
+const tick = '<svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-4.9"/></svg>';
 document.getElementById("close").onclick = () => post("close");
 document.getElementById("minimize").onclick = () => post("minimize");
 
-function setRow(id, step, done, actionHTML) {
-  const row = document.getElementById("row-" + id);
-  row.classList.toggle("done", done);
-  row.querySelector(".mark").innerHTML = done ? check : String(step);
-  const action = row.querySelector(".action");
-  if (action.dataset.html !== actionHTML) {
-    action.innerHTML = actionHTML;
-    action.dataset.html = actionHTML;
-    const button = action.querySelector("button");
-    if (button) button.onclick = () => post(button.dataset.action);
-  }
+// Each action slot is redrawn only when its content changes, so a click
+// is never lost to the once-a-second refresh.
+function slot(id, html) {
+  const el = document.getElementById(id);
+  if (el.dataset.html === html) return;
+  el.dataset.html = html;
+  el.innerHTML = html;
+  const b = el.querySelector("button");
+  if (b) b.onclick = () => post(b.dataset.action);
 }
+const allow = (action, label) => `<button class="allow" data-action="${action}">${label || "Allow"}</button>`;
+const allowed = `<span class="state ok">${tick}Allowed</span>`;
+const working = '<span class="state"><span class="spin"></span></span>';
 
-const allow = (action, label, disabled) => `<button class="allow" data-action="${action}"${disabled ? " disabled" : ""}>${label || "Allow"}</button>`;
-const granted = label => `<span class="state ok">${label || "Allowed"}</span>`;
-const working = label => `<span class="state"><span class="spin"></span>${label}</span>`;
-
-let commandsShown = "";
-function renderCommands(commands) {
-  const key = JSON.stringify(commands);
-  if (key === commandsShown) return;
-  commandsShown = key;
-  const box = document.getElementById("commands");
+let copied = "";
+let agentsShown = "";
+function renderAgents(commands) {
+  const key = JSON.stringify(commands) + copied;
+  if (key === agentsShown) return;
+  agentsShown = key;
+  const box = document.getElementById("agents");
   box.innerHTML = "";
   for (const c of commands) {
     const row = document.createElement("div");
     row.className = "row";
-    const info = document.createElement("div");
-    info.className = "cmd";
-    const name = document.createElement("strong");
+    const name = document.createElement("span");
     name.textContent = c.name;
-    const code = document.createElement("code");
-    code.textContent = c.command;
-    code.title = c.command;
-    info.append(name, code);
     const button = document.createElement("button");
     button.className = "copy";
-    button.textContent = "Copy";
+    button.title = c.command;
+    if (copied === c.id) {
+      button.innerHTML = `<span class="copied">${tick}Copied</span>`;
+    } else {
+      button.textContent = "Copy";
+    }
     button.onclick = () => {
       post("copy", {text: c.command});
-      button.textContent = "Copied";
-      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+      copied = c.id;
+      renderAgents(commands);
     };
-    row.append(info, button);
+    row.append(name, button);
     box.append(row);
   }
 }
 
 window.setupRender = s => {
-  document.getElementById("version").textContent = "Version " + s.version;
-  setRow("accessibility", 1, s.accessibility, s.accessibility ? granted() : allow("accessibility"));
-  setRow("screen", 2, s.screen, s.screen ? granted() : allow("screen"));
-
-  const title = document.getElementById("capture-title");
-  const text = document.getElementById("capture-text");
-  title.textContent = s.asksDirectCapture ? "Direct screen capture" : "Test capture";
-  text.textContent = s.asksDirectCapture
-    ? "macOS asks once whether Fennec CUA may capture the screen directly."
-    : "A test screenshot shows that capture works.";
-  let notice = s.notice || "", warn = !!s.notice;
-  let captureDone = s.capture === "ok";
-  switch (s.capture) {
-    case "ok": setRow("capture", 3, true, granted(s.asksDirectCapture ? "Allowed" : "Works")); break;
-    case "checking": setRow("capture", 3, false, working("Checking")); break;
-    case "consent":
-      setRow("capture", 3, false, allow("capture"));
-      if (!notice) notice = "Click Allow, then choose Allow in the macOS alert.";
-      break;
-    case "error":
-      setRow("capture", 3, false, allow("retry", "Try again"));
-      if (!notice) { notice = s.captureDetail || "The test capture failed."; warn = true; }
-      break;
-    case "waiting": setRow("capture", 3, false, allow("capture", "Allow", true)); break;
-    default: setRow("capture", 3, false, working("Checking"));
-  }
-  if (!notice && s.daemonError) { notice = s.daemonError; warn = true; }
-  if (!notice && !s.screen && !s.accessibility) notice = "Click Allow, then turn on “Fennec CUA” in the System Settings pane that opens.";
-  if (!notice && !s.screen && s.accessibility) notice = "Turn on “Fennec CUA” in Screen & System Audio Recording.";
-  if (!notice && s.screen && !s.accessibility) notice = "Turn on “Fennec CUA” in Accessibility.";
-  const n = document.getElementById("notice");
-  n.textContent = notice;
-  n.classList.toggle("warn", warn);
-
-  const left = [s.accessibility, s.screen, captureDone].filter(x => !x).length;
-  document.getElementById("left").textContent = left ? `${left} of 3 left` : "";
-  const status = document.getElementById("status");
-  status.classList.toggle("ready", left === 0);
-  status.querySelector("span").textContent = left === 0 ? "Ready for agents" : "Setup not finished";
-  renderCommands(s.commands);
+  slot("accessibility", s.accessibility ? allowed : allow("accessibility"));
+  let screen, error = s.notice || "";
+  if (!s.screen) screen = allow("screen");
+  else if (s.capture === "ok") screen = allowed;
+  else if (s.capture === "consent") screen = allow("capture");
+  else if (s.capture === "error") { screen = allow("retry", "Try again"); error = error || s.captureDetail || "The test capture failed."; }
+  else if (!s.accessibility) screen = allowed;
+  else screen = working;
+  slot("screen", screen);
+  const err = document.getElementById("error");
+  err.textContent = err.title = error || s.daemonError || "";
+  renderAgents(s.commands);
 };
 </script>
 </body>
