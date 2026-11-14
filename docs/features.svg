@@ -7,49 +7,68 @@
       :root { --surface: #151b23; --border: #3d444d; --heading: #f0f6fc; --body: #b1bac4; --icon: #b1bac4; }
     }
     .card { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
-    .icon { fill: var(--icon); }
-    .cutout { fill: var(--surface); }
+    .icon { fill: none; stroke: var(--icon); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .heading { fill: var(--heading); font-size: 25px; font-weight: 500; }
     .body { fill: var(--body); font-size: 20px; font-weight: 400; }
     .emphasis { fill: var(--heading); font-weight: 500; }
   </style>
+  <!--
+    Outline icons: Heroicons, https://github.com/tailwindlabs/heroicons
+    Revision: 616b7a4dbbf3d011760af8066262cd5c6b3868f3
+
+    MIT License
+
+    Copyright (c) Tailwind Labs, Inc.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+  -->
   <defs>
-    <symbol id="terminal" viewBox="0 0 32 32">
-      <path class="icon" d="M5 4h22a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z"/>
-      <path class="cutout" d="m8 10 6 6-6 6-2-2 4-4-4-4Zm8 10h9v3h-9Z"/>
-    </symbol>
-    <symbol id="laptop" viewBox="0 0 32 32">
-      <path class="icon" fill-rule="evenodd" d="M6 4h20a3 3 0 0 1 3 3v16H3V7a3 3 0 0 1 3-3Zm1 4v11h18V8Z"/>
-      <path class="icon" d="M1 25h11l1 2h6l1-2h11v2a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3Z"/>
-    </symbol>
-    <symbol id="cloud" viewBox="0 0 32 32">
+    <symbol id="terminal" viewBox="0 0 24 24">
       <g class="icon">
-        <circle cx="9" cy="20" r="7"/>
-        <circle cx="17" cy="14" r="9"/>
-        <circle cx="25" cy="20" r="6"/>
-        <rect x="9" y="20" width="16" height="7"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z"/>
       </g>
-      <path class="cutout" d="m17 10-7 10h5l-1 6 8-11h-5Z"/>
     </symbol>
-    <symbol id="shield" viewBox="0 0 32 32">
-      <path class="icon" d="m16 1 13 5v10c0 7-7 12-13 15C10 28 3 23 3 16V6Z"/>
-      <path class="cutout" d="m8 16 3-3 4 4 7-8 3 3-10 11Z"/>
+    <symbol id="laptop" viewBox="0 0 24 24">
+      <g class="icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"/>
+      </g>
     </symbol>
-    <symbol id="resume" viewBox="0 0 32 32">
-      <path class="icon" d="M16 3a13 13 0 1 1-12.1 18H8a9 9 0 1 0 2-11l4 4H2V2l5 5a12.9 12.9 0 0 1 9-4Z"/>
-      <path class="icon" d="m14 10 9 6-9 6Z"/>
+    <symbol id="cloud" viewBox="0 0 24 24">
+      <g class="icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/>
+      </g>
     </symbol>
-    <!-- Reuse the product's flat fox mark from native/macos/UI/icons/fennec.svg. -->
-    <symbol id="fennec" viewBox="0 0 64 64">
-      <path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#ffd8a1"/>
-      <path d="m8 6 24 16-12 9Z" fill="#ffb953"/>
-      <path d="m56 6-24 16 12 9Z" fill="#f7a136"/>
-      <path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#f38d25"/>
-      <path d="m5 39 27-17v36L30 57Z" fill="#ffa83f"/>
-      <circle cx="24" cy="40" r="2.6" fill="#3b332e"/>
-      <circle cx="40" cy="40" r="2.6" fill="#3b332e"/>
-      <ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3b332e"/>
+    <symbol id="shield" viewBox="0 0 24 24">
+      <g class="icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/>
+      </g>
+    </symbol>
+    <symbol id="resume" viewBox="0 0 24 24">
+      <g class="icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+      </g>
+    </symbol>
+    <symbol id="agents" viewBox="0 0 24 24">
+      <g class="icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"/>
+      </g>
     </symbol>
   </defs>
 
@@ -112,7 +131,7 @@
   </g>
   <g transform="translate(573 629)">
     <rect class="card" width="546" height="250" rx="14"/>
-    <use href="#fennec" x="26" y="26" width="36" height="36"/>
+    <use href="#agents" x="28" y="28" width="32" height="32"/>
     <text class="heading" x="78" y="53">Keep track of your agents</text>
     <text class="body" x="28" y="104">
       <tspan x="28">See <tspan class="emphasis">Idle, Working, Needs input, and Errored</tspan></tspan>
