@@ -19,7 +19,7 @@
 
 ## Meet Fennec
 
-Fennec runs the agent loop on a cloud computer while connecting it to approved files and tools on your Mac. Choose where each agent runs, keep using your terminal, and manage its sessions from the menu bar or `fen`.
+Fennec runs the agent loop on a cloud computer while connecting it to approved files and tools on your Mac. Choose where each agent runs, keep using your terminal and favorite tools you already use—like **tmux**, **cmux**, and **Herdr**—and manage its sessions from the menu bar or `fen`.
 
 **Brain in the cloud. Hands on your Mac.** The agent reasons and runs in its cloud session. When it needs your local project, files, or commands, it reaches your Mac through the access you approve.
 
@@ -29,11 +29,20 @@ Cloud sessions can keep working around the clock while their cloud computer is r
 <tr>
 <td width="50%" valign="top">
 
+### 🔌 Keep your favorite tools
+
+Fennec integrates seamlessly with the tools you already use, including **tmux**, **cmux**, and **Herdr**. Keep your existing terminal setup and workflows while adding persistent cloud sessions and access to approved local tools.
+
+</td>
+<td width="50%" valign="top">
+
 ### 💻 Work on your local project
 
 Keep your editor, repository, and tools on your Mac. Choose **Cloud computer** for the agent loop, and approve the local files and commands it needs.
 
 </td>
+</tr>
+<tr>
 <td width="50%" valign="top">
 
 ### ☁️ Step away from a long task
