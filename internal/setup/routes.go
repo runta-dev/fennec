@@ -56,14 +56,24 @@ func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
 			routes = append(routes, route)
 			continue
 		}
-		step, cancel := context.WithTimeout(ctx, 5*time.Second)
-		cmd := exec.CommandContext(step, filepath.Clean(binary), agent.ID, "model")
-		cmd.WaitDelay = time.Second
-		output := &setupOutput{}
-		cmd.Stdout = output
-		cmd.Stderr = nil
-		err := cmd.Run()
-		cancel()
+		// The first Magpie call after a restart starts its plugin host and can
+		// fail or overrun; one retry with more time keeps a cold start from
+		// marking the agent unready until the next preparation.
+		var output *setupOutput
+		var err error
+		for _, limit := range []time.Duration{5 * time.Second, 15 * time.Second} {
+			step, cancel := context.WithTimeout(ctx, limit)
+			cmd := exec.CommandContext(step, filepath.Clean(binary), agent.ID, "model")
+			cmd.WaitDelay = time.Second
+			output = &setupOutput{}
+			cmd.Stdout = output
+			cmd.Stderr = nil
+			err = cmd.Run()
+			cancel()
+			if err == nil || ctx.Err() != nil {
+				break
+			}
+		}
 		if err != nil {
 			route.Problem = "model_query_failed"
 		} else {

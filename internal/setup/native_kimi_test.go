@@ -252,3 +252,20 @@ display_name = "K3.1 Pro"
 		t.Fatal("model family")
 	}
 }
+
+// Kimi's route comes from the magpie CLI, whose first call after a restart
+// can fail: one retry keeps the agent from being reported unready.
+func TestLocalAgentRoutesRetriesAColdMagpie(t *testing.T) {
+	home, bin := t.TempDir(), t.TempDir()
+	marker := filepath.Join(home, "called")
+	script := "#!/bin/sh\nif [ ! -f '" + marker + "' ]; then touch '" + marker + "'; exit 1; fi\necho 'Kimi Code model kimi-code/k3'\n"
+	if err := os.WriteFile(filepath.Join(bin, "magpie"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin)
+	routes := LocalAgentRoutes(context.Background(), []Agent{{ID: "kimi"}})
+	if len(routes) != 1 || routes[0].Problem != "" || routes[0].Model != "kimi-code/k3" {
+		t.Fatalf("%+v", routes)
+	}
+}
