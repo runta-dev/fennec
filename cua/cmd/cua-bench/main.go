@@ -518,6 +518,14 @@ func grantBackends(ctx context.Context, s *vm.Session) error {
 	return nil
 }
 
+// setupAssistantSeen marks Setup Assistant's panes seen for the installed
+// macOS build, so its post-login panes never open.
+const setupAssistantSeen = `v=$(sw_vers -productVersion); b=$(sw_vers -buildVersion); d=com.apple.SetupAssistant; ` +
+	`defaults write $d LastSeenCloudProductVersion "$v" && defaults write $d LastSeenBuddyBuildVersion "$b" && ` +
+	`for k in DidSeeCloudSetup DidSeePrivacy DidSeeSiriSetup DidSeeScreenTime DidSeeAppearanceSetup DidSeeTouchIDSetup ` +
+	`DidSeeApplePaySetup DidSeeiCloudLoginForStorageServices DidSeeAccessibility DidSeeIntelligence DidSeeSyncSetup ` +
+	`DidSeeSyncSetup2 DidSeeActivationLock DidSeeTermsOfAddress DidSeeWallpaper DidSeeAutoUpdate; do defaults write $d $k -bool true; done`
+
 // refreshFennec replaces only the fennec-cua binary in an existing golden
 // image, keeping the desktop state and the other backends. TCC grants and
 // capture approvals are keyed by path, which does not change; they are
@@ -566,6 +574,12 @@ func refreshFennec(ctx context.Context, v *vm.VM) error {
 // before the page cache reaches the disk, hence the sync.
 func quietDesktop(ctx context.Context, s *vm.Session) error {
 	cleanup := []string{
+		// Setup Assistant's post-update panes (Update Mac Automatically,
+		// Sign In to Your Apple Account) otherwise open over the desktop at
+		// login and take the focus mid-trial, from whichever backend runs:
+		// mark every pane seen for this build and quit any that is open.
+		setupAssistantSeen,
+		`killall "Setup Assistant" 2>/dev/null; true`,
 		`plutil -replace PersistentApps -json "[]" "$HOME/Library/Group Containers/group.com.apple.loginwindow.persistent-apps/persistantApps" || true`,
 		`defaults -currentHost write com.apple.loginwindow TALAppsToRelaunchAtLogin -array`,
 		// Twice: a Dock that restarts right after an app quit may write
