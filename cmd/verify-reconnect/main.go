@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -90,6 +91,7 @@ func run() (result error) {
 	binary := flag.String("binary", "", "candidate CLI, without replacing the installed app")
 	installed := flag.String("installed", "/Applications/Fennec.app/Contents/MacOS/fen", "installed release CLI")
 	restart := flag.Bool("restart-daemon", false, "explicitly restart the actual installed daemon")
+	appRestart := flag.Bool("restart-app", false, "exercise the status-menu coordinator, then terminate the old UI process")
 	wifi := flag.String("cycle-wifi", "", "explicitly cycle this Mac Wi-Fi interface for three seconds")
 	update := flag.Bool("install-update", false, "explicitly install the already verified local test update through update.install")
 	budget := flag.Duration("max-recovery", 0, "fail if recovery after network restoration exceeds this duration")
@@ -102,7 +104,7 @@ func run() (result error) {
 		*binary = *installed
 	}
 	modes := 0
-	for _, active := range []bool{*restart, *wifi != "", *update} {
+	for _, active := range []bool{*restart, *appRestart, *wifi != "", *update} {
 		if active {
 			modes++
 		}
@@ -257,6 +259,22 @@ func run() (result error) {
 		return err
 	}
 	offset := len(output.read())
+	var appBefore, appAfter, workerBefore, workerAfter int
+	var upstreamBefore, upstreamAfter string
+	if *appRestart {
+		appBefore, err = exactProcess(*installed, false)
+		if err != nil {
+			return err
+		}
+		workerBefore, err = exactProcess(*installed, true)
+		if err != nil {
+			return err
+		}
+		upstreamBefore, err = upstreamIdentity(workerBefore)
+		if err != nil {
+			return err
+		}
+	}
 	started := time.Now()
 	available := started
 	mode := "daemon"
@@ -265,7 +283,18 @@ func run() (result error) {
 	// Run this verifier through cmd/run-macos-check so launchd owns it separately
 	// from the daemon under test. nohup alone does not survive job cleanup.
 	// Always request restart even when stop returns an error.
-	if *restart {
+	if *appRestart {
+		mode = "app"
+		// This is the exact Go coordinator invoked by the native Restart menu.
+		// Terminate only the observed UI after scheduling succeeds, as the UI
+		// callback does. This mode does not claim to automate a menu click.
+		if err := exec.CommandContext(ctx, *installed, "app-restart", strconv.Itoa(appBefore)).Run(); err != nil {
+			return err
+		}
+		if err := syscall.Kill(appBefore, syscall.SIGTERM); err != nil {
+			return err
+		}
+	} else if *restart {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 20*time.Second)
 		stopErr := exec.CommandContext(stopCtx, *installed, "daemon", "stop").Run()
 		stopCancel()
@@ -324,7 +353,7 @@ func run() (result error) {
 		return err
 	}
 	daemonElapsed := time.Since(started)
-	if mode == "daemon" && after.Build != before.Build {
+	if (mode == "daemon" || mode == "app") && after.Build != before.Build {
 		return fmt.Errorf("unexpected build change during daemon restart")
 	}
 	if mode == "update" {
@@ -387,6 +416,23 @@ func run() (result error) {
 	if err := command.Process.Signal(syscall.Signal(0)); err != nil {
 		return fmt.Errorf("original CLI exited: %w", err)
 	}
+	if *appRestart {
+		if err := wait("replacement native app", 10*time.Second, func() bool {
+			appAfter, err = exactProcess(*installed, false)
+			return err == nil && appAfter != appBefore
+		}); err != nil {
+			return err
+		}
+		workerAfter, err = exactProcess(*installed, true)
+		if err != nil || workerAfter != workerBefore {
+			return fmt.Errorf("transport worker changed: %d -> %d: %v", workerBefore, workerAfter, err)
+		}
+		upstreamAfter, err = upstreamIdentity(workerAfter)
+		if err != nil || upstreamAfter != upstreamBefore {
+			return fmt.Errorf("upstream TCP connection was not retained: %v", err)
+		}
+		fmt.Printf("App %d -> %d, daemon %d -> %d; worker %d and upstream TCP retained\n", appBefore, appAfter, before.PID, after.PID, workerAfter)
+	}
 	fmt.Printf("Recovery verified in %dms: same CLI, same cloud terminal, restored input read back\n", recovered.Milliseconds())
 	cancelled := time.Now()
 	terminal.Write([]byte{3})
@@ -411,7 +457,9 @@ func run() (result error) {
 		budgetErr = fmt.Errorf("%s recovery %s exceeded %s", mode, recoveryAfterNetwork, *budget)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
-		"mode": mode, "recovery_after_network_ms": recoveryAfterNetwork.Milliseconds(),
+		"app_before": appBefore, "app_after": appAfter, "worker_before": workerBefore, "worker_after": workerAfter,
+		"upstream_retained": *appRestart && upstreamBefore == upstreamAfter,
+		"mode":              mode, "recovery_after_network_ms": recoveryAfterNetwork.Milliseconds(),
 		"stop_ms": stopElapsed.Milliseconds(), "daemon_ready_ms": daemonElapsed.Milliseconds(),
 		"production_shim": *shim,
 		"installed_shim":  *installedShim,

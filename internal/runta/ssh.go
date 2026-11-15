@@ -210,7 +210,7 @@ func (c *Client) ConnectOwned(ctx context.Context, id, directory string) (*ssh.C
 	}
 	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) {
 		return c.PrepareOwnedSSH(ctx, id, directory)
-	}, dialPreparedSSH)
+	}, c.retainedSSHDialer(directory))
 }
 
 // ConnectResolved overlaps only a cached, pinned authentication handshake with
@@ -222,9 +222,23 @@ func (c *Client) ConnectResolved(ctx context.Context, hint, directory string, re
 	if cached != nil {
 		cached.NoDelay = !c.NoSSHNoDelay
 	}
-	dial := dialPreparedSSH
+	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) {
+		readHint := ""
+		if cached != nil {
+			readHint = hint
+		}
+		return resolvePreparedSSH(ctx, readHint, resolve, func(ctx context.Context, id string, verify func() error) (*SSHConnectionConfig, error) {
+			return c.prepareSSH(ctx, id, directory, false, verify)
+		})
+	}, c.retainedSSHDialer(directory))
+}
+
+// Initial preparation and network recovery must use the same retention policy.
+// Otherwise recovery silently moves SSH into the daemon and the worker expires,
+// leaving the next application restart unable to retain the upstream transport.
+func (c *Client) retainedSSHDialer(directory string) func(context.Context, *SSHConnectionConfig) (*ssh.Client, error) {
 	if c.RetainSSHHome != "" {
-		dial = func(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {
+		return func(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {
 			defer launchprofile.Begin("ssh.carrier_lease")()
 			// Only a digest scopes the worker to this authenticated account/token.
 			// Fresh API validation below still gates all remote commands.
@@ -236,15 +250,7 @@ func (c *Client) ConnectResolved(ctx context.Context, hint, directory string, re
 			})
 		}
 	}
-	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) {
-		readHint := ""
-		if cached != nil {
-			readHint = hint
-		}
-		return resolvePreparedSSH(ctx, readHint, resolve, func(ctx context.Context, id string, verify func() error) (*SSHConnectionConfig, error) {
-			return c.prepareSSH(ctx, id, directory, false, verify)
-		})
-	}, dial)
+	return dialPreparedSSH
 }
 
 func dialPreparedSSH(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {

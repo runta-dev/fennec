@@ -30,6 +30,8 @@ func Run(arguments []string, output io.Writer) error {
 		return nil
 	}
 	switch arguments[0] {
+	case "app-restart", "app-restart-worker":
+		return appRestartCommand(arguments[1:], arguments[0] == "app-restart-worker")
 	case "transport-worker":
 		if len(arguments) != 2 {
 			return errors.New("private transport configuration required")

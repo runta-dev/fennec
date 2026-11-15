@@ -2,7 +2,7 @@
 
 Updated: 2026-11-15 UTC. This is the current measurement ledger, not a claim that
 Fennec has reached its latency target. Keep failures and superseded measurements
-visible. The development build tested here is `0.3.11151959-dev` (v33), build ID
+visible. Unless a row says otherwise, the development build tested here is `0.3.11151959-dev` (v33), build ID
 `65beaa5bd8d5ccbd60e33aa94cdf9e1ba099f4f0e1d70838bd844bad366fa18c`.
 The source is `a229eb0` plus this recovery-latency changeset. Measurements use the
 installed signed Mac application and its real shared cloud machine; existing
@@ -19,6 +19,7 @@ recovery screening threshold, not the final physical-latency target.
 
 | Operation and endpoint | Original baseline ms | Latest measurement ms | Build / samples | Acceptance |
 | --- | ---: | ---: | --- | --- |
+| App + daemon Restart coordinator → original TUI input-ready | Previously restarted UI only; not comparable | 4,627 / 5,439 | 0.3.11152159-dev, 2 | FAIL, exceeds 3,000 ms; both processes replaced, worker/TCP/session/input preserved |
 | Daemon restart → original TUI input-ready | 7,754 / 7,825 / 4,869 | 5,221 | v33, 1 | FAIL, exceeds 3,000 ms; identity, draft and input readback passed |
 | Daemon restart → local daemon responds | Not independently comparable | 269 | v33, same run | Diagnostic only |
 | Daemon shutdown | Not independently comparable | 104 | v33, same run | Diagnostic only |
@@ -33,6 +34,30 @@ The immediately preceding v29 restart took 5,265 ms and its cloud preparation
 fresh input and must not be counted as a successful recovery sample. v33 fixes a
 reproduced PTY nonblocking-mode defect and passed the input/identity checks, while
 still failing the recovery latency screen.
+
+### App and daemon Restart acceptance
+
+`0.3.11152159-dev` on `1258c04` plus the `fix/menu-restart-daemon` changeset
+replaces both processes while retaining the transport worker. Two live runs of
+`verify-reconnect -installed-shim -restart-app -max-recovery 3s` preserved worker
+PID **94283** and its established upstream TCP endpoint pair. Local daemon ping
+returned after **224 / 236 ms**; input-ready recovery took **4,627 / 5,439 ms**.
+Both failed the unchanged 3-second performance screen and passed the functional
+checks: new UI/daemon PIDs, original CLI/cloud-terminal identity, retained draft,
+fresh input verified by cloud readback, and Ctrl+C detach in 1 ms.
+
+This executes the production coordinator invoked by the menu, then terminates the
+old UI process. It does not automate the native menu click: macOS denied assistive
+access to the automation tool. The second run used the final signed package with
+the original cached credential helper restored byte-for-byte; the first staging
+build had inadvertently rebuilt that helper in the new worktree. Four preexisting
+user terminals retained their identities and creation times. Reverse SSH returned
+without recovery guards firing. These results do not demonstrate a latency
+improvement over the daemon-only v33 test, and Wi-Fi recovery and downloaded
+updates were not retested in this change.
+
+Raw results: [2026-11-15-menu-restart.json](benchmarks/2026-11-15-menu-restart.json).
+Lifecycle and upgrade contract: [transport-worker.md](transport-worker.md).
 
 ### v33 restart breakdown
 

@@ -1,5 +1,13 @@
 {
   "messages": {
+    "ui.restart_failed": {
+      "en-GB": "Could not restart Fennec, try again",
+      "en-US": "Could not restart Fennec, try again",
+      "ja": "Fennecを再起動できませんでした、もう一度お試しください",
+      "ko": "Fennec을 다시 시작하지 못했습니다, 다시 시도하세요",
+      "zh-CN": "无法重启 Fennec，请重试",
+      "zh-TW": "無法重新啟動 Fennec，請重試"
+    },
     "ui.cloud_configuration_unconfirmed": {
       "en-GB": "Cloud model configuration needs attention",
       "en-US": "Cloud model configuration needs attention",

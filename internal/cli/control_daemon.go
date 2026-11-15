@@ -30,6 +30,13 @@ func daemonPlist(binary, logPath string) []byte {
 	return []byte(`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + daemonLabel + `</string><key>ProgramArguments</key><array><string>` + escape(binary) + `</string><string>control-daemon</string></array><key>RunAtLoad</key><false/><key>KeepAlive</key><dict><key>AfterInitialDemand</key><true/><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ProcessType</key><string>Background</string><key>StandardErrorPath</key><string>` + escape(logPath) + `</string></dict></plist>`)
 }
 func ensureControl(ctx context.Context) error {
+	return ensureControlReplacing(ctx, 0)
+}
+
+// A restart names the daemon observed before the UI exited. Reconnecting shims
+// share this lock; a replacement already running must not be restarted again.
+// Zero means ordinary startup, -1 means the old daemon did not answer ping.
+func ensureControlReplacing(ctx context.Context, retiringPID int) error {
 	defer launchprofile.Begin("daemon.ensure")()
 	socket, err := controlSocket()
 	if err != nil {
@@ -57,6 +64,7 @@ func ensureControl(ctx context.Context) error {
 	plist := filepath.Join(home, "Library/LaunchAgents", daemonLabel+".plist")
 	desiredRegistration := daemonPlist(binary, filepath.Join(home, ".config/fennec/logs/daemon.log"))
 	actualExecutable := ""
+	actualPID := 0
 	registrationMatches := func() bool {
 		data, err := os.ReadFile(plist)
 		return err == nil && bytes.Equal(data, desiredRegistration)
@@ -76,15 +84,17 @@ func ensureControl(ctx context.Context) error {
 		probe, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 		var result struct {
+			PID        int    `json:"pid"`
 			BuildID    string `json:"build_id"`
 			Executable string `json:"executable"`
 		}
 		err := (control.Client{Socket: socket}).Call(probe, "daemon.ping", nil, &result)
 		actualExecutable = result.Executable
+		actualPID = result.PID
 		return result.BuildID, err
 	}
 	actual, err := ping()
-	if err == nil && (expected == "" || reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches())) {
+	if err == nil && restartAlreadySatisfied(retiringPID, actualPID) && (expected == "" || reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches())) {
 		return nil
 	}
 	var fault *control.Fault
@@ -106,7 +116,7 @@ func ensureControl(ctx context.Context) error {
 	}
 	defer lock.Close()
 	actual, err = ping()
-	if err == nil && reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches()) {
+	if err == nil && restartAlreadySatisfied(retiringPID, actualPID) && reusableDaemon(expected, actual, binary, actualExecutable, registrationMatches()) {
 		return nil
 	}
 	if uninstallRunning(home) {

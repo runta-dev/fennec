@@ -32,8 +32,12 @@ type Config struct {
 }
 
 func (c Config) key() string {
+	return c.keyForEpoch(workerCompatibilityEpoch)
+}
+
+func (c Config) keyForEpoch(epoch int) string {
 	data, _ := json.Marshal(c)
-	sum := sha256.Sum256(append([]byte("fennec-ssh-carrier-v5\x00"), data...))
+	sum := sha256.Sum256(append([]byte(fmt.Sprintf("fennec-ssh-carrier-v%d\x00", epoch)), data...))
 	return hex.EncodeToString(sum[:12])
 }
 
@@ -160,7 +164,7 @@ func dialLocal(ctx context.Context, socket string, signer ssh.Signer) (*ssh.Clie
 		return nil, err
 	}
 	conn, channels, requests, err := ssh.NewClientConn(raw, socket, &ssh.ClientConfig{
-		User: "fennec-transport-v1", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(signer.PublicKey()),
+		User: localLeaseUser, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.FixedHostKey(signer.PublicKey()),
 	})
 	if err != nil {
 		raw.Close()

@@ -40,6 +40,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private let control = ControlClient()
     private var stateTimer: Timer?
     private var stateLoading = false
+    private var restartPending = false
 	private var controlReady = false
 	private var installationPending = true
 	private var installedApplicationPath = Bundle.main.bundlePath
@@ -301,12 +302,29 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
 
     @objc private func restartApp() {
+        guard !restartPending, !installationPending else { return }
+        restartPending = true
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        // Positional arguments preserve bundle paths without shell interpolation.
-        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; /usr/bin/open -n \"$2\" --args --installed-application \"$2\"", "fennec-restart", String(ProcessInfo.processInfo.processIdentifier), installedApplicationPath]
-        do { try task.run(); NSApp.terminate(nil) }
-        catch { let alert = NSAlert(error: error); alert.runModal() }
+        task.executableURL = URL(fileURLWithPath: installedApplicationPath).appendingPathComponent("Contents/MacOS/fen")
+        task.arguments = ["app-restart", String(ProcessInfo.processInfo.processIdentifier)]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        task.terminationHandler = { [weak self] process in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if process.terminationStatus == 0 { NSApp.terminate(nil) }
+                else { self.restartFailed() }
+            }
+        }
+        do { try task.run() }
+        catch { restartFailed() }
+    }
+
+    private func restartFailed() {
+        restartPending = false
+        let alert = NSAlert()
+        alert.messageText = L10n.text("ui.restart_failed", language: nativeLanguage)
+        alert.runModal()
     }
 
     private func configureDefaultLoginItem() {

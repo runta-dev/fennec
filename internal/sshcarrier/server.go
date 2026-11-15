@@ -136,7 +136,7 @@ func (s *server) lease(raw net.Conn) {
 		return
 	}
 	config := &ssh.ServerConfig{PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-		if meta.User() != "fennec-transport-v1" || !bytes.Equal(key.Marshal(), s.signer.PublicKey().Marshal()) {
+		if meta.User() != localLeaseUser || !bytes.Equal(key.Marshal(), s.signer.PublicKey().Marshal()) {
 			return nil, fmt.Errorf("transport identity mismatch")
 		}
 		return nil, nil
