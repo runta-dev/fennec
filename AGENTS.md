@@ -1,5 +1,11 @@
 # Fennec project conventions
 
+## Commit and push workflow
+
+- The user's standing preference is to commit and push task changes promptly after appropriate validation, at meaningful milestones and before reporting completion. Do not wait for a separate request to push completed work.
+- Push the current task branch to `origin` and verify the remote commit matches the local commit. Integrate into `main` when the user requests it. Include only task-relevant changes and preserve concurrent work.
+- Keep the matching cloud and Mac worktrees synchronized. Report the pushed branch and commit, outstanding validation failures, and any blocked push or pending synchronization explicitly.
+
 ## Source language and localization
 
 - Write implementation code, comments, developer documentation, task records, and project skills in English.
