@@ -15,10 +15,13 @@ func TestClipboardUploadCreditsAndTextFallback(t *testing.T) {
 			window.Take(1)
 			data := bytes.Repeat([]byte("x"), terminalstream.Window*3)
 			var uploaded []byte
-			noticed, first := false, true
-			err := sendClipboardImage(context.Background(), []byte{22}, window, func(frame terminalstream.Frame) error {
+			noticed, absent, first := false, false, true
+			err := sendClipboardImage(context.Background(), []byte{22}, 7, window, func(frame terminalstream.Frame) error {
 				if kind == "text" && (frame.Type != "input" || string(frame.Data) != "\x16") {
 					t.Fatal(frame)
+				}
+				if frame.Seq != 7 {
+					t.Fatalf("frame without the shortcut's sequence number: %+v", frame.Seq)
 				}
 				if kind == "image" {
 					if frame.Type != "image" || len(frame.Data) > terminalstream.Chunk {
@@ -43,9 +46,12 @@ func TestClipboardUploadCreditsAndTextFallback(t *testing.T) {
 				default:
 					return nil, nil
 				}
-			}, func() { noticed = true })
+			}, func() { noticed = true }, func() { absent = true })
 			if err != nil {
 				t.Fatal(err)
+			}
+			if absent != (kind == "text") {
+				t.Fatal("a predicted image must be withdrawn when the clipboard has none")
 			}
 			if kind == "image" && !bytes.Equal(uploaded, data) {
 				t.Fatal("image changed")

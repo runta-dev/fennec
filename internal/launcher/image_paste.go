@@ -9,7 +9,10 @@ import (
 
 // sendClipboardImage runs on the ordered input goroutine. Reading or uploading
 // an image never allows later typing (especially Return) to overtake the paste.
-func sendClipboardImage(ctx context.Context, original []byte, window *terminalstream.CreditWindow, send func(terminalstream.Frame) error, read func(context.Context) ([]byte, error), notice func()) error {
+// seq is the input sequence number of the shortcut; every chunk carries it so
+// the service can acknowledge the upload once the paste is written. absent is
+// called when the clipboard turned out to hold no image.
+func sendClipboardImage(ctx context.Context, original []byte, seq uint64, window *terminalstream.CreditWindow, send func(terminalstream.Frame) error, read func(context.Context) ([]byte, error), notice func(), absent func()) error {
 	data, err := read(ctx)
 	if err != nil {
 		window.Add(len(original))
@@ -17,7 +20,10 @@ func sendClipboardImage(ctx context.Context, original []byte, window *terminalst
 		return nil
 	}
 	if len(data) == 0 {
-		return send(terminalstream.Frame{Type: "input", Data: original})
+		if absent != nil {
+			absent()
+		}
+		return send(terminalstream.Frame{Type: "input", Data: original, Seq: seq})
 	}
 	window.Add(len(original))
 	total := len(data)
@@ -29,7 +35,7 @@ func sendClipboardImage(ctx context.Context, original []byte, window *terminalst
 			}
 			return io.ErrClosedPipe
 		}
-		if err := send(terminalstream.Frame{Type: "image", Data: data[:n], Bytes: total}); err != nil {
+		if err := send(terminalstream.Frame{Type: "image", Data: data[:n], Bytes: total, Seq: seq}); err != nil {
 			return err
 		}
 		total = 0

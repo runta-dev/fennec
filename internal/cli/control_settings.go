@@ -38,6 +38,7 @@ type desktopPreferences struct {
 	Theme          string   `json:"theme"`
 	Language       string   `json:"language"`
 	Initialized    bool     `json:"initialized"`
+	PredictiveEcho string   `json:"predictive_echo,omitempty"`
 }
 
 func effectivePermissionPreset(prefs desktopPreferences) string {
@@ -189,6 +190,7 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			SandboxRoots     json.RawMessage `json:"sandbox_roots"`
 			Theme            *string         `json:"theme"`
 			Language         *string         `json:"language"`
+			PredictiveEcho   *string         `json:"predictive_echo"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
@@ -275,6 +277,16 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		}
 		if request.Language != nil {
 			next.Language = *request.Language
+		}
+		if request.PredictiveEcho != nil && !importing {
+			value := strings.TrimSpace(strings.ToLower(*request.PredictiveEcho))
+			if value == "adaptive" {
+				value = ""
+			}
+			if value != "" && value != "always" && value != "off" {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported predictive echo mode"}
+			}
+			next.PredictiveEcho = value
 		}
 		next.Initialized = true
 		if !validDesktop(next) {

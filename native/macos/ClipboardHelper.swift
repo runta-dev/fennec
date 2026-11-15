@@ -2,7 +2,13 @@ import AppKit
 
 // A narrow platform adapter used by fen on an explicit image-paste gesture.
 // Exit 2 means no image; stdout contains only PNG bytes on success.
+// With --probe it only checks the pasteboard types (no image is read or
+// encoded) and exits 0 when an image is available, 2 otherwise.
 let board = NSPasteboard.general
+if CommandLine.arguments.dropFirst().first == "--probe" {
+    let types = board.types ?? []
+    exit(types.contains(.png) || types.contains(.tiff) ? 0 : 2)
+}
 let limit = 20 * 1024 * 1024
 var png = board.data(forType: .png)
 if png == nil, let tiff = board.data(forType: .tiff) {

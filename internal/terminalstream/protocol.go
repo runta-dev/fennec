@@ -34,7 +34,26 @@ type Frame struct {
 	Message           string                       `json:"message,omitempty"`
 	ErrorCode         string                       `json:"error_code,omitempty"`
 	Target            string                       `json:"target,omitempty"`
+	// Seq is the client's input sequence number at the end of an input or
+	// image frame; echo_ack frames return the highest processed Seq.
+	Seq uint64 `json:"seq,omitempty"`
+	// DelayMS is the gap the user left before this keystroke frame. Services
+	// with input cadence keep at least min(DelayMS, 50) between PTY writes.
+	DelayMS int `json:"delay_ms,omitempty"`
+	// Features are optional stream behaviours the client requests on connect
+	// and that the service confirms in the receipt's Capabilities.
+	Features []string `json:"features,omitempty"`
 }
+
+// CapabilityEchoAck: after input up to Seq has been written to the PTY, the
+// service sends echo_ack{Seq} once the agent's output has gone quiet for
+// 15 ms, or after 250 ms without output (Code 1: the agent is busy).
+// CapabilityInputCadence: the service paces bunched keystroke frames by
+// DelayMS so agents with timing-based paste detection see typing.
+const (
+	CapabilityEchoAck      = "echo_ack_v1"
+	CapabilityInputCadence = "input_cadence_v1"
+)
 
 const Window = 65536
 const Chunk = 16384

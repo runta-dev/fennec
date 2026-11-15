@@ -1,7 +1,8 @@
 # Composer-aware predictive echo for cloud terminals
 
-Status: design, not implemented. Surface: the `fen` attach client on the Mac,
-plus one small capability in the cloud terminal service.
+Status: implemented for Claude Code and Codex (`internal/predict`); see
+Implementation status at the end. Surface: the `fen` attach client on the
+Mac, plus two small capabilities in the cloud terminal service.
 
 ## Problem
 
@@ -451,6 +452,55 @@ cell what pure passthrough would have produced.
   profile marks it safe (no popup open, not a slash command).
 - The same engine for the macOS app's built-in terminal, if it carries cloud
   sessions.
+
+## Implementation status
+
+Built:
+
+- `internal/predict`: VT emulator (`screen.go`), key decoding including the
+  Kitty protocol (`keys.go`), composer model (`state.go`), wrap-ansi and Codex
+  wrapping (`wrap.go`), the Claude Code and Codex profiles, the engine
+  (reconciliation, deferred edits, rendering, restore), and the trace
+  recorder.
+- The engine resolves ambiguous screens (spaces before a newline are
+  invisible) with `Profile.Match`: the composer is locked when the engine's
+  own confirmed or predicted state renders exactly as shown. Parsing alone is
+  only needed to acquire the first lock.
+- Keys typed behind an unpredictable key are deferred, not dropped: they are
+  mapped against the server's state as soon as the barrier resolves.
+- Enter is predicted (the composer clears) for Claude Code and Codex when the
+  draft is not a slash command, shell input, or a mention being completed.
+  `\` + Enter in Claude Code is predicted as a newline.
+- Cloud terminal service: `echo_ack_v1` and `input_cadence_v1`, negotiated
+  through `connect.features`; old clients never receive the new frames.
+- Client: sequence numbers and typing gaps on input frames; the reconnecting
+  input queue holds 256 packets so uploads never stop key reading; image
+  prediction uses `fennec-clipboard --probe` (pasteboard types only).
+- Setting `predictive_echo` (`""`/`adaptive`, `always`, `off`) through
+  `settings.set`, overridden by `FEN_PREDICTIVE_ECHO`. `FEN_PREDICT_TRACE=<dir>`
+  records sessions in the format the trace tests replay.
+- The macOS app's terminal runs `fen attach` in a PTY, so it uses the same
+  engine with no extra work.
+
+Verified on recordings: every recorded Claude Code keystroke (typing, word
+wrap, Shift+Enter growth with the hint row, Backspace joins, inline and pill
+pastes, the image pill with its automatic space, Ctrl+C) is predicted exactly
+as Claude Code rendered it, and the engine replay with a 500 ms round trip
+shows every prediction immediately and converges with no leftover cells.
+Randomized runs (latency, dropped keys, both agents) keep every unpredicted
+row identical to the server and converge exactly.
+
+Not yet verified: the Codex profile is written from its source and exercised
+against a synthetic Codex screen only; it needs recordings through the real
+herdr path (`FEN_PREDICT_TRACE`). Other agents, from reading their packages:
+
+| Agent | Hardware cursor at the insertion point | Status |
+| --- | --- | --- |
+| OpenCode (OpenTUI) | Yes | Profile pending a recording; container width depends on the sidebar |
+| Grok (ratatui) | Yes | Profile pending a recording; installed 1.0.77 is newer than its public source |
+| Pi | Only with `PI_HARDWARE_CURSOR=1` | Needs that setting in Fennec's Pi launch |
+| Kimi | No (drawn reverse-video cursor) | Not predictable with this design |
+| Cursor | No (cursor parked below the composer) | Not predictable with this design |
 
 ## Risks
 

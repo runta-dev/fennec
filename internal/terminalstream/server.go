@@ -60,6 +60,8 @@ type serverSession struct {
 	closed                   bool
 	inputBudget              int
 	rows, columns            uint16
+	echo                     *echoAcker
+	cadence                  *cadence
 }
 
 func Serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, attachers ...Attacher) error {
@@ -248,7 +250,16 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					emit(Frame{Type: "error", ID: frame.ID, Message: "remote launch failed; inspect session before retrying"})
 					return
 				}
-				emit, finishReceipt := coalesceReceipt(emitFrames, Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal, Capabilities: []string{CapabilityImagePaste}})
+				receiptCapabilities := []string{CapabilityImagePaste}
+				if hasFeature(frame.Features, CapabilityEchoAck) {
+					session.echo = newEchoAcker()
+					receiptCapabilities = append(receiptCapabilities, CapabilityEchoAck)
+				}
+				if hasFeature(frame.Features, CapabilityInputCadence) {
+					session.cadence = &cadence{}
+					receiptCapabilities = append(receiptCapabilities, CapabilityInputCadence)
+				}
+				emit, finishReceipt := coalesceReceipt(emitFrames, Frame{Type: "receipt", ID: frame.ID, Terminal: &terminal, Capabilities: receiptCapabilities})
 				defer finishReceipt()
 				session.mu.Lock()
 				session.imageAgent, session.imageSession = terminal.Agent, terminal.ID
@@ -282,6 +293,9 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				finishAttachment := session.watchAttachment(command)
 				inputDone := make(chan struct{})
 				go func() { defer close(inputDone); session.pumpInput(frame.ID, emit) }()
+				if session.echo != nil {
+					go session.echo.run(session.ctx, frame.ID, emit)
+				}
 				probe := DisplayResponder{Facts: frame.Display}
 				firstRead := float64(0)
 				firstVisible := true
@@ -297,6 +311,9 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 						if frame.OutputCompression == "gzip" {
 							out = compressTerminalData(out)
 						}
+						// Output counts from the moment it is read; the ack is
+						// emitted through the same ordered writer after it.
+						session.echo.observe()
 						if err := emit(out); err != nil {
 							return err
 						}
@@ -485,11 +502,30 @@ func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
 						}
 					}
 				}
+				if err != nil || path != "" {
+					// The upload is complete or rejected and its paste written.
+					session.echo.input(frame.Seq)
+				}
 			} else {
 				image.reset()
+				if session.cadence != nil && frame.DelayMS > 0 {
+					if pause := session.cadence.wait(time.Now(), time.Duration(frame.DelayMS)*time.Millisecond); pause > 0 {
+						timer := time.NewTimer(pause)
+						select {
+						case <-session.ctx.Done():
+							timer.Stop()
+							return
+						case <-timer.C:
+						}
+					}
+				}
 				if err := session.write(frame.Data); err != nil {
 					return
 				}
+				if session.cadence != nil {
+					session.cadence.wrote(time.Now())
+				}
+				session.echo.input(frame.Seq)
 			}
 			session.mu.Lock()
 			session.inputBudget += length

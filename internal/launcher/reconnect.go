@@ -3,6 +3,7 @@ package launcher
 import (
 	"context"
 	"errors"
+	"fennec/internal/predict"
 	"fennec/internal/terminalinput"
 	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -43,7 +45,12 @@ func reconnectDelay(base time.Duration) time.Duration {
 type streamInput struct {
 	epoch uint64
 	data  []byte
+	stamp inputStamp
 }
+
+// inputQueue bounds keystrokes waiting behind an upload. The reader keeps
+// reading (and the screen keeps updating) until this many packets are queued.
+const inputQueue = 256
 
 // One terminal owner survives socket replacement and daemon restarts. The input
 // reader is never duplicated; disconnected keystrokes are consumed, not replayed.
@@ -59,6 +66,9 @@ type streamOwner struct {
 	connectedAt time.Time
 	progress    *reconnectProgress
 	receipt     LaunchReceipt
+	// engine is the active attachment's predictor; the reader records keys
+	// with it as they are typed, before they wait for transport credit.
+	engine atomic.Pointer[predict.Engine]
 }
 
 func executeRecoveringStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), prepared *preparedDisplay, recovery StreamRecovery) error {
@@ -80,7 +90,7 @@ func executeRecoveringStream(plan LaunchPlan, intent LaunchIntent, home string, 
 		}
 		prepared = &preparedDisplay{facts: facts, input: early}
 	}
-	owner := &streamOwner{ctx: ctx, cancel: cancel, input: make(chan streamInput, 4), done: make(chan struct{}), changed: make(chan struct{}), active: true}
+	owner := &streamOwner{ctx: ctx, cancel: cancel, input: make(chan streamInput, inputQueue), done: make(chan struct{}), changed: make(chan struct{}), active: true}
 	go owner.readInput(prepared.input)
 	defer func() { cancel(); <-owner.done; owner.clearProgress() }()
 	base := time.Second
@@ -191,6 +201,7 @@ func (o *streamOwner) readInput(early []byte) {
 	keys := terminalinput.Decoder{}
 	buffer := make([]byte, terminalstream.Chunk)
 	lastEpoch := uint64(0)
+	var lastKey time.Time
 	for o.ctx.Err() == nil {
 		var raw []byte
 		flushed := false
@@ -238,7 +249,7 @@ func (o *streamOwner) readInput(early []byte) {
 		if !active || len(data) == 0 {
 			continue
 		}
-		packet := streamInput{epoch: epoch, data: append([]byte(nil), data...)}
+		packet := streamInput{epoch: epoch, data: append([]byte(nil), data...), stamp: stampInput(o.engine.Load(), data, &lastKey)}
 		select {
 		case <-o.ctx.Done():
 			return
@@ -248,7 +259,7 @@ func (o *streamOwner) readInput(early []byte) {
 	}
 }
 
-func (o *streamOwner) pumpInput(ctx context.Context, window *terminalstream.CreditWindow, send func([]byte) error) error {
+func (o *streamOwner) pumpInput(ctx context.Context, window *terminalstream.CreditWindow, send func([]byte, inputStamp) error) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -265,9 +276,11 @@ func (o *streamOwner) pumpInput(ctx context.Context, window *terminalstream.Cred
 				if n == 0 {
 					return ctx.Err()
 				}
-				if err := send(packet.data[:n]); err != nil {
+				if err := send(packet.data[:n], packet.stamp); err != nil {
 					return err
 				}
+				packet.stamp.seq += uint64(n)
+				packet.stamp.gap = 0
 				packet.data = packet.data[n:]
 			}
 		}

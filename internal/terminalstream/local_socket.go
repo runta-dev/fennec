@@ -56,6 +56,11 @@ func OfferLocal(ctx context.Context, transport *Transport, directory string, ope
 		opening.Term = hello.Term
 		opening.Display = hello.Display
 		opening.HookBridge = hello.HookBridge
+		for _, feature := range hello.Features {
+			if feature == CapabilityEchoAck || feature == CapabilityInputCadence {
+				opening.Features = append(opening.Features, feature)
+			}
+		}
 		if opening.HookBridge {
 			if err := transport.Ready(operation); err != nil {
 				return

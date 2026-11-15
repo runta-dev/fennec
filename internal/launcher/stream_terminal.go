@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -101,12 +102,27 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		defer writeMu.Unlock()
 		return encoder.Encode(frame)
 	}
+	columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil {
+		columns, rows = 120, 40
+	}
+	interactive := term.IsTerminal(int(os.Stdin.Fd()))
+	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: intent.RequestID}
+	defer titles.Flush()
+	engine := newPredictor(titles, intent.Agent, home, rows, columns, interactive && term.IsTerminal(int(os.Stdout.Fd())))
+	defer recordPredictionStats(engine)
+	defer engine.Close()
+	if owner != nil {
+		owner.engine.Store(engine)
+		defer owner.engine.CompareAndSwap(engine, nil)
+	}
 	interaction := terminalstream.InteractionEncoder{ImagePaste: true}
-	var imagePaste atomic.Bool
+	var imagePaste, cadence atomic.Bool
 	receiptReady := make(chan struct{})
 	pasteNotice := func() { fmt.Fprint(os.Stderr, "\a\r\nCould not paste image, try copying it again\r\n") }
-	sendInput := func(data []byte) error {
-		for _, frame := range interaction.Frames(data) {
+	sendInput := func(data []byte, stamp inputStamp) error {
+		frames := framesWithSequence(interaction.Frames(data), stamp, cadence.Load(), bytes.Contains(data, []byte("\x1b[200~")))
+		for _, frame := range frames {
 			if frame.Type == "clipboard" {
 				select {
 				case <-receiptReady:
@@ -114,7 +130,8 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 					return ctx.Err()
 				}
 				if imagePaste.Load() {
-					if err := sendClipboardImage(ctx, frame.Data, window, send, readClipboardImage, pasteNotice); err != nil {
+					rejected := func() { engine.RejectImage(); pasteNotice() }
+					if err := sendClipboardImage(ctx, frame.Data, frame.Seq, window, send, readClipboardImage, rejected, engine.RejectImage); err != nil {
 						return err
 					}
 					continue
@@ -127,11 +144,6 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 		return nil
 	}
-	columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
-	if err != nil {
-		columns, rows = 120, 40
-	}
-	interactive := term.IsTerminal(int(os.Stdin.Fd()))
 	if interactive && owner == nil {
 		state, err := term.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
@@ -160,7 +172,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		return err
 	}
 	defer hooks.close()
-	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, HookBridge: hooks != nil}); err != nil {
+	if err := send(terminalstream.Frame{Type: "connect", Rows: rows, Columns: columns, Term: os.Getenv("TERM"), Display: display, HookBridge: hooks != nil, Features: streamFeatures(engine)}); err != nil {
 		if owner != nil && owner.receipt.SessionID != "" {
 			return StreamLostError{owner.receipt}
 		}
@@ -180,6 +192,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 		buffer := make([]byte, terminalstream.Chunk)
 		keys := terminalinput.Decoder{}
+		var lastKey time.Time
 		for len(earlyInput) > 0 {
 			count := window.Take(min(len(earlyInput), terminalstream.Chunk))
 			if count == 0 {
@@ -188,7 +201,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			data, detach := keys.Feed(earlyInput[:count])
 			earlyInput = earlyInput[count:]
 			if len(data) > 0 {
-				if err := sendInput(data); err != nil {
+				if err := sendInput(data, stampInput(engine, data, &lastKey)); err != nil {
 					cancel()
 					return
 				}
@@ -206,7 +219,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			if poll[0].Revents == 0 {
 				if pending := keys.Flush(); len(pending) > 0 {
-					if err := sendInput(pending); err != nil {
+					if err := sendInput(pending, stampInput(engine, pending, &lastKey)); err != nil {
 						cancel()
 						return
 					}
@@ -247,7 +260,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				detached.Store(true)
 				launchprofile.Record("stream.detach_input", time.Now(), 0)
 			}
-			if err := sendInput(data); err != nil {
+			if err := sendInput(data, stampInput(engine, data, &lastKey)); err != nil {
 				cancel()
 				return
 			}
@@ -268,6 +281,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			case <-resize:
 				columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
 				if err == nil {
+					engine.Resize(rows, columns)
 					send(terminalstream.Frame{Type: "resize", Rows: rows, Columns: columns})
 				}
 			}
@@ -278,8 +292,6 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	scanner.Buffer(make([]byte, 4096), 262144)
 	confirmed := false
 	hookSlots := make(chan struct{}, 16)
-	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: intent.RequestID}
-	defer titles.Flush()
 	var receipt LaunchReceipt
 	connection.SetReadDeadline(time.Now().Add(90 * time.Second))
 	if owner != nil && plan.Resume {
@@ -333,8 +345,14 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			confirmed = true
 			for _, capability := range frame.Capabilities {
-				if capability == terminalstream.CapabilityImagePaste {
+				switch capability {
+				case terminalstream.CapabilityImagePaste:
 					imagePaste.Store(true)
+					engine.SetImagePaste(true)
+				case terminalstream.CapabilityEchoAck:
+					engine.SetEchoAck(true)
+				case terminalstream.CapabilityInputCadence:
+					cadence.Store(true)
 				}
 			}
 			close(receiptReady)
@@ -362,7 +380,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				owner.usable()
 				connection.SetReadDeadline(time.Time{})
 			}
-			if _, err := titles.Write(frame.Data); err != nil {
+			if err := engine.Server(frame.Data); err != nil {
 				return err
 			}
 			if len(frame.Data) > 0 {
@@ -370,7 +388,10 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 					connection.SetReadDeadline(time.Now().Add(2 * time.Second))
 				}
 			}
+		case "echo_ack":
+			engine.Ack(frame.Seq, frame.Code == 1)
 		case "paste_error":
+			engine.RejectImage()
 			if frame.Message == "Start a new Kimi session to enable image paste" {
 				fmt.Fprint(os.Stderr, "\a\r\nStart a new Kimi session to enable image paste\r\n")
 			} else {

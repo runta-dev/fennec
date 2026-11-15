@@ -32,6 +32,27 @@ func ValidatePNG(data []byte) error {
 	return nil
 }
 
+// HasImage reports whether the pasteboard holds an image, checking only its
+// types. It never reads or encodes the image.
+func HasImage(ctx context.Context) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	command := exec.CommandContext(ctx, filepath.Join(filepath.Dir(executable), "fennec-clipboard"), "--probe")
+	command.Stdout = io.Discard
+	return command.Run() == nil
+}
+
 // ReadImage returns nil when the pasteboard has no image. The signed native
 // helper only adapts AppKit's pasteboard and TIFF representation to PNG; it
 // never modifies the clipboard or writes an image to the Mac's filesystem.
