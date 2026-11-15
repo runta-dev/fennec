@@ -327,7 +327,11 @@ main{min-height:0}
 .agent-coming-soon .agent-name{color:var(--muted)}
 .agent-coming-soon .detected{font-size:11px}
 /* Working is activity, not a warning; reserve amber/red for attention/errors. */
-.session-agent-identity>.session-state-dot[data-state=working]{background:#5b8fc9}
+.session-agent-identity>.session-state-dot[data-state=working]{background:#4f9a65;animation:session-working-breathe 2s ease-in-out infinite}
+:root[data-theme=dark] .session-agent-identity>.session-state-dot[data-state=working]{background:#6dbe84}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .session-agent-identity>.session-state-dot[data-state=working]{background:#6dbe84}}
+@keyframes session-working-breathe{0%,100%{opacity:.4}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.session-agent-identity>.session-state-dot[data-state=working]{animation:none;opacity:1}}
 
 #preferences .preference-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
 #preferences .license-notices .disclosure-arrow{order:2;margin-left:auto}
