@@ -446,7 +446,7 @@ main{min-height:0}
 .runtime-net-row .net-dir{color:var(--muted);font-size:10.5px;font-weight:500}
 .runtime-net-row strong{font-weight:500;color:var(--text);white-space:nowrap}
 .runtime-disk-row{margin-top:12px}
-.runtime-disk-track{height:3px;margin-top:7px;background:#f38d2524;border-radius:2px;overflow:hidden}
+.runtime-disk-track{height:1.4px;margin-top:7px;background:#f38d2524;border-radius:2px;overflow:hidden}
 .runtime-disk-track>div{height:100%;background:var(--orange);border-radius:inherit}
 
 /* Full-screen Sign-in Splash & ~5s Peeking-Mascot Value Onboarding. */
