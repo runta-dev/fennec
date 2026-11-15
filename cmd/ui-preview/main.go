@@ -111,7 +111,7 @@ func main() {
 			http.Error(w, "UI source unavailable", 500)
 			return
 		}
-		html := strings.Replace(string(raw), "<head>", `<head><script src="/preview-bridge.js"></script><style>html{background:#dedfe4;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center}body{width:440px;max-width:calc(100vw - 40px);height:390px;border:1px solid #bdbec5;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #0002}</style>`, 1)
+		html := strings.Replace(string(raw), "<head>", `<head><script src="/preview-bridge.js"></script><style>html{background:#dedfe4;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center}body{width:440px;max-width:calc(100vw - 40px);height:430px;border:1px solid #bdbec5;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px #0002}</style>`, 1)
 		html = strings.Replace(html, "script-src 'self';", "script-src 'self'; connect-src 'self';", 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, html)
