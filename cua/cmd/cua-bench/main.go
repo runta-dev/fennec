@@ -221,7 +221,6 @@ func golden(ctx context.Context, args []string) error {
 	prep := []string{
 		"defaults write -g NSQuitAlwaysKeepsWindows -bool false",
 		"defaults write com.apple.loginwindow TALLogoutSavesState -bool false",
-		"sudo softwareupdate --schedule off >/dev/null 2>&1 || true",
 		"osascript -e 'tell application \"Terminal\" to quit' || true",
 	}
 	for _, c := range prep {
@@ -526,6 +525,25 @@ const setupAssistantSeen = `v=$(sw_vers -productVersion); b=$(sw_vers -buildVers
 	`DidSeeApplePaySetup DidSeeiCloudLoginForStorageServices DidSeeAccessibility DidSeeIntelligence DidSeeSyncSetup ` +
 	`DidSeeSyncSetup2 DidSeeActivationLock DidSeeTermsOfAddress DidSeeWallpaper DidSeeAutoUpdate; do defaults write $d $k -bool true; done`
 
+// softwareUpdateOff keeps macOS from finding updates. An update check that
+// finds one opens Setup Assistant's Update Mac Automatically pane (then its
+// Apple Account pane) over the desktop at a random point of a trial; it did
+// in about a third of all trials on 2026-11-15, for every backend. The VM
+// reaches the internet, and on macOS 26 neither softwareupdate --schedule
+// off nor the SoftwareUpdate preferences turn checking off (the tool still
+// reports it on), so the update servers are blocked in /etc/hosts, which
+// no agent needs; the preferences are written as well. The last command
+// fails the step unless the catalog server is unreachable.
+const softwareUpdateOff = `p=/Library/Preferences/com.apple.SoftwareUpdate; ` +
+	`for k in AutomaticCheckEnabled AutomaticDownload AutomaticallyInstallMacOSUpdates CriticalUpdateInstall ConfigDataInstall; ` +
+	`do sudo -n defaults write $p $k -bool false || exit 1; done; ` +
+	`sudo -n defaults delete $p FirstOfferDateDictionary 2>/dev/null; ` +
+	`sudo -n defaults write /Library/Preferences/com.apple.commerce AutoUpdate -bool false || exit 1; ` +
+	`for h in swscan.apple.com swdist.apple.com swcdn.apple.com mesu.apple.com gdmf.apple.com updates.cdn-apple.com; ` +
+	`do grep -q " $h$" /etc/hosts || echo "0.0.0.0 $h" | sudo -n tee -a /etc/hosts >/dev/null || exit 1; done; ` +
+	`sudo -n dscacheutil -flushcache; sudo -n killall -HUP mDNSResponder 2>/dev/null; ` +
+	`! curl -s -m 8 -o /dev/null https://swscan.apple.com/`
+
 // refreshFennec replaces only the fennec-cua binary in an existing golden
 // image, keeping the desktop state and the other backends. TCC grants and
 // capture approvals are keyed by path, which does not change; they are
@@ -579,6 +597,7 @@ func quietDesktop(ctx context.Context, s *vm.Session) error {
 		// login and take the focus mid-trial, from whichever backend runs:
 		// mark every pane seen for this build and quit any that is open.
 		setupAssistantSeen,
+		softwareUpdateOff,
 		`killall "Setup Assistant" 2>/dev/null; true`,
 		`plutil -replace PersistentApps -json "[]" "$HOME/Library/Group Containers/group.com.apple.loginwindow.persistent-apps/persistantApps" || true`,
 		`defaults -currentHost write com.apple.loginwindow TALAppsToRelaunchAtLogin -array`,

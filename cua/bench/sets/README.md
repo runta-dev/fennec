@@ -30,7 +30,7 @@ go run ./cmd/cua-bench select                                       # redraw hol
 
 ## Feasibility
 
-`feasibility.tsv` classifies all 231 tasks for our golden image (macOS 26.6, `ghcr.io/cirruslabs/macos-tahoe-base`, offline: the VM reaches nothing but the model relay). Upstream runs every task from an author-made AWS snapshot (`snapshot_used_*` or `snapshot_usedApps_*`) whose files and app state are not published; their pre_commands often copy from `~/Benchmark_Backup` in that snapshot.
+`feasibility.tsv` classifies all 231 tasks for our golden image (macOS 26.6, `ghcr.io/cirruslabs/macos-tahoe-base`, the VM reaches the internet through tart's shared network, except Apple's software update servers, which the golden image blocks; `internet` tasks stay out because live pages and services change). Upstream runs every task from an author-made AWS snapshot (`snapshot_used_*` or `snapshot_usedApps_*`) whose files and app state are not published; their pre_commands often copy from `~/Benchmark_Backup` in that snapshot.
 
 | Class | Meaning |
 |---|---|
