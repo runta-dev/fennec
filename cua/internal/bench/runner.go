@@ -20,11 +20,15 @@ import (
 
 // Where the golden image keeps the backends.
 const (
-	GuestBin     = HomeDir + "/bench/bin"
-	GuestFennec  = GuestBin + "/fennec-cua"
-	GuestDriver  = GuestBin + "/cua-driver"
-	GuestShuttle = HomeDir + "/Applications/Loomhand/Shuttle.app"
-	ShuttleID    = "io.github.loomhand.shuttle"
+	GuestBin    = HomeDir + "/bench/bin"
+	GuestFennec = GuestBin + "/fennec-cua"
+	// SetupAssistantGuardFlag arms the golden image's login agent that
+	// quits Setup Assistant; /tmp is emptied at every boot, so the agent
+	// stays idle while warm images are built.
+	SetupAssistantGuardFlag = "/tmp/bench-no-setup-assistant"
+	GuestDriver             = GuestBin + "/cua-driver"
+	GuestShuttle            = HomeDir + "/Applications/Loomhand/Shuttle.app"
+	ShuttleID               = "io.github.loomhand.shuttle"
 )
 
 // Backend names.
@@ -236,6 +240,12 @@ func RunTrial(ctx context.Context, c TrialConfig, attempt int) (res TrialResult)
 		res.Start = "cold"
 	}
 	res.BootMs = time.Since(start).Milliseconds()
+	// Arm the golden image's Setup Assistant guard for this trial only:
+	// at a first login (a warm image with a new machine identity) Setup
+	// Assistant is part of the login, and quitting it ends the session.
+	if out, ok := guestShell(ctx, s, "touch "+SetupAssistantGuardFlag, 20*time.Second); !ok {
+		return fail("arm the Setup Assistant guard: %s", out)
+	}
 
 	// macOSWorld's protocol: the preparation command (up to three tries),
 	// the before-action delay, the agent with the in-process event of a

@@ -230,7 +230,7 @@ func (s *Session) GrantTCC(ctx context.Context, client string) error {
 		fmt.Fprintf(&sql, "INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, flags) VALUES ('%s', '%s', %d, 2, 4, 1, 0);", service, strings.ReplaceAll(client, "'", "''"), typ)
 	}
 	db := "/Library/Application Support/com.apple.TCC/TCC.db"
-	if _, err := s.Output(ctx, "sudo sqlite3 "+Quote(db)+" "+Quote(sql.String())); err != nil {
+	if _, err := s.Output(ctx, "sudo sqlite3 -cmd '.timeout 30000' "+Quote(db)+" "+Quote(sql.String())); err != nil {
 		return err
 	}
 	_, err := s.Output(ctx, "sudo killall tccd || true")
@@ -290,7 +290,7 @@ func (s *Session) GrantUserTCC(ctx context.Context, service, client, target stri
 	sql := fmt.Sprintf("INSERT OR REPLACE INTO access (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier_type, indirect_object_identifier, flags) VALUES (%s, %s, %d, 2, 3, 1, 0, %s, 0);",
 		q(service), q(client), typ, q(target))
 	db := `"$HOME/Library/Application Support/com.apple.TCC/TCC.db"`
-	if _, err := s.Output(ctx, "sudo sqlite3 "+db+" "+Quote(sql)); err != nil {
+	if _, err := s.Output(ctx, "sudo sqlite3 -cmd '.timeout 30000' "+db+" "+Quote(sql)); err != nil {
 		return err
 	}
 	_, err := s.Output(ctx, "killall tccd || true")

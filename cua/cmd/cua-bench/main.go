@@ -544,6 +544,24 @@ const softwareUpdateOff = `p=/Library/Preferences/com.apple.SoftwareUpdate; ` +
 	`sudo -n dscacheutil -flushcache; sudo -n killall -HUP mDNSResponder 2>/dev/null; ` +
 	`! curl -s -m 8 -o /dev/null https://swscan.apple.com/`
 
+// noSetupAssistant installs a login agent that quits Setup Assistant
+// within a second whenever it starts. Its Update Mac Automatically pane
+// still opened mid-trial in 7 of 34 trials with the panes marked seen and
+// the update servers blocked; nothing a backend does asks for it, so the
+// image closes it for every backend alike. It matches the process name
+// (-x): matching the command line (-f) also matched the agent's own shell. The agent starts at the next
+// login, which the warm images are built from, but acts only once a trial
+// has armed it (bench.SetupAssistantGuardFlag): at the first login of a warm
+// image with a new machine identity, quitting Setup Assistant ends the
+// session.
+const noSetupAssistant = `f=/Library/LaunchAgents/dev.runta.bench.no-setup-assistant.plist; ` +
+	`printf '%s' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` +
+	`<plist version="1.0"><dict><key>Label</key><string>dev.runta.bench.no-setup-assistant</string>` +
+	`<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string>` +
+	`<string>while :; do [ -e ` + bench.SetupAssistantGuardFlag + ` ] &amp;&amp; /usr/bin/pkill -x "Setup Assistant"; sleep 1; done</string></array>` +
+	`<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ProcessType</key><string>Background</string></dict></plist>' ` +
+	`| sudo -n tee $f >/dev/null && sudo -n chown root:wheel $f && sudo -n chmod 644 $f && plutil -lint $f >/dev/null`
+
 // refreshFennec replaces only the fennec-cua binary in an existing golden
 // image, keeping the desktop state and the other backends. TCC grants and
 // capture approvals are keyed by path, which does not change; they are
@@ -598,6 +616,7 @@ func quietDesktop(ctx context.Context, s *vm.Session) error {
 		// mark every pane seen for this build and quit any that is open.
 		setupAssistantSeen,
 		softwareUpdateOff,
+		noSetupAssistant,
 		`killall "Setup Assistant" 2>/dev/null; true`,
 		`plutil -replace PersistentApps -json "[]" "$HOME/Library/Group Containers/group.com.apple.loginwindow.persistent-apps/persistantApps" || true`,
 		`defaults -currentHost write com.apple.loginwindow TALAppsToRelaunchAtLogin -array`,
