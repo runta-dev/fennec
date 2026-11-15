@@ -239,8 +239,18 @@ func run() (int, error) {
 		return runtime.Attach(ctx, terminal.Address, request.ID, os.Stdin, os.Stdout, os.Stderr)
 	}
 	if serving {
+		streamInput, err := streamPipe(os.Stdin)
+		if err != nil {
+			return 1, err
+		}
+		defer streamInput.Close()
+		streamOutput, err := streamPipe(os.Stdout)
+		if err != nil {
+			return 1, err
+		}
+		defer streamOutput.Close()
 		cloudruntime.StartMetricsSampler(ctx)
-		var input io.Reader = os.Stdin
+		var input io.Reader = streamInput
 		if os.Args[1] == "serve-initial" {
 			data, err := base64.StdEncoding.DecodeString(os.Args[2])
 			if err != nil || len(data) > 262144 {
@@ -250,13 +260,13 @@ func run() (int, error) {
 			if json.Unmarshal(data, &frame) != nil || frame.Type != "launch" || frame.Launch == nil || frame.ID != frame.Launch.ID || frame.Launch.Validate() != nil {
 				return 1, fmt.Errorf("invalid initial launch")
 			}
-			input = prefixedInput{Reader: io.MultiReader(bytes.NewReader(append(data, '\n')), os.Stdin), Closer: os.Stdin}
+			input = prefixedInput{Reader: io.MultiReader(bytes.NewReader(append(data, '\n')), streamInput), Closer: streamInput}
 		}
 		executable, err := os.Executable()
 		if err != nil {
 			return 1, err
 		}
-		return 0, terminalstream.ServeWithSockets(ctx, input, os.Stdout, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+		return 0, terminalstream.ServeWithSockets(ctx, input, streamOutput, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			terminal, err := runtime.Launch(ctx, request)
 			if err != nil {
 				return terminal, nil, err

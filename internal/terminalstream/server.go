@@ -80,8 +80,13 @@ func ServeWithSockets(ctx context.Context, input io.Reader, output io.Writer, st
 }
 
 func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter, stopSession Stopper, operate Operator, dial SocketDialer, attachers ...Attacher) error {
+	return serveWithIdleTimeout(ctx, input, output, start, stopSession, operate, dial, time.Minute, attachers...)
+}
+
+func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer, start Starter, stopSession Stopper, operate Operator, dial SocketDialer, idleTimeout time.Duration, attachers ...Attacher) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	touch := serverLease(ctx, cancel, idleTimeout)
 	if closer, ok := input.(io.Closer); ok {
 		stop := context.AfterFunc(ctx, func() { closer.Close() })
 		defer stop()
@@ -145,6 +150,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		touch()
 		if frame.Type == "ping" {
 			if err := emit(Frame{Type: "pong", ID: frame.ID}); err != nil {
 				return err
@@ -273,8 +279,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					emit(Frame{Type: "error", ID: frame.ID, Message: "terminal attachment failed; reconnect to existing session"})
 					return
 				}
-				stop := context.AfterFunc(session.ctx, func() { session.window.close(); syscall.Kill(-command.Process.Pid, syscall.SIGHUP) })
-				defer stop()
+				finishAttachment := session.watchAttachment(command)
 				inputDone := make(chan struct{})
 				go func() { defer close(inputDone); session.pumpInput(frame.ID, emit) }()
 				probe := DisplayResponder{Facts: frame.Display}
@@ -332,6 +337,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 					}
 				}
 				waitErr := command.Wait()
+				finishAttachment()
 				code := 0
 				if waitErr != nil {
 					code = 1
@@ -344,10 +350,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				}
 				session.cancel()
 				<-inputDone
-				session.mu.Lock()
-				session.closed = true
-				file.Close()
-				session.mu.Unlock()
+				session.closePTY()
 				emit(Frame{Type: "exit", ID: frame.ID, Code: code})
 			}(frame, session)
 			continue
@@ -415,6 +418,10 @@ func (session *serverSession) read(data []byte) (int, error) {
 			continue
 		}
 		session.mu.Lock()
+		if session.closed {
+			session.mu.Unlock()
+			return 0, os.ErrClosed
+		}
 		length, err := unix.Read(session.fd, data)
 		session.mu.Unlock()
 		if length < 0 {
@@ -513,6 +520,10 @@ func (session *serverSession) write(data []byte) error {
 			continue
 		}
 		session.mu.Lock()
+		if session.closed {
+			session.mu.Unlock()
+			return os.ErrClosed
+		}
 		written, err := unix.Write(session.fd, data)
 		session.mu.Unlock()
 		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
