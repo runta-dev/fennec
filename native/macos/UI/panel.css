@@ -94,6 +94,7 @@ header{padding:0 14px;height:44px;min-height:44px}.brand{font-size:15px}.header-
 
 /* A separate suffix preserves exact translation keys in every language. */
 .loading-shimmer::after{content:"..."}
+.detected.loading-shimmer::after{content:none}
 .loading-shimmer{color:var(--muted);background-image:linear-gradient(105deg,var(--muted) 30%,var(--text) 48%,var(--muted) 66%);background-size:240% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:loading-text-shimmer 1.8s ease-in-out infinite}
 @keyframes loading-text-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
 @media(prefers-reduced-motion:reduce){.loading-shimmer{animation:none;background:none;-webkit-text-fill-color:currentColor}}

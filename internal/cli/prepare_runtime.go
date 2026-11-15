@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	hostruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +39,13 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	if err != nil {
 		return err
 	}
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	artifacts := filepath.Join(filepath.Dir(executable), "..", "Resources")
 	magpie := newDesktopSettings(home).value.Magpie
+	go setup.PrewarmNativeEnvironment(ctx)
 	discoveredInstalled := map[string]bool{}
 	for _, item := range agent.PanelCatalog(agent.Discover()) {
 		if item.Cloud && item.Installed {
@@ -70,7 +77,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			go func(i int, version setup.Agent) {
 				defer workers.Done()
 				if magpie && !agentcmd.NativeOnly(version.ID) {
-					localRoutes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{version})[0]
+					localRoutes[i] = setup.ConfiguredAgentRoutes(home, []setup.Agent{version})[0]
 					if localRoutes[i].Problem == "local_gateway_not_found" {
 						localRoutes[i].Problem = "model_selection_required"
 					}
@@ -86,6 +93,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	env := runta.ActiveEnvironment(home)
 	lifecycleStore := cloudstate.NewScoped(home, env.Key())
 	client := runta.NewClient(home, token)
+	if hostruntime.GOOS == "darwin" && len(retain) == 1 {
+		client.RetainSSHHome = home
+	}
 	client.SharedAllowed = lifecycleStore.Check
 	client.CreationGeneration = lifecycleStore.Generation
 	emit := func(stage, id, status string) {
@@ -99,10 +109,12 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		_ = json.Unmarshal(data, &hint)
 	}
 	var runtime runta.Runtime
+	var inputs preparationInputs
+	inputsReady := make(chan struct{})
 	connectDone := launchprofile.Begin("prepare.connect")
-	connection, err := client.ConnectResolved(ctx, hint.RuntimeID, filepath.Join(home, ".config", "fennec", "cloud"), func(ctx context.Context) (string, error) {
+	connection, err := client.ConnectResolved(ctx, hint.RuntimeID, filepath.Join(home, ".config", "fennec", "cloud"), func(resolveCtx context.Context) (string, error) {
 		var err error
-		runtime, err = client.EnsureShared(ctx)
+		runtime, err = client.EnsureShared(resolveCtx)
 		if err != nil {
 			return "", err
 		}
@@ -111,17 +123,27 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 				return "", err
 			}
 		}
+		go func(owner, id string) {
+			defer close(inputsReady)
+			select {
+			case <-ctx.Done():
+				inputs.err = ctx.Err()
+				return
+			case <-localReady:
+			}
+			inputs = gatherPreparationInputs(ctx, home, token, owner, id, artifacts, magpie, ids, versions, localRoutes)
+		}(runtime.Owner, runtime.ID)
 		switch runtime.Status {
 		case "shutdown", "stopped":
-			err = client.Start(ctx, runtime.ID)
+			err = client.Start(resolveCtx, runtime.ID)
 		case "paused", "suspended":
-			err = client.Resume(ctx, runtime.ID)
+			err = client.Resume(resolveCtx, runtime.ID)
 		}
 		if err != nil {
 			return "", err
 		}
 		if runtime.Status != "running" || runtime.Degraded || !runtime.SSHEnabled {
-			err = client.WaitReady(ctx, runtime.ID, func(r runta.Runtime) { emit("starting", r.ID, r.Status) })
+			err = client.WaitReady(resolveCtx, runtime.ID, func(r runta.Runtime) { emit("starting", r.ID, r.Status) })
 		}
 		if err != nil {
 			return "", err
@@ -150,97 +172,10 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	// The local connector needs authenticated runtime SSH, not agent or
 	// model readiness. Publish this independently so model setup failures
 	// cannot prevent the user's computer from reconnecting.
-	select {
-	case <-localReady:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	// EnsureShared already authenticated and matched this owner against /v2/me.
-	routes := localRoutes
-	var plugins []setup.ModelPlugin
-	sourceIDs := ids
-	{
-		cloudAccounts := setup.NativeCloudPreferences(filepath.Join(home, ".config/fennec"), runtime.Owner, runtime.ID)
-		sourceIDs = nil
-		for _, id := range ids {
-			if !cloudAccounts[id] || (magpie && !agentcmd.NativeOnly(id)) {
-				sourceIDs = append(sourceIDs, id)
-			}
-		}
-	}
-	gatherDone := launchprofile.Begin("prepare.native_gather")
-	nativeRequest, err := setup.GatherNativeAccounts(ctx, home, sourceIDs, magpie)
-	gatherDone()
-	nativeRequest.Agents = ids
-
-	if err != nil {
-		return err
-	}
-	if magpie {
-		routes, err = setup.ApplyModelPreferences(filepath.Join(home, ".config", "fennec"), runtime.Owner, localRoutes)
-		if err != nil {
-			return err
-		}
-		plugins, err = setup.DesiredModelPlugins(home)
-	}
-	if err != nil {
-		return err
-	}
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	artifacts := filepath.Join(filepath.Dir(executable), "..", "Resources")
-	var fingerprint string
-	var fingerprintErr error
-	if magpie {
-		fingerprint, fingerprintErr = preparationFingerprint(home, token, runtime.ID, []any{versions, routes, plugins, nativeRequest}, artifacts)
-	} else {
-		fingerprint, fingerprintErr = scopedPreparationFingerprint(home, token, runtime.ID, []any{versions, nativeRequest}, artifacts, false)
-	}
-	cacheStatus := func(result string) {
-		data, _ := json.Marshal(map[string]string{"result": result})
-		_ = os.WriteFile(filepath.Join(home, ".config/fennec/preparation-cache-status.json"), data, 0600)
-	}
-	cacheStatus("inputs_changed_or_no_checkpoint")
-	if fingerprintErr == nil {
-		if checkpoint, ok := readPreparationCheckpoint(home, fingerprint); ok {
-			check, cancel := context.WithTimeout(ctx, 5*time.Second)
-			healthDone := launchprofile.Begin("prepare.health")
-			var err error
-			if retained && retain[0].Terminal != nil {
-				var transport *terminalstream.Transport
-				transport, err = terminalstream.StartSSHContext(check, connection, checkpointTerminalCommandForMarker(fingerprint, ids, "prepared-runtime", magpie))
-				if err == nil {
-					err = transport.Ready(check)
-				}
-				if err == nil && !retain[0].Terminal(runtime.ID, transport) {
-					err = fmt.Errorf("prepared terminal handoff no longer valid")
-				}
-				if err != nil && transport != nil {
-					transport.Close()
-				}
-			} else {
-				err = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(fingerprint, ids, "prepared-runtime", magpie))
-			}
-			healthDone()
-			cancel()
-			if err == nil {
-				cacheStatus("hit")
-				json.NewEncoder(output).Encode(map[string]string{"type": "connector_ready", "runtime_id": runtime.ID})
-				for _, event := range checkpoint.Events {
-					json.NewEncoder(output).Encode(event)
-				}
-				return nil
-			}
-			cacheStatus("remote_health_failed")
-		}
-	} else {
-		cacheStatus("fingerprint_failed")
-	}
-	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
+	json.NewEncoder(output).Encode(map[string]string{"type": "connector_ready", "runtime_id": runtime.ID})
 	var resident *terminalstream.Transport
 	startResident := func(ctx context.Context, command string) error {
+		defer launchprofile.Begin("prepare.resident")()
 		transport, err := terminalstream.StartSSHContext(ctx, connection, command)
 		if err == nil {
 			err = transport.Ready(ctx)
@@ -257,13 +192,135 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		resident = transport
 		return nil
 	}
+	// Resume early only when this build's installation was already confirmed.
+	// Protocol compatibility alone cannot prove the running service includes an
+	// updated configuration reader or new operation. Starting the old executable
+	// before replacing it leaves the broker bound to old code for this lifetime.
+	// Unchanged daemon restarts still resume before account synchronization.
+	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
+	residentChecked := false
+	residentFingerprint := ""
+	if retained && retain[0].Terminal != nil && reusableEarlyResident(home, installation, installationErr) {
+		command := fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion)
+		checked := false
+		select {
+		case <-inputsReady:
+			if inputs.err == nil && inputs.fingerprintErr == nil {
+				if _, ok := readPreparationCheckpoint(home, inputs.fingerprint); ok {
+					command = checkpointTerminalCommandForMarker(inputs.fingerprint, ids, "prepared-runtime", magpie)
+					checked = true
+				}
+			}
+		default:
+		}
+		// Local credential gathering can finish just after this point. Check the
+		// last complete remote snapshot in the same exec as resident startup,
+		// then reuse that proof only if the fresh inputs match it below.
+		if !checked {
+			if previous, ok := loadPreparationCheckpoint(home); ok {
+				command = checkpointTerminalCommandForMarker(previous.Fingerprint, ids, "prepared-runtime", magpie)
+				residentFingerprint = previous.Fingerprint
+				checked = true
+			}
+		} else {
+			residentFingerprint = inputs.fingerprint
+		}
+		check, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := startResident(check, command)
+		cancel()
+		residentChecked = err == nil && checked
+		if err != nil && checked {
+			check, cancel = context.WithTimeout(ctx, 5*time.Second)
+			err = startResident(check, fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion))
+			cancel()
+		}
+		if err == nil {
+			json.NewEncoder(output).Encode(map[string]string{"type": "shared_services_ready", "runtime_id": runtime.ID})
+		}
+	}
+	select {
+	case <-inputsReady:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if inputs.err != nil {
+		return inputs.err
+	}
+	nativeRequest, routes, plugins := inputs.native, inputs.routes, inputs.plugins
+	gatewayFingerprint := gatewayPreparationFingerprint(token, runtime.ID)
+	fingerprint, fingerprintErr := inputs.fingerprint, inputs.fingerprintErr
+	cacheStatus := func(result string) {
+		data, _ := json.Marshal(map[string]any{"result": result, "changed_inputs": inputs.changedInputs, "previous_inputs_known": inputs.hasPreviousInputs})
+		_ = os.WriteFile(filepath.Join(home, ".config/fennec/preparation-cache-status.json"), data, 0600)
+	}
+	cacheStatus("inputs_changed_or_no_checkpoint")
+	healthCheck := func(ctx context.Context, fingerprint string, agents []string, marker string, magpie bool) error {
+		var transport preparationHealthTransport
+		if resident != nil {
+			transport = resident
+		}
+		return checkPreparedRuntime(ctx, transport, setup.PreparationHealth{Fingerprint: fingerprint, Agents: agents, Marker: marker, Magpie: magpie}, func(ctx context.Context, script string) error {
+			return setup.ExecPublicCheck(ctx, connection, script)
+		})
+	}
+	publishCheckpoint := func(checkpoint preparationCheckpoint) error {
+		script := strings.ReplaceAll(installationMarkerScript(checkpoint.Fingerprint), "prepared-installation", "prepared-runtime")
+		if err := setup.ExecPublicCheck(ctx, connection, script); err != nil {
+			return err
+		}
+		return savePreparationCheckpoint(home, checkpoint)
+	}
+	if fingerprintErr == nil {
+		if checkpoint, ok := readPreparationCheckpoint(home, fingerprint); ok {
+			check, cancel := context.WithTimeout(ctx, 5*time.Second)
+			healthDone := launchprofile.Begin("prepare.health")
+			var err error
+			if resident == nil && retained && retain[0].Terminal != nil {
+				var transport *terminalstream.Transport
+				transport, err = terminalstream.StartSSHContext(check, connection, checkpointTerminalCommandForMarker(fingerprint, ids, "prepared-runtime", magpie))
+				if err == nil {
+					err = transport.Ready(check)
+				}
+				if err == nil && !retain[0].Terminal(runtime.ID, transport) {
+					err = fmt.Errorf("prepared terminal handoff no longer valid")
+				}
+				if err != nil && transport != nil {
+					transport.Close()
+				}
+			} else if !residentChecked || residentFingerprint != fingerprint {
+				err = healthCheck(check, fingerprint, ids, "prepared-runtime", magpie)
+			}
+			healthDone()
+			cancel()
+			if err == nil {
+				cacheStatus("hit")
+				// Migrate an older checkpoint only after its complete fingerprint
+				// and live remote health have both been verified.
+				if checkpoint.ConfigurationFingerprint == "" || (magpie && checkpoint.GatewayFingerprint == "") {
+					checkpoint.ConfigurationFingerprint = inputs.configurationFingerprint
+					if magpie {
+						checkpoint.GatewayFingerprint = gatewayFingerprint
+					}
+					_ = savePreparationCheckpoint(home, checkpoint)
+				}
+				json.NewEncoder(output).Encode(map[string]string{"type": "connector_ready", "runtime_id": runtime.ID})
+				for _, event := range checkpoint.Events {
+					json.NewEncoder(output).Encode(event)
+				}
+				return nil
+			}
+			cacheStatus("remote_health_failed")
+		}
+	} else {
+		cacheStatus("fingerprint_failed")
+	}
 	installationReady := false
 	if installationErr == nil && installationCheckpointMatches(home, installation) {
 		check, cancel := context.WithTimeout(ctx, 5*time.Second)
-		if retained && retain[0].Terminal != nil {
+		if resident == nil && retained && retain[0].Terminal != nil {
 			installationReady = startResident(check, checkpointTerminalCommandForMarker(installation, nil, "prepared-installation", false)) == nil
 		} else {
-			installationReady = setup.ExecPublicCheck(check, connection, checkpointHealthScriptForMarker(installation, nil, "prepared-installation", false)) == nil
+			installationReady = healthCheck(check, installation, nil, "prepared-installation", false) == nil
 		}
 		cancel()
 	}
@@ -338,14 +395,52 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			return err
 		}
 	}
-	if magpie {
-		emit("installing_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
-			return err
+	if resident != nil {
+		// Ownership, host key, protocol, and service readiness are verified.
+		// Existing sessions retain their own configuration and may reattach now;
+		// new launches remain gated by the route results published below.
+		json.NewEncoder(output).Encode(map[string]string{"type": "shared_services_ready", "runtime_id": runtime.ID})
+	}
+	if fingerprintErr == nil && installationErr == nil {
+		// An executable update does not invalidate already-applied credentials.
+		// Core installation above still runs; independently check the previous
+		// configuration marker, all agent binaries, and the gateway before reuse.
+		checkpoint, ok := reusableConfigurationCheckpoint(ctx, home, inputs.configurationFingerprint, func(ctx context.Context, previous string) error {
+			return healthCheck(ctx, previous, ids, "prepared-runtime", magpie)
+		})
+		if ok {
+			checkpoint.Fingerprint = fingerprint
+			if magpie {
+				checkpoint.GatewayFingerprint = gatewayFingerprint
+			}
+			if err := publishCheckpoint(checkpoint); err != nil {
+				return err
+			}
+			if setup.ExecPublicCheck(ctx, connection, installationMarkerScript(installation)) == nil {
+				_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
+			}
+			cacheStatus("configuration_reused_after_installation")
+			for _, event := range checkpoint.Events {
+				json.NewEncoder(output).Encode(event)
+			}
+			return nil
 		}
-		emit("starting_magpie", runtime.ID, "")
-		if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
-			return err
+	}
+	if magpie {
+		gatewayReady := reusableGatewayCheckpoint(ctx, home, gatewayFingerprint, func(ctx context.Context, marker string) error {
+			return healthCheck(ctx, marker, nil, "prepared-runtime", true)
+		})
+		if !gatewayReady {
+			emit("installing_magpie", runtime.ID, "")
+			if err = setup.Exec(ctx, connection, setup.MagpieSetupScript); err != nil {
+				return err
+			}
+			emit("starting_magpie", runtime.ID, "")
+			if err = setup.Exec(ctx, connection, setup.MagpieServiceScript); err != nil {
+				return err
+			}
+		} else {
+			launchprofile.Record("prepare.gateway_reused", time.Now(), 0)
 		}
 	}
 	configureRoute := func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
@@ -389,6 +484,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		emit("failed", runtime.ID, err.Error())
 		return err
 	}
+	emit("configuring_routes", runtime.ID, "")
 	// A credential changed on both computers that neither side could confirm
 	// usable stays as it is on each; the next sync decides. Diagnostics only.
 	for _, name := range accounts.NativeDeferred {
@@ -422,6 +518,11 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			if accounts.NativeReady[route.Agent] {
 				st = "configured"
 			}
+			// Authentication alone does not prove the agent binary is present.
+			// Publish success early only for the verified existing inventory.
+			if st == "configured" && !accounts.AvailableAgents[route.Agent] {
+				continue
+			}
 			results = append(results, setup.RouteResult{Agent: route.Agent, Status: st})
 		}
 	}
@@ -448,7 +549,6 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			_ = writePublicJSON(installationCheckpointPath(home), map[string]string{"fingerprint": installation})
 		}
 	}
-	results = nil
 	err = prepareAgentsIndependently(ctx, versions, routes,
 		func(ctx context.Context, a setup.Agent) error {
 			if accounts.AvailableAgents[a.ID] {
@@ -477,7 +577,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 			return configureRoute(ctx, route)
 		},
 		func(one []setup.RouteResult) {
-			results = append(results, one...)
+			results = updatePreparedRoutes(results, one)
 			encodedResults, _ := json.Marshal(results)
 			json.NewEncoder(output).Encode(map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(encodedResults)})
 		})
@@ -537,7 +637,10 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		}
 	}
 	if cacheable {
-		checkpoint := preparationCheckpoint{Fingerprint: fingerprint}
+		checkpoint := preparationCheckpoint{Fingerprint: fingerprint, ConfigurationFingerprint: inputs.configurationFingerprint}
+		if magpie {
+			checkpoint.GatewayFingerprint = gatewayFingerprint
+		}
 		decoder := json.NewDecoder(bytes.NewReader(recorded.Bytes()))
 		for {
 			var event map[string]string
@@ -551,9 +654,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		encoded, _ := json.Marshal(results)
 		checkpoint.Events = append(checkpoint.Events, map[string]string{"type": "route_results", "runtime_id": runtime.ID, "results": string(encoded)}, map[string]string{"type": "runtime_progress", "stage": "agents_installed", "runtime_id": runtime.ID, "status": status})
 		// Publish only after complete preparation; a missing marker forces repair.
-		if setup.Exec(ctx, connection, "umask 077; mkdir -p \"$HOME/.config/fennec\"; printf '%s' '"+fingerprint+"' > \"$HOME/.config/fennec/prepared-runtime.tmp\" && mv \"$HOME/.config/fennec/prepared-runtime.tmp\" \"$HOME/.config/fennec/prepared-runtime\"") == nil {
-			_ = savePreparationCheckpoint(home, checkpoint)
-		}
+		_ = publishCheckpoint(checkpoint)
 	}
 	emit("agents_installed", runtime.ID, status)
 	return nil

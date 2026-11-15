@@ -77,6 +77,40 @@ func TestCopyVerificationFailureLeavesInstalledAppUntouched(t *testing.T) {
 		t.Fatal("existing installation changed")
 	}
 }
+
+func TestReplacementVerifiesPrivateCopyBeforeStoppingUI(t *testing.T) {
+	root := t.TempDir()
+	source, dest := filepath.Join(root, "image/Fennec.app"), filepath.Join(root, "Applications/Fennec.app")
+	bundle(t, source, "com.runta.fennec", "new")
+	bundle(t, dest, "com.runta.fennec", "old")
+	ops := operations()
+	verified := false
+	checks := 0
+	ops.Verify = func(_ context.Context, path string) error {
+		checks++
+		if filepath.Base(path) != "incoming.app" {
+			t.Errorf("unexpected rescan: %s", path)
+		}
+		verified = true
+		return nil
+	}
+	ops.StopUI = func(context.Context, string, string) (bool, error) {
+		if !verified {
+			t.Error("UI stopped before incoming signature verification")
+		}
+		return true, nil
+	}
+	ops.OpenUI = func(_ context.Context, path string) error {
+		if contents(t, path) != "new" {
+			t.Error("wrong bundle reopened")
+		}
+		return nil
+	}
+	result, err := Install(context.Background(), source, dest, true, ops)
+	if err != nil || !result.UIRestarted || checks != 1 {
+		t.Fatalf("result=%+v checks=%d err=%v", result, checks, err)
+	}
+}
 func TestInstallDoesNotReplaceUnrelatedApp(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "image/Fennec.app")

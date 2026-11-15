@@ -55,6 +55,7 @@ type serverSession struct {
 	mu                       sync.Mutex
 	inputWriteMu             sync.Mutex
 	file                     *os.File
+	fd                       int
 	conn                     net.Conn
 	closed                   bool
 	inputBudget              int
@@ -121,9 +122,9 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste}
+	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste, "probe_id"}
 	if operate != nil {
-		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "system_metrics", "native_credential_set", "native_credential_watch")
+		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "magpie_credentials_sync", "preparation_health")
 	}
 	if dial != nil {
 		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport)
@@ -145,7 +146,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			return ctx.Err()
 		}
 		if frame.Type == "ping" {
-			if err := emit(Frame{Type: "pong"}); err != nil {
+			if err := emit(Frame{Type: "pong", ID: frame.ID}); err != nil {
 				return err
 			}
 			continue
@@ -256,7 +257,10 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 				command.Env = append(command.Env, "TERM="+terminalType)
 				file, err := pty.StartWithSize(command, &pty.Winsize{Rows: session.rows, Cols: session.columns})
 				if err == nil {
-					err = unix.SetNonblock(int(file.Fd()), true)
+					// File.Fd and pty.Setsize restore Go-managed descriptors to
+					// blocking mode. Capture once before enabling nonblocking IO.
+					session.fd = int(file.Fd())
+					err = unix.SetNonblock(session.fd, true)
 					session.file = file
 				}
 				session.mu.Unlock()
@@ -284,7 +288,11 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 							firstVisible = false
 							timings = map[string]float64{"first_pty_read": firstRead, "first_visible_output": float64(time.Since(opened).Microseconds()) / 1000}
 						}
-						if err := emit(Frame{Type: "data", ID: frame.ID, Data: data[:n], Timings: timings}); err != nil {
+						out := Frame{Type: "data", ID: frame.ID, Data: data[:n], Timings: timings}
+						if frame.OutputCompression == "gzip" {
+							out = compressTerminalData(out)
+						}
+						if err := emit(out); err != nil {
 							return err
 						}
 						data = data[n:]
@@ -385,7 +393,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 			session.rows = uint16(max(1, min(frame.Rows, 1000)))
 			session.columns = uint16(max(1, min(frame.Columns, 1000)))
 			if session.file != nil && !session.closed {
-				pty.Setsize(session.file, &pty.Winsize{Rows: session.rows, Cols: session.columns})
+				session.resizePTY()
 			}
 			session.mu.Unlock()
 		case "close":
@@ -399,7 +407,7 @@ func serve(ctx context.Context, input io.Reader, output io.Writer, start Starter
 
 func (session *serverSession) read(data []byte) (int, error) {
 	for session.ctx.Err() == nil {
-		poll := []unix.PollFd{{Fd: int32(session.file.Fd()), Events: unix.POLLIN}}
+		poll := []unix.PollFd{{Fd: int32(session.fd), Events: unix.POLLIN}}
 		if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
 			return 0, err
 		}
@@ -407,7 +415,7 @@ func (session *serverSession) read(data []byte) (int, error) {
 			continue
 		}
 		session.mu.Lock()
-		length, err := unix.Read(int(session.file.Fd()), data)
+		length, err := unix.Read(session.fd, data)
 		session.mu.Unlock()
 		if length < 0 {
 			length = 0
@@ -421,6 +429,11 @@ func (session *serverSession) read(data []byte) (int, error) {
 		return length, err
 	}
 	return 0, session.ctx.Err()
+}
+
+// Caller holds session.mu; resize must preserve O_NONBLOCK just like IO.
+func (session *serverSession) resizePTY() error {
+	return unix.IoctlSetWinsize(session.fd, unix.TIOCSWINSZ, &unix.Winsize{Row: session.rows, Col: session.columns})
 }
 
 func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
@@ -492,7 +505,7 @@ func (session *serverSession) write(data []byte) error {
 		return err
 	}
 	for len(data) > 0 && session.ctx.Err() == nil {
-		poll := []unix.PollFd{{Fd: int32(session.file.Fd()), Events: unix.POLLOUT}}
+		poll := []unix.PollFd{{Fd: int32(session.fd), Events: unix.POLLOUT}}
 		if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
 			return err
 		}
@@ -500,7 +513,7 @@ func (session *serverSession) write(data []byte) error {
 			continue
 		}
 		session.mu.Lock()
-		written, err := unix.Write(int(session.file.Fd()), data)
+		written, err := unix.Write(session.fd, data)
 		session.mu.Unlock()
 		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
 			continue

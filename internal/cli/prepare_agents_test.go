@@ -124,3 +124,30 @@ func TestCanceledPreparationDoesNotPublishSuccess(t *testing.T) {
 		t.Fatal("cancellation continued", err, configured, published)
 	}
 }
+
+func TestPartialAgentCompletionRetainsVerifiedPeerAndReplacesFailure(t *testing.T) {
+	results := []setup.RouteResult{{Agent: "codex", Status: "configured"}, {Agent: "claude", Status: "configured"}}
+	for _, update := range [][]setup.RouteResult{
+		{{Agent: "pi", Status: "credentials_required"}},
+		{{Agent: "claude", Status: "configured"}},
+		{{Agent: "codex", Status: "installation_failed"}},
+	} {
+		results = updatePreparedRoutes(results, update)
+		seen := map[string]string{}
+		for _, result := range results {
+			if _, exists := seen[result.Agent]; exists {
+				t.Fatal("duplicate result", results)
+			}
+			seen[result.Agent] = result.Status
+		}
+		if seen["claude"] != "configured" || len(seen) != 3 {
+			t.Fatal("ready peer disappeared", results)
+		}
+		if update[0].Agent != "codex" && seen["codex"] != "configured" {
+			t.Fatal("ready peer revoked", results)
+		}
+	}
+	if results[0].Status != "installation_failed" {
+		t.Fatal("failed recheck hid behind old success", results)
+	}
+}

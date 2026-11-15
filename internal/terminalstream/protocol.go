@@ -25,6 +25,8 @@ type Frame struct {
 	Launch            *cloudruntime.LocalLaunch    `json:"launch,omitempty"`
 	Terminal          *cloudruntime.LocalTerminal  `json:"terminal,omitempty"`
 	Data              []byte                       `json:"data,omitempty"`
+	DataGZIP          []byte                       `json:"data_gzip,omitempty"`
+	OutputCompression string                       `json:"output_compression,omitempty"`
 	Rows              int                          `json:"rows,omitempty"`
 	Columns           int                          `json:"columns,omitempty"`
 	Bytes             int                          `json:"bytes,omitempty"`

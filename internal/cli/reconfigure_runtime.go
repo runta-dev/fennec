@@ -86,7 +86,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 				workers.Add(1)
 				go func(i int, id string) {
 					defer workers.Done()
-					routes[i] = setup.LocalAgentRoutes(ctx, []setup.Agent{{ID: id, Version: "latest"}})[0]
+					routes[i] = setup.ConfiguredAgentRoutes(s.home, []setup.Agent{{ID: id, Version: "latest"}})[0]
 				}(i, route.Agent)
 			}
 			workers.Wait()

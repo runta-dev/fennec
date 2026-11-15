@@ -27,7 +27,7 @@ func StartRelay(ctx context.Context, client *ssh.Client, device string) (int, in
 		return 0, 0, err
 	}
 	script := relaySetupScript(device)
-	session, err := client.NewSession()
+	session, err := connectorSession(ctx, client)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -109,7 +109,7 @@ const (
 	maxRelayConnections = 64
 )
 
-func serveRelay(ctx context.Context, client *ssh.Client, port int, local string) error {
+func serveRelay(ctx context.Context, client *ssh.Client, port int, local string, owned ...bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var workers sync.WaitGroup
@@ -135,7 +135,7 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string)
 		go func() {
 			defer workers.Done()
 			for ctx.Err() == nil {
-				remote, err := client.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+				remote, err := client.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 				if err != nil {
 					cancel()
 					return
@@ -164,7 +164,11 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string)
 		}()
 	}
 	<-ctx.Done()
-	client.Close()
+	// A borrowed connection also carries the resident terminal protocol. Only
+	// close this relay's channels; its owner decides whether SSH needs replacing.
+	if len(owned) == 0 || owned[0] {
+		client.Close()
+	}
 	workers.Wait()
 	return fmt.Errorf("device relay disconnected")
 }

@@ -28,10 +28,11 @@ func Record(stage string, started time.Time, elapsed time.Duration) {
 	defer file.Close()
 	json.NewEncoder(file).Encode(struct {
 		PID     int     `json:"pid"`
+		Parent  int     `json:"parent_pid"`
 		Stage   string  `json:"stage"`
 		Started int64   `json:"started_unix_ms"`
 		Elapsed float64 `json:"elapsed_ms"`
-	}{os.Getpid(), stage, started.UnixMilli(), float64(elapsed.Microseconds()) / 1000})
+	}{os.Getpid(), os.Getppid(), stage, started.UnixMilli(), float64(elapsed.Microseconds()) / 1000})
 }
 
 // Session records an identity only in the opt-in private profiler log. It lets

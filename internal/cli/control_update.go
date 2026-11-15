@@ -7,13 +7,13 @@ import (
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/installation"
+	"fennec/internal/launchprofile"
 	"fennec/internal/updater"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -45,23 +45,33 @@ func installUpdateControl(home, executable string, settings *desktopSettings, ne
 			prefs, ok := settings.snapshot().(desktopPreferences)
 			return !ok || !prefs.NoAutoUpdate
 		},
-		ApplyUpdate: func(ctx context.Context, stagedApp, destinationBundle string) error {
+		PrepareUpdate: func(ctx context.Context, stagedApp, destinationBundle string) (updater.PreparedUpdate, error) {
 			if runtime.GOOS != "darwin" {
-				return fmt.Errorf("bundle installation requires macOS")
+				return nil, fmt.Errorf("bundle installation requires macOS")
 			}
 			ops := installation.SystemOperations()
+			// Verify the exact private copy, including its signer, before any
+			// executable is warmed or the running application is stopped.
+			ops.Verify = func(ctx context.Context, candidate string) error {
+				return updater.VerifySameSigner(ctx, destinationBundle, candidate)
+			}
+			ops.Warm = func(ctx context.Context, candidate string) error {
+				defer launchprofile.Begin("update.warm_executable")()
+				warm, cancel := context.WithTimeout(ctx, 20*time.Second)
+				defer cancel()
+				// Help never restores credentials, starts a daemon or launches
+				// an agent. macOS evaluates the verified bundle before main.
+				return exec.CommandContext(warm, filepath.Join(candidate, "Contents/MacOS/fen"), "fen", "--help").Run()
+			}
 			baseOpenUI := ops.OpenUI
 			ops.OpenUI = func(openCtx context.Context, appPath string) error {
 				return relaunchAppWithRetry(openCtx, home, appPath, baseOpenUI)
 			}
-			res, err := installation.Install(ctx, stagedApp, destinationBundle, true, ops)
+			prepared, err := installation.Prepare(ctx, stagedApp, destinationBundle, true, ops)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			if !res.UIRestarted {
-				scheduleDetachedDaemonRollover(destinationBundle)
-			}
-			return nil
+			return &preparedControlUpdate{Prepared: prepared, bundle: destinationBundle}, nil
 		},
 	})
 
@@ -107,6 +117,20 @@ func installUpdateControl(home, executable string, settings *desktopSettings, ne
 	return svc
 }
 
+type preparedControlUpdate struct {
+	*installation.Prepared
+	bundle string
+}
+
+func (p *preparedControlUpdate) Apply(ctx context.Context) error {
+	if _, err := p.Prepared.Apply(ctx); err != nil {
+		return err
+	}
+	// This job is independent of both the old daemon and native UI cold start.
+	scheduleDetachedDaemonRollover(p.bundle)
+	return nil
+}
+
 func relaunchAppWithRetry(ctx context.Context, home, appPath string, openOnce func(context.Context, string) error) error {
 	waits := []time.Duration{300 * time.Millisecond, 600 * time.Millisecond, time.Second, 2 * time.Second}
 	var lastErr error
@@ -140,15 +164,4 @@ func relaunchAppWithRetry(ctx context.Context, home, appPath string, openOnce fu
 		}
 	}
 	return lastErr
-}
-
-func scheduleDetachedDaemonRollover(bundlePath string) {
-	fenBin := filepath.Join(bundlePath, "Contents/MacOS/fen")
-	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
-	script := "sleep 0.3; exec " + quote(fenBin) + " start >/dev/null 2>&1"
-	cmd := exec.Command("/bin/sh", "-c", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err == nil {
-		go func() { _ = cmd.Wait() }()
-	}
 }

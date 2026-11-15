@@ -1,10 +1,33 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestPreparationIgnoresObservationButRetainsCredentialAndPolicyChanges(t *testing.T) {
+	base := []byte(`[{"id":"one","agent":"codex","auth":{"access_token":"fixture","seen":"nested"},"seen":"yesterday","on":true}]`)
+	want := preparationCredentialContent("logins.json", base)
+	for _, updated := range []string{
+		`[ { "on":true,"seen":"today","auth":{"seen":"nested","access_token":"fixture"},"agent":"codex","id":"one" } ]`,
+		`[{"id":"one","agent":"codex","auth":{"access_token":"fixture","seen":"nested"},"on":true}]`,
+	} {
+		if !bytes.Equal(want, preparationCredentialContent("logins.json", []byte(updated))) {
+			t.Fatal("observation metadata invalidates configuration")
+		}
+	}
+	for _, change := range [][2]string{{"fixture", "rotated"}, {"nested", "changed"}, {"one", "two"}, {"codex", "claude"}, {"true", "false"}} {
+		updated := bytes.ReplaceAll(base, []byte(change[0]), []byte(change[1]))
+		if bytes.Equal(want, preparationCredentialContent("logins.json", updated)) {
+			t.Fatal("authentication, identity or policy change was ignored")
+		}
+	}
+	if bytes.Equal(preparationCredentialContent("providers.json", []byte(`{"seen":1}`)), preparationCredentialContent("providers.json", []byte(`{"seen":2}`))) {
+		t.Fatal("timestamp filtering leaked into another store")
+	}
+}
 
 func TestCredentialRotationInvalidatesConfigurationNotInstallation(t *testing.T) {
 	home, artifacts := t.TempDir(), t.TempDir()
@@ -69,5 +92,50 @@ func TestInstallationCheckpointIsIndependentOfConfiguration(t *testing.T) {
 	}
 	if _, ok := readPreparationCheckpoint(home, "scope-a"); ok {
 		t.Fatal("installation checkpoint accepted as credential/config readiness")
+	}
+}
+
+func TestExecutableUpdatePreservesConfigurationButCredentialChangeDoesNot(t *testing.T) {
+	home, artifacts := t.TempDir(), t.TempDir()
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		write(filepath.Join(artifacts, "fennec-terminal-linux-"+arch), "version-one")
+	}
+	digest := func(token, runtime, model string, magpie bool) (string, string) {
+		t.Helper()
+		full, configuration, err := preparationFingerprints(home, token, runtime, model, artifacts, magpie)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return full, configuration
+	}
+	beforeFull, beforeConfig := digest("account-a", "runtime-a", "model-a", true)
+	write(filepath.Join(artifacts, "fennec-terminal-linux-amd64"), "version-two")
+	afterFull, afterConfig := digest("account-a", "runtime-a", "model-a", true)
+	if beforeFull == afterFull || beforeConfig != afterConfig {
+		t.Fatal("binary update conflated with configuration update")
+	}
+	for _, scope := range [][3]string{{"account-b", "runtime-a", "model-a"}, {"account-a", "runtime-b", "model-a"}, {"account-a", "runtime-a", "model-b"}} {
+		_, configuration := digest(scope[0], scope[1], scope[2], true)
+		if configuration == beforeConfig {
+			t.Fatal("configuration reused across identity/model scope")
+		}
+	}
+	_, nativeConfig := digest("account-a", "runtime-a", "model-a", false)
+	if nativeConfig == beforeConfig {
+		t.Fatal("configuration reused across integration modes")
+	}
+	write(filepath.Join(home, ".config/magpie/logins.json"), `{"fixture":"rotated"}`)
+	_, rotated := digest("account-a", "runtime-a", "model-a", true)
+	if rotated == beforeConfig {
+		t.Fatal("changed credentials reused")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
 	"fennec/internal/sandbox"
+	"fennec/internal/sshcarrier"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -217,6 +218,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 			env := runta.ActiveEnvironment(home)
 			if manager.Endpoint() != env.API {
 				services.close()
+				if err := sshcarrier.Revoke(home); err != nil {
+					return err
+				}
 				_ = manager.SetEndpoint(ctx, env.API, env.Dashboard)
 			}
 			services.mu.Lock()

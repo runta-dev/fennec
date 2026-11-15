@@ -1,0 +1,124 @@
+{
+  "build_id": "65beaa5bd8d5ccbd60e33aa94cdf9e1ba099f4f0e1d70838bd844bad366fa18c",
+  "cold_ssh_limit_ms": 5000,
+  "date_utc": "2026-11-15",
+  "result": "FAIL",
+  "samples_ms": {
+    "account.status": [
+      9.019,
+      10.493,
+      12.103
+    ],
+    "agents.list": [
+      31.325,
+      11.197,
+      11.241
+    ],
+    "approvals.list": [
+      8.703,
+      8.947,
+      9.716
+    ],
+    "attach (usable TUI)": [
+      246.473,
+      236.191,
+      240.213
+    ],
+    "cold SSH": [
+      4589.079
+    ],
+    "connection.status": [
+      10.591,
+      10.435,
+      13.035
+    ],
+    "daemon.ping": [
+      16.825,
+      14.416,
+      12.329
+    ],
+    "launch (usable TUI)": [
+      303.025,
+      356.945,
+      301.995
+    ],
+    "model.set": [
+      743.168,
+      514.362
+    ],
+    "resume (usable TUI)": [
+      270.54,
+      242.066,
+      230.012
+    ],
+    "sessions.allocate": [
+      26.002,
+      16.043,
+      11.969
+    ],
+    "sessions.launch": [
+      256.683
+    ],
+    "sessions.list": [
+      10.048,
+      9.62,
+      9.239
+    ],
+    "sessions.read": [
+      379.102,
+      231.893,
+      190.076,
+      215.219,
+      217.067,
+      215.399,
+      220.936,
+      185.486,
+      235.599
+    ],
+    "sessions.refresh": [
+      464.905,
+      575.053,
+      460.334
+    ],
+    "sessions.send (existing)": [
+      491.499,
+      801.58,
+      836.725
+    ],
+    "sessions.send (fresh)": [
+      1037.103,
+      967.568,
+      1000.494
+    ],
+    "sessions.send (mature)": [
+      457.25,
+      546.654,
+      458.099
+    ],
+    "sessions.stop": [
+      237.672,
+      260.915,
+      320.948
+    ],
+    "settings.get": [
+      18.774,
+      20.117,
+      17.669,
+      20.365
+    ],
+    "state.get": [
+      17.44,
+      17.421,
+      18.169,
+      21.204
+    ],
+    "takeover.get": [
+      9.579,
+      8.769,
+      9.012
+    ]
+  },
+  "suite": "TestSessionOperations500ms",
+  "version": "0.3.11151959-dev",
+  "warm_limit_ms": 500
+}

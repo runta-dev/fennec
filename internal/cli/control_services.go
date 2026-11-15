@@ -189,6 +189,7 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	go func() { defer s.workers.Done(); s.runMetricsCollector(ctx, epoch) }()
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.runCredentialSync(ctx, epoch) }()
+	s.startMagpieCredentialSync(ctx, epoch)
 	return nil
 }
 func (s *daemonServices) prepare(ctx context.Context, token string, output io.Writer) error {
@@ -312,6 +313,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 					switch decodeText(event, "type") {
 					case "broker_ready":
 						s.brokerReady = true
+						notifyConnectionReady(s.home)
 					case "entry_coverage":
 						s.coverage[decodeText(event, "agent")] = decodeText(event, "coverage")
 					}
@@ -471,7 +473,12 @@ func (s *daemonServices) startLinkLocked() {
 	epoch := s.epoch
 	token := s.config.Token
 	name, _ := os.Hostname()
-	config := localssh.LinkConfig{RuntimeID: s.config.RuntimeID, LocalAddress: s.connectorAddress, Name: name, Directory: filepath.Join(s.home, ".config/fennec/ssh"), Network: s.network}
+	runtimeID := s.config.RuntimeID
+	config := localssh.LinkConfig{RuntimeID: runtimeID, LocalAddress: s.connectorAddress, Name: name, Directory: filepath.Join(s.home, ".config/fennec/ssh"), Network: s.network, VerifiedOwner: s.user}
+	config.SharedSSH = func(ctx context.Context) (*ssh.Client, error) { return s.linkSSH(ctx, epoch, runtimeID) }
+	config.Bootstrap = func(ctx context.Context, request localssh.LinkBootstrap) (localssh.LinkBootstrapResult, error) {
+		return s.bootstrapLink(ctx, epoch, runtimeID, request)
+	}
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()

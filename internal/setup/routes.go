@@ -86,3 +86,28 @@ func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
 	}
 	return routes
 }
+
+// ConfiguredAgentRoutes reads startup inputs without launching a plugin host or
+// agent. An absent local model needs a saved Fennec preference or user selection;
+// it must not hold existing cloud terminals behind a CLI query timeout.
+func ConfiguredAgentRoutes(home string, agents []Agent) []AgentRoute {
+	binary := LocalMagpieBinary(home)
+	routes := make([]AgentRoute, 0, len(agents))
+	for _, agent := range agents {
+		route := AgentRoute{Agent: agent.ID}
+		switch {
+		case binary == "":
+			route.Problem = "local_gateway_not_found"
+		case !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}[agent.ID]:
+			route.Problem = "unsupported_agent"
+		default:
+			if model, ok := readConfiguredMagpieModel(home, agent.ID); ok {
+				route.Model = model
+			} else {
+				route.Problem = "model_selection_required"
+			}
+		}
+		routes = append(routes, route)
+	}
+	return routes
+}

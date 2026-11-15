@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fennec/internal/agentcmd"
+	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -14,8 +14,23 @@ import (
 )
 
 type preparationCheckpoint struct {
-	Fingerprint string              `json:"fingerprint"`
-	Events      []map[string]string `json:"events"`
+	Fingerprint              string              `json:"fingerprint"`
+	ConfigurationFingerprint string              `json:"configuration_fingerprint,omitempty"`
+	GatewayFingerprint       string              `json:"gateway_fingerprint,omitempty"`
+	Events                   []map[string]string `json:"events"`
+}
+
+// Bump when local preparation orchestration changes the meaning of a successful
+// checkpoint. Remote implementations and setup scripts are hashed separately;
+// unrelated UI, diagnostics, signing, and local daemon edits must not reinstall
+// an already prepared cloud environment on every application update.
+const preparationSchema = "fennec-preparation-v2"
+
+// A credential or model change does not change an installed gateway. Keep its
+// installation/service rules and authenticated scope independent of account data.
+func gatewayPreparationFingerprint(token, runtimeID string) string {
+	data, _ := json.Marshal([]string{"fennec-gateway-v1", token, runtimeID, setup.MagpieSetupScript, setup.MagpieServiceScript})
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 func checkedServiceCommand(check, service string) string {
@@ -41,10 +56,18 @@ func installationFingerprint(home, token, runtimeID string, inputs any, artifact
 }
 
 func scopedPreparationFingerprint(home, token, runtimeID string, inputs any, artifacts string, credentials bool) (string, error) {
+	full, _, err := preparationFingerprints(home, token, runtimeID, inputs, artifacts, credentials)
+	return full, err
+}
+
+// Configuration retains identity, credentials, routes, schema and setup-script
+// scope. A new terminal executable alone requires installation, not re-syncing
+// unchanged credentials. Both digests use the same input snapshot.
+func preparationFingerprints(home, token, runtimeID string, inputs any, artifacts string, credentials bool) (full, configuration string, err error) {
 	h := sha256.New()
 	data, err := json.Marshal(inputs)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	kind := "fennec-install-v1"
 	var files []string
@@ -53,6 +76,10 @@ func scopedPreparationFingerprint(home, token, runtimeID string, inputs any, art
 		files = []string{"providers.json", "logins.json", "plugin-auth.json", "migrations.json", "plugin-providers.json"}
 	}
 	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%s", kind, token, runtimeID, data)
+	fmt.Fprintf(h, "\x00%s", preparationSchema)
+	for _, script := range []string{setup.GuestCapacityScript, setup.HerdrSetupScript, setup.NodeSetupScript, setup.MagpieSetupScript, setup.MagpieServiceScript} {
+		fmt.Fprintf(h, "\x00%x", sha256.Sum256([]byte(script)))
+	}
 	for _, name := range files {
 		path := filepath.Join(home, ".config", "magpie", name)
 		data, err := os.ReadFile(path)
@@ -61,46 +88,59 @@ func scopedPreparationFingerprint(home, token, runtimeID string, inputs any, art
 			continue
 		}
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		fmt.Fprintf(h, "\x00%s:%x", name, sha256.Sum256(data))
+		fmt.Fprintf(h, "\x00%s:%x", name, sha256.Sum256(preparationCredentialContent(name, data)))
 	}
+	configuration = hex.EncodeToString(h.Sum(nil))
 	for _, name := range []string{"fennec-terminal-linux-amd64", "fennec-terminal-linux-arm64"} {
 		file, err := os.Open(filepath.Join(artifacts, name))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		sum := sha256.New()
 		_, err = io.Copy(sum, file)
 		file.Close()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		fmt.Fprintf(h, "\x00%s:%x", name, sum.Sum(nil))
 	}
-	// A new daemon may contain changed installer/configuration semantics.
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
+	return hex.EncodeToString(h.Sum(nil)), configuration, nil
+}
+
+// Magpie's last-observed timestamp is not an authentication or routing input.
+// Preserve every other field, including unknown fields and all nested auth data.
+// Canonical JSON also prevents whitespace/key order from invalidating setup.
+func preparationCredentialContent(name string, data []byte) []byte {
+	value := canonicalPreparationFile(name, data)
+	if name == "logins.json" {
+		if entries, ok := value.([]any); ok {
+			for _, value := range entries {
+				if entry, ok := value.(map[string]any); ok {
+					delete(entry, "seen")
+				}
+			}
+		}
 	}
-	file, err := os.Open(executable)
-	if err != nil {
-		return "", err
+	if canonical, err := json.Marshal(value); err == nil {
+		return canonical
 	}
-	defer file.Close()
-	if _, err = io.Copy(h, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return data
 }
 func checkpointPath(home string) string {
 	return filepath.Join(home, ".config", "fennec", "prepared-runtime.json")
 }
 func readPreparationCheckpoint(home, fingerprint string) (preparationCheckpoint, bool) {
+	checkpoint, ok := loadPreparationCheckpoint(home)
+	return checkpoint, ok && fingerprint != "" && checkpoint.Fingerprint == fingerprint
+}
+
+func loadPreparationCheckpoint(home string) (preparationCheckpoint, bool) {
 	var checkpoint preparationCheckpoint
 	data, err := os.ReadFile(checkpointPath(home))
-	if err != nil || len(data) > 2<<20 || json.Unmarshal(data, &checkpoint) != nil || fingerprint == "" || checkpoint.Fingerprint != fingerprint || len(checkpoint.Events) == 0 {
-		return checkpoint, false
+	if err != nil || len(data) > 2<<20 || json.Unmarshal(data, &checkpoint) != nil || checkpoint.Fingerprint == "" || len(checkpoint.Events) == 0 {
+		return preparationCheckpoint{}, false
 	}
 	return checkpoint, true
 }
@@ -129,31 +169,5 @@ func checkpointHealthScript(fingerprint string, agents []string) string {
 }
 
 func checkpointHealthScriptForMarker(fingerprint string, agents []string, marker string, magpie ...bool) string {
-	if marker != "prepared-runtime" && marker != "prepared-installation" {
-		return "exit 1"
-	}
-	// Fingerprints and agent names are constrained here before entering shell source.
-	if len(fingerprint) != 64 {
-		return "exit 1"
-	}
-	if _, err := hex.DecodeString(fingerprint); err != nil {
-		return "exit 1"
-	}
-	script := `set -eu
-export PATH="$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
-test "$(cat "$HOME/.config/fennec/` + marker + `")" = '` + fingerprint + `'
-command -v node >/dev/null
-test -x "$HOME/.local/fennec/bin/fennec-terminal"
-herdr-core server status >/dev/null 2>&1
-`
-	if len(magpie) == 0 || magpie[0] {
-		script += "command -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
-	}
-	for _, id := range agents {
-		if !strings.Contains("|claude|codex|pi|opencode|kimi|cursor|grok|", "|"+id+"|") || id == "" {
-			return "exit 1"
-		}
-		script += "command -v " + agentcmd.BinaryName(id) + " >/dev/null\n"
-	}
-	return script
+	return (setup.PreparationHealth{Fingerprint: fingerprint, Agents: agents, Marker: marker, Magpie: len(magpie) == 0 || magpie[0]}).Script()
 }

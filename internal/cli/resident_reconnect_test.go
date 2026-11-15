@@ -6,12 +6,59 @@ import (
 	"errors"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
+	"fennec/internal/terminalstream"
+	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestRecoveryReadinessWaitsForBrokerAndWakesAlreadyReadyClient(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "fn-rec-ready-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	input, peerInput := io.Pipe()
+	peerOutput, output := io.Pipe()
+	transport := terminalstream.StartPipes(peerInput, peerOutput)
+	defer transport.Close()
+	defer input.Close()
+	defer output.Close()
+	go func() { io.Copy(io.Discard, input) }()
+	go func() {
+		json.NewEncoder(output).Encode(terminalstream.Frame{Type: "ready", Version: terminalstream.ProtocolVersion})
+	}()
+	readyCtx, readyCancel := context.WithTimeout(ctx, time.Second)
+	defer readyCancel()
+	if err := transport.Ready(readyCtx); err != nil {
+		t.Fatal(err)
+	}
+	s := &daemonServices{channel: &terminalChannel{transport: transport, shared: &launcher.SharedConnection{}, generation: 1}}
+	handlers := s.handlers(nil)
+	status, err := handlers["connection.status"](ctx, nil)
+	if err != nil || status.(map[string]any)["ready"] != false {
+		t.Fatal("transport readiness exposed before broker readiness", status, err)
+	}
+	s.brokerReady = true
+	stop := startRecoveryDaemon(t, home, handlers)
+	defer stop()
+	wake := watchResidentRecoveryEvents(ctx, home, nil)
+	select {
+	case <-wake:
+	case <-time.After(time.Second):
+		t.Fatal("already-ready daemon did not wake reconnect")
+	}
+	select {
+	case <-wake:
+		t.Fatal("unchanged readiness repeatedly bypassed backoff")
+	case <-time.After(650 * time.Millisecond):
+	}
+}
 
 func startRecoveryDaemon(t *testing.T, home string, handlers map[string]control.Handler) func() {
 	t.Helper()
@@ -185,6 +232,47 @@ func TestResidentRecoveryWakeOnSharedConnectionTransition(t *testing.T) {
 	case <-wake:
 		t.Fatal("unchanged ready state bypasses backoff")
 	case <-time.After(650 * time.Millisecond):
+	}
+}
+
+func TestResidentRecoveryUsesKernelReadinessNotification(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "fn-ready-event-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	var ready atomic.Bool
+	probed := make(chan struct{}, 1)
+	stop := startRecoveryDaemon(t, home, map[string]control.Handler{"connection.status": func(context.Context, json.RawMessage) (any, error) {
+		select {
+		case probed <- struct{}{}:
+		default:
+		}
+		return map[string]any{"ready": ready.Load(), "generation": 1}, nil
+	}})
+	defer stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wake := watchResidentRecoveryEvents(ctx, home, nil)
+	select {
+	case <-probed:
+	case <-time.After(time.Second):
+		t.Fatal("missing initial probe")
+	}
+	time.Sleep(20 * time.Millisecond)
+	// A hint alone must not claim readiness or bypass backoff.
+	notifyConnectionReady(home)
+	select {
+	case <-wake:
+		t.Fatal("unready hint woke attachment")
+	case <-time.After(30 * time.Millisecond):
+	}
+	ready.Store(true)
+	notifyConnectionReady(home)
+	select {
+	case <-wake:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("readiness waited for the 500ms poll")
 	}
 }
 

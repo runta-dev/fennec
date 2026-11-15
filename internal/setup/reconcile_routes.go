@@ -223,7 +223,7 @@ func ReconcileLocalRoutes(ctx context.Context, home string, routes []AgentRoute)
 		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
 			return nil, readErr
 		}
-		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && actual == route.Model {
+		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && configuredModelMatches(route.Agent, actual, route.Model) {
 			results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: "configured"})
 			continue
 		}
@@ -235,7 +235,7 @@ func ReconcileLocalRoutes(ctx context.Context, home string, routes []AgentRoute)
 			output, verifyErr := readFn(ctx, route.Agent)
 			actual, parseErr := ParseAgentModel(string(output))
 			st := "configured"
-			if verifyErr != nil || parseErr != nil || actual != route.Model {
+			if verifyErr != nil || parseErr != nil || !configuredModelMatches(route.Agent, actual, route.Model) {
 				st = "verification_failed"
 			}
 			results = append(results, RouteResult{Agent: route.Agent, Model: route.Model, Status: st})
@@ -273,7 +273,7 @@ func reconcileRoutesWith(ctx context.Context, routes []AgentRoute, write func(co
 		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
 			return nil, readErr
 		}
-		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && actual == route.Model {
+		if actual, parseErr := ParseAgentModel(string(current)); readErr == nil && parseErr == nil && configuredModelMatches(route.Agent, actual, route.Model) {
 			result.Status = "configured"
 			results = append(results, result)
 			continue
@@ -296,7 +296,7 @@ func reconcileRoutesWith(ctx context.Context, routes []AgentRoute, write func(co
 		}
 		output, err := read(ctx, route.Agent)
 		actual, parseErr := ParseAgentModel(string(output))
-		if err != nil || parseErr != nil || actual != route.Model {
+		if err != nil || parseErr != nil || !configuredModelMatches(route.Agent, actual, route.Model) {
 			result.Status = "verification_failed"
 		} else {
 			result.Status = "configured"

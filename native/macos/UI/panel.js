@@ -272,7 +272,7 @@ window.renderAgents = agents => {
       if (enabled) {
         state.textContent = "[[i18n:ui.cloud_computer]]";
       }
-      const labels = {model_unavailable:"[[i18n:ui.selected_model_unavailable]]", local_gateway_not_found:"[[i18n:ui.local_model_gateway_not_found]]"};
+      const labels = {verification_failed:"[[i18n:ui.cloud_configuration_unconfirmed]]", configuration_failed:"[[i18n:ui.cloud_configuration_unconfirmed]]", model_unavailable:"[[i18n:ui.selected_model_unavailable]]", local_gateway_not_found:"[[i18n:ui.local_model_gateway_not_found]]"};
       detail.querySelector('.takeover-status').textContent = activeTakeoverAgents.has(agent.id) ? '' : route && route.status !== 'configured' ? (labels[route.status] || '') : enabled ? "[[i18n:ui.connecting]]" : '';
 
       const statusNode = detail.querySelector('.takeover-status');

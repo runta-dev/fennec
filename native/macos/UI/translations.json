@@ -1,5 +1,13 @@
 {
   "messages": {
+    "ui.cloud_configuration_unconfirmed": {
+      "en-GB": "Cloud model configuration needs attention",
+      "en-US": "Cloud model configuration needs attention",
+      "ja": "クラウドのモデル設定を確認してください",
+      "ko": "클라우드 모델 설정을 확인하세요",
+      "zh-CN": "云端模型配置需要修复",
+      "zh-TW": "雲端模型設定需要修復"
+    },
     "installation.choose_another_installation_folder": {
       "en-US": "Choose another installation folder.",
       "zh-CN": "请选择其他安装文件夹。"

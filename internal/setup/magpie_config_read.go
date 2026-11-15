@@ -43,6 +43,27 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 		return "", false
 	}
 	switch agentID {
+	case "kimi":
+		data, err := readNativeFile(filepath.Join(resolveAgentConfigDir(home, kimiHomeEnv, kimiHomeDefault), "config.toml"))
+		var cfg struct {
+			Default string `toml:"default_model"`
+			Models  map[string]struct {
+				Provider string `toml:"provider"`
+				Model    string `toml:"model"`
+			} `toml:"models"`
+			Providers map[string]struct {
+				BaseURL string `toml:"base_url"`
+			} `toml:"providers"`
+		}
+		if err != nil || toml.Unmarshal(data, &cfg) != nil {
+			return "", false
+		}
+		selected, ok := cfg.Models[cfg.Default]
+		if !ok || !isLocalMagpieGatewayURL(cfg.Providers[selected.Provider].BaseURL) {
+			return "", false
+		}
+		model, err := ParseAgentModel("Kimi Code model " + selected.Model)
+		return model, err == nil
 	case "opencode":
 		return readConfiguredOpenCodeModel(home)
 	case "grok":
@@ -99,10 +120,11 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 		if json.Unmarshal(data, &cfg) != nil || !isLocalMagpieGatewayURL(cfg.Env["ANTHROPIC_BASE_URL"]) {
 			return "", false
 		}
-		rawModel := cfg.Model
+		rawModel := cfg.Env["ANTHROPIC_MODEL"]
 		if rawModel == "" {
-			rawModel = cfg.Env["ANTHROPIC_MODEL"]
+			rawModel = cfg.Model
 		}
+		rawModel = resolveClaudeGatewayModel(rawModel, cfg.Env)
 		model, err := ParseAgentModel("Claude Code model " + rawModel)
 		if err != nil {
 			return "", false
@@ -131,6 +153,42 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// Claude aliases and context modifiers are configuration, not provider IDs.
+// Resolve only explicitly pinned aliases; never guess a version for an alias.
+func resolveClaudeGatewayModel(model string, env map[string]string) string {
+	base := strings.TrimSuffix(model, "[1m]")
+	alias := base
+	if alias == "best" {
+		alias = "opus"
+	}
+	switch alias {
+	case "opus", "sonnet", "haiku", "fable":
+		pinned := env["ANTHROPIC_DEFAULT_"+strings.ToUpper(alias)+"_MODEL"]
+		if pinned == "" {
+			return model
+		}
+		if base != model && !strings.HasSuffix(pinned, "[1m]") {
+			pinned += "[1m]"
+		}
+		model = pinned
+	}
+	if strings.HasPrefix(model, "claude-") && !strings.Contains(model, "/") {
+		model = "claude/" + model
+	}
+	return model
+}
+
+// A saved route without a context preference accepts Claude's existing 1M
+// context setting. Do not rewrite it, accept another provider, or ignore an
+// explicit context preference in the desired route.
+func configuredModelMatches(agent, actual, desired string) bool {
+	if actual == desired {
+		return true
+	}
+	return agent == "claude" && strings.HasPrefix(desired, "claude/claude-") &&
+		!strings.Contains(desired, "[") && actual == desired+"[1m]"
 }
 
 func readConfiguredMagpieModelOutput(home, agentID string) ([]byte, bool) {

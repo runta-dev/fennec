@@ -10,8 +10,13 @@ import (
 	"fennec/internal/control"
 	"fennec/internal/runta"
 	"fmt"
+	"io"
+	"net"
 	"sync"
+	"syscall"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type RuntimeState struct {
@@ -108,6 +113,7 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		c.runtimeAgain = false
 	}
 	c.runtimeGeneration++
+	c.runtimeRetry = false
 	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
 	ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 	done := make(chan struct{})
@@ -167,6 +173,7 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 			return
 		}
 		if err != nil || ctx.Err() != nil {
+			c.runtimeRetry = lifecycle.Err() == nil && transientPreparationFailure(err)
 			if offline && lifecycle.Err() == nil && !c.maintenance && !(c.cloudPaused && c.cloudPausedEpoch == epoch) {
 				c.runtime.Offline = true
 				c.runtime.Stage = "offline"
@@ -304,6 +311,7 @@ func (c *Controller) Start(ctx context.Context) {
 					}
 					c.mu.Lock()
 					needsReconcile := c.runtime.Epoch == account.Epoch && c.runtimeAgain && !c.runtime.Running
+					retryFailure := c.runtime.Epoch == account.Epoch && c.runtimeRetry
 					if needsReconcile {
 						c.runtimeAgain = false
 						c.runtime.Stage = "retrying"
@@ -314,11 +322,11 @@ func (c *Controller) Start(ctx context.Context) {
 						_, _ = c.ensureRuntime(ctx, nil)
 						state = c.runtimeSnapshot()
 					}
-					if state.Stage == "offline" && !state.Running {
+					if (state.Stage == "offline" || state.Stage == "failed" && retryFailure) && !state.Running {
 						timer := time.NewTimer(retryDelay)
 						retryTimer = timer.C
 						stopTimer = timer.Stop
-						retryDelay = min(retryDelay*2, 15*time.Second)
+						retryDelay = min(retryDelay*2, 5*time.Second)
 					} else if state.Stage == "ready" {
 						retryDelay = 2 * time.Second
 					}
@@ -345,6 +353,20 @@ func (c *Controller) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// A route can remain available while its SSH connection is replaced. Retry
+// finite, idempotent preparation after transport loss without requiring another
+// network event or a manual click. Authentication and validation failures remain
+// failures, and session launches are never replayed by this loop.
+func transientPreparationFailure(err error) bool {
+	for _, target := range []error{io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe, net.ErrClosed, context.DeadlineExceeded, syscall.ECONNRESET, syscall.EPIPE, syscall.ETIMEDOUT} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	var missing *ssh.ExitMissingError
+	return errors.As(err, &missing)
 }
 
 func (c *Controller) cancelInFlightOffline(epoch uint64) {
