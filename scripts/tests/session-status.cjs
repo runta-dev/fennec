@@ -41,6 +41,23 @@ context.window.renderHerdrSessions([
 assert.deepEqual(Array.from(rendered,row=>row.name),['查看本地仓库',"[[i18n:ui.untitled_session]]",'Review','Review | customer feedback','Greet the user']);
 assert.equal(rendered[0].sessionID,'a'.repeat(32));
 console.log('PASS display titles omit UUID suffixes while action identities and human title content remain intact');
+for(const frame of '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'){
+ const terminal={address:'spinner',state:'live',status:'working',title:frame+' 排查 Claude Code 无法连接本地 Mac | column-deck',labels:{'fennec.agent':'codex','fennec.session':'column-deck'}};
+ context.window.renderHerdrSessions([terminal]);
+ assert.equal(rendered[0].name,'排查 Claude Code 无法连接本地 Mac');
+ assert.equal(rendered[0].group,'working');
+ assert.equal(rendered[0].sessionID,'column-deck');
+ assert.ok(terminal.title.startsWith(frame));
+}
+context.window.renderHerdrSessions([
+ {address:'spinner-fallback',agent:'codex',state:'live',title:'⠴',name:'⠋ Review layout'},
+ {address:'spinner-empty',agent:'codex',state:'live',title:'⠴'},
+ {address:'plain',agent:'codex',state:'live',title:'Review layout'},
+ {address:'embedded',agent:'codex',state:'live',title:'Explain ⠴ animation'},
+ {address:'other-agent',agent:'claude',state:'live',title:'⠴ Keep this title'}
+]);
+assert.deepEqual(Array.from(rendered,row=>row.name),['Review layout',"[[i18n:ui.untitled_session]]",'Review layout','Explain ⠴ animation','⠴ Keep this title']);
+console.log('PASS Codex spinner frames are omitted from display titles without changing source titles, identities, or other agents');
 context.window.renderHerdrSessions([
  {address:'t12',state:'live',title:'查看本地仓库 | 6629244c4e1d9427135cf...'},
  {address:'t15',state:'live',title:'说明当前运行环境 | 854d41450568901dee5fa...'},

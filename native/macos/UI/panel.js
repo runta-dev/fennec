@@ -1239,9 +1239,11 @@ window.renderHerdrSessions = terminals => {
  lastSessionTerminals=terminals.filter(terminal=>!confirmedStoppedSessions.has(terminal.labels?.['fennec.session']));
  terminals=lastSessionTerminals;
  const labels={working:"[[i18n:ui.working]]",blocked:"[[i18n:ui.needs_input]]",idle:"[[i18n:ui.idle]]",error:"[[i18n:ui.errored]]"};
- const readableName=(value,sessionID)=>{
+ const readableName=(value,sessionID,agent)=>{
   if(typeof value!=='string')return '';
   let title=value.trim();
+  // Codex includes an animated terminal spinner before its OSC title.
+  if(agent==='codex')title=title.replace(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s+|$)/u,'').trim();
   if(typeof sessionID==='string' && sessionID){
    const esc=sessionID.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
    title=title.replace(new RegExp('\\s*[|·]\\s*'+esc+'\\s*$','i'),'').trim();
@@ -1255,8 +1257,9 @@ window.renderHerdrSessions = terminals => {
    const group=Object.hasOwn(labels,raw)?raw:'idle';
    const displayStatus=labels[group];
    const sessionID=terminal.labels?.['fennec.session'];
-   const name=readableName(terminal.title,sessionID)||readableName(terminal.name,sessionID);
-   return {agent:terminal.labels?.["fennec.agent"] || terminal.agent,name:name||"[[i18n:ui.untitled_session]]",untitled:!name,group,status:raw||'',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
+   const agent=terminal.labels?.['fennec.agent'] || terminal.agent;
+   const name=readableName(terminal.title,sessionID,agent)||readableName(terminal.name,sessionID,agent);
+   return {agent,name:name||"[[i18n:ui.untitled_session]]",untitled:!name,group,status:raw||'',displayStatus,address:terminal.address,parent:typeof terminal.parent==='string'?terminal.parent:null,sessionID,canStop:terminal.state==='live' && /^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$/.test(sessionID||'')};
  });
  window.renderRuntimes(rows,'');
 };
