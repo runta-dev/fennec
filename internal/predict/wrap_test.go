@@ -91,3 +91,20 @@ func TestWrapCodexHangingSpacesAndFullLine(t *testing.T) {
 		t.Fatalf("long word rows %q", got)
 	}
 }
+
+func TestClaudeWrapHidesSpaceAfterFullRow(t *testing.T) {
+	// Recorded at 100 columns (width 96): typing a space after an exactly
+	// full row starts the next row with an invisible space; the cursor is at
+	// column 0 of that row and the next letter is drawn there.
+	full := strings.Repeat("x", 91) + " onto" // exactly 96 columns
+	elems := TextElems(full + " s")
+	rows := claudeWrap(elems, 96)
+	if got := layoutStrings(elems, rows); len(got) != 2 || got[1] != "s" {
+		t.Fatalf("rows %q", got)
+	}
+	elems = TextElems(full + " ")
+	rows = claudeWrap(elems, 96)
+	if row, col := cursorRowCol(elems, rows, len(elems), 96); row != 1 || col != 0 {
+		t.Fatalf("cursor after the wrapped space at %d,%d", row, col)
+	}
+}

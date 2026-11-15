@@ -22,6 +22,7 @@ const (
 	codexTextCol    = 2
 	codexMaxRows    = 8
 	codexLargePaste = 1000
+	codexQueueHint  = "tab to queue message"
 )
 
 var (
@@ -35,6 +36,7 @@ type codexBox struct {
 	padTop      []Cell
 	padBottom   []Cell
 	footer      [][]Cell
+	working     bool // a task is running (status indicator above the block)
 	bg          Attr
 	width       int
 	promptRow   int
@@ -45,6 +47,7 @@ type codexBox struct {
 type codexProfile struct {
 	placeholder []Cell
 	hints       []Cell // the footer's last row as shown with an empty draft
+	queue       []Cell // the "tab to queue message" row (task running, draft typed)
 }
 
 func newCodexProfile() *codexProfile { return &codexProfile{} }
@@ -137,6 +140,11 @@ func (p *codexProfile) geometry(s *Screen) (codexBox, string, bool) {
 	box.prompt = [2]Cell{s.Cell(r, 0), s.Cell(r, 1)}
 	box.padTop = copyRow(s, r-1)
 	box.padBottom = copyRow(s, last)
+	for row := max(0, r-4); row < r-1; row++ {
+		if strings.Contains(s.RowText(row, 0, s.Cols), "esc to interrupt") {
+			box.working = true
+		}
+	}
 	// Everything below the block is footer (status line, then the
 	// "? for shortcuts" hints while the draft is empty). The block is
 	// anchored to it, so the footer's height moves the block.
@@ -152,20 +160,49 @@ func (p *codexProfile) geometry(s *Screen) (codexBox, string, bool) {
 // footerFor returns the footer rows Codex shows for st, given the footer on
 // screen for the locked state: the hints row exists only while the draft is
 // empty.
+//
+// While a task runs (a "Working … esc to interrupt" status above the
+// composer), a non-empty draft shows "tab to queue message" in that row
+// instead of nothing.
 func (p *codexProfile) footerFor(lock Lock, box codexBox, st State) ([][]Cell, bool) {
 	if lock.State.Empty() == st.Empty() {
 		return box.footer, true
 	}
+	base := box.footer
+	if !lock.State.Empty() && box.working && len(base) >= 2 {
+		base = base[:len(base)-1] // the queue hint
+	}
 	if !st.Empty() {
-		if len(box.footer) < 2 {
-			return box.footer, true
+		if len(base) >= 2 {
+			base = base[:len(base)-1] // the shortcuts hint
 		}
-		return box.footer[:len(box.footer)-1], true
+		if box.working {
+			return append(append([][]Cell(nil), base...), p.queueRow(len(box.padTop))), true
+		}
+		return base, true
 	}
 	if p.hints == nil {
 		return nil, false
 	}
-	return append(append([][]Cell(nil), box.footer...), p.hints), true
+	return append(append([][]Cell(nil), base...), p.hints), true
+}
+
+// queueRow is the "tab to queue message" footer row, as last seen, or built in
+// the style of the shortcuts hint.
+func (p *codexProfile) queueRow(cols int) []Cell {
+	if len(p.queue) == cols {
+		return p.queue
+	}
+	attr := Attr{}
+	for _, c := range p.hints {
+		if !c.Blank() {
+			attr = c.Attr
+			break
+		}
+	}
+	row := blankRow(cols, Attr{})
+	rowCells(row, 2, TextElems(codexQueueHint), attr, attr)
+	return row
 }
 
 func (p *codexProfile) Locate(s *Screen) (Lock, bool) {
@@ -189,6 +226,9 @@ func (p *codexProfile) Locate(s *Screen) (Lock, bool) {
 	st, ok := p.parse(s, box, mode)
 	if !ok {
 		return Lock{}, false
+	}
+	if box.working && !st.Empty() && len(box.footer) >= 2 && strings.Contains(rowString(box.footer[len(box.footer)-1]), codexQueueHint) {
+		p.queue = box.footer[len(box.footer)-1]
 	}
 	return Lock{State: st, Top: r, Bottom: box.lastRow, Box: box}, true
 }

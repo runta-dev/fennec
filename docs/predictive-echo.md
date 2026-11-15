@@ -503,6 +503,16 @@ acknowledgement only means the agent produced some output, so a prediction is
 judged 250 ms after it, and an unpredictable key (a barrier) is resolved only
 when the composer has changed or that grace period has passed.
 
+Typing while the agent works is verified on two more recordings with real
+acknowledgements. `claude-streaming-100x30`: 70 keys typed during 14 s of
+thinking and streaming (150 output frames); all 321 predicted key packets
+match. `codex-streaming-100x30`: typing throughout a 34 s Codex task; all 173
+match. Both have no pauses or rollbacks. Rules they added: Claude Code hides
+the leading whitespace of a soft-wrapped row (a space typed after an exactly
+full row is invisible and the cursor sits at column 0 of the next row), and
+while a Codex task runs, a non-empty draft shows "tab to queue message" in
+the footer's second row.
+
 Codex is verified against a real session recorded through `fen` and herdr
 (`testdata/traces/codex-100x30`, Codex 0.169, 100×30): with the recording's
 own timing and link latency, 113 of 116 key packets were predicted and every

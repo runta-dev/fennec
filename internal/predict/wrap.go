@@ -10,6 +10,9 @@ import (
 type VisualRow struct {
 	Start, End int
 	Width      int
+	// Hidden counts elements at the start of the row that are not drawn
+	// (leading whitespace of a soft-wrapped row, for renderers that trim it).
+	Hidden int
 }
 
 // elemWidth is the display width of one element.
@@ -276,7 +279,7 @@ func cursorRowCol(elems []Elem, rows []VisualRow, cursor, width int) (int, int) 
 	// A newline ends its row; a cursor just after it sits on the next row,
 	// which the loop above already chose because that row starts there.
 	col := 0
-	for j := rows[row].Start; j < cursor && j < len(elems); j++ {
+	for j := rows[row].Start + rows[row].Hidden; j < cursor && j < len(elems); j++ {
 		col += elemWidth(elems[j])
 	}
 	return row, col

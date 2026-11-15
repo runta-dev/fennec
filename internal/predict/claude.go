@@ -137,7 +137,7 @@ func (p *claudeProfile) Match(s *Screen, st State) (Lock, bool) {
 		return Lock{}, false
 	}
 	w := box.width
-	rows := WrapAnsi(st.Elems, w)
+	rows := claudeWrap(st.Elems, w)
 	if len(rows) != box.lastRow-box.promptRow+1 {
 		return Lock{}, false
 	}
@@ -308,12 +308,12 @@ func (p *claudeProfile) parse(s *Screen, box claudeBox, mode string) (State, boo
 	for i := 0; i < n; i++ {
 		texts[i], widths[i] = rowRun(s, box.promptRow+i, claudeTextCol, claudeTextCol+w)
 	}
-	var b strings.Builder
-	for i := 0; i < n; i++ {
-		b.WriteString(texts[i])
-		if i == n-1 {
-			break
-		}
+	// Separator between each pair of rows. After an exactly full row the
+	// next row either continues a hard-broken word or starts after a space
+	// that the renderer hides; both are tried and the layout decides.
+	seps := make([][]string, n-1)
+	ambiguous := 0
+	for i := 0; i < n-1; i++ {
 		next := texts[i+1]
 		first := next
 		if j := strings.IndexByte(next, ' '); j >= 0 {
@@ -321,36 +321,86 @@ func (p *claudeProfile) parse(s *Screen, box claudeBox, mode string) (State, boo
 		}
 		switch {
 		case widths[i] >= w:
-			// A hard-broken long word continues on the next row.
+			seps[i] = []string{"", " "}
+			ambiguous++
 		case widths[i] > 0 && first != "" && widths[i]+1+StringWidth(first) > w:
-			b.WriteByte(' ')
+			seps[i] = []string{" "}
 		default:
-			b.WriteByte('\n')
+			seps[i] = []string{"\n"}
 		}
 	}
-	text := b.String()
-	// Spaces typed at the end are invisible; the cursor shows them.
-	cursorRow, cursorCol := s.Row-box.promptRow, s.Col-claudeTextCol
-	if cursorRow == n-1 && cursorCol > widths[n-1] {
-		text += strings.Repeat(" ", cursorCol-widths[n-1])
-	}
-	elems := tokenize(text, claudeTokenRe)
-	rows := WrapAnsi(elems, w)
-	if len(rows) != n {
+	if ambiguous > 4 {
 		return State{}, false
 	}
-	got := layoutStrings(elems, rows)
-	for i := range got {
-		if got[i] != texts[i] {
+	cursorRow, cursorCol := s.Row-box.promptRow, s.Col-claudeTextCol
+	verify := func(text string) (State, bool) {
+		// Spaces typed at the end are invisible; the cursor shows them.
+		if cursorRow == n-1 && cursorCol > widths[n-1] {
+			text += strings.Repeat(" ", cursorCol-widths[n-1])
+		}
+		elems := tokenize(text, claudeTokenRe)
+		rows := claudeWrap(elems, w)
+		if len(rows) != n {
+			return State{}, false
+		}
+		got := layoutStrings(elems, rows)
+		for i := range got {
+			if got[i] != texts[i] {
+				return State{}, false
+			}
+		}
+		// Positions inside hidden whitespace share a screen cell; the cursor
+		// is after the space it just typed, so prefer the later index.
+		for c := len(elems); c >= 0; c-- {
+			if row, col := cursorRowCol(elems, rows, c, w); row == cursorRow && col == cursorCol {
+				return State{Elems: elems, Cursor: c, Mode: mode}, true
+			}
+		}
+		return State{}, false
+	}
+	choice := make([]int, n-1)
+	for {
+		var b strings.Builder
+		for i := 0; i < n; i++ {
+			b.WriteString(texts[i])
+			if i < n-1 {
+				b.WriteString(seps[i][choice[i]])
+			}
+		}
+		if st, ok := verify(b.String()); ok {
+			return st, true
+		}
+		i := 0
+		for ; i < n-1; i++ {
+			if choice[i]+1 < len(seps[i]) {
+				choice[i]++
+				break
+			}
+			choice[i] = 0
+		}
+		if i == n-1 {
 			return State{}, false
 		}
 	}
-	for c := 0; c <= len(elems); c++ {
-		if row, col := cursorRowCol(elems, rows, c, w); row == cursorRow && col == cursorCol {
-			return State{Elems: elems, Cursor: c, Mode: mode}, true
+}
+
+// claudeWrap is wrap-ansi plus Claude Code's rendering rule: a row that
+// starts by soft wrap does not draw its leading whitespace (a space typed
+// after an exactly full row starts the next row invisibly, and the cursor
+// after it is at column 0).
+func claudeWrap(elems []Elem, w int) []VisualRow {
+	rows := WrapAnsi(elems, w)
+	for i := 1; i < len(rows); i++ {
+		r := &rows[i]
+		if r.Start == 0 || r.Start > len(elems) || elems[r.Start-1].S == "\n" {
+			continue
+		}
+		for r.Start+r.Hidden < r.End && !elems[r.Start+r.Hidden].Token && elems[r.Start+r.Hidden].S == " " {
+			r.Width -= elemWidth(elems[r.Start+r.Hidden])
+			r.Hidden++
 		}
 	}
-	return State{}, false
+	return rows
 }
 
 func (p *claudeProfile) Same(a, b State, s *Screen) bool {
@@ -358,7 +408,7 @@ func (p *claudeProfile) Same(a, b State, s *Screen) bool {
 		return false
 	}
 	w := p.textWidth(s.Cols)
-	ra, rb := WrapAnsi(a.Elems, w), WrapAnsi(b.Elems, w)
+	ra, rb := claudeWrap(a.Elems, w), claudeWrap(b.Elems, w)
 	if len(ra) != len(rb) {
 		return false
 	}
@@ -380,7 +430,7 @@ func (p *claudeProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 		return Paint{}, false
 	}
 	w := box.width
-	rows := WrapAnsi(st.Elems, w)
+	rows := claudeWrap(st.Elems, w)
 	n := len(rows)
 	if n > p.maxRows(s.Rows) {
 		return Paint{}, false
@@ -459,7 +509,7 @@ func (p *claudeProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 			}
 			copy(row[claudeTextCol:], p.placeholder)
 		} else {
-			rowCells(row, claudeTextCol, st.Elems[vr.Start:vr.End], Attr{}, Attr{})
+			rowCells(row, claudeTextCol, st.Elems[vr.Start+vr.Hidden:vr.End], Attr{}, Attr{})
 		}
 		paint.Rows[newTop+i] = row
 	}
@@ -488,7 +538,7 @@ func (p *claudeProfile) nextID(st State) int {
 
 // visual returns the wrapped rows of st and the cursor's row and column.
 func (p *claudeProfile) visual(st State) ([]VisualRow, int, int) {
-	rows := WrapAnsi(st.Elems, p.width)
+	rows := claudeWrap(st.Elems, p.width)
 	row, col := cursorRowCol(st.Elems, rows, st.Cursor, p.width)
 	return rows, row, col
 }

@@ -90,7 +90,7 @@ func layoutStrings(elems []Elem, rows []VisualRow) []string {
 	out := make([]string, len(rows))
 	for i, r := range rows {
 		var b strings.Builder
-		for _, e := range elems[r.Start:r.End] {
+		for _, e := range elems[r.Start+r.Hidden : r.End] {
 			if e.S != "\n" {
 				b.WriteString(e.S)
 			}
@@ -158,3 +158,14 @@ var imagePathPattern = regexp.MustCompile(`(?i)^\s*['"]?(/|~/|file://)[^\n]*\.(p
 // looksLikeImagePath reports pastes the agent may turn into an attachment
 // depending on the remote filesystem, which the client cannot see.
 func looksLikeImagePath(s string) bool { return imagePathPattern.MatchString(s) }
+
+// rowString is the visible text of a row of cells.
+func rowString(row []Cell) string {
+	var b strings.Builder
+	for _, c := range row {
+		if c.Width != 0 {
+			b.WriteString(c.Glyph())
+		}
+	}
+	return b.String()
+}

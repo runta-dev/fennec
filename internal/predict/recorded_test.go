@@ -130,6 +130,20 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		barriers := engine.Stats().Barriers
 		engine.Input(k.raw)
 		barrier := engine.Stats().Barriers > barriers
+		// A key typed while a server frame is half received is drawn when
+		// the frame completes (the engine never writes into a frame); judge
+		// the screen there.
+		for {
+			engine.mu.Lock()
+			ground := engine.shadow.Ground()
+			engine.mu.Unlock()
+			if ground || ci >= len(chunks) {
+				break
+			}
+			now = at(chunks[ci].At)
+			engine.Server(chunks[ci].Data)
+			ci++
+		}
 		engine.mu.Lock()
 		shown := engine.display.Clone()
 		painted := len(engine.painted) > 0
@@ -211,5 +225,24 @@ func TestClaudeTranscriptRecordedSession(t *testing.T) {
 	}
 	if res.predicted < 150 {
 		t.Fatalf("only %d of %d key packets predicted", res.predicted, res.keys)
+	}
+}
+
+// TestClaudeStreamingRecordedSession replays typing while Claude Code is
+// thinking (spinner) and streaming its answer above the composer.
+func TestClaudeStreamingRecordedSession(t *testing.T) {
+	res := replayRecorded(t, "claude-streaming-100x30", 30, 100, func() Profile { return newClaudeProfile() }, false)
+	if res.stats.Diverged != 0 {
+		t.Fatalf("%d rollbacks", res.stats.Diverged)
+	}
+}
+
+// TestCodexStreamingRecordedSession replays a Codex session: the starfield
+// on the empty composer, then typing while Codex works and streams its answer
+// (the bottom pane shows a working status and the queue hint).
+func TestCodexStreamingRecordedSession(t *testing.T) {
+	res := replayRecorded(t, "codex-streaming-100x30", 30, 100, func() Profile { return newCodexProfile() }, false)
+	if res.stats.Diverged != 0 {
+		t.Fatalf("%d rollbacks", res.stats.Diverged)
 	}
 }
