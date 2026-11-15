@@ -3,7 +3,8 @@
 ## Commit and push workflow
 
 - The user's standing preference is to commit and push task changes promptly after appropriate validation, at meaningful milestones and before reporting completion. Do not wait for a separate request to push completed work.
-- Push the current task branch to `origin` and verify the remote commit matches the local commit. Integrate into `main` when the user requests it. Include only task-relevant changes and preserve concurrent work.
+- During the current rapid-development cycle, make all changes directly on `main` and push to `origin/main` by default. Do not create a feature branch or wait for a separate merge/push request unless the user explicitly asks for a different workflow.
+- Refresh `origin/main` before editing and again before pushing, integrate concurrent upstream commits without overwriting other work, and verify the remote commit matches the local commit after pushing. Include only task-relevant changes and preserve concurrent work; use ordinary fast-forward pushes.
 - Keep the matching cloud and Mac worktrees synchronized. Report the pushed branch and commit, outstanding validation failures, and any blocked push or pending synchronization explicitly.
 
 ## Source language and localization
