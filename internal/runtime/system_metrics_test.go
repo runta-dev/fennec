@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+func TestDiskMetricsDistinguishUsageFromUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	used, total := readDiskMetrics(dir)
+	if total == 0 || used > total {
+		t.Fatalf("invalid filesystem usage: %d / %d", used, total)
+	}
+	used, total = readDiskMetrics(filepath.Join(dir, "missing"))
+	if used != 0 || total != 0 {
+		t.Fatalf("unavailable filesystem reported usage: %d / %d", used, total)
+	}
+}
+
 func TestCollectSystemMetricsParsesProcAndDeltaRates(t *testing.T) {
 	dir := t.TempDir()
 	stat := filepath.Join(dir, "stat")

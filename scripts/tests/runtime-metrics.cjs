@@ -14,6 +14,20 @@ assert.ok(match, 'sparklinePaths should exist in panel.js');
 const ctx = vm.createContext({ METRIC_HISTORY_LEN: 24, Math, Number });
 vm.runInContext(match[0], ctx);
 
+// Missing samples (including an older cloud service) must not look like an empty disk.
+vm.runInContext(panelJS.match(/function formatMemoryMiB\([\s\S]*?\n\}/)[0], ctx);
+vm.runInContext(panelJS.match(/function diskUsage\([\s\S]*?\n\}/)[0], ctx);
+for (const sample of [{}, {disk_used_bytes:0}, {disk_used_bytes:0,disk_total_bytes:0},
+ {disk_used_bytes:-1,disk_total_bytes:100}, {disk_used_bytes:101,disk_total_bytes:100},
+ {disk_used_bytes:NaN,disk_total_bytes:100}, {disk_used_bytes:0,disk_total_bytes:Infinity}]) {
+ assert.equal(ctx.diskUsage(sample), null);
+}
+const disk = ctx.diskUsage({disk_used_bytes:8 * 1073741824,disk_total_bytes:32 * 1073741824});
+assert.equal(disk.text, '8.0 GB / 32.0 GB');
+assert.equal(disk.percent, 25);
+assert.equal(ctx.diskUsage({disk_used_bytes:0,disk_total_bytes:1073741824}).percent, 0);
+assert.equal(ctx.diskUsage({disk_used_bytes:1073741824,disk_total_bytes:1073741824}).percent, 100);
+
 function parseYs(linePath) {
   return linePath
     .replace(/^M/, '')

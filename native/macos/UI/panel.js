@@ -941,6 +941,13 @@ function formatMemoryMiB(mib) {
  if (mib >= 1024) return (mib / 1024).toFixed(1) + ' GB';
  return Math.round(mib) + ' MB';
 }
+function diskUsage(payload) {
+ const used = payload.disk_used_bytes;
+ const total = payload.disk_total_bytes;
+ if (typeof used !== 'number' || !Number.isFinite(used) || used < 0 ||
+     typeof total !== 'number' || !Number.isFinite(total) || total <= 0 || used > total) return null;
+ return { text: formatMemoryMiB(used / 1048576) + ' / ' + formatMemoryMiB(total / 1048576), percent: used / total * 100 };
+}
 function sparklinePaths(samples, opts = {}) {
  const width = opts.width || 112;
  const height = opts.height || 24;
@@ -1096,6 +1103,10 @@ function drawRuntimeMetrics() {
    '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + netIconSVG + '</span><span id="rt-net-lbl"></span></span></div>' +
    '<div class="runtime-net-rows"><div class="runtime-net-row"><span class="net-dir">↑</span><strong id="rt-net-up"></strong></div><div class="runtime-net-row"><span class="net-dir">↓</span><strong id="rt-net-down"></strong></div></div>' +
    '</div>' +
+   '</div>' +
+   '<div class="runtime-disk-row">' +
+   '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m4 4-2 8v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4l-2-8Z"/><path d="M2 12h16m-4 3h.01m-3 0h.01"/></svg></span><span id="rt-disk-lbl"></span></span><span class="runtime-metric-value" id="rt-disk-val"></span></div>' +
+   '<div class="runtime-disk-track" id="rt-disk-meter" role="meter" aria-labelledby="rt-disk-lbl" aria-valuemin="0" aria-valuemax="100"><div id="rt-disk-fill"></div></div>' +
    '</div>';
  }
 
@@ -1106,6 +1117,19 @@ function drawRuntimeMetrics() {
  card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU · ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
  card.querySelector('#rt-mem-lbl').textContent = t('[[i18n:ui.memory]]');
  card.querySelector('#rt-net-lbl').textContent = t('[[i18n:ui.network]]');
+ card.querySelector('#rt-disk-lbl').textContent = t('[[i18n:ui.disk]]');
+ const disk = diskUsage(payload);
+ card.querySelector('#rt-disk-val').textContent = disk ? disk.text : '—';
+ const diskMeter = card.querySelector('#rt-disk-meter');
+ diskMeter.style.visibility = disk ? 'visible' : 'hidden';
+ if (disk) {
+  diskMeter.setAttribute('aria-valuenow', disk.percent.toFixed(1));
+  diskMeter.setAttribute('aria-valuetext', disk.text);
+ } else {
+  diskMeter.removeAttribute('aria-valuenow');
+  diskMeter.removeAttribute('aria-valuetext');
+ }
+ card.querySelector('#rt-disk-fill').style.width = (disk ? disk.percent : 0) + '%';
 
  const cpuNum = typeof payload.cpu_percent === 'number' ? payload.cpu_percent : 0;
  const curMiB = payload.memory_current_mib || payload.memory_min_mib || 4096;

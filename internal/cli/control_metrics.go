@@ -143,6 +143,8 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 		"memory_current_mib": metrics.MemoryCurrentMiB,
 		"memory_min_mib":     metrics.MemoryMinMiB,
 		"memory_max_mib":     metrics.MemoryMaxMiB,
+		"disk_used_bytes":    metrics.DiskUsedBytes,
+		"disk_total_bytes":   metrics.DiskTotalBytes,
 		"net_rx_bytes":       metrics.NetRxBytes,
 		"net_tx_bytes":       metrics.NetTxBytes,
 		"net_rx_bps":         metrics.NetRxBPS,

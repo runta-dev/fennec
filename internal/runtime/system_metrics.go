@@ -11,10 +11,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-// SystemMetrics reports live CPU utilization, dynamic memory occupancy, and
-// cumulative + instantaneous network traffic from the shared cloud runtime.
+// SystemMetrics reports live CPU, memory and disk usage, and cumulative +
+// instantaneous network traffic from the shared cloud runtime.
 type SystemMetrics struct {
 	CPUPercent       float64   `json:"cpu_percent"`
 	VCPUs            int       `json:"vcpus"`
@@ -23,6 +25,8 @@ type SystemMetrics struct {
 	MemoryCurrentMiB uint64    `json:"memory_current_mib"`
 	MemoryMinMiB     uint64    `json:"memory_min_mib,omitempty"`
 	MemoryMaxMiB     uint64    `json:"memory_max_mib,omitempty"`
+	DiskUsedBytes    uint64    `json:"disk_used_bytes"`
+	DiskTotalBytes   uint64    `json:"disk_total_bytes,omitempty"`
 	NetRxBytes       uint64    `json:"net_rx_bytes"`
 	NetTxBytes       uint64    `json:"net_tx_bytes"`
 	NetRxBPS         uint64    `json:"net_rx_bps"`
@@ -87,6 +91,7 @@ func StartMetricsSampler(ctx context.Context) {
 
 func sampleAndRecord(state *metricsSampleState) SystemMetrics {
 	m := collectSystemMetricsFromPaths("/proc/stat", "/proc/meminfo", "/proc/net/dev", "/sys/fs/cgroup", state)
+	m.DiskUsedBytes, m.DiskTotalBytes = readDiskMetrics("/")
 	memMiB := float64(m.MemoryUsedMiB)
 	if m.MemoryUsedBytes > 0 {
 		memMiB = math.Round((float64(m.MemoryUsedBytes)/1048576.0)*1000) / 1000
@@ -206,6 +211,18 @@ func collectSystemMetricsFromPaths(procStat, procMeminfo, procNetDev, cgroupDir 
 		NetTxBPS:         txBPS,
 		SampledUnixMS:    now.UnixMilli(),
 	}
+}
+
+// The cloud computer's root filesystem contains its persistent workspace.
+// Use filesystem accounting rather than walking files or counting tmpfs mounts.
+// A zero total means unavailable, including older metric producers.
+func readDiskMetrics(path string) (usedBytes, totalBytes uint64) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil || stat.Bsize <= 0 || stat.Blocks == 0 || stat.Bfree > stat.Blocks {
+		return 0, 0
+	}
+	blockSize := uint64(stat.Bsize)
+	return (stat.Blocks - stat.Bfree) * blockSize, stat.Blocks * blockSize
 }
 
 func readProcStatCPU(path string) (total uint64, idle uint64, ok bool) {
