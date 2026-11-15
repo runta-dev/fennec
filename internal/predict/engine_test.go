@@ -251,13 +251,33 @@ func TestEngineRepairsDivergence(t *testing.T) {
 	now = now.Add(300 * time.Millisecond)
 	engine.Server(server.frame(func(s State) State { return s.Insert(Elem{S: "y"}) }))
 	engine.Ack(seq, false)
+	// A key typed now has not reached the agent yet.
+	engine.Input([]byte("z"))
+	engine.mu.Lock()
+	if engine.stats.Diverged != 0 {
+		engine.mu.Unlock()
+		t.Fatal("rolled back before the echo could have arrived")
+	}
+	engine.mu.Unlock()
+	// After the grace period the server's "y" wins; "z" stays predicted
+	// on top of it rather than vanishing.
+	now = now.Add(ackGrace)
+	engine.Ack(0, false)
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
-	if ok, why := gridEqual(engine.display, engine.shadow); !ok {
-		t.Fatalf("divergence not repaired: %s", why)
-	}
 	if engine.stats.Diverged != 1 {
 		t.Fatalf("diverged=%d", engine.stats.Diverged)
+	}
+	lock, ok := newClaudeProfile().Locate(engine.display)
+	if !ok || lock.State.Text() != "yz" {
+		t.Fatalf("after repair the terminal shows %q, want the server's y plus the unacknowledged z", lock.State.Text())
+	}
+	// Once the agent draws z too, the terminal equals the server exactly.
+	engine.mu.Unlock()
+	engine.Server(server.frame(func(s State) State { return s.Insert(Elem{S: "z"}) }))
+	engine.mu.Lock()
+	if ok, why := gridEqual(engine.display, engine.shadow); !ok {
+		t.Fatalf("did not converge: %s", why)
 	}
 }
 

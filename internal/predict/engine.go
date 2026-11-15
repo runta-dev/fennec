@@ -45,6 +45,11 @@ const (
 	trustDelay = 1500 * time.Millisecond
 	// barrierFallback resolves a barrier without echo acknowledgements.
 	barrierFallback = 400 * time.Millisecond
+	// ackGrace: an acknowledgement only says the agent produced some output
+	// after the key (Codex emits a cursor frame at once and draws the echo up
+	// to 17 ms later; Ink throttles renders). The echo itself may still be on
+	// its way, so a prediction is judged only this long after the ack.
+	ackGrace = 250 * time.Millisecond
 )
 
 // Stats are cumulative counters for diagnostics.
@@ -98,6 +103,7 @@ type Engine struct {
 	seq        uint64
 	ackSeq     uint64
 	ackQuiet   bool // the last ack reported no output
+	ackAt      time.Time
 	imagePaste bool
 
 	painted    map[int]bool
@@ -275,8 +281,9 @@ func (ed edit) blocked() bool { return ed.apply == nil }
 func (e *Engine) Ack(seq uint64, quiet bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.opts.Record.Ack(seq, quiet)
 	if seq > e.ackSeq {
-		e.ackSeq, e.ackQuiet = seq, quiet
+		e.ackSeq, e.ackQuiet, e.ackAt = seq, quiet, e.opts.Now()
 	}
 	var buf bytes.Buffer
 	e.settle(&buf)
@@ -472,8 +479,7 @@ func (e *Engine) reconcile(now time.Time) {
 		} else if !e.diverged(first, now) {
 			return
 		}
-		e.stats.Diverged++
-		e.confirmed, e.pending = server, nil
+		e.rollback(server)
 		return
 	}
 }
@@ -489,10 +495,35 @@ func (e *Engine) barrierResolved(ed edit, now time.Time) bool {
 	return now.Sub(ed.at) > wait
 }
 
+// ackedSettled: the server acknowledged ed (with output) long enough ago that
+// its echo, if any, has arrived.
+func (e *Engine) ackedSettled(ed edit, now time.Time) bool {
+	return e.opts.EchoAck && e.ackSeq >= ed.seq && !e.ackQuiet && now.Sub(e.ackAt) >= ackGrace
+}
+
+// rollback adopts the server's state after a misprediction. Keys the server
+// has not acknowledged are still on their way to the agent: they stay
+// predicted, remapped onto the server's state, instead of vanishing.
+func (e *Engine) rollback(server State) {
+	e.stats.Diverged++
+	e.confirmed = server
+	var keep []edit
+	if e.opts.EchoAck {
+		for _, ed := range e.pending {
+			if ed.seq > e.ackSeq {
+				ed.apply, ed.image, ed.deferred = nil, false, true
+				keep = append(keep, ed)
+			}
+		}
+	}
+	e.pending = keep
+	e.mapDeferred()
+}
+
 // expired: the screen still shows the old state.
 func (e *Engine) expired(ed edit, now time.Time) bool {
-	if e.opts.EchoAck && e.ackSeq >= ed.seq && !e.ackQuiet {
-		// The agent answered the key and did not show it.
+	if e.ackedSettled(ed, now) {
+		// The agent answered the key and still does not show it.
 		e.stats.Expired++
 		return true
 	}
@@ -510,7 +541,7 @@ func (e *Engine) expired(ed edit, now time.Time) bool {
 // diverged: the screen shows something that no prefix explains.
 func (e *Engine) diverged(ed edit, now time.Time) bool {
 	if e.opts.EchoAck {
-		return (e.ackSeq >= ed.seq && !e.ackQuiet) || now.Sub(ed.at) > Deadline
+		return e.ackedSettled(ed, now) || now.Sub(ed.at) > Deadline
 	}
 	// Without acknowledgements an intermediate frame (for example a frame
 	// rendered before the latest key arrived) can look like divergence; wait

@@ -12,13 +12,13 @@ import (
 // Recorder writes a session's server output and typed input with timestamps,
 // in the layout the trace tests replay: "output" holds raw bytes, "timing"
 // holds "<seconds since previous chunk> <bytes>" per chunk (script's
-// --log-timing format), and "input" holds "<seconds since start> <hex>" per
-// key packet. It is opt-in, local and private (0700/0600); recordings can
+// --log-timing format), "input" holds "<seconds since start> <hex>" per key
+// packet, and "acks" holds the cloud's echo acknowledgements. It is opt-in, local and private (0700/0600); recordings can
 // contain anything shown on screen.
 type Recorder struct {
-	mu                    sync.Mutex
-	output, timing, input *os.File
-	start, last           time.Time
+	mu                          sync.Mutex
+	output, timing, input, acks *os.File
+	start, last                 time.Time
 }
 
 // NewRecorder creates dir/<name>-<time> and its files.
@@ -40,7 +40,13 @@ func NewRecorder(dir, name string) (*Recorder, error) {
 		r.output.Close()
 		return nil, err
 	}
+	if r.acks, err = open("acks"); err != nil {
+		r.output.Close()
+		r.timing.Close()
+		return nil, err
+	}
 	if r.input, err = open("input"); err != nil {
+		r.acks.Close()
 		r.output.Close()
 		r.timing.Close()
 		return nil, err
@@ -71,6 +77,16 @@ func (r *Recorder) Input(data []byte) {
 	fmt.Fprintf(r.input, "%.6f %s\n", time.Since(r.start).Seconds(), hex.EncodeToString(data))
 }
 
+// Ack records an echo acknowledgement: "<seconds since start> <seq> <quiet>".
+func (r *Recorder) Ack(seq uint64, quiet bool) {
+	if r == nil || seq == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fmt.Fprintf(r.acks, "%.6f %d %v\n", time.Since(r.start).Seconds(), seq, quiet)
+}
+
 // Close flushes and closes the files.
 func (r *Recorder) Close() {
 	if r == nil {
@@ -81,4 +97,5 @@ func (r *Recorder) Close() {
 	r.output.Close()
 	r.timing.Close()
 	r.input.Close()
+	r.acks.Close()
 }
