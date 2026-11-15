@@ -66,7 +66,8 @@ type edit struct {
 	image      bool
 	imageReady bool
 	dropped    bool
-	deferred   bool // typed behind a barrier; mapped when it resolves
+	deferred   bool  // typed behind a barrier; mapped when it resolves
+	before     State // for a barrier: the composer it was typed into
 }
 
 // Options configure an engine.
@@ -246,6 +247,7 @@ func (e *Engine) mapEdit(ed *edit, st State) {
 	ed.apply = e.profile.Edit(ed.key, st, EditContext{Pending: len(e.pending), ImageReady: ed.imageReady})
 	ed.image = ed.key.Kind == KeyImagePaste && ed.apply != nil
 	if ed.apply == nil {
+		ed.before = st
 		e.stats.Barriers++
 	} else {
 		e.stats.Predicted++
@@ -461,7 +463,7 @@ func (e *Engine) reconcile(now time.Time) {
 		}
 		first := e.pending[0]
 		if first.barrier() {
-			if e.barrierResolved(first, now) {
+			if e.barrierResolved(first, server, now) {
 				e.pending = e.pending[1:]
 				e.confirmed = server
 				e.mapDeferred()
@@ -484,9 +486,16 @@ func (e *Engine) reconcile(now time.Time) {
 	}
 }
 
-func (e *Engine) barrierResolved(ed edit, now time.Time) bool {
+// barrierResolved: the server has shown what the unpredictable key did. An
+// acknowledgement alone is not enough (the agent may answer with a small
+// frame first and redraw the composer later, as Claude Code does for "!"):
+// the composer must have changed, or the grace period passed with no change.
+func (e *Engine) barrierResolved(ed edit, server State, now time.Time) bool {
 	if e.opts.EchoAck {
-		return e.ackSeq >= ed.seq || now.Sub(ed.at) > BusyDeadline
+		if e.ackSeq >= ed.seq && (!e.profile.Same(server, ed.before, e.shadow) || now.Sub(e.ackAt) >= ackGrace) {
+			return true
+		}
+		return now.Sub(ed.at) > BusyDeadline
 	}
 	wait := barrierFallback
 	if e.srtt > 0 {

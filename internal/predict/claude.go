@@ -43,6 +43,7 @@ type claudeBox struct {
 	chrome       []Cell
 	chromeRow    int
 	hasChrome    bool
+	blockTop     int // first row of the box: notification row or top border
 	width        int
 	promptRow    int
 	lastRow      int
@@ -59,7 +60,12 @@ type claudeProfile struct {
 	// notice is the notification row as last seen without the multi-line
 	// hint; Claude shows it again when the hint goes away.
 	notice []Cell
+	// region is the transcript area of the last frame; history holds rows
+	// that scrolled off the top, oldest first.
+	region, history [][]Cell
 }
+
+const claudeHistory = 200
 
 func newClaudeProfile() *claudeProfile { return &claudeProfile{} }
 
@@ -191,8 +197,15 @@ func (p *claudeProfile) geometry(s *Screen) (claudeBox, string, bool) {
 	}
 	box.prompt = [2]Cell{s.Cell(r, 0), s.Cell(r, 1)}
 	box.topBorder = copyRow(s, r-1)
+	box.blockTop = r - 1
+	// The row above the border is always the notification row: blank, a
+	// status notice, or the multi-line hint. It moves with the box.
 	if r-2 >= 0 {
+		if !rowBlank(s, r-2, 0, s.Cols/3) {
+			return fail() // transcript text where the notification row belongs
+		}
 		box.chromeRow, box.hasChrome, box.chrome = r-2, true, copyRow(s, r-2)
+		box.blockTop = r - 2
 		if !strings.Contains(s.RowText(r-2, 0, s.Cols), claudeHint) {
 			p.notice = box.chrome
 		}
@@ -203,7 +216,86 @@ func (p *claudeProfile) geometry(s *Screen) (claudeBox, string, bool) {
 		}
 	}
 	p.width, p.rows = box.width, s.Rows
+	p.track(s, box.blockTop)
 	return box, mode, true
+}
+
+// track remembers transcript rows that scroll off the top of the screen, so
+// a predicted shrink can bring them back. It compares the transcript area
+// with the previous frame's: a consistent shift up pushes the rows that left,
+// a shift down pops the rows that returned, anything else forgets.
+func (p *claudeProfile) track(s *Screen, top int) {
+	cur := make([][]Cell, top)
+	for r := range cur {
+		cur[r] = s.grid[r]
+	}
+	prev := p.region
+	p.region = make([][]Cell, top)
+	for r := range cur {
+		p.region[r] = append([]Cell(nil), cur[r]...)
+	}
+	if len(prev) == 0 || len(prev[0]) != s.Cols {
+		p.history = nil
+		return
+	}
+	shift, ok := regionShift(prev, cur)
+	switch {
+	case !ok:
+		p.history = nil
+	case shift > 0:
+		p.history = append(p.history, prev[:shift]...)
+		if len(p.history) > claudeHistory {
+			p.history = p.history[len(p.history)-claudeHistory:]
+		}
+	case shift < 0:
+		p.history = p.history[:max(0, len(p.history)+shift)]
+	}
+}
+
+// regionShift finds s with cur[r] == prev[r+s] over their overlap (at least
+// three rows, some not blank). 0 means the rows are where they were.
+func regionShift(prev, cur [][]Cell) (int, bool) {
+	same := func(a, b []Cell) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+	try := func(shift int) bool {
+		overlap, content := 0, false
+		for r := range cur {
+			q := r + shift
+			if q < 0 || q >= len(prev) {
+				continue
+			}
+			if !same(cur[r], prev[q]) {
+				return false
+			}
+			overlap++
+			for _, c := range cur[r] {
+				if !c.Blank() {
+					content = true
+					break
+				}
+			}
+		}
+		return overlap >= 3 && content
+	}
+	limit := max(len(prev), len(cur))
+	for d := 0; d < limit; d++ {
+		if try(d) {
+			return d, true
+		}
+		if d > 0 && try(-d) {
+			return -d, true
+		}
+	}
+	return 0, false
 }
 
 // parse reads the text rows back into a state and verifies it by laying it out
@@ -293,24 +385,69 @@ func (p *claudeProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 	if n > p.maxRows(s.Rows) {
 		return Paint{}, false
 	}
-	newTop := box.lastRow - (n - 1)
-	oldTop := box.promptRow
-	newChrome := newTop - 2
-	if newTop-1 < 0 || (box.hasChrome && newChrome < 0) {
-		return Paint{}, false
-	}
-	oldChrome := oldTop - 1
-	if box.hasChrome {
-		oldChrome = box.chromeRow
-	}
-	// Growth may only take rows that are blank now: the transcript above is
-	// top-anchored and does not move while there is free space.
-	for r := max(0, newChrome); r < oldChrome; r++ {
-		if !rowBlank(s, r, 0, s.Cols) {
-			return Paint{}, false
+	// The notification row shows the multi-line hint while the text has a
+	// newline; when the hint goes, the notice it covered (or blank) returns.
+	hasHint := box.hasChrome && strings.Contains(s.RowText(box.chromeRow, 0, s.Cols), claudeHint)
+	wantHint := strings.Contains(st.Text(), "\n")
+	var notice []Cell
+	switch {
+	case !box.hasChrome:
+	case wantHint && hasHint, !wantHint && !hasHint:
+		notice = box.chrome
+	case wantHint:
+		notice = blankRow(s.Cols, Attr{})
+		if start := s.Cols - 2 - len(claudeHint); start >= 0 {
+			rowCells(notice, start, TextElems(claudeHint), claudeHintAttr, claudeHintAttr)
+		}
+	default:
+		notice = blankRow(s.Cols, Attr{})
+		if len(p.notice) == s.Cols {
+			notice = p.notice
 		}
 	}
+	newTop := box.lastRow - (n - 1)
+	newBlock := newTop - 1 // top border
+	if notice != nil {
+		newBlock--
+	}
+	if newBlock < 0 {
+		return Paint{}, false
+	}
+	delta := box.blockTop - newBlock // >0: the box grows upward
 	paint := Paint{Rows: map[int][]Cell{}}
+	// The transcript above is a viewport anchored to the box. A short
+	// transcript is top-aligned with a blank gap below it, which growth uses
+	// first; a full one is bottom-aligned and scrolls with the box.
+	gap := 0
+	for r := box.blockTop - 1; r >= 0 && rowBlank(s, r, 0, s.Cols); r-- {
+		gap++
+	}
+	switch {
+	case delta > 0:
+		if scroll := delta - min(gap, delta); scroll > 0 {
+			for r := 0; r < newBlock; r++ {
+				paint.Rows[r] = copyRow(s, r+scroll)
+			}
+		}
+	case delta < 0 && gap > 0:
+		for r := box.blockTop; r < newBlock; r++ {
+			paint.Rows[r] = blankRow(s.Cols, Attr{})
+		}
+	case delta < 0:
+		// Scroll back down; the rows revealed at the top are the ones that
+		// scrolled off earlier, when the profile saw them.
+		d := -delta
+		for r := newBlock - 1; r >= d; r-- {
+			paint.Rows[r] = copyRow(s, r-d)
+		}
+		for r := 0; r < d; r++ {
+			row := blankRow(s.Cols, Attr{})
+			if i := len(p.history) - d + r; i >= 0 && len(p.history[i]) == s.Cols {
+				row = append([]Cell(nil), p.history[i]...)
+			}
+			paint.Rows[r] = row
+		}
+	}
 	for i, vr := range rows {
 		row := blankRow(s.Cols, Attr{})
 		if i == 0 {
@@ -327,36 +464,13 @@ func (p *claudeProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 		paint.Rows[newTop+i] = row
 	}
 	// Border and notification row are painted only when they move or the
-	// hint appears or disappears; otherwise the server keeps them current
-	// (notifications time out on their own).
-	moved := newTop != oldTop
-	if moved {
+	// notification changes; otherwise the server keeps them current
+	// (notices time out on their own).
+	if delta != 0 {
 		paint.Rows[newTop-1] = append([]Cell(nil), box.topBorder...)
 	}
-	if box.hasChrome {
-		chrome := append([]Cell(nil), box.chrome...)
-		hasHint := strings.Contains(s.RowText(box.chromeRow, 0, s.Cols), claudeHint)
-		wantHint := strings.Contains(st.Text(), "\n")
-		changed := moved
-		if wantHint && !hasHint {
-			chrome, changed = blankRow(s.Cols, Attr{}), true
-			if start := s.Cols - 2 - len(claudeHint); start >= 0 {
-				rowCells(chrome, start, TextElems(claudeHint), claudeHintAttr, claudeHintAttr)
-			}
-		} else if !wantHint && hasHint {
-			chrome, changed = blankRow(s.Cols, Attr{}), true
-			if len(p.notice) == s.Cols {
-				chrome = append([]Cell(nil), p.notice...)
-			}
-		}
-		if changed {
-			paint.Rows[newChrome] = chrome
-		}
-	}
-	for r := max(0, oldChrome); r < max(0, newChrome); r++ {
-		if _, taken := paint.Rows[r]; !taken {
-			paint.Rows[r] = blankRow(s.Cols, Attr{})
-		}
+	if notice != nil && (delta != 0 || !box.hasChrome || hasHint != wantHint) {
+		paint.Rows[newBlock] = append([]Cell(nil), notice...)
 	}
 	crow, ccol := cursorRowCol(st.Elems, rows, st.Cursor, w)
 	if st.Empty() {

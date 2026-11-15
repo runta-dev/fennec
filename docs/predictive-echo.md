@@ -379,10 +379,13 @@ returns the terminal to the state the server believes it is in.
   predicted region still differs from the new server grid are repainted, and
   cells the engine painted earlier that are no longer part of any prediction are
   restored from the shadow grid.
-- Growth upward overwrites rows above the composer with shifted copies from
-  the shadow grid. Only rows the profile declares as composer chrome or blank
-  are ever shifted; if the rows above are transcript content and the profile
-  cannot vouch for them, the growth is shown only once the server confirms it.
+- The transcript above the composer is a viewport anchored to the composer
+  block (for Claude Code: notification row, borders, text). A short
+  transcript is top-aligned with a blank gap below it, which growth uses
+  first; a full one is bottom-aligned and scrolls with the block (recorded in
+  `testdata/traces/claude-transcript-100x30`). The profile remembers rows that
+  scroll off the top, so a predicted shrink scrolls them back; a row it never
+  saw is shown blank until the server's frame arrives.
 - Resize, alternate-screen switch, loss of lock or a hidden cursor drop all
   predictions and restore every painted cell from the shadow grid.
 
@@ -490,6 +493,16 @@ shows every prediction immediately and converges with no leftover cells.
 Randomized runs (latency, dropped keys, both agents) keep every unpredicted
 row identical to the server and converge exactly.
 
+Claude Code with a full transcript is verified against a real session
+(`testdata/traces/claude-transcript-100x30`, with the cloud's real echo
+acknowledgements): typing that wraps twice, Shift+Enter and Backspace joins
+scroll the transcript up and back; 220 of 228 key packets are predicted, each
+prediction equals Claude Code's later frame on the whole screen, and there is
+no rollback. Two acknowledgement rules came from these recordings: an
+acknowledgement only means the agent produced some output, so a prediction is
+judged 250 ms after it, and an unpredictable key (a barrier) is resolved only
+when the composer has changed or that grace period has passed.
+
 Codex is verified against a real session recorded through `fen` and herdr
 (`testdata/traces/codex-100x30`, Codex 0.169, 100×30): with the recording's
 own timing and link latency, 113 of 116 key packets were predicted and every
@@ -517,8 +530,8 @@ Other agents, from reading their packages:
   per agent version so updates can be shipped quickly.
 - **Width disagreements** for rare code points: only unambiguous ranges are
   predicted.
-- **Transcript rows above a growing composer**: growth into transcript rows is
-  shown only when the profile can derive them from the shadow grid.
+- **Transcript rows revealed by a shrink** that scrolled off before the
+  profile saw them are blank at the top of the screen for one round trip.
 - **Terminals without synchronized output** may tear briefly during a paint;
   each paint is one `write`.
 - **Prediction does not shorten uploads.** It makes the screen instant, but a
