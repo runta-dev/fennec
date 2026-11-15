@@ -506,6 +506,7 @@ function updateSessionCopyButton(button) {
 }
 window.renderRuntimes = (rows, message) => {
   visibleSessionCount = rows.length;
+  document.querySelector('#session-count').textContent = String(visibleSessionCount);
   document.querySelector('#runtime-panel').hidden = !authorized || (sessionListConnecting && rows.length === 0);
   closeSessionActions();
   const list = document.querySelector('#runtime-list');
@@ -525,7 +526,7 @@ window.renderRuntimes = (rows, message) => {
   feedback.append(text);
   list.hidden = false;
   const groups = [
-    ['idle',"[[i18n:ui.idle]]"],['working',"[[i18n:ui.working]]"],['blocked',"[[i18n:ui.needs_input]]"],['error',"[[i18n:ui.errored]]"]
+    ['working',"[[i18n:ui.working]]"],['idle',"[[i18n:ui.idle]]"],['blocked',"[[i18n:ui.needs_input]]"],['error',"[[i18n:ui.errored]]"]
   ];
   for (const [group,label] of groups) {
    const members=rows.filter(row=>(row.group || 'unknown')===group);
