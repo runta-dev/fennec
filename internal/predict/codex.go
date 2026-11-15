@@ -33,6 +33,8 @@ var (
 type codexBox struct {
 	prompt      [2]Cell
 	padTop      []Cell
+	padBottom   []Cell
+	footer      [][]Cell
 	bg          Attr
 	width       int
 	promptRow   int
@@ -42,6 +44,7 @@ type codexBox struct {
 
 type codexProfile struct {
 	placeholder []Cell
+	hints       []Cell // the footer's last row as shown with an empty draft
 }
 
 func newCodexProfile() *codexProfile { return &codexProfile{} }
@@ -133,7 +136,36 @@ func (p *codexProfile) geometry(s *Screen) (codexBox, string, bool) {
 	}
 	box.prompt = [2]Cell{s.Cell(r, 0), s.Cell(r, 1)}
 	box.padTop = copyRow(s, r-1)
+	box.padBottom = copyRow(s, last)
+	// Everything below the block is footer (status line, then the
+	// "? for shortcuts" hints while the draft is empty). The block is
+	// anchored to it, so the footer's height moves the block.
+	for row := last + 1; row < s.Rows; row++ {
+		box.footer = append(box.footer, copyRow(s, row))
+	}
+	if len(box.footer) == 0 || len(box.footer) > 4 {
+		return fail()
+	}
 	return box, mode, true
+}
+
+// footerFor returns the footer rows Codex shows for st, given the footer on
+// screen for the locked state: the hints row exists only while the draft is
+// empty.
+func (p *codexProfile) footerFor(lock Lock, box codexBox, st State) ([][]Cell, bool) {
+	if lock.State.Empty() == st.Empty() {
+		return box.footer, true
+	}
+	if !st.Empty() {
+		if len(box.footer) < 2 {
+			return box.footer, true
+		}
+		return box.footer[:len(box.footer)-1], true
+	}
+	if p.hints == nil {
+		return nil, false
+	}
+	return append(append([][]Cell(nil), box.footer...), p.hints), true
 }
 
 func (p *codexProfile) Locate(s *Screen) (Lock, bool) {
@@ -149,6 +181,9 @@ func (p *codexProfile) Locate(s *Screen) (Lock, bool) {
 		}
 		box.placeholder = append([]Cell(nil), s.grid[r][codexTextCol:]...)
 		p.placeholder = box.placeholder
+		if len(box.footer) >= 2 {
+			p.hints = box.footer[len(box.footer)-1]
+		}
 		return Lock{State: State{}, Top: r, Bottom: r, Box: box}, true
 	}
 	st, ok := p.parse(s, box, mode)
@@ -279,13 +314,23 @@ func (p *codexProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 	if n > codexMaxRows {
 		return Paint{}, false
 	}
-	newTop := box.lastRow - (n - 1)
-	delta := box.promptRow - newTop // >0 grows upward
+	footer, ok := p.footerFor(lock, box, st)
+	if !ok {
+		return Paint{}, false
+	}
+	// Layout from the bottom of the screen: footer, pad, text rows, pad.
+	bottomPad := s.Rows - 1 - len(footer)
+	newTop := bottomPad - n
+	delta := box.promptRow - newTop // >0: the block's top moves up
 	padRow := newTop - 1
 	if padRow < 1 {
 		return Paint{}, false
 	}
 	paint := Paint{Rows: map[int][]Cell{}}
+	for i, row := range footer {
+		paint.Rows[bottomPad+1+i] = append([]Cell(nil), row...)
+	}
+	paint.Rows[bottomPad] = append([]Cell(nil), box.padBottom...)
 	tokenAttr := box.bg
 	tokenAttr.FG = Color{ColorIndexed, 6}
 	for i, vr := range rows {
@@ -304,16 +349,33 @@ func (p *codexProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 		paint.Rows[newTop+i] = row
 	}
 	paint.Rows[padRow] = append([]Cell(nil), box.padTop...)
-	// The transcript above keeps its newest lines next to the composer.
+	// Rows above the block. A short transcript is top-anchored: the blank gap
+	// absorbs the change. A full one keeps its newest lines next to the
+	// composer, so it shifts.
 	oldPad := box.promptRow - 1
-	if delta > 0 {
+	gapBlank := func(from, to int) bool {
+		for r := max(0, from); r < to; r++ {
+			if !rowBlank(s, r, 0, s.Cols) {
+				return false
+			}
+		}
+		return true
+	}
+	switch {
+	case delta > 0 && gapBlank(padRow, oldPad):
+		// Growing into blank rows: nothing above moves.
+	case delta > 0:
 		for r := 0; r < padRow; r++ {
 			paint.Rows[r] = copyRow(s, r+delta)
 		}
-	} else if delta < 0 {
+	case delta < 0 && gapBlank(oldPad-1, oldPad):
+		for r := oldPad; r < padRow; r++ {
+			paint.Rows[r] = blankRow(s.Cols, Attr{})
+		}
+	case delta < 0:
 		for r := oldPad - 1; r >= 0; r-- {
-			if r+(-delta) < padRow {
-				paint.Rows[r+(-delta)] = copyRow(s, r)
+			if r-delta < padRow {
+				paint.Rows[r-delta] = copyRow(s, r)
 			}
 		}
 		for r := 0; r < -delta; r++ {

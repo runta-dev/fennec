@@ -490,9 +490,17 @@ shows every prediction immediately and converges with no leftover cells.
 Randomized runs (latency, dropped keys, both agents) keep every unpredicted
 row identical to the server and converge exactly.
 
-Not yet verified: the Codex profile is written from its source and exercised
-against a synthetic Codex screen only; it needs recordings through the real
-herdr path (`FEN_PREDICT_TRACE`). Other agents, from reading their packages:
+Codex is verified against a real session recorded through `fen` and herdr
+(`testdata/traces/codex-100x30`, Codex 0.169, 100×30): with the recording's
+own timing and link latency, 113 of 116 key packets were predicted and every
+prediction matched a frame Codex later drew. The recording found one layout
+rule missing from the spec reading: the footer's "? for shortcuts" row exists
+only while the draft is empty, so the composer moves down one row on the first
+character and back up when the draft empties. Codex's startup starfield
+animation (braille dots in the composer block, about 6 s) prevents a lock
+until it stops, which is the safe outcome.
+
+Other agents, from reading their packages:
 
 | Agent | Hardware cursor at the insertion point | Status |
 | --- | --- | --- |
