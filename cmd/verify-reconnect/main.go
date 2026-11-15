@@ -1,5 +1,5 @@
-// verify-reconnect exercises a real installed daemon restart with an owned
-// Codex terminal. It never replaces the installed app or submits a model prompt.
+// verify-reconnect exercises an explicitly requested daemon restart, Wi-Fi
+// cycle, or staged update with an owned Codex terminal and no model prompt.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
 	"fennec/internal/terminalstate"
@@ -54,7 +55,24 @@ func listedIdentity(raw json.RawMessage, address string) (terminalIdentity, erro
 
 type capture struct {
 	sync.Mutex
-	text strings.Builder
+	text   strings.Builder
+	chunks []captureChunk
+}
+
+type captureChunk struct {
+	at     time.Time
+	offset int
+}
+
+func (c *capture) since(at time.Time) string {
+	c.Lock()
+	defer c.Unlock()
+	for _, chunk := range c.chunks {
+		if !chunk.at.Before(at) {
+			return c.text.String()[chunk.offset:]
+		}
+	}
+	return ""
 }
 
 func (c *capture) read() string { c.Lock(); defer c.Unlock(); return c.text.String() }
@@ -72,6 +90,9 @@ func run() (result error) {
 	binary := flag.String("binary", "", "candidate CLI, without replacing the installed app")
 	installed := flag.String("installed", "/Applications/Fennec.app/Contents/MacOS/fen", "installed release CLI")
 	restart := flag.Bool("restart-daemon", false, "explicitly restart the actual installed daemon")
+	wifi := flag.String("cycle-wifi", "", "explicitly cycle this Mac Wi-Fi interface for three seconds")
+	update := flag.Bool("install-update", false, "explicitly install the already verified local test update through update.install")
+	budget := flag.Duration("max-recovery", 0, "fail if recovery after network restoration exceeds this duration")
 	shim := flag.Bool("shim", false, "launch codex through a production PATH shim instead of attaching")
 	installedShim := flag.Bool("installed-shim", false, "launch through the existing installed codex shim")
 	logPath := flag.String("terminal-log", "/tmp/fennec-reconnect-live/terminal.log", "owned test terminal transcript")
@@ -80,11 +101,24 @@ func run() (result error) {
 		*shim = true
 		*binary = *installed
 	}
-	if !*restart || !filepath.IsAbs(*binary) {
-		return fmt.Errorf("absolute -binary and explicit -restart-daemon required")
+	modes := 0
+	for _, active := range []bool{*restart, *wifi != "", *update} {
+		if active {
+			modes++
+		}
+	}
+	if modes != 1 || !filepath.IsAbs(*binary) {
+		return fmt.Errorf("absolute -binary and exactly one explicit disruption mode required")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
+		return err
+	}
+	profileMarker := filepath.Join(home, ".config/fennec/launch-profile.enabled")
+	if file, err := os.OpenFile(profileMarker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600); err == nil {
+		file.Close()
+		defer os.Remove(profileMarker)
+	} else if !os.IsExist(err) {
 		return err
 	}
 	client := control.Client{Socket: filepath.Join(home, ".config/fennec/ipc/control.sock")}
@@ -167,6 +201,7 @@ func run() (result error) {
 			if n > 0 {
 				text := string(buffer[:n])
 				output.Lock()
+				output.chunks = append(output.chunks, captureChunk{time.Now(), output.text.Len()})
 				output.text.WriteString(text)
 				output.Unlock()
 				for query, reply := range responses {
@@ -223,28 +258,89 @@ func run() (result error) {
 	}
 	offset := len(output.read())
 	started := time.Now()
-	fmt.Printf("Restarting installed daemon pid=%d with owned session=%s address=%s client_pid=%d\n", before.PID, id, receipt.Address, command.Process.Pid)
-	// The runner is detached from SSH; it survives the connector dropping during
-	// this real stop/start. Always request restart even when stop returns an error.
-	stopCtx, stopCancel := context.WithTimeout(context.Background(), 20*time.Second)
-	stopErr := exec.CommandContext(stopCtx, *installed, "daemon", "stop").Run()
-	stopCancel()
-	startCtx, startCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	startErr := exec.CommandContext(startCtx, *installed, "start").Run()
-	startCancel()
-	if startErr != nil {
-		return fmt.Errorf("installed daemon restart failed: %w (stop: %v)", startErr, stopErr)
+	available := started
+	mode := "daemon"
+	var stopElapsed time.Duration
+	fmt.Printf("Disrupting installed connection pid=%d with owned session=%s address=%s client_pid=%d\n", before.PID, id, receipt.Address, command.Process.Pid)
+	// Run this verifier through cmd/run-macos-check so launchd owns it separately
+	// from the daemon under test. nohup alone does not survive job cleanup.
+	// Always request restart even when stop returns an error.
+	if *restart {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		stopErr := exec.CommandContext(stopCtx, *installed, "daemon", "stop").Run()
+		stopCancel()
+		stopElapsed = time.Since(started)
+		startCtx, startCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		startErr := exec.CommandContext(startCtx, *installed, "start").Run()
+		startCancel()
+		if startErr != nil {
+			return fmt.Errorf("installed daemon restart failed: %w (stop: %v)", startErr, stopErr)
+		}
+	} else if *wifi != "" {
+		mode = "wifi"
+		restore := func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			return exec.CommandContext(ctx, "/usr/sbin/networksetup", "-setairportpower", *wifi, "on").Run()
+		}
+		defer restore()
+		if err := exec.CommandContext(ctx, "/usr/sbin/networksetup", "-setairportpower", *wifi, "off").Run(); err != nil {
+			return err
+		}
+		time.Sleep(3 * time.Second)
+		if err := restore(); err != nil {
+			return err
+		}
+		if err := wait("local routing after Wi-Fi restore", 20*time.Second, connectivity.ProbeRoutingTable); err != nil {
+			return err
+		}
+		available = time.Now()
+		fmt.Printf("Local network restored after %dms\n", available.Sub(started).Milliseconds())
+	} else {
+		mode = "update"
+		var staged struct {
+			State string `json:"state"`
+		}
+		if err := call("update.status", nil, &staged); err != nil || staged.State != "ready" {
+			return fmt.Errorf("verified test update is not ready: %v", err)
+		}
+		// The old daemon can disappear before its response. Never replay an
+		// uncertain install; verify the new process and signed build identity.
+		var reply json.RawMessage
+		_ = call("update.install", nil, &reply)
 	}
 	var after identity
-	if err := call("daemon.ping", nil, &after); err != nil {
+	if err := wait("installed daemon identity", 45*time.Second, func() bool {
+		probe, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		defer cancel()
+		if client.Call(probe, "daemon.ping", nil, &after) != nil {
+			return false
+		}
+		if mode == "wifi" {
+			return after.PID == before.PID && after.Build == before.Build
+		}
+		return after.PID != before.PID
+	}); err != nil {
 		return err
 	}
-	if after.PID == before.PID || after.Build != before.Build {
-		return fmt.Errorf("expected a new daemon PID with the same release build")
+	daemonElapsed := time.Since(started)
+	if mode == "daemon" && after.Build != before.Build {
+		return fmt.Errorf("unexpected build change during daemon restart")
 	}
+	if mode == "update" {
+		build, err := os.ReadFile(filepath.Join(filepath.Dir(*installed), "../Resources/control-build-id"))
+		if err != nil || after.Build != strings.TrimSpace(string(build)) || after.Build == before.Build {
+			return fmt.Errorf("updated daemon build identity not confirmed")
+		}
+	}
+	var restoredAt time.Time
 	if err := wait("reattachment receipt", 80*time.Second, func() bool {
 		info, err := os.Stat(receiptPath)
-		return err == nil && info.ModTime().After(oldReceipt.ModTime())
+		if err == nil && info.ModTime().After(oldReceipt.ModTime()) {
+			restoredAt = info.ModTime()
+			return true
+		}
+		return false
 	}); err != nil {
 		return err
 	}
@@ -252,7 +348,7 @@ func run() (result error) {
 	// both rendered input and an authoritative cloud terminal readback.
 	afterMarker := "reconnectafter" + shortID
 	if err := wait("restored composer", 15*time.Second, func() bool {
-		text := output.read()[offset:]
+		text := output.since(restoredAt)
 		return strings.Contains(ansi.ReplaceAllString(text, ""), beforeMarker)
 	}); err != nil {
 		return err
@@ -262,6 +358,7 @@ func run() (result error) {
 		return err
 	}
 	recovered := time.Since(started)
+	recoveryAfterNetwork := time.Since(available)
 	var readback json.RawMessage
 	if err := call("sessions.read", params, &readback); err != nil {
 		return err
@@ -307,17 +404,28 @@ func run() (result error) {
 	if detachLatency > 500*time.Millisecond {
 		return fmt.Errorf("detach exceeded 500ms: %s", detachLatency)
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{
+	status := "PASS"
+	var budgetErr error
+	if *budget > 0 && recoveryAfterNetwork > *budget {
+		status = "FAIL"
+		budgetErr = fmt.Errorf("%s recovery %s exceeded %s", mode, recoveryAfterNetwork, *budget)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"mode": mode, "recovery_after_network_ms": recoveryAfterNetwork.Milliseconds(),
+		"stop_ms": stopElapsed.Milliseconds(), "daemon_ready_ms": daemonElapsed.Milliseconds(),
 		"production_shim": *shim,
 		"installed_shim":  *installedShim,
-		"result":          "PASS", "daemon_before": before, "daemon_after": after,
+		"result":          status, "daemon_before": before, "daemon_after": after,
 		"session_id": id, "address": receipt.Address, "created_ms": current.Created,
 		"client_pid": command.Process.Pid, "recovery_to_input_ms": recovered.Milliseconds(),
 		"loading_visible":   strings.Contains(segment, "Reconnecting") || strings.Contains(segment, "Retrying in"),
 		"countdown_visible": strings.Contains(segment, "Retrying in"), "detach_ms": detachLatency.Milliseconds(),
 		"retry_counter_visible": strings.Contains(segment, "Retry #"),
 		"same_session":          true, "input_verified_in_cloud": true, "terminal_log": *logPath,
-	})
+	}); err != nil {
+		return err
+	}
+	return budgetErr
 }
 
 // Use the shipped wrapper generator and real dispatch-agent/run-agent code.
@@ -388,9 +496,32 @@ func launchViaShim(ctx context.Context, home, directory, binary string, installe
 		case <-ctx.Done():
 		case <-deadline.C:
 		}
-		terminal.Close()
+		// pty.Start gives this owned client its own process group. Terminate
+		// descendants too; otherwise a surviving child can hold the slave open
+		// and make diagnostic ReadAll block forever after the receipt deadline.
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 		command.Process.Kill()
-		command.Wait()
-		return nil, nil, receipt, fmt.Errorf("shim launch outcome unknown for CLI pid %d; inspect its launch profile before retrying", command.Process.Pid)
+		// Darwin can leave a killed process in kernel teardown with wait4
+		// blocked. Failure diagnostics must remain bounded in that case too.
+		reaped := make(chan struct{})
+		go func() { command.Wait(); close(reaped) }()
+		select {
+		case <-reaped:
+		case <-time.After(250 * time.Millisecond):
+		}
+		// Preserve the failure output for diagnosis instead of reporting only a
+		// missing receipt. Killing the local client never retries a remote launch.
+		captured := make(chan []byte, 1)
+		go func() {
+			failure, _ := io.ReadAll(io.LimitReader(terminal, 64<<10))
+			captured <- failure
+		}()
+		var failure []byte
+		select {
+		case failure = <-captured:
+		case <-time.After(250 * time.Millisecond):
+		}
+		terminal.Close()
+		return nil, nil, receipt, fmt.Errorf("shim launch outcome unknown for CLI pid %d; inspect its launch profile before retrying; terminal: %s", command.Process.Pid, ansi.ReplaceAll(failure, nil))
 	}
 }

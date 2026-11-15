@@ -8,6 +8,7 @@ import (
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/runta"
+	"fmt"
 
 	"io"
 	"sync"
@@ -15,6 +16,41 @@ import (
 	"testing"
 	"time"
 )
+
+func TestPreparationRetriesConnectionLossWhileRoutingStaysOnline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	controller := &Controller{
+		Account: manager, Connectivity: connectivity.NewMonitor(func() bool { return true }, time.Hour),
+		Prepare: func(context.Context, string, io.Writer) error {
+			if calls.Add(1) == 1 {
+				return fmt.Errorf("shared SSH lost during readiness check: %w", io.EOF)
+			}
+			return nil
+		},
+	}
+	controller.Start(ctx)
+	for controller.runtimeSnapshot().Stage != "ready" {
+		select {
+		case <-ctx.Done():
+			t.Fatal("transport recovery left new launches permanently unconfigured")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("unexpected preparation attempts: %d", calls.Load())
+	}
+	for _, err := range []error{fmt.Errorf("host key mismatch"), &runta.APIError{Status: 401}, context.Canceled, nil} {
+		if transientPreparationFailure(err) {
+			t.Fatalf("retrying a non-transport failure: %v", err)
+		}
+	}
+}
 
 func TestPreparationSingleFlightAndLogoutCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

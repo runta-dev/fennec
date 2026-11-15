@@ -8,6 +8,25 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// Partial completion must not revoke a peer already verified in this preparation.
+// A new result for the same agent replaces the previous result, including failures.
+func updatePreparedRoutes(current, updates []setup.RouteResult) []setup.RouteResult {
+	for _, update := range updates {
+		found := false
+		for i := range current {
+			if current[i].Agent == update.Agent {
+				current[i] = update
+				found = true
+				break
+			}
+		}
+		if !found {
+			current = append(current, update)
+		}
+	}
+	return current
+}
+
 // Each agent installs and verifies independently; only publication is serialized.
 func prepareAgentsIndependently(ctx context.Context, agents []setup.Agent, routes []setup.AgentRoute, install func(context.Context, setup.Agent) error, configure func(context.Context, setup.AgentRoute) ([]setup.RouteResult, error), publish func([]setup.RouteResult)) error {
 	if len(agents) != len(routes) {

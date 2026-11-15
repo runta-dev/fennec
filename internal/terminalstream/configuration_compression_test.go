@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -41,6 +44,38 @@ func TestConfigurationCompressionRequiresCapabilityAndPreservesPayload(t *testin
 		after, _ := json.Marshal(wire.Operation)
 		if !bytes.Equal(before, after) {
 			t.Fatal("configuration changed in transit")
+		}
+	}
+}
+
+func TestAccountSyncCompressionNegotiatesSeparatelyAndPreservesPayload(t *testing.T) {
+	op := cloudruntime.LocalOperation{Kind: "model_accounts", Accounts: &setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"plugin-providers.json": strings.Repeat("synthetic provider catalog", 4000)}}}
+	for _, supported := range []bool{false, true} {
+		var wire Frame
+		var bytesSent int
+		transport := &Transport{capabilities: map[string]bool{"configuration_gzip": true, "model_accounts_gzip": supported}, input: operationSink{write: func(raw []byte) (int, error) {
+			bytesSent = len(raw)
+			if err := json.Unmarshal(raw, &wire); err != nil {
+				t.Fatal(err)
+			}
+			return len(raw), nil
+		}}}
+		if err := transport.Send(Frame{Type: "operation", Operation: &op}); err != nil {
+			t.Fatal(err)
+		}
+		if (len(wire.ConfigurationGZIP) > 0) != supported {
+			t.Fatal("old configuration capability incorrectly enabled account compression")
+		}
+		if supported && bytesSent > 4096 {
+			t.Fatalf("repeated catalog not compressed: %d bytes", bytesSent)
+		}
+		if err := expandConfiguration(&wire); err != nil {
+			t.Fatal(err)
+		}
+		before, _ := json.Marshal(op)
+		after, _ := json.Marshal(wire.Operation)
+		if !bytes.Equal(before, after) {
+			t.Fatal("account payload changed in transit")
 		}
 	}
 }
@@ -103,5 +138,75 @@ func TestCompressedConfigurationReusesResidentProtocol(t *testing.T) {
 	}
 	if calls.Load() != 2 || !transport.Alive() {
 		t.Fatal("operations did not reuse the resident protocol")
+	}
+}
+
+func TestCredentialCompressionRequiresMatchingCapability(t *testing.T) {
+	for _, kind := range []string{"magpie_credentials_sync"} {
+		for _, supported := range []bool{false, true} {
+			op := cloudruntime.LocalOperation{Kind: kind, MagpieCredentials: map[string]string{"providers.json": strings.Repeat("synthetic", 2000)}}
+			var wire Frame
+			capabilities := map[string]bool{"configuration_gzip": true}
+			if supported {
+				capabilities[configurationCapability(kind)] = true
+			}
+			transport := &Transport{capabilities: capabilities, input: operationSink{write: func(raw []byte) (int, error) {
+				if err := json.Unmarshal(raw, &wire); err != nil {
+					t.Fatal(err)
+				}
+				return len(raw), nil
+			}}}
+			if err := transport.Send(Frame{Type: "operation", Operation: &op}); err != nil {
+				t.Fatal(err)
+			}
+			if (len(wire.ConfigurationGZIP) > 0) != supported {
+				t.Fatal("unsupported credential compression sent", kind, supported)
+			}
+			if err := expandConfiguration(&wire); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := json.Marshal(op)
+			after, _ := json.Marshal(wire.Operation)
+			if !bytes.Equal(before, after) {
+				t.Fatal("credential payload changed")
+			}
+		}
+	}
+}
+
+func TestMagpieCredentialsSyncAppliesThroughResidentProtocol(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, server := net.Pipe()
+	done := make(chan error, 1)
+	runtime := &cloudruntime.LocalRuntime{Home: t.TempDir()}
+	go func() { done <- ServeWithOperations(ctx, server, server, nil, nil, nil, runtime.Operation) }()
+	transport := startTransport(client, client, func() error { return <-done }, client.Close, nil)
+	defer transport.Close()
+	if err := transport.Ready(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !transport.Supports("magpie_credentials_sync") {
+		t.Fatal("automatic synchronization capability missing")
+	}
+	raw := `{"fixture":"` + strings.Repeat("synthetic", 1000) + `"}`
+	files := map[string]string{"providers.json": base64.StdEncoding.EncodeToString([]byte(raw))}
+	reply, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "magpie_credentials_sync", MagpieCredentials: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report setup.CredentialMigrationReport
+	if json.Unmarshal(reply, &report) != nil || report.Received != 1 || report.Updated != 1 {
+		t.Fatal("unconfirmed cloud write")
+	}
+	data, err := os.ReadFile(filepath.Join(runtime.Home, ".config/magpie/providers.json"))
+	if err != nil || string(data) != raw {
+		t.Fatal("resident operation did not publish complete credentials")
+	}
+	if strings.Contains(string(reply), "synthetic") {
+		t.Fatal("credential echoed into result")
+	}
+	if !transport.Alive() {
+		t.Fatal("sync closed resident transport")
 	}
 }

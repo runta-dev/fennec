@@ -74,8 +74,13 @@ func (h *statusHarness) serverReceives(t *testing.T) jsonRPCRequest {
 	return request
 }
 
-func (h *statusHarness) reply(id json.RawMessage, result string) {
-	go h.server.Write(encodeWebSocketFrame(0x1, []byte(`{"id":`+string(id)+`,"result":`+result+`}`), false))
+func (h *statusHarness) reply(id json.RawMessage, result string) <-chan struct{} {
+	written := make(chan struct{})
+	go func() {
+		defer close(written)
+		h.server.Write(encodeWebSocketFrame(0x1, []byte(`{"id":`+string(id)+`,"result":`+result+`}`), false))
+	}()
+	return written
 }
 
 func (h *statusHarness) clientReceives(t *testing.T) jsonRPCResponse {
@@ -124,7 +129,9 @@ func TestMCPStatusAnsweredFromStoreAndRefreshedInBackground(t *testing.T) {
 		t.Fatal("no background refresh", string(refresh.ID))
 	}
 	// The refresh answer updates the store but never reaches ChatGPT.
-	second.reply(refresh.ID, `{"data":[{"name":"cua_repl"}]}`)
+	// The account response below is a processing barrier only if this refresh
+	// has entered the stream first; two asynchronous writes can be reordered.
+	<-second.reply(refresh.ID, `{"data":[{"name":"cua_repl"}]}`)
 	second.request(t, `{"id":"a8","method":"account/read","params":{}}`)
 	if next := second.serverReceives(t); next.Method != "account/read" {
 		t.Fatal(next.Method)

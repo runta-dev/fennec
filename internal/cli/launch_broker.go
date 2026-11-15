@@ -173,6 +173,9 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		shared.Changes = config.Network.Changes
 	}
 	channel := &terminalChannel{ctx: ctx, network: config.Network, shared: shared, home: home, runtimeID: config.RuntimeID}
+	channel.connect = func(operation context.Context) (*ssh.Client, error) {
+		return api.ConnectOwned(operation, config.RuntimeID, filepath.Join(home, ".config/fennec/cloud"))
+	}
 	if config.PreparedRuntimeID == config.RuntimeID {
 		channel.preparedSSH = config.PreparedSSH
 		if config.PreparedTerminal != nil && config.PreparedTerminal.IsReady() {

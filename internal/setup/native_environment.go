@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"fennec/internal/launchprofile"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ var (
 	nativeSourceEnvFingerprint string
 	nativeSourceEnvExpires     time.Time
 	nativeSourceEnvValues      map[string]string
+	nativeSourceEnvPending     chan struct{}
 )
 
 func shellStartupFingerprint(keys []string, shell string) string {
@@ -68,6 +70,12 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+// Environment discovery is local read-only work. Overlap shell initialization
+// with cloud authentication; callers still gather credentials only when needed.
+func PrewarmNativeEnvironment(ctx context.Context) {
+	_ = nativeSourceEnvironment(ctx)
+}
+
 // A LaunchAgent does not inherit interactive shell API keys or custom config
 // roots. Read only this fixed allowlist; never print it or execute credential
 // helper commands referenced inside agent configuration.
@@ -87,14 +95,37 @@ func nativeSourceEnvironment(ctx context.Context) map[string]string {
 		return result
 	}
 	fingerprint := shellStartupFingerprint(keys, shell)
-	now := time.Now()
-	nativeSourceEnvMu.Lock()
-	if fingerprint == nativeSourceEnvFingerprint && now.Before(nativeSourceEnvExpires) && nativeSourceEnvValues != nil {
-		cached := copyStringMap(nativeSourceEnvValues)
+	for {
+		if ctx.Err() != nil {
+			return result
+		}
+		nativeSourceEnvMu.Lock()
+		if fingerprint == nativeSourceEnvFingerprint && time.Now().Before(nativeSourceEnvExpires) && nativeSourceEnvValues != nil {
+			cached := copyStringMap(nativeSourceEnvValues)
+			nativeSourceEnvMu.Unlock()
+			return cached
+		}
+		if pending := nativeSourceEnvPending; pending != nil {
+			nativeSourceEnvMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return result
+			case <-pending:
+			}
+			continue
+		}
+		pending := make(chan struct{})
+		nativeSourceEnvPending = pending
 		nativeSourceEnvMu.Unlock()
-		return cached
+		defer func() {
+			nativeSourceEnvMu.Lock()
+			nativeSourceEnvPending = nil
+			close(pending)
+			nativeSourceEnvMu.Unlock()
+		}()
+		break
 	}
-	nativeSourceEnvMu.Unlock()
+	defer launchprofile.Begin("native.source_environment")()
 	var script strings.Builder
 	script.WriteString("printf '\\0'; printf '%s\\0'")
 	for _, key := range keys {

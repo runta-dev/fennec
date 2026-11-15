@@ -2,7 +2,9 @@ package updater
 
 import (
 	"context"
+	"errors"
 	"fennec/internal/connectivity"
+	"fennec/internal/installation"
 	"fmt"
 	"log"
 	"net/http"
@@ -60,7 +62,15 @@ type Config struct {
 	AutoEnabled   func() bool
 	VerifySigner  func(ctx context.Context, installedBundle, candidateBundle string) error
 	ApplyUpdate   func(ctx context.Context, stagedApp, destinationBundle string) error
+	PrepareUpdate func(ctx context.Context, stagedApp, destinationBundle string) (PreparedUpdate, error)
 	CheckInterval time.Duration
+}
+
+// PreparedUpdate keeps verified installation work out of the user click path.
+// Apply must reject any changes to the candidate or installed destination.
+type PreparedUpdate interface {
+	Apply(context.Context) error
+	Close()
 }
 
 // Service manages periodic background checks, staging, and transactional installation.
@@ -83,6 +93,7 @@ type Service struct {
 	errText    string
 	askedAt    time.Time
 	installing bool
+	prepared   PreparedUpdate
 }
 
 func NewService(cfg Config) *Service {
@@ -111,6 +122,7 @@ func (s *Service) Start(ctx context.Context) {
 		CleanOldStaging(s.cfg.Bundle)
 	}
 	go func() {
+		defer s.closePrepared()
 		timer := time.NewTimer(5 * time.Second)
 		defer timer.Stop()
 		select {
@@ -358,6 +370,7 @@ func (s *Service) Download(ctx context.Context) Snapshot {
 }
 
 func (s *Service) stageRelease(ctx context.Context, rel *Release, bundle, arch string, plan UpdatePlan) Snapshot {
+	s.closePrepared()
 	staged, reused, err := stageReleaseBundle(ctx, s.cfg.Transport, rel, bundle, arch, plan, progressOptions{
 		onProgress: func(done, total int64) {
 			now := time.Now()
@@ -373,6 +386,20 @@ func (s *Service) stageRelease(ctx context.Context, rel *Release, bundle, arch s
 			s.mu.Unlock()
 		},
 	}, s.cfg.VerifySigner)
+	var prepared PreparedUpdate
+	if err == nil && s.cfg.PrepareUpdate != nil {
+		prepared, err = prepareStagedUpdate(ctx, staged, bundle, s.cfg.PrepareUpdate)
+		if err == nil && prepared == nil {
+			err = fmt.Errorf("installation preparation unavailable")
+		}
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err != nil && prepared != nil {
+		prepared.Close()
+		prepared = nil
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -391,11 +418,36 @@ func (s *Service) stageRelease(ctx context.Context, rel *Release, bundle, arch s
 	s.state = "ready"
 	s.step = ""
 	s.staged = staged
+	s.prepared = prepared
 	s.reused = reused
 	s.errText = ""
 	s.networkErr = false
 	s.retryable = false
 	return s.snapshotLocked(time.Now())
+}
+
+func prepareStagedUpdate(ctx context.Context, staged, bundle string, prepare func(context.Context, string, string) (PreparedUpdate, error)) (PreparedUpdate, error) {
+	// Bundle identity validation requires .app. Keep the downloaded source
+	// under its non-app name while idle, just as the legacy click path does.
+	app := filepath.Join(filepath.Dir(staged), "Fennec.app")
+	if _, err := os.Lstat(app); !os.IsNotExist(err) {
+		return nil, fmt.Errorf("preparation path is occupied")
+	}
+	if err := os.Rename(staged, app); err != nil {
+		return nil, err
+	}
+	prepared, err := prepare(ctx, app, bundle)
+	return prepared, errors.Join(err, os.Rename(app, staged))
+}
+
+func (s *Service) closePrepared() {
+	s.mu.Lock()
+	prepared := s.prepared
+	s.prepared = nil
+	s.mu.Unlock()
+	if prepared != nil {
+		prepared.Close()
+	}
 }
 
 // Install applies a staged update (downloading first if needed) using ApplyUpdate.
@@ -415,7 +467,7 @@ func (s *Service) Install(ctx context.Context) (Snapshot, error) {
 		}
 		return current, fmt.Errorf("no verified update is ready to install")
 	}
-	if s.cfg.ApplyUpdate == nil {
+	if s.cfg.ApplyUpdate == nil && s.prepared == nil {
 		current := s.snapshotLocked(time.Now())
 		s.mu.Unlock()
 		return current, fmt.Errorf("update installer unavailable")
@@ -423,33 +475,55 @@ func (s *Service) Install(ctx context.Context) (Snapshot, error) {
 	s.installing = true
 	staged := s.staged
 	bundle := s.cfg.Bundle
+	prepared := s.prepared
 	s.mu.Unlock()
 
 	// Materialize a temporary .app directory inside staging root so bundle
 	// verifiers that require a .app extension accept it during atomic swap.
 	stagedApp := filepath.Join(filepath.Dir(staged), "Fennec.app")
-	_ = os.RemoveAll(stagedApp)
-	if err := os.Rename(staged, stagedApp); err != nil {
-		s.mu.Lock()
-		s.installing = false
-		s.state = "error"
-		s.retryable = true
-		s.errText = "Staged update unavailable"
-		current := s.snapshotLocked(time.Now())
-		s.mu.Unlock()
-		return current, err
+	if prepared == nil {
+		_ = os.RemoveAll(stagedApp)
+		if err := os.Rename(staged, stagedApp); err != nil {
+			s.mu.Lock()
+			s.installing = false
+			s.state = "error"
+			s.retryable = true
+			s.errText = "Staged update unavailable"
+			current := s.snapshotLocked(time.Now())
+			s.mu.Unlock()
+			return current, err
+		}
 	}
 
-	err := s.cfg.ApplyUpdate(ctx, stagedApp, bundle)
+	var err error
+	if prepared != nil {
+		err = prepared.Apply(ctx)
+	} else {
+		err = s.cfg.ApplyUpdate(ctx, stagedApp, bundle)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.installing = false
 	if err != nil {
 		// Move back to non-.app staged name so the user can retry without re-downloading.
-		_ = os.Rename(stagedApp, staged)
+		if prepared == nil {
+			_ = os.Rename(stagedApp, staged)
+		} else if errors.Is(err, installation.ErrUnverifiedApplication) {
+			// A changed candidate must be prepared and verified again. Never
+			// keep reporting ready or loop on an invalid process-local seal.
+			prepared.Close()
+			s.prepared = nil
+			s.staged = ""
+			s.state = "error"
+			_ = os.RemoveAll(filepath.Dir(staged))
+		}
 		s.errText = "Could not install update"
 		s.retryable = true
 		return s.snapshotLocked(time.Now()), err
+	}
+	if prepared != nil {
+		prepared.Close()
+		s.prepared = nil
 	}
 	_ = os.RemoveAll(filepath.Dir(staged))
 	s.staged = ""

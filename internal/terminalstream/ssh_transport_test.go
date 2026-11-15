@@ -56,6 +56,10 @@ func TestSSHTransportClosePreservesSharedConnection(t *testing.T) {
 						request.Reply(false, nil)
 						return
 					}
+					if command.Command == "terminal" && request.WantReply {
+						t.Error("terminal startup waits for a redundant exec acknowledgement")
+						return
+					}
 					request.Reply(true, nil)
 					if command.Command == "terminal" {
 						_ = Serve(context.Background(), channel, channel, nil)

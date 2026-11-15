@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/localssh"
 	"fennec/internal/setup"
 	"fmt"
 	"path/filepath"
@@ -12,21 +13,39 @@ import (
 )
 
 type LocalOperation struct {
-	Configuration   *setup.RuntimeConfiguration  `json:"configuration,omitempty"`
-	Login           *setup.NativeLogin           `json:"login,omitempty"`
-	NativeModel     *setup.NativeModelSelection  `json:"native_model,omitempty"`
-	Accounts        *setup.ModelAccountsRequest  `json:"accounts,omitempty"`
-	Credential      *setup.NativeCredentialPush  `json:"credential,omitempty"`
-	CredentialWatch *setup.NativeCredentialWatch `json:"credential_watch,omitempty"`
-	Routes          []setup.AgentRoute           `json:"routes,omitempty"`
-	Launch          *LocalLaunch                 `json:"launch,omitempty"`
-	Kind            string                       `json:"kind"`
-	Address         string                       `json:"address,omitempty"`
-	SessionID       string                       `json:"session_id,omitempty"`
-	Text            string                       `json:"text,omitempty"`
+	MagpieCredentials map[string]string            `json:"magpie_credentials,omitempty"`
+	Connector         *localssh.LinkBootstrap      `json:"connector,omitempty"`
+	Preparation       *setup.PreparationHealth     `json:"preparation,omitempty"`
+	Configuration     *setup.RuntimeConfiguration  `json:"configuration,omitempty"`
+	Login             *setup.NativeLogin           `json:"login,omitempty"`
+	NativeModel       *setup.NativeModelSelection  `json:"native_model,omitempty"`
+	Accounts          *setup.ModelAccountsRequest  `json:"accounts,omitempty"`
+	Credential        *setup.NativeCredentialPush  `json:"credential,omitempty"`
+	CredentialWatch   *setup.NativeCredentialWatch `json:"credential_watch,omitempty"`
+	Routes            []setup.AgentRoute           `json:"routes,omitempty"`
+	Launch            *LocalLaunch                 `json:"launch,omitempty"`
+	Kind              string                       `json:"kind"`
+	Address           string                       `json:"address,omitempty"`
+	SessionID         string                       `json:"session_id,omitempty"`
+	Text              string                       `json:"text,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "magpie_credentials_sync" {
+		return setup.ValidateMagpieCredentials(o.MagpieCredentials)
+	}
+	if o.Kind == "connector_prepare" {
+		if o.Connector == nil {
+			return fmt.Errorf("connector identity required")
+		}
+		return o.Connector.Validate()
+	}
+	if o.Kind == "preparation_health" {
+		if o.Preparation == nil {
+			return fmt.Errorf("preparation check required")
+		}
+		return o.Preparation.Validate()
+	}
 	if o.Kind == "reconfigure_runtime" {
 		if o.Configuration == nil {
 			return fmt.Errorf("configuration required")
@@ -93,6 +112,12 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "preparation_health" {
+		if err := setup.CheckPreparationHealth(ctx, r.Home, *o.Preparation); err != nil {
+			return nil, err
+		}
+		return json.RawMessage(`{"healthy":true}`), nil
 	}
 	if o.Kind == "system_metrics" {
 		return json.Marshal(CollectSystemMetrics())
@@ -182,6 +207,20 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	}
 	if o.Kind == "model_accounts" {
 		result, err := setup.ApplyModelAccounts(ctx, r.Home, *o.Accounts)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(result)
+	}
+	if o.Kind == "magpie_credentials_sync" {
+		result, err := setup.SyncMagpieCredentials(ctx, r.Home, o.MagpieCredentials)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(result)
+	}
+	if o.Kind == "connector_prepare" {
+		result, err := localssh.BootstrapExistingLink(ctx, r.Home, *o.Connector)
 		if err != nil {
 			return nil, err
 		}

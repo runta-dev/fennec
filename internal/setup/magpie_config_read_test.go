@@ -1,9 +1,71 @@
 package setup
 
 import (
+	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestClaudeGatewayAliasReadbackPreservesContext(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	for _, tc := range []struct{ name, model, pinned, override, want string }{
+		{"alias context", "sonnet[1m]", "claude-opus-5-5[1m]", "", "claude/claude-opus-5-5[1m]"},
+		{"alias adds context", "sonnet[1m]", "claude-opus-5-5", "", "claude/claude-opus-5-5[1m]"},
+		{"pin context", "sonnet", "claude-opus-5-5[1m]", "", "claude/claude-opus-5-5[1m]"},
+		{"qualified pin", "sonnet", "codex/gpt-6-astra", "", "codex/gpt-6-astra"},
+		{"direct model", "claude-opus-5-5[1m]", "", "", "claude/claude-opus-5-5[1m]"},
+		{"environment precedence", "sonnet", "claude-opus-5-5", "codex/gpt-6-astra", "codex/gpt-6-astra"},
+		{"unresolved alias", "sonnet", "", "", ""},
+		{"mixed planning alias", "opusplan", "claude-opus-5-5", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			data, _ := json.Marshal(map[string]any{"model": tc.model, "env": map[string]string{"ANTHROPIC_BASE_URL": "http://127.0.0.1:3425", "ANTHROPIC_DEFAULT_SONNET_MODEL": tc.pinned, "ANTHROPIC_MODEL": tc.override}})
+			nativeFixture(t, home, ".claude/settings.json", string(data))
+			got, ok := readConfiguredMagpieModel(home, "claude")
+			if got != tc.want || ok != (tc.want != "") {
+				t.Fatalf("got %q, %v; want %q", got, ok, tc.want)
+			}
+		})
+	}
+}
+
+func TestClaudeContextRouteReconcilesWithoutWritingOrGateway(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	home := t.TempDir()
+	settings := `{"model":"sonnet[1m]","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:3425","ANTHROPIC_DEFAULT_SONNET_MODEL":"claude-opus-5-5[1m]"}}`
+	nativeFixture(t, home, ".claude/settings.json", settings)
+	// An unchanged route must not spawn Magpie or query a gateway.
+	t.Setenv("PATH", t.TempDir())
+	results, err := ReconcileLocalRoutes(context.Background(), home, []AgentRoute{{Agent: "claude", Model: "claude/claude-opus-5-5"}})
+	if err != nil || len(results) != 1 || results[0].Status != "configured" {
+		t.Fatalf("reconcile = %+v, %v", results, err)
+	}
+	after, err := os.ReadFile(filepath.Join(home, ".claude/settings.json"))
+	if err != nil || string(after) != settings {
+		t.Fatal("readback changed the user's context preference")
+	}
+}
+
+func TestConfiguredModelMatchesDoesNotHideWrongRoutes(t *testing.T) {
+	for _, tc := range []struct {
+		agent, actual, desired string
+		want                   bool
+	}{
+		{"claude", "claude/claude-opus-5-5[1m]", "claude/claude-opus-5-5", true},
+		{"claude", "claude/claude-sonnet-5-5[1m]", "claude/claude-opus-5-5", false},
+		{"claude", "claude/claude-opus-5-5", "claude/claude-opus-5-5[1m]", false},
+		{"claude", "other/claude-opus-5-5[1m]", "claude/claude-opus-5-5", false},
+		{"claude", "codex/gpt-6-astra[1m]", "codex/gpt-6-astra", false},
+		{"codex", "claude/claude-opus-5-5[1m]", "claude/claude-opus-5-5", false},
+	} {
+		if got := configuredModelMatches(tc.agent, tc.actual, tc.desired); got != tc.want {
+			t.Errorf("%s: %q matches %q = %v", tc.agent, tc.actual, tc.desired, got)
+		}
+	}
+}
 
 func TestReadConfiguredMagpieModelMatchesGatewayConfigsAndRejectsNative(t *testing.T) {
 	home := t.TempDir()

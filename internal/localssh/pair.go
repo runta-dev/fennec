@@ -26,7 +26,7 @@ key="$HOME/.ssh/fennec/` + deviceID + `"
 if [ ! -f "$key" ]; then ssh-keygen -q -t ed25519 -N '' -f "$key"; fi
 ssh-keygen -y -f "$key"
 `
-	session, err := client.NewSession()
+	session, err := connectorSession(ctx, client)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func InstallAlias(ctx context.Context, client *ssh.Client, alias, address, devic
 	if err != nil {
 		return err
 	}
-	session, err := client.NewSession()
+	session, err := connectorSession(ctx, client)
 	if err != nil {
 		return err
 	}

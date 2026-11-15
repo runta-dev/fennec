@@ -9,6 +9,7 @@ import (
 	"fennec/internal/runta"
 	"fennec/internal/sessionid"
 	"fennec/internal/setup"
+	"fennec/internal/sshcarrier"
 	"path/filepath"
 )
 
@@ -40,13 +41,14 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 		"connection.status": func(context.Context, json.RawMessage) (any, error) {
 			s.mu.Lock()
 			channel := s.channel
+			brokerReady := s.brokerReady
 			s.mu.Unlock()
 			if channel == nil {
 				return map[string]any{"ready": false, "generation": 0}, nil
 			}
 			channel.mu.Lock()
 			defer channel.mu.Unlock()
-			return map[string]any{"ready": channel.transport != nil && channel.transport.IsReady(), "generation": channel.generation, "connection_started_unix_ms": channel.shared.StartedUnixMS()}, nil
+			return map[string]any{"ready": brokerReady && channel.transport != nil && channel.transport.IsReady(), "generation": channel.generation, "connection_started_unix_ms": channel.shared.StartedUnixMS()}, nil
 		},
 		"sessions.dispatch": s.dispatchSession,
 		"sessions.allocate": func(context.Context, json.RawMessage) (any, error) {
@@ -55,6 +57,9 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 		},
 		"account.logout": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			if err := s.account.Logout(ctx); err != nil {
+				return nil, err
+			}
+			if err := sshcarrier.Revoke(s.home); err != nil {
 				return nil, err
 			}
 			s.mu.Lock()

@@ -58,6 +58,9 @@ type Client struct {
 	HTTP               *http.Client
 	PollInterval       time.Duration
 	NoSSHNoDelay       bool
+	// RetainSSHHome opts the daemon's initial connection into a private local
+	// carrier that survives daemon replacement. Recovery can still dial fresh.
+	RetainSSHHome string
 }
 type APIError struct{ Status int }
 

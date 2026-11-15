@@ -4,11 +4,9 @@ import (
 	"context"
 	"fennec/internal/connectivity"
 	"fennec/internal/launcher"
-	"fennec/internal/runta"
+	"fennec/internal/launchprofile"
 	"fennec/internal/terminalstream"
 	"golang.org/x/crypto/ssh"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -20,6 +18,7 @@ type terminalChannel struct {
 	network         *connectivity.Monitor
 	shared          *launcher.SharedConnection
 	preparedSSH     *ssh.Client
+	connect         func(context.Context) (*ssh.Client, error)
 	home, runtimeID string
 	mu              sync.Mutex
 	pending         chan struct{}
@@ -44,11 +43,16 @@ func (channel *terminalChannel) start() <-chan struct{} {
 			transport := channel.transport
 			channel.mu.Unlock()
 			if transport != nil {
-				transport.Close()
+				transport.Abort()
 			}
 		}()
 		for {
 			if channel.network != nil {
+				if !channel.network.Online() {
+					if transport := channel.peekAlive(); transport != nil {
+						transport.Suspend()
+					}
+				}
 				if channel.network.WaitOnline(channel.ctx) != nil {
 					return
 				}
@@ -57,7 +61,11 @@ func (channel *terminalChannel) start() <-chan struct{} {
 			if channel.network != nil {
 				netChanged = channel.network.Changes()
 			}
-			channel.get(channel.ctx)
+			transport, _ := channel.get(channel.ctx)
+			var disconnected <-chan struct{}
+			if transport != nil {
+				disconnected = transport.Done()
+			}
 			timer := time.NewTimer(5 * time.Second)
 			select {
 			case <-channel.ctx.Done():
@@ -65,15 +73,19 @@ func (channel *terminalChannel) start() <-chan struct{} {
 				return
 			case <-netChanged:
 				timer.Stop()
-				if channel.network != nil && !channel.network.Online() {
-					channel.mu.Lock()
-					transport := channel.transport
-					channel.transport = nil
-					channel.mu.Unlock()
-					if transport != nil {
-						transport.Close()
+				if transport != nil {
+					probe, cancel := context.WithTimeout(channel.ctx, 1500*time.Millisecond)
+					offline := channel.network != nil && !channel.network.Online()
+					if offline {
+						transport.Suspend()
+					} else if !transport.Suspended() && transport.Probe(probe) != nil {
+						launchprofile.Record("connection.retired_topology", time.Now(), 0)
+						transport.Abort()
 					}
+					cancel()
 				}
+			case <-disconnected:
+				timer.Stop()
 			case <-timer.C:
 			}
 		}
@@ -97,58 +109,81 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 	if channel.network != nil && !channel.network.Online() {
 		channel.mu.Lock()
 		transport := channel.transport
-		channel.transport = nil
 		channel.err = connectivity.ErrOffline
 		channel.mu.Unlock()
 		if transport != nil {
-			transport.Close()
+			transport.Suspend()
 		}
 		return nil, connectivity.ErrOffline
 	}
 	channel.mu.Lock()
-	if channel.transport != nil && channel.transport.Alive() {
+	if channel.pending == nil && channel.transport != nil && channel.transport.Alive() && !channel.transport.Suspended() {
 		transport := channel.transport
 		channel.mu.Unlock()
 		return transport, nil
 	}
 	if channel.pending == nil {
+		previousFailed := channel.transport != nil
+		previous := channel.transport
 		channel.pending = make(chan struct{})
 		pending := channel.pending
 		go func() {
+			defer launchprofile.Begin("connection.recover")()
 			operation, cancel := context.WithTimeout(channel.ctx, 35*time.Second)
 			defer cancel()
+			if channel.network != nil {
+				changed := channel.network.Changes()
+				go func() {
+					select {
+					case <-changed:
+						cancel()
+					case <-operation.Done():
+					}
+				}()
+			}
 			var transport *terminalstream.Transport
 			var err error
-			if channel.preparedSSH != nil {
+			preserved := false
+			if previous != nil && previous.Suspended() && previous.Alive() {
+				reused, replacement, recoveryErr := raceConnectionRecovery(operation, func(probe context.Context) error {
+					defer launchprofile.Begin("connection.resume_existing")()
+					return previous.Resume(probe)
+				}, channel.connect, func(client *ssh.Client) { client.Close() })
+				if reused {
+					transport = previous
+					launchprofile.Record("connection.reused_after_outage", time.Now(), 0)
+				} else if operation.Err() != nil && channel.ctx.Err() == nil && previous.Alive() {
+					// Wi-Fi/VPN changes arrive as a burst of routing events. A
+					// canceled attempt says nothing about the retained TCP socket.
+					// Keep it for the next route snapshot instead of destroying it.
+					previous.Suspend()
+					transport, err, preserved = previous, operation.Err(), true
+					if replacement != nil {
+						replacement.Close()
+					}
+					launchprofile.Record("connection.preserved_topology_change", time.Now(), 0)
+				} else {
+					previous.Abort()
+					channel.preparedSSH, err = replacement, recoveryErr
+				}
+				previousFailed = false
+			}
+			if transport == nil && previousFailed && channel.preparedSSH != nil {
+				channel.preparedSSH.Close()
+				channel.preparedSSH = nil
+			}
+			if transport == nil && err == nil && channel.preparedSSH == nil && channel.connect != nil {
+				channel.preparedSSH, err = channel.connect(operation)
+			}
+			if transport == nil && err == nil && channel.preparedSSH != nil {
 				transport, err = terminalstream.StartSSHContext(operation, channel.preparedSSH, `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
 				if err != nil {
 					channel.preparedSSH.Close()
 					channel.preparedSSH = nil
 				}
 			}
-			if transport == nil {
-				var control string
-				control, err = channel.shared.Get(operation)
-				if err == nil {
-					directory := filepath.Join(channel.home, ".config/fennec/cloud")
-					command := exec.CommandContext(channel.ctx, "/usr/bin/ssh", "-T", "-S", control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), channel.runtimeID+"@"+runta.ActiveSSHHost(channel.home), `"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=`+strconv.Itoa(terminalstream.ProtocolVersion))
-					transport, err = terminalstream.Start(command)
-				}
-			}
 			if transport != nil {
-				if err == nil {
-					// Authorization is already complete. The explicit remote version
-					// argument rejects incompatible binaries before they read stdin,
-					// so the first launch may be queued without another WAN round trip.
-					go func(transport *terminalstream.Transport) {
-						readyCtx, cancel := context.WithTimeout(channel.ctx, 35*time.Second)
-						defer cancel()
-						if transport.Ready(readyCtx) != nil {
-							transport.Close()
-						}
-					}(transport)
-				}
-				if err != nil && transport != nil {
+				if err != nil && transport != nil && !preserved {
 					transport.Close()
 					transport = nil
 				}
@@ -162,6 +197,25 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 			channel.pending = nil
 			close(pending)
 			channel.mu.Unlock()
+			if err == nil && transport != nil {
+				// Publish first, then signal readiness. Otherwise a fast local
+				// client can consume the wake before the new transport is visible.
+				// Authorized requests may still be queued before the ready frame.
+				go func() {
+					readyCtx, cancel := context.WithTimeout(channel.ctx, 35*time.Second)
+					defer cancel()
+					if transport.Ready(readyCtx) != nil {
+						transport.Abort()
+						return
+					}
+					channel.mu.Lock()
+					current := channel.transport == transport && channel.ctx.Err() == nil
+					channel.mu.Unlock()
+					if current {
+						notifyConnectionReady(channel.home)
+					}
+				}()
+			}
 		}()
 	}
 	pending := channel.pending
@@ -173,5 +227,8 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 	}
 	channel.mu.Lock()
 	defer channel.mu.Unlock()
+	if channel.err != nil {
+		return nil, channel.err
+	}
 	return channel.transport, channel.err
 }

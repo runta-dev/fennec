@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fennec/internal/connectivity"
+	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
 	"golang.org/x/crypto/ssh"
 )
@@ -22,6 +23,11 @@ type LinkConfig struct {
 	Name         string                `json:"name"`
 	Directory    string                `json:"-"`
 	Network      *connectivity.Monitor `json:"-"`
+	// Only the account-scoped daemon may supply a previously verified owner
+	// and borrow its connection. Neither can be supplied by serialized input.
+	VerifiedOwner string                                                            `json:"-"`
+	SharedSSH     func(context.Context) (*ssh.Client, error)                        `json:"-"`
+	Bootstrap     func(context.Context, LinkBootstrap) (LinkBootstrapResult, error) `json:"-"`
 }
 
 // Link maintains one reverse connector. Runtime ID must already be provisioned;
@@ -42,16 +48,23 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 			return nil
 		}
 	}
-	user, err := api.CurrentUser(ctx)
-	if err != nil {
-		return err
-	}
-	runtime, err := api.Get(ctx, config.RuntimeID)
-	if err != nil {
-		return err
-	}
-	if runtime.Owner != user || runtime.Environment["FENNEC_PURPOSE"] != "shared-v1" {
-		return fmt.Errorf("runtime is not owned by the authenticated Fennec user")
+	user := config.VerifiedOwner
+	if config.SharedSSH != nil {
+		if user == "" {
+			return fmt.Errorf("verified connection owner required")
+		}
+	} else {
+		user, err = api.CurrentUser(ctx)
+		if err != nil {
+			return err
+		}
+		runtime, err := api.Get(ctx, config.RuntimeID)
+		if err != nil {
+			return err
+		}
+		if runtime.Owner != user || runtime.Environment["FENNEC_PURPOSE"] != "shared-v1" {
+			return fmt.Errorf("runtime is not owned by the authenticated Fennec user")
+		}
 	}
 	if err = bindLocalOwner(config.Directory, user); err != nil {
 		return err
@@ -134,90 +147,154 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 			continue
 		case <-timer.C:
 		}
-		if delay < 30*time.Second {
+		if delay < 5*time.Second {
 			delay *= 2
-			if delay > 30*time.Second {
-				delay = 30 * time.Second
+			if delay > 5*time.Second {
+				delay = 5 * time.Second
 			}
 		}
 	}
 	return nil
 }
 func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device, alias, hostKey, user string, emit func(string, string)) error {
+	setupDone := launchprofile.Begin("connector.setup")
 	setupCtx, cancelSetup := context.WithTimeout(ctx, 90*time.Second)
 	defer cancelSetup()
-	client, err := api.Connect(setupCtx, config.RuntimeID, filepath.Join(config.Directory, "cloud"))
+	if config.Network != nil {
+		changed := config.Network.Changes()
+		go func() {
+			select {
+			case <-changed:
+				cancelSetup()
+			case <-setupCtx.Done():
+			}
+		}()
+	}
+	connectDone := launchprofile.Begin("connector.connect")
+	var client *ssh.Client
+	var err error
+	if config.SharedSSH != nil {
+		client, err = config.SharedSSH(setupCtx)
+	} else {
+		client, err = api.Connect(setupCtx, config.RuntimeID, filepath.Join(config.Directory, "cloud"))
+	}
+	connectDone()
 	if err != nil {
 		return err
 	}
-	defer client.Close()
-	stop := context.AfterFunc(ctx, func() { client.Close() })
-	defer stop()
-	setupStop := context.AfterFunc(setupCtx, func() { client.Close() })
-	defer setupStop()
-	emit("pairing", alias)
-	if err = PairRuntime(setupCtx, client, config.Directory, device, user); err != nil {
+	if client == nil {
+		return fmt.Errorf("shared cloud connection unavailable")
+	}
+	lease := newLinkSSHLease(ctx, setupCtx, client, config.SharedSSH == nil)
+	defer lease.close()
+	if err := setupCtx.Err(); err != nil {
 		return err
 	}
-	emit("opening_tunnel", alias)
-	bridgePort, agentPort, err := StartRelay(setupCtx, client, device)
-	if err != nil {
-		return err
+	var bridgePort, agentPort int
+	prepared := false
+	if config.Bootstrap != nil {
+		phase := launchprofile.Begin("connector.resident")
+		result, prepareErr := config.Bootstrap(setupCtx, LinkBootstrap{Device: device, Alias: alias, HostKey: hostKey})
+		phase()
+		if prepareErr != nil {
+			return prepareErr
+		}
+		if result.Ready == result.NeedsSetup {
+			return fmt.Errorf("connector outcome was not confirmed")
+		}
+		if result.Ready {
+			if result.BridgePort < 1 || result.BridgePort > 65535 || result.AgentPort < 1 || result.AgentPort > 65535 {
+				return fmt.Errorf("invalid relay ports")
+			}
+			key, _, options, rest, keyErr := ssh.ParseAuthorizedKey([]byte(result.PublicKey))
+			if keyErr != nil || len(options) != 0 || len(strings.TrimSpace(string(rest))) != 0 || key.Type() != ssh.KeyAlgoED25519 {
+				return fmt.Errorf("invalid pairing public key")
+			}
+			if err := addPairingKey(setupCtx, config.Directory, key, user); err != nil {
+				return err
+			}
+			bridgePort, agentPort, prepared = result.BridgePort, result.AgentPort, true
+		}
 	}
-	emit("configuring_alias", alias)
-	if err = InstallAlias(setupCtx, client, alias, fmt.Sprintf("127.0.0.1:%d", agentPort), device, hostKey, true); err != nil {
-		return err
+	if !prepared {
+		emit("pairing", alias)
+		phase := launchprofile.Begin("connector.pair")
+		err = PairRuntime(setupCtx, client, config.Directory, device, user)
+		phase()
+		if err != nil {
+			return err
+		}
+		emit("opening_tunnel", alias)
+		phase = launchprofile.Begin("connector.relay")
+		bridgePort, agentPort, err = StartRelay(setupCtx, client, device)
+		phase()
+		if err != nil {
+			return err
+		}
+		emit("configuring_alias", alias)
+		phase = launchprofile.Begin("connector.alias")
+		err = InstallAlias(setupCtx, client, alias, fmt.Sprintf("127.0.0.1:%d", agentPort), device, hostKey, true)
+		phase()
+		if err != nil {
+			return err
+		}
 	}
-	if !setupStop() || setupCtx.Err() != nil {
+	if !lease.finishSetup() || setupCtx.Err() != nil {
 		return fmt.Errorf("connector setup deadline exceeded")
 	}
 	cancelSetup()
+	setupDone()
 	emit("connected", alias)
-	// A stalled SSH connection is closed, allowing the outer loop to reconnect.
+	// Standalone connectors own their connection and health checks. A daemon
+	// connector relies on the shared resident health/recovery loop instead.
 	keepaliveCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if config.Network != nil {
+	// Offline transitions invalidate this relay's idle bridges even when the
+	// daemon retains SSH for a fast terminal resume. Online routing notifications
+	// alone must not repeatedly tear down a healthy reverse link.
+	if config.SharedSSH != nil && config.Network != nil {
+		go cancelOfflineRelay(keepaliveCtx, config.Network, cancel)
+	}
+	if config.SharedSSH == nil {
 		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
 			for {
-				changed := config.Network.Changes()
-				if !config.Network.Online() {
-					client.Close()
-					return
+				var changed <-chan struct{}
+				if config.Network != nil {
+					changed = config.Network.Changes()
+					if !config.Network.Online() {
+						client.Close()
+						return
+					}
 				}
 				select {
 				case <-keepaliveCtx.Done():
 					return
+				case <-ticker.C:
 				case <-changed:
 				}
-			}
-		}()
-	}
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-keepaliveCtx.Done():
-				return
-			case <-ticker.C:
 				reply := make(chan error, 1)
 				go func() { _, _, e := client.SendRequest("keepalive@openssh.com", true, nil); reply <- e }()
+				timeout := time.NewTimer(3 * time.Second)
 				select {
 				case e := <-reply:
+					timeout.Stop()
 					if e != nil {
 						client.Close()
 						return
 					}
-				case <-time.After(10 * time.Second):
+				case <-timeout.C:
 					client.Close()
 					return
 				case <-keepaliveCtx.Done():
+					timeout.Stop()
 					return
 				}
 			}
-		}
-	}()
-	err = serveRelay(ctx, client, bridgePort, config.LocalAddress)
+		}()
+	}
+	err = serveRelay(keepaliveCtx, client, bridgePort, config.LocalAddress, config.SharedSSH == nil)
 	if err == nil {
 		return fmt.Errorf("reverse tunnel closed")
 	}

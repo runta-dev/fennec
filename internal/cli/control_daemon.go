@@ -9,6 +9,7 @@ import (
 	"fennec/internal/control"
 	"fennec/internal/installation"
 	"fennec/internal/launchprofile"
+	"fennec/internal/setup"
 	"fennec/internal/uninstall"
 	"fmt"
 	"io"
@@ -296,7 +297,10 @@ func waitForAgentBroker(ctx context.Context, agent string) error {
 				Status string `json:"status"`
 			} `json:"account"`
 			Runtime struct {
-				Stage string `json:"stage"`
+				Stage  string `json:"stage"`
+				Events map[string]struct {
+					Results string `json:"results"`
+				} `json:"events"`
 			} `json:"runtime"`
 			Services struct {
 				Ready  bool     `json:"broker_ready"`
@@ -310,6 +314,18 @@ func waitForAgentBroker(ctx context.Context, agent string) error {
 			return nil
 		}
 		if agent != "" && state.Services.Ready && state.Runtime.Stage == "ready" {
+			var routes []setup.RouteResult
+			_ = json.Unmarshal([]byte(state.Runtime.Events["route_results"].Results), &routes)
+			for _, route := range routes {
+				if route.Agent == agent {
+					switch route.Status {
+					case "verification_failed", "configuration_failed":
+						return fmt.Errorf("%s cloud model configuration could not be confirmed; open Fennec > Agents > %s and use Sync credentials or choose the model again", agent, agent)
+					case "credentials_required", "credentials_unavailable", "model_authentication_required":
+						return fmt.Errorf("%s cloud credentials need attention; open Fennec > Agents > %s and use Sync credentials", agent, agent)
+					}
+				}
+			}
 			return fmt.Errorf("%s is not configured to run in the cloud", agent)
 		}
 		if state.Account.Status == "signed_out" && time.Since(started) > 200*time.Millisecond {

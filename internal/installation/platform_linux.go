@@ -2,7 +2,10 @@ package installation
 
 import (
 	"golang.org/x/sys/unix"
+	"syscall"
 )
+
+func clearAccessTime(stat *syscall.Stat_t) { stat.Atim = syscall.Timespec{} }
 
 func readOnlyVolume(path string) (bool, error) {
 	var stat unix.Statfs_t

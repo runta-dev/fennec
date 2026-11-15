@@ -6,12 +6,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fennec/internal/launchprofile"
 	"fennec/internal/uninstall"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -157,6 +159,8 @@ func MatchingInstalledApplication(ctx context.Context, source, candidate string,
 }
 
 type Operations struct {
+	// Warm may execute only side-effect-free startup after signature verification.
+	Warm    func(context.Context, string) error
 	StopUI  func(context.Context, string, string) (bool, error)
 	OpenUI  func(context.Context, string) error
 	Verify  func(context.Context, string) error
@@ -164,91 +168,161 @@ type Operations struct {
 	Publish func(string, string) error
 }
 
-func Install(ctx context.Context, source, destination string, replace bool, ops Operations) (result Result, err error) {
+// Prepared owns a private, verified candidate on the destination volume. Its
+// in-memory seal is never restored from disk or trusted across daemon restarts.
+type Prepared struct {
+	mu                                    sync.Mutex
+	destination, work, incoming           string
+	prior, verified                       os.FileInfo
+	exists, noop, retain, applied, closed bool
+	ops                                   Operations
+	seal                                  treeSeal
+}
+
+func (p *Prepared) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	p.closed = true
+	if !p.retain && p.work != "" {
+		_ = os.RemoveAll(p.work)
+	}
+}
+
+func Install(ctx context.Context, source, destination string, replace bool, ops Operations) (Result, error) {
+	prepared, err := Prepare(ctx, source, destination, replace, ops)
+	if err != nil {
+		return Result{}, err
+	}
+	defer prepared.Close()
+	return prepared.Apply(ctx)
+}
+
+func Prepare(ctx context.Context, source, destination string, replace bool, ops Operations) (prepared *Prepared, err error) {
+	defer launchprofile.Begin("update.prepare")()
 	if ops.Verify == nil || ops.Copy == nil || ops.Publish == nil {
-		return result, fmt.Errorf("installation operations required")
+		return nil, fmt.Errorf("installation operations required")
 	}
 	if (ops.StopUI == nil) != (ops.OpenUI == nil) {
-		return result, fmt.Errorf("paired UI lifecycle operations required")
+		return nil, fmt.Errorf("paired UI lifecycle operations required")
 	}
+	ops = profiledOperations(ops)
 	if !filepath.IsAbs(source) || !filepath.IsAbs(destination) || !strings.EqualFold(filepath.Ext(destination), ".app") {
-		return result, fmt.Errorf("absolute application paths required")
+		return nil, fmt.Errorf("absolute application paths required")
 	}
 	source = filepath.Clean(source)
 	destination = filepath.Clean(destination)
 	if id, err := uninstall.BundleID(source); err != nil || id != "com.runta.fennec" {
-		return result, fmt.Errorf("source is not Fennec")
+		return nil, fmt.Errorf("source is not Fennec")
 	}
 	if source == destination {
-		return Result{Application: destination}, nil
+		return &Prepared{destination: destination, noop: true}, nil
 	}
 	if inside(source, destination) || inside(destination, source) {
-		return result, fmt.Errorf("application paths must not overlap")
+		return nil, fmt.Errorf("application paths must not overlap")
 	}
 	if err := ctx.Err(); err != nil {
-		return result, err
+		return nil, err
 	}
-	if err := ops.Verify(ctx, source); err != nil {
-		return result, ErrUnverifiedApplication
-	}
+	// Validate the private destination copy before executing anything or stopping
+	// the running UI. Verifying the source as well repeats the same full scan and
+	// cannot protect against source changes while it is being copied.
 	parent := filepath.Dir(destination)
 	resolved, err := canonicalPath(parent)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 	destination = filepath.Join(resolved, filepath.Base(destination))
 	parent = resolved
 	canonicalSource, err := filepath.EvalSymlinks(source)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 	if destination == canonicalSource {
-		return Result{Application: destination}, nil
+		return &Prepared{destination: destination, noop: true}, nil
 	}
 	if inside(canonicalSource, destination) || inside(destination, canonicalSource) {
-		return result, fmt.Errorf("application paths must not overlap")
+		return nil, fmt.Errorf("application paths must not overlap")
 	}
 	if err := os.MkdirAll(parent, 0755); err != nil {
-		return result, err
+		return nil, err
 	}
 	prior, err := os.Lstat(destination)
 	exists := err == nil
 	if err != nil && !os.IsNotExist(err) {
-		return result, err
+		return nil, err
 	}
 	if exists {
 		if !replace {
-			return result, fmt.Errorf("Fennec is already installed; confirm replacement")
+			return nil, fmt.Errorf("Fennec is already installed; confirm replacement")
 		}
 		if id, err := uninstall.BundleID(destination); err != nil || id != "com.runta.fennec" {
-			return result, fmt.Errorf("another application occupies this location")
+			return nil, fmt.Errorf("another application occupies this location")
 		}
 	}
 	work, err := os.MkdirTemp(parent, ".fennec-update-")
 	if err != nil {
-		return result, err
+		return nil, err
 	}
-	retain := false
 	defer func() {
-		if !retain {
+		if prepared == nil {
 			_ = os.RemoveAll(work)
 		}
 	}()
 	incoming := filepath.Join(work, "incoming.app")
 	if err = ops.Copy(ctx, source, incoming); err != nil {
-		return result, fmt.Errorf("application copy failed: %w", err)
+		return nil, fmt.Errorf("application copy failed: %w", err)
 	}
 	if id, err := uninstall.BundleID(incoming); err != nil || id != "com.runta.fennec" {
-		return result, fmt.Errorf("copied application identity mismatch")
+		return nil, fmt.Errorf("copied application identity mismatch")
 	}
-	if err = ops.Verify(ctx, incoming); err != nil {
-		return result, ErrUnverifiedApplication
+	seal, err := verifyTree(ctx, incoming, ops.Verify)
+	if err != nil {
+		return nil, err
+	}
+	if ops.Warm != nil {
+		if err := ops.Warm(ctx, incoming); err != nil {
+			return nil, err
+		}
+		if !seal.matches(incoming) {
+			seal, err = verifyTree(ctx, incoming, ops.Verify)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	verifiedIncoming, err := os.Lstat(incoming)
+	if err != nil {
+		return nil, err
 	}
 	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &Prepared{destination: destination, work: work, incoming: incoming, prior: prior, exists: exists, verified: verifiedIncoming, ops: ops, seal: seal}, nil
+}
+func (p *Prepared) Apply(ctx context.Context) (result Result, err error) {
+	defer launchprofile.Begin("update.install")()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.applied {
+		return result, fmt.Errorf("prepared installation is no longer available")
+	}
+	if err := ctx.Err(); err != nil {
 		return result, err
 	}
+	if p.noop {
+		p.applied = true
+		return Result{Application: p.destination}, nil
+	}
+	if !p.seal.matches(p.incoming) {
+		return result, ErrUnverifiedApplication
+	}
+	destination, work, incoming, prior, exists, ops := p.destination, p.work, p.incoming, p.prior, p.exists, p.ops
 	backup := filepath.Join(work, "Fennec.app")
 	reopen := false
+	published := false
 	defer func() {
 		if !reopen {
 			return
@@ -256,7 +330,11 @@ func Install(ctx context.Context, source, destination string, replace bool, ops 
 		restart, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		id, identityErr := uninstall.BundleID(destination)
-		if identityErr != nil || id != "com.runta.fennec" || ops.Verify(restart, destination) != nil {
+		current, statErr := os.Lstat(destination)
+		verified := published && statErr == nil && os.SameFile(p.verified, current)
+		// A successful atomic rename publishes the already verified private copy.
+		// Rollback reopens a different bundle and must verify that bundle separately.
+		if identityErr != nil || id != "com.runta.fennec" || (!verified && ops.Verify(restart, destination) != nil) {
 			err = errors.Join(err, fmt.Errorf("cannot reopen verified application"))
 			return
 		}
@@ -284,6 +362,9 @@ func Install(ctx context.Context, source, destination string, replace bool, ops 
 				return result, fmt.Errorf("installed application changed during UI shutdown")
 			}
 		}
+		if !p.seal.matches(incoming) {
+			return result, ErrUnverifiedApplication
+		}
 		if err = ops.Publish(destination, backup); err != nil {
 			return result, err
 		}
@@ -291,7 +372,7 @@ func Install(ctx context.Context, source, destination string, replace bool, ops 
 		id, idErr := uninstall.BundleID(backup)
 		if err != nil || !os.SameFile(prior, moved) || idErr != nil || id != "com.runta.fennec" {
 			if rollback := ops.Publish(backup, destination); rollback != nil {
-				retain = true
+				p.retain = true
 				return Result{Backup: backup}, fmt.Errorf("destination changed; previous contents preserved at %s", backup)
 			}
 			return result, fmt.Errorf("destination changed during installation")
@@ -300,15 +381,17 @@ func Install(ctx context.Context, source, destination string, replace bool, ops 
 	if err = ops.Publish(incoming, destination); err != nil {
 		if exists {
 			if rollback := ops.Publish(backup, destination); rollback != nil {
-				retain = true
+				p.retain = true
 				return Result{Backup: backup}, fmt.Errorf("installation interrupted; previous app preserved at %s", backup)
 			}
 		}
 		return result, err
 	}
 	result.Application = destination
+	published = true
+	p.applied = true
 	if exists {
-		retain = true
+		p.retain = true
 		result.Backup = backup
 	} // Keep mapped binaries of existing CLI clients intact.
 	return result, nil

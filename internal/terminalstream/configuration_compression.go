@@ -14,8 +14,21 @@ import (
 // unbounded allocation path or permit a different operation through this field.
 const configurationLimit = 256 << 10
 
+func configurationCapability(kind string) string {
+	switch kind {
+	case "reconfigure_runtime":
+		return "configuration_gzip"
+	case "model_accounts":
+		return "model_accounts_gzip"
+	case "magpie_credentials_sync":
+		return "magpie_credentials_sync"
+	default:
+		return ""
+	}
+}
+
 func compressConfiguration(frame Frame) (Frame, error) {
-	if frame.Type != "operation" || frame.Operation == nil || frame.Operation.Kind != "reconfigure_runtime" {
+	if frame.Type != "operation" || frame.Operation == nil || configurationCapability(frame.Operation.Kind) == "" {
 		return frame, nil
 	}
 	raw, err := json.Marshal(frame.Operation)
@@ -64,7 +77,7 @@ func expandConfiguration(frame *Frame) error {
 		return fmt.Errorf("invalid compressed configuration size or checksum")
 	}
 	var operation cloudruntime.LocalOperation
-	if json.Unmarshal(raw, &operation) != nil || operation.Kind != "reconfigure_runtime" {
+	if json.Unmarshal(raw, &operation) != nil || configurationCapability(operation.Kind) == "" {
 		return fmt.Errorf("invalid compressed operation")
 	}
 	frame.Operation = &operation

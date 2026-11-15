@@ -20,6 +20,7 @@ import (
 	"fennec/internal/project"
 	"fennec/internal/runta"
 	"fennec/internal/setup"
+	"fennec/internal/sshcarrier"
 	"path/filepath"
 )
 
@@ -29,6 +30,17 @@ func Run(arguments []string, output io.Writer) error {
 		return nil
 	}
 	switch arguments[0] {
+	case "transport-worker":
+		if len(arguments) != 2 {
+			return errors.New("private transport configuration required")
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+		defer cancel()
+		return sshcarrier.RunWorker(ctx, home, arguments[1])
 	case "uninstall-worker":
 		if len(arguments) != 2 {
 			return fmt.Errorf("private uninstall work file required")

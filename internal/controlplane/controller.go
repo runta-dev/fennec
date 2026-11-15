@@ -33,6 +33,7 @@ type Controller struct {
 	mu                 sync.Mutex
 	runtime            RuntimeState
 	runtimeAgain       bool
+	runtimeRetry       bool
 	runtimeGeneration  uint64
 	runtimeCancel      context.CancelFunc
 	runtimeDone        chan struct{}

@@ -3,6 +3,7 @@ package runta
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -12,6 +13,60 @@ import (
 
 	"golang.org/x/crypto/ssh"
 )
+
+// Read SSH key metadata while the runtime list/owner request is in flight. The
+// gate is mandatory before prepare makes any mutation or returns usable pins.
+func resolvePreparedSSH(ctx context.Context, hint string, resolve func(context.Context) (string, error), prepare func(context.Context, string, func() error) (*SSHConnectionConfig, error)) (*SSHConnectionConfig, error) {
+	work, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type result struct {
+		config *SSHConnectionConfig
+		err    error
+	}
+	var id string
+	var resolveErr error
+	resolved := make(chan struct{})
+	ready := make(chan result, 1)
+	if hint != "" {
+		go func() {
+			config, err := prepare(work, hint, func() error {
+				select {
+				case <-work.Done():
+					return work.Err()
+				case <-resolved:
+				}
+				if resolveErr != nil {
+					return resolveErr
+				}
+				if id != hint {
+					return fmt.Errorf("runtime hint no longer matches verified owner")
+				}
+				return nil
+			})
+			ready <- result{config, err}
+		}()
+	}
+	id, resolveErr = resolve(work)
+	close(resolved)
+	if resolveErr != nil {
+		return nil, resolveErr
+	}
+	if id == "" {
+		return nil, fmt.Errorf("runtime identity required")
+	}
+	if hint != "" && id == hint {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case result := <-ready:
+			return result.config, result.err
+		}
+	}
+	// A stale hint is never authoritative. Cancel its reads and use only the
+	// freshly resolved runtime; commands and key mutations were still gated.
+	cancel()
+	return prepare(ctx, id, nil)
+}
 
 // Only reuse the exact single-host entry written by PrepareSSH. Missing or
 // unfamiliar local state uses the ordinary API-first path.

@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/pem"
 	"fennec/internal/launchprofile"
+	"fennec/internal/sshcarrier"
 	"fmt"
 	"net"
 	"net/url"
@@ -36,7 +38,7 @@ func (c *Client) PrepareOwnedSSH(ctx context.Context, id, directory string) (*SS
 	return c.prepareSSH(ctx, id, directory, true)
 }
 
-func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned bool) (*SSHConnectionConfig, error) {
+func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned bool, verified ...func() error) (*SSHConnectionConfig, error) {
 	defer launchprofile.Begin("ssh.provision")()
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
@@ -128,6 +130,15 @@ func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned boo
 			return nil, fmt.Errorf("cloud computer is not ready")
 		}
 	}
+	// Read-only key discovery may overlap runtime resolution. Never create or
+	// attach a key (or publish a host pin) until the resolved owner/runtime agrees.
+	for _, verify := range verified {
+		if verify != nil {
+			if err := verify(); err != nil {
+				return nil, err
+			}
+		}
+	}
 	keyID := ""
 	for _, k := range keys.Data {
 		if strings.TrimSpace(k.Public) == public {
@@ -190,6 +201,18 @@ func (c *Client) Connect(ctx context.Context, id, directory string) (*ssh.Client
 	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) { return c.PrepareSSH(ctx, id, directory) }, dialPreparedSSH)
 }
 
+// ConnectOwned verifies current account/runtime ownership before returning a
+// replacement for the daemon's single resident SSH connection.
+func (c *Client) ConnectOwned(ctx context.Context, id, directory string) (*ssh.Client, error) {
+	cached := cachedSSHConfig(c.Endpoint, id, directory)
+	if cached != nil {
+		cached.NoDelay = !c.NoSSHNoDelay
+	}
+	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) {
+		return c.PrepareOwnedSSH(ctx, id, directory)
+	}, dialPreparedSSH)
+}
+
 // ConnectResolved overlaps only a cached, pinned authentication handshake with
 // runtime discovery. The hint is not authority: resolve and fresh SSH API checks
 // must succeed and agree before the resulting connection is returned.
@@ -199,16 +222,29 @@ func (c *Client) ConnectResolved(ctx context.Context, hint, directory string, re
 	if cached != nil {
 		cached.NoDelay = !c.NoSSHNoDelay
 	}
+	dial := dialPreparedSSH
+	if c.RetainSSHHome != "" {
+		dial = func(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {
+			defer launchprofile.Begin("ssh.carrier_lease")()
+			// Only a digest scopes the worker to this authenticated account/token.
+			// Fresh API validation below still gates all remote commands.
+			scope := sha256.Sum256([]byte(c.Endpoint + "\x00" + c.Token))
+			return sshcarrier.Dial(ctx, c.RetainSSHHome, sshcarrier.Config{
+				Address: prepared.Address, User: prepared.Config.User,
+				HostKey: prepared.HostKey.Marshal(), ClientKey: prepared.ClientKey.Marshal(),
+				KeyPath: filepath.Join(directory, "runtime_key"), Scope: fmt.Sprintf("%x", scope), NoDelay: prepared.NoDelay,
+			})
+		}
+	}
 	return connectPreparedSSH(ctx, cached, func(ctx context.Context) (*SSHConnectionConfig, error) {
-		id, err := resolve(ctx)
-		if err != nil {
-			return nil, err
+		readHint := ""
+		if cached != nil {
+			readHint = hint
 		}
-		if id == "" {
-			return nil, fmt.Errorf("runtime identity required")
-		}
-		return c.PrepareSSH(ctx, id, directory)
-	}, dialPreparedSSH)
+		return resolvePreparedSSH(ctx, readHint, resolve, func(ctx context.Context, id string, verify func() error) (*SSHConnectionConfig, error) {
+			return c.prepareSSH(ctx, id, directory, false, verify)
+		})
+	}, dial)
 }
 
 func dialPreparedSSH(ctx context.Context, prepared *SSHConnectionConfig) (*ssh.Client, error) {

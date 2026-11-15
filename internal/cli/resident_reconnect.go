@@ -5,6 +5,7 @@ import (
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
+	"fennec/internal/setup"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -82,6 +83,9 @@ func watchResidentRecovery(ctx context.Context, home string) <-chan struct{} {
 
 func watchResidentRecoveryEvents(ctx context.Context, home string, networkEvents <-chan struct{}) <-chan struct{} {
 	wake := make(chan struct{}, 1)
+	// kqueue/inotify delivers readiness immediately. Keep the existing polling
+	// fallback for older daemons and environments without file notifications.
+	files := setup.WatchFiles(ctx, []string{connectionWakePath(home), filepath.Join(home, ".config/fennec/ipc/control.sock")}, time.Minute)
 	go func() {
 		client := control.Client{Socket: filepath.Join(home, ".config/fennec/ipc/control.sock")}
 		var previous struct {
@@ -102,7 +106,7 @@ func watchResidentRecoveryEvents(ctx context.Context, home string, networkEvents
 				current.Ready = false
 			}
 			nextOnline := connectivity.ProbeRoutingTable()
-			if !first && ((current.Ready && (!previous.Ready || current.Generation != previous.Generation || current.Started != previous.Started)) || (!online && nextOnline)) {
+			if (current.Ready && (first || !previous.Ready || current.Generation != previous.Generation || current.Started != previous.Started)) || (!first && !online && nextOnline) {
 				select {
 				case wake <- struct{}{}:
 				default:
@@ -113,6 +117,7 @@ func watchResidentRecoveryEvents(ctx context.Context, home string, networkEvents
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+			case <-files:
 			case _, ok := <-networkEvents:
 				if !ok {
 					networkEvents = nil
