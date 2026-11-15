@@ -55,6 +55,8 @@ like mosh's cannot handle any of these:
 | First character after Shift+Enter, Backspace-to-empty, Ctrl+C clear | Waits one RTT (new epoch) | Immediate; the state is known |
 | Layout moves (popup opens, transcript grows) | All predictions killed | Matched at text level; repainted at the composer's new position |
 | Agent output appearing outside the box | Can corrupt overlays | Never touched; the engine paints only inside the composer region |
+| Long text paste | Unpredictable | The agent's collapsed token (`[Pasted text #N +L lines]`) appears at once |
+| Image paste | Unpredictable | `[Image #N]` appears at once; typing continues while it uploads |
 
 ## What the agents emit (evidence)
 
@@ -97,6 +99,13 @@ row k+4  footer / status
   Ctrl+C clears the composer back to the placeholder.
 - The renderer may replace runs of spaces with CHA jumps (`CSI 13G`), so the
   screen must be read through an emulator, never by matching bytes.
+- Pastes (bracketed): a 3-line paste is inserted inline as text. A 60-line
+  paste becomes `[Pasted text #1 +59 lines]`, with `paste again to expand` in
+  the footer. A pasted PNG path becomes `[Image #2]`: the number continued from
+  the earlier text paste even though Ctrl+C had cleared it. The agent rendered
+  each paste within about 30 ms of receiving it. The token formats come from the
+  shipped bundle (`[Pasted text #N +L lines]`, `[Image #N]`,
+  `[...Truncated text #N +L lines...]`).
 
 Still missing, collected in Phase 0: the Codex composer. On this runtime
 `codex` opens a command center (task list) before the composer, so it has to be
@@ -168,6 +177,36 @@ the `data` case) and `streamOwner.pumpInput` for the reconnecting path. A single
 mutex orders patch writes from the input goroutine with passthrough writes from
 the output loop.
 
+### Input pipeline
+
+Today the input goroutine takes transport credit before it reads stdin, and
+`sendClipboardImage` uploads on the same goroutine. While a large paste or an
+image is uploading, stdin is not read at all, so nothing could be predicted.
+The pipeline is split:
+
+1. **Reader**: always reads stdin, runs `terminalinput.Decoder` (detach
+   handling unchanged) and hands each key to the engine immediately, so the
+   screen updates within one local frame regardless of transport state.
+2. **Ordered send queue**: the original bytes, image uploads and their
+   sequence numbers, strictly in input order. It is bounded (1 MiB of text);
+   when full, the reader stops predicting and applies backpressure as today.
+3. **Sender**: drains the queue under the existing credit window.
+
+Byte order on the wire is unchanged: a key typed after a paste or image still
+reaches the agent after it, and Enter can never overtake an attachment. Only
+the display is decoupled from the transport.
+
+**Cadence preservation.** Keys that queued behind an upload, or that the
+network bunched together, would reach the PTY back to back. Codex treats three
+or more characters less than 8 ms apart as a paste burst
+(`bottom_pane/paste_burst.rs`), and an Enter within 120 ms of a burst becomes a
+newline instead of submit. Queued `fix it⏎` would then not be sent, and the
+prediction would be wrong. Each input frame therefore carries the gap since the
+previous key as measured on the Mac. The cloud terminal service writes queued
+frames with that gap, capped at 50 ms per key and 1 s per backlog. Bracketed
+pastes and image uploads are written immediately. This ships as capability
+`input_cadence_v1` together with `echo_ack_v1`.
+
 ### Shadow emulator
 
 Fed every server byte. It needs to cover what herdr emits for the supported
@@ -230,8 +269,10 @@ agent release disables prediction instead of corrupting the screen.
 | Ctrl+A / Ctrl+E, Home / End | Line start / end (if the profile keymap says so) |
 | Up / Down inside a multi-line composer | Visual row move; on the first or last row they become barriers (history) |
 | Ctrl+U, Ctrl+W, Alt+Backspace | Profile-defined, otherwise barrier |
+| Bracketed paste | `PasteText(text)`: inline insert or a collapsed token, per profile (see Paste) |
+| Image paste shortcut with an image on the clipboard | `PasteImage`: image token at the cursor (see Paste) |
 | Mouse, focus, key release | Neutral |
-| Enter, Tab, Esc, paste, other chords | Barrier |
+| Enter, Tab, Esc, other chords | Barrier |
 
 A **barrier** sends the key, keeps everything already painted, and suspends new
 predictions until the server's `echo_ack` covers it and the composer re-locks.
@@ -242,6 +283,57 @@ rather than one round trip after itself.
 Mode triggers such as `/`, `@`, `!` and `#` at the start of an empty composer
 are predicted as ordinary text. Any popups or prompt changes they cause arrive
 from the server, and the composer is re-located on the next frame.
+
+### Paste
+
+Pastes are where the round trip hurts most: the agent can only render after
+the entire paste or image has crossed the link (about 130 KB/s upstream). The
+engine renders what the agent will show from the profile's paste rules, so the
+composer updates instantly and the user can keep typing while bytes are still
+uploading.
+
+**Text paste.** A bracketed paste is one atomic `PasteText` edit. The profile
+decides between inline text and a collapsed token:
+
+| Agent | Inline | Collapsed token | Token numbering |
+| --- | --- | --- | --- |
+| Claude Code | Short pastes (observed: 3 lines inline) | `[Pasted text #N +L lines]`, L = newline count (observed: 60 lines → `+59 lines`) | Session-wide counter shared with images (observed `[Pasted text #1]`, then `[Image #2]` after Ctrl+C cleared the composer) |
+| Codex | ≤ 1000 characters | `[Pasted Content C chars]`, C = character count | Suffix `#2`, `#3` for same-size pastes still in the draft (`next_large_paste_placeholder`); fully determined by the draft |
+
+Claude Code's exact inline/collapse boundary and its truncation form for
+pastes over 10,000 characters (`[...Truncated text #N +L lines...]` between
+the first and last 500 characters) are confirmed by boundary traces in
+Phase 0 before that rule is enabled. Inline pastes go through the normal
+layout, including wrapping and growth. A collapsed token is an atomic element:
+the cursor moves past it, and one Backspace deletes it whole, if the profile
+says so.
+
+**Image paste.** On the image paste shortcut, `fen` asks the native helper
+whether the pasteboard holds an image. This is a type check, without encoding
+the image. If it does, the engine inserts the profile's image token at the
+cursor right away and the upload starts in the send queue:
+
+- Claude Code: `[Image #N]` on the shared session counter. Codex:
+  `[Image #K]`, renumbered within the draft after any remote image rows. Codex
+  can also draw a thumbnail strip on supported terminals; that strip is server
+  chrome the engine never predicts. It appears once the server confirms.
+- While the upload is in flight, the token is drawn dim. It switches to its
+  normal style when the server's composer shows it. The user can keep typing
+  after it; those keys are predicted and queued behind the image.
+- Enter pressed during the upload is a barrier as usual. It is sent after the
+  image, so the message is submitted with the attachment.
+- If the upload or validation fails (`paste_error`), the `PasteImage` edit is
+  marked rejected and removed. The rest of the pending edits are replayed
+  without it, the token disappears, and the existing notice is shown. Kimi's
+  clipboard-bridge path joins in Phase 2.
+
+**Session counters.** Claude Code's token number is not visible in an empty
+composer. The engine keeps the highest token number it has seen in any server
+frame of the session, plus the tokens it has predicted. After a fresh attach the
+first predicted number can be wrong. Reconciliation therefore compares tokens by
+kind and size (image, text with L lines, C chars) and adopts the server's
+number with a repaint of those few cells, instead of treating it as a
+divergence.
 
 ### Reconciliation
 
@@ -322,6 +414,11 @@ cell what pure passthrough would have produced.
   Backspace joins, Left/Right/Home/End, Up/Down in multi-line text, slash and
   `@` popups, `!` mode, vim mode, Chinese IME text, typing while the agent
   streams with a transcript above, Ctrl+C clear, narrow and wide terminals.
+  Pastes: Claude Code's inline/collapse boundary (by characters and by lines),
+  pastes over 10,000 characters, a 100 KB paste end to end, image paste with a
+  real screenshot, two images plus text in one draft, Backspace over a token,
+  a failed image paste, and typing plus Enter queued behind an upload (Codex
+  paste-burst behavior).
 - Choose the shadow emulator by replaying every trace to identical grids.
 - Write the Claude Code and Codex profiles from the traces.
 
@@ -329,8 +426,10 @@ cell what pure passthrough would have produced.
 
 - `internal/predict`: emulator wrapper, locator, parser with self-check, edit
   model, layout, reconciliation, renderer.
-- `echo_ack_v1` in the cloud terminal service and the client, with fallback for
-  services without it.
+- `echo_ack_v1` and `input_cadence_v1` in the cloud terminal service and the
+  client, with fallback for services without them.
+- Input pipeline split (reader, ordered send queue, sender), text and image
+  paste prediction, and the native helper's image-type check.
 - Tests: profile golden tests (parse → render must reproduce every recorded
   frame); trace replays with injected 250 ms latency asserting which keystrokes
   displayed immediately and the final screen; randomized edit sequences against
@@ -338,7 +437,10 @@ cell what pure passthrough would have produced.
   tests.
 - Acceptance on the Mac with real sessions: in Claude Code and Codex, ≥95% of
   composer edits (including Shift+Enter, wraps and Backspace joins) render
-  locally; no residual artifacts once confirmed; no prediction in dialogs,
+  locally; a text paste or image token appears within one local frame of the
+  paste, and typing after it stays instant while the upload is running; Enter
+  after an image always submits with the image; no residual artifacts once
+  confirmed; no prediction in dialogs,
   permission prompts or password prompts; prediction disables itself cleanly
   when a profile's self-check fails.
 
@@ -361,3 +463,7 @@ cell what pure passthrough would have produced.
   shown only when the profile can derive them from the shadow grid.
 - **Terminals without synchronized output** may tear briefly during a paint;
   each paint is one `write`.
+- **Prediction does not shorten uploads.** It makes the screen instant, but a
+  message with a large image is still submitted only after the upload
+  finishes. Downscaling and recompressing clipboard images on the Mac before
+  upload is tracked separately and complements this work.
