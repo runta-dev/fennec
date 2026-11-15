@@ -129,6 +129,16 @@ func RunMacRelay(ctx context.Context, local net.Conn, options MacRelayOptions) e
 	config.AddHostKey(options.HostKey)
 	upstream := &macUpstream{options: options, ctx: ctx, pool: make(chan pooledSession, relayPoolSize)}
 	defer upstream.close()
+	// Cancellation must retire the local SSH connection as well as the Mac
+	// connection. Otherwise ControlMaster keeps accepting commands against a
+	// permanently canceled dial context and reports an online Mac as offline.
+	// Install this before the handshake, which can itself block indefinitely.
+	stop := context.AfterFunc(ctx, func() {
+		local.Close()
+		upstream.close()
+	})
+	defer stop()
+	defer local.Close()
 	// Reach the Mac while the local handshake runs.
 	go upstream.connect()
 	connection, channels, requests, err := gossh.NewServerConn(local, config)
@@ -208,11 +218,11 @@ func (u *macUpstream) connect() (*gossh.Client, error) {
 	client, err := u.dial()
 	u.mu.Lock()
 	u.dialing = nil
-	u.err = err
 	if err == nil && u.closed {
 		client.Close()
 		client, err = nil, net.ErrClosed
 	}
+	u.err = err
 	u.client = client
 	u.mu.Unlock()
 	close(done)
@@ -308,9 +318,19 @@ func (u *macUpstream) fill(client *gossh.Client) {
 		if err != nil {
 			return
 		}
+		// Serialize publication with close: a channel opened during shutdown
+		// must not be left in the pool after close has drained it.
+		u.mu.Lock()
+		if u.closed || u.client != client {
+			u.mu.Unlock()
+			channel.Close()
+			return
+		}
 		select {
 		case u.pool <- pooledSession{client: client, channel: channel, requests: requests}:
+			u.mu.Unlock()
 		default:
+			u.mu.Unlock()
 			channel.Close()
 			return
 		}
@@ -504,4 +524,12 @@ func (stdioConn) RemoteAddr() net.Addr             { return stdioAddr{} }
 func (stdioConn) SetDeadline(time.Time) error      { return nil }
 func (stdioConn) SetReadDeadline(time.Time) error  { return nil }
 func (stdioConn) SetWriteDeadline(time.Time) error { return nil }
-func (conn stdioConn) Close() error                { return conn.WriteCloser.Close() }
+func (conn stdioConn) Close() error {
+	// Closing stdout alone leaves NewServerConn or the SSH reader blocked on
+	// stdin. Real ProxyCommand input is an *os.File and must be closed too.
+	var readErr error
+	if input, ok := conn.Reader.(io.Closer); ok {
+		readErr = input.Close()
+	}
+	return errors.Join(readErr, conn.WriteCloser.Close())
+}

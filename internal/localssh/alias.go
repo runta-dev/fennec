@@ -65,6 +65,8 @@ func AliasConfig(alias, address, deviceID, hostPublicKey string, defaultDevice b
 		hosts += " machine"
 	}
 	identity := "fennec-" + deviceID
-	config := fmt.Sprintf("Host %s\n  HostName 127.0.0.1\n  Port %d\n  User fennec\n  IdentityFile ~/.ssh/fennec/%s\n  IdentitiesOnly yes\n  ProxyCommand ~/.local/fennec/bin/fennec-terminal "+MacRelayCommand+" %s %%p\n  HostKeyAlias "+relayHostKeyAlias+"\n  UserKnownHostsFile ~/.ssh/fennec/"+relayKnownHostsFile+"\n  StrictHostKeyChecking yes\n  ForwardAgent no\n  ControlMaster auto\n  ControlPath ~/.ssh/fennec/relay-%%C\n  ControlPersist 10m\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n", hosts, port, deviceID, deviceID)
+	// A new socket generation retires pre-fix masters on registration without
+	// interrupting their in-flight commands. They expire when no longer used.
+	config := fmt.Sprintf("Host %s\n  HostName 127.0.0.1\n  Port %d\n  User fennec\n  IdentityFile ~/.ssh/fennec/%s\n  IdentitiesOnly yes\n  ProxyCommand ~/.local/fennec/bin/fennec-terminal "+MacRelayCommand+" %s %%p\n  HostKeyAlias "+relayHostKeyAlias+"\n  UserKnownHostsFile ~/.ssh/fennec/"+relayKnownHostsFile+"\n  StrictHostKeyChecking yes\n  ForwardAgent no\n  ControlMaster auto\n  ControlPath ~/.ssh/fennec/relay-v2-%%C\n  ControlPersist 10m\n  ServerAliveInterval 15\n  ServerAliveCountMax 3\n", hosts, port, deviceID, deviceID)
 	return config, identity + " " + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))) + "\n", nil
 }
