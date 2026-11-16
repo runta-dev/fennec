@@ -318,6 +318,170 @@
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "99b1d0a35fc1cb916b0c9c04a423b1c3e991411519f07d589d14b2290f886b11"
     },
+    "2026-11-16-budget160-comparison.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "Four sequential independent authenticated SSH connections in ABBA order (112,160,160,112 KiB/s total). Each uses matching client and cloud budgets, 20 idle + 20 loaded + 20 recovery samples. Real streamed cat, repeated fixed payloads with SHA-256 verification. No agent input. All blocks complete. Background live traffic uncontrolled; neither same-connection randomization nor UI scrolling acceptance.",
+        "provenance": {
+          "baseline": "557ee01; total112/bulk96 KiB/s; diagnostic cloud broker directory isolated as traffic-budget112-probe to avoid sharing production traffic-v2 budget",
+          "baseline_terminal_sha256": "49d00dbcb5080cdeada0f6c68ab55538a7cea4d1c740ce0796c66bd95ed5d432",
+          "candidate": "ad8c138 code; total160/bulk128 KiB/s; cloud binary built before commit from 557ee01 plus the exact committed patch; diagnostic Mac source exported from 557ee01 with the identical scheduler.go change",
+          "candidate_terminal_sha256": "3e1186e61f6c6bd00345d391597b273d53589551f4c8d841f30b6dc0bc024992",
+          "client": {
+            "evidence": "User reported location and provider in this session",
+            "host": "Mac",
+            "location": "Singapore",
+            "provider": "Singtel",
+            "route_vpn_proxy": "not captured"
+          },
+          "clock": "Mac UTC timestamps, monotonic durations; no cross-host clock subtraction",
+          "samples_per_variant_per_phase": 40,
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "GCP inventory checked at approximately 12:04 UTC; runtime placement not re-resolved in each block",
+            "previously_mapped_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "zone": "us-west1-b"
+          },
+          "settings": "Both variants: 16 KiB socket window, dynamic terminal window 8-64 KiB, TCP backlog feedback default-off, 2 KiB burst. Dynamic window derives from each variant's rate.",
+          "toolchains": "Linux Go1.26.11; Mac Go1.27.1",
+          "workload": "profile-ssh-latency -load-mode command -samples20; repeated 349539-byte verified cat payloads; fresh command streams within one resident connection per block"
+        },
+        "started_utc": "2026-11-16T12:13:57.455045Z",
+        "summary": {
+          "112": {
+            "bulk": {
+              "echo": {
+                "count": 40,
+                "max_ms": 413.699708,
+                "median_ms": 201.716209,
+                "p95_ms": 270.44925
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 214.7105,
+                "median_ms": 161.391792,
+                "p95_ms": 210.291583
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 327.126958,
+                "median_ms": 203.810334,
+                "p95_ms": 259.99725
+              }
+            },
+            "idle": {
+              "echo": {
+                "count": 40,
+                "max_ms": 245.29825,
+                "median_ms": 165.107209,
+                "p95_ms": 191.361291
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 221.725167,
+                "median_ms": 160.840667,
+                "p95_ms": 164.43
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 229.007333,
+                "median_ms": 165.447916,
+                "p95_ms": 171.257458
+              }
+            },
+            "payload_KiB_per_second_each_direction": 43.396207112534974,
+            "recovery": {
+              "echo": {
+                "count": 40,
+                "max_ms": 232.525375,
+                "median_ms": 164.608,
+                "p95_ms": 168.614375
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 222.599,
+                "median_ms": 161.137084,
+                "p95_ms": 165.381667
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 233.357083,
+                "median_ms": 165.944708,
+                "p95_ms": 224.734583
+              }
+            }
+          },
+          "160": {
+            "bulk": {
+              "echo": {
+                "count": 40,
+                "max_ms": 591.758667,
+                "median_ms": 200.16925,
+                "p95_ms": 327.807375
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 240.960083,
+                "median_ms": 170.612875,
+                "p95_ms": 222.875834
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 472.705291,
+                "median_ms": 194.485,
+                "p95_ms": 303.803333
+              }
+            },
+            "idle": {
+              "echo": {
+                "count": 40,
+                "max_ms": 322.416166,
+                "median_ms": 172.608208,
+                "p95_ms": 201.725292
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 215.3095,
+                "median_ms": 168.873708,
+                "p95_ms": 202.148292
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 300.443959,
+                "median_ms": 173.869292,
+                "p95_ms": 275.670459
+              }
+            },
+            "payload_KiB_per_second_each_direction": 44.09186653485963,
+            "recovery": {
+              "echo": {
+                "count": 40,
+                "max_ms": 346.199583,
+                "median_ms": 173.378542,
+                "p95_ms": 225.240375
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 229.525125,
+                "median_ms": 168.513125,
+                "p95_ms": 207.574167
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 344.908958,
+                "median_ms": 174.03825,
+                "p95_ms": 271.945209
+              }
+            }
+          }
+        }
+      },
+      "server_location_at_capture": "GCP runta-integration / us-west1; inventory verified after capture; see provenance",
+      "sha256": "041e8a7a311959f3a033f2e4a977383024685af5e0118307ef483eb172d0a7e4"
+    },
     "2026-11-16-command-drain-failure.json": {
       "client_origin": "unknown; use recorded boundary for host role",
       "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",

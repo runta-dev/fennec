@@ -8,7 +8,16 @@ The application bandwidth follow-up below is in progress. The implementation
 and acceptance status of the original four items does not imply that the new
 network latency target has been met.
 
-Latest WAN check (11:22 UTC, November 16): the TCP output feedback candidate
+The user-requested 160/128 KiB/s budget is installed in development build
+`ad8c138`, including the dynamic terminal window and relay recovery fixes.
+Its [first paired WAN experiment](benchmarks/2026-11-16-budget160-comparison.md)
+on Singapore/Singtel to integration/us-west1 measured 43.4 versus 44.1 KiB/s
+payload and loaded ping P95 260 versus 304 ms. Idle/network distributions also
+varied; this does not demonstrate a stable benefit. The experiment used staged
+processes; installation followed at approximately 12:20 UTC. Startup readiness
+passed, but the installed 500 ms warm-operation gate still failed.
+
+Earlier WAN check (11:22 UTC, November 16): the TCP output feedback candidate
 had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the
 [paired reports and limitations](ssh-backlog-investigation.md).
