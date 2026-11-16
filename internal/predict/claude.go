@@ -335,21 +335,32 @@ func (p *claudeProfile) parse(s *Screen, box claudeBox, mode string) (State, boo
 		if j := strings.IndexByte(next, ' '); j >= 0 {
 			first = next[:j]
 		}
+		// A typed line break before a word that would not have fit looks
+		// like a soft wrap; the multi-line hint tells them apart (below).
 		switch {
 		case widths[i] >= w:
-			seps[i] = []string{"", " "}
+			seps[i] = []string{"", " ", "\n"}
 			ambiguous++
 		case widths[i] > 0 && first != "" && widths[i]+1+StringWidth(first) > w:
-			seps[i] = []string{" "}
+			seps[i] = []string{" ", "\n"}
+			ambiguous++
 		default:
 			seps[i] = []string{"\n"}
 		}
 	}
-	if ambiguous > 4 {
+	if ambiguous > 5 {
 		return State{}, false
 	}
+	// Claude Code shows the multi-line hint in the notification row while
+	// the draft contains a line break (unless a notice such as "Ctrl+Y to
+	// paste deleted text" takes the row), so with the hint shown a reading
+	// without a line break is wrong.
+	hint := box.hasChrome && strings.Contains(s.RowText(box.chromeRow, 0, s.Cols), claudeHint)
 	cursorRow, cursorCol := s.Row-box.promptRow, s.Col-claudeTextCol
 	verify := func(text string) (State, bool) {
+		if hint && !strings.Contains(text, "\n") {
+			return State{}, false
+		}
 		// Spaces typed at the end are invisible; the cursor shows them.
 		if cursorRow == n-1 && cursorCol > widths[n-1] {
 			text += strings.Repeat(" ", cursorCol-widths[n-1])
@@ -386,15 +397,17 @@ func (p *claudeProfile) parse(s *Screen, box claudeBox, mode string) (State, boo
 		if st, ok := verify(b.String()); ok {
 			return st, true
 		}
-		i := 0
-		for ; i < n-1; i++ {
+		// Vary the last boundary first: a line break just typed is at the
+		// end of the draft, the likeliest place for the second reading.
+		i := n - 2
+		for ; i >= 0; i-- {
 			if choice[i]+1 < len(seps[i]) {
 				choice[i]++
 				break
 			}
 			choice[i] = 0
 		}
-		if i == n-1 {
+		if i < 0 {
 			return State{}, false
 		}
 	}

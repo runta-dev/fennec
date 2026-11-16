@@ -167,9 +167,21 @@ func (p *grokProfile) parse(s *Screen, box grokBox) (State, bool) {
 		if j := strings.IndexByte(first, ' '); j >= 0 {
 			first = first[:j]
 		}
+		last := []rune(texts[i])
+		next := []rune(texts[i+1])
 		switch {
 		case widths[i] >= w:
 			seps[i] = []string{"", " "}
+			ambiguous++
+		case len(last) > 0 && len(next) > 0 && cjkBreak(Elem{S: string(last[len(last)-1])}, Elem{S: string(next[0])}):
+			// Text breaks between CJK characters wherever a character does
+			// not fit, without a hidden space. Next to a word that would not
+			// fit either, a typed line break looks the same; it is the likelier
+			// reading unless CJK text continues the row.
+			seps[i] = []string{"", " ", "\n"}
+			if !piCJK(Elem{S: string(next[0])}) {
+				seps[i] = []string{"\n", "", " "}
+			}
 			ambiguous++
 		case widths[i] > 0 && first != "" && widths[i]+1+StringWidth(first) > w:
 			seps[i] = []string{" "}
@@ -403,6 +415,9 @@ func grokWrapLine(elems []Elem, start, end, w int) []VisualRow {
 		for j < end && !isSpace(j) {
 			word += elemWidth(elems[j])
 			j++
+			if j < end && cjkBreak(elems[j-1], elems[j]) {
+				break // a row may break here like at a space, but nothing is hidden
+			}
 		}
 		if row.Width+word > w && row.Width > 0 {
 			next(i)

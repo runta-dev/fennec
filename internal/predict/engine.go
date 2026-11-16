@@ -112,14 +112,18 @@ type Engine struct {
 	trusted bool
 	since   time.Time
 
-	locked     bool
-	lock       Lock
-	confirmed  State
-	pending    []edit
-	seq        uint64
-	ackSeq     uint64
-	ackQuiet   bool // the last ack reported no output
-	ackAt      time.Time
+	locked    bool
+	lock      Lock
+	confirmed State
+	pending   []edit
+	seq       uint64
+	ackSeq    uint64
+	ackQuiet  bool // the last ack reported no output
+	ackAt     time.Time
+	// blindSeq and blindAt: the last key typed while no composer was
+	// recognised (see Input).
+	blindSeq   uint64
+	blindAt    time.Time
 	pastes     PasteSplitter
 	imagePaste bool
 
@@ -259,7 +263,10 @@ func (e *Engine) Input(data []byte) uint64 {
 			continue
 		}
 		if !e.locked {
+			// Sent unpredicted; see the barrier added when the composer is
+			// recognised again (reconcile).
 			e.stats.UnlockedKeys++
+			e.blindSeq, e.blindAt = offset, now
 			continue
 		}
 		ed := edit{key: k, seq: offset, at: now, imageReady: k.Kind == KeyImagePaste && imageReady && e.imagePaste}
@@ -471,6 +478,17 @@ func (e *Engine) reconcile(now time.Time) {
 	if !e.locked {
 		e.stats.Locked = true
 		e.locked, e.confirmed, e.pending = true, server, nil
+		// Keys typed while no composer was recognised (Codex's startup
+		// animation, a popup over the composer) may still be on their way:
+		// the draft shown is stale until the agent has answered them. They
+		// form a barrier; keys typed meanwhile are predicted once it resolves.
+		inFlight := e.ackSeq < e.blindSeq
+		if !e.opts.EchoAck {
+			inFlight = e.blindSeq > 0 && now.Sub(e.blindAt) < Deadline
+		}
+		if inFlight {
+			e.pending = []edit{{key: Key{Kind: KeyUnknown}, seq: e.blindSeq, at: e.blindAt, before: server}}
+		}
 		return
 	}
 	for {
@@ -478,7 +496,10 @@ func (e *Engine) reconcile(now time.Time) {
 			e.confirmed = e.adopt(e.confirmed, server)
 			return
 		}
-		// Longest prefix of predicted edits that reproduces the server state.
+		// Prefix of predicted edits that reproduces the server state: the
+		// longest, except that when several match (typing a character and
+		// deleting it shows the same draft as before) a longer one is taken
+		// only once the server acknowledged its edits.
 		st, best, bestState := e.confirmed, -1, State{}
 		if e.profile.Same(st, server, e.shadow) {
 			best, bestState = 0, st
@@ -490,7 +511,7 @@ func (e *Engine) reconcile(now time.Time) {
 			if !ed.dropped {
 				st = ed.apply(st)
 			}
-			if e.profile.Same(st, server, e.shadow) {
+			if e.profile.Same(st, server, e.shadow) && (best < 0 || !e.opts.EchoAck || e.ackSeq >= ed.seq) {
 				best, bestState = i+1, st
 			}
 		}

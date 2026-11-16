@@ -40,6 +40,11 @@ func sourceLanguage(path string, data []byte) error {
 	if path == "native/macos/UI/translations.json" || path == "docs/README_ZH.md" || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil
 	}
+	// Recorded terminal sessions (agents' screens, including Chinese typed
+	// through an input method) for the predictive echo replay tests.
+	if strings.HasPrefix(path, "internal/predict/testdata/traces/") {
+		return nil
+	}
 	if path == "README.md" {
 		data = readmeLanguageLink.ReplaceAll(data, nil)
 	}

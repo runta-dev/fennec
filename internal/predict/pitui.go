@@ -1,6 +1,9 @@
 package predict
 
-import "unicode"
+import (
+	"strings"
+	"unicode"
+)
 
 // pi-tui's editor (Pi, and Kimi Code, which bundles the same library) wraps
 // each logical line with wordWrapLine: a line that fits stays whole;
@@ -36,6 +39,29 @@ func piCJK(e Elem) bool {
 		return r >= 0x3000 && r <= 0x303f || r >= 0xff01 && r <= 0xff65 || r == 0x30fb || r == 0x30fc
 	}
 	return false
+}
+
+// cjkBreak reports a line-break opportunity between a and b where neither
+// is whitespace: next to a CJK character, except before closing punctuation
+// or after opening punctuation (recorded on OpenCode 2.3.0 and Grok Build
+// 1.0.77, which keep a full-width comma with the character before it).
+func cjkBreak(a, b Elem) bool {
+	if a.Token || b.Token || !piCJK(a) && !piCJK(b) {
+		return false
+	}
+	return !strings.ContainsRune(cjkClosing, firstRune(b.S)) && !strings.ContainsRune(cjkOpening, firstRune(a.S))
+}
+
+const (
+	cjkClosing = "\uff0c\u3002\u3001\uff1a\uff1b\uff01\uff1f\uff09\u300d\u300f\u3011\u300b\u3009\u2026\uff0e\u30fc\u3005\u309d\u309e\u30fd\u30fe"
+	cjkOpening = "\uff08\u300c\u300e\u3010\u300a\u3008"
+)
+
+func firstRune(s string) rune {
+	for _, r := range s {
+		return r
+	}
+	return 0
 }
 
 // piWrap lays out elems at width columns like pi-tui's layoutText.

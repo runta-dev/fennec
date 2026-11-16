@@ -1,6 +1,7 @@
 package predict
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -199,5 +200,43 @@ func TestPasteRecordedSessions(t *testing.T) {
 	res = replayRecorded(t, "grok-paste-100x30", 30, 100, func() Profile { return newGrokProfile() }, false)
 	if res.stats.Diverged != 0 {
 		t.Fatalf("grok: %d rollbacks", res.stats.Diverged)
+	}
+}
+
+// TestCJKRecordedSessions replays Chinese typed through an input method
+// (phrases committed in one write) on all four agents at 80x24, 100x30 and
+// 160x45: wide characters wrapping between CJK characters but not before
+// closing punctuation, mixed ASCII words, Backspace and arrows over wide
+// characters, Shift+Enter and a pasted Chinese sentence.
+func TestCJKRecordedSessions(t *testing.T) {
+	for _, agent := range []string{"claude", "codex", "opencode", "grok"} {
+		for _, size := range [][2]int{{80, 24}, {100, 30}, {160, 45}} {
+			name := fmt.Sprintf("%s-cjk-%dx%d", agent, size[0], size[1])
+			t.Run(name, func(t *testing.T) {
+				res := replayRecorded(t, name, size[1], size[0], func() Profile { return ProfileFor(agent) }, false)
+				if res.stats.Diverged != 0 {
+					t.Fatalf("%d rollbacks", res.stats.Diverged)
+				}
+			})
+		}
+	}
+}
+
+// TestSizesRecordedSessions replays the typing and edit scenarios at 80x24
+// and 160x45. Codex's are not included yet: the first keys, typed during its
+// startup animation, are still mispredicted.
+func TestSizesRecordedSessions(t *testing.T) {
+	for _, agent := range []string{"claude", "opencode", "grok"} {
+		for _, scenario := range []string{"typing", "edit"} {
+			for _, size := range [][2]int{{80, 24}, {160, 45}} {
+				name := fmt.Sprintf("%s-%s-%dx%d", agent, scenario, size[0], size[1])
+				t.Run(name, func(t *testing.T) {
+					res := replayRecorded(t, name, size[1], size[0], func() Profile { return ProfileFor(agent) }, false)
+					if res.stats.Diverged != 0 {
+						t.Fatalf("%d rollbacks", res.stats.Diverged)
+					}
+				})
+			}
+		}
 	}
 }

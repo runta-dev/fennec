@@ -210,7 +210,9 @@ func wrapCodexLine(elems []Elem, start, end, width int) []VisualRow {
 			return true
 		}
 		if elemWidth(prev) == 2 || elemWidth(cur) == 2 {
-			return true
+			// Not before closing or after opening punctuation: Codex keeps
+			// "，" with the character before it (recorded on 0.169.0).
+			return !strings.ContainsRune(cjkClosing, firstRune(cur.S)) && !strings.ContainsRune(cjkOpening, firstRune(prev.S))
 		}
 		return strings.HasSuffix(prev.S, "-") && !isBreakableSpace(cur.S)
 	}

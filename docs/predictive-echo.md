@@ -632,6 +632,36 @@ Other agents, from reading their packages:
 | Kimi | No (drawn reverse-video cursor) | Not predictable with this design |
 | Cursor | No (cursor parked below the composer) | Not predictable with this design |
 
+### Chinese input and other sizes (recorded 2026-11-16)
+
+`record-composer -scenarios cjk` commits Chinese phrases the way an input
+method does (one write per phrase; the preedit never reaches the terminal)
+and was recorded on all four agents at 80x24, 100x30 and 160x45, with the
+typing and edit scenarios at 80x24 and 160x45. The first replay found
+mispredictions on every agent; the fixes:
+
+- OpenCode, Grok and Codex break rows between CJK characters (no hidden
+  space), but never before closing punctuation (`，`, `。`, `）`, ...) or
+  after opening punctuation; the wraps model this, and the parse also
+  reads a row boundary next to CJK text without a separator. Claude Code
+  moves a CJK run as one word, as modelled.
+- A typed line break before a word that would not have fitted looks like a
+  soft wrap. Claude Code's multi-line hint decides it (a reading without a
+  line break is rejected while the hint shows); elsewhere a break before
+  ASCII text after CJK is read as a line break, and between CJK characters
+  as a wrap.
+- When several prefixes of the pending edits explain the screen (a
+  character typed and deleted again), a longer one is confirmed only once
+  the cloud acknowledged its edits.
+- Keys typed while no composer is recognised (Codex's startup animation)
+  form a barrier when the composer is recognised again, until the agent has
+  answered them.
+
+All twelve CJK recordings and the typing and edit recordings of Claude
+Code, OpenCode and Grok at both sizes now replay with every prediction
+exact and no rollback. Codex still mispredicts the first keys typed during
+its startup animation (recordings at 80x24 and 160x45 not yet committed).
+
 ## Checking profiles after an agent release
 
 `cmd/record-composer` (run on the Mac, which has fen and tmux) records the
