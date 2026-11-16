@@ -51,8 +51,9 @@ func TestWireWindowBoundsEncodedOutputAndKeepsCompressedRepaint(t *testing.T) {
 }
 
 func TestWireWindowPartialCreditsAndPeerIsolation(t *testing.T) {
+	frame := outputWireWindow * 3 / 4 // two frames do not fit
 	w := newWireWindow()
-	if !w.reserve(2000, 3000) {
+	if !w.reserve(2000, frame) {
 		t.Fatal("initial reservation")
 	}
 	if w.ack(2001) || w.ack(0) || w.ack(-1) {
@@ -60,7 +61,7 @@ func TestWireWindowPartialCreditsAndPeerIsolation(t *testing.T) {
 	}
 	var entered atomic.Bool
 	done := make(chan bool, 1)
-	go func() { entered.Store(true); done <- w.reserve(2000, 3000) }()
+	go func() { entered.Store(true); done <- w.reserve(2000, frame) }()
 	for !entered.Load() {
 		time.Sleep(time.Millisecond)
 	}
@@ -73,7 +74,7 @@ func TestWireWindowPartialCreditsAndPeerIsolation(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 	peer := newWireWindow()
-	if !peer.reserve(2000, 3000) {
+	if !peer.reserve(2000, frame) {
 		t.Fatal("stalled peer blocked independent stream")
 	}
 	if !w.ack(1000) {
@@ -92,9 +93,9 @@ func TestWireWindowPartialCreditsAndPeerIsolation(t *testing.T) {
 
 func TestWireWindowCancellationReleasesWriter(t *testing.T) {
 	w := newWireWindow()
-	w.reserve(2000, 3000)
+	w.reserve(2000, outputWireWindow*3/4)
 	done := make(chan bool, 1)
-	go func() { done <- w.reserve(2000, 3000) }()
+	go func() { done <- w.reserve(2000, outputWireWindow*3/4) }()
 	w.close()
 	select {
 	case ok := <-done:
