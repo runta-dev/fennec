@@ -750,8 +750,11 @@ Every group has weight 100. Any input to a session (keys, mouse, pastes)
 raises its group to 1000 (`cpusched.Focus`, through
 `terminalstream.FocusSession`); 10 s after the last input it returns to 100.
 Weights only act under contention and control (1000) still outweighs the
-whole workload. Empty session groups are removed on the next sweep. A
-resident older than the split still writes new agents to `workload` itself,
+whole workload. The kernel never removes an empty group, so the traffic
+broker removes the groups of destroyed sessions every 30 s
+(`cpusched.KeepPruned`); a group that still has a process cannot be
+removed. A resident older than the split still writes new agents to
+`workload` itself,
 which then fails; such an agent stays in its Herdr parent's group until the
 next sweep of a current resident.
 

@@ -108,6 +108,7 @@ func run() (int, error) {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
 		cpusched.Interactive(home)
+		go cpusched.KeepPruned(ctx, 30*time.Second)
 		return 0, trafficbroker.Run(ctx, home)
 	}
 	// ProxyCommand of the Mac device alias; see localssh.ServeMacRelay. It

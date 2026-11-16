@@ -2,6 +2,7 @@
 package cpusched
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -77,4 +78,20 @@ func Focus(id string) {
 		setFocus(id, false)
 	}
 	time.AfterFunc(focusHold, check)
+}
+
+// KeepPruned removes the groups of sessions whose processes have all exited,
+// every interval until ctx ends. Without it a destroyed session's group
+// would stay until the next resident start.
+func KeepPruned(ctx context.Context, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			prune()
+		}
+	}
 }

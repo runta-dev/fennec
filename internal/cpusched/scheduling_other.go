@@ -27,3 +27,5 @@ func ExecWorkload(command []string) error {
 }
 
 func setFocus(id string, on bool) bool { return false }
+
+func prune() {}

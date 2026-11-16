@@ -335,17 +335,25 @@ func ExecWorkload(command []string) error {
 	return unix.Exec(path, command, os.Environ())
 }
 
-// pruneSessions removes session groups with no process left (rmdir fails on
-// a group that still has one), except those just placed.
+// pruneSessions removes session groups with no process left, except those
+// just placed. The kernel never removes an empty group, and refuses to
+// remove one that still has a process, so a group in use is never lost; one
+// removed just as an agent starts is created again (placeWorkload).
 func pruneSessions(keep map[string]bool) {
 	entries, _ := os.ReadDir(groupRoot + "/workload")
 	for _, entry := range entries {
 		group := "workload/" + entry.Name()
-		if entry.IsDir() && group != sharedGroup && !keep[group] && sessionGroup(entry.Name()) != "" {
-			_ = os.Remove(groupRoot + "/" + group)
+		if !entry.IsDir() || group == sharedGroup || keep[group] || sessionGroup(entry.Name()) == "" {
+			continue
 		}
+		if events, err := os.ReadFile(groupRoot + "/" + group + "/cgroup.events"); err == nil && strings.Contains(string(events), "populated 1") {
+			continue
+		}
+		_ = os.Remove(groupRoot + "/" + group)
 	}
 }
+
+func prune() { pruneSessions(nil) }
 
 // placeWorkload puts a starting process in its session's group, or shared.
 // Creating the group and placing are retried, since a sweep may remove an

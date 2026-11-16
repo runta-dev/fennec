@@ -3,6 +3,7 @@
 package cpusched
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,5 +158,39 @@ func TestPruneKeepsSharedAndBusyGroups(t *testing.T) {
 func TestTestsNeverUseHostGroups(t *testing.T) {
 	if os.Getenv("FENNEC_CPU_GROUP_ROOT") == "" && groupRoot == "/sys/fs/cgroup/fennec" {
 		t.Fatal("a test binary would reshape the host's CPU groups")
+	}
+}
+
+// TestKeepPrunedRemovesDestroyedSessions: a destroyed session's empty group
+// goes on the next tick; a group whose session still runs stays.
+func TestKeepPrunedRemovesDestroyedSessions(t *testing.T) {
+	root := t.TempDir()
+	saved := groupRoot
+	groupRoot = root
+	for _, g := range []string{sharedGroup, "workload/gone-session", "workload/live-session"} {
+		if err := os.MkdirAll(root+"/"+g, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(root+"/workload/live-session/cgroup.events", []byte("populated 1\nfrozen 0\n"), 0644)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { KeepPruned(ctx, 10*time.Millisecond); close(done) }()
+	defer func() {
+		cancel()
+		<-done // stopped before groupRoot is restored
+		groupRoot = saved
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(root + "/workload/gone-session"); os.IsNotExist(err) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for g, exists := range map[string]bool{"workload/gone-session": false, "workload/live-session": true, sharedGroup: true} {
+		if _, err := os.Stat(root + "/" + g); (err == nil) != exists {
+			t.Errorf("%s exists: %v, want %v", g, err == nil, exists)
+		}
 	}
 }
