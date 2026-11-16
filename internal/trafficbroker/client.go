@@ -33,7 +33,12 @@ type Client struct {
 }
 
 func Open(ctx context.Context, path string, output *os.File) (*Client, error) {
-	tcpFD := discoverSSHSocket(output)
+	// Keep queue feedback opt-in until paired WAN measurements demonstrate a
+	// stable latency benefit. The ordinary shared rate budget remains mandatory.
+	tcpFD := -1
+	if os.Getenv("FENNEC_TCP_OUTPUT_GUARD") == "1" {
+		tcpFD = discoverSSHSocket(output)
+	}
 	if tcpFD >= 0 {
 		defer unix.Close(tcpFD)
 	}

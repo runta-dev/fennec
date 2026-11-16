@@ -124,6 +124,8 @@ candidate blocks. This is partial improvement, not stable 240 ms achievement.
 ## TCP queue feedback candidate
 
 The version-2 output broker can observe the exact Linux SSH TCP connection.
+It is experimental and requires `FENNEC_TCP_OUTPUT_GUARD=1` on the resident;
+default installations retain pacing without this additional guard.
 Discovery requires a validated SSH tuple, an SSH ancestor executable, and that
 ancestor's ownership of the read end of the resident's actual output pipe.
 `pidfd_getfd` duplicates the matching socket for observation; neither socket
@@ -147,3 +149,20 @@ The comparison report records actual guard capability for both variants.
 Real TCP tests cover stalled receivers, interactive/peer progress, resumed bulk,
 pipe backlog, cancellation and descriptor release. WAN validation, full signed
 bundle startup, and the unchanged warm-operation gate remain required.
+
+### First guarded WAN comparison
+
+A paired run at 11:22:05 UTC lasted 107.067 seconds with 24 loaded samples per
+variant. The report confirmed the candidate's guard was actually attached; a
+live socket inspection also found the broker and the diagnostic sshd owning
+the same TCP socket. All eight transfer blocks completed with exact bytes.
+The [report](benchmarks/2026-11-16-tcp-guard-comparison.json) records substantial
+temporal variation, including slower idle samples before either load.
+
+Loaded TUI P95 was **333.319 ms without feedback and 423.805 ms with feedback**;
+gateway P95 was 195.762 / 197.766 ms. Loaded ping medians were 210.169 / 200.025
+ms, and maxima 374.554 / 486.686 ms. These results do not establish a stable
+benefit and fail the target. Feedback therefore remains opt-in and is not
+enabled in the relay-recovery development installation. No 240 ms achievement
+is claimed. Further work needs transport-backlog measurements alongside paired
+tests, including the Mac-to-cloud direction and aggregate stream coverage.
