@@ -9,6 +9,7 @@ import (
 )
 
 func TestPrivateSSHConfiguration(t *testing.T) {
+	t.Setenv("FENNEC_RUNTA_ENV", "production")
 	root := t.TempDir()
 	key := filepath.Join(root, "device key")
 	hosts := filepath.Join(root, "known hosts")
