@@ -1,0 +1,139 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// A step is one action in a scenario: typed text (one key every typingGap),
+// raw key bytes, or a bracketed paste.
+type step struct {
+	typed string
+	keys  []byte
+	paste string
+}
+
+func typeText(s string) step { return step{typed: s} }
+func key(b ...byte) step     { return step{keys: b} }
+func paste(s string) step    { return step{paste: s} }
+
+var (
+	shiftEnter = key(0x1b, '[', '1', '3', ';', '2', 'u')
+	backspace  = key(0x7f)
+	left       = key(0x1b, '[', 'D')
+	up         = key(0x1b, '[', 'A')
+	down       = key(0x1b, '[', 'B')
+	home       = key(0x1b, '[', 'H')
+	end        = key(0x1b, '[', 'F')
+	escape     = key(0x1b)
+	tab        = key('\t')
+)
+
+func ctrl(c byte) step { return key(c & 0x1f) }
+
+func repeat(n int, s step) []step {
+	out := make([]step, n)
+	for i := range out {
+		out[i] = s
+	}
+	return out
+}
+
+// clear empties a draft of a few lines (Ctrl+U and Backspace per line).
+func clear() []step {
+	var out []step
+	for range 4 {
+		out = append(out, ctrl('u'), backspace)
+	}
+	return out
+}
+
+// scenarios never submit: no step sends Enter (validated in checkSafe), and
+// keys that submit a draft on some agent are left out for that agent.
+var scenarios = map[string]func(agent string) []step{
+	// typing: words that wrap twice, Shift+Enter, Backspace, Left with
+	// insertion and a short inline paste (the original recordings).
+	"typing": func(string) []step {
+		s := []step{
+			typeText("this is a long line typed into the composer so that it has to wrap the text onto another"),
+			typeText(" row and keep going until it needs a third row of text as well so that growth happens twice"),
+			shiftEnter, typeText("line two"),
+		}
+		s = append(s, repeat(3, backspace)...)
+		s = append(s, repeat(2, left)...)
+		return append(s, typeText("X"), paste(" pasted words"))
+	},
+	// edit: readline editing keys on two lines and on a wrapped line.
+	"edit": func(string) []step {
+		s := []step{typeText("alpha beta gamma"), shiftEnter, typeText("delta epsilon zeta"),
+			ctrl('a'), typeText("A"), ctrl('e'), typeText("E"), home, typeText("H"), end, typeText("N"),
+			ctrl('w'), key(0x1b, 0x7f), ctrl('b'), ctrl('b'), typeText("B"), ctrl('f'), typeText("F"),
+			up, typeText("U"), down, typeText("D"),
+			key(0x1b, '[', '1', ';', '3', 'D'), typeText("W"), key(0x1b, '[', '1', ';', '3', 'C'), typeText("R"),
+			key(0x1b, 'b'), typeText("b"), key(0x1b, 'f'), typeText("f"),
+			left, left, left, ctrl('k'), ctrl('u'), ctrl('h'), key(0x1b, '[', '3', '~'),
+			shiftEnter,
+			typeText("a wrapped line that is long enough to need two rows in the composer of every agent we model here, and more words to be sure"),
+			ctrl('a'), typeText("1"), ctrl('e'), typeText("2"), home, typeText("3"), end, typeText("4"),
+			up, typeText("5"), down, typeText("6"), ctrl('k'), ctrl('u'),
+		}
+		return s
+	},
+	// menu: the "/" and "@" popups, Esc, Tab and history on an empty draft.
+	"menu": func(agent string) []step {
+		s := []step{typeText("/"), typeText("he"), backspace, backspace, backspace,
+			typeText("/mo"), escape, ctrl('u'), backspace, backspace, backspace,
+			typeText("@"), typeText("re"), backspace, backspace, backspace,
+			typeText("see @"), typeText("x"), escape, typeText(" done"), ctrl('u'),
+			tab, tab}
+		if agent != "codex" { // Codex may submit a draft on Tab
+			s = append(s, typeText("draft"), tab, ctrl('u'))
+		}
+		return append(s, up, down)
+	},
+	// paste: 2 to 10 lines with and without a trailing break, a blank line
+	// inside, long single lines, and a paste between words.
+	"paste": func(string) []step {
+		lines := func(prefix string, n int, trailing bool) string {
+			var b strings.Builder
+			for i := 1; i <= n; i++ {
+				if i > 1 {
+					b.WriteByte('\n')
+				}
+				fmt.Fprintf(&b, "%s%d", prefix, i)
+			}
+			if trailing {
+				b.WriteByte('\n')
+			}
+			return b.String()
+		}
+		var s []step
+		for _, p := range []string{lines("a", 2, false), lines("b", 3, false), lines("c", 3, true), lines("d", 4, false),
+			lines("e", 10, false), lines("f", 10, true), "g1\n\ng3", strings.Repeat("word ", 40), strings.Repeat("longer ", 115)} {
+			s = append(s, paste(p))
+			s = append(s, clear()...)
+		}
+		s = append(s, typeText("before "), paste(lines("h", 5, false)), typeText("after"))
+		s = append(s, repeat(7, backspace)...)
+		return append(s, clear()...)
+	},
+}
+
+// checkSafe rejects a scenario that could submit a prompt (and so use
+// inference): Enter, or a line break typed outside a paste.
+func checkSafe(steps []step) error {
+	for i, s := range steps {
+		for _, b := range s.keys {
+			if b == '\r' || b == '\n' {
+				return fmt.Errorf("step %d sends a line break", i)
+			}
+		}
+		if strings.ContainsAny(s.typed, "\r\n") {
+			return fmt.Errorf("step %d types a line break", i)
+		}
+		if strings.Contains(s.paste, "\r") || strings.Contains(s.paste, "\x1b") {
+			return fmt.Errorf("step %d pastes control characters", i)
+		}
+	}
+	return nil
+}

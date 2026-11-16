@@ -15,31 +15,6 @@ type observed struct {
 	screen *Screen
 }
 
-// composerStates replays a trace and records each distinct composer state at
-// complete frames.
-func composerStates(t *testing.T, name string, rows, cols int, profile Profile) []observed {
-	t.Helper()
-	s := NewScreen(rows, cols)
-	var out []observed
-	for _, c := range loadTrace(t, name) {
-		s.Write(c.Data)
-		if !s.Ground() {
-			continue
-		}
-		lock, ok := profile.Locate(s)
-		if !ok {
-			continue
-		}
-		if n := len(out); n > 0 && out[n-1].lock.State.Equal(lock.State) && out[n-1].lock.Top == lock.Top {
-			continue
-		}
-		out = append(out, observed{at: c.At, lock: lock, screen: s.Clone()})
-	}
-	return out
-}
-
-func describe(st State) string { return fmt.Sprintf("%q@%d", st.Text(), st.Cursor) }
-
 func TestClaudeTracesParseComposer(t *testing.T) {
 	cases := []struct {
 		trace      string
@@ -263,12 +238,13 @@ func TestEngineWithInjectedLatency(t *testing.T) {
 	}
 }
 
-// composerRowsEqual compares the composer rows and cursor of two screens.
-func composerRowsEqual(a, b *Screen, lock Lock) bool {
-	for r := max(0, lock.Top-1); r <= min(a.Rows-1, lock.Bottom+1); r++ {
-		if strings.TrimRight(a.RowText(r, 0, a.Cols), " ") != strings.TrimRight(b.RowText(r, 0, b.Cols), " ") {
-			return false
-		}
+// composerStates replays a trace and records each distinct composer state at
+// complete frames.
+func composerStates(t *testing.T, name string, rows, cols int, profile Profile) []observed {
+	t.Helper()
+	var out []observed
+	for _, o := range ObservedStates(loadTrace(t, name), rows, cols, profile) {
+		out = append(out, observed{at: o.At, lock: o.Lock, screen: o.Screen})
 	}
-	return a.Row == b.Row && a.Col == b.Col
+	return out
 }

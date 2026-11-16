@@ -97,20 +97,6 @@ func (f *fakeClaude) lock() (Lock, bool) {
 	return f.profile.Locate(f.screen)
 }
 
-func gridEqual(a, b *Screen) (bool, string) {
-	for r := 0; r < a.Rows; r++ {
-		for c := 0; c < a.Cols; c++ {
-			if a.Cell(r, c) != b.Cell(r, c) {
-				return false, fmt.Sprintf("cell %d,%d: terminal %+v server %+v", r, c, a.Cell(r, c), b.Cell(r, c))
-			}
-		}
-	}
-	if a.Row != b.Row || a.Col != b.Col {
-		return false, fmt.Sprintf("cursor terminal %d,%d server %d,%d", a.Row, a.Col, b.Row, b.Col)
-	}
-	return true, ""
-}
-
 var randomKeys = []string{"a", "b", "c", " ", "de", "你", "\x7f", "\x1b[D", "\x1b[C", "\x1b[13;2u", "\x01", "\x05", "\x1b[200~pasted words\x1b[201~", "\x15", "\x17"}
 
 // TestEngineConvergesUnderRandomLatencyAndLoss types random keys while the

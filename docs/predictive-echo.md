@@ -632,11 +632,38 @@ Other agents, from reading their packages:
 | Kimi | No (drawn reverse-video cursor) | Not predictable with this design |
 | Cursor | No (cursor parked below the composer) | Not predictable with this design |
 
+## Checking profiles after an agent release
+
+`cmd/record-composer` (run on the Mac, which has fen and tmux) records the
+standard scenarios (`typing`, `edit`, `menu`, `paste`) for each agent in a
+labelled test session (`fen launch`, a private tmux session with
+`FEN_PREDICT_TRACE`, `fen stop`), and replays every recording with
+`predict.Replay`, the harness the trace tests use:
+
+    go build -o /tmp/record-composer ./cmd/record-composer
+    /tmp/record-composer [-agents grok] [-scenarios edit,menu] [-size 120x40] [-save]
+
+It prints, per agent version and scenario, the keys predicted, wrong
+predictions, rollbacks, the keys that waited, and the committed recording's
+numbers with any key that now waits more often. A profile that no longer
+matches shows as `DRIFT` (exit status 1): either the composer is never
+recognised, or a shown prediction differs from what the agent drew.
+
+No scenario sends Enter or a typed line break (checked before recording;
+Codex's Tab with a draft is left out, as it may submit), so no prompt and no
+inference is used; the only Enter confirms Claude Code's folder trust
+dialog. Every recording is scanned for the home path, user and host names,
+other sessions' names, and letters the scenarios never type (from history
+or mention popups); only clean recordings are saved with `-save`, as
+`testdata/traces/<agent>-<scenario>-<cols>x<rows>`. `-replay <dir> -agent
+<agent>` replays one recorded directory anywhere.
+
 ## Risks
 
 - **Profile drift with agent releases.** The self-check turns layout changes
   into "prediction off", never into wrong pixels. Profile failures are counted
-  per agent version so updates can be shipped quickly.
+  per agent version (`fen predict-stats`), and `cmd/record-composer` checks a
+  new release against the profiles in minutes.
 - **Width disagreements** for rare code points: only unambiguous ranges are
   predicted.
 - **Transcript rows revealed by a shrink** that scrolled off before the
