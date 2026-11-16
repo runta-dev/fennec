@@ -6,6 +6,7 @@ import (
 	"fennec/internal/clipboard"
 	"fennec/internal/launchprofile"
 	"fennec/internal/predict"
+	"fennec/internal/predictstats"
 	"fennec/internal/terminalstream"
 	"io"
 	"os"
@@ -113,12 +114,17 @@ func framesWithSequence(frames []terminalstream.Frame, stamp inputStamp, cadence
 	return frames
 }
 
-func recordPredictionStats(engine *predict.Engine) {
+// recordPredictionStats writes the session's prediction counters to the local
+// usage log (FEN_PREDICT_STATS=off disables it) and the launch profile.
+func recordPredictionStats(engine *predict.Engine, agent, home string, rows, columns int) {
 	if engine == nil || !engine.Active() {
 		return
 	}
 	stats := engine.Stats()
 	now := time.Now()
+	if stats.Keys > 0 && strings.TrimSpace(strings.ToLower(os.Getenv("FEN_PREDICT_STATS"))) != "off" {
+		_ = predictstats.Append(home, predictstats.FromStats(agent, rows, columns, engine.EchoAck(), stats, now))
+	}
 	if stats.Predicted == 0 {
 		return
 	}

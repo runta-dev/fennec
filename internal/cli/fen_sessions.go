@@ -114,6 +114,9 @@ func fenCommand(arguments []string, output io.Writer) error {
 	if len(arguments) > 0 && arguments[0] == "daemon" {
 		return daemonCommand(arguments[1:], output)
 	}
+	if len(arguments) > 0 && arguments[0] == "predict-stats" {
+		return predictStatsCommand(arguments[1:], output)
+	}
 	if len(arguments) > 0 && arguments[0] == "control" {
 		var input io.Reader
 		if !isTerminal(os.Stdin) {

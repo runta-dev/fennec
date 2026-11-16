@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -60,6 +61,16 @@ type Stats struct {
 	// LocalPaint includes input-lock contention and the terminal write. It is
 	// separate from cloud confirmation and uses wall time, not the trace clock.
 	LocalPaintP50, LocalPaintP95 time.Duration
+	// UnlockedKeys counts keys typed while no composer was recognised (all
+	// of them when a profile no longer matches the agent's layout).
+	UnlockedKeys int
+	// Locked reports whether a composer was ever recognised.
+	Locked bool
+	// BarrierKeys counts the keys that waited for the agent, by key name.
+	BarrierKeys map[string]int
+	// Version is the first version number the agent drew before any key was
+	// typed (its startup banner), or "".
+	Version string
 }
 
 type edit struct {
@@ -118,6 +129,7 @@ type Engine struct {
 	samples      []time.Duration
 	paintSamples []time.Duration
 	stats        Stats
+	versionScans int
 
 	stop chan struct{}
 	done chan struct{}
@@ -172,6 +184,9 @@ func (e *Engine) SetImagePaste(on bool) { e.mu.Lock(); e.imagePaste = on; e.mu.U
 // SetEchoAck records whether the server acknowledges processed input.
 func (e *Engine) SetEchoAck(on bool) { e.mu.Lock(); e.opts.EchoAck = on; e.mu.Unlock() }
 
+// EchoAck reports whether the server acknowledges processed input.
+func (e *Engine) EchoAck() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.opts.EchoAck }
+
 // Server passes server output to the terminal and updates predictions.
 func (e *Engine) Server(data []byte) error {
 	e.mu.Lock()
@@ -186,6 +201,10 @@ func (e *Engine) Server(data []byte) error {
 	buf.Write(data)
 	e.shadow.Write(data)
 	e.display.Write(data)
+	if e.stats.Version == "" && e.stats.Keys == 0 && e.versionScans < 200 && e.shadow.Ground() {
+		e.versionScans++
+		e.stats.Version = screenVersion(e.shadow)
+	}
 	if e.shadow.Scrolled {
 		e.shadow.Scrolled = false
 		e.display.Scrolled = false
@@ -240,6 +259,7 @@ func (e *Engine) Input(data []byte) uint64 {
 			continue
 		}
 		if !e.locked {
+			e.stats.UnlockedKeys++
 			continue
 		}
 		ed := edit{key: k, seq: offset, at: now, imageReady: k.Kind == KeyImagePaste && imageReady && e.imagePaste}
@@ -265,6 +285,10 @@ func (e *Engine) mapEdit(ed *edit, st State) {
 	if ed.apply == nil {
 		ed.before = st
 		e.stats.Barriers++
+		if e.stats.BarrierKeys == nil {
+			e.stats.BarrierKeys = map[string]int{}
+		}
+		e.stats.BarrierKeys[ed.key.Name()]++
 	} else {
 		e.stats.Predicted++
 	}
@@ -361,6 +385,7 @@ func (e *Engine) Stats() Stats {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s := e.stats
+	s.BarrierKeys = maps.Clone(e.stats.BarrierKeys)
 	if n := len(e.paintSamples); n > 0 {
 		sorted := append([]time.Duration(nil), e.paintSamples...)
 		sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
@@ -444,6 +469,7 @@ func (e *Engine) reconcile(now time.Time) {
 	server := lock.State
 	e.lock = lock
 	if !e.locked {
+		e.stats.Locked = true
 		e.locked, e.confirmed, e.pending = true, server, nil
 		return
 	}

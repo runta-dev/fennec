@@ -110,7 +110,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: intent.RequestID}
 	defer titles.Flush()
 	engine := newPredictor(titles, intent.Agent, home, rows, columns, interactive && term.IsTerminal(int(os.Stdout.Fd())))
-	defer recordPredictionStats(engine)
+	defer recordPredictionStats(engine, intent.Agent, home, rows, columns)
 	defer engine.Close()
 	if owner != nil {
 		owner.engine.Store(engine)
