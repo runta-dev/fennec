@@ -1,7 +1,9 @@
 # Recorded terminal walkthrough
 
 The four JSON recordings in `public/demo-recordings` contain actual terminal
-bytes, rendered with the same xterm build shipped in Fennec. `recordings.json`
+bytes, parsed with the same xterm build shipped in Fennec. The website uses
+`@xterm/addon-canvas` 0.7.0 with custom glyphs and single cell line height so
+block artwork and box borders do not depend on system-font glyph metrics. `recordings.json`
 records versions, source hashes, dimensions, edits and recording boundaries.
 This edited presentation is not a latency benchmark.
 

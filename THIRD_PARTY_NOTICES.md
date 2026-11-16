@@ -60,3 +60,10 @@ The Responses API request shape, guardian headers and ChatGPT token refresh in
 - License: BSD-3-Clause (Copyright The Chromium Authors), plus the licences of the third-party components Chromium includes. Snapshot builds ship only a sample `chrome://credits`. `cua/internal/credits` therefore generates the notices an official macOS build carries, from the pinned commit and the dependencies its `DEPS` pins, applying the rules of Chromium's `tools/licenses/licenses.py` in Go. The result has 473 components, with SHA-256 `085e2ec9c87be3a957497969189e3c8e44534ba622bf833b31617aec32e7d711` (pinned in `pin.go`). `cua/cmd/cua-package` stages Chromium's `LICENSE` and the notices as `licenses/Chromium-LICENSE.txt`, `licenses/Chromium-credits.html` and `licenses/Chromium-credits.txt`, and copies them into `Chromium.app/Contents/Resources`. It also puts the page in place of the sample `chrome://credits` resource.
 - Modified only by `cua-package`: the `chrome://credits` resource in `resources.pak` is replaced with the generated notices; the cookie key's Keychain item name in the framework changes from "Chromium Safe Storage" to "Fennec Safe Storage"; and the app is re-signed with Fennec's signing identity. A staging made with `-allow-missing-credits` (development only) carries no notices and must not be distributed.
 - The DevTools protocol client in `cua/internal/cdp` is Fennec's own code; no chromedp or cdproto code is included.
+
+## Website terminal playback
+
+- `@xterm/addon-canvas` 0.7.0, MIT; license:
+  `website/public/licenses/xterm-addon-canvas-MIT.txt`.
+- Used with the existing xterm.js 5.5.0 build to draw block and box glyphs on a
+  Canvas 2D character grid. Distributed with the website; no CDN runtime scripts.

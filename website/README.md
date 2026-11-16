@@ -26,7 +26,8 @@ connects to an account or daemon. See [recording workflow and provenance](demo/R
 
 Playback loops while visible and pauses offscreen or in a background tab.
 Reduced motion shows the completed scene. Clicking terminal tabs or native
-controls pauses automatic navigation; Space on the focused walkthrough toggles
+controls pauses automatic navigation for eight seconds, then resumes. Every
+cycle resets terminal tabs, sessions and native fixture state. Space on the focused walkthrough toggles
 playback, and Escape pauses. The separate player bar, chapters and caption have
 been removed. The terminal is a recording; native controls operate on fixtures.
 

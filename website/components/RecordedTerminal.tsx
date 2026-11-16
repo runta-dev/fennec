@@ -5,6 +5,7 @@ type Recording = { cols: number; rows: number; duration: number; chunks: { t: nu
 type TerminalInstance = {
   open: (element: HTMLElement) => void; dispose: () => void; reset: () => void;
   write: (data: Uint8Array, callback?: () => void) => void;
+  loadAddon: (addon: { dispose: () => void }) => void;
   element?: HTMLElement;
 };
 declare global { interface Window { Terminal: new (options: Record<string, unknown>) => TerminalInstance } }
@@ -32,10 +33,13 @@ export default function RecordedTerminal({ name, progress }: { name: string; pro
   useEffect(() => {
     let cancelled = false, terminal: TerminalInstance | undefined, observer: ResizeObserver | undefined;
     setFailed(false);
-    Promise.all([loadTerminal(), loadRecording(name)]).then(([, recording]) => {
+    Promise.all([loadTerminal(), loadRecording(name), import("@xterm/addon-canvas")]).then(([, recording, { CanvasAddon }]) => {
       if (cancelled) return;
-      terminal = new window.Terminal({ cols: recording.cols, rows: recording.rows, fontSize: 14, lineHeight: 1.2, fontFamily: '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace', allowTransparency: false, disableStdin: true, scrollback: 1000, cursorBlink: false, theme: { background: "#17181b", foreground: "#d9d9df", cursor: "#c5c5ce" } });
+      terminal = new window.Terminal({ cols: recording.cols, rows: recording.rows, fontSize: 14, lineHeight: 1, customGlyphs: true, fontFamily: '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace', allowTransparency: false, disableStdin: true, scrollback: 1000, cursorBlink: false, theme: { background: "#17181b", foreground: "#d9d9df", cursor: "#c5c5ce" } });
       terminal.open(host.current!);
+      // Block/box characters must fill terminal cells, independent of font
+      // ascenders and fallback glyph metrics (the DOM renderer cannot do this).
+      terminal.loadAddon(new CanvasAddon());
       const bytes = recording.chunks.map(c => Uint8Array.from(atob(c.b), ch => ch.charCodeAt(0)));
       let next = 0, last = -1, busy = false;
       const resize = () => {
