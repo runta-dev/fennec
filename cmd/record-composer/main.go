@@ -17,6 +17,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -52,7 +53,7 @@ type config struct {
 func main() {
 	agents := flag.String("agents", "claude,codex,opencode,grok", "agents to record")
 	names := flag.String("scenarios", "typing,edit,menu,paste", "scenarios to record")
-	size := flag.String("size", "100x30", "terminal size, columns x rows")
+	size := flag.String("size", "100x30", "terminal sizes, columns x rows, comma-separated (e.g. 80x24,100x30,160x45)")
 	replay := flag.String("replay", "", "only replay this recorded trace directory")
 	agent := flag.String("agent", "", "agent of the -replay trace")
 	var cfg config
@@ -62,21 +63,30 @@ func main() {
 	flag.BoolVar(&cfg.save, "save", false, "save clean recordings into the baseline directory")
 	flag.BoolVar(&cfg.verbose, "v", false, "print every replay problem")
 	flag.Parse()
-	var err error
-	if cfg.cols, cfg.rows, err = parseSize(*size); err != nil {
-		fail(err)
+	var sizes [][2]int
+	for _, s := range split(*size) {
+		cols, rows, err := parseSize(s)
+		if err != nil {
+			fail(err)
+		}
+		sizes = append(sizes, [2]int{cols, rows})
 	}
+	if len(sizes) == 0 {
+		fail(errors.New("-size names no size"))
+	}
+	cfg.cols, cfg.rows = sizes[0][0], sizes[0][1]
 	if *replay != "" {
 		if predict.ProfileFor(*agent) == nil {
 			fail(fmt.Errorf("-agent must name a profiled agent"))
 		}
-		r := run{agent: *agent, scenario: filepath.Base(*replay), dir: *replay}
+		r := run{agent: *agent, scenario: filepath.Base(*replay), dir: *replay, cols: cfg.cols, rows: cfg.rows}
 		r.check(cfg)
 		os.Exit(report([]run{r}, cfg))
 	}
 	if cfg.tmux == "" {
 		cfg.tmux = findTmux()
 	}
+	cleanupStale(cfg)
 	var runs []run
 	for _, a := range split(*agents) {
 		if predict.ProfileFor(a) == nil {
@@ -91,16 +101,20 @@ func main() {
 			if err := checkSafe(steps); err != nil {
 				fail(fmt.Errorf("scenario %s: %w", name, err))
 			}
-			fmt.Fprintf(os.Stderr, "recording %s %s at %dx%d...\n", a, name, cfg.cols, cfg.rows)
-			r := run{agent: a, scenario: name}
-			r.dir, r.session, r.err = record(cfg, a, steps)
-			if r.err == nil {
-				r.check(cfg)
-				if cfg.save {
-					r.saveTo(cfg)
+			for _, sz := range sizes {
+				c := cfg
+				c.cols, c.rows = sz[0], sz[1]
+				fmt.Fprintf(os.Stderr, "recording %s %s at %dx%d...\n", a, name, c.cols, c.rows)
+				r := run{agent: a, scenario: name, cols: c.cols, rows: c.rows, typed: typedRunes(steps)}
+				r.dir, r.session, r.err = record(c, a, steps)
+				if r.err == nil {
+					r.check(c)
+					if c.save {
+						r.saveTo(c)
+					}
 				}
+				runs = append(runs, r)
 			}
-			runs = append(runs, r)
 		}
 	}
 	os.Exit(report(runs, cfg))
@@ -175,11 +189,13 @@ func record(cfg config, agent string, steps []step) (string, string, error) {
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
+			// Local cleanup first: fen stop may wait long when the cloud is
+			// unreachable.
 			tmux("send-keys", "-t", pane, "-H", "1c") // fen's detach key
 			time.Sleep(1500 * time.Millisecond)
-			exec.Command(cfg.fen, "stop", session).Run()
 			tmux("kill-session", "-t", pane)
 			os.Remove(work)
+			stopSession(cfg, session)
 		})
 	}
 	// Interrupted (or the SSH connection dropped): never leave the test
@@ -199,7 +215,7 @@ func record(cfg config, agent string, steps []step) (string, string, error) {
 	}()
 	command := fmt.Sprintf("cd %s && FEN_PREDICT_TRACE=%s %s attach %s; sleep 600", shellQuote(work), shellQuote(traces), shellQuote(cfg.fen), shellQuote(session))
 	if _, err := tmux("new-session", "-d", "-s", pane, "-x", strconv.Itoa(cfg.cols), "-y", strconv.Itoa(cfg.rows), command); err != nil {
-		exec.Command(cfg.fen, "stop", session).Run()
+		stopSession(cfg, session)
 		return "", session, fmt.Errorf("tmux: %w", err)
 	}
 	if err := waitReady(agent, func() string { s, _ := tmux("capture-pane", "-p", "-t", pane); return string(s) }, func(hex ...string) {
@@ -210,6 +226,9 @@ func record(cfg config, agent string, steps []step) (string, string, error) {
 	}
 	for _, s := range steps {
 		switch {
+		case s.commit != "":
+			tmux("send-keys", "-t", pane, "-l", s.commit)
+			time.Sleep(400 * time.Millisecond) // choosing the next candidate
 		case s.typed != "":
 			for _, r := range s.typed {
 				tmux("send-keys", "-t", pane, "-l", string(r))
@@ -231,6 +250,50 @@ func record(cfg config, agent string, steps []step) (string, string, error) {
 		return "", session, fmt.Errorf("expected one trace in %s", traces)
 	}
 	return filepath.Join(traces, entries[0].Name()), session, nil
+}
+
+// stopSession stops a test session, giving up after 30 s.
+func stopSession(cfg config, session string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, cfg.fen, "stop", session).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "record-composer: fen stop %s: %v (stop it with: fen stop %s)\n", session, err, session)
+	}
+}
+
+var (
+	paneName      = regexp.MustCompile(`^record-composer-(\d+)$`)
+	attachSession = regexp.MustCompile(`attach '([a-z0-9-]+)'`)
+)
+
+// cleanupStale stops what an earlier run left when it was killed: its tmux
+// session (named after its process ID, no longer running), the test session
+// it attached (from the pane's start command), and its empty work
+// directories.
+func cleanupStale(cfg config) {
+	out, err := exec.Command(cfg.tmux, "list-sessions", "-F", "#{session_name}").Output()
+	if err == nil {
+		for _, name := range strings.Fields(string(out)) {
+			m := paneName.FindStringSubmatch(name)
+			if m == nil {
+				continue
+			}
+			if pid, _ := strconv.Atoi(m[1]); pid == os.Getpid() || syscall.Kill(pid, 0) == nil {
+				continue // still running
+			}
+			start, _ := exec.Command(cfg.tmux, "display-message", "-p", "-t", name, "#{pane_start_command}").Output()
+			exec.Command(cfg.tmux, "kill-session", "-t", name).Run()
+			if s := attachSession.FindSubmatch(start); s != nil {
+				fmt.Fprintf(os.Stderr, "record-composer: stopping test session %s left by an earlier run\n", s[1])
+				stopSession(cfg, string(s[1]))
+			}
+		}
+	}
+	home, _ := os.UserHomeDir()
+	dirs, _ := filepath.Glob(filepath.Join(home, "fennec-record-composer-*"))
+	for _, d := range dirs {
+		os.Remove(d) // only if empty
+	}
 }
 
 func hexBytes(b []byte) []string {
@@ -277,6 +340,8 @@ func waitReady(agent string, screen func() string, send func(...string)) error {
 
 type run struct {
 	agent, scenario, dir, session string
+	cols, rows                    int
+	typed                         map[rune]bool // letters the scenario types or pastes
 	err                           error
 	report, base                  *predict.ReplayReport
 	private                       []string
@@ -295,7 +360,7 @@ func (r *run) check(cfg config) {
 	rep := predict.Replay(tr, cfg.rows, cfg.cols, profile, false)
 	r.report = &rep
 	if r.session != "" {
-		r.private = privateText(tr, r.session)
+		r.private = privateText(tr, r.session, r.typed)
 	}
 	if b, err := predict.LoadTrace(filepath.Join(cfg.baseline, r.name(cfg))); err == nil && r.session != "" {
 		base := predict.Replay(b, cfg.rows, cfg.cols, profile, false)
@@ -331,10 +396,23 @@ func (r *run) saveTo(cfg config) {
 
 var sessionPath = regexp.MustCompile(`\.fen/([a-z]+-[a-z]+)`)
 
+// typedRunes is the set of non-ASCII letters a scenario types or pastes.
+func typedRunes(steps []step) map[rune]bool {
+	set := map[rune]bool{}
+	for _, s := range steps {
+		for _, r := range s.typed + s.commit + s.paste {
+			if r > unicode.MaxASCII {
+				set[r] = true
+			}
+		}
+	}
+	return set
+}
+
 // privateText lists what in the recorded output may identify the user or
-// their other work. The scenarios type only ASCII, so letters beyond it come
-// from the agent (history, mention popups, task titles).
-func privateText(tr predict.Trace, session string) []string {
+// their other work. Non-ASCII letters the scenario did not type come from
+// the agent (history, mention popups, task titles).
+func privateText(tr predict.Trace, session string, typed map[rune]bool) []string {
 	var out bytes.Buffer
 	for _, c := range tr.Output {
 		out.Write(c.Data)
@@ -367,13 +445,13 @@ func privateText(tr predict.Trace, session string) []string {
 	letters := 0
 	for i := 0; i < len(data); {
 		r, n := utf8.DecodeRune(data[i:])
-		if r > unicode.MaxASCII && unicode.IsLetter(r) {
+		if r > unicode.MaxASCII && unicode.IsLetter(r) && !typed[r] {
 			letters++
 		}
 		i += n
 	}
 	if letters > 0 {
-		found = append(found, fmt.Sprintf("%d non-ASCII letters (history, popups or titles?)", letters))
+		found = append(found, fmt.Sprintf("%d non-ASCII letters not typed (history, popups or titles?)", letters))
 	}
 	sort.Strings(found)
 	return found
@@ -385,10 +463,10 @@ func privateText(tr predict.Trace, session string) []string {
 func report(runs []run, cfg config) int {
 	status := 0
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "AGENT\tVERSION\tSCENARIO\tKEYS\tPREDICTED\tWRONG\tROLLBACKS\tWAITED\tBASELINE\tRESULT")
+	fmt.Fprintln(w, "AGENT\tVERSION\tSCENARIO\tSIZE\tKEYS\tPREDICTED\tWRONG\tROLLBACKS\tWAITED\tBASELINE\tRESULT")
 	for _, r := range runs {
 		if r.err != nil {
-			fmt.Fprintf(w, "%s\t\t%s\t\t\t\t\t\t\terror: %v\n", r.agent, r.scenario, r.err)
+			fmt.Fprintf(w, "%s\t\t%s\t%dx%d\t\t\t\t\t\t\terror: %v\n", r.agent, r.scenario, r.cols, r.rows, r.err)
 			status = 1
 			continue
 		}
@@ -413,7 +491,7 @@ func report(runs []run, cfg config) int {
 				baseline += ", now waits: " + extra
 			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", r.agent, orUnknown(rep.Stats.Version), r.scenario, rep.Keys, rep.Predicted,
+		fmt.Fprintf(w, "%s\t%s\t%s\t%dx%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", r.agent, orUnknown(rep.Stats.Version), r.scenario, r.cols, r.rows, rep.Keys, rep.Predicted,
 			len(rep.Problems), rep.Stats.Diverged, waits(rep.Stats.BarrierKeys), baseline, result)
 	}
 	w.Flush()

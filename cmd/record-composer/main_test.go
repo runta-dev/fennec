@@ -25,10 +25,10 @@ func TestScenariosNeverSubmit(t *testing.T) {
 func TestPrivateText(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	trace := func(s string) predict.Trace { return predict.Trace{Output: []predict.TraceChunk{{Data: []byte(s)}}} }
-	if got := privateText(trace("~/.fen/lime-bowl  ❯ hello ─────"), "lime-bowl"); len(got) != 0 {
+	if got := privateText(trace("~/.fen/lime-bowl  ❯ hello ─────"), "lime-bowl", nil); len(got) != 0 {
 		t.Fatalf("clean output flagged: %v", got)
 	}
-	got := privateText(trace("/root/.fen/other-task \u68c0\u67e5 "+home), "lime-bowl") // a CJK task title
+	got := privateText(trace("/root/.fen/other-task \u68c0\u67e5 "+home), "lime-bowl", nil) // a CJK task title
 	want := []string{"another session (other-task)", "non-ASCII letters", "contains"}
 	for _, w := range want {
 		if !strings.Contains(strings.Join(got, "|"), w) {
@@ -39,7 +39,7 @@ func TestPrivateText(t *testing.T) {
 
 // TestReplayMode replays a committed recording the way -replay does.
 func TestReplayMode(t *testing.T) {
-	r := run{agent: "opencode", scenario: "edit", dir: "../../internal/predict/testdata/traces/opencode-edit-100x30"}
+	r := run{agent: "opencode", scenario: "edit", dir: "../../internal/predict/testdata/traces/opencode-edit-100x30", cols: 100, rows: 30}
 	r.check(config{rows: 30, cols: 100})
 	if r.err != nil || r.report == nil || !r.report.OK() || !r.report.Stats.Locked {
 		t.Fatalf("replay: %v %+v", r.err, r.report)
