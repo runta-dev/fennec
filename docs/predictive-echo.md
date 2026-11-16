@@ -780,13 +780,15 @@ product at 250 ms, twice what a user at 80 ms needs (who then queues
 16 KiB ahead of their echo) and too little at 400 ms. Each terminal stream
 therefore sizes its own window from its measured round trip:
 
-    window = clamp(1.5 x 160 KiB/s x minRTT, 8 KiB, 64 KiB)
+    window = clamp(1.5 x 128 KiB/s x minRTT, 8 KiB, 64 KiB)
 
-- 160 KiB/s is the application budget (`traffic.DefaultConfig`), increased
-  from 112 KiB/s at the user's request. It exceeds the observed 128 KiB/s
-  host cap; it is not a measured path capacity. The 1.5 gain covers credit
-  returning in bursts and round-trip jitter. The new budget needs paired
-  latency and throughput validation.
+- 128 KiB/s is the application budget (`traffic.DefaultConfig`), with a
+  96 KiB/s bulk limit, selected by the user after the
+  [four-run comparison](benchmarks/2026-11-16-idle-four-run-series.md).
+  It is not a measured path capacity or proof of a stable latency advantage.
+  The 1.5 gain covers credit returning in bursts and round-trip jitter.
+  Changing the rate also changes this window; scrolling and throughput
+  acceptance remain separate from unloaded protocol ping.
 - A sample is the time from handing a frame to SSH until the peer has
   credited all of it. Only frames sent while nothing else of the stream was
   in flight are sampled, so a stream's own queue cannot inflate them;
@@ -803,9 +805,9 @@ therefore sizes its own window from its measured round trip:
 | Round trip | Window |
 | --- | ---: |
 | 20 ms | 8 KiB (floor) |
-| 80 ms | 19 KiB |
-| 220 ms | 53 KiB |
-| 250 ms | 60 KiB |
+| 80 ms | 15 KiB |
+| 220 ms | 42 KiB |
+| 250 ms | 48 KiB |
 | 400 ms and above | 64 KiB (cap) |
 
 Historical measurement with the previous 112 KiB/s budget, using the same

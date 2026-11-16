@@ -8,7 +8,23 @@ The application bandwidth follow-up below is in progress. The implementation
 and acceptance status of the original four items does not imply that the new
 network latency target has been met.
 
-The user-requested 160/128 KiB/s budget is installed in development build
+On November 16, the user selected **128/96 KiB/s total/bulk** as the default
+for installation after the four-run unloaded comparison below. This is a
+configuration decision under uncertainty: 128/96 had the lowest pooled P95
+and won three of four runs, but the paired difference intervals include zero.
+It is not evidence that the approximately 240 ms target has been achieved.
+The shared default now applies to both Mac and cloud senders; the experiment
+had held the Mac sender at 160/128, so its measurements do not validate the
+new two-ended deployment. Total pacing is 131,072 bytes/s and bulk pacing is
+98,304 bytes/s, including the existing wire-overhead estimates. The 32 KiB/s
+difference leaves room for interactive traffic within the same total budget.
+New cloud connections use `traffic-v4` to avoid reusing a live broker with
+older defaults; old brokers drain naturally without stopping agent sessions.
+Dynamic terminal windows, 16 KiB socket credit, 2 KiB bursts and relay recovery
+remain enabled. Installation and validation are recorded in
+[the selected-budget deployment record](benchmarks/2026-11-16-budget128-96-deployment.md).
+
+The earlier user-requested 160/128 KiB/s budget was installed in development build
 `ad8c138`, including the dynamic terminal window and relay recovery fixes.
 Its [first paired WAN experiment](benchmarks/2026-11-16-budget160-comparison.md)
 on Singapore/Singtel to integration/us-west1 measured 43.4 versus 44.1 KiB/s
@@ -62,8 +78,8 @@ experimental and default-off. The 240 ms target remains unmet; see the
 [paired reports and limitations](ssh-backlog-investigation.md).
 
 The terminal encoded output window now **follows each stream's round trip**:
-1.5 x the 160 KiB/s paced rate x the minimum round trip, between 8 and 64 KiB
-(about 19 KiB at 80 ms, 60 KiB at 250 ms; see
+1.5 x the 128 KiB/s paced rate x the minimum round trip, between 8 and 64 KiB
+(about 15 KiB at 80 ms, 48 KiB at 250 ms; see
 [predictive echo, "The window follows the round trip"](predictive-echo.md)).
 It replaces the fixed 32 KiB and then 64 KiB windows of the user's scrolling
 experiments, which suited one round trip only. The previous 4 KiB
@@ -135,16 +151,16 @@ slot, so a heartbeat can enter and preempt a bulk token wait. A bounded run of
 interactive packets is followed by a bulk opportunity; tiny interactive
 packets cannot perpetually consume the tokens needed by a larger bulk packet.
 
-Current tuning values are 160 KiB/s total, 128 KiB/s bulk, a 2 KiB burst/atomic
+Current tuning values are 128 KiB/s total, 96 KiB/s bulk, a 2 KiB burst/atomic
 packet limit, and 1 KiB data chunks with per-packet transport overhead charged
-by the adapter. The user requested a 128 + 32 KiB/s budget to avoid throttling
-below the host's observed 128 KiB/s cap. This is 125% of that cap, not 110%.
-The extra 32 KiB/s is scheduler headroom, not bandwidth reserved at the host;
-overload may move queueing downstream. Validate throughput, scrolling and
+by the adapter. The user selected this budget after trying 160/128 and
+128/128 KiB/s. The 32 KiB/s total-minus-bulk difference leaves room inside
+the scheduler for interactive traffic; it is not bandwidth reserved at the
+host or a measured path capacity. Validate throughput, scrolling and
 interactive tails together. The dynamic terminal window follows the new rate
 but retains its 64 KiB ceiling. File/socket credit stays 16 KiB and TCP backlog
-feedback stays disabled by default. New cloud brokers use `traffic-v3` so an
-old process cannot silently retain the previous 112/96 KiB/s settings; old
+feedback stays disabled by default. New cloud brokers use `traffic-v4` so an
+old process cannot silently retain the previous 160/128 KiB/s settings; old
 brokers drain naturally, and coexistence does not imply one shared rate cap.
 Historical measurements below retain their original budgets. Deployment and
 paired WAN validation of the new budget must be recorded separately.
