@@ -17,7 +17,13 @@ func TestRouteRPCServiceChild(t *testing.T) {
 	if os.Getenv("FENNEC_ROUTE_RPC_CHILD") != "1" {
 		return
 	}
-	runtime := cloudruntime.NewLocalRuntime(t.TempDir())
+	// The parent owns the home (routeRPCChild): this process ends with os.Exit,
+	// which skips t.TempDir's cleanup and left one directory per run.
+	home := os.Getenv("FENNEC_ROUTE_RPC_HOME")
+	if home == "" {
+		os.Exit(2)
+	}
+	runtime := cloudruntime.NewLocalRuntime(home)
 	if binary := os.Getenv("FENNEC_RPC_TEST_BINARY"); binary != "" {
 		for _, name := range []string{".local/fennec/node/bin/node", ".local/bin/herdr-core"} {
 			path := filepath.Join(runtime.Home, name)
@@ -32,13 +38,20 @@ func TestRouteRPCServiceChild(t *testing.T) {
 	os.Exit(0)
 }
 
+// routeRPCChild runs TestRouteRPCServiceChild as a resident whose home is a
+// directory of t, removed when t ends.
+func routeRPCChild(t *testing.T, executable string, env ...string) *exec.Cmd {
+	command := exec.Command(executable, "-test.run=^TestRouteRPCServiceChild$")
+	command.Env = append(append(os.Environ(), "FENNEC_ROUTE_RPC_CHILD=1", "FENNEC_ROUTE_RPC_HOME="+t.TempDir()), env...)
+	return command
+}
+
 func TestRoutesReuseResidentProtocol(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(executable, "-test.run=^TestRouteRPCServiceChild$")
-	command.Env = append(os.Environ(), "FENNEC_ROUTE_RPC_CHILD=1")
+	command := routeRPCChild(t, executable)
 	transport, err := Start(command)
 	if err != nil {
 		t.Fatal(err)
@@ -76,8 +89,7 @@ func TestNativeCredentialsReuseResidentChannelWithoutGateway(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	command := exec.Command(executable, "-test.run=^TestRouteRPCServiceChild$")
-	command.Env = append(os.Environ(), "FENNEC_ROUTE_RPC_CHILD=1")
+	command := routeRPCChild(t, executable)
 	transport, e := Start(command)
 	if e != nil {
 		t.Fatal(e)
@@ -120,8 +132,7 @@ func TestReconfigurationUsesExistingResidentProtocol(t *testing.T) {
 	if err = os.Symlink(trueBinary, bin+"/codex"); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(executable, "-test.run=^TestRouteRPCServiceChild$")
-	command.Env = append(os.Environ(), "FENNEC_ROUTE_RPC_CHILD=1", "PATH="+bin, "FENNEC_RPC_TEST_BINARY="+trueBinary)
+	command := routeRPCChild(t, executable, "PATH="+bin, "FENNEC_RPC_TEST_BINARY="+trueBinary)
 	transport, err := Start(command)
 	if err != nil {
 		t.Fatal(err)
