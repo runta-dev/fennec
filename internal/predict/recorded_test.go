@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -288,5 +289,49 @@ func TestKimiRecordedSessions(t *testing.T) {
 				t.Fatalf("%d rollbacks", rep.Stats.Diverged)
 			}
 		})
+	}
+}
+
+// barrierProfile leaves the editing keys unpredicted, so each is a barrier.
+type barrierProfile struct{ Profile }
+
+func (b barrierProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
+	switch k.Kind {
+	case KeyCtrl, KeyHome, KeyEnd, KeyWordLeft, KeyWordRight, KeyAltBackspace, KeyUp, KeyDown:
+		return nil
+	}
+	return b.Profile.Edit(k, st, ctx)
+}
+
+// TestBarrierKeysAppliedOnce replays Pi and Kimi sessions recorded with the
+// cloud's acknowledgements (editing keys, and pastes cleared with Ctrl+U and
+// Backspace) with every editing key unpredicted, with and without the
+// acknowledgements. Keys typed behind such a key used to be applied a second
+// time when the agent drew them in the frame that resolved it (without
+// acknowledgements the barrier resolved only after a timeout).
+func TestBarrierKeysAppliedOnce(t *testing.T) {
+	for _, name := range []string{"pi-edit-acks-100x30", "pi-paste-acks-100x30", "kimi-edit-acks-100x30", "kimi-paste-acks-100x30"} {
+		agent := strings.SplitN(name, "-", 2)[0]
+		for _, acks := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/acks=%v", name, acks), func(t *testing.T) {
+				tr, err := LoadTrace(filepath.Join("testdata", "traces", name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !acks {
+					tr.Acks = nil
+				}
+				rep := Replay(tr, 30, 100, func() Profile { return barrierProfile{ProfileFor(agent)} }, false)
+				for _, p := range rep.Problems {
+					t.Error(p)
+				}
+				if !rep.Converged || rep.Stats.Barriers < 20 {
+					t.Fatalf("converged=%v barriers=%d", rep.Converged, rep.Stats.Barriers)
+				}
+				if acks && rep.Stats.Diverged != 0 {
+					t.Fatalf("%d rollbacks", rep.Stats.Diverged)
+				}
+			})
+		}
 	}
 }

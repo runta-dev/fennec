@@ -586,11 +586,17 @@ func (e *Engine) explainedWithout(barrier edit, server State) bool {
 // frame first and redraw the composer later, as Claude Code does for "!"):
 // the composer must have changed, or the grace period passed with no change.
 func (e *Engine) barrierResolved(ed edit, server State, now time.Time) bool {
+	changed := !e.profile.Same(server, ed.before, e.shadow)
 	if e.opts.EchoAck {
-		if e.ackSeq >= ed.seq && (!e.profile.Same(server, ed.before, e.shadow) || now.Sub(e.ackAt) >= ackGrace) {
+		if e.ackSeq >= ed.seq && (changed || now.Sub(e.ackAt) >= ackGrace) {
 			return true
 		}
 		return now.Sub(ed.at) > BusyDeadline
+	}
+	// Without acknowledgements, the first frame that changes the composer is
+	// the barrier's; waiting longer would let it also show later keys.
+	if changed {
+		return true
 	}
 	wait := barrierFallback
 	if e.srtt > 0 {
