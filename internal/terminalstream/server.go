@@ -319,12 +319,12 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 						if frame.OutputCompression == "gzip" {
 							out = compressTerminalData(out)
 						}
-						if err := session.emitOutput(out, n, emit); err != nil {
+						finishOutput := session.echo.beginOutput()
+						err := session.emitOutput(out, n, emit)
+						finishOutput()
+						if err != nil {
 							return err
 						}
-						// Output waiting for wire credit is not yet visible.
-						// Confirm only after it has entered the ordered writer.
-						session.echo.observe()
 						data = data[n:]
 					}
 					return nil

@@ -239,3 +239,31 @@ func TestInputCadenceSpacesBunchedKeys(t *testing.T) {
 		t.Fatalf("three bunched keys arrived within %v; want paced by ~40ms", gap)
 	}
 }
+
+func TestEchoAckWaitsForOutputAndDoesNotReattributeOldPaint(t *testing.T) {
+	a := newEchoAcker()
+	a.input(1)
+	finish := a.beginOutput()
+	if _, ok := a.due(time.Now().Add(echoQuiet)); ok {
+		t.Fatal("confirmed output still waiting for wire credit")
+	}
+	frame, ok := a.due(time.Now().Add(echoTimeout))
+	if !ok || frame.Code != 1 {
+		t.Fatal("blocked output must report busy rather than confirmed")
+	}
+	// New input can arrive while the old output is being written. Finishing
+	// that write is not a reaction to the new input.
+	a.input(2)
+	finish()
+	frame, ok = a.due(time.Now().Add(echoTimeout))
+	if !ok || frame.Seq != 2 || frame.Code != 1 {
+		t.Fatal("old paint was attributed to new input")
+	}
+	a.input(3)
+	finish = a.beginOutput()
+	finish()
+	frame, ok = a.due(time.Now().Add(echoQuiet))
+	if !ok || frame.Seq != 3 || frame.Code != 0 {
+		t.Fatal("completed output was not confirmed")
+	}
+}

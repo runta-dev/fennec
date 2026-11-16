@@ -26,6 +26,7 @@ type echoAcker struct {
 	writtenAt time.Time
 	outputAt  time.Time
 	output    bool
+	queued    int
 	wake      chan struct{}
 }
 
@@ -60,6 +61,21 @@ func (a *echoAcker) observe() {
 	a.mu.Unlock()
 }
 
+// Associate output with input at read time, but never report successful echo
+// while that output is waiting for wire credits or the ordered writer.
+func (a *echoAcker) beginOutput() func() {
+	if a == nil {
+		return func() {}
+	}
+	a.mu.Lock()
+	a.queued++
+	if a.pending {
+		a.output, a.outputAt = true, time.Now()
+	}
+	a.mu.Unlock()
+	return func() { a.mu.Lock(); a.queued--; a.mu.Unlock() }
+}
+
 // due returns the acknowledgement to send now, if any.
 func (a *echoAcker) due(now time.Time) (Frame, bool) {
 	a.mu.Lock()
@@ -67,14 +83,14 @@ func (a *echoAcker) due(now time.Time) (Frame, bool) {
 	if !a.pending {
 		return Frame{}, false
 	}
-	if a.output && now.Sub(a.outputAt) >= echoQuiet {
+	if a.output && a.queued == 0 && now.Sub(a.outputAt) >= echoQuiet {
 		a.pending = false
 		return Frame{Type: "echo_ack", Seq: a.seq}, true
 	}
 	if now.Sub(a.writtenAt) >= echoTimeout {
 		a.pending = false
 		code := 0
-		if !a.output {
+		if !a.output || a.queued > 0 {
 			code = 1
 		}
 		return Frame{Type: "echo_ack", Seq: a.seq, Code: code}, true
