@@ -38,16 +38,17 @@ type comparisonBlock struct {
 	Duration float64 `json:"load_seconds"`
 }
 type comparisonReport struct {
-	Boundary      string                             `json:"boundary"`
-	Baseline      string                             `json:"baseline_terminal"`
-	Candidate     string                             `json:"candidate_terminal"`
-	BaselinePaced bool                               `json:"baseline_paced"`
-	Started       time.Time                          `json:"started_utc"`
-	Duration      float64                            `json:"duration_seconds"`
-	Samples       []comparisonSample                 `json:"samples"`
-	Blocks        []comparisonBlock                  `json:"blocks"`
-	Summary       map[string]map[string]distribution `json:"summary"`
-	Error         string                             `json:"error,omitempty"`
+	Boundary       string                             `json:"boundary"`
+	Baseline       string                             `json:"baseline_terminal"`
+	Candidate      string                             `json:"candidate_terminal"`
+	BaselinePaced  bool                               `json:"baseline_paced"`
+	TCPOutputGuard map[string]bool                    `json:"tcp_output_guard"`
+	Started        time.Time                          `json:"started_utc"`
+	Duration       float64                            `json:"duration_seconds"`
+	Samples        []comparisonSample                 `json:"samples"`
+	Blocks         []comparisonBlock                  `json:"blocks"`
+	Summary        map[string]map[string]distribution `json:"summary"`
+	Error          string                             `json:"error,omitempty"`
 }
 
 // Open one verified connection for every treatment and comparator. This probe
@@ -149,6 +150,7 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 	}
 	defer client.Close()
 	servers := map[string]*terminalstream.Transport{}
+	result.TCPOutputGuard = map[string]bool{}
 	for _, v := range []struct{ name, path string }{{"baseline", *baseline}, {"candidate", *terminal}} {
 		t, err := terminalstream.StartSSHContext(ctx, client, v.path+fmt.Sprintf(" serve --protocol=%d", terminalstream.ProtocolVersion))
 		if err != nil {
@@ -159,6 +161,7 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 			return err
 		}
 		servers[v.name] = t
+		result.TCPOutputGuard[v.name] = t.Supports(terminalstream.CapabilityTCPOutputGuard)
 	}
 	if (!*baselinePaced && servers["baseline"].Supports(terminalstream.CapabilityTrafficPackets)) ||
 		(*baselinePaced && !servers["baseline"].Supports(terminalstream.CapabilityCommand)) ||

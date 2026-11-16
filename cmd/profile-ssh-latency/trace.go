@@ -150,6 +150,11 @@ type traceOutput struct {
 	trace *pingTrace
 }
 
+func (w traceOutput) TCPQueueGuarded() bool {
+	guard, ok := w.packetWriter.(interface{ TCPQueueGuarded() bool })
+	return ok && guard.TCPQueueGuarded()
+}
+
 func (w traceOutput) Close() error {
 	if closer, ok := w.packetWriter.(io.Closer); ok {
 		return closer.Close()

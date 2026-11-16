@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version    = 1
+	version    = 2
 	maxData    = 1792
 	maxFlow    = 256
 	maxPending = 64
@@ -129,12 +129,12 @@ func serve(ctx context.Context, listener *net.UnixListener, config traffic.Confi
 	}
 }
 
-func receiveFD(conn *net.UnixConn) (int, error) {
+func receiveFD(conn *net.UnixConn) (int, int, error) {
 	var marker [1]byte
 	control := make([]byte, unix.CmsgSpace(16*4))
 	n, oobn, flags, _, err := conn.ReadMsgUnix(marker[:], control)
 	if err != nil {
-		return -1, err
+		return -1, -1, err
 	}
 	messages, parseErr := unix.ParseSocketControlMessage(control[:oobn])
 	var descriptors []int
@@ -146,11 +146,14 @@ func receiveFD(conn *net.UnixConn) (int, error) {
 			descriptors = append(descriptors, rights...)
 		}
 	}
-	if parseErr != nil || flags&unix.MSG_CTRUNC != 0 || n != 1 || marker[0] != version || len(descriptors) != 1 {
+	for _, fd := range descriptors {
+		unix.CloseOnExec(fd)
+	}
+	if parseErr != nil || flags&unix.MSG_CTRUNC != 0 || n != 1 || marker[0] != version || len(descriptors) < 1 || len(descriptors) > 2 {
 		for _, fd := range descriptors {
 			unix.Close(fd)
 		}
-		return -1, fmt.Errorf("invalid traffic descriptor registration")
+		return -1, -1, fmt.Errorf("invalid traffic descriptor registration")
 	}
 	fd := descriptors[0]
 	unix.CloseOnExec(fd)
@@ -164,11 +167,20 @@ func receiveFD(conn *net.UnixConn) (int, error) {
 	if err == nil {
 		err = unix.SetNonblock(fd, true)
 	}
-	if err != nil {
-		unix.Close(fd)
-		return -1, err
+	tcpFD := -1
+	if len(descriptors) == 2 {
+		tcpFD = descriptors[1]
+		if err == nil {
+			_, err = queuedOutput(fd, tcpFD)
+		}
 	}
-	return fd, nil
+	if err != nil {
+		for _, descriptor := range descriptors {
+			unix.Close(descriptor)
+		}
+		return -1, -1, err
+	}
+	return fd, tcpFD, nil
 }
 
 func serveClient(parent context.Context, conn *net.UnixConn, schedule *traffic.Scheduler, prefix string) {
@@ -178,12 +190,17 @@ func serveClient(parent context.Context, conn *net.UnixConn, schedule *traffic.S
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	fd, err := receiveFD(conn)
+	fd, tcpFD, err := receiveFD(conn)
 	if err != nil {
 		return
 	}
 	defer unix.Close(fd)
-	if _, err = conn.Write([]byte{version}); err != nil {
+	var guarded byte
+	if tcpFD >= 0 {
+		defer unix.Close(tcpFD)
+		guarded = 1
+	}
+	if _, err = conn.Write([]byte{version, guarded}); err != nil {
 		return
 	}
 	conn.SetDeadline(time.Time{})
@@ -240,6 +257,17 @@ func serveClient(parent context.Context, conn *net.UnixConn, schedule *traffic.S
 				writeErr = schedule.TryWrite(ctx, prefix+string(body[:flowLen]), class, len(data)+overhead, func() error {
 					if owner != 0 && owner != id {
 						return traffic.ErrWouldBlock
+					}
+					// Finish partial packets before admitting another packet. Only
+					// whole bulk packets wait for transport backlog to drain.
+					if tcpFD >= 0 && class == traffic.Bulk && owner == 0 {
+						queued, err := queuedOutput(fd, tcpFD)
+						if err != nil {
+							return err
+						}
+						if queued > 1024 {
+							return traffic.ErrWouldBlock
+						}
 					}
 					n, e := unix.Write(fd, data)
 					if n > 0 {

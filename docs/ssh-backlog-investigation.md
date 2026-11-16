@@ -1,7 +1,8 @@
 # SSH backlog after application prioritization
 
-Status: candidate backlog reduction implemented; WAN comparison and deployment
-acceptance remain pending. The approximately 240 ms TUI P95 target is not met.
+Status: the 16 KiB window passed a WAN comparison with partial improvement.
+TCP queue feedback is a new candidate; deployment acceptance remains pending.
+The approximately 240 ms TUI P95 target is not met.
 
 ## Finding
 
@@ -98,10 +99,51 @@ for the baseline. Their SHA-256 values are:
 - 32 KiB: `48d754e25d15ae96029c8b342ba37989585fd4b86db5b429856cfd26ae10859a`
 - 16 KiB: `c5037983a8fffa8beee9143dbbc361078a0b069d795eb775f842f07f367e97fd`
 
-The Mac relay became unreachable before the WAN comparison launch was confirmed.
-Check its task job state before launching another attempt; an observation
-failure is not proof that a job never started. The candidate must still pass
-the real comparison, throughput review, matching development-bundle startup
-checks and the existing warm-operation gate. A fixed per-stream window also
-does not establish the goal's aggregate backlog requirement. The goal remains
-active, with unrelated traffic and host-wide shaping outside implementation scope.
+## Resumed WAN window comparison
+
+The durable Mac job completed successfully on November 16 at 10:53:38 UTC.
+Mac race tests passed for terminalstream, commandstream and the probe before
+measurement. The measurement itself ran from 10:51:09 UTC for 148.847 seconds,
+using the immutable binaries above and `-baseline-paced -samples 12`.
+The [raw report](benchmarks/2026-11-16-window16-comparison.json) retains all
+samples and verified byte counts. Both services stayed warm on one SSH
+connection; eight BAAB ABBA blocks produced 48 loaded samples per variant.
+
+| Phase | 32 KiB TUI P95 | 16 KiB TUI P95 | 32 KiB gateway P95 | 16 KiB gateway P95 |
+| --- | ---: | ---: | ---: | ---: |
+| Idle | 202.440 ms | 267.798 ms | 201.662 ms | 202.706 ms |
+| Bulk | 677.652 ms | 479.759 ms | 193.208 ms | 217.000 ms |
+| Recovery | 202.811 ms | 203.014 ms | 201.509 ms | 203.241 ms |
+
+Effective aggregate payload throughput per direction fell from approximately
+48.4 to 39.2 KiB/s (19%). The candidate's worst loaded ping was **1,918.099 ms**,
+versus 785.675 ms for baseline. All bytes, drains and exits verified. Temporal
+variation was substantial, and the final baseline block was faster than nearby
+candidate blocks. This is partial improvement, not stable 240 ms achievement.
+
+## TCP queue feedback candidate
+
+The version-2 output broker can observe the exact Linux SSH TCP connection.
+Discovery requires a validated SSH tuple, an SSH ancestor executable, and that
+ancestor's ownership of the read end of the resident's actual output pipe.
+`pidfd_getfd` duplicates the matching socket for observation; neither socket
+options nor host QoS are modified. The descriptor is closed after queued broker
+callbacks finish, including cancellation. Unsupported or denied discovery keeps
+the existing paced behavior and does not advertise `tcp_output_guard_v1`.
+
+Before each whole bulk packet, the serial broker callback checks TCP unsent
+bytes plus unread output-pipe bytes. More than 1,024 bytes defers the packet
+without spending tokens. Interactive packets and partial packet tails retain
+their existing admission rules. Other destinations can still progress. The
+check excludes unacknowledged flight, which must not impose an RTT-sized pause
+on healthy transfers. An attached observer error closes the client rather than
+silently disabling protection midstream.
+
+These snapshots are not atomic, and sshd's internal buffers remain unobserved.
+This is an output-side feedback mechanism, not proof of a hard aggregate bound
+or protection in both directions. Existing brokers drain without interruption
+in their version-1 directory. During coexistence, their budgets are independent.
+The comparison report records actual guard capability for both variants.
+Real TCP tests cover stalled receivers, interactive/peer progress, resumed bulk,
+pipe backlog, cancellation and descriptor release. WAN validation, full signed
+bundle startup, and the unchanged warm-operation gate remain required.
