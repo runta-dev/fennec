@@ -909,6 +909,26 @@ Share of alternate-screen output that merges, all recordings:
 What remains is mode toggles and OSC 7501, each under 1%. Kimi draws on the
 main screen with scrollback and is not merged.
 
+### Landed, on the real link (2026-11-16)
+
+The two-session test (40-step Codex scrolls in A, keys in a Claude Code
+session B), main before these changes (`d655852`, 21:23) against main with
+them (`3617737`, installed as 0.3.11162136-dev, 21:36), about 220 ms round
+trip:
+
+| | Before (2 runs, 11 scrolls) | After (3 runs, 17 scrolls) |
+| --- | ---: | ---: |
+| Bytes per scroll, median | 79 KB (57–81) | 27 KB (21–66; 15 of 17 under 37) |
+| Last output after the first step, median | 2.3 s (0.96–8.0) | 0.90 s (0.54–4.2) |
+| B's echo, run by run | 0.23–3.6 s; 0.26–4.1 s | 0.18–0.83 s; 0.20–3.4 s; 0.17–0.32 s |
+
+The before runs include a reconnection (its second run), so its upper
+values are pessimistic. In the second after run echo rose steadily to
+3.4 s for keys typed before a scroll as well, so the link itself was slow
+then; the third run kept every key at the idle round trip (0.17–0.32 s)
+while A scrolled. Two scrolls of the first after run still sent 58 and
+66 KB; why is not yet known.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.
