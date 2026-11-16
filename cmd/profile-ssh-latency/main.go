@@ -111,7 +111,7 @@ func main() {
 	}
 }
 func run() error {
-	if *deadline <= 0 || *deadline > 30*time.Minute || *count < 1 || *count > 1000 || (*loadMode != "replies" && *loadMode != "duplex") {
+	if *deadline <= 0 || *deadline > 30*time.Minute || *count < 1 || *count > 1000 || (*loadMode != "replies" && *loadMode != "duplex" && *loadMode != "command") {
 		return fmt.Errorf("invalid probe bounds")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *deadline)
@@ -166,9 +166,6 @@ func run() error {
 	case "client":
 	default:
 		return fmt.Errorf("invalid role")
-	}
-	if *loadMode != "replies" && *loadMode != "duplex" && *loadMode != "command" {
-		return fmt.Errorf("invalid load mode")
 	}
 	if !safePath(*remote) || *terminal != "" && !safePath(*terminal) || *terminal != "" && *loaded && *loadMode != "command" {
 		return fmt.Errorf("use a staged absolute remote path; terminal override requires idle or command load")
