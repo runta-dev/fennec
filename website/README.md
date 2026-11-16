@@ -35,10 +35,29 @@ Worker with Static Assets (`deploy/worker.toml`). It does not modify Errand's
 Worker or domains. No server, tokens, database, or API is needed by the public
 site. Generated output, dependencies and Wrangler state are ignored by Git.
 
-The Fennec source repository is public. Get started links to the repository
-setup instructions, and the header/footer expose GitHub. No published release
-was available when configured; the page does not advertise a nonexistent DMG.
-When a release is available, update the CTA and preview notes together.
+The Fennec source repository is public. Download links use
+`/download/fennec/latest`, which resolves through the existing R2 release route.
+Setup instructions and release notes remain linked separately. Fennec Computer
+Use has its own page and `/download/computer-use/latest` download; it is a
+separate app, not a prerequisite for cloud sessions.
+
+## Landing content sources
+
+- `components/agents.ts` supplies the supported list, FAQ and interactive demo.
+  Keep it aligned with cloud-capable entries in `internal/agent/catalog.go`.
+- `README.md` describes tmux, cmux, Herdr and native model account support,
+  including the OpenCode 2 credential migration limitation.
+- `docs/cmux-hooks.md` records the approved cloud Codex hook bridge and its
+  verified scope; it does not include the separate cmux-cua MCP integration.
+- `docs/native-agent-credentials.md` documents conversation migration for all
+  seven supported cloud harnesses (`1c65c37`).
+- `74a9098` adds automatic terminal reconnection; `5366603` adds clipboard image
+  paste. `docs/predictive-echo.md` covers supported input prediction, including
+  Chinese input. Avoid promising a fixed latency or universal prediction.
+- `df98d56`, `5df71a3` and `2178b8b` add the standalone Computer Use app and its
+  setup-window agent connection flow.
+- Recent transport changes remain implementation details. Outstanding WAN
+  acceptance limits do not support a zero-latency or uninterrupted-network claim.
 
 ## UI acceptance (2026-11-11)
 
@@ -53,5 +72,6 @@ When a release is available, update the CTA and preview notes together.
 - Production URL: https://fennec.runta.com
 - Worker URL: https://fennec-website.runta-inc.workers.dev
 - Worker version: `f2c6eb2c-9b54-4b90-9c45-758ce715bcf3`
-- Custom domain: `fennec.runta.com`, managed through `deploy/worker.toml`.
+- Custom domains: `fennec.runta.com` (canonical) and `runfennec.com` (alias),
+  managed through `deploy/worker.toml`.
 - `npm run preview` serves the built static assets through local Wrangler on 4188.
