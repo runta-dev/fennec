@@ -52,17 +52,14 @@ func sessionGroup(id string) string {
 	return "workload/" + id
 }
 
-// ensureGroup creates a workload group, weighted like any session when new.
+// ensureGroup creates a workload group. A new group already has the kernel's
+// default weight, 100 (sessionWeight); its cpu.weight does not even exist
+// until the parent enables the cpu controller, so it is not written here.
 func ensureGroup(group string) error {
-	dir := groupRoot + "/" + group
-	err := os.Mkdir(dir, 0755)
-	if err == nil {
-		return os.WriteFile(dir+"/cpu.weight", []byte(sessionWeight), 0644)
+	if err := os.Mkdir(groupRoot+"/"+group, 0755); err != nil && !os.IsExist(err) {
+		return err
 	}
-	if os.IsExist(err) {
-		return nil
-	}
-	return err
+	return nil
 }
 
 func groups() error {
