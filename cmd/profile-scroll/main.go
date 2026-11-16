@@ -25,11 +25,21 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"fennec/internal/terminalstream"
+
 	"github.com/creack/pty"
 	"golang.org/x/term"
 )
 
 const wheelUp = "\x1b[<64;50;15M"
+
+// existing is a running terminal to measure (-address).
+var existing string
+
+// resetDown wheel steps down are sent before the gesture (-reset).
+var resetDown int
+
+const wheelDown = "\x1b[<65;50;15M"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "pager" {
@@ -39,16 +49,24 @@ func main() {
 	steps := flag.Int("steps", 40, "wheel steps in the gesture")
 	gap := flag.Duration("gap", 16*time.Millisecond, "time between wheel events (a trackpad delivers about one per frame)")
 	rtt := flag.Duration("rtt", 250*time.Millisecond, "round trip: with coalescing, events are sent once per round trip")
+	command := flag.String("command", "", "measure this program (run by bash) instead of the stand-in pager, e.g. a resumed agent session")
+	startup := flag.Duration("startup", 1500*time.Millisecond, "time for the program to draw before the gesture (then output must be quiet for a second)")
+	flag.IntVar(&resetDown, "reset", 0, "wheel steps down sent before each gesture (back to the bottom of a transcript)")
+	flag.StringVar(&existing, "address", "", "measure this running Herdr terminal (t…) instead; it is left running")
 	flag.Parse()
 	self, err := os.Executable()
 	if err != nil {
 		fail(err)
 	}
+	policies := []string{"per-event", "per-frame"}
+	if *command != "" || existing != "" {
+		policies = []string{"command"}
+	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "PAGER RENDERS\tINPUT\tWRITES\tOUTPUT BYTES\tOUTPUT READS\tLAST OUTPUT AFTER\tLINES SCROLLED")
-	for _, policy := range []string{"per-event", "per-frame"} {
+	fmt.Fprintln(w, "PROGRAM\tINPUT\tWRITES\tOUTPUT BYTES\tAFTER NOOP FILTER\tOUTPUT READS\tLAST OUTPUT AFTER\tWHEEL STEPS")
+	for _, policy := range policies {
 		for _, coalesce := range []bool{false, true} {
-			r, err := measure(self, policy, schedule(*steps, *gap, *rtt, coalesce))
+			r, err := measure(self, policy, *command, *startup, schedule(*steps, *gap, *rtt, coalesce))
 			if err != nil {
 				fail(err)
 			}
@@ -56,7 +74,7 @@ func main() {
 			if coalesce {
 				input = "coalesced per RTT"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%v\t%d\n", policy, input, r.writes, r.bytes, r.reads, r.last.Round(time.Millisecond), r.scrolled)
+			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%d\t%v\t%d\n", policy, input, r.writes, r.bytes, r.filtered, r.reads, r.last.Round(time.Millisecond), r.scrolled)
 		}
 	}
 	w.Flush()
@@ -98,31 +116,38 @@ func schedule(steps int, gap, rtt time.Duration, coalesce bool) []write {
 }
 
 type result struct {
-	writes, bytes, reads, scrolled int
-	last                           time.Duration
+	writes, bytes, filtered, reads, scrolled int
+	last                                     time.Duration
 }
 
 var addressRe = regexp.MustCompile(`"address"\s*:\s*"(t[0-9a-z]+)"`)
 
-func measure(self, policy string, plan []write) (result, error) {
+func measure(self, policy, command string, startup time.Duration, plan []write) (result, error) {
 	home, _ := os.UserHomeDir()
 	hc := filepath.Join(home, ".local/bin/herdr-core")
-	name := fmt.Sprintf("profile-scroll-%d", os.Getpid())
-	out, err := exec.Command(hc, "run", "--bg", "--json", "--no-parent", "--outlive-parent", "--name", name, "--label", "fennec.test=profile-scroll", "--", self, "pager", policy).Output()
-	if err != nil {
-		return result{}, fmt.Errorf("herdr run: %w", err)
+	address := existing
+	if address == "" {
+		name := fmt.Sprintf("profile-scroll-%d", os.Getpid())
+		argv := []string{self, "pager", policy}
+		if command != "" {
+			argv = []string{"bash", "-c", command}
+		}
+		out, err := exec.Command(hc, append([]string{"run", "--bg", "--json", "--no-parent", "--outlive-parent", "--name", name, "--label", "fennec.test=profile-scroll", "--"}, argv...)...).Output()
+		if err != nil {
+			return result{}, fmt.Errorf("herdr run: %w", err)
+		}
+		m := addressRe.FindSubmatch(out)
+		if m == nil {
+			return result{}, fmt.Errorf("herdr run returned no address: %s", out)
+		}
+		address = string(m[1])
+		defer func() {
+			exec.Command(hc, "kill", address).Run()
+			time.Sleep(300 * time.Millisecond)
+			exec.Command(hc, "rm", address).Run()
+		}()
+		time.Sleep(time.Second)
 	}
-	m := addressRe.FindSubmatch(out)
-	if m == nil {
-		return result{}, fmt.Errorf("herdr run returned no address: %s", out)
-	}
-	address := string(m[1])
-	defer func() {
-		exec.Command(hc, "kill", address).Run()
-		time.Sleep(300 * time.Millisecond)
-		exec.Command(hc, "rm", address).Run()
-	}()
-	time.Sleep(time.Second)
 	attach := exec.Command(hc, "attach", address)
 	attach.Env = append(os.Environ(), "TERM=xterm-256color")
 	file, err := pty.StartWithSize(attach, &pty.Winsize{Rows: 30, Cols: 100})
@@ -131,8 +156,9 @@ func measure(self, policy string, plan []write) (result, error) {
 	}
 	defer file.Close()
 	var mu sync.Mutex
-	var total, reads int
-	var start, lastAt time.Time
+	var total, filtered, reads int
+	var noop terminalstream.NoopFrameFilter // what the cloud now streams
+	var start, lastAt, lastAny time.Time
 	counting := false
 	go func() {
 		buf := make([]byte, 65536)
@@ -140,8 +166,11 @@ func measure(self, policy string, plan []write) (result, error) {
 			n, err := file.Read(buf)
 			if n > 0 {
 				mu.Lock()
+				lastAny = time.Now()
 				if counting {
 					total += n
+					kept, _ := noop.Filter(append([]byte(nil), buf[:n]...))
+					filtered += len(kept)
 					reads++
 					lastAt = time.Now()
 				}
@@ -152,7 +181,19 @@ func measure(self, policy string, plan []write) (result, error) {
 			}
 		}
 	}()
-	time.Sleep(1500 * time.Millisecond) // initial screen
+	time.Sleep(startup) // initial screen
+	if resetDown > 0 {
+		// Back to the bottom first, so every gesture really scrolls.
+		file.Write([]byte(strings.Repeat(wheelDown, resetDown)))
+	}
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		mu.Lock()
+		quiet := time.Since(lastAny) > time.Second
+		mu.Unlock()
+		if quiet {
+			break
+		}
+	}
 	mu.Lock()
 	counting, start = true, time.Now()
 	mu.Unlock()
@@ -175,7 +216,7 @@ func measure(self, policy string, plan []write) (result, error) {
 	file.Write([]byte{0x1c})
 	mu.Lock()
 	defer mu.Unlock()
-	r := result{writes: len(plan), bytes: total, reads: reads, scrolled: steps * 3}
+	r := result{writes: len(plan), bytes: total, filtered: filtered, reads: reads, scrolled: steps}
 	if !lastAt.IsZero() {
 		r.last = lastAt.Sub(start)
 	}

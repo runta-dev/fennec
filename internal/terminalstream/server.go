@@ -330,6 +330,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					go session.echo.run(session.ctx, frame.ID, emit)
 				}
 				probe := DisplayResponder{Facts: frame.Display}
+				var noop NoopFrameFilter
 				firstRead := float64(0)
 				firstVisible := true
 				emitData := func(data []byte) error {
@@ -377,11 +378,16 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 								break
 							}
 						}
+						shown, dropped := noop.Filter(shown)
+						if dropped > 0 {
+							session.window.add(dropped)
+						}
 						if err := emitData(shown); err != nil {
 							break
 						}
 					}
 					if err != nil {
+						emitData(noop.Flush())
 						emitData(probe.Flush())
 						break
 					}
