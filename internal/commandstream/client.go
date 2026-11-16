@@ -53,6 +53,15 @@ type Session struct {
 	started        bool
 }
 
+// NewStream uses an already scoped resident connection, including a local
+// daemon stream offer. It never opens an SSH connection or falls back to one.
+func NewStream(ctx context.Context, conn net.Conn) *Session {
+	life, cancel := context.WithCancel(ctx)
+	s := &Session{ctx: life, cancel: cancel, conn: conn}
+	context.AfterFunc(life, func() { conn.Close() })
+	return s
+}
+
 func NewSession(ctx context.Context, client *ssh.Client) (*Session, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

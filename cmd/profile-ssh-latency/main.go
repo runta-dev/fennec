@@ -38,6 +38,7 @@ var loaded = flag.Bool("load", true, "also measure sustained large resident repl
 var shared = flag.Bool("shared-output", true, "use the shared cloud output broker in the probe server")
 var loadMode = flag.String("load-mode", "replies", "replies, duplex (synthetic socket echo), or command (real streamed cat)")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
+var baseline = flag.String("baseline", "", "staged pre-scheduler terminal for an alternating A/B comparison; samples is per block")
 
 const blobSize = 256 << 10
 
@@ -166,6 +167,9 @@ func run() error {
 	case "client":
 	default:
 		return fmt.Errorf("invalid role")
+	}
+	if *baseline != "" {
+		return compareVersions(ctx)
 	}
 	if !safePath(*remote) || *terminal != "" && !safePath(*terminal) || *terminal != "" && *loaded && *loadMode != "command" {
 		return fmt.Errorf("use a staged absolute remote path; terminal override requires idle or command load")
