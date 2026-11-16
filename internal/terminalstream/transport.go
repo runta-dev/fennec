@@ -26,6 +26,8 @@ type Transport struct {
 	abortConnection      func() error
 	probeSequence        uint64
 	probePending         *healthProbe
+	measuredPings        map[string]chan time.Time
+	measuredPingWrites   int
 	lastRead             atomic.Int64
 	suspended            bool
 	suspensionGeneration uint64
@@ -197,7 +199,14 @@ func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() erro
 				continue
 			}
 			if frame.Type == "pong" {
+				received := time.Now()
 				transport.mu.Lock()
+				if ack := transport.measuredPings[frame.ID]; ack != nil {
+					select {
+					case ack <- received:
+					default:
+					}
+				}
 				if pending := transport.probePending; pending != nil && frame.ID == pending.id {
 					select {
 					case <-pending.ack:

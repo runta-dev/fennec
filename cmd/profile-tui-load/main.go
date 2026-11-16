@@ -301,13 +301,12 @@ func run() error {
 		}
 		busy = append(busy, ms)
 		step, done := context.WithTimeout(ctx, 3*time.Second)
-		ping := time.Now()
-		err = transport.Probe(step)
+		ping, pingErr := transport.Ping(step)
 		done()
-		if err != nil {
-			return fmt.Errorf("loaded heartbeat sample %d: %w", len(busy), err)
+		if pingErr != nil {
+			return fmt.Errorf("loaded exact ping sample %d: %w", len(busy), pingErr)
 		}
-		heartbeats = append(heartbeats, float64(time.Since(ping).Microseconds())/1000)
+		heartbeats = append(heartbeats, float64(ping.Microseconds())/1000)
 		if time.Since(progress) > time.Minute {
 			fmt.Fprintf(os.Stderr, "samples=%d elapsed=%s bulk_bytes=%d\n", len(busy), time.Since(started).Round(time.Second), bulkBytes.Load())
 			progress = time.Now()

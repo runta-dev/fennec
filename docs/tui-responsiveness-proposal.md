@@ -76,6 +76,43 @@ many fragments. Cross-process budget ownership, other SSH adapters, deployment
 and WAN acceptance remain outstanding. No achieved WAN latency improvement is
 claimed yet.
 
+`Transport.Ping` now measures an independent, uniquely identified round trip
+through the production writer, recording the matching pong's receive time.
+It never substitutes unrelated traffic or a coalesced health probe for a
+measurement. Concurrent measurements and timed-out pending writes are bounded
+to eight; timeout leaves the shared connection alive. The CPU/PTY load probe
+also uses this exact measurement instead of timing `Probe`.
+
+The new `cmd/profile-ssh-latency` runs rotated, sequential resident ping, guest
+echo and gateway keepalive samples over one authenticated connection. Its
+optional dedicated server generates deterministic large operation replies;
+the client verifies each complete reply's SHA-256. It records every successful
+sample and an error on failure, including idle, bulk and recovery phases. It
+uses the paired identity and pinned host keys without modifying the installed
+application. Example (stage the Linux build at the remote path first):
+
+```sh
+go run ./cmd/profile-ssh-latency -remote /tmp/fennec-qos-latency -samples 60
+```
+
+A first Mac-to-cloud run on 2026-11-16 at 06:02–06:04 UTC used 45 samples per
+phase and the staged current protocol. No installed application was replaced.
+
+| Phase | Gateway P95 | Guest echo P95 | Exact TUI ping P95 |
+| --- | ---: | ---: | ---: |
+| Idle | 159.565 ms | 262.465 ms | 231.667 ms |
+| Resident bulk replies | 191.952 ms | 266.724 ms | 318.736 ms |
+| Recovery | 159.172 ms | 228.406 ms | 210.547 ms |
+
+All 135 comparisons completed, with 1,747,695 verified JSON reply bytes over
+28.061 s of load (about 60.8 KiB/s of logical reply content; wire framing is
+additional). The maximum loaded ping was 927.383 ms. This does **not** pass the
+latency goal: the contemporaneous network baseline is substantially below the
+earlier 242 ms observation, and resident pacing alone leaves tail latency.
+These are separate empirical distributions, not additive component costs.
+This test covers resident replies only, not full SSH file-transfer coverage.
+The aggregate scheduler, deployment and remaining acceptance are still pending.
+
 ### Acceptance
 
 Use unique matched ping IDs; background heartbeat coalescing is unsuitable for
