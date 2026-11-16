@@ -22,7 +22,6 @@ export default function Home() {
       <section className="supported-agents" aria-labelledby="supported-agents-title">
         <h2 id="supported-agents-title">Choose your coding agent.</h2>
         <ul>{agents.map(a => <li key={a.cmd}><img src={'/icons/' + a.icon} width="24" height="24" alt=""/>{a.name}</li>)}</ul>
-        <p>Seven harnesses. Persistent cloud sessions. Your familiar commands.</p>
       </section>
       <div className="demo-wrap"><Demo/></div>
 
