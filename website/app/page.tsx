@@ -18,7 +18,6 @@ export default function Home() {
         <p>Your coding agents, running in the cloud. Connected to your Mac. <br/>Close your laptop. Come back to the same work.</p>
         <div className="hero-actions"><Start/><a className="button secondary" href={repo}><Github size={18}/>GitHub</a></div>
         <span className="platform-note">For macOS · Apple Silicon · Developer preview</span>
-        <div className="hero-requirements">Requires a Runta account and model access.<br className="requirements-break"/> Cloud compute and model usage are billed separately. <a href="#get-started">Setup &amp; costs <ArrowRight size={12}/></a></div>
       </section>
 
       <div className="demo-wrap"><Demo/></div>

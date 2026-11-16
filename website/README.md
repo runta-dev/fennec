@@ -70,7 +70,7 @@ separate app, not a prerequisite for cloud sessions.
 
 Run typecheck, the static build, the source-language and localization checks,
 and the recorder byte-preservation tests. Ensure
-account and cost disclosures appear beside the main CTA and in setup before the
+account and cost disclosures appear in setup before the
 FAQ. Check responsive layouts from 320 to 1440 px and the primary mobile nav.
 In the walkthrough, check the actual native menus, all four panels, terminal
 playback, and automatic session updates. Check the Kimi icon in light and dark

@@ -1,8 +1,5 @@
 /* Homepage storytelling; shared styles and the Computer Use page stay separate. */
 .fennec-landing .hero { padding-top:65px; padding-bottom:36px; }
-.hero-requirements { font-size:11px; color:var(--muted); line-height:1.7; margin:14px auto 0; max-width:660px; }
-.requirements-break { display:none; }
-.hero-requirements a { display:inline-flex; gap:4px; align-items:center; margin-left:5px; text-decoration:underline; text-underline-offset:3px; }
 .fennec-landing .demo-wrap { max-width:1184px; }
 .fennec-landing .demo-wrap:has(.workflow-demo) { max-width:1400px; }
 .fennec-landing .supported-agents { margin-top:48px; margin-bottom:0; padding-bottom:62px; }
@@ -72,8 +69,6 @@
 }
 @media(max-width:760px) {
   .fennec-landing .hero { padding-top:36px; padding-bottom:26px; }
-  .hero-requirements { font-size:10px; max-width:350px; }
-  .requirements-break { display:block; }
   .fennec-landing .supported-agents { margin-top:32px; padding-bottom:40px; }
   .fennec-landing .supported-agents ul { gap:14px 20px; }
   .landing-benefits, .landing-setup, .computer-use-aside { margin-inline:24px; }
