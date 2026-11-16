@@ -23,11 +23,19 @@ tmux -L fennec-landing pipe-pane -O -t codex "/tmp/record-website-pty pipe /tmp/
 ```
 
 Type the installed Fennec-managed `codex`, `claude` or `pi` command and a prompt
-against the isolated Go project in `fixture`. The committed recordings used
-Mac → Fennec → remote agent sessions. Their prompts explicitly limited work to
-`/tmp/relay` on the cloud machine; Go was available at
-`/root/.local/toolchains/go/bin/go`. These paths are recording fixtures, not
-product requirements. No credential or account setting was changed.
+against the isolated Go project in `fixture`. The committed recordings use
+Mac → Fennec → cloud agent → `ssh machine` → Mac. Copy the fixture to
+`/tmp/relay-mac-demo` on the Mac first. Codex fixes duplicate deliveries, Claude
+fixes cross-workspace authorization, and Pi adds retry edge cases. Run them in
+that order against the same fixture. Each reads and edits Mac files, then runs
+the Mac's Go installation; `uname -s` identifies Darwin during verification.
+These fixture paths are not product requirements.
+
+`prompts.json` contains the visible requests. `recording-brief.txt` supplies
+session-specific instructions through Codex's `developer_instructions`, Claude's
+`--append-system-prompt`, and Pi's `--append-system-prompt`. It confines edits to
+the fixture and excludes private device identities from public output. No
+credential, permission preset, or global account setting was changed.
 
 Run agents only in task-owned sessions. Detach, end the pipe, and stop only the
 session IDs created for the recording. Never copy the user's real session list,
@@ -55,8 +63,8 @@ substitute for reviewing output. Keep originals outside the repository.
 ```sh
 # input output omitted-chunk-start omitted-chunk-end source-end-ms duration-ms
 /tmp/record-website-pty pack /tmp/codex.ndjson public/demo-recordings/codex.json 0 0 0 18000 reviewed
-/tmp/record-website-pty pack /tmp/claude.ndjson public/demo-recordings/claude.json 9 16 0 18000 reviewed
-/tmp/record-website-pty pack /tmp/pi.ndjson public/demo-recordings/pi.json 0 0 0 13000 reviewed
+/tmp/record-website-pty pack /tmp/claude.ndjson public/demo-recordings/claude.json 22 30 160000 18000 reviewed
+/tmp/record-website-pty pack /tmp/pi.ndjson public/demo-recordings/pi.json 0 0 0 16000 reviewed
 /tmp/record-website-pty pack /tmp/fen.ndjson public/demo-recordings/fen.json 0 0 6500 5000 reviewed
 ```
 
@@ -66,9 +74,16 @@ including split UTF-8 characters, cursor motion, colors and terminal mode change
 Only shell setup preceding its initial clear, an explicit chunk range, source
 end boundary and timing are edited. Update provenance when replacing a capture.
 
-The published Codex excerpt further compresses its opening waits. Piecewise
-linear timing maps packed milliseconds `[0, 500, 5742, 6120, 7739, 18000]` to
-`[0, 500, 1500, 1800, 2500, 12761]`, preserving every chunk and subsequent pacing.
+Each agent excerpt further compresses opening waits and holds the final result
+for 2500ms. `recordings.json` lists exact packed chunk index / display millisecond
+landmarks. Interpolate linearly between their original packed timestamps, keeping
+every byte payload unchanged. Pi's initial SSH timeouts and successful retry are
+retained with shorter waits. The picker was captured on Linux using the same
+production renderer with sample session titles matching the Mac tasks.
+
+The website lets each agent recording finish before switching to the next tab.
+The requests, SSH commands, and final Mac test results are the content of the
+walkthrough; the original dual-window layout is preserved.
 
 ## Native panel
 

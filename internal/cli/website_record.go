@@ -13,9 +13,9 @@ import (
 // No real daemon session list or user session is accessible to this fixture.
 func RecordWebsitePicker() error {
 	sessions := []fenSession{
-		{Receipt: launcher.LaunchReceipt{Agent: "codex", SessionID: "maple-river"}, Title: "Make webhook delivery idempotent", Status: "Idle"},
-		{Receipt: launcher.LaunchReceipt{Agent: "claude", SessionID: "cedar-moon"}, Title: "Review API key authentication", Status: "Idle"},
-		{Receipt: launcher.LaunchReceipt{Agent: "pi", SessionID: "birch-lake"}, Title: "Add retry backoff tests", Status: "Working"},
+		{Receipt: launcher.LaunchReceipt{Agent: "codex", SessionID: "maple-river"}, Title: "Fix webhook deliveries on my Mac", Status: "Idle"},
+		{Receipt: launcher.LaunchReceipt{Agent: "claude", SessionID: "cedar-moon"}, Title: "Review authorization on my Mac", Status: "Idle"},
+		{Receipt: launcher.LaunchReceipt{Agent: "pi", SessionID: "birch-lake"}, Title: "Run retry tests on my Mac", Status: "Working"},
 	}
 	started := time.Now()
 	_, err := fenPick(context.Background(), sessions, func() ([]fenSession, error) {

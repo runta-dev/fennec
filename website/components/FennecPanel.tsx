@@ -50,8 +50,8 @@ export default function FennecPanel(props: Props) {
       status: { state: sessionState(t, p.time).toLowerCase() },
       labels: { "fennec.session": t.session, "fennec.agent": t.command },
     }));
-    const activity = ["go test ./...", "rg 'Workspace' relay.go", "go test -run TestRetry -count=100", "git diff --stat"].map((command, i) => ({
-      id: "demo-audit-" + i, kind: "exec", command, workdir: "~/repos/relay", decision: "auto_sandbox", blocked: false, timestamp_ms: Date.now() - (i + 1) * 8000,
+    const activity = ["uname -s && /opt/homebrew/bin/go test -race ./...", "cat go.mod relay.go relay_test.go AGENTS.md", "/opt/homebrew/bin/go test ./... -run TestRetryDelayEdgeCases -count=1", "git diff --stat"].map((command, i) => ({
+      id: "demo-audit-" + i, kind: "exec", command, workdir: "/tmp/relay-mac-demo", decision: "auto_sandbox", blocked: false, timestamp_ms: Date.now() - (i + 1) * 8000,
     }));
     frame.current?.contentWindow?.postMessage({ source: "fennec-demo-host", panel: p.tab.toLowerCase(), sessions, activity }, location.origin);
   }, [ready, tab, stateKey]);

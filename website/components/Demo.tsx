@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Monitor, Plus, PanelLeft, Terminal, X } from "lucide-react";
 import FennecPanel from "./FennecPanel";
 import RecordedTerminal from "./RecordedTerminal";
-import { duration, tasks, sessionState, sessionTitle, type PanelTab } from "./demo-scenario";
+import { duration, pickerStart, pickerDuration, tasks, sessionState, sessionTitle, type PanelTab } from "./demo-scenario";
 import "./demo.css";
 
 export default function Demo() {
@@ -49,8 +49,8 @@ export default function Demo() {
     // Remount the isolated native document to reset its own fixture state too.
     setCycle(value => value + 1);
   }, [time]);
-  const current = Math.min(3, Math.floor(time / 10000)), active = tabOverride ?? current;
-  const panel: PanelTab = panelOverride ?? (time < 1500 ? "Agents" : time >= 35000 && time < 39000 ? "Governance" : time >= 39000 && time < 43000 ? "Account" : "Sessions");
+  const current = time >= pickerStart ? 3 : tasks.filter(task => time >= task.start).length - 1, active = tabOverride ?? current;
+  const panel: PanelTab = panelOverride ?? (time < 1500 ? "Agents" : time >= pickerStart + pickerDuration && time < pickerStart + pickerDuration + 4000 ? "Governance" : time >= pickerStart + pickerDuration + 4000 && time < duration - 1000 ? "Account" : "Sessions");
   const sessions = tasks.map((task, index) => ({ task, index })).filter(({ task, index }) => time >= task.start + 1500 && !stopped.includes(index));
   const pause = () => {
     setPlaying(false);
@@ -63,7 +63,7 @@ export default function Demo() {
     }, 8000);
   };
   function attach(index: number) { pause(); setTabOverride(index); setPanelOverride("Sessions"); }
-  const task = tasks[Math.min(active, 2)], age = time - active * 10000, shell = age < 1200;
+  const task = tasks[Math.min(active, 2)], age = time - (active === 3 ? pickerStart : task.start), shell = age < 1200;
   return <section id="demo" ref={root} className="workflow-demo" aria-label="Fennec terminal workflow" data-playing={playing && visible && !hidden} data-cycle={cycle} tabIndex={0} onKeyDown={event => {
     if (event.target !== event.currentTarget) return;
     if (event.key === " ") { event.preventDefault(); clearTimeout(resumeTimer.current); userPaused.current = playing; setPanelOverride(null); setTabOverride(null); setPlaying(!playing); }
@@ -86,11 +86,11 @@ export default function Demo() {
         <div className="herdr-main">
           <div className="herdr-tabs" role="tablist" aria-label="Terminal tabs">
             {Array.from({ length: current + 1 }, (_, index) => <button role="tab" aria-selected={active === index} aria-controls="demo-terminal" id={"terminal-tab-" + index} key={index} onClick={() => { pause(); setTabOverride(index); }}>{index < 3 && time >= tasks[index].start + 1500 ? <img src={"/icons/" + tasks[index].icon} alt=""/> : <Terminal size={14}/>}<span>{index + 1}</span><X size={12} aria-hidden="true"/></button>)}
-            <button className="herdr-new-tab" aria-label="Open next terminal tab" disabled={current === 3} onClick={() => { clearTimeout(resumeTimer.current); userPaused.current = false; setTime((current + 1) * 10000); setTabOverride(null); setPanelOverride(null); setPlaying(true); }}><Plus size={17}/></button>
+            <button className="herdr-new-tab" aria-label="Open next terminal tab" disabled={current === 3} onClick={() => { clearTimeout(resumeTimer.current); userPaused.current = false; setTime(current === 2 ? pickerStart : tasks[current + 1].start); setTabOverride(null); setPanelOverride(null); setPlaying(true); }}><Plus size={17}/></button>
           </div>
           <div className="herdr-terminal" id="demo-terminal" role="tabpanel" aria-labelledby={"terminal-tab-" + active}>
-            <div className="herdr-terminal-heading">{shell || active === 3 ? <Terminal size={15}/> : <img src={"/icons/" + task.icon} alt=""/>}<strong>{shell ? "zsh" : active === 3 ? "fen" : task.name}</strong><span>~/repos/relay</span></div>
-            <RecordedTerminal name={active === 3 ? "fen" : task.command} progress={age / (active === 3 ? 5000 : task.done - task.start)} />
+            <div className="herdr-terminal-heading">{shell || active === 3 ? <Terminal size={15}/> : <img src={"/icons/" + task.icon} alt=""/>}<strong>{shell ? "zsh" : active === 3 ? "fen" : task.name}</strong><span>/tmp/relay-mac-demo</span></div>
+            <RecordedTerminal name={active === 3 ? "fen" : task.command} progress={age / (active === 3 ? pickerDuration : task.done - task.start)} />
           </div>
         </div>
       </div>

@@ -24,7 +24,7 @@ export default function Home() {
       <section className="supported-agents" aria-labelledby="supported-agents-title">
         <h2 id="supported-agents-title">Your agent. Your familiar workflow.</h2>
         <ul>{agents.map(a => <li key={a.cmd}><img src={'/icons/' + a.icon} width="24" height="24" alt=""/>{a.name}</li>)}</ul>
-        <p>Keep your terminal, tmux, cmux, Herdr, and your editor.</p>
+        <p className="terminal-tools">Keep your terminal, <a href="https://github.com/tmux/tmux/wiki" target="_blank" rel="noopener noreferrer"><img src="/icons/tmux.svg" width="18" height="18" alt=""/>tmux</a>, <a href="https://cmux.com/" target="_blank" rel="noopener noreferrer"><img src="/icons/cmux.png" width="20" height="20" alt=""/>cmux</a>, <a href="https://herdr.dev/" target="_blank" rel="noopener noreferrer"><img src="/icons/herdr.png" width="20" height="20" alt=""/>Herdr</a>, and your editor.</p>
       </section>
 
       <section className="landing-benefits" id="how-it-works" aria-labelledby="benefits-title">

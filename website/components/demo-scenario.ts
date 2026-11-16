@@ -1,9 +1,11 @@
 // Timing and native-panel fixtures accompanying real PTY excerpts.
-export const duration = 44000;
+export const pickerStart = 52000;
+export const pickerDuration = 5000;
+export const duration = 66000;
 export const tasks = [
-  { name: "Codex", command: "codex", icon: "codex-color.svg", session: "maple-river", start: 0, done: 12761, title: "Make webhook delivery idempotent" },
-  { name: "Claude Code", command: "claude", icon: "claudecode-color.svg", session: "cedar-moon", start: 10000, done: 28000, title: "Review API key authentication" },
-  { name: "Pi", command: "pi", icon: "pi.svg", session: "birch-lake", start: 20000, done: 33000, title: "Add retry backoff tests" },
+  { name: "Codex", command: "codex", icon: "codex-color.svg", session: "maple-river", start: 0, done: 18000, title: "Fix webhook deliveries on my Mac" },
+  { name: "Claude Code", command: "claude", icon: "claudecode-color.svg", session: "cedar-moon", start: 18000, done: 36000, title: "Review authorization on my Mac" },
+  { name: "Pi", command: "pi", icon: "pi.svg", session: "birch-lake", start: 36000, done: 52000, title: "Run retry tests on my Mac" },
 ] as const;
 export type Task = (typeof tasks)[number];
 export type PanelTab = "Agents" | "Sessions" | "Governance" | "Account";

@@ -1,3 +1,15 @@
 # Relay demo repository
 
-This is a tiny Go fixture for a recorded product walkthrough. Work only in this directory. Run go test ./... after changes. Keep responses concise, in English. Do not explore other directories, credentials, or configuration.
+This tiny Go project is the source fixture for a recorded Fennec walkthrough.
+The recording copy lives on the paired Mac at `/tmp/relay-mac-demo`. During
+recording, the cloud agent reads and edits that copy through `ssh machine`, then
+runs tests in the Mac shell. Do not make a cloud copy for these demonstration
+tasks: their purpose is to show direct access to the user's local files and shell.
+
+Work only within the fixture directory. Do not inspect other projects,
+credentials, file ownership, account settings, or shell configuration. Use Go
+for implementation and tests; do not use Python or start other agents. Keep
+responses concise and in English. Run the relevant tests after changes and show
+`uname -s` with the result so the execution location is explicit. The recording
+Mac's Go and gofmt executables are `/opt/homebrew/bin/go` and
+`/opt/homebrew/bin/gofmt`. Respect the saved permission mode.

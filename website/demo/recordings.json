@@ -1,15 +1,180 @@
 {
-  "recorded_utc": "2026-11-16T12:42:00Z/2026-11-16T12:56:00Z",
+  "recorded_utc": "2026-11-16",
   "purpose": "Edited product walkthrough, not a latency or performance measurement",
-  "terminal": { "cols": 100, "rows": 32, "encoding": "raw PTY bytes in base64", "renderer": "shipping native/macos/UI/vendor/xterm.js" },
-  "client": { "platform": "macOS arm64", "fennec_version": "0.3.11162017-dev", "fen_binary_sha256": "eff82d3b3ae64d728ffca403eaa328e0060f4c506faca51cbf4c37594227b236", "location_and_network": "not measured" },
-  "remote": { "platform": "Linux Fennec cloud runtime", "provider_region": "not measured", "fixture": "/tmp/relay", "fixture_source": "website/demo/fixture" },
+  "terminal": {
+    "cols": 100,
+    "rows": 32,
+    "encoding": "raw PTY bytes in base64",
+    "renderer": "shipping native/macos/UI/vendor/xterm.js"
+  },
+  "client": {
+    "platform": "macOS arm64",
+    "fennec_version": "0.3.11162304-dev",
+    "fen_binary_sha256": "4db551cdcbec27488a6dede4bd80649d48ab9c22cd9e3c60b1d7a2c9c5119964",
+    "location_and_network": "not measured"
+  },
+  "remote": {
+    "platform": "Linux Fennec cloud runtime",
+    "provider_region": "not measured",
+    "fixture": "None: agents read and edit the Mac fixture over ssh machine",
+    "fixture_source": "website/demo/fixture"
+  },
   "captures": [
-    { "agent": "codex", "version": "0.169.0", "raw_sha256": "76e48072d81cd19062a0e5732a3bf42bf84480431b3b59a452907acc89b86c9d", "raw_duration_ms": 107511, "display_duration_ms": 12761, "edits": "Idle gaps capped at 650ms; timing scaled; opening waits compressed: prompt at 1500ms, submitted at 1800ms, first reply at 2500ms; subsequent pacing and 1200ms final hold retained; all TUI bytes retained" },
-    { "agent": "claude", "version": "2.1.325", "raw_sha256": "67b69d5636886195e2dd61abb8d1f0b8a79d61875c00db26a514669d24c48d71", "raw_duration_ms": 185528, "display_duration_ms": 18000, "edits": "Private shell setup trimmed at clear-screen boundary; initial trust dialog chunks 9–15 omitted before the full-screen TUI repaint; idle gaps capped at 650ms; timing scaled; 1200ms final hold" },
-    { "agent": "pi", "version": "1.5.2", "raw_sha256": "114c6d314b74cd6576159fadb72232ec3987d3018c8e5389cd54b604b697bbea", "raw_duration_ms": 71657, "display_duration_ms": 13000, "edits": "Idle gaps capped at 650ms; timing scaled; 1200ms final hold; all TUI bytes retained" },
-    { "agent": "fen", "source_revision": "4be2c52cba08928eab9df492ab40b9273a3d4f13", "raw_sha256": "894b8f0cea4992f801fbce7ec2e1edd4cc983cb4472028e28826d02220b1b05b", "display_duration_ms": 5000, "source": "Production fenPick loop and fenPickerFrame renderer, compiled with website_record; fixture session list, no daemon access", "edits": "Real bash prompt and fen command; captured first 6500ms to omit exit; idle gaps capped at 650ms; timing scaled; 1200ms final hold" }
+    {
+      "agent": "codex",
+      "version": "0.169.0",
+      "raw_sha256": "83fb37bf680ae975d8515451890b8b09b3ccccf0a6dfcbd90b5e7eb0716362fd",
+      "raw_duration_ms": 173518,
+      "display_duration_ms": 18000,
+      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms.",
+      "packed_chunk_timing_landmarks": [
+        [
+          0,
+          0
+        ],
+        [
+          156,
+          1200
+        ],
+        [
+          161,
+          1800
+        ],
+        [
+          162,
+          2000
+        ],
+        [
+          288,
+          4500
+        ],
+        [
+          660,
+          9000
+        ],
+        [
+          821,
+          13000
+        ],
+        [
+          968,
+          15500
+        ]
+      ]
+    },
+    {
+      "agent": "claude",
+      "version": "2.1.325",
+      "raw_sha256": "92354ba4f9953a970698eccb820d9c736edae42abc5f9e12ff3152fbfe47abc5",
+      "raw_duration_ms": 218171,
+      "display_duration_ms": 18000,
+      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Trust dialog chunks 22–29 omitted before full alternate-screen repaint; cut at 160000ms before the next suggested prompt.",
+      "packed_chunk_timing_landmarks": [
+        [
+          0,
+          0
+        ],
+        [
+          22,
+          800
+        ],
+        [
+          26,
+          1200
+        ],
+        [
+          44,
+          2000
+        ],
+        [
+          169,
+          3500
+        ],
+        [
+          268,
+          7500
+        ],
+        [
+          305,
+          11000
+        ],
+        [
+          404,
+          14500
+        ],
+        [
+          406,
+          15500
+        ]
+      ],
+      "omitted_raw_chunk_range": [
+        22,
+        30
+      ],
+      "source_end_ms": 160000
+    },
+    {
+      "agent": "pi",
+      "version": "1.5.2",
+      "raw_sha256": "b30ea051afbb20c54b4b6b0217f278aeda7a26fcf656049d3178da9fcd608a5c",
+      "raw_duration_ms": 627673,
+      "display_duration_ms": 16000,
+      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Initial SSH timeouts and successful retry retained; waits compressed, not a connectivity benchmark.",
+      "packed_chunk_timing_landmarks": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          1200
+        ],
+        [
+          98,
+          2200
+        ],
+        [
+          791,
+          4000
+        ],
+        [
+          850,
+          6500
+        ],
+        [
+          1100,
+          9500
+        ],
+        [
+          1286,
+          12000
+        ],
+        [
+          1325,
+          13500
+        ]
+      ]
+    },
+    {
+      "agent": "fen",
+      "source_revision": "a28d2bb6e873914cc9a4fd44309f6d5e1bf5e82f + internal/cli/website_record.go title updates in this commit",
+      "raw_sha256": "301dcbb2208ff63e2987432bf2db0d202dda3c21e4da7cdab541c4586ee0f33e",
+      "display_duration_ms": 5000,
+      "source": "Production fenPick loop and fenPickerFrame renderer, compiled with website_record; fixture session list, no daemon access",
+      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. First 6500ms only, before exit; final hold 1200ms.",
+      "raw_duration_ms": 7009,
+      "platform": "Linux recorder running the production fen picker",
+      "source_end_ms": 6500
+    }
   ],
   "panel": "Unmodified shipping native HTML, CSS and scripts; browser-only fixture bridge for account, activity and session data. Terminal timings and panel transitions are edited presentation timing. No real account data is published.",
-  "privacy": "Private originals remain outside the repository. Selected bytes reviewed before publication; shell setup removed before its clear-screen boundary. No agent response or terminal drawing synthesized."
+  "privacy": "Private originals remain outside the repository. Selected bytes reviewed before publication; shell setup removed before its clear-screen boundary. No agent response or terminal drawing synthesized.",
+  "local_fixture": {
+    "path": "/tmp/relay-mac-demo",
+    "source": "website/demo/fixture",
+    "execution": "macOS via the configured paired-device SSH alias machine",
+    "sequence": "Codex, Claude, Pi share the fixture in that order; fixes accumulate",
+    "instructions": "prompts.json and recording-brief.txt; per-session developer/system instructions, no global settings changed"
+  },
+  "capture_time_precision": "UTC date; individual source-relative timestamps are retained in the private raw recordings"
 }

@@ -5,6 +5,9 @@
 .fennec-landing .supported-agents { margin-top:48px; margin-bottom:0; padding-bottom:62px; }
 .fennec-landing .supported-agents h2 { font-size:14px; margin-bottom:23px; }
 .fennec-landing .supported-agents p { font-size:12px; color:var(--muted); margin:23px 0 0; }
+.terminal-tools a { display:inline-flex; align-items:center; gap:5px; vertical-align:middle; color:var(--text); text-decoration:underline; text-decoration-color:#c7c7c7; text-underline-offset:3px; white-space:nowrap; }
+.terminal-tools a img { display:inline-block; flex-shrink:0; object-fit:contain; }
+.terminal-tools a:hover { text-decoration-color:currentColor; }
 .landing-benefits, .landing-setup, .computer-use-aside { max-width:1120px; margin:0 auto; }
 .landing-benefits { border-top:1px solid var(--border); padding-top:72px; }
 .landing-section-heading h2 { font-size:42px; font-weight:500; line-height:1.16; letter-spacing:-1.7px; margin:0; }

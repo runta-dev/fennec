@@ -1,0 +1,5 @@
+{
+  "codex": "Fix duplicate webhook deliveries in my Mac project, then run its tests on my Mac.",
+  "claude": "Review authorization in my Mac project. Fix any cross-workspace access bug and verify it with tests on my Mac.",
+  "pi": "Add retry edge-case tests to my Mac project. Fix any failures and run the tests on my Mac."
+}

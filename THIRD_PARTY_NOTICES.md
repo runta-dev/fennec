@@ -63,6 +63,16 @@ The Responses API request shape, guardian headers and ChatGPT token refresh in
 
 ## Website terminal playback
 
+The homepage links to terminal tools using their identifying artwork:
+
+- tmux: Simple Icons tmux SVG, CC0-1.0, retrieved from
+  https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/tmux.svg.
+- cmux: the published product icon from https://cmux.com/logo.png.
+- Herdr: the published product icon from https://herdr.dev/live/icons/herdr.png.
+
+Product names and marks belong to their respective owners. Icons identify the
+linked tools; no affiliation or endorsement is implied.
+
 - `@xterm/addon-canvas` 0.7.0, MIT; license:
   `website/public/licenses/xterm-addon-canvas-MIT.txt`.
 - Used with the existing xterm.js 5.5.0 build to draw block and box glyphs on a
