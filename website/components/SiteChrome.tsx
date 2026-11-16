@@ -2,11 +2,24 @@ import { ArrowDown, ArrowUpRight } from 'lucide-react';
 export const runta = 'https://runta.com/';
 export const repo = 'https://github.com/runta-dev/fennec';
 
+// A product the header and footer present: Fennec, or a sub-product such as
+// Fennec Computer Use, with its own mark, home and links.
+export type Brand = { name: string; sub?: string; logo: string; home: string; nav: { label: string; href: string }[] };
+
 // Links are absolute ("/#faq") so they work from every page.
-export function SiteHeader({ cta = { label: 'Get started', href: repo + '#get-started' } }: { cta?: { label: string; href: string } }) {
-  return <header className="site-header"><a className="wordmark" href="/" aria-label="Fennec home"><img src="/fennec.svg" width="34" height="34" alt=""/>Fennec</a><nav aria-label="Main navigation"><a href="/#how-it-works">How it works</a><a href="/computer-use/">Computer Use</a><a href="/#faq">FAQ</a><a href={repo}>GitHub <ArrowUpRight size={12}/></a></nav><div className="header-actions"><a className="nav-download" href={cta.href}>{cta.label} <ArrowDown size={14}/></a></div></header>;
+export const fennecBrand: Brand = {
+  name: 'Fennec', logo: '/fennec.svg', home: '/',
+  nav: [{ label: 'How it works', href: '/#how-it-works' }, { label: 'Computer Use', href: '/computer-use/' }, { label: 'FAQ', href: '/#faq' }],
+};
+
+function Wordmark({ brand, size }: { brand: Brand; size: number }) {
+  return <a className="wordmark" href={brand.home} aria-label={(brand.sub ? brand.name + ' ' + brand.sub : brand.name) + ' home'}><img src={brand.logo} width={size} height={size} alt=""/>{brand.name}{brand.sub && <span className="wordmark-sub">{brand.sub}</span>}</a>;
 }
 
-export function SiteFooter({ tagline = 'Cloud agents. Local tools.' }: { tagline?: string }) {
-  return <footer><a href="/" className="wordmark"><img src="/fennec.svg" width="28" height="28" alt=""/>Fennec</a><div><a href="/#how-it-works">How it works</a><a href="/computer-use/">Computer Use</a><a href="/#faq">FAQ</a><a href={repo}>GitHub</a><a href={runta}>Runta</a></div><small>© {new Date().getFullYear()} Runta</small><p className="footer-attribution">{tagline} Built by <a href={runta}>Runta</a>.</p></footer>;
+export function SiteHeader({ brand = fennecBrand, cta = { label: 'Get started', href: repo + '#get-started' } }: { brand?: Brand; cta?: { label: string; href: string } }) {
+  return <header className="site-header"><Wordmark brand={brand} size={34}/><nav aria-label="Main navigation">{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub <ArrowUpRight size={12}/></a></nav><div className="header-actions"><a className="nav-download" href={cta.href}>{cta.label} <ArrowDown size={14}/></a></div></header>;
+}
+
+export function SiteFooter({ brand = fennecBrand, tagline = 'Cloud agents. Local tools.' }: { brand?: Brand; tagline?: string }) {
+  return <footer><Wordmark brand={brand} size={28}/><div>{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub</a><a href={runta}>Runta</a></div><small>© {new Date().getFullYear()} Runta</small><p className="footer-attribution">{tagline} Built by <a href={runta}>Runta</a>.</p></footer>;
 }

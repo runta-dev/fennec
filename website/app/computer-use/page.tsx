@@ -1,11 +1,20 @@
 import { ArrowUpRight, Download, ScanEye, Plug, ShieldCheck } from 'lucide-react';
-import { SiteHeader, SiteFooter, repo } from '../../components/SiteChrome';
+import { SiteHeader, SiteFooter, repo, type Brand } from '../../components/SiteChrome';
 
 export const metadata = {
   alternates: { canonical: '/computer-use/' },
+  icons: { icon: '/computer-use-icon.png', apple: '/computer-use-icon.png' },
   title: 'Fennec Computer Use — Let your agent use your Mac.',
   description: 'Fennec Computer Use lets Claude Code, Codex and other MCP agents operate Mac apps and web pages. A notarized Mac app; drag it to Applications.',
   openGraph: { url: 'https://fennec.runta.com/computer-use/', title: 'Fennec Computer Use', description: 'Let your agent use your Mac: Mac apps and web pages for Claude Code, Codex and other MCP agents.', type: 'website', siteName: 'Fennec' },
+};
+
+// Fennec Computer Use is its own product: its mark (the fox with a pointer
+// badge, the app's icon), its name in the header and footer, and a way back
+// to Fennec in the navigation.
+const brand: Brand = {
+  name: 'Fennec', sub: 'Computer Use', logo: '/computer-use-icon.png', home: '/computer-use/',
+  nav: [{ label: 'Fennec', href: '/' }, { label: 'Benchmark', href: '#benchmark' }, { label: 'FAQ', href: '#faq' }],
 };
 
 // Downloads come from R2 through the site's worker (deploy/worker.js).
@@ -27,20 +36,21 @@ const tuned = [
 ];
 const pct = (a: number, b: number) => (100 * a / b).toFixed(1) + '%';
 
-function DownloadButton({ label = 'Download for macOS' }: { label?: string }) {
+function DownloadButton({ label = 'Download Fennec Computer Use' }: { label?: string }) {
   return <a className="button primary" href={download}><Download size={17}/>{label}</a>;
 }
 
 export default function ComputerUse() {
   return <>
-    <SiteHeader cta={{ label: 'Download', href: download }}/>
+    <SiteHeader brand={brand} cta={{ label: 'Download', href: download }}/>
     <main>
       <section className="hero cu-hero">
-        <div className="eyebrow">FENNEC COMPUTER USE</div>
-        <h1>Your agent, <span>at your Mac.</span></h1>
-        <p>Let Claude Code, Codex or any MCP agent operate Mac apps and web pages.<br/>It reads each app the way it is built, not by guessing from pixels.</p>
+        <img className="cu-mark" src="/computer-use-icon.png" width="88" height="88" alt=""/>
+        <h1>Fennec <span>Computer Use</span></h1>
+        <p className="cu-tagline">Let your agent use your Mac.</p>
+        <p>Claude Code, Codex or any MCP agent can operate the apps and web pages on your Mac. <br/>It reads each app the way it is built, not by guessing from pixels.</p>
         <div className="hero-actions"><DownloadButton/><a className="button secondary" href="#benchmark">See the benchmark</a></div>
-        <span className="platform-note">macOS 13 or later · Apple Silicon · Signed and notarized by Apple</span>
+        <span className="platform-note">A separate app from Fennec · works on its own · macOS 13 or later · Apple Silicon</span>
       </section>
 
       <section className="intro-section cu-intro">
@@ -94,15 +104,16 @@ export default function ComputerUse() {
       </section>
 
       <section className="faq-section" id="faq"><h2>A few things to know.</h2><div>{[
-        ['Do I need the Fennec app?', 'No. Fennec Computer Use is a separate app, FennecCUA. If you also use Fennec, both share the same settings.'],
+        ['How is this different from Fennec?', 'Fennec runs your coding agents in the cloud, connected to your Mac. Fennec Computer Use lets an agent operate the apps on this Mac. They are separate apps: use either one, or both together.'],
+        ['Do I need the Fennec app?', 'No. Fennec Computer Use installs on its own as the FennecCUA app. If you also use Fennec, both share the same settings.'],
         ['Which agents work with it?', 'Any agent that speaks MCP. The setup window connects Claude Code and Codex for you; other MCP clients take one config entry, and agents with only a shell can call fennec-cua js.'],
         ['What can my agent see?', 'Only what it asks for: the windows of the apps it works in, as a list of controls or a screenshot,, sent to your agent and the model it uses.'],
         ['Can I stop it?', 'Yes. macOS shows when an app uses the screen, you can revoke its permissions in System Settings at any time, and Stop halts whatever the agent is doing.'],
         ['What does it run on?', 'Apple Silicon Macs with macOS 13 or later. The app is signed and notarized by Apple.'],
       ].map(([q, a]) => <details key={q}><summary>{q}<span className="faq-plus" aria-hidden="true">+</span></summary><p>{a}</p></details>)}</div></section>
 
-      <section className="final-cta"><img src="/fennec.svg" width="72" height="72" alt="Fennec"/><h2>Give your agent a hand.</h2><p>Drag it to Applications. Your agent does the rest.</p><DownloadButton label="Download Fennec Computer Use"/><span className="platform-note">macOS 13 or later · Apple Silicon</span></section>
+      <section className="final-cta"><img src="/computer-use-icon.png" width="72" height="72" alt="Fennec Computer Use"/><h2>Give your agent a hand.</h2><p>Fennec Computer Use: drag it to Applications, click Connect. Your agent does the rest.</p><DownloadButton/><span className="platform-note">A separate app from Fennec · macOS 13 or later · Apple Silicon</span></section>
     </main>
-    <SiteFooter tagline="Fennec Computer Use: your agent, at your Mac."/>
+    <SiteFooter brand={brand} tagline="Fennec Computer Use: let your agent use your Mac."/>
   </>;
 }

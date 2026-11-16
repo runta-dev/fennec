@@ -42,3 +42,9 @@
 .cu-steps small{display:block;font-size:12px;color:#8a8a8a;padding:0;margin:2px 0 0}
 @media(max-width:1180px){.cu-bench{margin:0 32px}}
 @media(max-width:760px){.cu-bench{margin:0 24px;padding-bottom:60px}.cu-bench h2{font-size:30px;letter-spacing:-1px}.cu-table-card{padding:18px 14px;overflow-x:auto}.cu-table-head{flex-direction:column;gap:4px}.cu-score{min-width:180px}.cu-bar{max-width:90px}}
+/* Sub-brand lockup (Fennec Computer Use) and its hero. */
+.wordmark{white-space:nowrap}.wordmark-sub{margin-left:.32em;color:#858585;font-weight:inherit}
+.cu-mark{display:block;margin:0 auto 26px;border-radius:20px}
+.cu-hero h1{margin-bottom:14px}
+.cu-hero .cu-tagline{font-size:28px;letter-spacing:-.8px;color:var(--text);line-height:1.25;margin:0 auto 14px}
+@media(max-width:760px){.cu-mark{width:64px;height:64px;margin-bottom:18px}.cu-hero .cu-tagline{font-size:21px}.site-header .wordmark-sub{font-size:.82em}}

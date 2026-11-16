@@ -20,3 +20,8 @@ remote = true
 [[routes]]
 pattern = "fennec.runta.com"
 custom_domain = true
+
+# runfennec.com is the same site (an alias; fennec.runta.com stays canonical).
+[[routes]]
+pattern = "runfennec.com"
+custom_domain = true
