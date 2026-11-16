@@ -43,7 +43,8 @@ type claudeBox struct {
 	chrome       []Cell
 	chromeRow    int
 	hasChrome    bool
-	blockTop     int // first row of the box: notification row or top border
+	popup        bool // a command or mention popup is open above the box
+	blockTop     int  // first row of the box: notification row or top border
 	width        int
 	promptRow    int
 	lastRow      int
@@ -119,7 +120,7 @@ func (p *claudeProfile) Locate(s *Screen) (Lock, bool) {
 		return Lock{State: State{Mode: mode}, Top: box.promptRow, Bottom: box.lastRow, Box: box}, true
 	}
 	st, ok := p.parse(s, box, mode)
-	if !ok {
+	if !ok || box.popup && !menuOpen(st) {
 		return Lock{}, false
 	}
 	if st.Empty() {
@@ -133,7 +134,7 @@ func (p *claudeProfile) Locate(s *Screen) (Lock, bool) {
 
 func (p *claudeProfile) Match(s *Screen, st State) (Lock, bool) {
 	box, mode, ok := p.geometry(s)
-	if !ok || mode != st.Mode || st.Empty() || p.dimText(s, box) {
+	if !ok || mode != st.Mode || st.Empty() || p.dimText(s, box) || box.popup && !menuOpen(st) {
 		return Lock{}, false
 	}
 	w := box.width
@@ -161,6 +162,16 @@ func (p *claudeProfile) dimText(s *Screen, box claudeBox) bool {
 		}
 	}
 	return false
+}
+
+// claudePopupRow: an entry of the "/" or "@" popup, indented by four columns
+// ("    /advisor  ...", "    + CLAUDE.md"), or by two with the selection
+// marker ("  ❯ /add-dir  ..."). Transcript text starts at column 0 or 2.
+func claudePopupRow(s *Screen, r int) bool {
+	if !s.Cell(r, 0).Blank() || !s.Cell(r, 1).Blank() || !s.Cell(r, 3).Blank() || rowBlank(s, r, 4, s.Cols) {
+		return false
+	}
+	return s.Cell(r, 2).Blank() || s.Cell(r, 2).Text == "❯"
 }
 
 // geometry finds the composer box around the cursor.
@@ -200,15 +211,20 @@ func (p *claudeProfile) geometry(s *Screen) (claudeBox, string, bool) {
 	box.blockTop = r - 1
 	// The row above the border is always the notification row: blank, a
 	// status notice, or the multi-line hint. It moves with the box.
-	if r-2 >= 0 {
-		if !rowBlank(s, r-2, 0, s.Cols/3) {
-			return fail() // transcript text where the notification row belongs
-		}
+	// A "/" or "@" popup takes its place (Locate checks that the draft opens
+	// one).
+	switch {
+	case r-2 < 0:
+	case rowBlank(s, r-2, 0, s.Cols/3):
 		box.chromeRow, box.hasChrome, box.chrome = r-2, true, copyRow(s, r-2)
 		box.blockTop = r - 2
 		if !strings.Contains(s.RowText(r-2, 0, s.Cols), claudeHint) {
 			p.notice = box.chrome
 		}
+	case claudePopupRow(s, r-2):
+		box.popup = true
+	default:
+		return fail() // transcript text where the notification row belongs
 	}
 	for row := box.promptRow; row <= box.lastRow; row++ {
 		if !rowBlank(s, row, claudeTextCol+box.width+1, s.Cols) {
@@ -432,8 +448,8 @@ func (p *claudeProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 	w := box.width
 	rows := claudeWrap(st.Elems, w)
 	n := len(rows)
-	if n > p.maxRows(s.Rows) {
-		return Paint{}, false
+	if n > p.maxRows(s.Rows) || box.popup && n != box.lastRow-box.promptRow+1 {
+		return Paint{}, false // the popup's layout when the box resizes is not modelled
 	}
 	// The notification row shows the multi-line hint while the text has a
 	// newline; when the hint goes, the notice it covered (or blank) returns.
@@ -615,7 +631,16 @@ func (p *claudeProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
 		return func(s State) State { return s.Move(-1) }
 	case KeyRight:
 		return func(s State) State { return s.Move(1) }
+	case KeyTab:
+		if menuOpen(st) {
+			return nil // completes the selected entry
+		}
+		// Only a hint in the notification row (recorded on 2.1.325).
+		return func(s State) State { return s }
 	case KeyUp, KeyDown:
+		if menuOpen(st) {
+			return nil // moves the popup selection
+		}
 		step := -1
 		if k.Kind == KeyDown {
 			step = 1

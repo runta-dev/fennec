@@ -91,6 +91,9 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 	keys := loadInput(t, name)
 	acks := loadAcks(t, name)
 	observedStates := composerStates(t, name, rows, cols, profile())
+	// One checker keeps what a profile remembers between frames (as the
+	// engine's does), e.g. OpenCode's block top behind a popup.
+	checker := profile()
 	now := time.Unix(0, 0)
 	at := func(sec float64) time.Time { return time.Unix(0, int64(sec*1e9)) }
 	var term bytes.Buffer
@@ -162,14 +165,14 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 			continue
 		}
 		res.predicted++
-		mine, ok := profile().Locate(shown)
+		mine, ok := checker.Locate(shown)
 		if !ok {
 			t.Errorf("key %q at %.3f: prediction is not a composer\n%s", k.raw, k.at, dumpScreen(shown))
 			continue
 		}
 		matched := false
 		for _, o := range observedStates {
-			if o.at <= k.at || !profile().Same(mine.State, o.lock.State, o.screen) {
+			if o.at <= k.at || !checker.Same(mine.State, o.lock.State, o.screen) {
 				continue
 			}
 			equal := composerRowsEqual(shown, o.screen, o.lock)
@@ -198,6 +201,7 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		}
 		if strings.HasPrefix(next.Text(), mine.State.Text()) && next.Cursor > mine.State.Cursor && len(mine.State.Text()) == mine.State.Cursor {
 			res.merged++
+			t.Logf("key %q at %.3f: drawn only together with later keys (%s, then %s)", k.raw, k.at, describe(mine.State), describe(next))
 			continue
 		}
 		t.Errorf("key %q at %.3f: agent never showed the predicted %s", k.raw, k.at, describe(mine.State))
@@ -312,5 +316,65 @@ func TestOpencodeStreamingRecordedSession(t *testing.T) {
 	res := replayRecorded(t, "opencode-streaming-100x30", 30, 100, func() Profile { return newOpencodeProfile() }, false)
 	if res.stats.Diverged != 0 {
 		t.Fatalf("%d rollbacks", res.stats.Diverged)
+	}
+}
+
+// TestEditingKeysRecordedSessions replays the readline-style editing keys
+// recorded on OpenCode 2.3.0 and Grok Build 1.0.77 (rec scenario "edit"):
+// Ctrl+A/E, Home/End, Ctrl+W, Alt+Backspace, Ctrl+B/F, Up/Down, Alt+Left/
+// Right, Esc b/f, Ctrl+K/U, Ctrl+H and Delete, on two logical lines and on a
+// wrapped line. Every one of them must be predicted except Grok's Ctrl+B/F
+// (they do not move its cursor) and Up/Down at the draft's first or last row.
+func TestEditingKeysRecordedSessions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile func() Profile
+	}{
+		{"opencode-edit-100x30", func() Profile { return newOpencodeProfile() }},
+		{"grok-edit-100x30", func() Profile { return newGrokProfile() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := replayRecorded(t, tc.name, 30, 100, tc.profile, false)
+			if res.stats.Diverged != 0 {
+				t.Fatalf("%d rollbacks", res.stats.Diverged)
+			}
+			t.Logf("barrier keys %v", res.stats.BarrierKeys)
+			for key, n := range res.stats.BarrierKeys {
+				if key != "ctrl+b" && key != "ctrl+f" && key != "esc" {
+					t.Errorf("%d %s keys waited for the agent", n, key)
+				}
+			}
+		})
+	}
+}
+
+// TestMenuRecordedSessions replays the "menu" scenario: "/" and "@" popups
+// (typing, Backspace, Esc), Tab and history Up/Down on an empty draft. In
+// OpenCode the popup covers the rows above the box (and the home logo), so
+// typing into it is predicted; Grok draws the rest of the best slash command
+// inline after the cursor, so a slash command waits for the agent.
+func TestMenuRecordedSessions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile func() Profile
+		allowed map[string]bool // keys that may wait for the agent
+	}{
+		{"opencode-menu-100x30", func() Profile { return newOpencodeProfile() }, map[string]bool{"esc": true, "up": true}},
+		{"grok-menu-100x30", func() Profile { return newGrokProfile() }, nil},
+		{"claude-menu-100x30", func() Profile { return newClaudeProfile() }, map[string]bool{"esc": true, "up": true, "down": true}},
+		// Cut before "@x": the popup then lists the recording user's other tasks.
+		{"codex-menu-100x30", func() Profile { return newCodexProfile() }, map[string]bool{"esc": true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := replayRecorded(t, tc.name, 30, 100, tc.profile, false)
+			if res.stats.Diverged != 0 {
+				t.Fatalf("%d rollbacks", res.stats.Diverged)
+			}
+			for key, n := range res.stats.BarrierKeys {
+				if tc.allowed != nil && !tc.allowed[key] {
+					t.Errorf("%d %s keys waited for the agent", n, key)
+				}
+			}
+		})
 	}
 }

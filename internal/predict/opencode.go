@@ -45,10 +45,11 @@ type opencodeProfile struct {
 	width       int
 	placeholder []Cell // home/session placeholder from the text column
 	text        Attr
+	blockTop    int // home screen: the block top last seen with its logo
 }
 
 func newOpencodeProfile() *opencodeProfile {
-	return &opencodeProfile{}
+	return &opencodeProfile{blockTop: -1}
 }
 
 func (p *opencodeProfile) Name() string { return "opencode" }
@@ -89,8 +90,18 @@ func (p *opencodeProfile) geometry(s *Screen) (ocBox, bool) {
 	if box.width < 8 || !rowBlank(s, bottom-2, bar+1, box.edge+1) {
 		return fail()
 	}
+	// A command or mention popup sits on the rows above the box with the same
+	// left bar; its rows also close with a bar on the right.
+	popupRow := func(row int) bool {
+		for c := bar + 1; c < s.Cols; c++ {
+			if s.Cell(row, c).Text == "┃" {
+				return true
+			}
+		}
+		return false
+	}
 	top := r
-	for top-1 >= 0 && s.Cell(top-1, bar).Text == "┃" {
+	for top-1 >= 0 && s.Cell(top-1, bar).Text == "┃" && !popupRow(top-1) {
 		top--
 	}
 	box.topPad = top
@@ -118,9 +129,15 @@ func (p *opencodeProfile) geometry(s *Screen) (ocBox, bool) {
 				break
 			}
 		}
+		// A popup may cover the logo: keep the top found before if it still
+		// centers this block.
+		if t := p.blockTop; box.blockTop < 0 && t >= 0 && t <= box.topPad && t == (s.Rows+1-(box.footer-t+1))/2 {
+			box.blockTop = t
+		}
 		if box.blockTop < 0 {
 			return fail()
 		}
+		p.blockTop = box.blockTop
 	}
 	p.width = box.width
 	return box, true
@@ -373,11 +390,23 @@ func (p *opencodeProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
 		if !printable(k.Text) {
 			return nil
 		}
-		if st.Empty() && strings.ContainsAny(k.Text[:1], "/@!") {
-			return nil // command, file and shell popups
+		if st.Empty() && strings.HasPrefix(k.Text, "!") {
+			return nil // shell mode
 		}
+		// "/" and "@" open a popup over the rows above the box; the box
+		// itself just shows the text.
 		elems := TextElems(k.Text)
 		return func(s State) State { return s.Insert(elems...) }
+	case KeyTab:
+		if menuOpen(st) {
+			return nil // completes the selected entry
+		}
+		return func(s State) State { return s } // no effect on the draft
+	case KeyUp, KeyDown:
+		if menuOpen(st) {
+			return nil // moves the popup selection
+		}
+		return opencodeEditing.edit(k, st, p.width)
 	case KeyNewline:
 		return func(s State) State { return s.Insert(Elem{S: "\n"}) }
 	case KeyBackspace:
@@ -400,5 +429,9 @@ func (p *opencodeProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
 		elems := TextElems(text)
 		return func(s State) State { return s.Insert(elems...) }
 	}
-	return nil
+	return opencodeEditing.edit(k, st, p.width)
 }
+
+// opencodeEditing: Home/End go to the start/end of the whole draft (recorded
+// on OpenCode 2.3.0).
+var opencodeEditing = editingKeys{homeEndBuffer: true, ctrlBF: true, wrap: grokWrap}

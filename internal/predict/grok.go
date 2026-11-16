@@ -309,7 +309,9 @@ func (p *grokProfile) Render(lock Lock, st State, s *Screen) (Paint, bool) {
 }
 
 func (p *grokProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
-	if p.width == 0 {
+	if p.width == 0 || slashCommand(st) {
+		// A slash command shows the rest of its best match inline after the
+		// cursor ("/he" draws "/help"); it is not predicted.
 		return nil
 	}
 	switch k.Kind {
@@ -345,8 +347,12 @@ func (p *grokProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
 		elems := TextElems(text)
 		return func(s State) State { return s.Insert(elems...) }
 	}
-	return nil
+	return grokEditing.edit(k, st, p.width)
 }
+
+// grokEditing: Home/End stay on the logical line; Ctrl+B and Ctrl+F do not
+// move the cursor (recorded on Grok Build 1.0.77).
+var grokEditing = editingKeys{wrap: grokWrap}
 
 // grokCursor maps the cursor like cursorRowCol, with the hidden trailing
 // space of a full row kept at the row's end.

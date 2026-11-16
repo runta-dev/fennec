@@ -513,6 +513,12 @@ func (e *Engine) reconcile(now time.Time) {
 			if e.barrierResolved(first, server, now) {
 				e.pending = e.pending[1:]
 				e.confirmed = server
+				// A key with no visible effect (Grok's Ctrl+B) resolves when
+				// the keys typed behind it are drawn: map those onto the
+				// composer it was typed into, or they would be applied twice.
+				if e.explainedWithout(first, server) {
+					e.confirmed = first.before
+				}
 				e.mapDeferred()
 				continue
 			}
@@ -531,6 +537,27 @@ func (e *Engine) reconcile(now time.Time) {
 		e.rollback(server)
 		return
 	}
+}
+
+// explainedWithout reports whether the server shows the composer the barrier
+// was typed into plus some of the keys typed behind it, as if the barrier
+// changed nothing. e.pending starts after the barrier.
+func (e *Engine) explainedWithout(barrier edit, server State) bool {
+	st := barrier.before
+	for i, ed := range e.pending {
+		if !ed.deferred || ed.dropped {
+			return false
+		}
+		apply := e.profile.Edit(ed.key, st, EditContext{Pending: i, ImageReady: ed.imageReady})
+		if apply == nil {
+			return false
+		}
+		st = apply(st)
+		if e.profile.Same(st, server, e.shadow) {
+			return true
+		}
+	}
+	return false
 }
 
 // barrierResolved: the server has shown what the unpredictable key did. An
@@ -646,10 +673,25 @@ func (e *Engine) showing() bool {
 }
 
 // paint brings the display to shadow + prediction.
+// anyPredicted: an edit before the first barrier is still unconfirmed. With
+// none, the predicted state is only the last confirmed one, and the agent's
+// newer frame (the result of the barrier key, or of later keys) is shown.
+func (e *Engine) anyPredicted() bool {
+	for _, ed := range e.pending {
+		if ed.blocked() {
+			return false
+		}
+		if !ed.dropped {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) paint(buf *bytes.Buffer) {
 	desired := map[int][]Cell{}
 	cursorRow, cursorCol, predicting := e.shadow.Row, e.shadow.Col, false
-	if e.locked && e.showing() && len(e.pending) > 0 && e.canDraw() {
+	if e.locked && e.showing() && e.anyPredicted() && e.canDraw() {
 		st := e.predicted()
 		if !e.profile.Same(st, e.lock.State, e.shadow) {
 			if p, ok := e.profile.Render(e.lock, st, e.shadow); ok {
