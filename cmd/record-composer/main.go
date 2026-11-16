@@ -371,7 +371,14 @@ func (r *run) check(cfg config) {
 		return
 	}
 	if r.session != "" {
-		r.private = privateText(tr, r.session, r.typed)
+		allowed := map[rune]bool{}
+		for r := range r.typed {
+			allowed[r] = true
+		}
+		for _, b := range agentBrand[r.agent] {
+			allowed[b] = true
+		}
+		r.private = privateText(tr, r.session, allowed)
 	}
 	if predict.ProfileFor(r.agent) == nil {
 		return // recorded to build a profile from; nothing to replay yet
@@ -390,7 +397,7 @@ func (r *run) name(cfg config) string {
 }
 
 func (r *run) saveTo(cfg config) {
-	if r.report == nil || len(r.private) > 0 {
+	if len(r.private) > 0 {
 		return
 	}
 	dest := filepath.Join(cfg.baseline, r.name(cfg))
@@ -568,3 +575,7 @@ func newWaits(now, base map[string]int) string {
 	sort.Strings(out)
 	return strings.Join(out, ", ")
 }
+
+// agentBrand lists letters an agent draws itself (its logo), which are not
+// private text.
+var agentBrand = map[string]string{"pi": "π"}

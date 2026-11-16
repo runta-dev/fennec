@@ -12,6 +12,10 @@ func ProfileFor(agent string) Profile {
 		return newCodexProfile()
 	case "opencode":
 		return newOpencodeProfile()
+	case "pi":
+		return newPiProfile()
+	case "kimi":
+		return newKimiProfile()
 	case "grok":
 		return newGrokProfile()
 	}

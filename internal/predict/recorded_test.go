@@ -240,3 +240,53 @@ func TestSizesRecordedSessions(t *testing.T) {
 		}
 	}
 }
+
+// TestPiRecordedSessions replays Pi 1.5.2 (launched with PI_HARDWARE_CURSOR=1)
+// at 100x30: typing that wraps twice, Shift+Enter, Backspace, Left with
+// insertion and an inline paste; the editing keys; pastes of 2 to 10 lines
+// and long lines; and Chinese committed by an input method. Pi had no
+// profile when recorded, so the cloud sent no acknowledgements; real
+// sessions have them.
+func TestPiRecordedSessions(t *testing.T) {
+	for _, scenario := range []string{"typing", "edit", "paste", "cjk"} {
+		name := "pi-" + scenario + "-100x30"
+		t.Run(name, func(t *testing.T) {
+			res := replayRecorded(t, name, 30, 100, func() Profile { return newPiProfile() }, false)
+			if (scenario == "typing" || scenario == "edit") && res.stats.Diverged != 0 {
+				t.Fatalf("%d rollbacks", res.stats.Diverged)
+			}
+			if res.predicted < res.keys/2 {
+				t.Fatalf("only %d of %d keys predicted", res.predicted, res.keys)
+			}
+		})
+	}
+}
+
+// TestKimiRecordedSessions replays Kimi Code 2.6.2 at 100x30 (the same
+// scenarios as Pi). Kimi draws its own cursor (a reverse-video cell), so the
+// predictions draw it too and keep the terminal cursor hidden. One
+// prediction in the typing and one in the paste recording are drawn by Kimi
+// only together with the next key in the middle of the draft, which the
+// replay cannot tell from a misprediction; no rollback follows.
+func TestKimiRecordedSessions(t *testing.T) {
+	for _, scenario := range []string{"typing", "edit", "paste", "cjk"} {
+		name := "kimi-" + scenario + "-100x30"
+		t.Run(name, func(t *testing.T) {
+			tr, err := LoadTrace(filepath.Join("testdata", "traces", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			rep := Replay(tr, 30, 100, func() Profile { return newKimiProfile() }, false)
+			for _, p := range rep.Problems {
+				t.Log(p)
+			}
+			t.Logf("keys=%d predicted=%d exact=%d rollbacks=%d", rep.Keys, rep.Predicted, rep.Exact, rep.Stats.Diverged)
+			if !rep.Converged || !rep.Stats.Locked || len(rep.Problems) > 1 || rep.Predicted < rep.Keys/2 {
+				t.Fatalf("converged=%v locked=%v problems=%d predicted %d of %d", rep.Converged, rep.Stats.Locked, len(rep.Problems), rep.Predicted, rep.Keys)
+			}
+			if (scenario == "typing" || scenario == "edit") && rep.Stats.Diverged != 0 {
+				t.Fatalf("%d rollbacks", rep.Stats.Diverged)
+			}
+		})
+	}
+}

@@ -511,7 +511,7 @@ func (e *Engine) reconcile(now time.Time) {
 			if !ed.dropped {
 				st = ed.apply(st)
 			}
-			if e.profile.Same(st, server, e.shadow) && (best < 0 || !e.opts.EchoAck || e.ackSeq >= ed.seq) {
+			if e.profile.Same(st, server, e.shadow) && (best < 0 || e.opts.EchoAck && e.ackSeq >= ed.seq) {
 				best, bestState = i+1, st
 			}
 		}
@@ -711,12 +711,12 @@ func (e *Engine) anyPredicted() bool {
 
 func (e *Engine) paint(buf *bytes.Buffer) {
 	desired := map[int][]Cell{}
-	cursorRow, cursorCol, predicting := e.shadow.Row, e.shadow.Col, false
+	cursorRow, cursorCol, predicting, drawn := e.shadow.Row, e.shadow.Col, false, false
 	if e.locked && e.showing() && e.anyPredicted() && e.canDraw() {
 		st := e.predicted()
 		if !e.profile.Same(st, e.lock.State, e.shadow) {
 			if p, ok := e.profile.Render(e.lock, st, e.shadow); ok {
-				desired, cursorRow, cursorCol, predicting = p.Rows, p.CursorRow, p.CursorCol, true
+				desired, cursorRow, cursorCol, predicting, drawn = p.Rows, p.CursorRow, p.CursorCol, true, p.DrawnCursor
 			}
 		}
 	}
@@ -786,7 +786,7 @@ func (e *Engine) paint(buf *bytes.Buffer) {
 			e.beginPaint(&out)
 		}
 		fmt.Fprintf(&out, "\x1b[%d;%dH", cursorRow+1, cursorCol+1)
-		if predicting && !e.display.CursorVisible {
+		if predicting && !drawn && !e.display.CursorVisible {
 			out.WriteString("\x1b[?25h")
 		}
 	}

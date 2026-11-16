@@ -14,6 +14,9 @@ type Paint struct {
 	Rows      map[int][]Cell
 	CursorRow int
 	CursorCol int
+	// DrawnCursor: the composer draws its own cursor in Rows (Kimi Code);
+	// the terminal cursor stays hidden.
+	DrawnCursor bool
 }
 
 // EditFunc applies one predicted edit.

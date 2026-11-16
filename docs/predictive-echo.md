@@ -628,8 +628,8 @@ Other agents, from reading their packages:
 | --- | --- | --- |
 | OpenCode (OpenTUI) | Yes | Profile from two real OpenCode 2.3.0 sessions (`testdata/traces/opencode-100x30`, home screen, and `opencode-session-100x30`, session view): 202 and 224 predicted key packets, all match; see above |
 | Grok (ratatui) | Yes | Profile from a real session (`testdata/traces/grok-100x30`, Grok Build 1.0.77): 202 of 202 predicted key packets match; see below |
-| Pi | Only with `PI_HARDWARE_CURSOR=1` | Needs that setting in Fennec's Pi launch |
-| Kimi | No (drawn reverse-video cursor) | Not predictable with this design |
+| Pi (pi-tui) | With `PI_HARDWARE_CURSOR=1`, which Fennec now sets | Profile from real Pi 1.5.2 sessions (`pi-typing/edit/paste/cjk-100x30`): typing 195/195 and editing keys 206/207 predicted exactly; wraps with pi-tui's own algorithm (`piWrap`, checked against pi-tui's JavaScript) |
+| Kimi (pi-tui in a box) | No: a drawn reverse-video cursor; the hidden terminal cursor is not reliably at the insertion point | Profile from real Kimi Code 2.6.2 sessions (`kimi-*-100x30`): the composer is found by its border and drawn cursor, predictions draw the cursor themselves (`Paint.DrawnCursor`, the terminal cursor stays hidden); editing keys 207/207 exact |
 | Cursor | No (cursor parked below the composer) | Not predictable with this design |
 
 ### Chinese input and other sizes (recorded 2026-11-16)

@@ -316,14 +316,23 @@ func DumpScreen(s *Screen) string {
 
 func describe(st State) string { return fmt.Sprintf("%q@%d", st.Text(), st.Cursor) }
 
-// composerRowsEqual compares the composer rows and cursor of two screens.
+// composerRowsEqual compares the composer rows and cursor of two screens. A
+// composer that draws its own cursor (the terminal cursor hidden) is
+// compared by its reverse-video cells instead.
 func composerRowsEqual(a, b *Screen, lock Lock) bool {
 	for r := max(0, lock.Top-1); r <= min(a.Rows-1, lock.Bottom+1); r++ {
 		if strings.TrimRight(a.RowText(r, 0, a.Cols), " ") != strings.TrimRight(b.RowText(r, 0, b.Cols), " ") {
 			return false
 		}
+		if !b.CursorVisible {
+			for c := 0; c < a.Cols; c++ {
+				if a.Cell(r, c).Attr.Flags&AttrInverse != b.Cell(r, c).Attr.Flags&AttrInverse {
+					return false
+				}
+			}
+		}
 	}
-	return a.Row == b.Row && a.Col == b.Col
+	return !b.CursorVisible || a.Row == b.Row && a.Col == b.Col
 }
 
 // rowDiff lists the rows whose text differs between two screens.
