@@ -8,16 +8,24 @@ The application bandwidth follow-up below is in progress. The implementation
 and acceptance status of the original four items does not imply that the new
 network latency target has been met.
 
-Latest WAN check (09:40 UTC, November 16): exact ping P95 was 450 ms before
-generated load, 637 ms during a paced command transfer, and 408 ms afterwards.
-The 240 ms target remains unmet. See the current command measurement below;
-local Mutagen integration passing does not change this result.
+Latest WAN check (11:22 UTC, November 16): the TCP output feedback candidate
+had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
+experimental and default-off. The 240 ms target remains unmet; see the
+[paired reports and limitations](ssh-backlog-investigation.md).
+
+The terminal encoded output window is now **32 KiB**, retaining the user's
+scrolling experiment. The previous 4 KiB window limited one terminal to about
+16 KiB/s at 250 ms RTT. This was an interaction regression even when a small
+ping could pass quickly. A future 64 KiB trial must measure scrolling,
+full-screen repaint, typing and concurrent-terminal fairness alongside exact
+ping and file throughput. The 16 KiB file/socket window is a separate setting.
+Do not accept QoS changes using ping alone or restore the 4 KiB terminal cap.
 
 The subsequent [SSH backlog investigation](ssh-backlog-investigation.md)
 observed up to 33,592 TCP bytes not yet transmitted on the exact diagnostic
 connection. A 16 KiB per-socket encoded window is now a candidate reduction
-from 32 KiB. Its real WAN comparison and deployment acceptance remain pending;
-the local delayed-link test does not establish the 240 ms target.
+from 32 KiB. Its real WAN comparison showed partial improvement with lower
+throughput and a 1.9 second outlier; it does not establish the 240 ms target.
 
 ## Follow-up: application bandwidth scheduling (2026-11-16)
 

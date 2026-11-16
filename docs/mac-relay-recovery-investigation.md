@@ -18,6 +18,20 @@ are observed upstream disturbances, not evidence that the Mac was offline.
 The journal alone does not identify the caller that requested configuration,
 nor establish the cause of every historical reconnect.
 
+Read-only inspection of the active Forge slot (`spark`) found an ordering defect
+in `crates/runta-guest-agent-server/src/platform_ssh.rs`: the configure script
+creates `/run/sshd` before stopping `ssh.service`, then runs `sshd -t`. The
+guest's service has `RuntimeDirectory=sshd` and `RuntimeDirectoryPreserve=no`,
+so stopping it removes that directory. This explains the logged validation
+failure; directory creation must occur after the stop as well. No Runta source
+or deployed guest-agent change is included in this Fennec patch.
+
+Another handshake EOF occurred around a concurrent experimental installation.
+The installed app and cloud terminal changed to `18b3658` (32 KiB terminal
+output window), and the Mac daemon restarted at 11:21:10 UTC. That experiment
+has since been declared finished by the user. Its terminal-window change is
+retained in the merged recovery build, rather than reverted during installation.
+
 The cloud byte-relay process was PID 246255, started November 13. Its recorded
 revision matched both its installed source and the repository. An old process
 start time alone therefore did not establish that it was stale. Its log was
