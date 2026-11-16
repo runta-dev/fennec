@@ -669,6 +669,35 @@ Code, OpenCode and Grok at both sizes now replay with every prediction
 exact and no rollback. Codex still mispredicts the first keys typed during
 its startup animation (recordings at 80x24 and 160x45 not yet committed).
 
+## Scrolling the transcript
+
+`herdr-core attach` switches the user's terminal to the alternate screen,
+which has no scrollback, and the agents (Claude Code, Codex, OpenCode, Grok,
+Pi; not Kimi) run full screen with all-motion mouse tracking and scroll
+their transcript themselves. Every wheel step, and every pointer move over
+the window, therefore goes to the cloud, and each wheel step makes the
+agent redraw the whole screen. `cmd/profile-scroll` measures this with a
+stand-in pager through the real `herdr-core attach`: a 40-step gesture (one
+step per 16 ms, three lines each, 100x30) returns about 512 KB when the
+program redraws per step and 436 KB when it redraws at most every 16 ms;
+Herdr re-encodes each full redraw at about 13 KB and does not merge frames.
+
+The client coalesces mouse reports (`internal/launcher/mouse_coalesce.go`):
+a packet of mouse reports is sent at once when no earlier one is
+unanswered; otherwise it waits for the cloud's acknowledgement (at most
+400 ms; without acknowledgements, 50 ms windows) and goes out with the
+others as one packet with no typing gap, so the cloud writes it to the
+agent in one piece. Wheel steps, clicks and drags are never dropped; of
+pointer moves with no button held only the latest is kept; other input
+first sends what is held. For a program that redraws at most once per
+frame this cut the measured gesture from 436 KB to 51 KB (one redraw per
+round trip); a program that redraws per step gains nothing.
+`fen predict-stats` shows mouse reports and the packets they went out in.
+
+Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
+only prints history to the main screen before switching to the alternate
+screen); Fennec has used the same attach since its first commit.
+
 ## Checking profiles after an agent release
 
 `cmd/record-composer` (run on the Mac, which has fen and tmux) records the

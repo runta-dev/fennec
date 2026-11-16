@@ -110,7 +110,8 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	titles := &SessionTitleWriter{Writer: os.Stdout, SessionID: intent.RequestID}
 	defer titles.Flush()
 	engine := newPredictor(titles, intent.Agent, home, rows, columns, interactive && term.IsTerminal(int(os.Stdout.Fd())))
-	defer recordPredictionStats(engine, intent.Agent, home, rows, columns)
+	var mice *mouseCoalescer
+	defer func() { recordPredictionStats(engine, intent.Agent, home, rows, columns, mice) }()
 	defer engine.Close()
 	if owner != nil {
 		owner.engine.Store(engine)
@@ -144,6 +145,10 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 		return nil
 	}
+	// Mouse reports (wheel, pointer moves) are sent in bursts; see
+	// mouseCoalescer.
+	mice = newMouseCoalescer(sendInput, engine.EchoAck)
+	defer mice.Close()
 	if interactive && owner == nil {
 		state, err := term.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
@@ -185,7 +190,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 	go func() {
 		defer close(inputDone)
 		if owner != nil {
-			if owner.pumpInput(ctx, window, sendInput) != nil {
+			if owner.pumpInput(ctx, window, mice.Send) != nil {
 				cancel()
 			}
 			return
@@ -201,7 +206,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			data, detach := keys.Feed(earlyInput[:count])
 			earlyInput = earlyInput[count:]
 			if len(data) > 0 {
-				if err := sendInput(data, stampInput(engine, data, &lastKey)); err != nil {
+				if err := mice.Send(data, stampInput(engine, data, &lastKey)); err != nil {
 					cancel()
 					return
 				}
@@ -219,7 +224,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 			if poll[0].Revents == 0 {
 				if pending := keys.Flush(); len(pending) > 0 {
-					if err := sendInput(pending, stampInput(engine, pending, &lastKey)); err != nil {
+					if err := mice.Send(pending, stampInput(engine, pending, &lastKey)); err != nil {
 						cancel()
 						return
 					}
@@ -260,7 +265,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				detached.Store(true)
 				launchprofile.Record("stream.detach_input", time.Now(), 0)
 			}
-			if err := sendInput(data, stampInput(engine, data, &lastKey)); err != nil {
+			if err := mice.Send(data, stampInput(engine, data, &lastKey)); err != nil {
 				cancel()
 				return
 			}
@@ -390,6 +395,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			}
 		case "echo_ack":
 			engine.Ack(frame.Seq, frame.Code == 1)
+			mice.Ack(frame.Seq)
 		case "paste_error":
 			engine.RejectImage()
 			if frame.Message == "Start a new Kimi session to enable image paste" {

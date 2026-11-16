@@ -53,6 +53,13 @@ type Entry struct {
 	Chars          int            `json:"chars,omitempty"`
 	Commits        int            `json:"commits,omitempty"` // input method commits
 	RollbackCauses map[string]int `json:"rollback_causes,omitempty"`
+	// Mouse reports the terminal sent (wheel steps, pointer moves), how many
+	// were sent after coalescing, pointer moves dropped as superseded, and the
+	// packets they went out in.
+	MouseReports int `json:"mouse_reports,omitempty"`
+	MouseSent    int `json:"mouse_sent,omitempty"`
+	MouseDropped int `json:"mouse_dropped,omitempty"`
+	MouseBursts  int `json:"mouse_bursts,omitempty"`
 }
 
 // typed is the number of keys typed (Keys for entries without Typed).
@@ -156,6 +163,8 @@ type Summary struct {
 	UnlockedKeys   int            `json:"unlocked_keys"`
 	BarrierKeys    map[string]int `json:"barrier_keys,omitempty"`
 	RollbackCauses map[string]int `json:"rollback_causes,omitempty"`
+	MouseReports   int            `json:"mouse_reports"`
+	MouseBursts    int            `json:"mouse_bursts"`
 	ConfirmP50MS   float64        `json:"confirm_p50_ms"` // median of session medians
 	First          time.Time      `json:"first"`
 	Last           time.Time      `json:"last"`
@@ -179,6 +188,8 @@ func Summarize(entries []Entry) []Summary {
 		s.Typed += e.typed()
 		s.Chars += e.Chars
 		s.Commits += e.Commits
+		s.MouseReports += e.MouseReports
+		s.MouseBursts += e.MouseBursts
 		for k, n := range e.RollbackCauses {
 			s.RollbackCauses[k] += n
 		}
@@ -246,13 +257,14 @@ func topKeys(m map[string]int, n int) string {
 //	rollback:  predictions the agent drew differently or not in time /
 //	           predictions; causes: wrong|missing:<key>[:busy]
 //	unlocked:  keys typed while no composer was recognised / typed
+//	mouse:     mouse reports the terminal sent -> packets sent after coalescing
 func Write(w io.Writer, summaries []Summary) error {
 	if len(summaries) == 0 {
 		_, err := fmt.Fprintf(w, "No sessions recorded yet. Statistics are written when a session detaches.\n")
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "AGENT\tVERSION\tSESSIONS\tTYPED\tIME\tPREDICTED\tROLLBACK\tUNLOCKED\tCONFIRM P50\tWAITED FOR AGENT\tROLLBACK CAUSES")
+	fmt.Fprintln(tw, "AGENT\tVERSION\tSESSIONS\tTYPED\tIME\tPREDICTED\tROLLBACK\tUNLOCKED\tCONFIRM P50\tMOUSE\tWAITED FOR AGENT\tROLLBACK CAUSES")
 	for _, s := range summaries {
 		version := s.Version
 		if version == "" {
@@ -266,9 +278,13 @@ func Write(w io.Writer, summaries []Summary) error {
 		if s.ConfirmP50MS > 0 {
 			confirm = fmt.Sprintf("%.0f ms", s.ConfirmP50MS)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Agent, version, sessions, s.Typed, s.Commits,
+		mouse := "-"
+		if s.MouseReports > 0 {
+			mouse = fmt.Sprintf("%d->%d", s.MouseReports, s.MouseBursts)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Agent, version, sessions, s.Typed, s.Commits,
 			percent(s.Predicted, s.Predicted+s.Barriers), percent(s.Diverged, s.Predicted),
-			percent(s.UnlockedKeys, s.Typed), confirm, topKeys(s.BarrierKeys, 5), topKeys(s.RollbackCauses, 3))
+			percent(s.UnlockedKeys, s.Typed), confirm, mouse, topKeys(s.BarrierKeys, 5), topKeys(s.RollbackCauses, 3))
 	}
 	return tw.Flush()
 }

@@ -116,7 +116,7 @@ func framesWithSequence(frames []terminalstream.Frame, stamp inputStamp, cadence
 
 // recordPredictionStats writes the session's prediction counters to the local
 // usage log (FEN_PREDICT_STATS=off disables it) and the launch profile.
-func recordPredictionStats(engine *predict.Engine, agent, home string, rows, columns int) {
+func recordPredictionStats(engine *predict.Engine, agent, home string, rows, columns int, mice *mouseCoalescer) {
 	if engine == nil || !engine.Active() {
 		return
 	}
@@ -126,7 +126,11 @@ func recordPredictionStats(engine *predict.Engine, agent, home string, rows, col
 	// session, which summaries leave out by default.
 	mode := strings.TrimSpace(strings.ToLower(os.Getenv("FEN_PREDICT_STATS")))
 	if stats.Keys > 0 && mode != "off" {
-		_ = predictstats.Append(home, predictstats.FromStats(agent, rows, columns, engine.EchoAck(), mode == "test", stats, now))
+		entry := predictstats.FromStats(agent, rows, columns, engine.EchoAck(), mode == "test", stats, now)
+		if mice != nil {
+			entry.MouseReports, entry.MouseSent, entry.MouseDropped, entry.MouseBursts = mice.Stats()
+		}
+		_ = predictstats.Append(home, entry)
 	}
 	if stats.Predicted == 0 {
 		return
