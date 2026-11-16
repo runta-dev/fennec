@@ -107,7 +107,13 @@ func TestManagedMutagenOverResident(t *testing.T) {
 		}
 	}()
 	started := time.Now()
-	session, err := manager.Ensure(ctx, s.user, alpha, alias+":"+beta)
+	registry := filepath.Join(s.home, "registry")
+	var session syncengine.Session
+	err = syncengine.WithRegistryLock(ctx, registry, func() error {
+		var err error
+		session, err = manager.EnsureManaged(ctx, registry, s.user, alpha, alias+":"+beta)
+		return err
+	})
 	if err != nil {
 		t.Fatal("initial managed agent installation", err)
 	}
@@ -144,8 +150,43 @@ func TestManagedMutagenOverResident(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(beta, "binary")); !os.IsNotExist(err) {
 		t.Fatal("scoped deletion not synchronized", err)
 	}
+	// Simulate pre-upgrade registrations while retaining real running sessions.
+	// Migration must release old connections without replacing IDs or files.
+	for _, paused := range []bool{false, true} {
+		if _, err = manager.SetRegisteredPaused(ctx, registry, session.Name, paused); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := syncengine.ListProjects(registry)
+		if err != nil || len(entries) != 1 {
+			t.Fatal(entries, err)
+		}
+		entry := entries[0]
+		entry.Transport = ""
+		if err = syncengine.Register(registry, entry); err != nil {
+			t.Fatal(err)
+		}
+		if err = manager.MigrateManagedSessions(ctx, registry, cliBinary, s.user, s.config.RuntimeID); err != nil {
+			t.Fatal("existing session migration", err)
+		}
+		states, err := manager.Inspect(ctx, session.Name)
+		if err != nil || len(states) != 1 || states[0].Identifier != session.Identifier || states[0].Paused != paused {
+			t.Fatal("migration replaced session or changed pause state", states, err)
+		}
+	}
+	if _, err = manager.SetRegisteredPaused(ctx, registry, session.Name, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = manager.Flush(ctx, session.Name); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{alpha, beta} {
+		data, err := os.ReadFile(filepath.Join(dir, "cloud-edit"))
+		if err != nil || !bytes.Equal(data, payload) {
+			t.Fatal("migration changed project bytes", err)
+		}
+	}
 	if pings.Load() < 5 {
 		t.Fatal("insufficient loaded ping evidence")
 	}
-	t.Logf("cold agent installation, two-way binary transfer and deletion verified in %s; %d exact pings, maximum %s", time.Since(started), pings.Load(), time.Duration(maximum.Load()))
+	t.Logf("cold agent installation, two-way transfer, deletion and active/paused migration verified in %s; %d exact pings, maximum %s", time.Since(started), pings.Load(), time.Duration(maximum.Load()))
 }

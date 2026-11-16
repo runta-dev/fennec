@@ -85,7 +85,11 @@ func syncCommand(arguments []string, output io.Writer) error {
 	}
 	var session syncengine.Session
 	if operation == "pause" || operation == "resume" {
-		s, err := manager.SetPaused(ctx, name, operation == "pause")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		s, err := manager.SetRegisteredPaused(ctx, filepath.Join(home, ".config/fennec/projects"), name, operation == "pause")
 		if err != nil {
 			return err
 		}

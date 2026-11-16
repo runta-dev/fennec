@@ -123,37 +123,42 @@ func (m Manager) Inspect(ctx context.Context, name string) ([]Session, error) {
 // Ensure never rewrites an existing session's endpoints or conflict policy.
 // beta is a preconfigured SSH endpoint or an absolute path for isolated tests.
 func (m Manager) Ensure(ctx context.Context, user, root, beta string) (Session, error) {
+	session, _, err := m.ensure(ctx, user, root, beta)
+	return session, err
+}
+
+func (m Manager) ensure(ctx context.Context, user, root, beta string) (Session, bool, error) {
 	real, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	ignores, err := ProjectIgnores(real)
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	name, err := SessionName(user, real, beta)
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	if _, err = m.run(ctx, "daemon", "start"); err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	// List all in our private daemon: a missing named selection is an error in
 	// Mutagen, whereas an empty daemon is a valid initial condition.
 	data, err := m.run(ctx, "sync", "list", "--template", "{{json .}}")
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	var sessions []Session
 	if err = json.Unmarshal(data, &sessions); err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	for _, s := range sessions {
 		if s.Name == name {
 			if !matchesConfiguration(s, real, beta, ignores...) {
-				return Session{}, fmt.Errorf("existing sync configuration differs")
+				return Session{}, false, fmt.Errorf("existing sync configuration differs")
 			}
-			return s, nil
+			return s, false, nil
 		}
 	}
 	args := []string{"sync", "create", "--name", name, "--no-global-configuration", "--mode", "two-way-safe", "--hash", "sha256", "--ignore-vcs", "--symlink-mode", "ignore", "--max-entry-count", "20000", "--max-staging-file-size", "16MB"}
@@ -163,19 +168,19 @@ func (m Manager) Ensure(ctx context.Context, user, root, beta string) (Session, 
 	}
 	args = append(args, real, beta)
 	if _, err = m.run(ctx, args...); err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	result, err := m.Inspect(ctx, name)
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	if len(result) != 1 {
-		return Session{}, fmt.Errorf("expected one synchronization session")
+		return Session{}, false, fmt.Errorf("expected one synchronization session")
 	}
 	if !matchesConfiguration(result[0], real, beta, ignores...) {
-		return Session{}, fmt.Errorf("created sync configuration differs")
+		return Session{}, false, fmt.Errorf("created sync configuration differs")
 	}
-	return result[0], nil
+	return result[0], true, nil
 }
 func (m Manager) Flush(ctx context.Context, name string) (Session, error) {
 	sessions, err := m.Inspect(ctx, name)

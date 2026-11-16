@@ -52,6 +52,8 @@ type daemonServices struct {
 	metricsDemandAt                            time.Time
 	channel                                    *terminalChannel
 	transferSlots                              chan struct{}
+	syncMigrationRuntime                       string
+	syncMigrationCancel                        context.CancelFunc
 	initializeMu                               sync.Mutex
 	user                                       string
 	mu                                         sync.Mutex
@@ -176,6 +178,9 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.entryPending = map[string]bool{}
 	s.brokerRunning = false
 	s.channel = nil
+	s.transferSlots = nil
+	s.syncMigrationRuntime = ""
+	s.syncMigrationCancel = nil
 	s.brokerReady = false
 	s.connectorReady = false
 	s.connectorAddress = ""
@@ -315,6 +320,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 					switch decodeText(event, "type") {
 					case "broker_ready":
 						s.brokerReady = true
+						s.startSyncMigrationLocked()
 						notifyConnectionReady(s.home)
 					case "entry_coverage":
 						s.coverage[decodeText(event, "agent")] = decodeText(event, "coverage")

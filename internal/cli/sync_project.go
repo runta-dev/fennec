@@ -2,13 +2,10 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -82,8 +79,7 @@ func syncProject(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	scope := sha256.Sum256([]byte(user + "\x00" + request.RuntimeID))
-	state := filepath.Join(home, ".config/fennec/sync", hex.EncodeToString(scope[:16]))
+	state := managedSyncState(home, user, request.RuntimeID)
 	wrapper := filepath.Join(state, "ssh")
 	executable, err := os.Executable()
 	if err != nil {
@@ -93,17 +89,9 @@ func syncProject(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	binary, err := exec.LookPath("mutagen")
+	binary, err := findMutagen()
 	if err != nil {
-		for _, path := range []string{"/opt/homebrew/bin/mutagen", "/usr/local/bin/mutagen"} {
-			if info, e := os.Stat(path); e == nil && info.Mode()&0111 != 0 {
-				binary = path
-				break
-			}
-		}
-	}
-	if binary == "" {
-		return fmt.Errorf("Mutagen is not installed")
+		return err
 	}
 	manager := syncengine.Manager{Binary: binary, DataDirectory: filepath.Join(state, "data"), SSHDirectory: wrapper}
 	name, err := syncengine.SessionName(user, mapping.LocalRoot, alias+":"+mapping.CloudRoot)
@@ -118,14 +106,12 @@ func syncProject(input io.Reader, output io.Writer) error {
 			return err
 		}
 		var err error
-		synced, err = manager.Ensure(ctx, user, mapping.LocalRoot, alias+":"+mapping.CloudRoot)
+		synced, err = manager.EnsureManaged(ctx, registry, user, mapping.LocalRoot, alias+":"+mapping.CloudRoot)
 		if err != nil {
 			return err
 		}
-		// Register before flushing so timeouts/conflicts remain discoverable.
-		if err = syncengine.Register(registry, registration); err != nil {
-			return err
-		}
+		// EnsureManaged registers before flushing, retaining migration intent
+		// and keeping timeouts/conflicts discoverable.
 		synced, err = manager.Flush(ctx, synced.Name)
 		return err
 	})

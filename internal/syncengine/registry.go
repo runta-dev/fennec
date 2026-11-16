@@ -15,6 +15,7 @@ type Registration struct {
 	Session       string `json:"session"`
 	DataDirectory string `json:"data_directory"`
 	SSHDirectory  string `json:"ssh_directory"`
+	Transport     string `json:"transport,omitempty"`
 }
 
 func Register(directory string, entry Registration) error {
