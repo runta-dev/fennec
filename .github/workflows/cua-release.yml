@@ -86,6 +86,12 @@ jobs:
           set -euo pipefail
           tag="fennec-cua-v$VERSION"
           ! gh release view "$tag" >/dev/null 2>&1 || { echo "::error::$tag already exists"; exit 1; }
+          # GITHUB_TOKEN may not create a tag on a commit that changes
+          # workflow files, so the tag is pushed first by a maintainer:
+          #   git tag fennec-cua-v<version> <source sha> && git push origin fennec-cua-v<version>
+          tag_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" -q .sha 2>/dev/null || true)
+          if [ -z "$tag_sha" ]; then echo "::error::Push the tag first: git tag $tag $SOURCE_SHA && git push origin $tag"; exit 1; fi
+          test "$tag_sha" = "$SOURCE_SHA" || { echo "::error::$tag points at $tag_sha, not $SOURCE_SHA"; exit 1; }
           latest_before=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
           full="fennec-cua-$VERSION-macos-arm64.tar.gz"
           core="fennec-cua-$VERSION-macos-arm64-core.tar.gz"
@@ -102,7 +108,7 @@ jobs:
             printf '### Build provenance\n\nSource commit: %s\nBuild run: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$BUILD_REPO" "$BUILD_RUN_ID"
           } > "$notes"
           cd "$DIR"
-          gh release create "$tag" --target "$SOURCE_SHA" --title "FennecCUA $VERSION" --notes-file "$notes" --latest=false \
+          gh release create "$tag" --verify-tag --title "FennecCUA $VERSION" --notes-file "$notes" --latest=false \
             "$full" "$full.sha256" "$core" "$core.sha256" SHA256SUMS provenance.json
           latest_after=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
           test "$latest_after" = "$latest_before" || { echo "::error::Latest release moved from $latest_before to $latest_after"; exit 1; }
