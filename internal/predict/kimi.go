@@ -51,6 +51,11 @@ func (p *kimiProfile) geometry(s *Screen) (kimiBox, int, int, bool) {
 		if bottom >= s.Rows || s.Cell(bottom, 1).Text != "╰" || box.lastRow-box.promptRow+1 > p.maxRows(s.Rows) {
 			return kimiBox{}, 0, 0, false
 		}
+		// A draft taller than the box scrolls inside it, and the borders show
+		// "↑ N more" / "↓ N more": not predicted.
+		if !kimiPlainBorder(s, r-1) || !kimiPlainBorder(s, bottom) {
+			return kimiBox{}, 0, 0, false
+		}
 		w := p.textWidth(s.Cols)
 		// The drawn cursor: exactly one reverse-video cell in the text area.
 		crow, ccol, found := 0, 0, 0
@@ -90,6 +95,18 @@ func (p *kimiProfile) geometry(s *Screen) (kimiBox, int, int, bool) {
 		return box, crow, ccol, true
 	}
 	return kimiBox{}, 0, 0, false
+}
+
+// kimiPlainBorder: the border row is only its corners and "─".
+func kimiPlainBorder(s *Screen, r int) bool {
+	for c := 2; c < s.Cols; c++ {
+		switch s.Cell(r, c).Text {
+		case "─", "╮", "╯", "":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (p *kimiProfile) Locate(s *Screen) (Lock, bool) {
