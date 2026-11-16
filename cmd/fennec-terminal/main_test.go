@@ -17,7 +17,7 @@ import (
 // Resident startup launches the same executable's standalone traffic helper.
 // Dispatch that real entrypoint when this test binary is used as the service.
 func TestMain(m *testing.M) {
-	if len(os.Args) == 2 && os.Args[1] == "traffic-broker" {
+	if len(os.Args) >= 2 && (os.Args[1] == "traffic-broker" || os.Args[1] == "receive-project" || os.Args[1] == "workload-exec") {
 		main()
 		return
 	}

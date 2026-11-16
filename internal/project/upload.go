@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fennec/internal/sessionid"
 	"fmt"
 	"io"
@@ -53,7 +54,7 @@ func Upload(ctx context.Context, client *ssh.Client, id string, manifest Manifes
 	if len(header) >= 4<<20 {
 		return UploadResult{}, fmt.Errorf("manifest exceeds receiver limit")
 	}
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return UploadResult{}, err
 	}
@@ -61,8 +62,7 @@ func Upload(ctx context.Context, client *ssh.Client, id string, manifest Manifes
 	session.Stdin = io.MultiReader(strings.NewReader(string(header)+"\n"), archive)
 	stop := context.AfterFunc(ctx, func() { session.Close() })
 	defer stop()
-	quoted := "'" + strings.ReplaceAll(Receiver, "'", "'\"'\"'") + "'"
-	raw, err := session.Output("python3 -c " + quoted + " " + id)
+	raw, err := session.Output(`"$HOME/.local/fennec/bin/fennec-terminal" receive-project ` + id)
 	if err != nil {
 		return UploadResult{}, fmt.Errorf("project upload unconfirmed; inspect snapshot before retrying")
 	}

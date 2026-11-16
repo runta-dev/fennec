@@ -10,6 +10,7 @@ import (
 	"fennec/internal/cpusched"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
+	"fennec/internal/project"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
@@ -78,6 +79,15 @@ func run() (int, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 1, err
+	}
+	if len(os.Args) == 3 && os.Args[1] == "receive-project" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		result, err := project.Receive(ctx, home, os.Args[2], os.Stdin)
+		if err != nil {
+			return 1, err
+		}
+		return 0, json.NewEncoder(os.Stdout).Encode(result)
 	}
 	if len(os.Args) == 2 && os.Args[1] == "traffic-broker" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

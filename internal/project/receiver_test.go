@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,10 +25,8 @@ func TestReceiverPublishesVerifiedArchiveAndRefusesOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := func() error {
-		cmd := exec.Command("python3", "-c", Receiver, strings.Repeat("a", 32))
-		cmd.Env = append(os.Environ(), "HOME="+home)
-		cmd.Stdin = bytes.NewReader(input.Bytes())
-		return cmd.Run()
+		_, err := Receive(context.Background(), home, strings.Repeat("a", 32), bytes.NewReader(input.Bytes()))
+		return err
 	}
 	if err := run(); err != nil {
 		t.Fatal(err)
@@ -52,10 +49,7 @@ func TestReceiverRejectsArchiveSymlink(t *testing.T) {
 	tw := tar.NewWriter(&input)
 	tw.WriteHeader(&tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "/tmp/escape"})
 	tw.Close()
-	cmd := exec.Command("python3", "-c", Receiver, strings.Repeat("b", 32))
-	cmd.Env = append(os.Environ(), "HOME="+home)
-	cmd.Stdin = &input
-	if cmd.Run() == nil {
+	if _, err := Receive(context.Background(), home, strings.Repeat("b", 32), &input); err == nil {
 		t.Fatal("symlink accepted")
 	}
 	if _, err := os.Stat(filepath.Join(home, ".local/fennec/projects", strings.Repeat("b", 32))); !os.IsNotExist(err) {
@@ -71,10 +65,7 @@ func TestReceiverRejectsTruncatedArchive(t *testing.T) {
 	tw := tar.NewWriter(&input)
 	tw.WriteHeader(&tar.Header{Name: "file", Typeflag: tar.TypeReg, Size: 5, Mode: 0600})
 	input.Write([]byte("he")) // deliberate disconnect partway through file data
-	cmd := exec.Command("python3", "-c", Receiver, strings.Repeat("c", 32))
-	cmd.Env = append(os.Environ(), "HOME="+home)
-	cmd.Stdin = &input
-	if cmd.Run() == nil {
+	if _, err := Receive(context.Background(), home, strings.Repeat("c", 32), &input); err == nil {
 		t.Fatal("truncated archive accepted")
 	}
 	target := filepath.Join(home, ".local/fennec/projects", strings.Repeat("c", 32))
@@ -84,5 +75,82 @@ func TestReceiverRejectsTruncatedArchive(t *testing.T) {
 	stages, _ := filepath.Glob(filepath.Join(home, ".local/fennec/projects/.receiving-*"))
 	if len(stages) != 0 {
 		t.Fatal("temporary extraction leaked")
+	}
+}
+
+func TestReceiverRejectsInvalidManifestAndArchive(t *testing.T) {
+	sum := sha256.Sum256([]byte("good"))
+	file := File{Path: "dir/file", Size: 4, SHA256: hex.EncodeToString(sum[:])}
+	for _, test := range []struct {
+		name   string
+		change func(*Manifest)
+		member string
+		data   string
+	}{
+		{name: "traversal", change: func(m *Manifest) { m.Files[0].Path = "../escape" }},
+		{name: "duplicate", change: func(m *Manifest) { m.Files = append(m.Files, m.Files[0]); m.Bytes *= 2 }},
+		{name: "size", change: func(m *Manifest) { m.Bytes++ }},
+		{name: "working directory", change: func(m *Manifest) { m.WorkingDirectory = "../escape" }},
+		{name: "digest", change: func(m *Manifest) { m.Files[0].SHA256 = strings.Repeat("f", 64) }},
+		{name: "unlisted member", member: "extra"},
+		{name: "bad content", data: "evil"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := Manifest{WorkingDirectory: ".", Bytes: 4, Files: []File{file}}
+			if test.change != nil {
+				test.change(&m)
+			}
+			var input bytes.Buffer
+			json.NewEncoder(&input).Encode(m)
+			tw := tar.NewWriter(&input)
+			name := test.member
+			if name == "" {
+				name = file.Path
+			}
+			data := test.data
+			if data == "" {
+				data = "good"
+			}
+			tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Size: 4})
+			tw.Write([]byte(data))
+			tw.Close()
+			home := t.TempDir()
+			if _, err := Receive(context.Background(), home, strings.Repeat("d", 32), &input); err == nil {
+				t.Fatal("invalid snapshot published")
+			}
+			stages, _ := filepath.Glob(filepath.Join(home, ".local/fennec/projects/.receiving-*"))
+			if len(stages) != 0 {
+				t.Fatal("staging leaked")
+			}
+		})
+	}
+}
+
+func TestReceiverRequiresArchiveEndAndSerializesPublishers(t *testing.T) {
+	var input bytes.Buffer
+	json.NewEncoder(&input).Encode(Manifest{WorkingDirectory: "."})
+	header := input.Len()
+	tar.NewWriter(&input).Close()
+	for _, cut := range []int{header, header + 512} {
+		if _, err := Receive(context.Background(), t.TempDir(), strings.Repeat("e", 32), bytes.NewReader(input.Bytes()[:cut])); err == nil {
+			t.Fatal("missing end block accepted")
+		}
+	}
+	home := t.TempDir()
+	done := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := Receive(context.Background(), home, strings.Repeat("e", 32), bytes.NewReader(input.Bytes()))
+			done <- err
+		}()
+	}
+	successes := 0
+	for range 2 {
+		if <-done == nil {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatal("publication was not exclusive", successes)
 	}
 }

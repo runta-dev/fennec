@@ -165,7 +165,7 @@ fails before that fix and passes after it. The CLI race suite then passed.
 Mac terminalstream/localssh/CLI/terminal-command race tests passed again after
 the final window tuning was synchronized. The earlier detached WAN attempt
 failed DNS resolution and supplied no valid measurements. A fresh 135-sample
-run completed on 2026-11-16 at 07:14 UTC, verifying 2,097,234 duplex load bytes
+run completed on 2026-11-16 at 07:14 UTC, verifying 2,097,234 load bytes per direction
 over 43.335 seconds, but failed the latency target:
 
 | Phase | Gateway P95 | Guest echo P95 | Exact TUI ping P95 |
@@ -205,8 +205,19 @@ verify binary stream integrity, separate stderr, EOF, nonzero status, early
 exit, blocked-input cancellation, registration replacement, bounded admission
 and responsive exact pings during an actual streamed `cat` transfer.
 
-Project archive upload and Mutagen still need integration. This stage does not
-establish full aggregate coverage or resolve the separate warm-operation gate.
+Project archive upload now uses the same command session. Its receiver is a Go
+`fennec-terminal receive-project` command, replacing the embedded Python path.
+It verifies bounded manifests, member names/types/sizes, SHA-256, executable
+modes and complete archive end markers before an atomic rename. Identity locks
+serialize concurrent publishers, and existing snapshots are never replaced.
+Regression tests reject traversal, symlinks, digest mismatch, duplicate and
+unlisted members, truncation and competing publications. An integration test
+sends a binary executable file through a resident command to the real receiver
+entrypoint, then verifies that re-uploading cannot overwrite cloud edits.
+
+Mutagen still needs integration. Cold bootstrap, older peers and standalone
+senders also remain outside full aggregate coverage. This stage does not
+resolve the separate warm-operation gate.
 
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.
