@@ -422,6 +422,97 @@ The probe's EOF/drain tests passed with race detection on Linux and macOS.
 Source-language/localization and UI checks passed. This A/B run started only
 dedicated diagnostic services; it did not restart the production app or TUI.
 
+### Matched application-queue timing and command packet overhead
+
+The next diagnostic adds no wire messages and changes no rate or priority.
+`Transport.MeasurePing` reports the matched ID, exact RTT and elapsed local
+send duration; `Ping` retains its existing API and admission/cancellation
+semantics. A dedicated probe-server observer records each measured ping's
+interval from complete input-line receipt to broker submission, and from
+submission to broker completion. It preserves the broker writer interface
+and wire bytes. Only IDs and durations are retained in a bounded private file;
+payloads and credentials are never logged. Existing files are not overwritten.
+
+All durations use their own host's monotonic clock. Broker completion means
+writing to sshd's pipe, not network delivery. A fast reply can arrive before
+the local write returns, so these intervals must not be treated as disjoint
+components or subtracted from independently calculated percentile values.
+
+The staged probe at source `bac4102` ran at 08:40:41–08:42:44 UTC. All 135
+client IDs matched server records, without dropped, pending or failed trace
+entries. It verified 1,747,695 command bytes per direction over 45.593 s.
+The [client records](benchmarks/2026-11-16-ping-queue-client.json) and
+[server records](benchmarks/2026-11-16-ping-queue-server.json) show:
+
+| Phase | Exact TUI P95 | Local send P95 | Server dispatch P95 | Broker-write P95 |
+| --- | ---: | ---: | ---: | ---: |
+| Before load | 581.119 ms | 0.280 ms | 0.264 ms | 1.190 ms |
+| Command load | 778.953 ms | 0.295 ms | 0.299 ms | 3.308 ms |
+| After load | 357.030 ms | 0.226 ms | 0.297 ms | 2.288 ms |
+
+For the exact slowest ping (`measure-74`), RTT was 835.530 ms, local send
+0.297 ms, server dispatch 0.129 ms and broker completion 1.715 ms. The maximum
+loaded broker interval was 4.229 ms. These observed application intervals do
+not explain the hundreds of milliseconds of tail delay. Already-buffered SSH
+bytes, scheduling outside the observed intervals and network/host queues are
+not measured by these callbacks. The loaded gateway P95 also changed to
+346.823 ms, so this run is not a before/after comparison with the earlier
+210 ms gateway run. No attribution of each slow sample to unmanaged traffic
+is justified.
+
+A subsequent read-only worker check still showed the 1048576 bit/s guest TBF
+and a 23,410-byte, 21-packet backlog. This is a separate queue snapshot, not
+the residence time of a traced ping. Host configuration was not changed.
+The current guest process check found no running Mutagen agent; integrating
+that missing path remains necessary for coverage but would not by itself
+explain this particular test's tail latency.
+
+Inspection also found avoidable command framing overhead. Each binary record
+previously wrote its five-byte header separately from the payload. The resident
+socket's net.Pipe preserved these write boundaries, producing tiny data frames
+and credit messages for every content chunk. Headers and content now share
+one bounded write, with up to 1,019 content bytes plus the five-byte header in
+a 1 KiB resident chunk. Receivers continue accepting the old 1,024-byte payload
+limit, so either endpoint can be upgraded first. Larger initial command records
+retain their existing bound and socket fragmentation.
+
+A real resident `cat` regression verifies the complete 64 KiB binary upload
+and counts actual input frames: the old implementation produced 131 frames,
+67 tiny; the packed implementation produces 67 frames, one tiny. The test was
+run against the previous protocol using a Go source overlay and failed there,
+then passed with the fix. Compatibility tests exercise old-style full-size
+input and output records. Binary/stderr/exit, cancellation, slow-output drain,
+capacity and loaded-ping tests passed with race detection on Linux and Mac.
+This packet reduction is not itself evidence that the WAN latency target passes.
+
+The packed staged probe (`a670b97`) completed another 135 comparisons at
+08:50:55–08:52:25 UTC. All client/server IDs matched and all 1,747,695 bytes per
+direction were verified, with 37.776 s of command load (45.18 KiB/s effective
+payload throughput per direction). Raw
+[client results](benchmarks/2026-11-16-packed-command-client.json) and
+[server timings](benchmarks/2026-11-16-packed-command-server.json) are retained:
+
+| Phase | Gateway P95 | Guest echo P95 | Exact TUI P95 |
+| --- | ---: | ---: | ---: |
+| Before load | 161.279 ms | 196.191 ms | 176.347 ms |
+| Command load | 215.237 ms | 616.529 ms | 411.418 ms |
+| After load | 208.895 ms | 230.855 ms | 214.250 ms |
+
+Loaded local-send/server-dispatch/broker-write P95 values were
+0.275 / 0.304 / 2.298 ms; the largest loaded broker interval was 2.450 ms.
+The slowest ping was 735.843 ms, with matching local intervals
+0.197 / 0.055 / 0.395 ms. The observed intervals again fail to explain the
+remaining tail. Different network conditions prevent attributing the change
+from 778.953 ms to 411.418 ms to record packing; even the unloaded gateway and
+guest distributions changed. The 240 ms WAN target and the 20–30 ms added-P95
+gate still have no passing full-coverage result.
+
+At the subsequent build check, the installed Mac binary and running cloud
+resident both had clean revision `c40492b`, which includes the prior pacing
+work but predates record packing. The packed change is committed and tested
+with staged processes; this task has not installed or restarted the app to
+apply it. Source synchronization is separate from installed-build acceptance.
+
 ### Acceptance
 
 Use unique matched ping IDs; background heartbeat coalescing is unsuitable for
