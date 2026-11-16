@@ -5,7 +5,7 @@
 // as Fennec does, injects a wheel gesture with a given cadence, and counts
 // the attachment's output (what fennec-terminal streams to the Mac).
 //
-//	profile-scroll [-steps 40] [-gap 16ms] [-rtt 250ms]
+//	profile-scroll [-steps 40] [-gap 16ms] [-rtt 250ms] [-merge 0,8ms,16ms,33ms]
 //
 // No agent and no prompt are involved. Linux (cloud runtime) only.
 package main
@@ -52,6 +52,8 @@ func main() {
 	command := flag.String("command", "", "measure this program (run by bash) instead of the stand-in pager, e.g. a resumed agent session")
 	startup := flag.Duration("startup", 1500*time.Millisecond, "time for the program to draw before the gesture (then output must be quiet for a second)")
 	flag.IntVar(&resetDown, "reset", 0, "wheel steps down sent before each gesture (back to the bottom of a transcript)")
+	merge := flag.String("merge", "0,8ms,16ms,33ms", "also replay each gesture's output through time-based merging with these intervals (0: every read as it is)")
+	rate := flag.Float64("rate", 112*1024, "link rate in bytes per second for the sender model (the QoS pacer's rate)")
 	flag.StringVar(&existing, "address", "", "measure this running Herdr terminal (t…) instead; it is left running")
 	flag.Parse()
 	self, err := os.Executable()
@@ -62,6 +64,25 @@ func main() {
 	if *command != "" || existing != "" {
 		policies = []string{"command"}
 	}
+	var intervals []time.Duration
+	for _, s := range strings.Split(*merge, ",") {
+		if s = strings.TrimSpace(s); s == "" {
+			continue
+		}
+		if s == "0" {
+			s = "0s"
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			fail(fmt.Errorf("-merge: %w", err))
+		}
+		intervals = append(intervals, d)
+	}
+	type run struct {
+		label string
+		r     result
+	}
+	var runs []run
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "PROGRAM\tINPUT\tWRITES\tOUTPUT BYTES\tAFTER NOOP FILTER\tOUTPUT READS\tLAST OUTPUT AFTER\tWHEEL STEPS")
 	for _, policy := range policies {
@@ -75,6 +96,25 @@ func main() {
 				input = "coalesced per RTT"
 			}
 			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%d\t%v\t%d\n", policy, input, r.writes, r.bytes, r.filtered, r.reads, r.last.Round(time.Millisecond), r.scrolled)
+			runs = append(runs, run{policy + ", " + input, r})
+		}
+	}
+	w.Flush()
+	if len(intervals) == 0 {
+		return
+	}
+	// What the cloud would send for the same output: its conflator replayed
+	// with a modelled sender and link (-rate, -rtt), with no window and with
+	// the live sender's window for -rtt, taking at most once per interval.
+	fmt.Println()
+	w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "RUN\tWINDOW\tMERGE INTERVAL\tFRAMES\tBYTES\tMERGED FRAMES\tTHEIR BYTES\tSENT FOR THEM\tLAST ARRIVAL")
+	for _, rn := range runs {
+		for _, window := range []int{0, terminalstream.SimWindow(*rtt)} {
+			for _, d := range intervals {
+				m := terminalstream.SimulateSender(30, 100, rn.r.output, rn.r.gesture, terminalstream.SimSender{Interval: d, Window: window, RTT: *rtt, Rate: *rate})
+				fmt.Fprintf(w, "%s\t%d\t%v\t%d\t%d\t%d\t%d\t%d\t%v\n", rn.label, window, d, m.Frames, m.Bytes, m.Merged, m.MergedBytes, m.DiffBytes, m.Arrived.Round(time.Millisecond))
+			}
 		}
 	}
 	w.Flush()
@@ -118,6 +158,10 @@ func schedule(steps int, gap, rtt time.Duration, coalesce bool) []write {
 type result struct {
 	writes, bytes, filtered, reads, scrolled int
 	last                                     time.Duration
+	// output: everything read since attaching, after the no-op filter, timed
+	// from attaching; gesture: when the gesture began.
+	output  []terminalstream.TimedOutput
+	gesture time.Duration
 }
 
 var addressRe = regexp.MustCompile(`"address"\s*:\s*"(t[0-9a-z]+)"`)
@@ -159,6 +203,8 @@ func measure(self, policy, command string, startup time.Duration, plan []write) 
 	var total, filtered, reads int
 	var noop terminalstream.NoopFrameFilter // what the cloud now streams
 	var start, lastAt, lastAny time.Time
+	var output []terminalstream.TimedOutput
+	attached := time.Now()
 	counting := false
 	go func() {
 		buf := make([]byte, 65536)
@@ -167,9 +213,12 @@ func measure(self, policy, command string, startup time.Duration, plan []write) 
 			if n > 0 {
 				mu.Lock()
 				lastAny = time.Now()
+				kept, _ := noop.Filter(append([]byte(nil), buf[:n]...))
+				if len(kept) > 0 {
+					output = append(output, terminalstream.TimedOutput{At: lastAny.Sub(attached), Data: kept})
+				}
 				if counting {
 					total += n
-					kept, _ := noop.Filter(append([]byte(nil), buf[:n]...))
 					filtered += len(kept)
 					reads++
 					lastAt = time.Now()
@@ -216,7 +265,7 @@ func measure(self, policy, command string, startup time.Duration, plan []write) 
 	file.Write([]byte{0x1c})
 	mu.Lock()
 	defer mu.Unlock()
-	r := result{writes: len(plan), bytes: total, filtered: filtered, reads: reads, scrolled: steps}
+	r := result{writes: len(plan), bytes: total, filtered: filtered, reads: reads, scrolled: steps, output: output, gesture: start.Sub(attached)}
 	if !lastAt.IsZero() {
 		r.last = lastAt.Sub(start)
 	}
