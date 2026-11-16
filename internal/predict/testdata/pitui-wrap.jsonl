@@ -1,0 +1,16 @@
+{"line":"hello world this is a test","w":10,"chunks":["hello ","world ","this is a ","test"]}
+{"line":"hello world this is a test","w":11,"chunks":["hello ","world this ","is a test"]}
+{"line":"abcdefghijklmnopqrstuvwxyz","w":7,"chunks":["abcdefg","hijklmn","opqrstu","vwxyz"]}
+{"line":"word  two   spaces here and more","w":9,"chunks":["word  ","two   ","spaces ","here and ","more"]}
+{"line":"trailing space at end   ","w":8,"chunks":["trailing"," space ","at ","end   "]}
+{"line":"   leading spaces then words","w":8,"chunks":["   ","leading ","spaces ","then ","words"]}
+{"line":"\u4f60\u597d\u4e16\u754c\u6d4b\u8bd5\u4e2d\u6587\u8f93\u5165\u6cd5","w":7,"chunks":["\u4f60\u597d\u4e16","\u754c\u6d4b\u8bd5","\u4e2d\u6587\u8f93","\u5165\u6cd5"]}
+{"line":"\u4f60\u597d\u4e16\u754c\u6d4b\u8bd5\u4e2d\u6587","w":8,"chunks":["\u4f60\u597d\u4e16\u754c","\u6d4b\u8bd5\u4e2d\u6587"]}
+{"line":"mixed \u4e2d\u6587 text \u6d4b\u8bd5 here","w":9,"chunks":["mixed \u4e2d","\u6587 text ","\u6d4b\u8bd5 here"]}
+{"line":"fennec\u7684predictive\u56de\u663e","w":8,"chunks":["fennec\u7684","predicti","ve\u56de\u663e"]}
+{"line":"\u4f60\u597d\uff0c\u4e16\u754c\u3002ok fine","w":6,"chunks":["\u4f60\u597d\uff0c","\u4e16\u754c\u3002","ok ","fine"]}
+{"line":"a b c d e f g h i j k l m n o p","w":5,"chunks":["a b ","c d ","e f ","g h ","i j ","k l ","m n ","o p"]}
+{"line":"supercalifragilistic expialidocious","w":10,"chunks":["supercalif","ragilistic"," ","expialidoc","ious"]}
+{"line":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx y","w":12,"chunks":["xxxxxxxxxxxx","xxxxxxxxxxxx","xxxxxx y"]}
+{"line":"the quick brown fox jumps over the lazy dog","w":15,"chunks":["the quick ","brown fox ","jumps over the ","lazy dog"]}
+{"line":"one two","w":4,"chunks":["one ","two"]}
