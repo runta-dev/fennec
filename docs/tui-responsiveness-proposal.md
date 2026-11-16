@@ -44,6 +44,18 @@ was 355/351/376 ms for 160/128, 128/128 and 128/96; medians were all about
 include zero. Its earlier advantage did not reproduce, and no winning budget
 is established. Production settings were not changed by the repeat.
 
+The [four additional unloaded runs](benchmarks/2026-11-16-idle-four-run-series.md)
+collected 504 samples per cloud variant on four fresh connections, with the
+corrected order design and fixed Mac 160/128 KiB/s sender. Pooled TUI P95 was
+454/438/386 ms for 160/128, 128/128 and 128/96. The 128/96 configuration had
+the lowest P95 in three runs but lost in the fourth; paired hierarchical
+P95-difference intervals still include zero. Guest echo and resident RTT both
+varied substantially between runs while gateway RTT remained much steadier.
+All results, including the slow second run, are retained. This favors 128/96
+in the observed pooled tail without establishing a causal or consistently
+repeatable advantage. The installed application and budgets remain unchanged;
+the 240 ms target is not met by these measurements.
+
 Earlier WAN check (11:22 UTC, November 16): the TCP output feedback candidate
 had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the

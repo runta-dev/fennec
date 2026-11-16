@@ -1273,6 +1273,198 @@
       "server_location_at_capture": "GCP runta-integration / us-west1; earlier inventory, not re-resolved for every sample",
       "sha256": "0de865387c6667999da823cf01540ef83d46d4aaad0f992b53c822a801397906"
     },
+    "2026-11-16-idle-four-run-series.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "Four consecutive unloaded runs, each with one warm authenticated SSH connection shared by three cloud variants and 126 samples per variant. Fixed Mac sender160/128 KiB/s; no generated bulk traffic, scrolling or agent input; background traffic uncontrolled. Not a UI response or US-local test.",
+        "finished_utc": "2026-11-16T13:40:05.997331Z",
+        "paired_analysis": {
+          "128_96_lower_ping_than_128_128_rounds": 259,
+          "128_96_lower_ping_than_160_128_rounds": 269,
+          "128_96_p95_minus_128_128_ms": -52.04333300000002,
+          "128_96_p95_minus_160_128_ms": -67.74925000000002,
+          "paired_rounds": 504,
+          "primary_hierarchical": {
+            "128_96_minus_128_128": {
+              "negative_means": "128/96 has lower P95",
+              "percentile_95_interval_ms": [
+                -112.80704199999997,
+                46.53645799999998
+              ]
+            },
+            "128_96_minus_160_128": {
+              "negative_means": "128/96 has lower P95",
+              "percentile_95_interval_ms": [
+                -223.85649999999993,
+                73.47745800000001
+              ]
+            },
+            "blocks_per_connection": 7,
+            "connections": 4,
+            "method": "Paired block bootstrap. Primary resamples connections then complete 18-round design cycles within each selected connection; sensitivity keeps each observed connection and resamples its cycles. All three variants remain paired. Exploratory percentile intervals conditional on four observed connections; not elimination of environmental effects.",
+            "random_source": "Go math/rand NewSource(seed)",
+            "resample_connections": true,
+            "resamples": 10000,
+            "rounds_per_block": 18,
+            "seed": 2026111604
+          },
+          "sensitivity_stratified": {
+            "128_96_minus_128_128": {
+              "negative_means": "128/96 has lower P95",
+              "percentile_95_interval_ms": [
+                -109.59087499999998,
+                39.47366699999998
+              ]
+            },
+            "128_96_minus_160_128": {
+              "negative_means": "128/96 has lower P95",
+              "percentile_95_interval_ms": [
+                -141.60987600000004,
+                61.02895799999999
+              ]
+            },
+            "blocks_per_connection": 7,
+            "connections": 4,
+            "method": "Paired block bootstrap. Primary resamples connections then complete 18-round design cycles within each selected connection; sensitivity keeps each observed connection and resamples its cycles. All three variants remain paired. Exploratory percentile intervals conditional on four observed connections; not elimination of environmental effects.",
+            "random_source": "Go math/rand NewSource(seed)",
+            "resample_connections": false,
+            "resamples": 10000,
+            "rounds_per_block": 18,
+            "seed": 2026111605
+          }
+        },
+        "provenance": {
+          "analysis_plan": "Four runs fixed before inspecting outcomes, retaining every result. Primary pools only these four new runs (504 samples per variant), not earlier loaded or order-confounded runs. Paired hierarchical bootstrap: 10000 resamples, resample four connections then seven 18-round cycles per chosen connection. Sensitivity resamples cycles within each observed connection without resampling connections.",
+          "client": {
+            "evidence": "User report in this session",
+            "host": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "not captured"
+          },
+          "client_budget": "Fixed 160/128 KiB/s for all three cloud variants; small probes only",
+          "clock": "Mac UTC timestamps and monotonic elapsed RTT; no cross-host clock subtraction",
+          "diagnostic_source_sha256": {
+            "idle_compare.go": "f8e24f20b0cbb77e624e05dc18951851bf3ecb8196d00b8c0aaa9e364d4160d0",
+            "main.go": "97ebdbfccd43f11ba400dcdbf6e6ea7d8c88d3a5fa6ad224ccbfc25cdf33dba6"
+          },
+          "independent_connections": 4,
+          "mac_probe_sha256": "505bf4c2c0c14caba197e625ea3645696ef32a60d9943e10c4a57738bd5203e9",
+          "order_correction": "Corrected 18-round joint design used throughout. Initial terminal mappings by run: A/B/C, B/C/A, C/B/A, B/A/C. A=160/128, B=128/128, C=128/96 KiB/s. One warm connection shared by all variants within a run; fresh connection between runs.",
+          "samples_per_cloud_variant": 504,
+          "samples_per_cloud_variant_per_connection": 126,
+          "scope": "Singapore-to-US warm protocol RTT, not US-local latency or UI response; varying cloud budgets with a common client",
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "GCP inventory checked around 2026-11-16T12:04Z; exact runtime placement not re-resolved for each block",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "settings": "All variants retain 2 KiB bursts, interactive priority, 16 KiB socket credit and dynamic terminal window 8-64 KiB. Dynamic window derives from each variant's total rate. TCP output guard remains default-off. Broker directories isolate test budgets from production tokens; host network still shared.",
+          "source": "Cloud variants exported from e53f4ba5c0228ba643e5e5269953c9e9dd7dc80b with recorded rate/directory overrides. Corrected Mac diagnostic source committed as d6558529d39d5869b74a45421cece1a87be4d7ff. Identical immutable binaries to the corrected balanced repeat; source and binary SHA-256 values retained. No compilation during measurement, application replacement or production-budget changes in this batch.",
+          "toolchains": "Linux Go1.26.11; Mac Go1.27.1",
+          "variants": {
+            "a160": {
+              "broker_directory": "traffic-q128-a",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "79a5c04f9e6b0136d47ba9c42a8963754d28262c4d472ff590954430979c18ce",
+              "total_KiBps": 160
+            },
+            "b128": {
+              "broker_directory": "traffic-q128-b",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "bee19cfa2cf212bc5dde3b57b846510b28246aa81159725be0c339fe995a6401",
+              "total_KiBps": 128
+            },
+            "c128": {
+              "broker_directory": "traffic-q128-c",
+              "bulk_KiBps": 96,
+              "terminal_sha256": "757a12e2fa3af678bbe93251f6e5f30daaf9ce6b75a39a02e377fbfa4ea45bac",
+              "total_KiBps": 128
+            }
+          },
+          "workload": "No generated bulk traffic, agent input or scrolling. One authenticated SSH connection per run, three persistent residents. Nine warm-up pings excluded. Existing live traffic uncontrolled. Mac sender fixed at160/128 KiB/s."
+        },
+        "started_utc": "2026-11-16T13:22:43.17459Z",
+        "summary": {
+          "/tmp/fennec-q128-a160-terminal": {
+            "echo": {
+              "count": 504,
+              "max_ms": 946.415459,
+              "median_ms": 198.86475,
+              "min_ms": 159.783041,
+              "p95_ms": 420.851292
+            },
+            "gateway": {
+              "count": 504,
+              "max_ms": 274.800375,
+              "median_ms": 161.519792,
+              "min_ms": 157.067125,
+              "p95_ms": 201.712792
+            },
+            "ping": {
+              "count": 504,
+              "max_ms": 1253.401958,
+              "median_ms": 199.067917,
+              "min_ms": 159.931083,
+              "p95_ms": 453.563125
+            }
+          },
+          "/tmp/fennec-q128-b128-terminal": {
+            "echo": {
+              "count": 504,
+              "max_ms": 927.381542,
+              "median_ms": 198.80675,
+              "min_ms": 159.967208,
+              "p95_ms": 436.94075
+            },
+            "gateway": {
+              "count": 504,
+              "max_ms": 232.427875,
+              "median_ms": 161.591667,
+              "min_ms": 157.013625,
+              "p95_ms": 201.670791
+            },
+            "ping": {
+              "count": 504,
+              "max_ms": 952.564167,
+              "median_ms": 199.845625,
+              "min_ms": 159.664,
+              "p95_ms": 437.857208
+            }
+          },
+          "/tmp/fennec-q128-c128-terminal": {
+            "echo": {
+              "count": 504,
+              "max_ms": 916.345584,
+              "median_ms": 197.41625,
+              "min_ms": 159.647459,
+              "p95_ms": 420.18
+            },
+            "gateway": {
+              "count": 504,
+              "max_ms": 270.438792,
+              "median_ms": 161.459,
+              "min_ms": 157.245083,
+              "p95_ms": 202.878625
+            },
+            "ping": {
+              "count": 504,
+              "max_ms": 1103.405709,
+              "median_ms": 199.976834,
+              "min_ms": 160.01675,
+              "p95_ms": 385.813875
+            }
+          }
+        }
+      },
+      "sample_records": 1512,
+      "server_location_at_capture": "GCP runta-integration / us-west1; see provenance for historical inventory limits",
+      "sha256": "9011594e89b0f4b22669030b764b3cc8a0ff76d0b7f6174720ef189557f37a13"
+    },
     "2026-11-16-idle-shared-comparison.json": {
       "client_origin": "Singapore / Singtel (user reported)",
       "recorded_metadata": {
@@ -2488,5 +2680,5 @@
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-16T13:15:14.6020748Z"
+  "updated_utc": "2026-11-16T13:40:41.673798313Z"
 }
