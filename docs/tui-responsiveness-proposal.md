@@ -17,6 +17,15 @@ varied; this does not demonstrate a stable benefit. The experiment used staged
 processes; installation followed at approximately 12:20 UTC. Startup readiness
 passed, but the installed 500 ms warm-operation gate still failed.
 
+A subsequent [128 KiB/s experiment](benchmarks/2026-11-16-budget128-comparison.md)
+used 12 interleaved blocks on the same Singapore/Singtel-to-us-west1 path.
+Measured loaded ping P95 was 375 ms at 160/128, 702 ms at 128/128, and 685 ms
+at 128/96 KiB/s. Each variant has 40 loaded samples; temporal variation remains
+substantial. Neither 128 configuration demonstrated a benefit in that run.
+The experiment retained all slow blocks and did not change production defaults
+or replace the installed app. These results must not be compared as equivalent
+samples with the earlier 260/304 ms observation.
+
 Earlier WAN check (11:22 UTC, November 16): the TCP output feedback candidate
 had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the

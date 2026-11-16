@@ -318,6 +318,258 @@
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "99b1d0a35fc1cb916b0c9c04a423b1c3e991411519f07d589d14b2290f886b11"
     },
+    "2026-11-16-budget128-comparison.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "Twelve sequential independent authenticated SSH connections in balanced fixed order. Matching client/cloud budgets in each block, 10 idle + 10 loaded + 10 recovery samples. Repeated SHA-256-verified resident cat payloads; all blocks and bytes complete. No agent input or application replacement. Background traffic uncontrolled; not a same-connection trial or a UI scrolling/typing test.",
+        "finished_utc": "2026-11-16T12:35:07.024493Z",
+        "provenance": {
+          "client": {
+            "evidence": "User report in this session",
+            "host": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "not captured"
+          },
+          "clock": "Mac UTC timestamps and monotonic elapsed RTT; no cross-host clock subtraction",
+          "mac_probe_sha256": {
+            "a160": "20636317ce2f24388bceacca473df0208aeb4112b3562f29726a01a2cb5fdc8b",
+            "b128": "bba0b0501950d72c68af04aa413305ccf83e3fac66544ca5950d98678d727bf8",
+            "c128": "fb6864dc985e2e03f0f33bc81c1fbad8698ef41d46322e1896da942bb14c86db"
+          },
+          "samples_per_variant_per_phase": 40,
+          "scope": "Singapore-to-US protocol RTT and completed application payload throughput; not US-local or rendered-input latency",
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "GCP inventory checked around 2026-11-16T12:04Z; exact runtime placement not re-resolved for each block",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "settings": "All variants retain 2 KiB bursts, interactive priority, 16 KiB socket credit and dynamic terminal window 8-64 KiB. Dynamic window derives from each variant's total rate. TCP output guard remains default-off. Broker directories isolate test budgets from production tokens; host network still shared.",
+          "source": "e53f4ba5c0228ba643e5e5269953c9e9dd7dc80b exported from Git for all variants; only scheduler defaults and cloud diagnostic broker directory differ",
+          "toolchains": "Linux Go1.26.11; Mac Go1.27.1",
+          "variants": {
+            "a160": {
+              "broker_directory": "traffic-q128-a",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "79a5c04f9e6b0136d47ba9c42a8963754d28262c4d472ff590954430979c18ce",
+              "total_KiBps": 160
+            },
+            "b128": {
+              "broker_directory": "traffic-q128-b",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "bee19cfa2cf212bc5dde3b57b846510b28246aa81159725be0c339fe995a6401",
+              "total_KiBps": 128
+            },
+            "c128": {
+              "broker_directory": "traffic-q128-c",
+              "bulk_KiBps": 96,
+              "terminal_sha256": "757a12e2fa3af678bbe93251f6e5f30daaf9ce6b75a39a02e377fbfa4ea45bac",
+              "total_KiBps": 128
+            }
+          },
+          "workload": "profile-ssh-latency -load-mode command -samples 10; repeated verified payloads through cat"
+        },
+        "started_utc": "2026-11-16T12:29:48.410011Z",
+        "summary": {
+          "a160": {
+            "bulk": {
+              "echo": {
+                "count": 40,
+                "max_ms": 999.120417,
+                "median_ms": 205.593291,
+                "p95_ms": 604.495875
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 233.966833,
+                "median_ms": 164.550125,
+                "p95_ms": 232.370334
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 437.549209,
+                "median_ms": 185.211958,
+                "p95_ms": 375.402917
+              }
+            },
+            "idle": {
+              "echo": {
+                "count": 40,
+                "max_ms": 343.276958,
+                "median_ms": 169.362792,
+                "p95_ms": 338.407125
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 231.086375,
+                "median_ms": 164.435708,
+                "p95_ms": 191.035083
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 505.542542,
+                "median_ms": 169.4525,
+                "p95_ms": 396.344584
+              }
+            },
+            "payload_KiB_per_second_each_direction": 37.956423024382296,
+            "recovery": {
+              "echo": {
+                "count": 40,
+                "max_ms": 445.996667,
+                "median_ms": 169.058584,
+                "p95_ms": 353.781583
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 236.183834,
+                "median_ms": 163.8885,
+                "p95_ms": 227.788042
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 861.289458,
+                "median_ms": 168.816125,
+                "p95_ms": 347.336291
+              }
+            }
+          },
+          "b128": {
+            "bulk": {
+              "echo": {
+                "count": 40,
+                "max_ms": 794.108625,
+                "median_ms": 201.639,
+                "p95_ms": 528.161583
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 230.208,
+                "median_ms": 162.570958,
+                "p95_ms": 219.322958
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 802.398834,
+                "median_ms": 200.89675,
+                "p95_ms": 701.583583
+              }
+            },
+            "idle": {
+              "echo": {
+                "count": 40,
+                "max_ms": 387.048208,
+                "median_ms": 165.239542,
+                "p95_ms": 356.1995
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 220.495042,
+                "median_ms": 161.975625,
+                "p95_ms": 192.661583
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 515.172333,
+                "median_ms": 167.30975,
+                "p95_ms": 367.855167
+              }
+            },
+            "payload_KiB_per_second_each_direction": 33.67493723480819,
+            "recovery": {
+              "echo": {
+                "count": 40,
+                "max_ms": 383.658375,
+                "median_ms": 165.28925,
+                "p95_ms": 313.128625
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 189.181208,
+                "median_ms": 161.865959,
+                "p95_ms": 165.231208
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 444.295208,
+                "median_ms": 166.521917,
+                "p95_ms": 352.732583
+              }
+            }
+          },
+          "c128": {
+            "bulk": {
+              "echo": {
+                "count": 40,
+                "max_ms": 744.989292,
+                "median_ms": 228.2255,
+                "p95_ms": 659.635292
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 227.044,
+                "median_ms": 161.946,
+                "p95_ms": 204.875291
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 771.992667,
+                "median_ms": 245.379084,
+                "p95_ms": 685.429459
+              }
+            },
+            "idle": {
+              "echo": {
+                "count": 40,
+                "max_ms": 388.107417,
+                "median_ms": 167.666875,
+                "p95_ms": 351.943333
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 229.855125,
+                "median_ms": 161.546,
+                "p95_ms": 166.258625
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 534.345958,
+                "median_ms": 167.894583,
+                "p95_ms": 393.696791
+              }
+            },
+            "payload_KiB_per_second_each_direction": 29.925531654708962,
+            "recovery": {
+              "echo": {
+                "count": 40,
+                "max_ms": 452.707083,
+                "median_ms": 168.2125,
+                "p95_ms": 364.039125
+              },
+              "gateway": {
+                "count": 40,
+                "max_ms": 204.694042,
+                "median_ms": 160.973416,
+                "p95_ms": 169.893042
+              },
+              "ping": {
+                "count": 40,
+                "max_ms": 402.960875,
+                "median_ms": 169.223083,
+                "p95_ms": 348.163458
+              }
+            }
+          }
+        }
+      },
+      "sample_records": 360,
+      "server_location_at_capture": "GCP runta-integration / us-west1; see provenance for verification boundaries",
+      "sha256": "2df5c0cdef868b076fe08a000d52aafeb4b8a09b418ec69e47c2ca06688e447f"
+    },
     "2026-11-16-budget160-comparison.json": {
       "client_origin": "Singapore / Singtel (user reported)",
       "recorded_metadata": {
@@ -1912,5 +2164,6 @@
   },
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
-  "schema_version": 1
+  "schema_version": 1,
+  "updated_utc": "2026-11-16T12:36:17.499652638Z"
 }
