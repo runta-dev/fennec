@@ -519,13 +519,15 @@ func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
 						}
 					}
 				}
+				// Record the input before writing it: a fast agent can echo
+				// before write returns, and that output must count.
+				session.echo.input(frame.Seq)
 				if err := session.write(frame.Data); err != nil {
 					return
 				}
 				if session.cadence != nil {
 					session.cadence.wrote(time.Now())
 				}
-				session.echo.input(frame.Seq)
 			}
 			session.mu.Lock()
 			session.inputBudget += length

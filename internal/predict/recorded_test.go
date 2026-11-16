@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -175,7 +176,7 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 				equal = dumpScreen(shown) == dumpScreen(o.screen)
 			}
 			if !equal {
-				t.Errorf("key %q at %.3f: shown\n%s\nagent drew\n%s", k.raw, k.at, dumpScreen(shown), dumpScreen(o.screen))
+				t.Errorf("key %q at %.3f: shown screen differs from the agent's frame (lock rows %d..%d, cursor %d,%d vs %d,%d):\n%s", k.raw, k.at, o.lock.Top, o.lock.Bottom, shown.Row, shown.Col, o.screen.Row, o.screen.Col, rowDiff(shown, o.screen))
 			}
 			matched = true
 			break
@@ -256,4 +257,32 @@ func TestGrokRecordedSession(t *testing.T) {
 	if res.stats.Diverged != 0 || res.predicted < res.keys/2 {
 		t.Fatalf("predicted %d of %d, %d rollbacks", res.predicted, res.keys, res.stats.Diverged)
 	}
+}
+
+// TestOpencodeRecordedSessions replays real OpenCode 2.3.0 sessions: the home
+// screen (a centered block that grows alternately up and down) and a session
+// view (bottom-anchored composer), each with typing that wraps twice,
+// Shift+Enter, Backspace, Left with insertion, an inline paste and a 6-line
+// paste that becomes a chip.
+func TestOpencodeRecordedSessions(t *testing.T) {
+	for _, name := range []string{"opencode-100x30", "opencode-session-100x30"} {
+		t.Run(name, func(t *testing.T) {
+			res := replayRecorded(t, name, 30, 100, func() Profile { return newOpencodeProfile() }, false)
+			if res.stats.Diverged != 0 || res.predicted < res.keys/2 {
+				t.Fatalf("predicted %d of %d, %d rollbacks", res.predicted, res.keys, res.stats.Diverged)
+			}
+		})
+	}
+}
+
+// rowDiff lists the rows whose text differs between two screens.
+func rowDiff(a, b *Screen) string {
+	var out strings.Builder
+	for r := 0; r < a.Rows; r++ {
+		x, y := strings.TrimRight(a.RowText(r, 0, a.Cols), " "), strings.TrimRight(b.RowText(r, 0, b.Cols), " ")
+		if x != y {
+			fmt.Fprintf(&out, "  row %2d shown |%s|\n  row %2d agent |%s|\n", r, x, r, y)
+		}
+	}
+	return out.String()
 }
