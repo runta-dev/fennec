@@ -57,10 +57,24 @@ Cancellation never returns a caller's buffer while a running write still
 references it. Oversized atomic writes are refused rather than waiting forever
 for a bucket that cannot hold them.
 
-Current status: the foundation has focused race tests for rate envelopes,
-priority under saturation, FIFO/fairness, cancellation and lossless chunking.
-Production adapters, shared cross-process ownership, deployment and WAN
-acceptance remain outstanding. No achieved latency improvement is claimed yet.
+The resident protocol now negotiates `traffic_packets_v1`. Both directions
+then pace bounded packets through the scheduler. Ordinary small JSON frames
+keep their existing encoding; large frames are split into independently
+scheduled fragments and reconstructed before application dispatch. Incomplete
+large messages do not block a pong from another stream. Receipt and first
+paint still share one write when they fit, and same-stream messages retain
+their order. Reassembly rejects out-of-order/oversized fragments and reserves
+an aggregate 8 MiB budget. Terminal output chunks are 1 KiB; application
+output retains priority over bulk socket data. Older peers remain on the
+legacy wire format and do not gain the new rate/fragmentation guarantees.
+
+Current status: the foundation and resident integration have passed Linux
+race tests, terminal-service and CLI tests, vet and source-language checks.
+Regression coverage includes a fresh ping completing while a 96 KiB operation
+reply is still transferring, lossless reconstruction and image paste across
+many fragments. Cross-process budget ownership, other SSH adapters, deployment
+and WAN acceptance remain outstanding. No achieved WAN latency improvement is
+claimed yet.
 
 ### Acceptance
 

@@ -74,6 +74,7 @@ func (w *wireWindow) close() {
 }
 
 func (session *serverSession) emitOutput(frame Frame, original int, emit func(Frame) error) error {
+	frame.interactive = session.images
 	if session.wire != nil {
 		encoded, err := json.Marshal(frame)
 		if err != nil {

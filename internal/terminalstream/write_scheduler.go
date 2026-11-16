@@ -2,6 +2,7 @@ package terminalstream
 
 import (
 	"context"
+	"fennec/internal/traffic"
 	"sync"
 )
 
@@ -18,6 +19,7 @@ type writeScheduler struct {
 	urgentRun int
 	slots     chan struct{}
 	ctx       context.Context
+	packets   *packetSender
 }
 
 type scheduledWrite struct {
@@ -28,7 +30,14 @@ type scheduledWrite struct {
 }
 
 func newWriteScheduler(ctx context.Context) *writeScheduler {
-	return &writeScheduler{ctx: ctx, slots: make(chan struct{}, 64)}
+	schedule, err := traffic.New(ctx, traffic.DefaultConfig())
+	if err != nil {
+		panic(err) // Static application configuration must be valid.
+	}
+	return &writeScheduler{ctx: ctx, slots: make(chan struct{}, 64), packets: &packetSender{
+		tails: make(map[string]chan struct{}), slots: make(chan struct{}, 64), schedule: schedule,
+		bulkSlots: make(chan struct{}, 56), budgetChanged: make(chan struct{}),
+	}}
 }
 
 func urgentFrames(frames []Frame) bool {
@@ -36,7 +45,7 @@ func urgentFrames(frames []Frame) bool {
 		return false
 	}
 	switch frames[0].Type {
-	case "ping", "pong", "input", "input_credit", "credit", "resize", "focus":
+	case "ping", "pong", "input", "input_credit", "credit", "resize", "focus", "echo_ack", "receipt", "exit", "error", "result", "traffic_config":
 		return true
 	}
 	return false

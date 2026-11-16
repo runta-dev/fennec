@@ -100,20 +100,11 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 	}
 	writes := newWriteScheduler(ctx)
 	emitFrames := func(frames ...Frame) error {
-		return writes.write(frames[0].ID, urgentFrames(frames), func() error {
-			var batch bytes.Buffer
-			encoder := json.NewEncoder(&batch)
-			for _, frame := range frames {
-				if err := encoder.Encode(frame); err != nil {
-					return err
-				}
-			}
-			_, err := output.Write(batch.Bytes())
-			if err != nil {
-				cancel()
-			}
-			return err
-		})
+		err := writes.sendFrames(output, frames...)
+		if err != nil {
+			cancel()
+		}
+		return err
 	}
 	emit := func(frame Frame) error { return emitFrames(frame) }
 	hooks := newHookRelay(ctx, emit)
@@ -130,7 +121,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste, "probe_id"}
+	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste, "probe_id", CapabilityTrafficPackets}
 	if operate != nil {
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "magpie_credentials_sync", "preparation_health")
 	}
@@ -142,10 +133,15 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 	}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 4096), 262144)
+	packets := packetDecoder{maximum: 262143}
 	for scanner.Scan() {
-		var frame Frame
-		if json.Unmarshal(scanner.Bytes(), &frame) != nil {
-			return fmt.Errorf("invalid terminal frame")
+		frame, complete, err := packets.decode(scanner.Bytes())
+		if err != nil {
+			return err
+		}
+		if !complete {
+			touch()
+			continue
 		}
 		if err := expandConfiguration(&frame); err != nil {
 			return err
@@ -154,6 +150,14 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 			return ctx.Err()
 		}
 		touch()
+		if frame.Type == "traffic_config" {
+			for _, feature := range frame.Features {
+				if feature == CapabilityTrafficPackets {
+					writes.packets.enabled.Store(true)
+				}
+			}
+			continue
+		}
 		if frame.Type == "ping" {
 			if err := emit(Frame{Type: "pong", ID: frame.ID}); err != nil {
 				return err

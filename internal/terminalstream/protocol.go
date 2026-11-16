@@ -8,6 +8,7 @@ import (
 )
 
 type Frame struct {
+	interactive       bool                         // Local scheduling hint; never accepted from a remote JSON frame.
 	HookBridge        bool                         `json:"hook_bridge,omitempty"`
 	HookID            string                       `json:"hook_id,omitempty"`
 	HookRef           string                       `json:"hook_ref,omitempty"`
@@ -60,8 +61,8 @@ const Chunk = 16384
 
 // OutputChunk bounds a bulk writer's turn without changing the wire maximum
 // accepted from older peers. At constrained link speeds a 16 KiB frame delays
-// every following control reply; 2 KiB keeps each turn short.
-const OutputChunk = 2048
+// every following control reply; 1 KiB fits an ordinary paced wire packet.
+const OutputChunk = 1024
 const ProtocolVersion = 10
 
 // Socket targets are a fixed allowlist: the owner's Codex app-server and the

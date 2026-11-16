@@ -3,7 +3,6 @@ package terminalstream
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fennec/internal/launchprofile"
 	"fmt"
 	"io"
@@ -159,12 +158,16 @@ func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() erro
 		defer close(transport.done)
 		scanner := bufio.NewScanner(observedReader{output, &transport.lastRead})
 		scanner.Buffer(make([]byte, 4096), (4<<20)+65536)
+		packets := packetDecoder{}
 		initialized := false
 		for scanner.Scan() {
-			var frame Frame
-			if json.Unmarshal(scanner.Bytes(), &frame) != nil {
-				transport.fail(fmt.Errorf("invalid remote terminal frame"))
+			frame, complete, err := packets.decode(scanner.Bytes())
+			if err != nil {
+				transport.fail(err)
 				break
+			}
+			if !complete {
+				continue
 			}
 			if err := expandTerminalData(&frame); err != nil {
 				transport.fail(err)
@@ -182,6 +185,13 @@ func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() erro
 					transport.capabilities[capability] = true
 				}
 				transport.mu.Unlock()
+				if transport.capabilities[CapabilityTrafficPackets] {
+					transport.writes.packets.enabled.Store(true)
+					if err := transport.Send(Frame{Type: "traffic_config", Features: []string{CapabilityTrafficPackets}}); err != nil {
+						transport.fail(err)
+						break
+					}
+				}
 				transport.initialized.Store(true)
 				close(transport.ready)
 				continue
@@ -443,11 +453,8 @@ func (transport *Transport) Send(frame Frame) error {
 		ctx, cancel := context.WithCancel(context.Background())
 		transport.writes, transport.stopWrites = newWriteScheduler(ctx), cancel
 	}
-	writes := transport.writes
 	transport.mu.Unlock()
-	return writes.write(frame.ID, urgentFrames([]Frame{frame}), func() error {
-		return transport.writeFrame(frame)
-	})
+	return transport.writeFrame(frame)
 }
 
 func (transport *Transport) writeFrame(frame Frame) error {
@@ -466,14 +473,14 @@ func (transport *Transport) writeFrame(frame Frame) error {
 	}
 	deferred := transport.deferredClose
 	transport.deferredClose = nil
+	writes := transport.writes
 	transport.mu.Unlock()
-	encoder := json.NewEncoder(transport.input)
 	for id := range deferred {
-		if err := encoder.Encode(Frame{Type: "close", ID: id}); err != nil {
+		if err := writes.sendFrames(transport.input, Frame{Type: "close", ID: id}); err != nil {
 			return err
 		}
 	}
-	return encoder.Encode(frame)
+	return writes.sendFrames(transport.input, frame)
 }
 
 func (transport *Transport) Launch(frame Frame) (*Session, error) {
