@@ -1,0 +1,1 @@
+{"added_echo_p95_ms":-2.6199999999999997,"boundary":"cloud-local protocol + PTY (not agent rendering or WAN)","bulk_bytes":117932032,"cpu_workers":2,"duration_seconds":1800.089766697,"flood_sessions":2,"heartbeat_p95_ms":0.435,"idle_echo_p95_ms":6.143,"loaded_echo_p95_ms":3.523,"passed":true,"samples":17618,"unexpected_disconnects":0}

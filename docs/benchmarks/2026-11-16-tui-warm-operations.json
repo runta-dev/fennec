@@ -1,0 +1,37 @@
+{
+  "gate_ms": 500,
+  "installed_source": "a1822d4",
+  "installed_build_id": "4ee6d284357f3f336867910db44f7e50eca89e47cc76d92485ca923017ef4b6b",
+  "loaded": {
+    "scenario": "Concurrent independent cloud probe: two CPU burners and two output streams",
+    "passed": false,
+    "send_ms": [964.805708, 912.594333, 956.596584],
+    "send_existing_ms": [770.422541, 867.299334, 812.735792],
+    "usable_tui_launch_ms": 551.287625,
+    "attach_usable_ms": [305.262, 328.499, 317.609],
+    "resume_usable_ms": [287.710, 288.112, 284.526],
+    "model_set_ms": [285.053, 303.803],
+    "notes": [
+      "The unchanged TestSessionOperations500ms gate failed six send cases and usable TUI launch.",
+      "The 2.50 s subtest duration includes setup and is not the measured 551.29 ms usable-launch interval.",
+      "sessions.send uses a Herdr command-submission RPC and is not a per-keystroke measurement."
+    ]
+  },
+  "without_probe_load": {
+    "scenario": "After all owned CPU/output probe processes exited; user workloads retained",
+    "passed": false,
+    "send_ms": [955.503125, 986.002083, 970.235417],
+    "send_existing_ms": [879.78225, 809.526875, 772.13475],
+    "send_mature_ms": [415.619, 453.775, 669.777041],
+    "over_budget_read_ms": 530.98,
+    "usable_tui_launch_ms": [430.327, 436.904, 388.760],
+    "attach_usable_ms": [251.009, 291.824, 268.876],
+    "resume_usable_ms": [279.519, 318.750, 273.967],
+    "model_set_ms": [308.484, 211.621],
+    "notes": [
+      "The installed daemon identity remained unchanged through both operation suites.",
+      "Seven send operations and one read exceeded the gate; usable TUI launch passed.",
+      "These failures are not resolved by the CPU and protocol scheduling changes."
+    ]
+  }
+}

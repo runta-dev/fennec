@@ -1,6 +1,7 @@
 # Proposal: responsive terminals under CPU and output load
 
-Status: implemented; sustained-load and installed acceptance in progress.
+Status: implemented and deployed; sustained-load gate passed; the separate
+500 ms warm-operation gate remains unmet.
 Owner: Fennec runtime and terminal transport.
 
 ## Problem and evidence
@@ -126,9 +127,17 @@ uses the prior application bundle. Existing agent sessions must survive.
 
 | Boundary | Idle echo P95 | Loaded echo P95 | Added P95 | Result |
 | --- | ---: | ---: | ---: | --- |
-| Cloud-local, initial 10 s smoke before encoded-window change | 2.063 ms | 4.505 ms | 2.442 ms | Pass; not sustained acceptance |
 | Mac-to-cloud, final transport, 60 s / 120 inputs | 223.913 ms | 266.377 ms | 42.464 ms | Pass; zero disconnects |
-| Cloud-local, independent 30 min run | Pending | Pending | Pending | Running |
+| Cloud-local, independent 30 min / 17,618 inputs | 6.143 ms | 3.523 ms | -2.620 ms | Pass; zero disconnects |
+
+The complete cloud run lasted 1,800.09 s and consumed 117,932,032 output bytes.
+Every echo was checked for exact content/order. Heartbeat P95 was 0.435 ms.
+Forty host-CPU samples at 30 s intervals over the final 20 minutes all reported
+0% idle. The server checked its control cgroup and every thread's nice -5 every
+five seconds; load children checked workload/nice 0 at startup. All owned load
+processes exited and the independent systemd job reported success. The negative
+P95 increment reflects baseline/environment variation, not evidence that adding
+CPU load speeds up terminals. User workloads remained running throughout.
 
 The WAN short run used two CPU workers and two pseudo-random printable output
 streams, each producing 32 KiB/s before backpressure. It consumed 1,249,280
@@ -136,6 +145,8 @@ output bytes and measured heartbeat P95 257.619 ms. Before encoded output
 limits, a Go-SSH diagnostic exceeded its 3 s echo deadline; a separate plain
 OpenSSH diagnostic also exceeded the 50 ms increment gate. Neither is treated
 as an equivalent before/after baseline, and no diagnostic timeout is hidden.
+A 30-minute WAN run was not completed; the real-network result is explicitly
+short-duration evidence and does not establish long-term WAN reliability.
 
 Mac recorded Claude/Codex typing tests, including streaming and long transcripts,
 passed the 50 ms local-paint gate. Observed local paint P95 ranged from 0.383 to
@@ -145,15 +156,29 @@ busy live agent. Recorded cloud confirmation latency remains separately logged.
 Focused package tests, terminal transport race tests, Go vet, source-language
 and UI checks passed. New regressions cover encoded backlog, compressed paints,
 partial credits, slow-peer isolation, cancellation and echo acknowledgement
-ordering. Installed 500 ms warm-operation results remain pending.
+ordering. The unchanged installed 500 ms warm-operation gate failed under
+the independent synthetic load: six `sessions.send` samples took 770–965 ms,
+and usable TUI launch took 551.29 ms. Attach/resume (285–329 ms), model changes
+(285–304 ms), reads and stops passed. Most slow-send time was inside Herdr's
+send operation, not the transport writer. With all probe load removed, seven
+send samples still exceeded the gate (670–986 ms), as did one read (530.98 ms).
+Usable TUI launch then passed all three samples (389–437 ms). The daemon identity
+remained unchanged through each suite. This separate RPC/startup acceptance
+remains incomplete; the gate is not waived and the implementation does not
+claim to resolve these failures. See
+[warm-operation results](benchmarks/2026-11-16-tui-warm-operations.json).
 
 The development bundle uses the existing `Fennec Local Development` signer.
 The credential-helper SHA-256 remains
 `f69a5f6c9bd8a928771bf151f564ff4c25c065df8ee390bad8291a0dbad539fe`.
 The installed broker successfully launched cloud `codex-cli 0.169.0`; its owned
 test session exited normally. Three sessions live immediately before the
-development install remained live afterwards. Final merged-build verification
-is in progress.
+development install remained live afterwards. The merged development build
+`0.3.11161052-dev` (application source `a1822d4`) is installed. Its cloud terminal
+SHA-256 `311ef698c729451d274c7ec441bb8c829db28da5e10bb5481229f4a2116dcd62`
+matches the running cloud installation. Connector and broker are ready;
+Claude/Codex routes are configured. Cursor's existing missing-credential status
+is unchanged.
 
 The Mac relay investigation independently confirmed successful direct Mac SSH
 while an older multiplexed route failed. Retiring the old ControlMaster restored

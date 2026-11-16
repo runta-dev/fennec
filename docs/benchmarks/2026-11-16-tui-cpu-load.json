@@ -1,0 +1,1 @@
+{"boundary":"cloud host CPU samples over the final 20 minutes of the independent 30-minute load run","interval_seconds":30,"maximum_idle_percent":0,"probe_server_placement":"checked every 5 seconds: control group, all threads nice -5","samples":40,"workload_placement":"each child checked at startup: workload group, all threads nice 0"}
