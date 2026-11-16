@@ -869,6 +869,46 @@ per event 16 ms apart, each frame is a separate full redraw and little is
 saved (124 to 121 KB). This is one transcript, heavy with links; Claude Code
 was not measured.
 
+### State sequences
+
+Agents draw more than cells. Replaying every recorded session (55
+recordings of typing, editing, menus and pastes) showed what kept frames on
+the alternate screen from merging: Codex's cursor style (`CSI Ps SP q`) and
+spinner window title (OSC 0); OpenCode's cursor colour and pointer shape
+(OSC 12, 22) and cursor style; Grok's SGR 59 and a kitty graphics deletion
+(`ESC _ G a=d,d=I,i=1,q=2`) in almost every frame; Pi's kitty delete-all.
+None of these change cells; they assign terminal state.
+
+The conflator now keeps, for each merged run, the last token of each state
+key and sends them after the difference, in the order of their last
+occurrence (`stateKey`). If every kept token is an assignment whose effect
+does not depend on earlier state, the client ends with the same state: for
+every piece of state the last assignment in the run is still the last one
+sent, even when keys share state (OSC 0 sets the title and the icon name,
+OSC 2 the title). Supported: cursor style, OSC 0/1/2, OSC 10/11/12/22 with
+one value (not a query) and their resets 110/111/112, and kitty deletions
+that ask for no reply (repeating one changes nothing; placements, which
+would make the order matter, are not merged). SGR 58/59 (underline colour)
+is now part of the screen's pen. Modes stay raw: some terminals switch mouse
+modes off only when the reset mode is the active one, so their effect
+depends on earlier state; so do the kitty keyboard stack (`CSI > u`,
+`CSI < u`), queries, clipboard and Herdr's OSC 7501. The recorded-session
+test checks both the screen and the folded state assignments after every
+take.
+
+Share of alternate-screen output that merges, all recordings:
+
+| Agent | Before | After |
+| --- | ---: | ---: |
+| Claude Code | 98.7% | 98.7% |
+| Codex | 89.2% | 99.8% |
+| Grok | 9.8% | 99.5% |
+| OpenCode | 84.3% | 99.7% |
+| Pi | 90.1% | 99.7% |
+
+What remains is mode toggles and OSC 7501, each under 1%. Kimi draws on the
+main screen with scrollback and is not merged.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.

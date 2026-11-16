@@ -121,6 +121,7 @@ const (
 
 type Attr struct {
 	FG, BG Color
+	UL     Color // underline colour (SGR 58), default when unset
 	Flags  uint16
 }
 
@@ -892,11 +893,16 @@ func (s *Screen) sgr() {
 				color, used, ok = extendedColorParts(parts[i+1:])
 				i += used
 			}
-			if ok && n == 38 {
+			switch {
+			case ok && n == 38:
 				s.Pen.FG = color
-			} else if ok && n == 48 {
+			case ok && n == 48:
 				s.Pen.BG = color
+			case ok && n == 58:
+				s.Pen.UL = color
 			}
+		case n == 59:
+			s.Pen.UL = Color{}
 		}
 	}
 }

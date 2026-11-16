@@ -18,7 +18,7 @@ func randomFrame(rng *rand.Rand, rows, cols int) string {
 		case 0, 1, 2:
 			b.WriteString("\x1b[" + itoa(1+rng.Intn(rows)) + ";" + itoa(1+rng.Intn(cols)) + "H")
 		case 3:
-			b.WriteString([]string{"\x1b[0m", "\x1b[1;31m", "\x1b[38;5;214m", "\x1b[48;2;10;20;30m", "\x1b[7m", "\x1b[22;39m"}[rng.Intn(6)])
+			b.WriteString([]string{"\x1b[0m", "\x1b[1;31m", "\x1b[38;5;214m", "\x1b[48;2;10;20;30m", "\x1b[7m", "\x1b[22;39m", "\x1b[4;58;5;196m", "\x1b[58:2::1:2:3m", "\x1b[59m"}[rng.Intn(9)])
 		case 4, 5:
 			b.WriteString(words[rng.Intn(len(words))])
 		case 6:

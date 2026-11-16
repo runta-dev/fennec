@@ -2,6 +2,7 @@ package terminalstream
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,10 +45,12 @@ type conflator struct {
 	sent  *predict.Screen // what the client shows: after everything taken
 	seg   []byte          // the current, incomplete segment
 	safe  bool            // the current segment only changes cells
-	queue []pending
-	held  int  // raw bytes in queue
-	full  bool // after a resize the client may differ from sent: repaint all
-	done  bool
+	// segStates: state assignments in the current segment (see stateKey).
+	segStates []stateToken
+	queue     []pending
+	held      int  // raw bytes in queue
+	full      bool // after a resize the client may differ from sent: repaint all
+	done      bool
 
 	// Statistics: frames merged, bytes they had, bytes sent for them.
 	merged, mergedBytes, diffBytes int
@@ -58,6 +61,21 @@ type pending struct {
 	raw      []byte
 	segments int             // > 0: merged segments ending in screen (or bound while last)
 	screen   *predict.Screen // frozen end state when followed by raw bytes
+	// states: the merged segments' state assignments, the last of each key,
+	// in the order of their last occurrence (sent after the difference).
+	states []stateToken
+}
+
+// stateToken is a state assignment and its key (see stateKey).
+type stateToken struct {
+	key   string
+	token []byte
+}
+
+// addState appends s to states, replacing an earlier token of the same key.
+func addState(states []stateToken, s stateToken) []stateToken {
+	states = slices.DeleteFunc(states, func(t stateToken) bool { return t.key == s.key })
+	return append(states, s)
 }
 
 func newConflator(rows, cols int) *conflator {
@@ -77,7 +95,13 @@ func (c *conflator) Write(data []byte) {
 	c.scan.feed(data, func(token []byte, safe bool) {
 		c.now.Write(token)
 		c.seg = append(c.seg, token...)
-		c.safe = c.safe && safe
+		if !safe {
+			if key := stateKey(token); key != "" {
+				c.segStates = addState(c.segStates, stateToken{key, append([]byte(nil), token...)})
+			} else {
+				c.safe = false
+			}
+		}
 		if c.now.Ground() && !c.now.Sync {
 			c.closeSegment()
 		}
@@ -95,11 +119,15 @@ func (c *conflator) closeSegment() {
 	last := len(c.queue) - 1
 	open := last >= 0 && c.queue[last].segments > 0 && c.queue[last].screen == nil
 	if safe {
-		if open {
-			c.queue[last].raw = append(c.queue[last].raw, c.seg...)
-			c.queue[last].segments++
-		} else {
-			c.queue = append(c.queue, pending{raw: c.seg, segments: 1})
+		if !open {
+			c.queue = append(c.queue, pending{})
+			last++
+		}
+		p := &c.queue[last]
+		p.raw = append(p.raw, c.seg...)
+		p.segments++
+		for _, s := range c.segStates {
+			p.states = addState(p.states, s)
 		}
 	} else {
 		if open {
@@ -110,7 +138,7 @@ func (c *conflator) closeSegment() {
 	}
 	c.bound.Write(c.seg)
 	c.held += len(c.seg)
-	c.seg, c.safe = nil, true
+	c.seg, c.safe, c.segStates = nil, true, nil
 }
 
 // Wait waits for output to take and reports false when the stream is finished
@@ -147,6 +175,9 @@ func (c *conflator) Take() []byte {
 				target = c.bound.Clone() // the open entry is the last one
 			}
 			diff, ok := predict.DiffScreen(c.sent, target, c.full)
+			for _, s := range p.states {
+				diff = append(diff, s.token...)
+			}
 			if ok && (len(diff) < len(p.raw) || c.full) {
 				out = append(out, diff...)
 				c.sent = target.Clone()
@@ -189,7 +220,7 @@ func (c *conflator) Close() {
 		// An unfinished segment goes as it is.
 		c.queue = append(c.queue, pending{raw: c.seg})
 		c.held += len(c.seg)
-		c.seg = nil
+		c.seg, c.segStates = nil, nil
 	}
 	c.done = true
 	c.changed.Broadcast()
@@ -299,7 +330,7 @@ func safeCSI(params []byte, final byte) bool {
 }
 
 // safeSGR: only parameters whose effect predict.Screen's pen keeps exactly
-// (no underline styles or colours, double underline or rapid blink).
+// (no underline styles, double underline or rapid blink).
 func safeSGR(p string) bool {
 	if p == "" {
 		return true
@@ -319,13 +350,14 @@ func safeSGR(p string) bool {
 			if sub[1] != "0" && sub[1] != "1" {
 				return false
 			}
-		case len(sub) > 1 && n != 38 && n != 48:
+		case len(sub) > 1 && n != 38 && n != 48 && n != 58:
 			return false
 		case n == 0 || n == 1 || n == 2 || n == 3 || n == 4 || n == 5 || n == 7 || n == 8 || n == 9:
 		case n >= 22 && n <= 25 || n >= 27 && n <= 29:
 		case n >= 30 && n <= 37 || n == 39 || n >= 40 && n <= 47 || n == 49:
 		case n >= 90 && n <= 97 || n >= 100 && n <= 107:
-		case n == 38 || n == 48:
+		case n == 59:
+		case n == 38 || n == 48 || n == 58:
 			if len(sub) > 1 {
 				continue // colon form, parsed by the screen as one parameter
 			}
@@ -356,4 +388,80 @@ func safeOSC(kind byte, payload []byte) bool {
 		}
 	}
 	return true
+}
+
+// stateKey returns a key when token assigns terminal state that does not
+// change cells and does not depend on earlier state, "" otherwise. Within a
+// merged run only the last token of each key matters, so the run is sent as
+// its difference followed by those tokens in the order of their last
+// occurrence: for every piece of state, the last assignment in the run is
+// still the last one sent. Tokens of one key always assign the same state
+// (a title and an icon name for OSC 0, the title for OSC 2), so this holds
+// when keys share state too. Supported:
+//
+//   - cursor style (DECSCUSR, CSI Ps SP q);
+//   - window title and icon name (OSC 0, 1, 2);
+//   - default foreground, background, cursor colour and pointer shape
+//     (OSC 10, 11, 12, 22 with one value, not a query; OSC 110, 111, 112);
+//   - kitty graphics deletions that ask for no reply (a=d, q=2): repeating
+//     one changes nothing, and placements, which would make the order
+//     matter, are not merged.
+//
+// Modes are not: some terminals switch mouse modes off only when the mode
+// being reset is the active one, so their effect depends on earlier state.
+func stateKey(token []byte) string {
+	if len(token) < 3 || token[0] != 0x1b {
+		return ""
+	}
+	switch token[1] {
+	case '[':
+		p := token[2 : len(token)-1]
+		if token[len(token)-1] == 'q' && len(p) <= 2 && len(p) >= 1 && p[len(p)-1] == ' ' && (len(p) == 1 || p[0] >= '0' && p[0] <= '9') {
+			return "cursor-style"
+		}
+	case ']', '_':
+		var payload []byte
+		switch {
+		case token[len(token)-1] == 0x07:
+			payload = token[2 : len(token)-1]
+		case bytes.HasSuffix(token, []byte("\x1b\\")):
+			payload = token[2 : len(token)-2]
+		default:
+			return ""
+		}
+		if len(payload) > predict.MaxLinkBytes || slices.ContainsFunc(payload, func(b byte) bool { return b < 0x20 || b == 0x7f }) {
+			return ""
+		}
+		if token[1] == '_' {
+			return kittyDeleteKey(payload)
+		}
+		number, value, hasValue := strings.Cut(string(payload), ";")
+		switch number {
+		case "0", "1", "2":
+			if hasValue {
+				return "osc" + number
+			}
+		case "10", "11", "12", "22":
+			if hasValue && value != "" && value != "?" && !strings.Contains(value, ";") {
+				return "osc" + number
+			}
+		case "110", "111", "112":
+			if !hasValue || value == "" {
+				return "osc" + number
+			}
+		}
+	}
+	return ""
+}
+
+// kittyDeleteKey: a kitty graphics deletion (G with a=d, q=2 and no data).
+func kittyDeleteKey(payload []byte) string {
+	if len(payload) < 2 || payload[0] != 'G' || bytes.IndexByte(payload, ';') >= 0 {
+		return ""
+	}
+	fields := strings.Split(string(payload[1:]), ",")
+	if !slices.Contains(fields, "a=d") || !slices.Contains(fields, "q=2") {
+		return ""
+	}
+	return "kitty " + string(payload)
 }

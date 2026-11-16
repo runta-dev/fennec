@@ -73,6 +73,12 @@ func SGR(a Attr) string {
 	}
 	writeColor(&b, a.FG, 30, 90, 38)
 	writeColor(&b, a.BG, 40, 100, 48)
+	switch a.UL.Kind {
+	case ColorIndexed:
+		b.WriteString(";58;5;" + strconv.Itoa(int(a.UL.Value)))
+	case ColorRGB:
+		b.WriteString(";58;2;" + strconv.Itoa(int(a.UL.Value>>16&0xff)) + ";" + strconv.Itoa(int(a.UL.Value>>8&0xff)) + ";" + strconv.Itoa(int(a.UL.Value&0xff)))
+	}
 	b.WriteByte('m')
 	return b.String()
 }

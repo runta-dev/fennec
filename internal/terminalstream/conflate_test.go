@@ -33,19 +33,26 @@ func TestConflatorRecordedSessions(t *testing.T) {
 			c.limit = 1 << 30
 			reference := predict.NewScreen(rows, cols)
 			client := predict.NewScreen(rows, cols)
+			var readStream, sentStream []byte
 			for _, chunk := range tr.Output {
 				data := chunk.Data
 				for len(data) > 0 {
 					n := min(len(data), 1+rng.Intn(4096))
 					c.Write(data[:n])
 					reference.Write(data[:n])
+					readStream = append(readStream, data[:n]...)
 					total += n
 					data = data[n:]
 					if rng.Intn(6) == 0 && len(c.queue) > 0 {
-						client.Write(c.Take())
+						out := c.Take()
+						client.Write(out)
+						sentStream = append(sentStream, out...)
 						if len(c.seg) == 0 && len(c.scan.buf) == 0 {
 							if same, why := predict.SameScreen(client, reference); !same {
 								t.Fatalf("%s seed %d: after a take: %s", filepath.Base(dir), seed, why)
+							}
+							if !sameStates(readStream, sentStream) {
+								t.Fatalf("%s seed %d: after a take: state assignments differ", filepath.Base(dir), seed)
 							}
 						}
 					}
@@ -54,9 +61,13 @@ func TestConflatorRecordedSessions(t *testing.T) {
 			c.Close()
 			for out := c.Take(); out != nil; out = c.Take() {
 				client.Write(out)
+				sentStream = append(sentStream, out...)
 			}
 			if same, why := predict.SameScreen(client, reference); !same {
 				t.Fatalf("%s seed %d: at the end: %s", filepath.Base(dir), seed, why)
+			}
+			if !sameStates(readStream, sentStream) {
+				t.Fatalf("%s seed %d: at the end: state assignments differ", filepath.Base(dir), seed)
 			}
 			m, mb, db := c.Stats()
 			merged, mergedBytes, diffBytes = merged+m, mergedBytes+mb, diffBytes+db
@@ -138,7 +149,8 @@ func TestConflatorKeepsOtherOutput(t *testing.T) {
 
 func TestSafeSGR(t *testing.T) {
 	for p, want := range map[string]bool{"": true, "0": true, "1;31": true, "38;5;214": true, "48;2;1;2;3": true, "38:2::1:2:3": true, "4:0": true,
-		"4:3": false, "58;5;1": false, "21": false, "6": false, "38;5": false, "53": false} {
+		"58;5;1": true, "58:2::9:8:7": true, "59": true, "4:59": false,
+		"4:3": false, "58;5": false, "21": false, "6": false, "38;5": false, "53": false} {
 		if got := safeSGR(p); got != want {
 			t.Errorf("%q: %v", p, got)
 		}
