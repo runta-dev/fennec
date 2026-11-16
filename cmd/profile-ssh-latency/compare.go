@@ -109,7 +109,7 @@ func compareVersions(ctx context.Context) error {
 	if !safePath(*baseline) || !safePath(*terminal) || !safePath(*remote) || *count > 40 {
 		return fmt.Errorf("comparison requires staged baseline, terminal, remote and 1-40 samples per block")
 	}
-	result := comparisonReport{Boundary: "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered ABBA BAAB, no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.", Baseline: *baseline, Candidate: *terminal, Started: time.Now().UTC()}
+	result := comparisonReport{Boundary: "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered ABBA BAAB, no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.", Baseline: *baseline, Candidate: *terminal, Started: time.Now().UTC()}
 	err := runComparison(ctx, &result)
 	if err != nil {
 		result.Error = err.Error()
@@ -179,22 +179,22 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 				rtt, e := servers[variant].Ping(step)
 				cancel()
 				if e != nil {
-					return e
+					return fmt.Errorf("%s %s block %d ping: %w", phase, variant, block, e)
 				}
 				s.PingMS = ms(rtt)
 			case 1:
 				if _, _, e := client.SendRequest("keepalive@openssh.com", true, nil); e != nil {
-					return e
+					return fmt.Errorf("%s %s block %d gateway: %w", phase, variant, block, e)
 				}
 				s.GatewayMS = ms(time.Since(start))
 			case 2:
 				data := []byte(fmt.Sprintf("{\"type\":\"ping\",\"id\":\"measure-%d\"}\n", index+1))
 				got := make([]byte, len(data))
 				if _, e := echo.Write(data); e != nil {
-					return e
+					return fmt.Errorf("%s %s block %d echo write: %w", phase, variant, block, e)
 				}
 				if _, e := io.ReadFull(echo, got); e != nil {
-					return e
+					return fmt.Errorf("%s %s block %d echo read: %w", phase, variant, block, e)
 				}
 				if !bytes.Equal(data, got) {
 					return fmt.Errorf("comparison echo changed")
@@ -231,6 +231,12 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 		}
 		fmt.Fprintf(os.Stderr, "comparison block %d %s started\n", index, variant)
 		for range *count {
+			select {
+			case err := <-load.done:
+				load.abort()
+				return fmt.Errorf("block %d %s load ended unexpectedly: %v", index, variant, err)
+			default:
+			}
 			if err = sample("bulk", variant, index); err != nil {
 				load.abort()
 				return err
@@ -256,10 +262,11 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 }
 
 type verifiedOutput struct {
-	data  []byte
-	count atomic.Int64
-	ready chan struct{}
-	once  sync.Once
+	data    []byte
+	count   atomic.Int64
+	ready   chan struct{}
+	changed chan struct{}
+	once    sync.Once
 }
 
 func (v *verifiedOutput) Write(data []byte) (int, error) {
@@ -269,8 +276,13 @@ func (v *verifiedOutput) Write(data []byte) (int, error) {
 			return 0, fmt.Errorf("comparison load payload changed")
 		}
 	}
-	v.count.Add(int64(len(data)))
-	v.once.Do(func() { close(v.ready) })
+	if v.count.Add(int64(len(data))) >= int64(len(v.data)) {
+		v.once.Do(func() { close(v.ready) })
+	}
+	select {
+	case v.changed <- struct{}{}:
+	default:
+	}
 	return len(data), nil
 }
 
@@ -290,7 +302,7 @@ func beginComparisonLoad(ctx context.Context, client *ssh.Client, t *terminalstr
 		payload[i] = byte(i*31 + i/89)
 	}
 	input, write := io.Pipe()
-	out := &verifiedOutput{data: payload, ready: make(chan struct{})}
+	out := &verifiedOutput{data: payload, ready: make(chan struct{}), changed: make(chan struct{}, 1)}
 	load := &comparisonLoad{out: out, started: time.Now(), sender: make(chan error, 1), done: make(chan error, 1)}
 	var run func() error
 	var closeSession func() error
@@ -320,7 +332,16 @@ func beginComparisonLoad(ctx context.Context, client *ssh.Client, t *terminalstr
 		run = func() error { return s.Run("cat") }
 		closeSession = s.Close
 	}
-	load.abort = func() { input.Close(); write.Close(); closeSession() }
+	load.abort = func() {
+		load.stop.Store(true)
+		select {
+		case out.changed <- struct{}{}:
+		default:
+		}
+		input.Close()
+		write.Close()
+		closeSession()
+	}
 	stop := context.AfterFunc(ctx, load.abort)
 	go func() {
 		err := run()
@@ -331,13 +352,24 @@ func beginComparisonLoad(ctx context.Context, client *ssh.Client, t *terminalstr
 		load.done <- err
 	}()
 	go func() {
+		offset := 0
 		for !load.stop.Load() {
-			n, err := write.Write(payload)
+			if load.sent.Load()-out.count.Load()+4096 > 64<<10 {
+				select {
+				case <-out.changed:
+					continue
+				case <-ctx.Done():
+					load.sender <- ctx.Err()
+					return
+				}
+			}
+			n, err := write.Write(payload[offset : offset+4096])
 			load.sent.Add(int64(n))
 			if err != nil {
 				load.sender <- err
 				return
 			}
+			offset = (offset + n) % len(payload)
 		}
 		load.sender <- write.Close()
 	}()
@@ -355,6 +387,10 @@ func beginComparisonLoad(ctx context.Context, client *ssh.Client, t *terminalstr
 func (l *comparisonLoad) finish(ctx context.Context) (comparisonBlock, error) {
 	defer l.abort()
 	l.stop.Store(true)
+	select {
+	case l.out.changed <- struct{}{}:
+	default:
+	}
 	var err error
 	select {
 	case err = <-l.sender:
