@@ -18,7 +18,7 @@ import (
 
 // Mandatory scheduling or registration changes require a new directory version.
 // Old brokers drain naturally; never kill a broker writing a live session.
-func directory(home string) string { return filepath.Join(home, ".config", "fennec", "traffic-v2") }
+func directory(home string) string { return filepath.Join(home, ".config", "fennec", "traffic-v3") }
 func lock(path string) (int, error) {
 	fd, err := unix.Open(path, unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
 	if err != nil {

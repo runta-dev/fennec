@@ -28,7 +28,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		BytesPerSecond: 112 * 1024, BulkBytesPerSecond: 96 * 1024,
+		BytesPerSecond: 160 * 1024, BulkBytesPerSecond: 128 * 1024,
 		BurstBytes: 2048, MaxPacketBytes: 2048, QueuePackets: 64,
 	}
 }

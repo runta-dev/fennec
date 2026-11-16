@@ -780,11 +780,13 @@ product at 250 ms, twice what a user at 80 ms needs (who then queues
 16 KiB ahead of their echo) and too little at 400 ms. Each terminal stream
 therefore sizes its own window from its measured round trip:
 
-    window = clamp(1.5 x 112 KB/s x minRTT, 8 KiB, 64 KiB)
+    window = clamp(1.5 x 160 KiB/s x minRTT, 8 KiB, 64 KiB)
 
-- 112 KB/s is the paced output rate (`traffic.DefaultConfig`), below the
-  host's 128 KB/s egress limit. The 1.5 gain covers credit returning in
-  bursts and round-trip jitter.
+- 160 KiB/s is the application budget (`traffic.DefaultConfig`), increased
+  from 112 KiB/s at the user's request. It exceeds the observed 128 KiB/s
+  host cap; it is not a measured path capacity. The 1.5 gain covers credit
+  returning in bursts and round-trip jitter. The new budget needs paired
+  latency and throughput validation.
 - A sample is the time from handing a frame to SSH until the peer has
   credited all of it. Only frames sent while nothing else of the stream was
   in flight are sampled, so a stream's own queue cannot inflate them;
@@ -800,13 +802,14 @@ therefore sizes its own window from its measured round trip:
 
 | Round trip | Window |
 | --- | ---: |
-| 20 ms (same region) | 8 KiB (floor) |
-| 80 ms (US) | 13 KiB |
-| 220 ms | 36 KiB |
-| 250 ms (Singapore) | 41 KiB |
+| 20 ms | 8 KiB (floor) |
+| 80 ms | 19 KiB |
+| 220 ms | 53 KiB |
+| 250 ms | 60 KiB |
 | 400 ms and above | 64 KiB (cap) |
 
-Measured with the same two-session method right after the second pass
+Historical measurement with the previous 112 KiB/s budget, using the same
+two-session method right after the second pass
 (2 runs, 12 scrolls, 24 keys; the round trip was about 200–250 ms, so the
 window was about 33–41 KiB): scrolls arrived in 1.0–3.3 s (median about
 1.3 s), as fast as the fixed 32 and 64 KiB windows. Echo in B was 194–428 ms

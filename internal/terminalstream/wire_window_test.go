@@ -134,10 +134,10 @@ func TestWireWindowFollowsRoundTrip(t *testing.T) {
 		rtt      time.Duration
 		min, max int
 	}{
-		{20 * time.Millisecond, outputWireWindowMin, outputWireWindowMin}, // same machine: floor
-		{80 * time.Millisecond, 12 << 10, 14 << 10},                       // US
-		{220 * time.Millisecond, 35 << 10, 38 << 10},
-		{250 * time.Millisecond, 41 << 10, 43 << 10}, // Singapore
+		{20 * time.Millisecond, outputWireWindowMin, outputWireWindowMin}, // floor
+		{80 * time.Millisecond, 19 << 10, 20 << 10},
+		{220 * time.Millisecond, 52 << 10, 54 << 10},
+		{250 * time.Millisecond, 59 << 10, 61 << 10},
 		{400 * time.Millisecond, outputWireWindowMax, outputWireWindowMax},
 	} {
 		w, now := fakeClockWindow()

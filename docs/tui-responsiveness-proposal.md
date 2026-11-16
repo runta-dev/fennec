@@ -14,8 +14,8 @@ experimental and default-off. The 240 ms target remains unmet; see the
 [paired reports and limitations](ssh-backlog-investigation.md).
 
 The terminal encoded output window now **follows each stream's round trip**:
-1.5 x the 112 KB/s paced rate x the minimum round trip, between 8 and 64 KiB
-(about 13 KiB at 80 ms, 41 KiB at 250 ms; see
+1.5 x the 160 KiB/s paced rate x the minimum round trip, between 8 and 64 KiB
+(about 19 KiB at 80 ms, 60 KiB at 250 ms; see
 [predictive echo, "The window follows the round trip"](predictive-echo.md)).
 It replaces the fixed 32 KiB and then 64 KiB windows of the user's scrolling
 experiments, which suited one round trip only. The previous 4 KiB
@@ -87,12 +87,19 @@ slot, so a heartbeat can enter and preempt a bulk token wait. A bounded run of
 interactive packets is followed by a bulk opportunity; tiny interactive
 packets cannot perpetually consume the tokens needed by a larger bulk packet.
 
-Current tuning values are 112 KiB/s total, 96 KiB/s bulk, a 2 KiB burst/atomic
+Current tuning values are 160 KiB/s total, 128 KiB/s bulk, a 2 KiB burst/atomic
 packet limit, and 1 KiB data chunks with per-packet transport overhead charged
-by the adapter. These values leave headroom below the host cap and must be
-calibrated against measured wire traffic. Installed Mac and running cloud
-binaries were subsequently verified at revision `c5864f1`, which includes these
-settings; earlier notes below describe the deployment state at each measurement.
+by the adapter. The user requested a 128 + 32 KiB/s budget to avoid throttling
+below the host's observed 128 KiB/s cap. This is 125% of that cap, not 110%.
+The extra 32 KiB/s is scheduler headroom, not bandwidth reserved at the host;
+overload may move queueing downstream. Validate throughput, scrolling and
+interactive tails together. The dynamic terminal window follows the new rate
+but retains its 64 KiB ceiling. File/socket credit stays 16 KiB and TCP backlog
+feedback stays disabled by default. New cloud brokers use `traffic-v3` so an
+old process cannot silently retain the previous 112/96 KiB/s settings; old
+brokers drain naturally, and coexistence does not imply one shared rate cap.
+Historical measurements below retain their original budgets. Deployment and
+paired WAN validation of the new budget must be recorded separately.
 Cancellation never returns a caller's buffer while a running write still
 references it. Oversized atomic writes are refused rather than waiting forever
 for a bucket that cannot hold them.
