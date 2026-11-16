@@ -513,6 +513,14 @@ full row is invisible and the cursor sits at column 0 of the next row), and
 while a Codex task runs, a non-empty draft shows "tab to queue message" in
 the footer's second row.
 
+`opencode-streaming-100x30` adds OpenCode: 163 keys typed during 31 s of
+streaming (771 output frames), with real acknowledgements. Of 196 predicted
+key packets, 195 match a later OpenCode frame exactly. In the remaining one,
+OpenCode drew that key together with the next one (it skipped the state
+ending in a typed space), and its next frame continues the prediction. There
+are no pauses or rollbacks. The replay harness counts such cases separately
+as "merged" and fails if they exceed 5%.
+
 Codex is verified against a real session recorded through `fen` and herdr
 (`testdata/traces/codex-100x30`, Codex 0.169, 100×30): with the recording's
 own timing and link latency, 113 of 116 key packets were predicted and every

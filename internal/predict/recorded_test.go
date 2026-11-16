@@ -76,6 +76,7 @@ func loadLines(t *testing.T, name, file string) [][]string {
 
 type replayResult struct {
 	keys, predicted, exact, paused int
+	merged                         int // drawn by the agent only together with later keys
 	stats                          Stats
 }
 
@@ -183,9 +184,23 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		}
 		if matched {
 			res.exact++
-		} else {
-			t.Errorf("key %q at %.3f: agent never showed the predicted %s", k.raw, k.at, describe(mine.State))
+			continue
 		}
+		// A busy agent may draw several keys in one frame, skipping this
+		// state; then its next new state must continue it (the prediction
+		// was a step on the way, not wrong).
+		next := State{}
+		for _, o := range observedStates {
+			if o.at > k.at && len(o.lock.State.Elems) >= len(mine.State.Elems) && !o.lock.State.Equal(mine.State) {
+				next = o.lock.State
+				break
+			}
+		}
+		if strings.HasPrefix(next.Text(), mine.State.Text()) && next.Cursor > mine.State.Cursor && len(mine.State.Text()) == mine.State.Cursor {
+			res.merged++
+			continue
+		}
+		t.Errorf("key %q at %.3f: agent never showed the predicted %s", k.raw, k.at, describe(mine.State))
 	}
 	advance(1e18)
 	now = now.Add(5 * time.Second)
@@ -197,8 +212,8 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		t.Fatalf("terminal did not converge: %s", why)
 	}
 	res.stats = engine.Stats()
-	t.Logf("keys=%d predicted=%d exact=%d paused=%d confirmed=%d diverged=%d expired=%d p50=%v p95=%v", res.keys, res.predicted, res.exact, res.paused, res.stats.Confirmed, res.stats.Diverged, res.stats.Expired, res.stats.ConfirmP50, res.stats.ConfirmP95)
-	if res.exact != res.predicted {
+	t.Logf("keys=%d predicted=%d exact=%d merged=%d paused=%d confirmed=%d diverged=%d expired=%d p50=%v p95=%v", res.keys, res.predicted, res.exact, res.merged, res.paused, res.stats.Confirmed, res.stats.Diverged, res.stats.Expired, res.stats.ConfirmP50, res.stats.ConfirmP95)
+	if res.exact+res.merged != res.predicted || res.merged*20 > res.predicted {
 		t.Fatalf("%d of %d shown predictions matched the agent", res.exact, res.predicted)
 	}
 	return res
@@ -285,4 +300,13 @@ func rowDiff(a, b *Screen) string {
 		}
 	}
 	return out.String()
+}
+
+// TestOpencodeStreamingRecordedSession replays typing while OpenCode streams
+// a long answer above the composer (with the cloud's real acknowledgements).
+func TestOpencodeStreamingRecordedSession(t *testing.T) {
+	res := replayRecorded(t, "opencode-streaming-100x30", 30, 100, func() Profile { return newOpencodeProfile() }, false)
+	if res.stats.Diverged != 0 {
+		t.Fatalf("%d rollbacks", res.stats.Diverged)
+	}
 }
