@@ -16,9 +16,14 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+var idleVariantOrders = [][3]int{{0, 1, 2}, {2, 1, 0}, {1, 2, 0}, {0, 2, 1}, {2, 0, 1}, {1, 0, 2}}
+
 // All variants reuse one authenticated connection and keep their channels warm.
 // The Mac sender configuration stays fixed; only staged server variants differ.
 func compareIdleTerminals(ctx context.Context) (resultErr error) {
+	if *count%(3*len(idleVariantOrders)) != 0 {
+		return fmt.Errorf("idle comparison sample count must be a multiple of eighteen to balance resident and probe order jointly")
+	}
 	paths := strings.Split(*idleTerminals, ",")
 	if len(paths) != 3 || !safePath(*remote) {
 		return fmt.Errorf("idle comparison requires exactly three staged terminals and a safe remote echo path")
@@ -94,16 +99,15 @@ func compareIdleTerminals(ctx context.Context) (resultErr error) {
 			}
 		}
 	}
-	orders := [][3]int{{0, 1, 2}, {2, 1, 0}, {1, 2, 0}, {0, 2, 1}, {2, 0, 1}, {1, 0, 2}}
 	for round := 0; round < *count; round++ {
-		for position, index := range orders[round%len(orders)] {
+		for _, index := range idleVariantOrders[round%len(idleVariantOrders)] {
 			s := comparisonSample{Phase: "idle", Block: round, Variant: paths[index], Started: time.Now().UTC()}
 			for turn := 0; turn < 3; turn++ {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
 				raw.SetDeadline(time.Now().Add(5 * time.Second))
-				switch (round + position + turn) % 3 {
+				switch idleProbeType(round, turn) {
 				case 0:
 					step, cancel := context.WithTimeout(ctx, 5*time.Second)
 					measurement, err := transports[index].MeasurePing(step)
@@ -146,4 +150,8 @@ func compareIdleTerminals(ctx context.Context) (resultErr error) {
 		}
 	}
 	return nil
+}
+
+func idleProbeType(round, turn int) int {
+	return (round/len(idleVariantOrders) + round + turn) % 3
 }

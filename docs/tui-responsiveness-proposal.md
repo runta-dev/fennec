@@ -35,6 +35,15 @@ also showed long tails. Existing background traffic was uncontrolled. This
 establishes unloaded tails, not their cause or a winning budget. The installed
 application and production defaults were not changed by this measurement.
 
+Review then identified an unbalanced probe-order assignment in that first
+unloaded comparison. The [corrected repeat](benchmarks/2026-11-16-idle-balanced-repeat.md)
+jointly balanced resident/probe positions, changed the initial variant mapping,
+and collected 126 samples per cloud variant on one warm connection. TUI P95
+was 355/351/376 ms for 160/128, 128/128 and 128/96; medians were all about
+169 ms. The paired P95-difference intervals for 128/96 versus both alternatives
+include zero. Its earlier advantage did not reproduce, and no winning budget
+is established. Production settings were not changed by the repeat.
+
 Earlier WAN check (11:22 UTC, November 16): the TCP output feedback candidate
 had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the

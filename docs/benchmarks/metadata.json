@@ -1083,6 +1083,196 @@
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "4026c67c9a14dbdfe05f1e8621b8a57371d9dc4410cec061a6674350735f84f6"
     },
+    "2026-11-16-idle-balanced-repeat.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "One warm authenticated SSH connection, three persistent resident channels and one shared small JSON guest echo channel. Six permutations alternate resident order; gateway/echo/ping measurement order rotates. Three warm-up pings per resident are excluded. No generated bulk traffic or agent input; background traffic uncontrolled. Client pacing is fixed for every variant, so this compares staged cloud variants rather than changing both endpoints' budgets. Not a UI typing/rendering test.",
+        "finished_utc": "2026-11-16T13:10:51.683713Z",
+        "paired_analysis": {
+          "paired_round_ping_wins": {
+            "128_96_below_128_128": 50,
+            "128_96_below_160_128": 60
+          },
+          "primary_full_design_cycle": {
+            "128_96_minus_128_128": {
+              "negative_means": "128/96 has lower P95",
+              "p95_difference_ms": 24.489791999999966,
+              "percentile_95_interval_ms": [
+                -15.581583000000023,
+                103.33970799999997
+              ]
+            },
+            "128_96_minus_160_128": {
+              "negative_means": "128/96 has lower P95",
+              "p95_difference_ms": 20.242751,
+              "percentile_95_interval_ms": [
+                -8.726458000000036,
+                109.69175099999998
+              ]
+            },
+            "blocks": 7,
+            "method": "Paired non-overlapping block bootstrap over successive rounds; each resampled block keeps all three variants together. Empirical percentile intervals, exploratory and conditional on observed background traffic; not proof of causality or immunity to environmental variation.",
+            "random_source": "Go math/rand NewSource(seed)",
+            "resamples": 10000,
+            "rounds_per_block": 18,
+            "seed": 20261134
+          },
+          "rounds": 126,
+          "sensitivity_shorter_blocks": {
+            "128_96_minus_128_128": {
+              "negative_means": "128/96 has lower P95",
+              "p95_difference_ms": 24.489791999999966,
+              "percentile_95_interval_ms": [
+                -11.485625000000027,
+                109.20137499999998
+              ]
+            },
+            "128_96_minus_160_128": {
+              "negative_means": "128/96 has lower P95",
+              "p95_difference_ms": 20.242751,
+              "percentile_95_interval_ms": [
+                -5.226750000000038,
+                119.779
+              ]
+            },
+            "blocks": 21,
+            "method": "Paired non-overlapping block bootstrap over successive rounds; each resampled block keeps all three variants together. Empirical percentile intervals, exploratory and conditional on observed background traffic; not proof of causality or immunity to environmental variation.",
+            "random_source": "Go math/rand NewSource(seed)",
+            "resamples": 10000,
+            "rounds_per_block": 6,
+            "seed": 20261122
+          }
+        },
+        "provenance": {
+          "analysis_plan": "Before inspecting repeat results: paired block bootstrap, 10000 resamples, primary block18 rounds preserving a full joint design cycle, sensitivity block6 rounds; compare 128/96 P95 minus each alternative. Intervals crossing zero do not establish a repeatable advantage.",
+          "client": {
+            "evidence": "User report in this session",
+            "host": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "not captured"
+          },
+          "client_budget": "Fixed 160/128 KiB/s for all three cloud variants; small probes only",
+          "clock": "Mac UTC timestamps and monotonic elapsed RTT; no cross-host clock subtraction",
+          "diagnostic_source_sha256": {
+            "idle_compare.go": "f8e24f20b0cbb77e624e05dc18951851bf3ecb8196d00b8c0aaa9e364d4160d0",
+            "main.go": "97ebdbfccd43f11ba400dcdbf6e6ea7d8c88d3a5fa6ad224ccbfc25cdf33dba6"
+          },
+          "mac_probe_sha256": "505bf4c2c0c14caba197e625ea3645696ef32a60d9943e10c4a57738bd5203e9",
+          "order_correction": "Prior mode gave 4/1/1 probe positions per variant over six rounds. Corrected 18-round joint cycle gives every variant each resident/probe position combination equally often. Input terminal order changed from A,B,C to C,A,B. This is a corrected-method repeat, not an identical-method replication.",
+          "samples_per_cloud_variant": 126,
+          "scope": "Singapore-to-US warm protocol RTT, not US-local latency or UI response; varying cloud budgets with a common client",
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "GCP inventory checked around 2026-11-16T12:04Z; exact runtime placement not re-resolved for each block",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "settings": "All variants retain 2 KiB bursts, interactive priority, 16 KiB socket credit and dynamic terminal window 8-64 KiB. Dynamic window derives from each variant's total rate. TCP output guard remains default-off. Broker directories isolate test budgets from production tokens; host network still shared.",
+          "source": "Cloud variants unchanged: e53f4ba with recorded rate/directory overrides. Mac: existing staged source with corrected idle_compare.go; its source checksum is recorded here. Installed application unchanged.",
+          "toolchains": "Linux Go1.26.11; Mac Go1.27.1",
+          "variants": {
+            "a160": {
+              "broker_directory": "traffic-q128-a",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "79a5c04f9e6b0136d47ba9c42a8963754d28262c4d472ff590954430979c18ce",
+              "total_KiBps": 160
+            },
+            "b128": {
+              "broker_directory": "traffic-q128-b",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "bee19cfa2cf212bc5dde3b57b846510b28246aa81159725be0c339fe995a6401",
+              "total_KiBps": 128
+            },
+            "c128": {
+              "broker_directory": "traffic-q128-c",
+              "bulk_KiBps": 96,
+              "terminal_sha256": "757a12e2fa3af678bbe93251f6e5f30daaf9ce6b75a39a02e377fbfa4ea45bac",
+              "total_KiBps": 128
+            }
+          },
+          "workload": "No generated bulk traffic, agent input or scrolling. One authenticated SSH connection per run, three persistent residents. Nine warm-up pings excluded. Existing live traffic uncontrolled. Mac sender fixed at160/128 KiB/s."
+        },
+        "started_utc": "2026-11-16T13:07:08.460521Z",
+        "summary": {
+          "/tmp/fennec-q128-a160-terminal": {
+            "echo": {
+              "count": 126,
+              "min_ms": 164.574375,
+              "median_ms": 167.6435,
+              "p95_ms": 309.280708,
+              "max_ms": 514.813958
+            },
+            "gateway": {
+              "count": 126,
+              "min_ms": 160.982958,
+              "median_ms": 163.430333,
+              "p95_ms": 194.487291,
+              "max_ms": 221.321875
+            },
+            "ping": {
+              "count": 126,
+              "min_ms": 164.995666,
+              "median_ms": 168.591125,
+              "p95_ms": 355.336958,
+              "max_ms": 523.951958
+            }
+          },
+          "/tmp/fennec-q128-b128-terminal": {
+            "echo": {
+              "count": 126,
+              "min_ms": 165.179083,
+              "median_ms": 168.22925,
+              "p95_ms": 352.259084,
+              "max_ms": 509.27975
+            },
+            "gateway": {
+              "count": 126,
+              "min_ms": 161.17925,
+              "median_ms": 163.634917,
+              "p95_ms": 196.275542,
+              "max_ms": 230.563625
+            },
+            "ping": {
+              "count": 126,
+              "min_ms": 165.291958,
+              "median_ms": 168.437667,
+              "p95_ms": 351.089917,
+              "max_ms": 524.76525
+            }
+          },
+          "/tmp/fennec-q128-c128-terminal": {
+            "echo": {
+              "count": 126,
+              "min_ms": 165.103833,
+              "median_ms": 168.456292,
+              "p95_ms": 363.617584,
+              "max_ms": 523.829375
+            },
+            "gateway": {
+              "count": 126,
+              "min_ms": 161.521708,
+              "median_ms": 163.136167,
+              "p95_ms": 193.772958,
+              "max_ms": 197.739416
+            },
+            "ping": {
+              "count": 126,
+              "min_ms": 165.407459,
+              "median_ms": 168.799583,
+              "p95_ms": 375.579709,
+              "max_ms": 896.113042
+            }
+          }
+        }
+      },
+      "sample_records": 378,
+      "server_location_at_capture": "GCP runta-integration / us-west1; earlier inventory, not re-resolved for every sample",
+      "sha256": "0de865387c6667999da823cf01540ef83d46d4aaad0f992b53c822a801397906"
+    },
     "2026-11-16-idle-shared-comparison.json": {
       "client_origin": "Singapore / Singtel (user reported)",
       "recorded_metadata": {
@@ -2298,5 +2488,5 @@
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-16T12:51:26.829106934Z"
+  "updated_utc": "2026-11-16T13:15:14.6020748Z"
 }

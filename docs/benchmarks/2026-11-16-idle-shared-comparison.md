@@ -1,5 +1,13 @@
 # Unloaded comparison on one warm SSH connection
 
+Subsequent diagnostic review found an order imbalance: over six rounds, each
+variant saw probe positions in a 4/1/1 distribution rather than 2/2/2. The raw
+observations below remain valid, but the variant ranking is confounded by probe
+order. A regression test reproduced the imbalance. The corrected mode balances
+resident position and probe position jointly over 18 rounds; new runs require
+a sample count divisible by 18. This limitation must accompany comparisons to
+the original run; it does not establish that ordering caused its latency gap.
+
 Client: **Mac, Singapore / Singtel**, reported by the user. Destination:
 **GCP runta-integration / us-west1**, `ssh.runta.xyz`. Inventory was checked
 around 12:04 UTC; previously identified worker `runta-integration-worker-xfs-04`
@@ -36,7 +44,8 @@ that one QoS budget consistently outperforms another. Do not subtract these
 independent P95s as component timings or compare them as a controlled before/after
 pair with prior loaded runs. No rendered-input latency is measured.
 
-Reproduction uses the fixed Mac sender configuration of the probe build:
+Historical reproduction at `fedd116` uses the fixed Mac sender configuration
+of the probe build. The corrected mode uses `-samples 126` instead:
 
 ```sh
 profile-ssh-latency -load=false -samples 60 -timeout 4m \
