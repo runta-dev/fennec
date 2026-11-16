@@ -213,7 +213,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		}
 		for ctx.Err() == nil {
 			poll := []unix.PollFd{{Fd: int32(os.Stdin.Fd()), Events: unix.POLLIN}}
-			if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
+			if _, err := unix.Poll(poll, keys.PollTimeout(100)); err != nil && !errors.Is(err, syscall.EINTR) {
 				cancel()
 				return
 			}

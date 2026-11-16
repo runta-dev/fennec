@@ -209,7 +209,7 @@ func (o *streamOwner) readInput(early []byte) {
 			raw, early = early, nil
 		} else {
 			poll := []unix.PollFd{{Fd: int32(os.Stdin.Fd()), Events: unix.POLLIN}}
-			if _, err := unix.Poll(poll, 50); err != nil {
+			if _, err := unix.Poll(poll, keys.PollTimeout(50)); err != nil {
 				if errors.Is(err, syscall.EINTR) {
 					continue
 				}

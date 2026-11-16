@@ -62,6 +62,20 @@ func (d *Decoder) Feed(data []byte) ([]byte, bool) {
 	return out, false
 }
 func (d *Decoder) Flush() []byte { data := d.pending; d.pending = nil; return data }
+
+// EscapeWait is how long a lone ESC (or a partial sequence) waits for the
+// rest of its sequence. Terminals deliver a whole sequence in one read, so a
+// short wait suffices; a long one delays every Esc key press.
+const EscapeWait = 10
+
+// PollTimeout returns the poll timeout in milliseconds: EscapeWait while a
+// partial sequence is held, idle otherwise.
+func (d *Decoder) PollTimeout(idle int) int {
+	if len(d.pending) > 0 {
+		return min(idle, EscapeWait)
+	}
+	return idle
+}
 func detachSequence(sequence string) bool {
 	if len(sequence) < 2 {
 		return false

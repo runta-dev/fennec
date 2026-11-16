@@ -49,7 +49,7 @@ func runAttachment(ctx context.Context, command *exec.Cmd, input *os.File, outpu
 			default:
 			}
 			events := []unix.PollFd{{Fd: int32(input.Fd()), Events: unix.POLLIN}}
-			_, err := unix.Poll(events, 100)
+			_, err := unix.Poll(events, keys.PollTimeout(100))
 			if errors.Is(err, syscall.EINTR) {
 				continue
 			}

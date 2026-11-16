@@ -55,3 +55,24 @@ func TestEscapePasteAndUnmodifiedKeys(t *testing.T) {
 		t.Fatal("escape lost")
 	}
 }
+
+func TestLoneEscapeWaitsBriefly(t *testing.T) {
+	var d Decoder
+	if d.PollTimeout(100) != 100 {
+		t.Fatal("idle decoder must keep the idle timeout")
+	}
+	if out, _ := d.Feed([]byte{0x1b}); len(out) != 0 {
+		t.Fatalf("lone ESC sent before its sequence could complete: %q", out)
+	}
+	if got := d.PollTimeout(100); got != EscapeWait {
+		t.Fatalf("pending ESC waits %d ms, want %d", got, EscapeWait)
+	}
+	if string(d.Flush()) != "\x1b" || d.PollTimeout(100) != 100 {
+		t.Fatal("flush must release the ESC and restore the idle timeout")
+	}
+	// A sequence split across reads is still joined.
+	d.Feed([]byte("\x1b["))
+	if out, _ := d.Feed([]byte("A")); string(out) != "\x1b[A" {
+		t.Fatalf("split sequence = %q", out)
+	}
+}
