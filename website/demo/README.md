@@ -66,6 +66,10 @@ including split UTF-8 characters, cursor motion, colors and terminal mode change
 Only shell setup preceding its initial clear, an explicit chunk range, source
 end boundary and timing are edited. Update provenance when replacing a capture.
 
+The published Codex excerpt further compresses its opening waits. Piecewise
+linear timing maps packed milliseconds `[0, 500, 5742, 6120, 7739, 18000]` to
+`[0, 500, 1500, 1800, 2500, 12761]`, preserving every chunk and subsequent pacing.
+
 ## Native panel
 
 `npm run prepare:demo` exports the actual WebView source, original custom menus,
