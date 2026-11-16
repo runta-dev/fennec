@@ -21,7 +21,8 @@ func TestOnlyVerifiedControlProcessesAreElevated(t *testing.T) {
 		10: {10, 1, herdr, "serve", "1"},
 		11: {11, 10, "/agent/claude", "", "1"},
 		12: {12, 11, "/usr/bin/make", "", "1"},
-		20: {20, 1, "/usr/sbin/sshd", "", "1"},
+		19: {19, 1, "/usr/sbin/sshd", "", "1"},
+		20: {20, 19, "/usr/sbin/sshd", "", "1"},
 		21: {21, 20, filepath.Join(home, ".local/fennec/terminal/build/fennec-terminal"), "serve", "1"},
 		22: {22, 21, herdr, "attach", "1"},
 		30: {30, 1, "/unrelated/herdr-core", "", "1"},
@@ -38,7 +39,7 @@ func TestOnlyVerifiedControlProcessesAreElevated(t *testing.T) {
 			t.Fatalf("workload %d: %v", pid, got)
 		}
 	}
-	for _, pid := range []int{30, 31} {
+	for _, pid := range []int{19, 30, 31} {
 		if got[pid] != "" {
 			t.Fatalf("unrelated %d: %v", pid, got)
 		}

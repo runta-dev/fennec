@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fennec/internal/cpusched"
+	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"flag"
@@ -26,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -90,6 +92,16 @@ func run() error {
 			}
 		}
 	case "server":
+		input, err := pollable(os.Stdin)
+		if err != nil {
+			return err
+		}
+		defer input.Close()
+		output, err := pollable(os.Stdout)
+		if err != nil {
+			return err
+		}
+		defer output.Close()
 		home, _ := os.UserHomeDir()
 		report := cpusched.Interactive(home)
 		if len(report.Errors) != 0 {
@@ -98,7 +110,7 @@ func run() error {
 		exe, _ := os.Executable()
 		// An independent wall deadline terminates owned load even if the client
 		// loses its connection. Serve also closes and reaps each attachment.
-		return terminalstream.Serve(ctx, os.Stdin, os.Stdout, func(ctx context.Context, req cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+		return terminalstream.Serve(ctx, input, output, func(ctx context.Context, req cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			if len(req.Arguments) != 1 || req.Arguments[0] != "echo" && req.Arguments[0] != "burn" && req.Arguments[0] != "flood" {
 				return cloudruntime.LocalTerminal{}, nil, fmt.Errorf("invalid probe role")
 			}
@@ -128,7 +140,7 @@ func run() error {
 		if json.Unmarshal(raw, &state) != nil || state.ID == "" {
 			return fmt.Errorf("runtime unavailable")
 		}
-		command = exec.CommandContext(ctx, "/usr/bin/ssh", "-T", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile="+filepath.Join(root, "cloud/known_hosts"), "-i", filepath.Join(root, "cloud/runtime_key"), state.ID+"@ssh.runta.com", *remote, "-role", "server", "-terminal", *terminal, "-duration", duration.String())
+		command = exec.CommandContext(ctx, "/usr/bin/ssh", "-T", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile="+filepath.Join(root, "cloud/known_hosts"), "-i", filepath.Join(root, "cloud/runtime_key"), state.ID+"@"+runta.ActiveSSHHost(home), *remote, "-role", "server", "-terminal", *terminal, "-duration", duration.String())
 		boundary = "Mac-to-cloud SSH + protocol + PTY (not agent rendering)"
 	}
 	command.Stderr = os.Stderr
@@ -271,6 +283,18 @@ func run() error {
 		return fmt.Errorf("added echo P95 exceeds %s", *budget)
 	}
 	return nil
+}
+
+func pollable(file *os.File) (*os.File, error) {
+	fd, err := unix.FcntlInt(file.Fd(), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), file.Name()), nil
 }
 
 // Check the exec boundary and every existing Go thread, not merely the

@@ -219,7 +219,7 @@ func (e *Engine) Input(data []byte) uint64 {
 	defer e.mu.Unlock()
 	predictedBefore := e.stats.Predicted
 	defer func() {
-		if e.stats.Predicted > predictedBefore {
+		if e.stats.Predicted > predictedBefore && len(e.painted) > 0 {
 			e.paintSamples = append(e.paintSamples, time.Since(started))
 			if len(e.paintSamples) > 512 {
 				e.paintSamples = e.paintSamples[len(e.paintSamples)-512:]

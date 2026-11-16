@@ -128,7 +128,7 @@ func classify(home string, all map[int]process, self int) map[int]string {
 	// Only the resident's verified SSH ancestor chain is elevated.
 	for p, ok := all[self]; ok && p.parent > 1; p, ok = all[p.parent] {
 		parent := all[p.parent]
-		if parent.exe == "/usr/sbin/sshd" {
+		if parent.exe == "/usr/sbin/sshd" && parent.parent > 1 {
 			classes[parent.pid] = "control"
 		} else {
 			break
