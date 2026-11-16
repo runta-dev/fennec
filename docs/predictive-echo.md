@@ -513,6 +513,14 @@ full row is invisible and the cursor sits at column 0 of the next row), and
 while a Codex task runs, a non-empty draft shows "tab to queue message" in
 the footer's second row.
 
+`opencode-streaming-100x30` adds OpenCode: 163 keys typed during 31 s of
+streaming (771 output frames), with real acknowledgements. Of 196 predicted
+key packets, 195 match a later OpenCode frame exactly. In the remaining one,
+OpenCode drew that key together with the next one (it skipped the state
+ending in a typed space), and its next frame continues the prediction. There
+are no pauses or rollbacks. The replay harness counts such cases separately
+as "merged" and fails if they exceed 5%.
+
 Codex is verified against a real session recorded through `fen` and herdr
 (`testdata/traces/codex-100x30`, Codex 0.169, 100×30): with the recording's
 own timing and link latency, 113 of 116 key packets were predicted and every
@@ -539,11 +547,30 @@ reads is one unpredictable paste (its middle is never taken for typing), and
 a trailing space the screen cannot show is kept from the model when
 confirming a state.
 
+OpenCode's rules, from the recordings: a `┃` bar with the text three columns
+right of it, and width = right end of the `╹▀▀▀` edge − bar − 4 (70 on the
+100-column home screen, 91 in a session). Rows are: pad, text, pad, status,
+edge, footer. Words wrap as in Grok (a space that does not fit starts the next
+row hidden). On the home screen the logo, composer and footer form one block
+centered vertically, so each added row moves either the block's top up or its
+bottom down (top = (rows+1−height)/2, taking the top where the logo starts);
+in a session the composer is anchored to the bottom. An empty draft shows a
+gray (#808080) placeholder. A paste of three or more lines, or a long one,
+becomes `[Pasted ~N lines] `, which Backspace deletes whole; such pastes are
+left to the server.
+
+OpenCode 2.3.0 hangs at startup when the user's inotify instances are
+exhausted (reported upstream as anomalyco/opencode#64149). On the cloud
+runtime they had been exhausted by `dbus-daemon` processes that Magpie's Go
+dbus client started through `dbus-launch`. Fennec now sets
+`DBUS_SESSION_BUS_ADDRESS=disabled:` for Magpie and the agents, and raises the
+limit to 1024 during preparation.
+
 Other agents, from reading their packages:
 
 | Agent | Hardware cursor at the insertion point | Status |
 | --- | --- | --- |
-| OpenCode (OpenTUI) | Yes | Not modelled: on 2026-11-16 OpenCode 2.3.0 hung before drawing anything (its TUI waits on an outbound HTTPS request), in `fen` and in a plain terminal alike, so no recording could be made |
+| OpenCode (OpenTUI) | Yes | Profile from two real OpenCode 2.3.0 sessions (`testdata/traces/opencode-100x30`, home screen, and `opencode-session-100x30`, session view): 202 and 224 predicted key packets, all match; see above |
 | Grok (ratatui) | Yes | Profile from a real session (`testdata/traces/grok-100x30`, Grok Build 1.0.77): 202 of 202 predicted key packets match; see below |
 | Pi | Only with `PI_HARDWARE_CURSOR=1` | Needs that setting in Fennec's Pi launch |
 | Kimi | No (drawn reverse-video cursor) | Not predictable with this design |

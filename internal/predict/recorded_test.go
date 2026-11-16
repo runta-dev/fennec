@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -75,6 +76,7 @@ func loadLines(t *testing.T, name, file string) [][]string {
 
 type replayResult struct {
 	keys, predicted, exact, paused int
+	merged                         int // drawn by the agent only together with later keys
 	stats                          Stats
 }
 
@@ -175,16 +177,30 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 				equal = dumpScreen(shown) == dumpScreen(o.screen)
 			}
 			if !equal {
-				t.Errorf("key %q at %.3f: shown\n%s\nagent drew\n%s", k.raw, k.at, dumpScreen(shown), dumpScreen(o.screen))
+				t.Errorf("key %q at %.3f: shown screen differs from the agent's frame (lock rows %d..%d, cursor %d,%d vs %d,%d):\n%s", k.raw, k.at, o.lock.Top, o.lock.Bottom, shown.Row, shown.Col, o.screen.Row, o.screen.Col, rowDiff(shown, o.screen))
 			}
 			matched = true
 			break
 		}
 		if matched {
 			res.exact++
-		} else {
-			t.Errorf("key %q at %.3f: agent never showed the predicted %s", k.raw, k.at, describe(mine.State))
+			continue
 		}
+		// A busy agent may draw several keys in one frame, skipping this
+		// state; then its next new state must continue it (the prediction
+		// was a step on the way, not wrong).
+		next := State{}
+		for _, o := range observedStates {
+			if o.at > k.at && len(o.lock.State.Elems) >= len(mine.State.Elems) && !o.lock.State.Equal(mine.State) {
+				next = o.lock.State
+				break
+			}
+		}
+		if strings.HasPrefix(next.Text(), mine.State.Text()) && next.Cursor > mine.State.Cursor && len(mine.State.Text()) == mine.State.Cursor {
+			res.merged++
+			continue
+		}
+		t.Errorf("key %q at %.3f: agent never showed the predicted %s", k.raw, k.at, describe(mine.State))
 	}
 	advance(1e18)
 	now = now.Add(5 * time.Second)
@@ -196,8 +212,8 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		t.Fatalf("terminal did not converge: %s", why)
 	}
 	res.stats = engine.Stats()
-	t.Logf("keys=%d predicted=%d exact=%d paused=%d confirmed=%d diverged=%d expired=%d p50=%v p95=%v", res.keys, res.predicted, res.exact, res.paused, res.stats.Confirmed, res.stats.Diverged, res.stats.Expired, res.stats.ConfirmP50, res.stats.ConfirmP95)
-	if res.exact != res.predicted {
+	t.Logf("keys=%d predicted=%d exact=%d merged=%d paused=%d confirmed=%d diverged=%d expired=%d p50=%v p95=%v", res.keys, res.predicted, res.exact, res.merged, res.paused, res.stats.Confirmed, res.stats.Diverged, res.stats.Expired, res.stats.ConfirmP50, res.stats.ConfirmP95)
+	if res.exact+res.merged != res.predicted || res.merged*20 > res.predicted {
 		t.Fatalf("%d of %d shown predictions matched the agent", res.exact, res.predicted)
 	}
 	return res
@@ -255,5 +271,42 @@ func TestGrokRecordedSession(t *testing.T) {
 	res := replayRecorded(t, "grok-100x30", 30, 100, func() Profile { return newGrokProfile() }, false)
 	if res.stats.Diverged != 0 || res.predicted < res.keys/2 {
 		t.Fatalf("predicted %d of %d, %d rollbacks", res.predicted, res.keys, res.stats.Diverged)
+	}
+}
+
+// TestOpencodeRecordedSessions replays real OpenCode 2.3.0 sessions: the home
+// screen (a centered block that grows alternately up and down) and a session
+// view (bottom-anchored composer), each with typing that wraps twice,
+// Shift+Enter, Backspace, Left with insertion, an inline paste and a 6-line
+// paste that becomes a chip.
+func TestOpencodeRecordedSessions(t *testing.T) {
+	for _, name := range []string{"opencode-100x30", "opencode-session-100x30"} {
+		t.Run(name, func(t *testing.T) {
+			res := replayRecorded(t, name, 30, 100, func() Profile { return newOpencodeProfile() }, false)
+			if res.stats.Diverged != 0 || res.predicted < res.keys/2 {
+				t.Fatalf("predicted %d of %d, %d rollbacks", res.predicted, res.keys, res.stats.Diverged)
+			}
+		})
+	}
+}
+
+// rowDiff lists the rows whose text differs between two screens.
+func rowDiff(a, b *Screen) string {
+	var out strings.Builder
+	for r := 0; r < a.Rows; r++ {
+		x, y := strings.TrimRight(a.RowText(r, 0, a.Cols), " "), strings.TrimRight(b.RowText(r, 0, b.Cols), " ")
+		if x != y {
+			fmt.Fprintf(&out, "  row %2d shown |%s|\n  row %2d agent |%s|\n", r, x, r, y)
+		}
+	}
+	return out.String()
+}
+
+// TestOpencodeStreamingRecordedSession replays typing while OpenCode streams
+// a long answer above the composer (with the cloud's real acknowledgements).
+func TestOpencodeStreamingRecordedSession(t *testing.T) {
+	res := replayRecorded(t, "opencode-streaming-100x30", 30, 100, func() Profile { return newOpencodeProfile() }, false)
+	if res.stats.Diverged != 0 {
+		t.Fatalf("%d rollbacks", res.stats.Diverged)
 	}
 }
