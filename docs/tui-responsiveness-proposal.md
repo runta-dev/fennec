@@ -754,10 +754,20 @@ whole workload. The kernel never removes an empty group, so the traffic
 broker and every serving resident remove the groups of destroyed
 sessions every 30 s (`cpusched.KeepPruned`; an upgrade keeps the running
 broker, so the broker alone would prune only after its restart); a group
-that still has a process cannot be removed. A resident older than the split still writes new agents to
-`workload` itself,
-which then fails; such an agent stays in its Herdr parent's group until the
-next sweep of a current resident.
+that still has a process cannot be removed. A resident older than the split
+still writes new agents to `workload` itself, which then fails; such an agent
+stays in its Herdr parent's group until the next sweep of a current resident.
+
+Verified on the 2-core cloud host (0.3.11162304-dev, 2026-11-16): agents
+were in their sessions' groups, the gateway and app-servers in shared, no
+agent in control; input raised the session's weight to 1000 and it returned
+to 100; an empty probe group was removed about 30 s after it was created.
+Two session groups each running two CPU-bound loops shared the CPU 56% to
+44% at equal weights and 90% to 10% (1.54 against 0.18 cores) with one at
+1000, as the weights predict (1000/1100). An end-to-end run (Codex scrolls
+and typing, focus on and off alternately, race tests as load) showed no
+difference in scroll or echo times: that load used 1.4 to 1.8 of the 2
+cores and the scrolled Codex only about 0.02, so it rarely waited for CPU.
 
 ## 2. Prioritize control traffic and bound output contention
 
