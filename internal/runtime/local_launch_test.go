@@ -185,3 +185,34 @@ func TestOpenCodeLaunchVersionAndSubcommand(t *testing.T) {
 		})
 	}
 }
+
+// Pi shows the terminal cursor at the insertion point (PI_HARDWARE_CURSOR=1)
+// so the predictive echo can locate its composer, in both launch paths.
+func TestPiLaunchShowsHardwareCursor(t *testing.T) {
+	var command []string
+	backend := &LocalRuntime{Home: t.TempDir(), Lookup: func(string) (string, error) { return "/usr/bin/pi", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ls" {
+			return []byte(`{"terminals":[]}`), nil
+		}
+		for i, arg := range args {
+			if arg == "--" {
+				command = append([]string{}, args[i+1:]...)
+			}
+		}
+		return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+	}}
+	request := LocalLaunch{ID: strings.Repeat("e", 32), Agent: "pi", LocalDirectory: "/project", Device: "1234abcd"}
+	if _, err := backend.Launch(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(command, " "); !strings.HasPrefix(joined, "env PI_HARDWARE_CURSOR=1 ") {
+		t.Fatalf("pi command %q", joined)
+	}
+	script, err := LaunchScriptWithArgs(strings.Repeat("f", 32), "pi", "/tmp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `if request['agent']=='pi':command=['env','PI_HARDWARE_CURSOR=1']+command`) {
+		t.Fatal("cloud launch script does not show Pi's hardware cursor")
+	}
+}

@@ -37,6 +37,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"fennec/internal/launcher"
 	"fennec/internal/predict"
 )
 
@@ -89,8 +90,8 @@ func main() {
 	cleanupStale(cfg)
 	var runs []run
 	for _, a := range split(*agents) {
-		if predict.ProfileFor(a) == nil {
-			fail(fmt.Errorf("no profile for agent %q", a))
+		if !launcher.Supported[a] {
+			fail(fmt.Errorf("fen does not launch agent %q", a))
 		}
 		for _, name := range split(*names) {
 			build, ok := scenarios[name]
@@ -315,10 +316,23 @@ var ready = map[string]string{
 // waitReady answers the folder trust dialogs (they only confirm the working
 // directory) and waits for the composer.
 func waitReady(agent string, screen func() string, send func(...string)) error {
-	deadline := time.Now().Add(90 * time.Second)
+	start := time.Now()
+	deadline := start.Add(90 * time.Second)
+	last, same := "", 0
 	for time.Now().Before(deadline) {
 		s := screen()
+		if s == last && strings.TrimSpace(s) != "" {
+			same++
+		} else {
+			last, same = s, 0
+		}
 		switch {
+		case ready[agent] == "":
+			// No known marker (an agent without a profile yet): wait until
+			// the screen has settled.
+			if same >= 3 && time.Since(start) > 10*time.Second {
+				return nil
+			}
 		case strings.Contains(s, "Do you trust the contents"): // Grok
 			send("79")
 			time.Sleep(3 * time.Second)
@@ -356,12 +370,15 @@ func (r *run) check(cfg config) {
 		r.err = err
 		return
 	}
-	profile := func() predict.Profile { return predict.ProfileFor(r.agent) }
-	rep := predict.Replay(tr, cfg.rows, cfg.cols, profile, false)
-	r.report = &rep
 	if r.session != "" {
 		r.private = privateText(tr, r.session, r.typed)
 	}
+	if predict.ProfileFor(r.agent) == nil {
+		return // recorded to build a profile from; nothing to replay yet
+	}
+	profile := func() predict.Profile { return predict.ProfileFor(r.agent) }
+	rep := predict.Replay(tr, cfg.rows, cfg.cols, profile, false)
+	r.report = &rep
 	if b, err := predict.LoadTrace(filepath.Join(cfg.baseline, r.name(cfg))); err == nil && r.session != "" {
 		base := predict.Replay(b, cfg.rows, cfg.cols, profile, false)
 		r.base = &base
@@ -471,6 +488,17 @@ func report(runs []run, cfg config) int {
 			continue
 		}
 		rep := r.report
+		if rep == nil {
+			result := "recorded (no profile to replay)"
+			if len(r.private) > 0 {
+				result += "; not saved, review: " + strings.Join(r.private, ", ")
+				status = 1
+			} else if r.saved != "" {
+				result += "; saved " + r.saved
+			}
+			fmt.Fprintf(w, "%s\t\t%s\t%dx%d\t\t\t\t\t\t\t%s\n", r.agent, r.scenario, r.cols, r.rows, result)
+			continue
+		}
 		result := "ok"
 		switch {
 		case !rep.Stats.Locked:

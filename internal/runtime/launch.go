@@ -182,6 +182,9 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  if request['agent']=='claude':command=['env','IS_SANDBOX=1']+command
  # Fennec made the session directory: Kimi Code trusts it up front.
  if request['agent']=='kimi':command=['env','` + kimiTrustWorkspace + `']+command
+ # Pi then keeps the terminal cursor at the insertion point (not a drawn one),
+ # which predictive echo needs; an explicit Pi setting still wins.
+ if request['agent']=='pi':command=['env','` + piHardwareCursor + `']+command
  # The cloud runtime has no session bus. Without an address, Go and shell
  # dbus clients run dbus-launch, and every such daemon outlives its agent and
  # holds an inotify instance until the user's limit is exhausted.
@@ -201,6 +204,12 @@ LAUNCH
 // kimiTrustWorkspace trusts the session's working directory, which Fennec
 // creates, so Kimi Code does not stop at its "Trust this folder?" prompt.
 const kimiTrustWorkspace = "KIMI_CODE_TRUST_WORKSPACE=1"
+
+// piHardwareCursor makes Pi show the terminal cursor at the insertion point
+// instead of drawing its own (Pi's showHardwareCursor setting; an explicit
+// value in the user's Pi settings takes precedence). The composer-aware
+// predictive echo locates the composer by the terminal cursor.
+const piHardwareCursor = "PI_HARDWARE_CURSOR=1"
 
 // noSessionBus tells dbus clients there is no session bus, so they fail fast
 // instead of starting one (the Magpie supervisor sets the same).

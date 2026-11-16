@@ -235,6 +235,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		}
 	}
+	if request.Agent == "pi" {
+		command = append([]string{"env", piHardwareCursor}, command...)
+	}
 	if request.NativeLogin {
 		if err := setup.PrepareNativeLogin(ctx, runtime.Home, setup.NativeLogin{ID: request.ID, Agent: request.Agent}); err != nil {
 			return LocalTerminal{}, err
