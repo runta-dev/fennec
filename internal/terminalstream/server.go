@@ -48,6 +48,7 @@ type serverSession struct {
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	window                   *flowWindow
+	wire                     *wireWindow
 	input                    chan Frame
 	images                   bool
 	imageAgent, imageSession string
@@ -175,6 +176,10 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
 			session := &serverSession{ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			if hasFeature(frame.Features, CapabilityWireWindow) {
+				session.wire = newWireWindow()
+				context.AfterFunc(sessionCtx, session.wire.close)
+			}
 			sessions[frame.ID] = session
 			sessionsMu.Unlock()
 			workers.Add(1)
@@ -251,6 +256,9 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					return
 				}
 				receiptCapabilities := []string{CapabilityImagePaste}
+				if session.wire != nil {
+					receiptCapabilities = append(receiptCapabilities, CapabilityWireWindow)
+				}
 				if hasFeature(frame.Features, CapabilityEchoAck) {
 					session.echo = newEchoAcker()
 					receiptCapabilities = append(receiptCapabilities, CapabilityEchoAck)
@@ -311,12 +319,12 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 						if frame.OutputCompression == "gzip" {
 							out = compressTerminalData(out)
 						}
-						// Output counts from the moment it is read; the ack is
-						// emitted through the same ordered writer after it.
-						session.echo.observe()
-						if err := emit(out); err != nil {
+						if err := session.emitOutput(out, n, emit); err != nil {
 							return err
 						}
+						// Output waiting for wire credit is not yet visible.
+						// Confirm only after it has entered the ordered writer.
+						session.echo.observe()
 						data = data[n:]
 					}
 					return nil
@@ -386,7 +394,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		case "hook_reply":
 			hooks.reply(frame)
 		case "credit":
-			if !session.window.add(frame.Bytes) {
+			if (session.wire != nil && !session.wire.ack(frame.Bytes)) || !session.window.add(frame.Bytes) {
 				session.cancel()
 				emit(Frame{Type: "error", ID: frame.ID, Message: "invalid output credit"})
 			}
@@ -630,7 +638,7 @@ func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit f
 			session.window.add(count - length)
 		}
 		if length > 0 {
-			if emit(Frame{Type: "data", ID: frame.ID, Data: append([]byte(nil), buffer[:length]...)}) != nil {
+			if session.emitOutput(Frame{Type: "data", ID: frame.ID, Data: append([]byte(nil), buffer[:length]...)}, length, emit) != nil {
 				break
 			}
 		}
@@ -671,7 +679,7 @@ func (session *serverSession) relayCompressed(id string, conn net.Conn, encoder 
 			if count == 0 {
 				return false
 			}
-			if emit(Frame{Type: "data", ID: id, Data: append([]byte(nil), data[:count]...)}) != nil {
+			if session.emitOutput(Frame{Type: "data", ID: id, Data: append([]byte(nil), data[:count]...)}, count, emit) != nil {
 				return false
 			}
 			data = data[count:]

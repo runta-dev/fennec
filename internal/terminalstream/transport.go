@@ -423,6 +423,9 @@ func (transport *Transport) Alive() bool {
 }
 
 func (transport *Transport) Send(frame Frame) error {
+	if frame.Type == "launch" || frame.Type == "attach" || frame.Type == "socket" {
+		frame.Features = append(append([]string(nil), frame.Features...), CapabilityWireWindow)
+	}
 	if frame.Type == "launch" || frame.Type == "attach" {
 		// Old servers ignore the opt-in and send plain data. Only this daemon
 		// decodes the compressed frames, so already running CLI shims also work.
