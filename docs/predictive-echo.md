@@ -702,9 +702,10 @@ positioning), so coalescing does not reduce it; a 40-step gesture is about
 nothing (pen reset, cursor to where it is); `NoopFrameFilter` in the stream
 server drops those that repeat the frame just before them, held across
 reads because Herdr's writes do not follow frame boundaries: about three
-quarters of the frames of a gesture, but only some 6% of its bytes. Since
-2026-11-16 the cloud's terminal output is paced at 112 KB/s
-(`internal/traffic`), so such a gesture takes over 1.5 s to arrive.
+quarters of the frames of a gesture, but only some 6% of its bytes. The cloud
+host's egress is limited to about 128 KB/s (the QoS scheduler in
+`internal/traffic` keeps interactive output first within it, at 112 KB/s), so
+such a gesture takes over 1.5 s to arrive: bytes per gesture are what matter.
 
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
