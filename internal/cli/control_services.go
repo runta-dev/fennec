@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -490,6 +491,9 @@ func (s *daemonServices) startLinkLocked() {
 	config.RelayDial = func(ctx context.Context, device string, port int) (net.Conn, error) {
 		return s.dialResidentRelay(ctx, epoch, runtimeID, device, port)
 	}
+	config.RelayFailure = func(phase string, err error) {
+		log.Printf("device relay retry: phase=%s error=%v", phase, err)
+	}
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
@@ -500,7 +504,10 @@ func (s *daemonServices) startLinkLocked() {
 					return
 				}
 			}
-			_ = localssh.Link(ctx, runta.NewClient(s.home, token), config, func(stage, detail string) {
+			err := localssh.Link(ctx, runta.NewClient(s.home, token), config, func(stage, detail string) {
+				if stage == "connected" {
+					delay = time.Second
+				}
 				s.mu.Lock()
 				defer s.mu.Unlock()
 				if s.epoch != epoch || ctx.Err() != nil {
@@ -510,6 +517,17 @@ func (s *daemonServices) startLinkLocked() {
 				s.status["detail"] = detail
 				_ = writePublicJSON(filepath.Join(s.home, ".config/fennec/connector-status.json"), s.status)
 			})
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("device relay link ended: error=%v retry=%s", err, delay)
+			s.mu.Lock()
+			if s.epoch == epoch {
+				s.status["stage"] = "reconnecting"
+				s.status["detail"] = ""
+				_ = writePublicJSON(filepath.Join(s.home, ".config/fennec/connector-status.json"), s.status)
+			}
+			s.mu.Unlock()
 			if s.network != nil && !s.network.Refresh() {
 				delay = time.Second
 				continue

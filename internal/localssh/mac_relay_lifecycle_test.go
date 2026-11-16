@@ -156,3 +156,62 @@ func TestRelayStdioCloseUnblocksRead(t *testing.T) {
 	}
 	awaitRelayExit(t, done)
 }
+
+func TestMacRelayRetriesClosedConnectionBeforeSendingCommand(t *testing.T) {
+	h := newMacServer(t, 0)
+	u := &macUpstream{ctx: context.Background(), options: h.options(), pool: make(chan pooledSession, relayPoolSize)}
+	defer u.close()
+	// Deliberately omit watch: this reproduces the window after TCP has closed
+	// but before its watcher has cleared the cached pointer.
+	dead, err := u.dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead.Close()
+	u.client = dead
+	channel, requests, err := u.session()
+	if err != nil {
+		t.Fatal("cached closed connection was returned to the caller", err)
+	}
+	defer channel.Close()
+	go gossh.DiscardRequests(requests)
+	ok, err := channel.SendRequest("exec", true, gossh.Marshal(struct{ Command string }{"after stale cache"}))
+	if err != nil || !ok {
+		t.Fatal("command did not use a fresh connection", ok, err)
+	}
+	output, err := io.ReadAll(channel)
+	if err != nil || string(output) != "ran after stale cache\n" {
+		t.Fatal(string(output), err)
+	}
+	// A delayed watcher from the previous generation cannot clear the new one.
+	u.mu.Lock()
+	live := u.client
+	u.mu.Unlock()
+	u.invalidate(dead)
+	u.mu.Lock()
+	retained := u.client == live && live != nil && live != dead
+	u.mu.Unlock()
+	if !retained {
+		t.Fatal("old failure retired the recovered connection")
+	}
+}
+
+func TestMacRelayChannelRejectionDoesNotRetireHealthyConnection(t *testing.T) {
+	h := newMacServer(t, 0)
+	u := &macUpstream{ctx: context.Background(), options: h.options(), pool: make(chan pooledSession, relayPoolSize)}
+	defer u.close()
+	client, err := u.connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = u.openChannel(client, "not-supported", nil)
+	if !channelRejected(err) {
+		t.Fatal("explicit rejection was not preserved", err)
+	}
+	u.mu.Lock()
+	retained := u.client == client
+	u.mu.Unlock()
+	if !retained {
+		t.Fatal("channel policy rejection replaced a healthy connection")
+	}
+}

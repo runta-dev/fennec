@@ -29,6 +29,7 @@ type LinkConfig struct {
 	SharedSSH     func(context.Context) (*ssh.Client, error)                        `json:"-"`
 	Bootstrap     func(context.Context, LinkBootstrap) (LinkBootstrapResult, error) `json:"-"`
 	RelayDial     func(context.Context, string, int) (net.Conn, error)              `json:"-"`
+	RelayFailure  func(string, error)                                               `json:"-"`
 }
 
 // Link maintains one reverse connector. Runtime ID must already be provisioned;
@@ -298,7 +299,7 @@ func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device,
 	if config.RelayDial != nil {
 		err = serveResidentRelay(keepaliveCtx, func(ctx context.Context) (net.Conn, error) {
 			return config.RelayDial(ctx, device, bridgePort)
-		}, config.LocalAddress)
+		}, config.LocalAddress, config.RelayFailure)
 	} else {
 		err = serveRelay(keepaliveCtx, client, bridgePort, config.LocalAddress, config.SharedSSH == nil)
 	}

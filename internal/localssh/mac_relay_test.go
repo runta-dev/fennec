@@ -268,7 +268,7 @@ func TestMacRelayRejectsUnknownClientsAndReportsAnOfflineMac(t *testing.T) {
 	client := h.client(t, offline)
 	_, stderr, err := run(t, client, "true", "")
 	var exit *gossh.ExitError
-	if !errors.As(err, &exit) || exit.ExitStatus() != 255 || !strings.Contains(stderr, "not reachable") {
+	if !errors.As(err, &exit) || exit.ExitStatus() != 255 || !strings.Contains(stderr, "could not open the Mac relay connection") {
 		t.Fatal(stderr, err)
 	}
 	// A Mac presenting another host key is refused.

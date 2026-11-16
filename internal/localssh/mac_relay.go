@@ -182,7 +182,7 @@ type macUpstream struct {
 	client  *gossh.Client
 	dialing chan struct{} // closed when the current dial attempt ends
 	err     error
-	filling bool
+	filling *gossh.Client
 	closed  bool
 	pool    chan pooledSession
 }
@@ -273,11 +273,7 @@ func (u *macUpstream) watch(client *gossh.Client) {
 	for {
 		select {
 		case <-ended:
-			u.mu.Lock()
-			if u.client == client {
-				u.client = nil
-			}
-			u.mu.Unlock()
+			u.invalidate(client)
 			return
 		case <-ticker.C:
 			go func() {
@@ -302,20 +298,25 @@ func (u *macUpstream) watch(client *gossh.Client) {
 // fill keeps relayPoolSize session channels open on the Mac.
 func (u *macUpstream) fill(client *gossh.Client) {
 	u.mu.Lock()
-	if u.filling || u.closed {
+	if u.filling == client || u.client != client || u.closed {
 		u.mu.Unlock()
 		return
 	}
-	u.filling = true
+	u.filling = client
 	u.mu.Unlock()
 	defer func() {
 		u.mu.Lock()
-		u.filling = false
+		if u.filling == client {
+			u.filling = nil
+		}
 		u.mu.Unlock()
 	}()
 	for len(u.pool) < cap(u.pool) {
 		channel, requests, err := client.OpenChannel("session", nil)
 		if err != nil {
+			if !channelRejected(err) {
+				u.invalidate(client)
+			}
 			return
 		}
 		// Serialize publication with close: a channel opened during shutdown
@@ -355,9 +356,45 @@ func (u *macUpstream) session() (gossh.Channel, <-chan *gossh.Request, error) {
 			return pooled.channel, pooled.requests, nil
 		default:
 			go u.fill(client)
-			return client.OpenChannel("session", nil)
+			return u.openChannel(client, "session", nil)
 		}
 	}
+}
+
+func channelRejected(err error) bool {
+	var rejected *gossh.OpenChannelError
+	return errors.As(err, &rejected)
+}
+
+// invalidate fences one failed generation immediately. Waiting for the watch
+// goroutine alone lets a concurrent command reuse a connection that just died.
+func (u *macUpstream) invalidate(client *gossh.Client) {
+	u.mu.Lock()
+	if u.client == client {
+		u.client = nil
+	}
+	u.mu.Unlock()
+	client.Close()
+}
+
+// A failed channel open has sent no exec/shell/subsystem request. Reconnect
+// once at this boundary only; never replay a command after forwarding begins.
+// An explicit channel rejection is not evidence that the connection died.
+func (u *macUpstream) openChannel(client *gossh.Client, kind string, data []byte) (gossh.Channel, <-chan *gossh.Request, error) {
+	channel, requests, err := client.OpenChannel(kind, data)
+	if err == nil || channelRejected(err) || u.ctx.Err() != nil {
+		return channel, requests, err
+	}
+	u.invalidate(client)
+	client, err = u.connect()
+	if err != nil {
+		return nil, nil, err
+	}
+	channel, requests, err = client.OpenChannel(kind, data)
+	if err != nil && !channelRejected(err) {
+		u.invalidate(client)
+	}
+	return channel, requests, err
 }
 
 func (u *macUpstream) close() {
@@ -399,7 +436,7 @@ func (u *macUpstream) relaySession(incoming gossh.NewChannel) {
 			switch request.Type {
 			case "exec", "shell", "subsystem":
 				go gossh.DiscardRequests(localRequests)
-				io.WriteString(local.Stderr(), "Fennec: this Mac is not reachable: "+err.Error()+"\n")
+				io.WriteString(local.Stderr(), "Fennec: could not open the Mac relay connection: "+err.Error()+"\n")
 				local.SendRequest("exit-status", false, gossh.Marshal(struct{ Status uint32 }{255}))
 				local.CloseWrite()
 				return
@@ -418,7 +455,7 @@ func (u *macUpstream) relayChannel(incoming gossh.NewChannel) {
 		incoming.Reject(gossh.ConnectionFailed, "this Mac is not reachable")
 		return
 	}
-	remote, remoteRequests, err := client.OpenChannel(incoming.ChannelType(), incoming.ExtraData())
+	remote, remoteRequests, err := u.openChannel(client, incoming.ChannelType(), incoming.ExtraData())
 	if err != nil {
 		var open *gossh.OpenChannelError
 		if errors.As(err, &open) {
