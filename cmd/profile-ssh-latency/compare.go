@@ -109,7 +109,7 @@ func compareVersions(ctx context.Context) error {
 	if !safePath(*baseline) || !safePath(*terminal) || !safePath(*remote) || *count > 40 {
 		return fmt.Errorf("comparison requires staged baseline, terminal, remote and 1-40 samples per block")
 	}
-	result := comparisonReport{Boundary: "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered ABBA BAAB, no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.", Baseline: *baseline, Candidate: *terminal, Started: time.Now().UTC()}
+	result := comparisonReport{Boundary: "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered BAAB ABBA (candidate first), no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.", Baseline: *baseline, Candidate: *terminal, Started: time.Now().UTC()}
 	err := runComparison(ctx, &result)
 	if err != nil {
 		result.Error = err.Error()
@@ -224,7 +224,7 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 	if err = idle("idle"); err != nil {
 		return err
 	}
-	for index, variant := range []string{"baseline", "candidate", "candidate", "baseline", "candidate", "baseline", "baseline", "candidate"} {
+	for index, variant := range []string{"candidate", "baseline", "baseline", "candidate", "baseline", "candidate", "candidate", "baseline"} {
 		load, err := beginComparisonLoad(ctx, client, servers["candidate"], variant)
 		if err != nil {
 			return err
