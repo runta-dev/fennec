@@ -11,7 +11,9 @@ test:
 	go test -race ./...
 check:
 	go vet ./...
-	test -z "$$(gofmt -l .)"
+	# website/demo/fixture is a separate module the landing demo's agents
+	# work on as recorded; it is kept as written.
+	test -z "$$(gofmt -l . | grep -v '^website/demo/fixture/')"
 	go run ./cmd/check-english
 
 .PHONY: macos macos-run
