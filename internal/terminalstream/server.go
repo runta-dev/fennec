@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -307,11 +306,10 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				command.Env = append(command.Env, "TERM="+terminalType)
 				file, err := pty.StartWithSize(command, &pty.Winsize{Rows: session.rows, Cols: session.columns})
 				if err == nil {
-					// File.Fd and pty.Setsize restore Go-managed descriptors to
-					// blocking mode. Capture once before enabling nonblocking IO.
-					session.fd = int(file.Fd())
-					err = unix.SetNonblock(session.fd, true)
-					session.file = file
+					session.file, session.fd, err = pollablePTY(file)
+					if err == nil {
+						file.Close()
+					}
 				}
 				session.mu.Unlock()
 				if err != nil {
@@ -465,33 +463,12 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 }
 
 func (session *serverSession) read(data []byte) (int, error) {
-	for session.ctx.Err() == nil {
-		poll := []unix.PollFd{{Fd: int32(session.fd), Events: unix.POLLIN}}
-		if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
-			return 0, err
-		}
-		if poll[0].Revents == 0 {
-			continue
-		}
-		session.mu.Lock()
-		if session.closed {
-			session.mu.Unlock()
-			return 0, os.ErrClosed
-		}
-		length, err := unix.Read(session.fd, data)
-		session.mu.Unlock()
-		if length < 0 {
-			length = 0
-		}
-		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if length == 0 && err == nil {
-			err = io.EOF
-		}
-		return length, err
+	if err := session.ctx.Err(); err != nil {
+		return 0, err
 	}
-	return 0, session.ctx.Err()
+	// File.Read parks the goroutine in the runtime poller. Do not hold mu
+	// while waiting: closePTY must be able to interrupt reads on cancellation.
+	return session.file.Read(data)
 }
 
 // Caller holds session.mu; resize must preserve O_NONBLOCK just like IO.
@@ -588,33 +565,11 @@ func (session *serverSession) write(data []byte) error {
 		_, err := conn.Write(data)
 		return err
 	}
-	for len(data) > 0 && session.ctx.Err() == nil {
-		poll := []unix.PollFd{{Fd: int32(session.fd), Events: unix.POLLOUT}}
-		if _, err := unix.Poll(poll, 100); err != nil && !errors.Is(err, syscall.EINTR) {
-			return err
-		}
-		if poll[0].Revents == 0 {
-			continue
-		}
-		session.mu.Lock()
-		if session.closed {
-			session.mu.Unlock()
-			return os.ErrClosed
-		}
-		written, err := unix.Write(session.fd, data)
-		session.mu.Unlock()
-		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		data = data[written:]
+	if err := session.ctx.Err(); err != nil {
+		return err
 	}
-	if len(data) > 0 {
-		return session.ctx.Err()
-	}
-	return nil
+	_, err := session.file.Write(data)
+	return err
 }
 
 // relaySocket carries raw bytes between a whitelisted remote socket and the
