@@ -18,11 +18,13 @@ const (
 	exitStatus
 )
 const maxRecord = 128 << 10
-const chunk = 1024
+const chunk = 1024 // Maximum accepted payload, including peers using older chunking.
+const recordHeader = 5
 
 type records struct {
-	mu  sync.Mutex
-	out io.Writer
+	mu     sync.Mutex
+	out    io.Writer
+	packet [chunk]byte
 }
 
 func (w *records) send(kind byte, data []byte) error {
@@ -31,13 +33,18 @@ func (w *records) send(kind byte, data []byte) error {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	var header [5]byte
-	header[0] = kind
-	binary.BigEndian.PutUint32(header[1:], uint32(len(data)))
-	if err := writeAll(w.out, header[:]); err != nil {
-		return err
+	// One small record must reach the resident socket in one write. Sending
+	// the header separately creates a tiny data frame and credit message
+	// for every payload; the socket's net.Pipe preserves those write boundaries.
+	packet := w.packet[:]
+	if recordHeader+len(data) > len(packet) {
+		packet = make([]byte, recordHeader+len(data))
 	}
-	return writeAll(w.out, data)
+	packet = packet[:recordHeader+len(data)]
+	packet[0] = kind
+	binary.BigEndian.PutUint32(packet[1:recordHeader], uint32(len(data)))
+	copy(packet[recordHeader:], data)
+	return writeAll(w.out, packet)
 }
 func writeAll(out io.Writer, data []byte) error {
 	for len(data) > 0 {
@@ -74,7 +81,9 @@ type outputWriter struct {
 func (w outputWriter) Write(p []byte) (int, error) {
 	total := 0
 	for len(p) > 0 {
-		n := min(len(p), chunk)
+		// Keep the header and data together within a 1 KiB resident data frame,
+		// without lowering the accepted payload size for existing peers.
+		n := min(len(p), chunk-recordHeader)
 		if err := w.records.send(w.kind, p[:n]); err != nil {
 			return total, err
 		}

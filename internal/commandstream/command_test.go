@@ -174,3 +174,83 @@ func TestCommandExitWaitsForSlowOutputDrain(t *testing.T) {
 		t.Fatal("lost output after child exit")
 	}
 }
+
+func writeLegacyRecord(out io.Writer, kind byte, data []byte) error {
+	var header [5]byte
+	header[0] = kind
+	binary.BigEndian.PutUint32(header[1:], uint32(len(data)))
+	if err := writeAll(out, header[:]); err != nil {
+		return err
+	}
+	return writeAll(out, data)
+}
+
+func TestPackedCommandsAcceptLegacyFullSizeChunks(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	payload := bytes.Repeat([]byte{0, 255, 9, 7}, 256)
+	// Old clients send 1,024 payload bytes and a separate five-byte header.
+	conn := Dial(ctx)
+	defer conn.Close()
+	sent := make(chan error, 1)
+	go func() {
+		for _, r := range []struct {
+			kind byte
+			data []byte
+		}{{request, []byte("cat")}, {stdinData, payload}, {stdinEOF, nil}} {
+			if err := writeLegacyRecord(conn, r.kind, r.data); err != nil {
+				sent <- err
+				return
+			}
+		}
+		sent <- nil
+	}()
+	var received bytes.Buffer
+	for {
+		kind, data, err := readRecord(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == exitStatus {
+			if !bytes.Equal(data, status(0)) {
+				t.Fatal("legacy input failed", data)
+			}
+			break
+		}
+		if kind != stdoutData {
+			t.Fatal("unexpected output", kind)
+		}
+		received.Write(data)
+	}
+	if err := <-sent; err != nil || !bytes.Equal(received.Bytes(), payload) {
+		t.Fatal("legacy stdin changed", err)
+	}
+	// Old servers can also send a full 1,024-byte output record to new clients.
+	local, remote := net.Pipe()
+	defer remote.Close()
+	context.AfterFunc(ctx, func() { remote.Close() })
+	server := make(chan error, 1)
+	go func() {
+		if kind, _, err := readRecord(remote); err != nil || kind != request {
+			server <- io.ErrUnexpectedEOF
+			return
+		}
+		if kind, _, err := readRecord(remote); err != nil || kind != stdinEOF {
+			server <- io.ErrUnexpectedEOF
+			return
+		}
+		if err := writeLegacyRecord(remote, stdoutData, payload); err != nil {
+			server <- err
+			return
+		}
+		server <- writeLegacyRecord(remote, exitStatus, status(0))
+	}()
+	session := NewStream(ctx, local)
+	got, err := session.Output("cat")
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatal("legacy stdout changed", err)
+	}
+	if err := <-server; err != nil {
+		t.Fatal(err)
+	}
+}
