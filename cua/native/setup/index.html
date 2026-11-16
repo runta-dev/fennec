@@ -51,6 +51,11 @@ h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;marg
 .hint{height:50px;margin:0;padding:8px 2px 0;font-size:11.5px;line-height:1.45;color:var(--muted);overflow:hidden}
 .hint.ok{color:var(--ok)}
 .hint.warn{color:var(--warn)}
+#agents{margin-bottom:18px}
+.later{opacity:.55}
+.example .text small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.35}
+.example{height:62px}
+.foot{margin:8px 2px 0;font-size:11.5px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -61,7 +66,7 @@ h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;marg
   <button class="icon" id="close" aria-label="Close"><svg viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
 </header>
 <main>
-  <p class="lead">Lets your AI agents see and use the apps on this Mac. Two steps: allow access, then connect your agent.</p>
+  <p class="lead">Lets your AI agents see and use the apps on this Mac. Allow access, connect your agent, then ask it to do something.</p>
   <h2 id="step-access"><span class="step"></span>Allow access</h2>
   <div class="card">
     <div class="row">
@@ -76,6 +81,9 @@ h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;marg
   <p class="hint" id="hint"></p>
   <h2 id="step-connect"><span class="step"></span>Connect your agent</h2>
   <div class="card" id="agents"></div>
+  <h2 id="step-try" class="later"><span class="step">3</span>Try it</h2>
+  <div class="card" id="examples"></div>
+  <p class="foot" id="try-foot">Copy a prompt and paste it into Claude Code or Codex.</p>
 </main>
 <script>
 "use strict";
@@ -172,6 +180,52 @@ function renderAgents(s) {
   }
 }
 
+// Step 3: prompts that show what an agent can do with fennec-cua. Each names
+// fennec-cua, so the agent picks its tools over guessing at a shell.
+const examples = [
+  {id: "notes", title: "Write a note", prompt: "Use fennec-cua to open Notes and create a note titled \u201cWeekend\u201d with a short packing list for a two-day trip."},
+  {id: "settings", title: "Change a setting", prompt: "Use fennec-cua to open System Settings and switch my Mac to Dark Mode, then tell me what you changed."},
+  {id: "web", title: "Read a web page", prompt: "Use fennec-cua to open news.ycombinator.com in its browser and summarize the five top stories in one line each."},
+];
+let copiedExample = "";
+let examplesShown = "";
+function renderExamples() {
+  if (examplesShown === copiedExample + "|") return;
+  examplesShown = copiedExample + "|";
+  const box = document.getElementById("examples");
+  box.innerHTML = "";
+  for (const ex of examples) {
+    const row = document.createElement("div");
+    row.className = "row example";
+    const text = document.createElement("div");
+    text.className = "text";
+    const name = document.createElement("strong");
+    name.textContent = ex.title;
+    const help = document.createElement("small");
+    help.textContent = ex.prompt;
+    help.title = ex.prompt;
+    text.append(name, help);
+    const action = document.createElement("div");
+    action.className = "action";
+    if (copiedExample === ex.id) {
+      action.innerHTML = `<span class="copied">${tick}Copied</span>`;
+    } else {
+      const b = document.createElement("button");
+      b.className = "copy";
+      b.textContent = "Copy";
+      b.onclick = () => {
+        post("copy", {text: ex.prompt});
+        copiedExample = ex.id;
+        renderExamples();
+        setTimeout(() => { if (copiedExample === ex.id) { copiedExample = ""; renderExamples(); } }, 2500);
+      };
+      action.append(b);
+    }
+    row.append(text, action);
+    box.append(row);
+  }
+}
+
 let last = null;
 window.setupRender = s => {
   last = s;
@@ -211,6 +265,12 @@ window.setupRender = s => {
   step("step-access", 1, ready);
   step("step-connect", 2, (s.agents || []).some(a => a.connected));
   renderAgents(s);
+  const connected = (s.agents || []).some(a => a.connected);
+  document.getElementById("step-try").classList.toggle("later", !connected);
+  document.getElementById("try-foot").textContent = connected
+    ? ((s.justConnected || []).length ? "Restart " + s.justConnected.join(" and ") + " first, then paste a prompt." : "Paste a prompt into Claude Code or Codex.")
+    : "Connect an agent above, then paste a prompt into it.";
+  renderExamples();
 };
 </script>
 </body>

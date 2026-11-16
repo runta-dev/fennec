@@ -267,6 +267,18 @@ func (e *AgentEnv) Status(a Agent) AgentStatus {
 	if e.Find != nil {
 		s.CLI = e.Find(a.CLI)
 	}
+	// Fennec puts launchers in front of the agents' commands that hand
+	// them to Fennec, which may run them in the cloud: `claude mcp add`
+	// through one configures the cloud agent. Use the local command the
+	// launcher wraps.
+	if s.CLI != "" {
+		if orig, ok := FennecLauncherTarget(s.CLI); ok {
+			s.CLI = orig
+			if orig == "" {
+				s.Error = "Fennec routes " + a.CLI + " elsewhere and the local " + a.Name + " it wraps is gone"
+			}
+		}
+	}
 	s.Installed = s.CLI != ""
 	cmd, err := e.mcpCommand(a.ID)
 	if err != nil {
@@ -459,6 +471,72 @@ func LoginShellPath(ctx context.Context) string {
 		}
 	}
 	return ""
+}
+
+// FennecLauncherTarget reads a Fennec managed launcher or entry (a small
+// shell script that hands an agent's command to Fennec): ok is false for
+// any other file; target is the local command it wraps, "" when that is
+// gone. When the wrapped file is one of an updater's versions (Claude
+// Code's ~/.local/share/claude/versions/V) and no longer exists, the
+// newest version beside it stands in.
+func FennecLauncherTarget(path string) (target string, ok bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	head := make([]byte, 4096)
+	n, _ := f.Read(head)
+	text := string(head[:n])
+	if !strings.HasPrefix(text, "#!") || !strings.Contains(text, "# Fennec managed ") {
+		return "", false
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		rest, found := strings.CutPrefix(line, "if [ -x '")
+		if !found {
+			continue
+		}
+		orig, _, found := strings.Cut(rest, "'")
+		if !found || orig == "" {
+			continue
+		}
+		if executable(orig) {
+			return orig, true
+		}
+		if dir := filepath.Dir(orig); filepath.Base(dir) == "versions" {
+			if newest := newestExecutable(dir); newest != "" {
+				return newest, true
+			}
+		}
+		return "", true
+	}
+	return "", true
+}
+
+func executable(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
+}
+
+func newestExecutable(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	best := ""
+	var bestTime time.Time
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() || fi.Mode()&0o111 == 0 {
+			continue
+		}
+		if best == "" || fi.ModTime().After(bestTime) {
+			best, bestTime = p, fi.ModTime()
+		}
+	}
+	return best
 }
 
 // FindIn looks a command up in a PATH list.

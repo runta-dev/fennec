@@ -55,7 +55,14 @@ func agentEnv(ctx context.Context, self string, link bool) (*standalone.AgentEnv
 			cmd := exec.CommandContext(ctx, path, args...)
 			// The agents' commands are often scripts (node): give them
 			// the user's PATH, which an app opened from Finder lacks.
-			cmd.Env = append(os.Environ(), "PATH="+search)
+			// FENNEC_LAUNCH_MODE would send it to Fennec again.
+			var env []string
+			for _, kv := range os.Environ() {
+				if !strings.HasPrefix(kv, "FENNEC_LAUNCH_MODE=") && !strings.HasPrefix(kv, "PATH=") {
+					env = append(env, kv)
+				}
+			}
+			cmd.Env = append(env, "PATH="+search)
 			out, err := cmd.CombinedOutput()
 			return string(out), err
 		},

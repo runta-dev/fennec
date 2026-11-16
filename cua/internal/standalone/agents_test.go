@@ -208,3 +208,35 @@ func TestSearchPath(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+// Fennec's launchers hand claude and codex to Fennec (maybe to the cloud):
+// connect runs the local command they wrap instead.
+func TestFennecLauncherTarget(t *testing.T) {
+	dir := t.TempDir()
+	write := func(p, text string, mode os.FileMode) string {
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(text), mode); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	launcher := func(orig string) string {
+		return "#!/bin/sh\n# Fennec managed launcher v1\nif [ ! -e '/Applications/Fennec.app/Contents/MacOS/fen' ]; then\n if [ -x '" + orig + "' ]; then\n  exec '" + orig + "' \"$@\"\n fi\n exit 127\nfi\nexec '/Applications/Fennec.app/Contents/MacOS/fen' dispatch-agent 'claude' \"$@\"\n"
+	}
+	codexJS := write(filepath.Join(dir, "lib", "codex.js"), "#!/usr/bin/env node\n", 0o755)
+	if got, ok := FennecLauncherTarget(write(filepath.Join(dir, "shims", "codex"), launcher(codexJS), 0o755)); !ok || got != codexJS {
+		t.Errorf("codex: %q %v", got, ok)
+	}
+	// The wrapped claude version was updated away: the newest one stands in.
+	versions := filepath.Join(dir, "claude", "versions")
+	newest := write(filepath.Join(versions, "2.1.325"), "bin", 0o755)
+	if got, ok := FennecLauncherTarget(write(filepath.Join(dir, "shims", "claude"), launcher(filepath.Join(versions, "2.1.318")), 0o755)); !ok || got != newest {
+		t.Errorf("claude: %q %v", got, ok)
+	}
+	if got, ok := FennecLauncherTarget(write(filepath.Join(dir, "shims", "gone"), launcher(filepath.Join(dir, "nowhere", "x")), 0o755)); !ok || got != "" {
+		t.Errorf("gone: %q %v", got, ok)
+	}
+	if _, ok := FennecLauncherTarget(write(filepath.Join(dir, "bin", "real"), "#!/bin/sh\necho hi\n", 0o755)); ok {
+		t.Error("a plain script is taken for a launcher")
+	}
+}
