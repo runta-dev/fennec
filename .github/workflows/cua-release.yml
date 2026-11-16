@@ -1,0 +1,110 @@
+name: Publish FennecCUA release
+# Publishes a FennecCUA build that runta-dev/errand's "Build FennecCUA macOS
+# Release" workflow signed, notarized and uploaded, without rebuilding it.
+# The release is never marked latest: Fennec's updater reads releases/latest.
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful runta-dev/errand "Build FennecCUA macOS Release" run
+        required: true
+        type: string
+      notes:
+        description: Release notes in Markdown (optional)
+        required: false
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: cua-release-${{ inputs.build_run_id }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish signed FennecCUA archives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_REPO: runta-dev/errand
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the build run
+        id: run
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]] || { echo '::error::build_run_id is a run number'; exit 1; }
+          run=$(gh api "repos/$BUILD_REPO/actions/runs/$BUILD_RUN_ID")
+          test "$(jq -r .path <<<"$run")" = .github/workflows/fennec-cua-release.yml
+          test "$(jq -r .status <<<"$run")" = completed
+          test "$(jq -r .conclusion <<<"$run")" = success
+          test "$(jq -r .head_repository.full_name <<<"$run")" = "$BUILD_REPO"
+          artifacts=$(gh api "repos/$BUILD_REPO/actions/runs/$BUILD_RUN_ID/artifacts?per_page=100" \
+            | jq -c '[.artifacts[] | select(.name | startswith("fennec-cua-macos-arm64-")) | select(.expired | not)]')
+          test "$(jq length <<<"$artifacts")" = 1 || { echo '::error::Expected one unexpired fennec-cua artifact'; exit 1; }
+          echo "id=$(jq -r '.[0].id' <<<"$artifacts")" >> "$GITHUB_OUTPUT"
+          echo "digest=$(jq -r '.[0].digest' <<<"$artifacts")" >> "$GITHUB_OUTPUT"
+      - name: Download and verify the archives
+        id: files
+        env:
+          ARTIFACT_ID: ${{ steps.run.outputs.id }}
+          ARTIFACT_DIGEST: ${{ steps.run.outputs.digest }}
+        run: |
+          set -euo pipefail
+          zip="$RUNNER_TEMP/artifact.zip"
+          gh api "repos/$BUILD_REPO/actions/artifacts/$ARTIFACT_ID/zip" > "$zip"
+          test "sha256:$(sha256sum "$zip" | cut -d' ' -f1)" = "$ARTIFACT_DIGEST" || { echo '::error::Artifact digest mismatch'; exit 1; }
+          dir="$RUNNER_TEMP/assets"
+          mkdir "$dir"
+          unzip -q "$zip" -d "$dir"
+          cd "$dir"
+          version=$(jq -r .version provenance.json)
+          source_sha=$(jq -r .source_sha provenance.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Bad version $version"; exit 1; }
+          test "$(jq -r .product provenance.json)" = FennecCUA
+          test "$(jq -r .notarized provenance.json)" = true
+          full="fennec-cua-$version-macos-arm64.tar.gz"
+          core="fennec-cua-$version-macos-arm64-core.tar.gz"
+          expected=$(printf '%s\n' SHA256SUMS provenance.json "$full" "$full.sha256" "$core" "$core.sha256" | sort)
+          test "$(ls -1 | sort)" = "$expected" || { echo '::error::Unexpected artifact contents'; ls -l; exit 1; }
+          sha256sum -c SHA256SUMS
+          sha256sum -c "$full.sha256" "$core.sha256"
+          git -C "$GITHUB_WORKSPACE" merge-base --is-ancestor "$source_sha" origin/main || { echo '::error::Source is not on main'; exit 1; }
+          { echo "dir=$dir"; echo "version=$version"; echo "sha=$source_sha"; } >> "$GITHUB_OUTPUT"
+      - name: Publish the release (not latest)
+        env:
+          DIR: ${{ steps.files.outputs.dir }}
+          VERSION: ${{ steps.files.outputs.version }}
+          SOURCE_SHA: ${{ steps.files.outputs.sha }}
+        run: |
+          set -euo pipefail
+          tag="fennec-cua-v$VERSION"
+          ! gh release view "$tag" >/dev/null 2>&1 || { echo "::error::$tag already exists"; exit 1; }
+          latest_before=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
+          full="fennec-cua-$VERSION-macos-arm64.tar.gz"
+          core="fennec-cua-$VERSION-macos-arm64-core.tar.gz"
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+            printf 'FennecCUA lets an agent drive Mac apps and web pages through one JavaScript REPL (the Codex-compatible `cua` API), without Fennec.app.\n\n'
+            printf '| Archive | Contents |\n|---|---|\n'
+            printf '| `%s` | FennecCUA.app, cua-driver, Chromium for browser tabs |\n' "$full"
+            printf '| `%s` | without Chromium (browser calls fail) |\n\n' "$core"
+            printf 'Apple silicon, macOS 13 or later. Install without administrator rights:\n\n'
+            printf '```sh\ntar -xzf %s\n./fennec-cua-%s-macos-arm64/FennecCUA.app/Contents/MacOS/fennec-cua install\n```\n\n' "$full" "$VERSION"
+            printf 'The app is Developer ID signed, notarized and stapled. Check a download with `shasum -a 256 -c <archive>.sha256`.\n\n'
+            printf '### Build provenance\n\nSource commit: %s\nBuild run: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$BUILD_REPO" "$BUILD_RUN_ID"
+          } > "$notes"
+          cd "$DIR"
+          gh release create "$tag" --target "$SOURCE_SHA" --title "FennecCUA $VERSION" --notes-file "$notes" --latest=false \
+            "$full" "$full.sha256" "$core" "$core.sha256" SHA256SUMS provenance.json
+          latest_after=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
+          test "$latest_after" = "$latest_before" || { echo "::error::Latest release moved from $latest_before to $latest_after"; exit 1; }
+          url=$(gh release view "$tag" --json url -q .url)
+          echo "Published [FennecCUA $VERSION]($url); latest release is still $latest_after." >> "$GITHUB_STEP_SUMMARY"
+          echo "$url"

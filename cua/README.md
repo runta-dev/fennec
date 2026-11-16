@@ -15,7 +15,11 @@ fennec-cua also ships on its own, without Fennec.app: one app, `FennecCUA.app`, 
 | `fennec-cua-<version>-macos-arm64.tar.gz` | app, cua-driver, Chromium (browser tabs) | about 205 MB (460 MB installed) |
 | `fennec-cua-<version>-macos-arm64-core.tar.gz` | app and cua-driver; browser calls fail, native apps work | about 30 MB |
 
-Each comes with a `.sha256` file (`shasum -a 256 -c <archive>.sha256`). There is no public download yet; build one from this directory (Apple silicon, Go, Xcode command-line tools, the `Fennec Local Development` signing identity from `scripts/create-development-identity.sh`):
+Download both from the [FennecCUA releases](https://github.com/runta-dev/fennec/releases?q=fennec-cua&expanded=true) (tags `fennec-cua-v<version>`). Release builds are Developer ID signed, notarized and stapled, so a browser download opens without a Gatekeeper prompt. Each archive comes with a `.sha256` file (`shasum -a 256 -c <archive>.sha256`); `SHA256SUMS` and `provenance.json` name the source commit and the build run.
+
+**Releases.** CI builds them in two steps. `runta-dev/errand`'s "Build FennecCUA macOS Release" workflow (run by hand, with a Fennec main commit and an optional version) checks out Fennec, runs `scripts/package-cua-release-macos.sh` with the Apple credentials of its `apple-release` environment and uploads the archives as an artifact. This repository's "Publish FennecCUA release" workflow then takes that run's id, verifies the run, the artifact digest, the checksums and that the commit is on main, and publishes `fennec-cua-v<version>` without rebuilding. It is never marked latest: Fennec's updater reads `releases/latest`. `scripts/package-cua-release-macos.sh --dry-run` builds the same archives locally with the development identity and no notarization.
+
+To build one yourself from this directory (Apple silicon, Go, Xcode command-line tools, the `Fennec Local Development` signing identity from `scripts/create-development-identity.sh`):
 
 ```sh
 go run ./cmd/cua-dist -out ../build/cua-dist -version 0.1.0 \
@@ -25,7 +29,7 @@ go run ./cmd/cua-dist -out ../build/cua-dist-core -version 0.1.0 -no-chromium
 
 `cua-dist` fetches the pinned cua-driver release (size and SHA-256 checked, `internal/driver/pin.go`), builds fennec-cua with the version stamped in, assembles the app (icon from `go run ./cmd/cua-icon`, every licence under `Contents/Resources/licenses/`, the skill under `Contents/Resources/skills/`), signs it inside out with the hardened runtime, checks that the signed programs start, writes the archive, then extracts it again and verifies the extracted app.
 
-**Gatekeeper.** These builds are signed with a local certificate and are not notarized (Developer ID notarization waits on an Apple agreement). A file downloaded with a browser carries `com.apple.quarantine`, and macOS then refuses to run it ("cannot be opened", "developer cannot be verified"). Clear it once on the extracted folder: `xattr -dr com.apple.quarantine fennec-cua-<version>-macos-arm64`. Archives copied or fetched with `curl` are not quarantined. Release path: `cua-dist -identity "Developer ID Application: ..." -notarize-profile <notarytool profile>` signs with the team certificate, submits with `notarytool --wait`, staples, and checks with `spctl` before archiving; nothing else changes.
+**Gatekeeper.** Builds you make yourself are signed with a local certificate and are not notarized. A file downloaded with a browser carries `com.apple.quarantine`, and macOS then refuses to run it ("cannot be opened", "developer cannot be verified"). Clear it once on the extracted folder: `xattr -dr com.apple.quarantine fennec-cua-<version>-macos-arm64`. Archives copied or fetched with `curl` are not quarantined. Releases use `cua-dist -identity "Developer ID Application: ..." -notarize-profile <notarytool profile>`: it signs with the team certificate, submits with `notarytool --wait`, staples, and checks with `spctl` before archiving; nothing else changes.
 
 ### 2. Install (per user, no administrator rights)
 
