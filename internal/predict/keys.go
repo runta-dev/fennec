@@ -75,7 +75,7 @@ func parseKey(b []byte) (Key, int) {
 	if strings.HasPrefix(s, pasteStart) {
 		end := strings.Index(s, pasteEnd)
 		if end < 0 {
-			return Key{Kind: KeyPasteFragment, Open: true}, len(s)
+			return Key{Kind: KeyPasteFragment, Text: s[len(pasteStart):], Open: true}, len(s)
 		}
 		return Key{Kind: KeyPaste, Text: s[len(pasteStart):end]}, end + len(pasteEnd)
 	}
@@ -327,9 +327,26 @@ func kittyKey(code rune, shifted string, shift, alt, ctrl bool) Key {
 }
 
 // PasteSplitter carries the state of a bracketed paste across reads: a large
-// paste can arrive in several reads, and its middle must not be taken for
-// typing. Use one per input stream.
-type PasteSplitter struct{ open bool }
+// paste can arrive in several reads (on macOS beyond about a kilobyte), and
+// its middle must not be taken for typing. The parts before the end are
+// neutral keys; the read with the end yields the whole paste, which agents
+// only process at the end anyway. Pastes over maxSplitPaste stay fragments
+// (not predicted). Use one per input stream.
+type PasteSplitter struct {
+	open     bool
+	text     strings.Builder
+	overflow bool
+}
+
+const maxSplitPaste = 1 << 20
+
+func (p *PasteSplitter) add(s string) {
+	if p.text.Len()+len(s) > maxSplitPaste {
+		p.overflow = true
+		return
+	}
+	p.text.WriteString(s)
+}
 
 // Keys parses data like ParseKeys, continuing an open paste.
 func (p *PasteSplitter) Keys(data []byte) []Key {
@@ -337,16 +354,25 @@ func (p *PasteSplitter) Keys(data []byte) []Key {
 	if p.open {
 		end := strings.Index(string(data), pasteEnd)
 		if end < 0 {
-			return []Key{{Kind: KeyPasteFragment, Bytes: len(data)}}
+			p.add(string(data))
+			return []Key{{Kind: KeyNeutral, Bytes: len(data)}}
 		}
 		n := end + len(pasteEnd)
-		keys = append(keys, Key{Kind: KeyPasteFragment, Bytes: n})
+		p.add(string(data[:end]))
+		key := Key{Kind: KeyPaste, Text: p.text.String(), Bytes: n}
+		if p.overflow {
+			key = Key{Kind: KeyPasteFragment, Bytes: n}
+		}
+		keys = append(keys, key)
 		data = data[n:]
-		p.open = false
+		p.open, p.overflow = false, false
+		p.text.Reset()
 	}
 	rest := ParseKeys(data)
 	if n := len(rest); n > 0 && rest[n-1].Open {
 		p.open = true
+		p.add(rest[n-1].Text)
+		rest[n-1] = Key{Kind: KeyNeutral, Bytes: rest[n-1].Bytes}
 	}
 	return append(keys, rest...)
 }

@@ -1,6 +1,7 @@
 package predict
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -418,18 +419,38 @@ func (p *opencodeProfile) Edit(k Key, st State, ctx EditContext) EditFunc {
 	case KeyRight:
 		return func(s State) State { return s.Move(1) }
 	case KeyPaste:
-		text := normalizePaste(k.Text)
-		// Three or more lines, or long text, become a chip.
-		if text == "" || countNewlines(text) >= 2 || len(text) > 150 || looksLikeImagePath(text) || !printable(strings.ReplaceAll(text, "\n", " ")) {
-			return nil
-		}
-		if st.Empty() && strings.ContainsAny(text[:1], "/@!") {
-			return nil
-		}
-		elems := TextElems(text)
-		return func(s State) State { return s.Insert(elems...) }
+		return opencodePaste(normalizePaste(k.Text), st)
 	}
 	return opencodeEditing.edit(k, st, p.width)
+}
+
+// opencodePaste predicts a bracketed paste (recorded on OpenCode 2.3.0): three
+// or more lines, or more than 150 characters, become a "[Pasted ~N lines]"
+// chip followed by a space, where N counts the lines without a trailing line
+// break; shorter pastes are inserted as text. Pastes where a trailing break
+// decides between the two (or several trailing or leading breaks) wait.
+func opencodePaste(text string, st State) EditFunc {
+	if text == "" || looksLikeImagePath(text) || !printable(strings.ReplaceAll(text, "\n", " ")) {
+		return nil
+	}
+	if st.Empty() && strings.ContainsAny(text[:1], "/@!") {
+		return nil
+	}
+	body := strings.TrimSuffix(text, "\n")
+	if strings.HasPrefix(text, "\n") || strings.HasSuffix(body, "\n") {
+		return nil
+	}
+	lines := strings.Count(body, "\n") + 1
+	long := len(body) > 150
+	if body != text && (lines == 2 || long != (len(text) > 150)) {
+		return nil
+	}
+	if lines >= 3 || long {
+		chip := Elem{S: fmt.Sprintf("[Pasted ~%d lines]", lines), Token: true}
+		return func(s State) State { return s.Insert(chip, Elem{S: " "}) }
+	}
+	elems := TextElems(text)
+	return func(s State) State { return s.Insert(elems...) }
 }
 
 // opencodeEditing: Home/End go to the start/end of the whole draft (recorded

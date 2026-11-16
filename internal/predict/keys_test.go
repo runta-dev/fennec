@@ -1,6 +1,9 @@
 package predict
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseKeys(t *testing.T) {
 	cases := []struct {
@@ -43,19 +46,42 @@ func TestParseKeys(t *testing.T) {
 
 func TestPasteSplitAcrossReads(t *testing.T) {
 	var p PasteSplitter
-	var kinds []KeyKind
+	var keys []Key
 	for _, chunk := range []string{"a\x1b[200~line one\n", "line two\n", "three\x1b[201~b"} {
-		for _, k := range p.Keys([]byte(chunk)) {
-			kinds = append(kinds, k.Kind)
-		}
+		keys = append(keys, p.Keys([]byte(chunk))...)
 	}
-	want := []KeyKind{KeyText, KeyPasteFragment, KeyPasteFragment, KeyPasteFragment, KeyText}
-	if len(kinds) != len(want) {
-		t.Fatalf("kinds %v, want %v", kinds, want)
+	want := []KeyKind{KeyText, KeyNeutral, KeyNeutral, KeyPaste, KeyText}
+	if len(keys) != len(want) {
+		t.Fatalf("keys %+v, want kinds %v", keys, want)
 	}
 	for i := range want {
-		if kinds[i] != want[i] {
-			t.Fatalf("kinds %v, want %v", kinds, want)
+		if keys[i].Kind != want[i] {
+			t.Fatalf("keys %+v, want kinds %v", keys, want)
 		}
+	}
+	if keys[3].Text != "line one\nline two\nthree" {
+		t.Fatalf("paste %q", keys[3].Text)
+	}
+	bytes := 0
+	for _, k := range keys {
+		bytes += k.Bytes
+	}
+	if bytes != len("a\x1b[200~line one\n")+len("line two\n")+len("three\x1b[201~b") {
+		t.Fatalf("keys cover %d bytes", bytes)
+	}
+}
+
+// TestPasteSplitOverflow: a paste too large to hold is not predicted.
+func TestPasteSplitOverflow(t *testing.T) {
+	var p PasteSplitter
+	p.Keys([]byte("\x1b[200~"))
+	big := strings.Repeat("x", maxSplitPaste)
+	p.Keys([]byte(big))
+	keys := p.Keys([]byte("y\x1b[201~"))
+	if len(keys) != 1 || keys[0].Kind != KeyPasteFragment {
+		t.Fatalf("keys %+v", keys)
+	}
+	if keys = p.Keys([]byte("\x1b[200~ok\x1b[201~")); len(keys) != 1 || keys[0].Kind != KeyPaste || keys[0].Text != "ok" {
+		t.Fatalf("next paste %+v", keys)
 	}
 }

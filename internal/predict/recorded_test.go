@@ -103,6 +103,7 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 	var res replayResult
 	res.keys = len(keys)
 	ci, ai := 0, 0
+	var split PasteSplitter // classifies keys like the engine (a paste split across reads)
 	advance := func(until float64) {
 		for {
 			nextChunk, nextAck := 1e18, 1e18
@@ -154,7 +155,7 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		painted := len(engine.painted) > 0
 		engine.mu.Unlock()
 		typed := false
-		for _, key := range ParseKeys(k.raw) {
+		for _, key := range split.Keys(k.raw) {
 			typed = typed || key.Kind == KeyText
 		}
 		if !painted {
@@ -376,5 +377,23 @@ func TestMenuRecordedSessions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPasteRecordedSessions replays bracketed pastes of 2 to 10 lines (with
+// and without a trailing line break, a blank line inside), single lines of
+// 200 and 800 characters, and a paste between typed words followed by
+// Backspace into the chip. The recorder sent each paste in three reads, so
+// this also covers a paste split across reads. OpenCode predicts all of them
+// (its "[Pasted ~N lines] " chip from three lines or 150 characters); Grok's
+// chip (from four lines) comes with a preview popup and is not predicted.
+func TestPasteRecordedSessions(t *testing.T) {
+	res := replayRecorded(t, "opencode-paste-100x30", 30, 100, func() Profile { return newOpencodeProfile() }, false)
+	if res.stats.Diverged != 0 || len(res.stats.BarrierKeys) != 0 {
+		t.Fatalf("%d rollbacks, waited: %v", res.stats.Diverged, res.stats.BarrierKeys)
+	}
+	res = replayRecorded(t, "grok-paste-100x30", 30, 100, func() Profile { return newGrokProfile() }, false)
+	if res.stats.Diverged != 0 {
+		t.Fatalf("grok: %d rollbacks", res.stats.Diverged)
 	}
 }

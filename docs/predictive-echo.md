@@ -553,9 +553,9 @@ a `[Pasted: N lines]` chip, after which Grok wraps differently and opens an
 expand popup; such pastes and drafts are left to the server.
 
 Two engine rules came from this recording: a bracketed paste split across
-reads is one unpredictable paste (its middle is never taken for typing), and
-a trailing space the screen cannot show is kept from the model when
-confirming a state.
+reads is never taken for typing in its middle (it is predicted as a whole when
+its end arrives, up to 1 MiB), and a trailing space the screen cannot show is
+kept from the model when confirming a state.
 
 OpenCode's rules, from the recordings: a `┃` bar with the text three columns
 right of it, and width = right end of the `╹▀▀▀` edge − bar − 4 (70 on the
@@ -565,9 +565,55 @@ row hidden). On the home screen the logo, composer and footer form one block
 centered vertically, so each added row moves either the block's top up or its
 bottom down (top = (rows+1−height)/2, taking the top where the logo starts);
 in a session the composer is anchored to the bottom. An empty draft shows a
-gray (#808080) placeholder. A paste of three or more lines, or a long one,
-becomes `[Pasted ~N lines] `, which Backspace deletes whole; such pastes are
-left to the server.
+gray (#808080) placeholder. A paste of three or more lines, or more than 150
+characters, becomes `[Pasted ~N lines] ` (N counts lines without a trailing
+break), which Backspace deletes whole; it is predicted.
+
+### Editing keys and menus (recorded 2026-11-16)
+
+Labelled test sessions (no prompt submitted) recorded the editing keys,
+the `/` and `@` menus, Tab, history and pastes on each agent; the replays
+(`TestEditingKeysRecordedSessions`, `TestMenuRecordedSessions`,
+`TestPasteRecordedSessions`) show every prediction exactly and no rollback.
+
+| Key | Claude Code | Codex | OpenCode 2.3.0 | Grok Build 1.0.77 |
+| --- | --- | --- | --- | --- |
+| Ctrl+A/E, Ctrl+K/U/W, Alt+Backspace | predicted | predicted | predicted (logical line) | predicted (logical line) |
+| Home/End | visual row | logical line | whole draft | logical line |
+| Ctrl+B/F | predicted | predicted | predicted | no effect in Grok: waits |
+| Up/Down inside a multi-row draft | predicted | waits | predicted (visual row) | predicted (visual row) |
+| Up/Down on the first/last row | waits (history) | waits | waits (history) | waits |
+| Tab | no change unless a popup may be open | waits | no change unless a popup may be open | waits (switches view) |
+| Typing in the `/` popup | predicted | predicted | predicted | waits (inline completion) |
+| Typing in the `@` popup | predicted | predicted | predicted | predicted |
+| Up/Down/Tab/Enter in a popup | waits | waits | waits | waits |
+| Multi-line paste | chip predicted | chip predicted | chip predicted | 4+ lines: waits (chip with a preview popup) |
+| Enter (submit) | predicted | predicted | waits (no session-view submit recorded) | waits (no submit recorded) |
+
+Word deletes and word moves wait when letters-and-digits words and
+whitespace-separated words disagree (punctuation), as the agents differ
+there. A popup is assumed open while the draft is a slash command without a
+space, or the word before the cursor starts with `@`.
+
+Claude Code's popup takes the place of the notification row above the box;
+the box is recognised under it as long as the draft opens a popup, and edits
+that would change the box's height wait. OpenCode's popup sits over the rows
+above the box (and over the home screen's logo, so the block top found before
+is reused); its rows close with a second bar, which ends the box. Grok draws
+the rest of the best slash command after the cursor (`/he` shows `/help`), so
+any key in a slash command waits.
+
+Two engine fixes came from these recordings: a key with no visible effect
+(Grok's Ctrl+B) used to resolve when the keys typed behind it were drawn,
+and they were then applied a second time; now the server is first compared
+with the draft before that key plus the keys behind it. And while only an
+unpredictable key is pending, nothing is painted (the agent's newer frame was
+covered by the last confirmed draft).
+
+The Codex menu recording is cut before `@x`: from there the mention popup
+listed the recording user's other tasks, and history recalled a real prompt.
+Recordings that show popups or history need that check before they are
+committed.
 
 OpenCode 2.3.0 hangs at startup when the user's inotify instances are
 exhausted (reported upstream as anomalyco/opencode#64149). On the cloud
