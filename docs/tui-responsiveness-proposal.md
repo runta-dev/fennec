@@ -254,6 +254,35 @@ independently of process waiting; cancellation still closes both pipes and
 terminates the process group. A regression with a 1.5 s paused output reader
 fails against the previous server and passes with the fix.
 
+The fixed server completed a fresh 135-comparison WAN run on 2026-11-16 at
+07:48 UTC, using the staged production terminal binary and real `cat` command
+streams. It verified 2,097,234 bytes in each direction over 46.483 seconds of
+load, with successful exit statuses and no measurement errors. Mac command
+and terminal-command race suites also passed with the fix. Timing remained
+noisy:
+
+| Phase | Gateway P95 | Guest echo P95 | Exact TUI ping P95 |
+| --- | ---: | ---: | ---: |
+| Idle | 192.515 ms | 402.302 ms | 398.017 ms |
+| Command load | 204.835 ms | 403.097 ms | 580.341 ms |
+| Recovery | 178.931 ms | 362.149 ms | 471.621 ms |
+
+Raw [command-load samples](benchmarks/2026-11-16-command-stream-ping.json) prove
+the transfer/drain behavior, not the latency target. Other traffic was not
+isolated and the installed daemon still uses the earlier development build.
+The background-egress observation above was a separate time window; it cannot
+attribute every slow sample in this run to external traffic. Do not treat
+independent percentile differences as a Fennec queueing measurement.
+
+The remaining Mutagen path includes both its long-running agent command stream
+and the scp upload used for agent installation; see the
+[upstream SSH transport implementation](https://github.com/mutagen-io/mutagen/blob/master/pkg/agent/transport/ssh/transport.go).
+Both need daemon IPC into the existing authenticated resident, with pinned
+account/runtime scope and bounded one-shot local stream offers. Independent
+OpenSSH wrappers or one rate limiter per wrapper would not meet the aggregate
+budget. Preserve command status and cancellation, and reject unsupported target
+or forwarding options instead of silently changing their meaning.
+
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.
 It never substitutes unrelated traffic or a coalesced health probe for a
