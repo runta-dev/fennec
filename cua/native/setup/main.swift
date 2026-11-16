@@ -228,13 +228,24 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             guard let id = a["id"] as? String, let e = a["error"] as? String, !e.isEmpty else { return nil }
             return (id, e)
         })
-        agents = list.map { a in
+        let fresh = list.map { a -> [String: Any] in
             var a = a
             if let id = a["id"] as? String, (a["error"] as? String ?? "").isEmpty, (a["connected"] as? Bool) != true, let e = errors[id] {
                 a["error"] = e
             }
             return a
         }
+        // A connect reports only the agent it connected: update that row and
+        // keep the others, so connecting one agent never hides another.
+        var merged = agents
+        for a in fresh {
+            if let id = a["id"] as? String, let i = merged.firstIndex(where: { $0["id"] as? String == id }) {
+                merged[i] = a
+            } else {
+                merged.append(a)
+            }
+        }
+        agents = merged
         mounted = obj["mounted"] as? Bool ?? false
     }
 
