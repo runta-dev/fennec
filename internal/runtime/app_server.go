@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fennec/internal/cpusched"
 	"fennec/internal/setup"
 	"fmt"
 	"net"
@@ -225,7 +226,8 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides
 		return nil, err
 	}
 	arguments := append([]string{"-c", "features.code_mode_host=true"}, overrides...)
-	command := exec.Command(codex, append(arguments, "app-server", "--listen", "unix://")...)
+	workload := cpusched.Command(home, append([]string{codex}, append(arguments, "app-server", "--listen", "unix://")...))
+	command := exec.Command(workload[0], workload[1:]...)
 	command.Dir = home
 	command.Env = env
 	command.Stdout, command.Stderr = logFile, logFile

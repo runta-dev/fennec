@@ -7,6 +7,7 @@ import (
 	"errors"
 	agents "fennec/internal/agentcmd"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/cpusched"
 	"fennec/internal/hookbridge"
 	"fennec/internal/setup"
 	"fmt"
@@ -261,7 +262,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		arguments = append(arguments, "--label", clipboardbridge.Label+"="+clipboardbridge.Version)
 	}
 	arguments = append(arguments, "--")
-	raw, err = runtime.Run(ctx, append(arguments, command...)...)
+	raw, err = runtime.Run(ctx, append(arguments, cpusched.Command(runtime.Home, command)...)...)
 	if err != nil {
 		return LocalTerminal{}, fmt.Errorf("Herdr launch outcome unknown; inspect session before retrying")
 	}

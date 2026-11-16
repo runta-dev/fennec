@@ -97,22 +97,22 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		stop := context.AfterFunc(ctx, func() { closer.Close() })
 		defer stop()
 	}
-	var writeMu sync.Mutex
+	writes := newWriteScheduler(ctx)
 	emitFrames := func(frames ...Frame) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		var batch bytes.Buffer
-		encoder := json.NewEncoder(&batch)
-		for _, frame := range frames {
-			if err := encoder.Encode(frame); err != nil {
-				return err
+		return writes.write(frames[0].ID, urgentFrames(frames), func() error {
+			var batch bytes.Buffer
+			encoder := json.NewEncoder(&batch)
+			for _, frame := range frames {
+				if err := encoder.Encode(frame); err != nil {
+					return err
+				}
 			}
-		}
-		_, err := output.Write(batch.Bytes())
-		if err != nil {
-			cancel()
-		}
-		return err
+			_, err := output.Write(batch.Bytes())
+			if err != nil {
+				cancel()
+			}
+			return err
+		})
 	}
 	emit := func(frame Frame) error { return emitFrames(frame) }
 	hooks := newHookRelay(ctx, emit)
@@ -301,7 +301,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				firstVisible := true
 				emitData := func(data []byte) error {
 					for len(data) > 0 {
-						n := min(len(data), Chunk)
+						n := min(len(data), OutputChunk)
 						var timings map[string]float64
 						if firstVisible {
 							firstVisible = false
@@ -322,7 +322,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					return nil
 				}
 				for {
-					count := session.window.take(Chunk)
+					count := session.window.take(OutputChunk)
 					if count == 0 {
 						break
 					}
@@ -617,9 +617,9 @@ func (session *serverSession) relaySocket(frame Frame, dial SocketDialer, emit f
 		emit(Frame{Type: "exit", ID: frame.ID})
 		return
 	}
-	buffer := make([]byte, Chunk)
+	buffer := make([]byte, OutputChunk)
 	for {
-		count := session.window.take(Chunk)
+		count := session.window.take(OutputChunk)
 		if count == 0 {
 			break
 		}
@@ -665,7 +665,7 @@ func (session *serverSession) relayCompressed(id string, conn net.Conn, encoder 
 	send := func() bool {
 		data := compressed.Bytes()
 		for len(data) > 0 {
-			count := session.window.take(min(len(data), Chunk))
+			count := session.window.take(min(len(data), OutputChunk))
 			if count == 0 {
 				return false
 			}

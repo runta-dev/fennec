@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/cpusched"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
 	cloudruntime "fennec/internal/runtime"
@@ -38,6 +39,9 @@ type prefixedInput struct {
 }
 
 func run() (int, error) {
+	if len(os.Args) >= 3 && os.Args[1] == "workload-exec" {
+		return 1, cpusched.ExecWorkload(os.Args[2:])
+	}
 	if name := filepath.Base(os.Args[0]); name == "wl-paste" || name == "xclip" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -239,6 +243,7 @@ func run() (int, error) {
 		return runtime.Attach(ctx, terminal.Address, request.ID, os.Stdin, os.Stdout, os.Stderr)
 	}
 	if serving {
+		cpusched.Interactive(home)
 		streamInput, err := streamPipe(os.Stdin)
 		if err != nil {
 			return 1, err

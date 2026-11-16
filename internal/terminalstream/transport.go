@@ -20,7 +20,8 @@ type Transport struct {
 	capabilities         map[string]bool
 	initialized          atomic.Bool
 	mu                   sync.Mutex
-	writeMu              sync.Mutex
+	writes               *writeScheduler
+	stopWrites           context.CancelFunc
 	input                io.WriteCloser
 	stopProcess          func() error
 	abortConnection      func() error
@@ -142,6 +143,8 @@ func StartSSHContext(ctx context.Context, client *ssh.Client, command string) (*
 
 func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() error, stop func() error, initial *Frame, abort ...func() error) *Transport {
 	transport := &Transport{input: input, stopProcess: stop, abortConnection: stop, sessions: map[string]*mailbox{}, ready: make(chan struct{}), done: make(chan struct{})}
+	writeCtx, stopWrites := context.WithCancel(context.Background())
+	transport.writes, transport.stopWrites = newWriteScheduler(writeCtx), stopWrites
 	if len(abort) == 1 {
 		transport.abortConnection = abort[0]
 	}
@@ -152,6 +155,7 @@ func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() erro
 		transport.mu.Unlock()
 	}
 	go func() {
+		defer stopWrites()
 		defer close(transport.done)
 		scanner := bufio.NewScanner(observedReader{output, &transport.lastRead})
 		scanner.Buffer(make([]byte, 4096), (4<<20)+65536)
@@ -390,6 +394,9 @@ func (transport *Transport) fail(err error) {
 		return
 	}
 	transport.err = err
+	if transport.stopWrites != nil {
+		transport.stopWrites()
+	}
 	transport.input.Close()
 	for _, box := range transport.sessions {
 		box.close(err)
@@ -428,8 +435,19 @@ func (transport *Transport) Send(frame Frame) error {
 			return err
 		}
 	}
-	transport.writeMu.Lock()
-	defer transport.writeMu.Unlock()
+	transport.mu.Lock()
+	if transport.writes == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		transport.writes, transport.stopWrites = newWriteScheduler(ctx), cancel
+	}
+	writes := transport.writes
+	transport.mu.Unlock()
+	return writes.write(frame.ID, urgentFrames([]Frame{frame}), func() error {
+		return transport.writeFrame(frame)
+	})
+}
+
+func (transport *Transport) writeFrame(frame Frame) error {
 	transport.mu.Lock()
 	if transport.suspended && frame.Type != "ping" {
 		if frame.Type == "close" {

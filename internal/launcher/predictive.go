@@ -124,4 +124,6 @@ func recordPredictionStats(engine *predict.Engine) {
 	}
 	launchprofile.Record("predict.confirm_p50", now.Add(-stats.ConfirmP50), stats.ConfirmP50)
 	launchprofile.Record("predict.confirm_p95", now.Add(-stats.ConfirmP95), stats.ConfirmP95)
+	launchprofile.Record("predict.local_paint_p50", now.Add(-stats.LocalPaintP50), stats.LocalPaintP50)
+	launchprofile.Record("predict.local_paint_p95", now.Add(-stats.LocalPaintP95), stats.LocalPaintP95)
 }

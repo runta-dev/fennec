@@ -57,6 +57,9 @@ const (
 type Stats struct {
 	Keys, Predicted, Confirmed, Diverged, Expired, Barriers, Unlocked int
 	ConfirmP50, ConfirmP95                                            time.Duration
+	// LocalPaint includes input-lock contention and the terminal write. It is
+	// separate from cloud confirmation and uses wall time, not the trace clock.
+	LocalPaintP50, LocalPaintP95 time.Duration
 }
 
 type edit struct {
@@ -109,11 +112,12 @@ type Engine struct {
 	pastes     PasteSplitter
 	imagePaste bool
 
-	painted    map[int]bool
-	cursorDirt bool
-	srtt       time.Duration
-	samples    []time.Duration
-	stats      Stats
+	painted      map[int]bool
+	cursorDirt   bool
+	srtt         time.Duration
+	samples      []time.Duration
+	paintSamples []time.Duration
+	stats        Stats
 
 	stop chan struct{}
 	done chan struct{}
@@ -195,6 +199,7 @@ func (e *Engine) Server(data []byte) error {
 // returns the input sequence number before data; the caller sends data with
 // that base so acknowledgements can be matched.
 func (e *Engine) Input(data []byte) uint64 {
+	started := time.Now()
 	e.opts.Record.Input(data)
 	keys := e.pastes.Keys(data) // only the input goroutine calls Input
 	// The clipboard check runs a helper process; never hold the lock for it.
@@ -212,6 +217,15 @@ func (e *Engine) Input(data []byte) uint64 {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	predictedBefore := e.stats.Predicted
+	defer func() {
+		if e.stats.Predicted > predictedBefore {
+			e.paintSamples = append(e.paintSamples, time.Since(started))
+			if len(e.paintSamples) > 512 {
+				e.paintSamples = e.paintSamples[len(e.paintSamples)-512:]
+			}
+		}
+	}()
 	base := e.seq
 	e.seq += uint64(len(data))
 	if !e.active() {
@@ -347,6 +361,11 @@ func (e *Engine) Stats() Stats {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s := e.stats
+	if n := len(e.paintSamples); n > 0 {
+		sorted := append([]time.Duration(nil), e.paintSamples...)
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+		s.LocalPaintP50, s.LocalPaintP95 = sorted[n/2], sorted[min(n-1, n*95/100)]
+	}
 	if n := len(e.samples); n > 0 {
 		sorted := append([]time.Duration(nil), e.samples...)
 		sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
