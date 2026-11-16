@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -124,6 +127,8 @@ func run() error {
 	exe, _ := os.Executable()
 	command := exec.CommandContext(ctx, exe, "-role", "server", "-terminal", *terminal, "-duration", duration.String())
 	boundary := "cloud-local protocol + PTY (not agent rendering or WAN)"
+	var transport *terminalstream.Transport
+	var err error
 	if *remote != "" {
 		if !strings.HasPrefix(*remote, "/tmp/") || strings.ContainsAny(*remote+*terminal, " '"+"\n\r\t;$`\\") {
 			return fmt.Errorf("unsafe staged path")
@@ -140,17 +145,28 @@ func run() error {
 		if json.Unmarshal(raw, &state) != nil || state.ID == "" {
 			return fmt.Errorf("runtime unavailable")
 		}
-		command = exec.CommandContext(ctx, "/usr/bin/ssh", "-T", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile="+filepath.Join(root, "cloud/known_hosts"), "-i", filepath.Join(root, "cloud/runtime_key"), state.ID+"@"+runta.ActiveSSHHost(home), *remote, "-role", "server", "-terminal", *terminal, "-duration", duration.String())
-		boundary = "Mac-to-cloud SSH + protocol + PTY (not agent rendering)"
+		client, err := connectSSH(ctx, home, root, state.ID)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		stopIO := context.AfterFunc(ctx, func() { client.Close() })
+		defer stopIO()
+		transport, err = terminalstream.StartSSHContext(ctx, client, *remote+" -role server -terminal "+*terminal+" -duration "+duration.String())
+		boundary = fmt.Sprintf("Mac-to-cloud Go SSH (TCP_NODELAY=%t) + protocol + PTY (not agent rendering)", runta.SSHNoDelayEnabled(home))
+		if err != nil {
+			return err
+		}
+	} else {
+		command.Stderr = os.Stderr
+		transport, err = terminalstream.Start(command)
 	}
-	command.Stderr = os.Stderr
-	transport, err := terminalstream.Start(command)
 	if err != nil {
 		return err
 	}
 	defer transport.Close()
 	if err := transport.Ready(ctx); err != nil {
-		return err
+		return fmt.Errorf("resident ready: %w", err)
 	}
 	var next int
 	launch := func(kind string) (*terminalstream.Session, error) {
@@ -185,7 +201,7 @@ func run() error {
 		return nil
 	}
 	if err := readUntil([]byte("READY\n")); err != nil {
-		return err
+		return fmt.Errorf("initial PTY echo: %w", err)
 	}
 	measure := func(seq int) (float64, error) {
 		output.Reset()
@@ -206,7 +222,7 @@ func run() error {
 	for i := 0; i < 25; i++ {
 		ms, err := measure(i)
 		if err != nil {
-			return err
+			return fmt.Errorf("idle echo sample %d: %w", i, err)
 		}
 		if i >= 5 {
 			idle = append(idle, ms)
@@ -255,7 +271,7 @@ func run() error {
 		}
 		ms, err := measure(25 + len(busy))
 		if err != nil {
-			return err
+			return fmt.Errorf("loaded echo sample %d after %s, bulk bytes %d: %w", len(busy), time.Since(started), bulkBytes.Load(), err)
 		}
 		busy = append(busy, ms)
 		step, done := context.WithTimeout(ctx, 3*time.Second)
@@ -263,7 +279,7 @@ func run() error {
 		err = transport.Probe(step)
 		done()
 		if err != nil {
-			return err
+			return fmt.Errorf("loaded heartbeat sample %d: %w", len(busy), err)
 		}
 		heartbeats = append(heartbeats, float64(time.Since(ping).Microseconds())/1000)
 		if time.Since(progress) > time.Minute {
@@ -283,6 +299,43 @@ func run() error {
 		return fmt.Errorf("added echo P95 exceeds %s", *budget)
 	}
 	return nil
+}
+
+// Use the same TCP_NODELAY policy and Go SSH implementation as production.
+// Plain OpenSSH -T leaves Nagle buffering enabled and is a different baseline.
+// This diagnostic reuses the already paired identity and pinned known_hosts;
+// no key enrollment, host-key acceptance or authentication fallback occurs.
+func connectSSH(ctx context.Context, home, root, id string) (*ssh.Client, error) {
+	key, err := os.ReadFile(filepath.Join(root, "cloud/runtime_key"))
+	if err != nil {
+		return nil, err
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	verify, err := knownhosts.New(filepath.Join(root, "cloud/known_hosts"))
+	if err != nil {
+		return nil, err
+	}
+	address := net.JoinHostPort(runta.ActiveSSHHost(home), "22")
+	raw, err := (&net.Dialer{Timeout: 20 * time.Second, KeepAlive: 15 * time.Second}).DialContext(ctx, "tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	if tcp, ok := raw.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(runta.SSHNoDelayEnabled(home))
+	}
+	stop := context.AfterFunc(ctx, func() { raw.Close() })
+	defer stop()
+	_ = raw.SetDeadline(time.Now().Add(20 * time.Second))
+	conn, channels, requests, err := ssh.NewClientConn(raw, address, &ssh.ClientConfig{User: id, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: verify})
+	if err != nil {
+		raw.Close()
+		return nil, err
+	}
+	_ = raw.SetDeadline(time.Time{})
+	return ssh.NewClient(conn, channels, requests), nil
 }
 
 func pollable(file *os.File) (*os.File, error) {
