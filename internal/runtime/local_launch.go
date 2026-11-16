@@ -265,7 +265,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		arguments = append(arguments, "--label", clipboardbridge.Label+"="+clipboardbridge.Version)
 	}
 	arguments = append(arguments, "--")
-	raw, err = runtime.Run(ctx, append(arguments, cpusched.Command(runtime.Home, command)...)...)
+	raw, err = runtime.Run(ctx, append(arguments, cpusched.CommandFor(runtime.Home, request.ID, command)...)...)
 	if err != nil {
 		return LocalTerminal{}, fmt.Errorf("Herdr launch outcome unknown; inspect session before retrying")
 	}

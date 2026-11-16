@@ -730,6 +730,31 @@ existing Fennec agent descendants without killing or restarting sessions.
 Treat unsupported or denied scheduling controls as a reported degraded mode,
 not a launch failure. Do not use realtime scheduling or modify unrelated PIDs.
 
+### Session groups and focus (2026-11-16)
+
+With every agent in one workload group, the agent the user is scrolling
+competed equally with background agents and the model gateway: under load
+Codex drew a scroll's steps about 45 ms apart (`docs/predictive-echo.md`).
+Workload now holds no processes itself, only groups:
+
+- `workload/shared`: processes not started in a session (the model gateway,
+  Codex app-servers, command streams), and whatever ran in workload directly
+  before the split (moved there first, since cgroup v2 allows children with
+  controllers only for a group without processes);
+- `workload/<id>`, one per session (`word1-word2` or 32 hex digits): the
+  agent and everything it starts. Launches pass the session to
+  `workload-exec --session <id>` (`cpusched.CommandFor`); existing trees are
+  assigned by the directory of their root under Herdr, `~/.fen/<id>`.
+
+Every group has weight 100. Any input to a session (keys, mouse, pastes)
+raises its group to 1000 (`cpusched.Focus`, through
+`terminalstream.FocusSession`); 10 s after the last input it returns to 100.
+Weights only act under contention and control (1000) still outweighs the
+whole workload. Empty session groups are removed on the next sweep. A
+resident older than the split still writes new agents to `workload` itself,
+which then fails; such an agent stays in its Herdr parent's group until the
+next sweep of a current resident.
+
 ## 2. Prioritize control traffic and bound output contention
 
 Keep one shared SSH connection and resident channel. Schedule ping/pong,

@@ -6,6 +6,7 @@ import (
 	"fennec/internal/hookbridge"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 // Resident startup launches the same executable's standalone traffic helper.
 // Dispatch that real entrypoint when this test binary is used as the service.
 func TestMain(m *testing.M) {
+	// The resident's entrypoints run below as subprocesses, some through a
+	// link named fennec-terminal; keep their CPU groups off the host.
+	if os.Getenv("FENNEC_CPU_GROUP_ROOT") == "" {
+		os.Setenv("FENNEC_CPU_GROUP_ROOT", filepath.Join(os.TempDir(), "fennec-terminal-test-cpu"))
+	}
 	if len(os.Args) >= 2 && (os.Args[1] == "traffic-broker" || os.Args[1] == "receive-project" || os.Args[1] == "workload-exec" || os.Args[1] == "sftp-stdio") {
 		main()
 		return

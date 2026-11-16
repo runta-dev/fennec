@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -15,7 +16,54 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const groupRoot = "/sys/fs/cgroup/fennec"
+// groupRoot holds control (the terminal control plane) and workload. Workload
+// holds no processes itself, only groups: shared (agent servers, the model
+// gateway, command streams) and one per session (workload/<id>, the agent
+// and everything it starts). A session the user is typing or scrolling in is
+// weighted above the others (Focus), so its agent redraws first when agents
+// compete for CPU; weights only matter under contention.
+var groupRoot = "/sys/fs/cgroup/fennec"
+
+// Tests run the resident's entrypoints (traffic-broker, workload-exec) as
+// subprocesses of the test binary; they must never reshape the host's groups.
+func init() {
+	if root := os.Getenv("FENNEC_CPU_GROUP_ROOT"); root != "" {
+		groupRoot = root
+	} else if exe, err := os.Executable(); err == nil && strings.HasSuffix(filepath.Base(exe), ".test") {
+		// The running executable, not os.Args[0]: tests also run the test
+		// binary through a link named fennec-terminal.
+		groupRoot = filepath.Join(os.TempDir(), "fennec-cpusched-test")
+	}
+}
+
+const (
+	sharedGroup   = "workload/shared"
+	sessionWeight = "100"
+	focusWeight   = "1000"
+)
+
+var sessionID = regexp.MustCompile(`^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$`)
+
+// sessionGroup is the group of a session ID, "" when the ID is not one.
+func sessionGroup(id string) string {
+	if !sessionID.MatchString(id) {
+		return ""
+	}
+	return "workload/" + id
+}
+
+// ensureGroup creates a workload group, weighted like any session when new.
+func ensureGroup(group string) error {
+	dir := groupRoot + "/" + group
+	err := os.Mkdir(dir, 0755)
+	if err == nil {
+		return os.WriteFile(dir+"/cpu.weight", []byte(sessionWeight), 0644)
+	}
+	if os.IsExist(err) {
+		return nil
+	}
+	return err
+}
 
 func groups() error {
 	// Root's CPU controller must already be delegated by the runtime. Do not
@@ -35,7 +83,31 @@ func groups() error {
 			return err
 		}
 	}
-	return nil
+	return splitWorkload()
+}
+
+// splitWorkload turns workload into a parent of groups: what runs in it
+// directly moves to shared, then its children get the cpu controller.
+// Retried, since a process may be placed in workload meanwhile.
+func splitWorkload() error {
+	if err := ensureGroup(sharedGroup); err != nil {
+		return err
+	}
+	dir := groupRoot + "/workload"
+	var err error
+	for try := 0; try < 5; try++ {
+		if enabled, _ := os.ReadFile(dir + "/cgroup.subtree_control"); strings.Contains(string(enabled), "cpu") {
+			return nil
+		}
+		procs, _ := os.ReadFile(dir + "/cgroup.procs")
+		for _, pid := range strings.Fields(string(procs)) {
+			_ = os.WriteFile(groupRoot+"/"+sharedGroup+"/cgroup.procs", []byte(pid), 0644)
+		}
+		if err = os.WriteFile(dir+"/cgroup.subtree_control", []byte("+cpu"), 0644); err == nil {
+			return nil
+		}
+	}
+	return err
 }
 
 func place(pid int, group string, nice int) error {
@@ -69,6 +141,7 @@ type process struct {
 	pid, parent int
 	exe, mode   string
 	start       string
+	cwd         string
 }
 
 func processes() map[int]process {
@@ -103,7 +176,8 @@ func processes() map[int]process {
 		if len(parts) > 1 {
 			mode = parts[1]
 		}
-		result[pid] = process{pid, parent, strings.TrimSuffix(exe, " (deleted)"), mode, fields[19]}
+		cwd, _ := os.Readlink(base + "/cwd")
+		result[pid] = process{pid, parent, strings.TrimSuffix(exe, " (deleted)"), mode, fields[19], cwd}
 	}
 	return result
 }
@@ -149,6 +223,30 @@ func classify(home string, all map[int]process, self int) map[int]string {
 			}
 		}
 	}
+	// A tree started by Herdr belongs to the session whose directory its root
+	// runs in (Herdr launches each agent in ~/.fen/<id>); the rest is shared.
+	workload := map[int]bool{}
+	for pid, class := range classes {
+		workload[pid] = class == "workload"
+	}
+	for pid := range workload {
+		if !workload[pid] {
+			continue
+		}
+		root := all[pid]
+		for seen := 0; seen < 64 && workload[root.parent]; seen++ {
+			root = all[root.parent]
+		}
+		group := sharedGroup
+		if herdr != "" && all[root.parent].exe == herdr {
+			if id, ok := strings.CutPrefix(root.cwd, filepath.Join(home, ".fen")+"/"); ok {
+				if g := sessionGroup(id); g != "" {
+					group = g
+				}
+			}
+		}
+		classes[pid] = group
+	}
 	return classes
 }
 
@@ -161,7 +259,18 @@ func Interactive(home string) Report {
 		report.Errors = append(report.Errors, err.Error())
 	}
 	all := processes()
-	for pid, group := range classify(home, all, os.Getpid()) {
+	placement := classify(home, all, os.Getpid())
+	sessions := map[string]bool{}
+	for _, group := range placement {
+		if strings.HasPrefix(group, "workload/") && group != sharedGroup && !sessions[group] {
+			sessions[group] = true
+			if err := ensureGroup(group); err != nil && len(report.Errors) < 12 {
+				report.Errors = append(report.Errors, err.Error())
+			}
+		}
+	}
+	report.SessionGroups = len(sessions)
+	for pid, group := range placement {
 		// A short-lived agent may exit while this snapshot is being applied.
 		// Fence PID reuse before touching a different process's scheduling.
 		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
@@ -192,6 +301,7 @@ func Interactive(home string) Report {
 			report.WorkloadProcesses++
 		}
 	}
+	pruneSessions(sessions)
 	dir := filepath.Join(home, ".local/fennec/diagnostics")
 	if os.MkdirAll(dir, 0700) == nil {
 		data, _ := json.Marshal(report)
@@ -209,6 +319,10 @@ func Interactive(home string) Report {
 }
 
 func ExecWorkload(command []string) error {
+	session := ""
+	if len(command) >= 2 && command[0] == "--session" {
+		session, command = command[1], command[2:]
+	}
 	if len(command) == 0 {
 		return fmt.Errorf("workload command required")
 	}
@@ -220,6 +334,51 @@ func ExecWorkload(command []string) error {
 	defer runtime.UnlockOSThread()
 	// Never fail an agent launch because the host does not delegate cgroups.
 	_ = groups()
-	_ = place(os.Getpid(), "workload", 0)
+	_ = placeWorkload(os.Getpid(), session)
 	return unix.Exec(path, command, os.Environ())
+}
+
+// pruneSessions removes session groups with no process left (rmdir fails on
+// a group that still has one), except those just placed.
+func pruneSessions(keep map[string]bool) {
+	entries, _ := os.ReadDir(groupRoot + "/workload")
+	for _, entry := range entries {
+		group := "workload/" + entry.Name()
+		if entry.IsDir() && group != sharedGroup && !keep[group] && sessionGroup(entry.Name()) != "" {
+			_ = os.Remove(groupRoot + "/" + group)
+		}
+	}
+}
+
+// placeWorkload puts a starting process in its session's group, or shared.
+// Creating the group and placing are retried, since a sweep may remove an
+// empty group in between.
+func placeWorkload(pid int, session string) error {
+	group := sessionGroup(session)
+	if group == "" {
+		return place(pid, sharedGroup, 0)
+	}
+	var err error
+	for try := 0; try < 3; try++ {
+		if err = ensureGroup(group); err == nil {
+			if err = place(pid, group, 0); err == nil {
+				return nil
+			}
+		}
+	}
+	return place(pid, sharedGroup, 0)
+}
+
+// setFocus writes the weight of a session's group; false when the session
+// has no group (an agent started before session groups, or none at all).
+func setFocus(id string, on bool) bool {
+	group := sessionGroup(id)
+	if group == "" {
+		return false
+	}
+	weight := sessionWeight
+	if on {
+		weight = focusWeight
+	}
+	return os.WriteFile(groupRoot+"/"+group+"/cpu.weight", []byte(weight), 0644) == nil
 }

@@ -277,6 +277,7 @@ func run() (int, error) {
 	}
 	if serving {
 		cpusched.Interactive(home)
+		terminalstream.FocusSession = cpusched.Focus
 		streamInput, err := streamPipe(os.Stdin)
 		if err != nil {
 			return 1, err

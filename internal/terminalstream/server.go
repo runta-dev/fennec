@@ -523,6 +523,12 @@ func (session *serverSession) pumpInput(id string, emit func(Frame) error) {
 		case <-session.ctx.Done():
 			return
 		case frame := <-session.input:
+			session.mu.Lock()
+			focused := session.imageSession
+			session.mu.Unlock()
+			if focused != "" {
+				FocusSession(focused)
+			}
 			length := len(frame.Data)
 			if frame.Type == "image" {
 				path, err := image.accept(frame)
@@ -731,3 +737,8 @@ func (session *serverSession) relayCompressed(id string, conn net.Conn, encoder 
 		}
 	}
 }
+
+// FocusSession is called with a session's ID for every input the user sends
+// it (keys, mouse, pastes), so the resident can weight that session's agent
+// above the others while the user works in it (cpusched.Focus).
+var FocusSession = func(id string) {}
