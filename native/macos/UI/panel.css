@@ -608,3 +608,7 @@ nav button{padding:3px 7px}
 .license-link:hover{filter:none}
 .license-link svg{width:13px;height:13px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .license-link:hover svg,.license-link:focus-visible svg{stroke:var(--text)}
+
+/* Keep Kimi's blue accent when adapting its letterform to a dark surface. */
+:root[data-theme=dark] img[src$="/kimi-color.svg"]{content:url("icons/kimi-color-dark.svg");filter:none}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) img[src$="/kimi-color.svg"]{content:url("icons/kimi-color-dark.svg");filter:none}}

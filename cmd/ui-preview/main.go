@@ -129,7 +129,7 @@ const previewAgents=[
  {id:'codex',name:'Codex',icon:'codex-color.svg',installed:true,cloudSupported:true},
  {id:'claude',name:'Claude Code',icon:'claudecode-color.svg',installed:true,cloudSupported:true},
  {id:'pi',name:'Pi',icon:'pi.svg',installed:true,cloudSupported:true},
- {id:'kimi',name:'Kimi Code',icon:'kimi.svg',installed:true,cloudSupported:true},
+ {id:'kimi',name:'Kimi Code',icon:'kimi-color.svg',installed:true,cloudSupported:true},
  {id:'claude-desktop',name:'Claude Desktop',icon:'claude-color.svg',installed:false,cloudSupported:false},
  {id:'opencode',name:'OpenCode',icon:'opencode.svg',installed:false,cloudSupported:false}];
 const nowMS=Date.now();

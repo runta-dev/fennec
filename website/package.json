@@ -8,7 +8,10 @@
     "build": "vinext build",
     "typecheck": "tsc --noEmit",
     "preview": "wrangler dev --config deploy/worker.toml --port 4188",
-    "deploy": "npm run build && wrangler deploy --config deploy/worker.toml"
+    "deploy": "npm run build && wrangler deploy --config deploy/worker.toml",
+    "prepare:demo": "go run ../cmd/export-website-ui -root ..",
+    "predev": "npm run prepare:demo",
+    "prebuild": "npm run prepare:demo"
   },
   "dependencies": {
     "vinext": "1.0.0-beta.10",

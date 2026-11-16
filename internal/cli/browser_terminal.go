@@ -67,7 +67,7 @@ func installBrowserTerminal(ctx context.Context, s *daemonServices, c *controlpl
 					continue
 				}
 				value.Title = session.Title
-				icons := map[string]string{"codex": "codex-color.svg", "claude": "claudecode-color.svg", "pi": "pi.svg", "kimi": "kimi.svg", "opencode": "opencode.svg", "devin": "devin.svg", "grok": "xai.svg", "cursor": "cursor.svg"}
+				icons := map[string]string{"codex": "codex-color.svg", "claude": "claudecode-color.svg", "pi": "pi.svg", "kimi": "kimi-color.svg", "opencode": "opencode.svg", "devin": "devin.svg", "grok": "xai.svg", "cursor": "cursor.svg"}
 				if icon := icons[session.Receipt.Agent]; icon != "" {
 					value.Icon = "/icons/" + icon
 				}

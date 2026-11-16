@@ -37,8 +37,8 @@ function gatewayProviderIconSpec(provider) {
     openrouter: { src: 'icons/openrouter.svg', mono: true },
     groq: { src: 'icons/groq.svg', mono: true },
     moonshot: { src: 'icons/moonshot.svg', mono: true },
-    'kimi-code': { src: 'icons/kimi.svg', mono: true },
-    kimi: { src: 'icons/kimi.svg', mono: true },
+    'kimi-code': { src: 'icons/kimi-color.svg', mono: false },
+    kimi: { src: 'icons/kimi-color.svg', mono: false },
     xai: { src: 'icons/xai.svg', mono: true },
     grok: { src: 'icons/xai.svg', mono: true },
     devin: { src: 'icons/devin.svg', mono: false },
@@ -559,7 +559,7 @@ window.renderRuntimes = (rows, message) => {
       item.append(disclosure);
     }
     info.append(name);
-    const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg"};
+    const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi-color.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg"};
     const identity=document.createElement('span');identity.className='session-agent-identity';
     if(agentIcons[row.agent]){const icon=document.createElement("img");icon.className="agent-icon session-agent-icon";icon.src="icons/"+agentIcons[row.agent];icon.alt=row.agent;icon.title=row.agent;icon.draggable=false;identity.append(icon);}
     else{identity.innerHTML='<svg class="session-agent-fallback" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="3"/><path d="m5 7 3 3-3 3m6 0h4"/></svg>';}

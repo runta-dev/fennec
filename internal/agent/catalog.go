@@ -27,7 +27,7 @@ var catalog = []definition{
 	{"claude", "Claude Code", "claudecode-color.svg", []string{"claude"}, []string{".claude/settings.json"}, nil, true},
 	{"codex", "Codex", "codex-color.svg", []string{"codex"}, []string{".codex/config.toml"}, nil, true},
 	{"pi", "Pi", "pi.svg", []string{"pi"}, []string{".pi/agent/settings.json"}, nil, true},
-	{"kimi", "Kimi Code", "kimi.svg", []string{"kimi"}, []string{".kimi-code/config.toml"}, nil, true},
+	{"kimi", "Kimi Code", "kimi-color.svg", []string{"kimi"}, []string{".kimi-code/config.toml"}, nil, true},
 	{"claude-desktop", "Claude Desktop", "claude-color.svg", nil, nil, []string{"Claude.app"}, false},
 	{"opencode", "OpenCode", "opencode.svg", []string{"opencode"}, []string{".config/opencode/opencode.json", ".config/opencode/opencode.jsonc"}, nil, true},
 	{"devin", "Devin", "devin.svg", []string{"devin"}, nil, nil, false},

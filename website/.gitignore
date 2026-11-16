@@ -4,3 +4,5 @@ dist/
 .next/
 .wrangler/
 .env*
+
+/public/demo-native/

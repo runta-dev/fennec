@@ -16,7 +16,7 @@ Compact panel colors and layout metrics are adapted from `internal/gui/assets/ap
 
 Additional Agent SVGs copied from Magpie at revision
 `218b38c5962137e8384d078b7e5457fdfc33dc2c`:
-`pi.svg`, `kimi.svg`, `claude-color.svg`, `opencode.svg`, `devin.svg`,
+`pi.svg`, `kimi-color.svg`, `kimi-color-dark.svg`, `claude-color.svg`, `opencode.svg`, `devin.svg`,
 `xai.svg`, `geminicli-color.svg`, `cursor.svg`, `copilot-color.svg`.
 Detection behavior references `internal/agent/agent.go` (Detected/binAt),
 `kimi.go`, `devin.go` and `grok.go`; Fennec uses its own metadata-only detector.
