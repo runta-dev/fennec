@@ -19,26 +19,17 @@ reference template's typography, navigation, spacing, buttons, section layouts,
 and responsive rules. Agent artwork comes from the native UI. Go is required to
 export the native demo assets before development and production builds.
 
-The first walkthrough illustrates one sample Codex session across starting,
-Mac disconnection, and reattachment. It identifies the sample explicitly and
-explains that cloud work needs prepared files and dependencies, while steps
-requiring the Mac wait for reconnection. Its three stages advance while visible
-and stop at the final scene. Visitors can pause, replay, or choose a stage;
-keyboard tabs support arrow keys, Home, and End. Reduced motion starts paused.
+The walkthrough replays real Codex, Claude Code, Pi and fen PTY output using
+the shipping xterm renderer. The Fennec panel loads the original native HTML,
+CSS, scripts and custom menus with isolated browser-only sample data. It never
+connects to an account or daemon. See [recording workflow and provenance](demo/README.md).
 
-The expandable app tour preserves real Codex, Claude Code, Pi and fen PTY output
-using the shipping xterm renderer. It is mounted only when expanded. The Fennec
-panel loads the original native HTML, CSS, scripts and custom menus with isolated
-browser-only sample data. It never connects to an account or daemon. These
-recordings show cloud-only coding tasks, not a recorded disconnect/reconnect
-sequence. See [recording workflow and provenance](demo/README.md).
-
-The expanded tour loops while visible and pauses offscreen or in a background
-tab. Reduced motion shows its completed scene. Clicking terminal tabs or native
+Playback loops while visible and pauses offscreen or in a background tab.
+Reduced motion shows the completed scene. Clicking terminal tabs or native
 controls pauses automatic navigation for eight seconds, then resumes. Every
-cycle resets terminal tabs, sessions and native fixture state. Space on the
-focused tour toggles playback, and Escape pauses. The terminal is a recording;
-native controls operate on fixtures.
+cycle resets terminal tabs, sessions and native fixture state. Space on the focused walkthrough toggles
+playback, and Escape pauses. The terminal is a recording; native controls operate
+on fixtures. The original walkthrough remains directly visible on the homepage.
 
 ## Publish to Cloudflare
 
@@ -78,11 +69,10 @@ separate app, not a prerequisite for cloud sessions.
 ## Verification
 
 Run typecheck, the static build, the source-language and localization checks,
-and the recorder byte-preservation tests. Check all three story stages, pause,
-replay, keyboard navigation, reduced motion, and stable session identity. Ensure
+and the recorder byte-preservation tests. Ensure
 account and cost disclosures appear beside the main CTA and in setup before the
 FAQ. Check responsive layouts from 320 to 1440 px and the primary mobile nav.
-In the expanded tour, check the actual native menus, all four panels, terminal
+In the walkthrough, check the actual native menus, all four panels, terminal
 playback, and automatic session updates. Check the Kimi icon in light and dark
 UI themes; its blue accent must remain blue.
 

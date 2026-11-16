@@ -66,7 +66,7 @@ export default function Home() {
         ['Are my files automatically mirrored?', 'No. Your starting directory provides context; it is not permission to copy your entire home folder. The agent selects task-relevant files, works in a cloud checkout, and reconciles changes back to your Mac.'],
         ['Can I bring an existing conversation?', 'Yes, using your agent’s supported resume command. Fennec brings the local conversation history into the cloud session so you can continue there.'],
         ['Can I keep my terminal tools and shortcuts?', 'Yes. Keep tmux, cmux, Herdr, and your terminal workflow. Fennec supports clipboard image paste in supported cloud agent terminals, input prediction for supported terminal input, and approved cmux hooks for cloud Codex sessions.'],
-        ['Does this preview run a real agent?', 'No. The three-step walkthrough illustrates a sample session. The expandable app preview uses browser-only sample data and prerecorded terminal output. Neither connects to your computer nor sends tasks to an AI service.'],
+        ['Does this preview run a real agent?', 'No. The app preview uses browser-only sample data and prerecorded terminal output. It does not connect to your computer or send tasks to an AI service.'],
         ['Are cloud and model usage included?', 'No. Cloud compute is billed through your Runta account, and model usage depends on your provider’s plan or usage billing. They are separate from the macOS companion.'],
       ].map(([q, a]) => <details key={q}><summary>{q}<span className="faq-plus" aria-hidden="true">+</span></summary><p>{a}</p></details>)}</div></section>
 

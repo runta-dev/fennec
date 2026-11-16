@@ -4,6 +4,7 @@
 .requirements-break { display:none; }
 .hero-requirements a { display:inline-flex; gap:4px; align-items:center; margin-left:5px; text-decoration:underline; text-underline-offset:3px; }
 .fennec-landing .demo-wrap { max-width:1184px; }
+.fennec-landing .demo-wrap:has(.workflow-demo) { max-width:1400px; }
 .fennec-landing .supported-agents { margin-top:48px; margin-bottom:0; padding-bottom:62px; }
 .fennec-landing .supported-agents h2 { font-size:14px; margin-bottom:23px; }
 .fennec-landing .supported-agents p { font-size:12px; color:var(--muted); margin:23px 0 0; }
