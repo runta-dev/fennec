@@ -1,0 +1,1752 @@
+{
+  "artifacts": {
+    "2026-11-15-menu-restart.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "sample_records": 2,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "a546688cb2a363142d671b7ff11d65987700e2daeab57190627b824e0a9ced8d"
+    },
+    "2026-11-15-v33-ops.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "8fdbcba320af9078bc5fc7632ac4a3b453a8f0a08e21efa068ea5f01a7898c86"
+    },
+    "2026-11-16-ab-balanced.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "baseline_terminal": "/tmp/fennec-qos-baseline-terminal",
+        "boundary": "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered BAAB ABBA (candidate first), no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.",
+        "candidate_terminal": "/tmp/fennec-command-drain-terminal",
+        "duration_seconds": 199.899437,
+        "started_utc": "2026-11-16T08:23:52.06532Z",
+        "summary": {
+          "bulk/baseline": {
+            "echo": {
+              "count": 48,
+              "min_ms": 218.544292,
+              "median_ms": 582.38475,
+              "p95_ms": 973.943958,
+              "max_ms": 1259.963166
+            },
+            "gateway": {
+              "count": 48,
+              "min_ms": 156.939542,
+              "median_ms": 160.680375,
+              "p95_ms": 211.00775,
+              "max_ms": 341.488
+            },
+            "ping": {
+              "count": 48,
+              "min_ms": 312.895,
+              "median_ms": 609.015792,
+              "p95_ms": 1019.848042,
+              "max_ms": 1136.511084
+            }
+          },
+          "bulk/candidate": {
+            "echo": {
+              "count": 48,
+              "min_ms": 171.005042,
+              "median_ms": 234.895041,
+              "p95_ms": 560.085459,
+              "max_ms": 594.725791
+            },
+            "gateway": {
+              "count": 48,
+              "min_ms": 156.347041,
+              "median_ms": 159.173833,
+              "p95_ms": 210.393417,
+              "max_ms": 217.470083
+            },
+            "ping": {
+              "count": 48,
+              "min_ms": 162.862459,
+              "median_ms": 239.711833,
+              "p95_ms": 596.550584,
+              "max_ms": 679.816041
+            }
+          },
+          "idle/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 158.230708,
+              "median_ms": 338.645875,
+              "p95_ms": 369.60375,
+              "max_ms": 489.553333
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 156.278542,
+              "median_ms": 158.205583,
+              "p95_ms": 205.083667,
+              "max_ms": 205.817459
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 159.452709,
+              "median_ms": 321.320458,
+              "p95_ms": 468.479125,
+              "max_ms": 546.721084
+            }
+          },
+          "idle/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 159.0015,
+              "median_ms": 333.168917,
+              "p95_ms": 406.203792,
+              "max_ms": 539.004583
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 156.750042,
+              "median_ms": 158.508,
+              "p95_ms": 203.425125,
+              "max_ms": 206.588875
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 160.31825,
+              "median_ms": 337.786625,
+              "p95_ms": 406.6915,
+              "max_ms": 421.049292
+            }
+          },
+          "recovery/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 159.628916,
+              "median_ms": 164.381667,
+              "p95_ms": 369.134,
+              "max_ms": 369.906584
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 156.94825,
+              "median_ms": 160.520667,
+              "p95_ms": 285.695583,
+              "max_ms": 437.147666
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 160.888459,
+              "median_ms": 190.602958,
+              "p95_ms": 362.214041,
+              "max_ms": 522.701083
+            }
+          },
+          "recovery/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 159.4455,
+              "median_ms": 191.029875,
+              "p95_ms": 365.658083,
+              "max_ms": 374.373459
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 156.171584,
+              "median_ms": 160.083625,
+              "p95_ms": 206.8565,
+              "max_ms": 230.9405
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 159.362791,
+              "median_ms": 166.238667,
+              "p95_ms": 269.950333,
+              "max_ms": 368.904292
+            }
+          }
+        }
+      },
+      "sample_records": 192,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "99e11fcd989caa8b71ec9842f4ce2344fbe791519b93e44a31e25c2c86c6ddf7"
+    },
+    "2026-11-16-ab-unbounded-failure.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "baseline_terminal": "/tmp/fennec-qos-baseline-terminal",
+        "boundary": "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered ABBA BAAB, no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.",
+        "candidate_terminal": "/tmp/fennec-command-drain-terminal",
+        "duration_seconds": 34.163999,
+        "error": "EOF",
+        "started_utc": "2026-11-16T08:02:56.383439Z",
+        "summary": {
+          "idle/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 160.088042,
+              "median_ms": 163.040792,
+              "p95_ms": 205.853708,
+              "max_ms": 209.088292
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 156.598042,
+              "median_ms": 158.942417,
+              "p95_ms": 206.67025,
+              "max_ms": 207.023833
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 160.233,
+              "median_ms": 162.8485,
+              "p95_ms": 204.479125,
+              "max_ms": 330.763625
+            }
+          },
+          "idle/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 160.147666,
+              "median_ms": 163.442167,
+              "p95_ms": 203.622416,
+              "max_ms": 209.801209
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 155.700916,
+              "median_ms": 161.039833,
+              "p95_ms": 203.30125,
+              "max_ms": 225.887875
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 161.0435,
+              "median_ms": 168.329708,
+              "p95_ms": 209.081209,
+              "max_ms": 367.74075
+            }
+          }
+        }
+      },
+      "sample_records": 48,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "b136fd3789900f11eedd7fe21d3a34d88e5a54070be66fe0a9a5128a0a14e163"
+    },
+    "2026-11-16-ab-window-failure.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "baseline_terminal": "/tmp/fennec-qos-baseline-terminal",
+        "boundary": "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered ABBA BAAB, no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.",
+        "candidate_terminal": "/tmp/fennec-command-drain-terminal",
+        "duration_seconds": 54.094795,
+        "error": "bulk baseline block 0 echo read: EOF",
+        "started_utc": "2026-11-16T08:11:57.264558Z",
+        "summary": {
+          "bulk/baseline": {
+            "echo": {
+              "count": 4,
+              "min_ms": 1390.379,
+              "median_ms": 2195.4055,
+              "p95_ms": 2339.716791,
+              "max_ms": 2339.716791
+            },
+            "gateway": {
+              "count": 4,
+              "min_ms": 162.636208,
+              "median_ms": 211.915459,
+              "p95_ms": 221.527583,
+              "max_ms": 221.527583
+            },
+            "ping": {
+              "count": 4,
+              "min_ms": 1464.857042,
+              "median_ms": 2744.854416,
+              "p95_ms": 2976.890417,
+              "max_ms": 2976.890417
+            }
+          },
+          "idle/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 162.155958,
+              "median_ms": 179.562291,
+              "p95_ms": 344.784917,
+              "max_ms": 350.629041
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 160.586584,
+              "median_ms": 163.448041,
+              "p95_ms": 198.197125,
+              "max_ms": 200.020916
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 162.908167,
+              "median_ms": 169.486083,
+              "p95_ms": 387.947875,
+              "max_ms": 524.525416
+            }
+          },
+          "idle/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 162.775542,
+              "median_ms": 171.983375,
+              "p95_ms": 338.4025,
+              "max_ms": 344.453042
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 160.570083,
+              "median_ms": 161.859708,
+              "p95_ms": 194.692583,
+              "max_ms": 197.484917
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 162.781875,
+              "median_ms": 169.238125,
+              "p95_ms": 456.292084,
+              "max_ms": 485.817459
+            }
+          }
+        }
+      },
+      "sample_records": 52,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "99b1d0a35fc1cb916b0c9c04a423b1c3e991411519f07d589d14b2290f886b11"
+    },
+    "2026-11-16-command-drain-failure.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage.",
+        "duration_seconds": 80.136914,
+        "error": "remote command exited with status 255",
+        "load_mode": "command",
+        "started_utc": "2026-11-16T07:36:13.474151Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 161.791208,
+              "median_ms": 253.026542,
+              "p95_ms": 409.370792,
+              "max_ms": 468.914792
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 160.346875,
+              "median_ms": 190.271166,
+              "p95_ms": 246.736792,
+              "max_ms": 258.7475
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 162.660209,
+              "median_ms": 251.162125,
+              "p95_ms": 636.268541,
+              "max_ms": 981.933417
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 162.178416,
+              "median_ms": 205.285417,
+              "p95_ms": 525.30075,
+              "max_ms": 644.344541
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 159.890708,
+              "median_ms": 207.980667,
+              "p95_ms": 467.607334,
+              "max_ms": 729.952875
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 162.303125,
+              "median_ms": 224.879167,
+              "p95_ms": 490.803416,
+              "max_ms": 624.497167
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 90,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "c4477b91382012e08b1e02509687534dd5463279a9adeccd8065ce712c624b36"
+    },
+    "2026-11-16-command-stream-ping.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage.",
+        "duration_seconds": 122.9208,
+        "load_mode": "command",
+        "started_utc": "2026-11-16T07:46:17.193972Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 159.791417,
+              "median_ms": 281.511333,
+              "p95_ms": 403.097209,
+              "max_ms": 954.8535
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 156.024791,
+              "median_ms": 159.195292,
+              "p95_ms": 204.835292,
+              "max_ms": 238.320125
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 160.680917,
+              "median_ms": 278.044417,
+              "p95_ms": 580.340917,
+              "max_ms": 743.201042
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 159.98475,
+              "median_ms": 265.635041,
+              "p95_ms": 402.302,
+              "max_ms": 699.977917
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 155.592833,
+              "median_ms": 158.094834,
+              "p95_ms": 192.515333,
+              "max_ms": 225.300709
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 159.643417,
+              "median_ms": 308.178875,
+              "p95_ms": 398.01675,
+              "max_ms": 723.185459
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 159.1305,
+              "median_ms": 329.210084,
+              "p95_ms": 362.14875,
+              "max_ms": 611.248583
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 155.228083,
+              "median_ms": 157.156583,
+              "p95_ms": 178.930916,
+              "max_ms": 222.333542
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 158.32025,
+              "median_ms": 328.754209,
+              "p95_ms": 471.620625,
+              "max_ms": 766.293625
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "1bda60e9ccebd48197f20c659d49088854a7758d7d25a7647628e609c1e52c51"
+    },
+    "2026-11-16-current-command-client.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage. Dedicated probe server records local ping dispatch and broker-write durations without changing wire frames. Client send duration can overlap RTT; no cross-host clock subtraction.",
+        "duration_seconds": 118.299004,
+        "load_mode": "command",
+        "started_utc": "2026-11-16T09:40:22.335112Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 162.949375,
+              "median_ms": 214.516667,
+              "p95_ms": 753.401792,
+              "max_ms": 1290.067791
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 157.996417,
+              "median_ms": 162.351416,
+              "p95_ms": 223.195417,
+              "max_ms": 230.618208
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 162.573917,
+              "median_ms": 197.45075,
+              "p95_ms": 637.151958,
+              "max_ms": 1769.591083
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.047708,
+              "median_ms": 0.090667,
+              "p95_ms": 0.226917,
+              "max_ms": 0.312292
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 162.054541,
+              "median_ms": 314.215666,
+              "p95_ms": 397.90225,
+              "max_ms": 535.984667
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 158.751416,
+              "median_ms": 161.332125,
+              "p95_ms": 193.738375,
+              "max_ms": 231.902083
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 162.892666,
+              "median_ms": 297.367792,
+              "p95_ms": 450.02475,
+              "max_ms": 537.715041
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.055334,
+              "median_ms": 0.140916,
+              "p95_ms": 0.261375,
+              "max_ms": 0.346
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 258.452708,
+              "median_ms": 335.6705,
+              "p95_ms": 363.127666,
+              "max_ms": 383.319125
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 158.108166,
+              "median_ms": 161.204792,
+              "p95_ms": 187.185917,
+              "max_ms": 250.049417
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 268.385833,
+              "median_ms": 337.9875,
+              "p95_ms": 407.8445,
+              "max_ms": 456.138917
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.073541,
+              "median_ms": 0.148667,
+              "p95_ms": 0.284042,
+              "max_ms": 0.296375
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "4300e039af6f083b1a3d1c1ffa6ce0e63a0d07185ed25e3e40f3df28fb8a04f3"
+    },
+    "2026-11-16-current-command-server.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Match client IDs; do not subtract independent percentiles or cross-host timestamps."
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "a012fece3b3e235c739ce129743eba38582ed787fe69dfc96fab0e483c5f8aa2"
+    },
+    "2026-11-16-duplex-socket-ping.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load uses the resident device-relay socket adapter with a synthetic echo endpoint, SHA-256 verified in both directions; verified_load_bytes counts bytes in each direction. No claim of real Mac SSH authentication, Mutagen or generic exec coverage.",
+        "duration_seconds": 108.051458,
+        "load_mode": "duplex",
+        "started_utc": "2026-11-16T07:12:57.667375Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 163.299208,
+              "median_ms": 267.154375,
+              "p95_ms": 901.891625,
+              "max_ms": 1233.12125
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 153.629667,
+              "median_ms": 157.397125,
+              "p95_ms": 219.656709,
+              "max_ms": 227.889375
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 160.340625,
+              "median_ms": 257.147584,
+              "p95_ms": 846.331875,
+              "max_ms": 985.39275
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 157.544,
+              "median_ms": 268.647875,
+              "p95_ms": 350.979541,
+              "max_ms": 373.88675
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 153.764542,
+              "median_ms": 156.598542,
+              "p95_ms": 192.868667,
+              "max_ms": 233.473917
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 158.778,
+              "median_ms": 264.317709,
+              "p95_ms": 407.773625,
+              "max_ms": 730.097584
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 158.075,
+              "median_ms": 160.679792,
+              "p95_ms": 353.559666,
+              "max_ms": 744.2475
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 153.727292,
+              "median_ms": 155.751667,
+              "p95_ms": 161.783125,
+              "max_ms": 163.871959
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 157.685583,
+              "median_ms": 162.026917,
+              "p95_ms": 342.535042,
+              "max_ms": 437.59775
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "4026c67c9a14dbdfe05f1e8621b8a57371d9dc4410cec061a6674350735f84f6"
+    },
+    "2026-11-16-managed-migration-failure.txt": {
+      "boundary": "Text artifact; consult its named tests and original investigation. No WAN endpoint or timestamp inferred.",
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "1f7cdfbcc4b9f65025d656e83b239f62a5c45efc2f73caa789d4e731045f3f1f"
+    },
+    "2026-11-16-managed-migration-pass.txt": {
+      "boundary": "Text artifact; consult its named tests and original investigation. No WAN endpoint or timestamp inferred.",
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "5e682e3ed3184e63878702fb895ff0f47918dadab2b8cb2e56c22b9698ab286e"
+    },
+    "2026-11-16-original-retest-1.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.",
+        "duration_seconds": 36.716238,
+        "load_mode": "replies",
+        "provenance": {
+          "client": {
+            "evidence": "User reported the origin of these two runs",
+            "host_kind": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "unknown; not captured"
+          },
+          "command_flags": "-terminal /tmp/fennec-original-184d080-verified -remote /tmp/fennec-qos-tcp-correlated-probe -load=false -samples 60 -timeout 3m",
+          "paths": [
+            "Singapore Mac -\u003e SSH gateway keepalive",
+            "Singapore Mac -\u003e guest echo",
+            "Singapore Mac -\u003e original resident exact ping/pong"
+          ],
+          "probe_artifact": "Mac /tmp/fennec-relay-build-8b2f09d/probe; existing diagnostic, not the original UI",
+          "probe_source": "8b2f09d4c8f4edb47266716584e316a570b7d8e1; vcs.modified=false",
+          "probe_toolchain": "go1.27.1 darwin/arm64",
+          "resident_sha256": "4f9315775e43f96ff6f584790d37969c6d3afce0a5472cecdacd9e4a5fb559a1",
+          "resident_source": "184d080848c0dd7b80e4bae80021e36710da0b56",
+          "resident_toolchain": "go1.26.11 linux/amd64",
+          "sample_count_per_path": 60,
+          "scope": "Cross-region protocol measurements; neither US-local latency nor UI typing/rendering acceptance",
+          "server": {
+            "cluster": "runta-integration-31c80598",
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "Read-only gcloud project-specific instance and cluster inventory, approximately 2026-11-16T12:04Z; runtime-to-worker mapping from earlier investigation, not re-resolved during these runs",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "timestamp_field": "started_utc (Mac wall clock); RTT uses monotonic elapsed time",
+          "workload": "No generated bulk traffic or agent input; existing live traffic uncontrolled"
+        },
+        "started_utc": "2026-11-16T11:59:20.090711Z",
+        "summary": {
+          "idle": {
+            "echo": {
+              "count": 60,
+              "min_ms": 160.21275,
+              "median_ms": 162.375042,
+              "p95_ms": 246.346417,
+              "max_ms": 350.078541
+            },
+            "gateway": {
+              "count": 60,
+              "min_ms": 156.216334,
+              "median_ms": 157.702917,
+              "p95_ms": 204.766625,
+              "max_ms": 230.3115
+            },
+            "ping": {
+              "count": 60,
+              "min_ms": 160.726125,
+              "median_ms": 162.67,
+              "p95_ms": 298.467958,
+              "max_ms": 371.304791
+            },
+            "send": {
+              "count": 60,
+              "min_ms": 0.048959,
+              "median_ms": 0.132416,
+              "p95_ms": 0.231416,
+              "max_ms": 0.270083
+            }
+          }
+        },
+        "traffic_packets": false
+      },
+      "sample_records": 60,
+      "server_location_at_capture": "GCP runta-integration / us-west1; inventory verified after capture; see provenance",
+      "sha256": "7764eb50cc204209fc0f12820477d92d24b1551bb131e565b1e4df86acb243ed"
+    },
+    "2026-11-16-original-retest-2.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.",
+        "duration_seconds": 37.87627,
+        "load_mode": "replies",
+        "provenance": {
+          "client": {
+            "evidence": "User reported the origin of these two runs",
+            "host_kind": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "unknown; not captured"
+          },
+          "command_flags": "-terminal /tmp/fennec-original-184d080-verified -remote /tmp/fennec-qos-tcp-correlated-probe -load=false -samples 60 -timeout 3m",
+          "paths": [
+            "Singapore Mac -\u003e SSH gateway keepalive",
+            "Singapore Mac -\u003e guest echo",
+            "Singapore Mac -\u003e original resident exact ping/pong"
+          ],
+          "probe_artifact": "Mac /tmp/fennec-relay-build-8b2f09d/probe; existing diagnostic, not the original UI",
+          "probe_source": "8b2f09d4c8f4edb47266716584e316a570b7d8e1; vcs.modified=false",
+          "probe_toolchain": "go1.27.1 darwin/arm64",
+          "resident_sha256": "4f9315775e43f96ff6f584790d37969c6d3afce0a5472cecdacd9e4a5fb559a1",
+          "resident_source": "184d080848c0dd7b80e4bae80021e36710da0b56",
+          "resident_toolchain": "go1.26.11 linux/amd64",
+          "sample_count_per_path": 60,
+          "scope": "Cross-region protocol measurements; neither US-local latency nor UI typing/rendering acceptance",
+          "server": {
+            "cluster": "runta-integration-31c80598",
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "Read-only gcloud project-specific instance and cluster inventory, approximately 2026-11-16T12:04Z; runtime-to-worker mapping from earlier investigation, not re-resolved during these runs",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "timestamp_field": "started_utc (Mac wall clock); RTT uses monotonic elapsed time",
+          "workload": "No generated bulk traffic or agent input; existing live traffic uncontrolled"
+        },
+        "started_utc": "2026-11-16T11:59:56.831124Z",
+        "summary": {
+          "idle": {
+            "echo": {
+              "count": 60,
+              "min_ms": 162.571458,
+              "median_ms": 164.655375,
+              "p95_ms": 317.665583,
+              "max_ms": 401.697625
+            },
+            "gateway": {
+              "count": 60,
+              "min_ms": 158.590542,
+              "median_ms": 160.007583,
+              "p95_ms": 162.123875,
+              "max_ms": 201.719667
+            },
+            "ping": {
+              "count": 60,
+              "min_ms": 162.983625,
+              "median_ms": 165.07925,
+              "p95_ms": 351.094208,
+              "max_ms": 376.437041
+            },
+            "send": {
+              "count": 60,
+              "min_ms": 0.065125,
+              "median_ms": 0.149542,
+              "p95_ms": 0.294958,
+              "max_ms": 2.01525
+            }
+          }
+        },
+        "traffic_packets": false
+      },
+      "sample_records": 60,
+      "server_location_at_capture": "GCP runta-integration / us-west1; inventory verified after capture; see provenance",
+      "sha256": "851df1b97d6abb2cd1e537f3e597f145d198359ceccde35d21cbb28d467d2cad"
+    },
+    "2026-11-16-packed-command-client.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage. Dedicated probe server records local ping dispatch and broker-write durations without changing wire frames. Client send duration can overlap RTT; no cross-host clock subtraction.",
+        "duration_seconds": 89.945316,
+        "load_mode": "command",
+        "started_utc": "2026-11-16T08:50:55.498277Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 159.810875,
+              "median_ms": 204.329958,
+              "p95_ms": 616.529417,
+              "max_ms": 847.167959
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 155.239,
+              "median_ms": 158.869917,
+              "p95_ms": 215.237208,
+              "max_ms": 268.661041
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 161.503708,
+              "median_ms": 199.453834,
+              "p95_ms": 411.418375,
+              "max_ms": 735.843417
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.031709,
+              "median_ms": 0.093708,
+              "p95_ms": 0.275416,
+              "max_ms": 0.321042
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 157.672792,
+              "median_ms": 160.342083,
+              "p95_ms": 196.191166,
+              "max_ms": 306.8065
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 155.009542,
+              "median_ms": 157.050125,
+              "p95_ms": 161.27875,
+              "max_ms": 204.46375
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 158.490583,
+              "median_ms": 160.98675,
+              "p95_ms": 176.347417,
+              "max_ms": 273.536333
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.080417,
+              "median_ms": 0.139584,
+              "p95_ms": 0.238,
+              "max_ms": 0.287458
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 158.073334,
+              "median_ms": 160.358916,
+              "p95_ms": 230.855459,
+              "max_ms": 297.001208
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 156.128125,
+              "median_ms": 158.534333,
+              "p95_ms": 208.895208,
+              "max_ms": 281.847375
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 158.438333,
+              "median_ms": 161.913875,
+              "p95_ms": 214.25,
+              "max_ms": 252.924125
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.06125,
+              "median_ms": 0.134667,
+              "p95_ms": 0.303083,
+              "max_ms": 0.334666
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "9ee5da2ac00cd5523e4eb231d45c1c09186dc0baa4b5c15090be6de461af3231"
+    },
+    "2026-11-16-packed-command-server.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Match client IDs; do not subtract independent percentiles or cross-host timestamps."
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "5623bb7c136a67b83d313b048fb3e3ad6b0d0fa444367da2db8b57ce7a825cf3"
+    },
+    "2026-11-16-ping-queue-client.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage. Dedicated probe server records local ping dispatch and broker-write durations without changing wire frames. Client send duration can overlap RTT; no cross-host clock subtraction.",
+        "duration_seconds": 123.399377,
+        "load_mode": "command",
+        "started_utc": "2026-11-16T08:40:41.093885Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 174.609416,
+              "median_ms": 234.816291,
+              "p95_ms": 714.76925,
+              "max_ms": 1000.822959
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 156.465959,
+              "median_ms": 169.809833,
+              "p95_ms": 346.823333,
+              "max_ms": 424.183792
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 163.276125,
+              "median_ms": 239.406375,
+              "p95_ms": 778.953292,
+              "max_ms": 835.530042
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.040542,
+              "median_ms": 0.09725,
+              "p95_ms": 0.295,
+              "max_ms": 0.32575
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 235.367792,
+              "median_ms": 379.653,
+              "p95_ms": 530.058875,
+              "max_ms": 765.109416
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 158.387625,
+              "median_ms": 200.483916,
+              "p95_ms": 246.942292,
+              "max_ms": 295.984833
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 284.374958,
+              "median_ms": 356.095125,
+              "p95_ms": 581.118625,
+              "max_ms": 721.401458
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.048625,
+              "median_ms": 0.142459,
+              "p95_ms": 0.279833,
+              "max_ms": 0.342292
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 160.303625,
+              "median_ms": 183.1005,
+              "p95_ms": 234.056292,
+              "max_ms": 310.272208
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 157.3475,
+              "median_ms": 165.2355,
+              "p95_ms": 219.441917,
+              "max_ms": 270.640042
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 161.8195,
+              "median_ms": 168.736041,
+              "p95_ms": 357.03,
+              "max_ms": 433.03125
+            },
+            "send": {
+              "count": 45,
+              "min_ms": 0.053541,
+              "median_ms": 0.143625,
+              "p95_ms": 0.226,
+              "max_ms": 0.566416
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "83500bb7487ccebe94df2b02d7d357ab4df1f1b3d08b9b2317ad1bb69b2dff59"
+    },
+    "2026-11-16-ping-queue-server.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Match client IDs; do not subtract independent percentiles or cross-host timestamps."
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "4f59306af0956f10da7c7dc60e2727ffd53b267b5253cedc91b9590a7c8c7cda"
+    },
+    "2026-11-16-resident-pacing-ping.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.",
+        "duration_seconds": 80.422793,
+        "started_utc": "2026-11-16T06:02:51.948318Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 159.416458,
+              "median_ms": 162.414542,
+              "p95_ms": 266.724459,
+              "max_ms": 489.539375
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 156.446167,
+              "median_ms": 158.055042,
+              "p95_ms": 191.9515,
+              "max_ms": 219.062583
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 159.962292,
+              "median_ms": 163.727583,
+              "p95_ms": 318.736042,
+              "max_ms": 927.382625
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 160.066959,
+              "median_ms": 162.08025,
+              "p95_ms": 262.46475,
+              "max_ms": 317.15
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 157.058667,
+              "median_ms": 158.205,
+              "p95_ms": 159.565084,
+              "max_ms": 208.055208
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 159.404667,
+              "median_ms": 162.207791,
+              "p95_ms": 231.667458,
+              "max_ms": 291.913541
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 160.129291,
+              "median_ms": 161.742333,
+              "p95_ms": 228.406042,
+              "max_ms": 319.061625
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 156.732375,
+              "median_ms": 157.941916,
+              "p95_ms": 159.17225,
+              "max_ms": 159.395166
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 159.584416,
+              "median_ms": 162.064458,
+              "p95_ms": 210.547125,
+              "max_ms": 306.617875
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "1f7086d74e76ffe48313de93cb3df54a9999ff3a25af9ab9785b5bf171e853d8"
+    },
+    "2026-11-16-shared-output-ping.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.",
+        "duration_seconds": 89.761907,
+        "started_utc": "2026-11-16T06:21:52.007771Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 45,
+              "min_ms": 170.289,
+              "median_ms": 172.836042,
+              "p95_ms": 239.014667,
+              "max_ms": 458.051708
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 166.705958,
+              "median_ms": 167.979167,
+              "p95_ms": 225.351042,
+              "max_ms": 231.28175
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 171.171625,
+              "median_ms": 212.020708,
+              "p95_ms": 243.750417,
+              "max_ms": 272.04375
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 45,
+              "min_ms": 170.357417,
+              "median_ms": 172.693834,
+              "p95_ms": 187.401708,
+              "max_ms": 190.824375
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 167.018709,
+              "median_ms": 168.352833,
+              "p95_ms": 221.517292,
+              "max_ms": 228.185125
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 171.085875,
+              "median_ms": 172.989875,
+              "p95_ms": 223.442916,
+              "max_ms": 228.41975
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 45,
+              "min_ms": 170.690792,
+              "median_ms": 172.083792,
+              "p95_ms": 221.754709,
+              "max_ms": 222.793291
+            },
+            "gateway": {
+              "count": 45,
+              "min_ms": 166.651208,
+              "median_ms": 168.187,
+              "p95_ms": 184.341125,
+              "max_ms": 185.160417
+            },
+            "ping": {
+              "count": 45,
+              "min_ms": 171.5075,
+              "median_ms": 172.80025,
+              "p95_ms": 224.16025,
+              "max_ms": 226.648375
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 135,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "af079cfa7fe61fb540e4ecab3ab870eae40ba21ba16d9de71777a4337de0fbc7"
+    },
+    "2026-11-16-tcp-guard-comparison.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "baseline_paced": true,
+        "baseline_terminal": "/tmp/fennec-window-16k-88eabcb",
+        "boundary": "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses the paced resident command stream, candidate uses the paced resident command stream. Eight load blocks ordered BAAB ABBA (candidate first), no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.",
+        "candidate_terminal": "/tmp/fennec-guard16-2178b8b",
+        "duration_seconds": 107.067097,
+        "started_utc": "2026-11-16T11:22:05.516936Z",
+        "summary": {
+          "bulk/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 170.263458,
+              "median_ms": 203.010083,
+              "p95_ms": 384.782916,
+              "max_ms": 504.43025
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 159.810042,
+              "median_ms": 160.929292,
+              "p95_ms": 195.76225,
+              "max_ms": 218.644042
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 165.768583,
+              "median_ms": 210.168791,
+              "p95_ms": 333.31875,
+              "max_ms": 374.554209
+            }
+          },
+          "bulk/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 169.734584,
+              "median_ms": 207.40625,
+              "p95_ms": 665.570708,
+              "max_ms": 703.125458
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 159.91125,
+              "median_ms": 161.010625,
+              "p95_ms": 197.766209,
+              "max_ms": 206.66025
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 177.046041,
+              "median_ms": 200.024791,
+              "p95_ms": 423.805292,
+              "max_ms": 486.686166
+            }
+          },
+          "idle/baseline": {
+            "echo": {
+              "count": 12,
+              "min_ms": 278.528666,
+              "median_ms": 363.147,
+              "p95_ms": 523.089625,
+              "max_ms": 523.089625
+            },
+            "gateway": {
+              "count": 12,
+              "min_ms": 159.589917,
+              "median_ms": 160.744542,
+              "p95_ms": 188.089166,
+              "max_ms": 188.089166
+            },
+            "ping": {
+              "count": 12,
+              "min_ms": 284.447958,
+              "median_ms": 356.09225,
+              "p95_ms": 447.568584,
+              "max_ms": 447.568584
+            }
+          },
+          "idle/candidate": {
+            "echo": {
+              "count": 12,
+              "min_ms": 311.776292,
+              "median_ms": 343.74325,
+              "p95_ms": 442.241584,
+              "max_ms": 442.241584
+            },
+            "gateway": {
+              "count": 12,
+              "min_ms": 159.859875,
+              "median_ms": 160.664792,
+              "p95_ms": 178.429625,
+              "max_ms": 178.429625
+            },
+            "ping": {
+              "count": 12,
+              "min_ms": 247.004208,
+              "median_ms": 349.504958,
+              "p95_ms": 393.428584,
+              "max_ms": 393.428584
+            }
+          },
+          "recovery/baseline": {
+            "echo": {
+              "count": 12,
+              "min_ms": 163.921708,
+              "median_ms": 165.242875,
+              "p95_ms": 288.229792,
+              "max_ms": 288.229792
+            },
+            "gateway": {
+              "count": 12,
+              "min_ms": 159.285583,
+              "median_ms": 161.201416,
+              "p95_ms": 200.677291,
+              "max_ms": 200.677291
+            },
+            "ping": {
+              "count": 12,
+              "min_ms": 163.798917,
+              "median_ms": 166.109417,
+              "p95_ms": 226.154833,
+              "max_ms": 226.154833
+            }
+          },
+          "recovery/candidate": {
+            "echo": {
+              "count": 12,
+              "min_ms": 164.133666,
+              "median_ms": 164.989209,
+              "p95_ms": 210.197,
+              "max_ms": 210.197
+            },
+            "gateway": {
+              "count": 12,
+              "min_ms": 159.692625,
+              "median_ms": 160.481708,
+              "p95_ms": 199.755167,
+              "max_ms": 199.755167
+            },
+            "ping": {
+              "count": 12,
+              "min_ms": 164.257209,
+              "median_ms": 165.341375,
+              "p95_ms": 200.023375,
+              "max_ms": 200.023375
+            }
+          }
+        },
+        "tcp_output_guard": {
+          "baseline": false,
+          "candidate": true
+        }
+      },
+      "sample_records": 96,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "d53801ebccbe02764cb14a030f62b629535a03d34e019cca0f971fbf12a6750a"
+    },
+    "2026-11-16-tcp-queue-client.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage. Dedicated probe server records local ping dispatch and broker-write durations without changing wire frames. Client send duration can overlap RTT; no cross-host clock subtraction.",
+        "duration_seconds": 104.933784,
+        "load_mode": "command",
+        "started_utc": "2026-11-16T09:56:36.714984Z",
+        "summary": {
+          "bulk": {
+            "echo": {
+              "count": 30,
+              "min_ms": 163.445292,
+              "median_ms": 255.985792,
+              "p95_ms": 1107.128583,
+              "max_ms": 1398.828958
+            },
+            "gateway": {
+              "count": 30,
+              "min_ms": 156.458834,
+              "median_ms": 159.718,
+              "p95_ms": 219.897584,
+              "max_ms": 235.154916
+            },
+            "ping": {
+              "count": 30,
+              "min_ms": 161.400167,
+              "median_ms": 272.87775,
+              "p95_ms": 1343.874709,
+              "max_ms": 1468.483042
+            },
+            "send": {
+              "count": 30,
+              "min_ms": 0.047375,
+              "median_ms": 0.104417,
+              "p95_ms": 0.218875,
+              "max_ms": 0.561417
+            }
+          },
+          "idle": {
+            "echo": {
+              "count": 30,
+              "min_ms": 160.088875,
+              "median_ms": 162.793791,
+              "p95_ms": 335.512125,
+              "max_ms": 342.639375
+            },
+            "gateway": {
+              "count": 30,
+              "min_ms": 156.368291,
+              "median_ms": 159.215166,
+              "p95_ms": 190.881791,
+              "max_ms": 216.066916
+            },
+            "ping": {
+              "count": 30,
+              "min_ms": 160.184042,
+              "median_ms": 165.367958,
+              "p95_ms": 404.599333,
+              "max_ms": 534.578
+            },
+            "send": {
+              "count": 30,
+              "min_ms": 0.068041,
+              "median_ms": 0.146541,
+              "p95_ms": 0.2495,
+              "max_ms": 0.310667
+            }
+          },
+          "recovery": {
+            "echo": {
+              "count": 30,
+              "min_ms": 250.652209,
+              "median_ms": 347.244542,
+              "p95_ms": 402.631083,
+              "max_ms": 927.012917
+            },
+            "gateway": {
+              "count": 30,
+              "min_ms": 157.30325,
+              "median_ms": 175.161625,
+              "p95_ms": 237.251667,
+              "max_ms": 251.381375
+            },
+            "ping": {
+              "count": 30,
+              "min_ms": 290.2995,
+              "median_ms": 351.735292,
+              "p95_ms": 410.456875,
+              "max_ms": 440.872709
+            },
+            "send": {
+              "count": 30,
+              "min_ms": 0.072041,
+              "median_ms": 0.138875,
+              "p95_ms": 0.329334,
+              "max_ms": 0.424333
+            }
+          }
+        },
+        "traffic_packets": true
+      },
+      "sample_records": 90,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "d80a3847ec9d0fed95f58a3a6363921af6fe3b08d0d3ec3390f8eab52df431d2"
+    },
+    "2026-11-16-tcp-queue-server.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Wall timestamps support same-guest packet/socket correlation only. Match client IDs; do not subtract independent percentiles or cross-host timestamps."
+      },
+      "sample_records": 90,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "eca1a7154fd0a7571dc8bd4a52d8b30feea70e546ecd77ae14648eb4259a58a0"
+    },
+    "2026-11-16-tcp-queue-summary.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Exact probe connection. Guest socket observations and server-written timestamps share one clock. Adjacent samples and the following RTT-length window are contextual observations, not an RTT decomposition or proof that each queued byte preceded this pong. Worker queue pairs match complete printed TCP headers, including sequence, ACK, timestamp and length, on the same worker clock. No cross-host timestamp subtraction. Payload counters cover the capture window, not only the measurement phases. Capture termination may be incomplete; unmatched/ambiguous counts are retained."
+      },
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "86bc46ec059ff2a8a4c7731379bf70e2f3eeae2ee6d7a6cc72dfa34fa0d0ffdf"
+    },
+    "2026-11-16-tui-cloud-30m.json": {
+      "client_origin": "Cloud-local observer/test, not Mac-to-US WAN; exact historical placement not captured here",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "cloud-local protocol + PTY (not agent rendering or WAN)",
+        "cpu_workers": 2,
+        "duration_seconds": 1800.089766697,
+        "flood_sessions": 2,
+        "samples": 17618
+      },
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "434bf150ef98890a604b6ad90b308bc635d3fcdbaddd21f0c7092d7abcc0acf8"
+    },
+    "2026-11-16-tui-cpu-load.json": {
+      "client_origin": "Cloud-local observer/test, not Mac-to-US WAN; exact historical placement not captured here",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "cloud host CPU samples over the final 20 minutes of the independent 30-minute load run",
+        "samples": 40
+      },
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "204de82f9f766143f4044e1a1ab87ebe4ef366488b5828a81da8449f66997d98"
+    },
+    "2026-11-16-tui-local-paint.txt": {
+      "boundary": "Text artifact; consult its named tests and original investigation. No WAN endpoint or timestamp inferred.",
+      "client_origin": "Local recorded-frame rendering test; no live WAN path; host location not recorded",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "9694db0df9d37fbefe3f62fd72cdbf72a3e2c17f9122661bb0e7c3f0272bcc09"
+    },
+    "2026-11-16-tui-wan-60s.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Mac-to-cloud Go SSH (TCP_NODELAY=true) + protocol + PTY (not agent rendering)",
+        "cpu_workers": 2,
+        "duration_seconds": 60.218585041,
+        "flood_sessions": 2,
+        "samples": 120
+      },
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "09eb80a8e89eee2f400407f25020857f1d67a0bfe55a0618eec543fc4040c85f"
+    },
+    "2026-11-16-tui-warm-operations.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {},
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "973bc86960be0c4543353ec25be44a9b56beeaea515c054c0d800b8db34c3ec4"
+    },
+    "2026-11-16-unmanaged-egress.json": {
+      "client_origin": "Cloud-local observer/test, not Mac-to-US WAN; exact historical placement not captured here",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "boundary": "Background guest eth0 and ss -tinp observation. The attempted command-mode WAN probe failed startup validation and generated no test load during this window. Guest wall clock is not synchronized to Mac/worker. TCP deltas are lower bounds: newly opened or short-lived flows may be missed. No per-packet queue attribution.",
+        "finished_guest_utc": "2026-11-16T07:32:59.610012702Z",
+        "scope": "Unmanaged process traffic is outside the Fennec scheduling requirement, as confirmed by the user.",
+        "started_guest_utc": "2026-11-16T07:29:00.505639412Z"
+      },
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "3b2b8f69138c4a646def63b66a9a96a78da65421daffc823ab903f97684c98e8"
+    },
+    "2026-11-16-window16-comparison.json": {
+      "client_origin": "unknown; use recorded boundary for host role",
+      "historical_gaps": "Client location/carrier, exact historical server placement, source versions and timestamp are unknown unless explicitly recorded below or in the linked investigation. Current inventory is not retroactive evidence.",
+      "recorded_metadata": {
+        "baseline_paced": true,
+        "baseline_terminal": "/tmp/fennec-window-32k-88eabcb",
+        "boundary": "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses the paced resident command stream, candidate uses the paced resident command stream. Eight load blocks ordered BAAB ABBA (candidate first), no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.",
+        "candidate_terminal": "/tmp/fennec-window-16k-88eabcb",
+        "duration_seconds": 148.84694,
+        "started_utc": "2026-11-16T10:51:09.217223Z",
+        "summary": {
+          "bulk/baseline": {
+            "echo": {
+              "count": 48,
+              "min_ms": 171.240834,
+              "median_ms": 210.503959,
+              "p95_ms": 568.278709,
+              "max_ms": 672.4645
+            },
+            "gateway": {
+              "count": 48,
+              "min_ms": 158.500833,
+              "median_ms": 160.250333,
+              "p95_ms": 193.207708,
+              "max_ms": 228.733167
+            },
+            "ping": {
+              "count": 48,
+              "min_ms": 167.003667,
+              "median_ms": 210.155959,
+              "p95_ms": 677.652208,
+              "max_ms": 785.674667
+            }
+          },
+          "bulk/candidate": {
+            "echo": {
+              "count": 48,
+              "min_ms": 164.323791,
+              "median_ms": 196.113333,
+              "p95_ms": 440.650541,
+              "max_ms": 720.852833
+            },
+            "gateway": {
+              "count": 48,
+              "min_ms": 158.606083,
+              "median_ms": 159.880333,
+              "p95_ms": 217.000459,
+              "max_ms": 228.735459
+            },
+            "ping": {
+              "count": 48,
+              "min_ms": 170.276208,
+              "median_ms": 197.820042,
+              "p95_ms": 479.758541,
+              "max_ms": 1918.098792
+            }
+          },
+          "idle/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 162.684417,
+              "median_ms": 164.813125,
+              "p95_ms": 254.69025,
+              "max_ms": 393.417792
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 158.882917,
+              "median_ms": 160.92,
+              "p95_ms": 201.662333,
+              "max_ms": 201.744208
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 162.778708,
+              "median_ms": 164.416458,
+              "p95_ms": 202.440416,
+              "max_ms": 242.098041
+            }
+          },
+          "idle/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 162.091459,
+              "median_ms": 164.5315,
+              "p95_ms": 363.051167,
+              "max_ms": 364.024292
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 159.339083,
+              "median_ms": 160.712166,
+              "p95_ms": 202.706042,
+              "max_ms": 242.04375
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 163.039959,
+              "median_ms": 169.691792,
+              "p95_ms": 267.797959,
+              "max_ms": 363.621417
+            }
+          },
+          "recovery/baseline": {
+            "echo": {
+              "count": 24,
+              "min_ms": 161.995542,
+              "median_ms": 164.158708,
+              "p95_ms": 203.775167,
+              "max_ms": 211.787167
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 158.749209,
+              "median_ms": 160.252875,
+              "p95_ms": 201.508667,
+              "max_ms": 201.797458
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 162.765667,
+              "median_ms": 163.697834,
+              "p95_ms": 202.811458,
+              "max_ms": 229.823959
+            }
+          },
+          "recovery/candidate": {
+            "echo": {
+              "count": 24,
+              "min_ms": 162.283209,
+              "median_ms": 164.109583,
+              "p95_ms": 222.064042,
+              "max_ms": 223.07575
+            },
+            "gateway": {
+              "count": 24,
+              "min_ms": 159.116125,
+              "median_ms": 159.888208,
+              "p95_ms": 203.240667,
+              "max_ms": 203.896084
+            },
+            "ping": {
+              "count": 24,
+              "min_ms": 162.792209,
+              "median_ms": 164.303417,
+              "p95_ms": 203.014417,
+              "max_ms": 235.547375
+            }
+          }
+        }
+      },
+      "sample_records": 192,
+      "server_location_at_capture": "unknown unless explicitly recorded",
+      "sha256": "afa8bd5d7388601bc09bc1efd6b6fecbc15b1122df8e4a3d04b9438e7280a1f3"
+    }
+  },
+  "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
+  "recorded_utc": "2026-11-16T12:04:23Z",
+  "schema_version": 1
+}

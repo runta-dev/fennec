@@ -1,5 +1,15 @@
 # Pre-QoS resident retest
 
+Network origin: **Singapore / Singtel**, reported by the user for these runs.
+Destination: **GCP project `runta-integration`, region `us-west1` (US West)**,
+SSH endpoint `ssh.runta.xyz`. A read-only GCP inventory check at approximately
+12:04 UTC confirmed cluster `runta-integration-31c80598` in `us-west1` and the
+previously identified worker `runta-integration-worker-xfs-04` in `us-west1-b`.
+The runtime-to-worker mapping was recorded earlier, not re-resolved during
+this retest. The `runta-test` / beta cluster is in `us-east1`; it is a different
+environment. These are Singapore-to-US measurements, not US-local latency.
+VPN/proxy routing and exact network hops were not captured.
+
 The user requested a retest of the original version, after later loaded
 measurements had been compared with the earlier no-generated-load baseline.
 The historical no-generated-load observations were TUI P95 342.038 and

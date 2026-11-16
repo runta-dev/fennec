@@ -9,6 +9,8 @@
 
 ## Source language and localization
 
+- Every performance result must include provenance: client location and network/provider (with evidence or explicitly unknown), server environment/provider/region/zone, UTC measurement time, source versions, workload, sample count, and the exact measurement boundary. Keep this metadata in the raw report or a per-artifact sidecar/catalog. Distinguish client-to-gateway, client-to-guest, cloud-local, and local rendering measurements. Never describe Singapore-to-US measurements as US-local latency or compare loaded and unloaded results as equivalent. Retrospective metadata must distinguish verified facts, user-reported facts, inferences, and missing historical information.
+
 - Write implementation code, comments, developer documentation, task records, and project skills in English.
 - The Simplified Chinese user guide at `docs/README_ZH.md` and its native-language selector in `README.md` are intentional documentation translations; keep them aligned with the English README.
 - Keep translated UI copy in `native/macos/UI/translations.json`, addressed by stable English message IDs. Do not use Chinese sentences or mutable English copy as translation keys.
