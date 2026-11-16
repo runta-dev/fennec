@@ -1,4 +1,4 @@
-import { ArrowUpRight, Download, Terminal, Cloud, Laptop, Check, Code2, Keyboard, History, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, Download, Github, Terminal, Cloud, Laptop, Check, Code2, Keyboard, History, ShieldCheck } from 'lucide-react';
 import Demo from '../components/Demo';
 import { agents } from '../components/agents';
 import { SiteHeader, SiteFooter, repo } from '../components/SiteChrome';
@@ -15,7 +15,7 @@ export default function Home() {
       <section className="hero">
         <h1>Cloud agents. <span>Local tools.</span></h1>
         <p>Your coding agents, running in the cloud. Connected to your Mac. <br/>Close your laptop. Come back to the same work.</p>
-        <div className="hero-actions"><Start/><a className="button secondary" href="#demo"><Terminal size={18}/>See how it works</a></div>
+        <div className="hero-actions"><Start/><a className="button secondary" href={repo}><Github size={18}/>GitHub</a></div>
         <span className="platform-note">For macOS · Apple Silicon · Developer preview</span>
       </section>
 
