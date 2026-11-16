@@ -64,10 +64,12 @@ slot, so a heartbeat can enter and preempt a bulk token wait. A bounded run of
 interactive packets is followed by a bulk opportunity; tiny interactive
 packets cannot perpetually consume the tokens needed by a larger bulk packet.
 
-Initial tuning values are 112 KiB/s total, 96 KiB/s bulk, a 2 KiB burst/atomic
+Current tuning values are 112 KiB/s total, 96 KiB/s bulk, a 2 KiB burst/atomic
 packet limit, and 1 KiB data chunks with per-packet transport overhead charged
 by the adapter. These values leave headroom below the host cap and must be
-calibrated against measured wire traffic. They are not deployed settings.
+calibrated against measured wire traffic. Installed Mac and running cloud
+binaries were subsequently verified at revision `c5864f1`, which includes these
+settings; earlier notes below describe the deployment state at each measurement.
 Cancellation never returns a caller's buffer while a running write still
 references it. Oversized atomic writes are refused rather than waiting forever
 for a bucket that cannot hold them.
@@ -269,7 +271,10 @@ noisy:
 
 Raw [command-load samples](benchmarks/2026-11-16-command-stream-ping.json) prove
 the transfer/drain behavior, not the latency target. Other traffic was not
-isolated and the installed daemon still uses the earlier development build.
+isolated. The installed daemon used an earlier development build at this
+measurement; subsequent verification found both installed Mac and running cloud
+binaries at `c5864f1`. The current user experience therefore cannot be explained
+by claiming that pacing has not been deployed.
 The background-egress observation above was a separate time window; it cannot
 attribute every slow sample in this run to external traffic. Do not treat
 independent percentile differences as a Fennec queueing measurement.
@@ -347,6 +352,75 @@ home on macOS to fit its Unix socket path limit; the test executable also
 dispatches the real broker entrypoint when launched by the resident. Vet,
 source-language and UI checks passed. These checks do not replace the unchanged
 500 ms installed warm-operation gate, whose earlier failures remain unresolved.
+
+### Same-connection comparison after the reported regression
+
+The user reported that approximately 300 ms had become more than 500 ms.
+The earlier 395 ms observation and the later 580 ms command-load P95 used
+different workloads and time windows. They establish neither a regression nor
+an improvement. Checking actual build metadata also corrected a stale deployment
+assumption: the installed Mac application (`0.3.11161602-dev`) and running cloud
+resident both contained clean revision `c5864f1` by 08:06 UTC. Pacing was deployed.
+
+`profile-ssh-latency -baseline` now compares an old resident built from `184d080`
+(before application pacing) with the staged candidate built from `1af2ac6`
+(the same transport implementation as deployed `c5864f1`). Both Linux services
+were built with Go 1.26.11, stay warm on one authenticated SSH connection, and
+use fresh exact ping IDs. Baseline load uses an ordinary SSH `cat` channel;
+candidate load uses the paced resident command stream. Both send the same
+deterministic bytes in 4 KiB producer writes, with at most 64 KiB of unconfirmed
+application data. Every completed block drains stdin/stdout and verifies every
+byte and successful command exit. Eight blocks alternate in BAAB ABBA order
+(B is candidate), with no overlapping test transfers. Gateway and guest echo
+measurements rotate sequentially with ping. Other live traffic is uncontrolled.
+
+Two earlier attempts are retained, not discarded:
+
+- [Unbounded producer attempt](benchmarks/2026-11-16-ab-unbounded-failure.json):
+  idle ping P95 was 204.479 ms old / 209.081 ms new, with 24 samples each.
+  Baseline load then ended with EOF before a completed bulk comparison.
+- [64 KiB window attempt](benchmarks/2026-11-16-ab-window-failure.json):
+  baseline load yielded four timing comparisons, ping 1,465–2,977 ms, then
+  guest echo EOF. Candidate load was never reached. The disconnect cause
+  was not established; a heartbeat timeout is not proven by EOF alone.
+
+The first complete [balanced comparison](benchmarks/2026-11-16-ab-balanced.json)
+ran at 08:23:52–08:27:12 UTC with probe source `e4d4100`. All 192 timing
+comparisons and all eight transfer blocks completed without error:
+
+| Phase | Samples per variant | Old TUI P95 | New TUI P95 | Old gateway P95 | New gateway P95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Before test load | 24 | 468.479 ms | 406.692 ms | 205.084 ms | 203.425 ms |
+| File-transfer load | 48 | 1,019.848 ms | 596.551 ms | 211.008 ms | 210.393 ms |
+| After test load | 24 | 362.214 ms | 269.950 ms | 285.696 ms | 206.857 ms |
+
+During load the old/new ping medians were 609.016 / 239.712 ms. The new median
+is not a passing P95. Guest echo P95 was 973.944 / 560.085 ms, showing that
+slow loaded samples also affected the ordinary guest path. Sequential
+percentiles cannot identify the delay of a particular packet or establish
+that remaining latency comes from unmanaged traffic.
+
+The old transfer verified 7,086,080 bytes per direction in 77.806 s (88.94 KiB/s
+aggregate effective payload rate); the candidate verified 2,080,768 bytes per
+direction in 47.688 s (42.61 KiB/s). Rates include startup and final draining.
+This approximately halves payload throughput while reducing observed loaded
+ping P95 by about 42%. This comparison tests the whole pacing/transport change;
+it does not isolate the priority scheduler's benefit from the rate reduction.
+All four candidate block maxima (514–680 ms) remained below all four old block
+maxima (868–1,137 ms), but the changing background load limits causal precision.
+
+Decision: the complete comparison supports a partial improvement under file
+load, not a stable 240 ms result. It supplies no evidence for a fixed 200 ms
+idle regression from the change. Do not roll back useful pacing solely on the
+unmatched historical comparison, and do not expand transfer coverage as a
+substitute for resolving the remaining tail latency. Further diagnosis must
+separate application waiting, already-buffered managed bytes and guest-path
+delay; unmanaged traffic remains outside the requested implementation scope.
+The goal, full transfer coverage and installed warm-operation gate remain open.
+
+The probe's EOF/drain tests passed with race detection on Linux and macOS.
+Source-language/localization and UI checks passed. This A/B run started only
+dedicated diagnostic services; it did not restart the production app or TUI.
 
 ### Acceptance
 
