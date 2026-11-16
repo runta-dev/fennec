@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fennec/internal/commandstream"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 
 func InstallTerminalBinary(ctx context.Context, client *ssh.Client, artifacts string) error {
 	run := func(command string, stdin []byte) ([]byte, error) {
-		session, err := client.NewSession()
+		session, err := commandstream.NewSession(ctx, client)
 		if err != nil {
 			return nil, err
 		}

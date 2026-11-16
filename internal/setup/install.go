@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/commandstream"
 	"fmt"
 	"io"
 	"regexp"
@@ -143,7 +144,7 @@ func ExecPublicCheck(ctx context.Context, client *ssh.Client, script string) err
 }
 
 func execSetup(ctx context.Context, client *ssh.Client, command string, input io.Reader) error {
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return err
 	}

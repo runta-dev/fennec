@@ -46,6 +46,7 @@ func SocketDevice(ctx context.Context) string {
 
 type serverSession struct {
 	deviceRelay              bool
+	commandStream            bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	window                   *flowWindow
@@ -127,7 +128,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "magpie_credentials_sync", "preparation_health")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay, CapabilityCommand)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -171,9 +172,10 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 			}
 			sessionsMu.Lock()
 			deviceRelay := frame.Type == "socket" && frame.Target == SocketDeviceRelay
+			commandStream := frame.Type == "socket" && frame.Target == SocketCommand
 			used := 0
 			for _, active := range sessions {
-				if active.deviceRelay == deviceRelay {
+				if active.deviceRelay == deviceRelay && active.commandStream == commandStream {
 					used++
 				}
 			}
@@ -192,7 +194,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				continue
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
-			session := &serverSession{deviceRelay: deviceRelay, ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			session := &serverSession{deviceRelay: deviceRelay, commandStream: commandStream, ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
 			if hasFeature(frame.Features, CapabilityWireWindow) {
 				session.wire = newWireWindow()
 				if frame.Type == "socket" && writes.packets.enabled.Load() {

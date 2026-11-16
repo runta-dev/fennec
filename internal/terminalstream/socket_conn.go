@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fennec/internal/commandstream"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,9 @@ func (t *Transport) DialSocket(ctx context.Context, target, device string) (net.
 	}
 	if target == SocketDeviceRelay && !t.Supports(CapabilityDeviceRelay) {
 		return nil, fmt.Errorf("resident device relay unavailable")
+	}
+	if target == SocketCommand && !t.Supports(CapabilityCommand) {
+		return nil, commandstream.ErrUnsupported
 	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"io"
@@ -77,7 +78,7 @@ func MigrateMagpieCredentials(ctx context.Context, client *ssh.Client, home stri
 	if err != nil {
 		return 0, fmt.Errorf("cannot encode credential migration")
 	}
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return 0, err
 	}

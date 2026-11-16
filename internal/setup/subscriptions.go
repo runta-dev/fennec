@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"os"
@@ -13,7 +14,7 @@ import (
 )
 
 func RestoreCodexIdentity(ctx context.Context, client *ssh.Client) error {
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return err
 	}

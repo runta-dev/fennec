@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/commandstream"
 	"fennec/internal/cpusched"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
@@ -304,6 +305,9 @@ func run() (int, error) {
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
 		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+			if target == terminalstream.SocketCommand {
+				return commandstream.Dial(ctx), nil
+			}
 			if target == terminalstream.SocketDeviceRelay {
 				return localssh.DialExistingRelay(ctx, home, terminalstream.SocketDevice(ctx))
 			}

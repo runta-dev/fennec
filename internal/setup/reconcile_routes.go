@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/commandstream"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"os/exec"
@@ -12,7 +13,7 @@ import (
 )
 
 func GatewayModels(ctx context.Context, client *ssh.Client) ([]string, error) {
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +143,7 @@ func ReconcileRoutes(ctx context.Context, client *ssh.Client, routes []AgentRout
 	if len(payload) > 65536 {
 		return nil, fmt.Errorf("oversized route request")
 	}
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return nil, err
 	}

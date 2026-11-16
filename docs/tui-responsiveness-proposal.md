@@ -106,8 +106,9 @@ quota wait, whole socket packets after backpressure, duplicate process startup,
 resident fragmentation/ping through the broker, and inherited-pipe cancellation.
 
 Coverage remains incomplete: this stage shares **cloud resident outputs**.
-Generic exec output, Mutagen and independent Mac senders do not yet share this
-budget. The reverse connector integration described below adds the daemon's
+Mutagen and independent Mac senders do not yet share this budget. The command
+and reverse connector integrations described below add more daemon traffic to
+the resident's directional budgets. The reverse connector integration adds
 reverse streams to the resident's directional budgets. Even registered stdout pipes can feed data into sshd's own
 buffers when the far reader stalls. Receiver credits and a resume-burst test
 are still required; a userspace broker alone does not establish a bound on
@@ -161,12 +162,51 @@ During validation, an existing Linux credential-watch failure was reproduced
 with an immediate atomic replacement: the inotify watches were armed only after
 the API returned. Initial registration is now synchronous; the regression test
 fails before that fix and passes after it. The CLI race suite then passed.
-Initial Mac terminalstream/localssh/terminal-command race tests passed; CLI
-validation needed an explicit Homebrew PATH for Node. The detached follow-up
-job's result is pending retrieval because the Mac relay lost its device bridge
-connections. Later window-tuning changes still require Mac synchronization and
-WAN remeasurement. No development installation has been performed for this
-stage.
+Mac terminalstream/localssh/CLI/terminal-command race tests passed again after
+the final window tuning was synchronized. The earlier detached WAN attempt
+failed DNS resolution and supplied no valid measurements. A fresh 135-sample
+run completed on 2026-11-16 at 07:14 UTC, verifying 2,097,234 duplex load bytes
+over 43.335 seconds, but failed the latency target:
+
+| Phase | Gateway P95 | Guest echo P95 | Exact TUI ping P95 |
+| --- | ---: | ---: | ---: |
+| Idle | 192.869 ms | 350.980 ms | 407.774 ms |
+| Duplex socket load | 219.657 ms | 901.892 ms | 846.332 ms |
+| Recovery | 161.783 ms | 353.560 ms | 342.535 ms |
+
+The probe's idle and recovery phases also show substantial guest-path delay;
+these were not isolated from other active traffic. This run does not identify
+which sender caused the queueing, and independent percentile differences are
+not component latency. The earlier 243.750 ms resident-reply result is not a
+stable acceptance result. Raw samples are in
+[duplex WAN results](benchmarks/2026-11-16-duplex-socket-ping.json).
+No development installation has been performed for this stage.
+
+### Non-PTY command streams
+
+The negotiated `command_stream_v1` socket target now carries ordinary setup,
+configuration synchronization and terminal installer stdin/stdout/stderr through
+the same resident scheduler in both directions. `internal/commandstream` is a
+small transport protocol independent of runtime/setup application packages;
+the retained SSH carrier remains opaque. It transmits explicit stdin EOF and
+exit status, bounds records, keeps command payloads in the bulk class, and
+reserves separate admission for at most 16 commands so long-running transfers
+cannot consume terminal/control slots. Commands run as the authenticated
+resident owner, with the existing workload CPU boundary and a cancellable
+process group. Closing the stream cancels the command even when stdin blocks.
+
+An existing SSH client is associated with its resident dialer. Registrations
+are retired when that SSH connection closes without deleting a newer replacement;
+a failed resident cannot silently reopen an unpaced path during recovery.
+Only cold bootstrap and explicitly unsupported old peers use a legacy exec
+channel; neither is counted as scheduled coverage. Once a resident command is
+sent, an uncertain outcome is never replayed on a fresh SSH channel. Tests
+verify binary stream integrity, separate stderr, EOF, nonzero status, early
+exit, blocked-input cancellation, registration replacement, bounded admission
+and responsive exact pings during an actual streamed `cat` transfer.
+
+Project archive upload and Mutagen still need integration. This stage does not
+establish full aggregate coverage or resolve the separate warm-operation gate.
 
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.

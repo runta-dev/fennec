@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fmt"
 	"io/fs"
 	"os"
@@ -130,7 +131,7 @@ func ReconcileModelPlugins(ctx context.Context, client *ssh.Client, plugins []Mo
 		return nil
 	}
 	data, _ := json.Marshal(plugins)
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return err
 	}

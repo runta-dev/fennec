@@ -1,9 +1,11 @@
 package terminalstream
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fennec/internal/commandstream"
 	"net"
 	"testing"
 	"time"
@@ -63,6 +65,10 @@ func TestSSHTransportClosePreservesSharedConnection(t *testing.T) {
 					request.Reply(true, nil)
 					if command.Command == "terminal" {
 						_ = Serve(context.Background(), channel, channel, nil)
+					} else if command.Command == "terminal-command" {
+						_ = ServeWithSockets(context.Background(), channel, channel, nil, nil, nil, nil, func(ctx context.Context, _ string) (net.Conn, error) {
+							return commandstream.Dial(ctx), nil
+						})
 					} else {
 						_, _ = channel.Write([]byte("still connected"))
 					}
@@ -98,5 +104,25 @@ func TestSSHTransportClosePreservesSharedConnection(t *testing.T) {
 	output, err := peer.Output("check")
 	if err != nil || string(output) != "still connected" {
 		t.Fatalf("peer channel failed: %q %v", output, err)
+	}
+	managed, err := StartSSH(client, "terminal-command")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer managed.Close()
+	command, err := commandstream.NewSession(ctx, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command.Stdin = bytes.NewBufferString("registered resident command")
+	data, err := command.Output("cat")
+	if err != nil || string(data) != "registered resident command" {
+		t.Fatalf("resident command registration failed: %q %v", data, err)
+	}
+	managed.Close()
+	<-managed.Done()
+	if command, err := commandstream.NewSession(ctx, client); err == nil {
+		command.Close()
+		t.Fatal("closed resident reopened an unpaced exec channel")
 	}
 }

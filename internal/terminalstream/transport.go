@@ -3,9 +3,11 @@ package terminalstream
 import (
 	"bufio"
 	"context"
+	"fennec/internal/commandstream"
 	"fennec/internal/launchprofile"
 	"fmt"
 	"io"
+	"net"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -140,7 +142,21 @@ func StartSSHContext(ctx context.Context, client *ssh.Client, command string) (*
 	}
 	go ssh.DiscardRequests(requests)
 	go io.Copy(io.Discard, channel.Stderr())
-	return startTransport(channel, channel, func() error { return nil }, channel.Close, nil, client.Close), nil
+	transport := startTransport(channel, channel, func() error { return nil }, channel.Close, nil, client.Close)
+	unregister := commandstream.Register(client, func(ctx context.Context) (net.Conn, error) {
+		if err := transport.Ready(ctx); err != nil {
+			return nil, err
+		}
+		if !transport.Supports(CapabilityCommand) {
+			return nil, commandstream.ErrUnsupported
+		}
+		return transport.DialSocket(ctx, SocketCommand, "")
+	})
+	// Keep the failed dialer until this SSH connection closes or a new resident
+	// replaces it. Removing it at resident EOF would reopen an unpaced exec path
+	// during recovery on an otherwise live shared connection.
+	go func() { client.Wait(); unregister() }()
+	return transport, nil
 }
 
 func startTransport(input io.WriteCloser, output io.ReadCloser, wait func() error, stop func() error, initial *Frame, abort ...func() error) *Transport {

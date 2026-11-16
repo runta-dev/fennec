@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,7 +82,7 @@ func SyncModelAccountsRequest(ctx context.Context, client *ssh.Client, request M
 	if err != nil {
 		return result, fmt.Errorf("cannot encode account synchronization")
 	}
-	session, err := client.NewSession()
+	session, err := commandstream.NewSession(ctx, client)
 	if err != nil {
 		return result, err
 	}

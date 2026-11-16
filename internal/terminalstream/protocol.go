@@ -75,6 +75,8 @@ const (
 	CapabilityCodexAppServer = "codex_app_server"
 	SocketDeviceRelay        = "device-relay"
 	CapabilityDeviceRelay    = "device_relay_v1"
+	SocketCommand            = "command"
+	CapabilityCommand        = "command_stream_v1"
 	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that
 	// follow the WebSocket upgrade request until the app-server has answered
 	// it (codex app-server drops a connection whose request arrives together
@@ -95,6 +97,9 @@ func (frame Frame) validateOpen() error {
 		return fmt.Errorf("invalid stream identity")
 	}
 	if frame.Type == "socket" {
+		if frame.Target == SocketCommand && frame.Message == "" && frame.Term == "" {
+			return nil
+		}
 		if frame.Target == SocketDeviceRelay && regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(frame.Message) && frame.Term == "" {
 			return nil
 		}
