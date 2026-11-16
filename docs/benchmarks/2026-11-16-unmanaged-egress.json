@@ -1,0 +1,21 @@
+{
+  "boundary": "Background guest eth0 and ss -tinp observation. The attempted command-mode WAN probe failed startup validation and generated no test load during this window. Guest wall clock is not synchronized to Mac/worker. TCP deltas are lower bounds: newly opened or short-lived flows may be missed. No per-packet queue attribution.",
+  "eth0_tx_bytes_per_second": {
+    "max": 194940.91057188946,
+    "median": 128005.03422518415,
+    "p95": 152169.30940769144
+  },
+  "finished_guest_utc": "2026-11-16T07:32:59.610012702Z",
+  "observed_tcp_payload_byte_deltas_by_process": {
+    "claude": 15212310,
+    "codex": 797531,
+    "git-remote-http": 0,
+    "magpie": 299043,
+    "magpie-bun": 5680,
+    "sshd": 3455464
+  },
+  "rate_samples": 236,
+  "samples_over_100000_bytes_per_second": 138,
+  "scope": "Unmanaged process traffic is outside the Fennec scheduling requirement, as confirmed by the user.",
+  "started_guest_utc": "2026-11-16T07:29:00.505639412Z"
+}

@@ -23,6 +23,21 @@ The user's chosen scope is Fennec-managed SSH traffic, with application-level
 scheduling and no required host QoS change. Traffic from unrelated guest
 processes and public-network loss remain outside this application's guarantee.
 
+The user explicitly reaffirmed this boundary after the background-egress
+observation: delays caused by traffic outside Fennec do not count as a failure
+of this design. Do not expand the implementation into shaping Claude/API HTTPS
+or host-wide traffic. Acceptance must distinguish Fennec-generated congestion
+from that outside traffic; retain noisy observations with their limitations
+rather than presenting them as controlled before/after evidence.
+
+A four-minute background observation recorded eth0 transmit-rate median
+128,005 B/s and P95 152,169 B/s, with substantial Claude HTTPS traffic as well
+as SSH. The first command-mode probe attempt failed argument validation and
+produced no test load in that observation window; that diagnostic validation
+bug was subsequently fixed. Guest counters do not establish the queue delay
+of an individual ping. See the bounded
+[background-egress summary](benchmarks/2026-11-16-unmanaged-egress.json).
+
 ### Required coverage
 
 | Path | Existing behavior | Required integration |
@@ -228,6 +243,16 @@ measure real `cat` commands through the resident instead of a synthetic echo
 endpoint. It requires the negotiated capability, verifies bytes and exit status,
 and records uploads separately from verified received bytes. Historical duplex
 reports' `verified_load_bytes` is a per-direction payload count, not their sum.
+
+The first valid command-load WAN run completed 90 timing comparisons but failed
+before any full load payload was verified, with exit status 255. Its samples
+are retained in [failed command-drain run](benchmarks/2026-11-16-command-drain-failure.json)
+and are not acceptance evidence. It exposed a real output-lifetime bug:
+`exec.Cmd.WaitDelay` started after a successful child exit while paced stdout
+was still draining, truncating valid output. Output pipes are now drained
+independently of process waiting; cancellation still closes both pipes and
+terminates the process group. A regression with a 1.5 s paused output reader
+fails against the previous server and passes with the fix.
 
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.

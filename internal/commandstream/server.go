@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fennec/internal/cpusched"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -65,12 +66,39 @@ func serve(parent context.Context, conn net.Conn) {
 	}
 	defer stdin.Close()
 	wire := &records{out: conn}
-	cmd.Stdout = outputWriter{wire, stdoutData}
-	cmd.Stderr = outputWriter{wire, stderrData}
+	// Keep network draining outside exec.Cmd.Wait. Its WaitDelay also starts
+	// when a child exits normally, which would truncate a valid slow transfer.
+	stdout, stdoutChild, err := os.Pipe()
+	if err != nil {
+		return
+	}
+	defer stdout.Close()
+	defer stdoutChild.Close()
+	stderr, stderrChild, err := os.Pipe()
+	if err != nil {
+		return
+	}
+	defer stderr.Close()
+	defer stderrChild.Close()
+	cmd.Stdout, cmd.Stderr = stdoutChild, stderrChild
 	if err = cmd.Start(); err != nil {
 		wire.send(exitStatus, status(127))
 		return
 	}
+	stdoutChild.Close()
+	stderrChild.Close()
+	stopOutput := context.AfterFunc(ctx, func() { stdout.Close(); stderr.Close(); stdin.Close() })
+	defer stopOutput()
+	outputDone := make(chan error, 2)
+	copyOutput := func(kind byte, input io.Reader) {
+		_, err := io.Copy(outputWriter{wire, kind}, input)
+		if err != nil {
+			cancel()
+		}
+		outputDone <- err
+	}
+	go copyOutput(stdoutData, stdout)
+	go copyOutput(stderrData, stderr)
 	inputDone := make(chan struct{})
 	go func() {
 		defer close(inputDone)
@@ -99,6 +127,11 @@ func serve(parent context.Context, conn net.Conn) {
 		}
 	}()
 	err = cmd.Wait()
+	for range 2 {
+		if copyErr := <-outputDone; copyErr != nil {
+			cancel()
+		}
+	}
 	code := 0
 	if err != nil {
 		code = 255

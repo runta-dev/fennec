@@ -145,3 +145,32 @@ func TestCommandRejectsOversizedRecord(t *testing.T) {
 		t.Fatal("oversized command accepted")
 	}
 }
+
+type slowFirstOutput struct {
+	bytes.Buffer
+	delayed bool
+}
+
+func (w *slowFirstOutput) Write(data []byte) (int, error) {
+	if !w.delayed {
+		w.delayed = true
+		time.Sleep(1500 * time.Millisecond)
+	}
+	return w.Buffer.Write(data)
+}
+
+func TestCommandExitWaitsForSlowOutputDrain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s := localSession(t, ctx)
+	payload := bytes.Repeat([]byte("complete tail"), 250)
+	s.Stdin = bytes.NewReader(payload)
+	out := new(slowFirstOutput)
+	s.Stdout = out
+	if err := s.Run("cat"); err != nil {
+		t.Fatal("child exit truncated paced output", err)
+	}
+	if !bytes.Equal(out.Bytes(), payload) {
+		t.Fatal("lost output after child exit")
+	}
+}
