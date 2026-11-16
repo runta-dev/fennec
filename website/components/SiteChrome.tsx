@@ -9,7 +9,7 @@ export type Brand = { name: string; sub?: string; logo: string; home: string; na
 // Links are absolute ("/#faq") so they work from every page.
 export const fennecBrand: Brand = {
   name: 'Fennec', logo: '/fennec.svg', home: '/',
-  nav: [{ label: 'How it works', href: '/#how-it-works' }, { label: 'Computer Use', href: '/computer-use/' }, { label: 'FAQ', href: '/#faq' }],
+  nav: [{ label: 'How it works', href: '/#demo' }, { label: 'Computer Use', href: '/computer-use/' }, { label: 'FAQ', href: '/#faq' }],
 };
 
 function Wordmark({ brand, size }: { brand: Brand; size: number }) {
@@ -17,7 +17,7 @@ function Wordmark({ brand, size }: { brand: Brand; size: number }) {
 }
 
 export function SiteHeader({ brand = fennecBrand, cta = { label: 'Get started', href: repo + '#get-started' } }: { brand?: Brand; cta?: { label: string; href: string } }) {
-  return <header className="site-header"><Wordmark brand={brand} size={34}/><nav aria-label="Main navigation">{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub <ArrowUpRight size={12}/></a></nav><div className="header-actions"><a className="nav-download" href={cta.href}>{cta.label} <ArrowDown size={14}/></a></div></header>;
+  return <header className={'site-header' + (brand === fennecBrand ? ' fennec-header' : '')}><Wordmark brand={brand} size={34}/><nav aria-label="Main navigation">{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub <ArrowUpRight size={12}/></a></nav><div className="header-actions"><a className="nav-download" href={cta.href}>{cta.label} <ArrowDown size={14}/></a></div></header>;
 }
 
 export function SiteFooter({ brand = fennecBrand, tagline = 'Cloud agents. Local tools.' }: { brand?: Brand; tagline?: string }) {

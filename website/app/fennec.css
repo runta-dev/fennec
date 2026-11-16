@@ -55,3 +55,18 @@
 .open-section .computer-use-note{max-width:660px;margin-top:22px}
 .open-links{flex-wrap:wrap}
 @media(max-width:760px){.supported-agents{margin-bottom:28px}.supported-agents ul{gap:16px 22px}.supported-agents li{font-size:12px}}
+
+/* Keep the primary product explanation reachable in the compact header. */
+@media(max-width:760px) {
+  .fennec-header nav { display:flex; margin-left:auto; }
+  .fennec-header nav a { display:none; }
+  .fennec-header nav a:first-child { display:flex; white-space:nowrap; font-size:12px; }
+}
+@media(max-width:360px) {
+  .fennec-header { padding-inline:12px; gap:8px; }
+  .fennec-header .wordmark { font-size:20px; gap:5px; }
+  .fennec-header .wordmark img { width:27px; height:27px; }
+  .fennec-header nav a:first-child { font-size:11px; }
+  .fennec-header .header-actions { margin-left:0; }
+  .fennec-header .nav-download { gap:4px; padding-inline:9px; }
+}

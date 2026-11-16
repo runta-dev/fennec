@@ -1,99 +1,103 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Monitor, Plus, PanelLeft, Terminal, X } from "lucide-react";
-import FennecPanel from "./FennecPanel";
-import RecordedTerminal from "./RecordedTerminal";
-import { duration, tasks, sessionState, sessionTitle, type PanelTab } from "./demo-scenario";
-import "./demo.css";
+import { ArrowRight, Check, Cloud, Laptop, Moon, Pause, Play, RotateCcw, Terminal } from "lucide-react";
+import ProductTour from "./ProductTour";
+import "./story.css";
+
+const stages = [
+  { label: "Start a task", short: "Start", title: "Start in your terminal.", description: "Choose Cloud computer, launch Codex, and prepare the project in the cloud.", mac: "Connected", cloud: "Working", activity: "Fixing duplicate webhook deliveries", command: "codex" },
+  { label: "Step away", short: "Step away", title: "Close your Mac. Work continues.", description: "With the files and dependencies in the cloud, Codex can keep working while your Mac is offline.", mac: "Offline", cloud: "Working", activity: "Running the regression tests", command: "" },
+  { label: "Come back", short: "Come back", title: "Reconnect to the same session.", description: "Open your terminal and attach. The task, its history, and its results are still there.", mac: "Reconnected", cloud: "Ready for review", activity: "The fix and test results are ready", command: "fen attach maple-river" },
+];
 
 export default function Demo() {
   const root = useRef<HTMLElement>(null);
-  const resumeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const reducedMotion = useRef(false), userPaused = useRef(false);
-  const [cycle, setCycle] = useState(0);
-  const [time, setTime] = useState(0), [playing, setPlaying] = useState(true);
-  const [visible, setVisible] = useState(false), [hidden, setHidden] = useState(false);
-  const [panelOverride, setPanelOverride] = useState<PanelTab | null>(null);
-  const [tabOverride, setTabOverride] = useState<number | null>(null);
-  const [stopped, setStopped] = useState<number[]>([]);
+  const [stage, setStage] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   useEffect(() => {
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
-    const onMotion = () => {
-      reducedMotion.current = motion.matches;
-      if (motion.matches) { clearTimeout(resumeTimer.current); setPlaying(false); setTime(duration); }
-      else if (!userPaused.current) setPlaying(true);
-    };
+    const onMotion = () => setPlaying(!motion.matches);
     onMotion();
     const visibility = () => setHidden(document.hidden);
     visibility();
-    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.2 });
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.35 });
     if (root.current) observer.observe(root.current);
-    motion.addEventListener("change", onMotion); document.addEventListener("visibilitychange", visibility);
-    return () => { clearTimeout(resumeTimer.current); observer.disconnect(); motion.removeEventListener("change", onMotion); document.removeEventListener("visibilitychange", visibility); };
+    motion.addEventListener("change", onMotion);
+    document.addEventListener("visibilitychange", visibility);
+    return () => { observer.disconnect(); motion.removeEventListener("change", onMotion); document.removeEventListener("visibilitychange", visibility); };
   }, []);
   useEffect(() => {
     if (!playing || !visible || hidden) return;
-    let frame = 0, last = performance.now();
-    const tick = (now: number) => {
-      if (now - last >= 45) { const elapsed = Math.min(now - last, 150); last = now; setTime(value => Math.min(duration + 2000, value + elapsed)); }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [playing, visible, hidden]);
-  useEffect(() => {
-    if (time < duration + 2000) return;
-    setTime(0);
-    setPanelOverride(null);
-    setTabOverride(null);
-    setStopped([]);
-    // Remount the isolated native document to reset its own fixture state too.
-    setCycle(value => value + 1);
-  }, [time]);
-  const current = Math.min(3, Math.floor(time / 10000)), active = tabOverride ?? current;
-  const panel: PanelTab = panelOverride ?? (time < 1500 ? "Agents" : time >= 35000 && time < 39000 ? "Governance" : time >= 39000 && time < 43000 ? "Account" : "Sessions");
-  const sessions = tasks.map((task, index) => ({ task, index })).filter(({ task, index }) => time >= task.start + 1500 && !stopped.includes(index));
-  const pause = () => {
-    setPlaying(false);
-    clearTimeout(resumeTimer.current);
-    if (userPaused.current || reducedMotion.current) return;
-    resumeTimer.current = setTimeout(() => {
-      setPanelOverride(null);
-      setTabOverride(null);
-      setPlaying(true);
-    }, 8000);
+    const timer = setTimeout(() => {
+      if (stage === stages.length - 1) setPlaying(false);
+      else setStage(stage + 1);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [stage, playing, visible, hidden]);
+  const select = (index: number) => { setStage(index); setPlaying(false); };
+  const toggle = () => {
+    if (!playing && stage === stages.length - 1) setStage(0);
+    setPlaying(!playing);
   };
-  function attach(index: number) { pause(); setTabOverride(index); setPanelOverride("Sessions"); }
-  const task = tasks[Math.min(active, 2)], age = time - active * 10000, shell = age < 1200;
-  return <section id="demo" ref={root} className="workflow-demo" aria-label="Fennec terminal workflow" data-playing={playing && visible && !hidden} data-cycle={cycle} tabIndex={0} onKeyDown={event => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === " ") { event.preventDefault(); clearTimeout(resumeTimer.current); userPaused.current = playing; setPanelOverride(null); setTabOverride(null); setPlaying(!playing); }
-    if (event.key === "Escape") { userPaused.current = true; pause(); }
-  }}>
-    <div className="workflow-desktop">
-      <div className="fennec-window"><FennecPanel key={cycle} time={time} tab={panel} onTab={value => { pause(); setPanelOverride(value); }} onAttach={attach} onInteract={pause} stopped={stopped} onStop={index => { pause(); setStopped(value => [...value, index]); }} /></div>
-      <div className="herdr-window">
-        <aside className="herdr-sidebar">
-          <div className="herdr-brand"><div className="mac-dots" aria-hidden="true"><i/><i/><i/></div><PanelLeft size={15}/></div>
-          <div className="herdr-sidebar-heading">Spaces <Plus size={13}/></div>
-          <div className="herdr-computer"><Monitor size={14}/>This computer<ChevronDown size={12}/></div>
-          <div className="herdr-project"><span>R</span>relay</div>
-          <div className="herdr-sidebar-heading herdr-agents-heading">Agents <span>{sessions.length}</span></div>
-          {["Working", "Idle"].map(state => {
-            const group = sessions.filter(({ task }) => sessionState(task, time) === state);
-            return group.length > 0 && <div className="herdr-group" key={state}><small>{state} <span>{group.length}</span></small>{group.map(({ task, index }) => <button key={task.command} className={active === index ? "selected" : ""} onClick={() => attach(index)} title={sessionTitle(task, time)}><img src={"/icons/" + task.icon} alt=""/><span>{sessionTitle(task, time)}</span><span className={"herdr-state " + state.toLowerCase()}/></button>)}</div>;
-          })}
-        </aside>
-        <div className="herdr-main">
-          <div className="herdr-tabs" role="tablist" aria-label="Terminal tabs">
-            {Array.from({ length: current + 1 }, (_, index) => <button role="tab" aria-selected={active === index} aria-controls="demo-terminal" id={"terminal-tab-" + index} key={index} onClick={() => { pause(); setTabOverride(index); }}>{index < 3 && time >= tasks[index].start + 1500 ? <img src={"/icons/" + tasks[index].icon} alt=""/> : <Terminal size={14}/>}<span>{index + 1}</span><X size={12} aria-hidden="true"/></button>)}
-            <button className="herdr-new-tab" aria-label="Open next terminal tab" disabled={current === 3} onClick={() => { clearTimeout(resumeTimer.current); userPaused.current = false; setTime((current + 1) * 10000); setTabOverride(null); setPanelOverride(null); setPlaying(true); }}><Plus size={17}/></button>
+  const scene = stages[stage];
+  return <>
+    <section id="demo" ref={root} className="session-story" aria-labelledby="story-title" data-stage={stage}>
+      <div className="story-controls">
+        <div className="story-tabs" role="tablist" aria-label="Session walkthrough">
+          {stages.map((item, index) => <button key={item.label} id={"story-tab-" + index} role="tab" aria-selected={stage === index} aria-controls="story-scene" tabIndex={stage === index ? 0 : -1} onClick={() => select(index)} onKeyDown={event => {
+            let next = index;
+            if (event.key === "ArrowRight") next = (index + 1) % stages.length;
+            else if (event.key === "ArrowLeft") next = (index + stages.length - 1) % stages.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = stages.length - 1;
+            else return;
+            event.preventDefault(); select(next); document.getElementById("story-tab-" + next)?.focus();
+          }}><span className="story-step-number">0{index + 1}</span><span className="story-step-long">{item.label}</span><span className="story-step-short">{item.short}</span></button>)}
+        </div>
+        <button className="story-play" onClick={toggle} aria-label={playing ? "Pause walkthrough" : stage === 2 ? "Replay walkthrough" : "Play walkthrough"}>
+          {playing ? <Pause size={15}/> : stage === 2 ? <RotateCcw size={15}/> : <Play size={15}/>}<span>{playing ? "Pause" : stage === 2 ? "Replay" : "Play"}</span>
+        </button>
+      </div>
+      <div id="story-scene" role="tabpanel" aria-labelledby={"story-tab-" + stage} tabIndex={0}>
+        <div className="story-heading" aria-live={playing ? "off" : "polite"}>
+          <h2 id="story-title">{scene.title}</h2><p>{scene.description}</p>
+        </div>
+        <div className="story-computers">
+          <div className={"story-mac" + (stage === 1 ? " is-offline" : "")}>
+            <div className="story-machine-label"><Laptop size={17}/><strong>Your Mac</strong><span>{scene.mac}</span></div>
+            <div className="story-mac-screen">
+              {stage === 1 ? <div className="story-away"><Moon size={29} strokeWidth={1.4}/><strong>You’re away.</strong><span>The cloud session stays.</span></div> : <div className="story-terminal">
+                <div className="story-terminal-label"><Terminal size={14}/>Your terminal</div>
+                <code><span>›</span> {scene.command}</code>
+                <div className="story-terminal-response">{stage === 0 ? "Cloud session started" : "Attached to your running session"}<strong>maple-river</strong></div>
+                <div className="story-terminal-task">{stage === 0 ? "Fix duplicate webhook deliveries and add a regression test." : "Review the fix. Continue the conversation."}</div>
+              </div>}
+            </div>
           </div>
-          <div className="herdr-terminal" id="demo-terminal" role="tabpanel" aria-labelledby={"terminal-tab-" + active}>
-            <div className="herdr-terminal-heading">{shell || active === 3 ? <Terminal size={15}/> : <img src={"/icons/" + task.icon} alt=""/>}<strong>{shell ? "zsh" : active === 3 ? "fen" : task.name}</strong><span>~/repos/relay</span></div>
-            <RecordedTerminal name={active === 3 ? "fen" : task.command} progress={age / (active === 3 ? 5000 : task.done - task.start)} />
+          <div className="story-connection" aria-hidden="true"><span/><ArrowRight size={18}/><span/></div>
+          <div className="story-cloud">
+            <div className="story-machine-label"><Cloud size={18}/><strong>Your cloud computer</strong><span className="story-online"><i/>Running</span></div>
+            <div className="story-session">
+              <div className="story-session-heading"><img src="/icons/codex-color.svg" width="26" height="26" alt=""/><div><strong>Codex</strong><span>Session · maple-river</span></div><span className="story-session-state">{scene.cloud}</span></div>
+              <h3>Fix duplicate webhook deliveries</h3>
+              <ul className="story-progress">
+                <li><Check size={15}/><span>Project files and dependencies ready</span></li>
+                <li>{stage > 0 ? <Check size={15}/> : <span className="story-working-dot"/>}<span>Fix the duplicate delivery</span></li>
+                <li className={stage === 0 ? "is-pending" : ""}>{stage === 2 ? <Check size={15}/> : stage === 1 ? <span className="story-working-dot"/> : <span className="story-pending-dot"/>}<span>Run the regression tests</span></li>
+              </ul>
+              <div className="story-activity">{stage === 2 ? <Check size={14}/> : <span className="story-working-dot"/>}{scene.activity}</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>;
+      <div className="story-foot"><span>Illustrative walkthrough · sample session</span><p>Cloud work continues while its computer is running. Steps that need your Mac wait until it reconnects.</p></div>
+    </section>
+    <details className="app-tour" onToggle={event => setTourOpen(event.currentTarget.open)}>
+      <summary><span>Explore the app and terminal recordings</span><span className="app-tour-plus" aria-hidden="true">+</span></summary>
+      {tourOpen && <div className="app-tour-content"><p>Explore the Fennec panel with sample data, alongside recorded agent sessions. These recordings show cloud-only coding tasks. No commands run on your computer. Focus the preview and press Space to pause.</p><ProductTour/></div>}
+    </details>
+  </>;
 }
