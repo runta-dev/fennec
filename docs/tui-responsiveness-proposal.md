@@ -23,6 +23,10 @@ older defaults; old brokers drain naturally without stopping agent sessions.
 Dynamic terminal windows, 16 KiB socket credit, 2 KiB bursts and relay recovery
 remain enabled. Installation and validation are recorded in
 [the selected-budget deployment record](benchmarks/2026-11-16-budget128-96-deployment.md).
+Development build `0.3.11162158-dev` (source `e56fc21`) is installed with the
+matching cloud terminal and `traffic-v4` broker. Startup readiness and session
+preservation passed. The installed 500 ms warm-operation gate still failed
+(seven sends, one read and one refresh); no latency-goal completion is claimed.
 
 The earlier user-requested 160/128 KiB/s budget was installed in development build
 `ad8c138`, including the dynamic terminal window and relay recovery fixes.

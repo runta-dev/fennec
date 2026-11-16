@@ -318,6 +318,278 @@
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "99b1d0a35fc1cb916b0c9c04a423b1c3e991411519f07d589d14b2290f886b11"
     },
+    "2026-11-16-budget128-96-deployment.json": {
+      "recorded_metadata": {
+        "boundary": "Installed Mac CLI/control-plane operation wall times through integration to confirmed remote operations or first usable TUI. Cold SSH separate. Local/cached metadata calls separately labeled. Not protocol-ping P95, rendered typing latency or a controlled before/after comparison.",
+        "installation_execution": {
+          "exit_code": 1,
+          "finished": "2026-11-16T14:00:36.076546Z",
+          "started": "2026-11-16T13:59:13.980027Z"
+        },
+        "provenance": {
+          "application_version": "0.3.11162158-dev",
+          "budget": "Both endpoints total 131072 bytes/s, bulk 98304 bytes/s; cloud traffic-v4, 2048-byte burst, adaptive terminal window 8-64 KiB, fixed socket credit 16 KiB, TCP feedback off",
+          "client": {
+            "evidence": "user-reported",
+            "host": "Mac",
+            "location": "Singapore",
+            "provider": "Singtel",
+            "vpn_proxy_route": "not captured"
+          },
+          "sample_counts": "See summary: each recorded wall_ms/usable_ms line is one sample. Cold SSH separate. Image-paste test explicitly skipped; no result claimed.",
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "environment": "runta-integration",
+            "evidence": "Inventory around 2026-11-16T12:04Z; exact worker/route not re-resolved for this installation",
+            "previous_worker": "runta-integration-worker-xfs-04",
+            "previous_zone": "us-west1-b",
+            "provider": "GCP",
+            "region": "us-west1"
+          },
+          "sha256": {
+            "bundled_and_running_cloud_terminal": "51a2634ea46c61418bf45aba55f0bca83fe9df75afbb015eac287cd7272b0770",
+            "credential_helper": "f69a5f6c9bd8a928771bf151f564ff4c25c065df8ee390bad8291a0dbad539fe",
+            "installed_mac_fen": "5a081d7d28a5186daeb708813070f0e4b936ec7d0e2ce87a3783217b642392ae"
+          },
+          "source_commit": "e56fc2172570959b508eabb0e589922e2d486136",
+          "source_modified": false,
+          "timing": "UTC installation wrapper interval below encloses startup and the live suite; the test log does not timestamp each operation. RTT is not computed by subtracting cross-host timestamps.",
+          "workload": "Installed ope2e suite with task-owned sessions and three repetition groups, two model changes, and three input-ready TUI launches. No bulk generator. Existing user sessions/background traffic/host load uncontrolled. Brief status reads may overlap. Model selection restored by test cleanup."
+        },
+        "summary": {
+          "account.status": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 8.413,
+            "max_ms": 8.79,
+            "samples_ms": [
+              8.413,
+              8.784,
+              8.79
+            ]
+          },
+          "agents.list": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 9.968,
+            "max_ms": 13.899,
+            "samples_ms": [
+              13.899,
+              10.945,
+              9.968
+            ]
+          },
+          "approvals.list": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 8.699,
+            "max_ms": 8.997,
+            "samples_ms": [
+              8.883,
+              8.997,
+              8.699
+            ]
+          },
+          "attach": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 266.632,
+            "max_ms": 277.658,
+            "samples_ms": [
+              270.172,
+              266.632,
+              277.658
+            ]
+          },
+          "cold SSH": {
+            "count": 1,
+            "above_limit": 0,
+            "min_ms": 4754.71,
+            "max_ms": 4754.71,
+            "samples_ms": [
+              4754.71
+            ]
+          },
+          "connection.status": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 8.538,
+            "max_ms": 10.125,
+            "samples_ms": [
+              10.125,
+              9.127,
+              8.538
+            ]
+          },
+          "daemon.ping": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 11.224,
+            "max_ms": 18.498,
+            "samples_ms": [
+              18.498,
+              14.761,
+              11.224
+            ]
+          },
+          "launch": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 347.946,
+            "max_ms": 429.733,
+            "samples_ms": [
+              347.946,
+              400.424,
+              429.733
+            ]
+          },
+          "model.set": {
+            "count": 2,
+            "above_limit": 0,
+            "min_ms": 202.046,
+            "max_ms": 310.297,
+            "samples_ms": [
+              202.046,
+              310.297
+            ]
+          },
+          "resume": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 309.954,
+            "max_ms": 321.185,
+            "samples_ms": [
+              309.954,
+              319.734,
+              321.185
+            ]
+          },
+          "sessions.allocate": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 20.229,
+            "max_ms": 26.935,
+            "samples_ms": [
+              26.935,
+              21.608,
+              20.229
+            ]
+          },
+          "sessions.launch": {
+            "count": 1,
+            "above_limit": 0,
+            "min_ms": 242.867,
+            "max_ms": 242.867,
+            "samples_ms": [
+              242.867
+            ]
+          },
+          "sessions.list": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 9.365,
+            "max_ms": 10.552,
+            "samples_ms": [
+              10.552,
+              9.365,
+              9.677
+            ]
+          },
+          "sessions.read": {
+            "count": 9,
+            "above_limit": 1,
+            "min_ms": 205.712,
+            "max_ms": 521.087,
+            "samples_ms": [
+              205.712,
+              233.941,
+              254.015,
+              222.959,
+              224.92,
+              362.734,
+              219.704,
+              521.087,
+              226.765
+            ]
+          },
+          "sessions.refresh": {
+            "count": 3,
+            "above_limit": 1,
+            "min_ms": 237.67,
+            "max_ms": 613.541,
+            "samples_ms": [
+              613.541,
+              238.02,
+              237.67
+            ]
+          },
+          "sessions.send": {
+            "count": 9,
+            "above_limit": 7,
+            "min_ms": 426.928,
+            "max_ms": 1020.171,
+            "samples_ms": [
+              964.805,
+              820.039,
+              456.44,
+              1020.171,
+              825.813,
+              789.712,
+              969.2,
+              967.252,
+              426.928
+            ]
+          },
+          "sessions.stop": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 249.972,
+            "max_ms": 258.598,
+            "samples_ms": [
+              249.972,
+              252.74,
+              258.598
+            ]
+          },
+          "settings.get": {
+            "count": 4,
+            "above_limit": 0,
+            "min_ms": 27.545,
+            "max_ms": 44.444,
+            "samples_ms": [
+              27.545,
+              27.756,
+              30.222,
+              44.444
+            ]
+          },
+          "state.get": {
+            "count": 4,
+            "above_limit": 0,
+            "min_ms": 27.648,
+            "max_ms": 43.999,
+            "samples_ms": [
+              30.382,
+              27.648,
+              33.332,
+              43.999
+            ]
+          },
+          "takeover.get": {
+            "count": 3,
+            "above_limit": 0,
+            "min_ms": 9.208,
+            "max_ms": 10.329,
+            "samples_ms": [
+              10.329,
+              9.208,
+              9.426
+            ]
+          }
+        }
+      },
+      "sha256": "8d975b174d47e218f13d8ff2a79bc5e7fec1f29771581db912be416d2b2797e0"
+    },
     "2026-11-16-budget128-comparison.json": {
       "client_origin": "Singapore / Singtel (user reported)",
       "recorded_metadata": {
@@ -2680,5 +2952,5 @@
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-16T13:40:41.673798313Z"
+  "updated_utc": "2026-11-16T14:03:18.712388122Z"
 }

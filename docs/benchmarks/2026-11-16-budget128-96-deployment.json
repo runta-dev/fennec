@@ -1,0 +1,323 @@
+{
+  "boundary": "Installed Mac CLI/control-plane operation wall times through integration to confirmed remote operations or first usable TUI. Cold SSH separate. Local/cached metadata calls separately labeled. Not protocol-ping P95, rendered typing latency or a controlled before/after comparison.",
+  "cloud_agent_version_log": "\u001b[?1004h\u0018\u001b[!p\u001b[?2026l\u001b[?9l\u001b[?1000l\u001b[?1001l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?1016l\u001b[?2004l\u001b[?1l\u001b[?66l\u001b[?2031l\u001b[?2048l\u001b[=0;1u\u001b[?1049l\u001b[?1047l\u001b[?47l\u001b[H\u001b[2J\u001b[3g\u001b[9G\u001bH\u001b[17G\u001bH\u001b[25G\u001bH\u001b[33G\u001bH\u001b[41G\u001bH\u001b[49G\u001bH\u001b[57G\u001bH\u001b[65G\u001bH\u001b[73G\u001bH\u001b[81G\u001bH\u001b[89G\u001bH\u001b[97G\u001bH\u001b[105G\u001bH\u001b[113G\u001bH\u001b[H\u001b[1;1H\u001b[0m\u001b[?1004h^@codex-cli 0.169.0\r\n\u001b[?2026l\u001b[?1049h\u001b[=0;1u\u001b[?1049l\u001b[?1047l\u001b[?47l\u001b[=0;1u\u001b[\u003e4;0m\u001b7\u001b[4l\u001b[20l\u001b[?1l\u001b[?5l\u001b[?6l\u001b[?66l\u001b[?67l\u001b[?69l\u001b[?9l\u001b[?1000l\u001b[?1001l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?1016l\u001b[?2004l\u001b[?2031l\u001b[?2033l\u001b[?2048l\u001b[?7h\u001b[?25h\u001b[?1007h\u001b[r\u001b8\u001b[0 q\u001b(B\u001b[0m\u001b]104\u001b\\\u001b]110\u001b\\\u001b]111\u001b\\\u001b]112\u001b\\\u001b]22;\u001b\\\r\n[t7hs finished: exited]\r\n\u001b[?2026l\u001b[?9l\u001b[?1000l\u001b[?1001l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?1016l\u001b[?2004l\u001b[?1049l\u001b[0m\u001b[?25h",
+  "daemon": {
+    "build_id": "5a081d7d28a5186daeb708813070f0e4b936ec7d0e2ce87a3783217b642392ae",
+    "executable": "/Applications/Fennec.app/Contents/MacOS/fen",
+    "pid": 1461,
+    "protocol": 1
+  },
+  "installation_execution": {
+    "exit_code": 1,
+    "finished": "2026-11-16T14:00:36.076546Z",
+    "started": "2026-11-16T13:59:13.980027Z"
+  },
+  "installation_log": "{\"ui_restarted\":true,\"application\":\"/Applications/Fennec.app\",\"backup\":\"/Applications/.fennec-update-3081383838/Fennec.app\"}\nExecutable=/Applications/Fennec.app/Contents/MacOS/Fennec\nIdentifier=com.runta.fennec\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=1777 flags=0x10000(runtime) hashes=49+3 location=embedded\nSignature size=6020\nAuthority=Fennec Local Development\nTimestamp=16 Nov 2026 at 21:58:26\nInfo.plist entries=11\nTeamIdentifier=not set\nRuntime Version=27.0.0\nSealed Resources version=2 rules=13 files=70\nInternal requirements count=1 size=92\n5a081d7d28a5186daeb708813070f0e4b936ec7d0e2ce87a3783217b642392ae  /Applications/Fennec.app/Contents/MacOS/fen\nf69a5f6c9bd8a928771bf151f564ff4c25c065df8ee390bad8291a0dbad539fe  /Applications/Fennec.app/Contents/MacOS/fennec-credentials\n51a2634ea46c61418bf45aba55f0bca83fe9df75afbb015eac287cd7272b0770  /Applications/Fennec.app/Contents/Resources/fennec-terminal-linux-amd64\n/Applications/Fennec.app/Contents/MacOS/fen: go1.27.1\n\tpath\tfennec\n\tmod\tfennec\tv0.3.11150022-0.20261116135343-e56fc2172570\t\n\tdep\tgithub.com/anmitsu/go-shlex\tv0.0.0-20200514113438-38f4b401e2be\th1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=\n\tdep\tgithub.com/creack/pty\tv1.1.24\th1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=\n\tdep\tgithub.com/dustin/go-humanize\tv1.0.1\th1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=\n\tdep\tgithub.com/gliderlabs/ssh\tv0.3.8\th1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/gorilla/websocket\tv1.5.3\th1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=\n\tdep\tgithub.com/klauspost/compress\tv1.18.2\th1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=\n\tdep\tgithub.com/kr/fs\tv0.1.0\th1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=\n\tdep\tgithub.com/mattn/go-isatty\tv0.0.20\th1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=\n\tdep\tgithub.com/ncruces/go-strftime\tv0.1.9\th1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=\n\tdep\tgithub.com/pelletier/go-toml/v2\tv2.2.3\th1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=\n\tdep\tgithub.com/pkg/sftp\tv1.13.7\th1:uv+I3nNJvlKZIQGSr8JVQLNHFU9YhhNpvC14Y6KgmSM=\n\tdep\tgithub.com/remyoudompheng/bigfft\tv0.0.0-20230129092748-24d4a6f8daec\th1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=\n\tdep\tgithub.com/tailscale/hujson\tv0.0.0-20221223112325-20486734a56a\th1:SJy1Pu0eH1C29XwJucQo73FrleVK6t4kYz4NVhp34Yw=\n\tdep\tgolang.org/x/crypto\tv0.31.0\th1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=\n\tdep\tgolang.org/x/exp\tv0.0.0-20250620022241-b7579e27df2b\th1:M2rDM6z3Fhozi9O7NWsxAkg/yqS/lQJ6PmkyIV3YP+o=\n\tdep\tgolang.org/x/sys\tv0.34.0\th1:H5Y5sJ2L2JRdyv7ROF1he/lPdvFsd0mJHFw2ThKHxLA=\n\tdep\tgolang.org/x/term\tv0.27.0\th1:WP60Sv1nlK1T6SupCHbXzSaN0b9wUmsPoRS9b61A23Q=\n\tdep\tgolang.org/x/text\tv0.21.0\th1:zyQAAkrwaneQ066sspRyJaG9VNi/YJ1NfzcGB3hZ/qo=\n\tdep\tmodernc.org/libc\tv1.66.3\th1:cfCbjTUcdsKyyZZfEUKfoHcP3S0Wkvz3jgSzByEWVCQ=\n\tdep\tmodernc.org/mathutil\tv1.7.1\th1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\n\tdep\tmodernc.org/memory\tv1.11.0\th1:o4QC8aMQzmcwCK3t3Ux/ZHmwFPzE6hf2Y5LbkRs+hbI=\n\tdep\tmodernc.org/sqlite\tv1.38.2\th1:Aclu7+tgjgcQVShZqim41Bbw9Cho0y/7WzYptXqkEek=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tDefaultGODEBUG=containermaxprocs=0,cryptocustomrand=1,decoratemappings=0,tlssecpmlkem=0,tlssha1=1,tracebacklabels=0,updatemaxprocs=0,urlstrictcolons=0,x509sha256skid=0,x509sslcertoverrideplatform=0\n\tbuild\tCGO_ENABLED=1\n\tbuild\tGOARCH=arm64\n\tbuild\tGOOS=darwin\n\tbuild\tGOARM64=v8.0\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=e56fc2172570959b508eabb0e589922e2d486136\n\tbuild\tvcs.time=2026-11-16T13:53:43Z\n\tbuild\tvcs.modified=false\nSTARTUP_ACCEPTANCE_COMPLETE\nexit status 1\n",
+  "limitations": [
+    "Nine warm samples exceeded 500 ms: seven sends, one read, one refresh; full gate fails.",
+    "A separate full terminalstream race suite was interrupted at 205 s in TestConflatorRecordedSessions; focused transport race tests pass.",
+    "No post-installation ping comparison or manual scrolling/typing acceptance was performed."
+  ],
+  "operation_samples": 69,
+  "provenance": {
+    "application_version": "0.3.11162158-dev",
+    "budget": "Both endpoints total 131072 bytes/s, bulk 98304 bytes/s; cloud traffic-v4, 2048-byte burst, adaptive terminal window 8-64 KiB, fixed socket credit 16 KiB, TCP feedback off",
+    "client": {
+      "evidence": "user-reported",
+      "host": "Mac",
+      "location": "Singapore",
+      "provider": "Singtel",
+      "vpn_proxy_route": "not captured"
+    },
+    "sample_counts": "See summary: each recorded wall_ms/usable_ms line is one sample. Cold SSH separate. Image-paste test explicitly skipped; no result claimed.",
+    "server": {
+      "endpoint": "ssh.runta.xyz",
+      "environment": "runta-integration",
+      "evidence": "Inventory around 2026-11-16T12:04Z; exact worker/route not re-resolved for this installation",
+      "previous_worker": "runta-integration-worker-xfs-04",
+      "previous_zone": "us-west1-b",
+      "provider": "GCP",
+      "region": "us-west1"
+    },
+    "sha256": {
+      "bundled_and_running_cloud_terminal": "51a2634ea46c61418bf45aba55f0bca83fe9df75afbb015eac287cd7272b0770",
+      "credential_helper": "f69a5f6c9bd8a928771bf151f564ff4c25c065df8ee390bad8291a0dbad539fe",
+      "installed_mac_fen": "5a081d7d28a5186daeb708813070f0e4b936ec7d0e2ce87a3783217b642392ae"
+    },
+    "source_commit": "e56fc2172570959b508eabb0e589922e2d486136",
+    "source_modified": false,
+    "timing": "UTC installation wrapper interval below encloses startup and the live suite; the test log does not timestamp each operation. RTT is not computed by subtracting cross-host timestamps.",
+    "workload": "Installed ope2e suite with task-owned sessions and three repetition groups, two model changes, and three input-ready TUI launches. No bulk generator. Existing user sessions/background traffic/host load uncontrolled. Brief status reads may overlap. Model selection restored by test cleanup."
+  },
+  "raw_test_log": "=== RUN   TestLiveImagePasteClient\n    image_paste_test.go:25: explicit installed-client image paste test\n--- SKIP: TestLiveImagePasteClient (0.00s)\n=== RUN   TestSessionOperations500ms\n=== RUN   TestSessionOperations500ms/cold_ssh\n    session_ops_test.go:151: cold SSH wall_ms=4754.710 limit_ms=5000\n=== RUN   TestSessionOperations500ms/daemon.ping\n    session_ops_test.go:181: daemon.ping wall_ms=18.498 limit_ms=500\n    session_ops_test.go:181: daemon.ping wall_ms=14.761 limit_ms=500\n    session_ops_test.go:181: daemon.ping wall_ms=11.224 limit_ms=500\n=== RUN   TestSessionOperations500ms/connection.status\n    session_ops_test.go:181: connection.status wall_ms=10.125 limit_ms=500\n    session_ops_test.go:181: connection.status wall_ms=9.127 limit_ms=500\n    session_ops_test.go:181: connection.status wall_ms=8.538 limit_ms=500\n=== RUN   TestSessionOperations500ms/account.status\n    session_ops_test.go:181: account.status wall_ms=8.413 limit_ms=500\n    session_ops_test.go:181: account.status wall_ms=8.784 limit_ms=500\n    session_ops_test.go:181: account.status wall_ms=8.790 limit_ms=500\n=== RUN   TestSessionOperations500ms/agents.list\n    session_ops_test.go:181: agents.list wall_ms=13.899 limit_ms=500\n    session_ops_test.go:181: agents.list wall_ms=10.945 limit_ms=500\n    session_ops_test.go:181: agents.list wall_ms=9.968 limit_ms=500\n=== RUN   TestSessionOperations500ms/settings.get\n    session_ops_test.go:181: settings.get wall_ms=27.545 limit_ms=500\n    session_ops_test.go:181: settings.get wall_ms=27.756 limit_ms=500\n    session_ops_test.go:181: settings.get wall_ms=30.222 limit_ms=500\n=== RUN   TestSessionOperations500ms/takeover.get\n    session_ops_test.go:181: takeover.get wall_ms=10.329 limit_ms=500\n    session_ops_test.go:181: takeover.get wall_ms=9.208 limit_ms=500\n    session_ops_test.go:181: takeover.get wall_ms=9.426 limit_ms=500\n=== RUN   TestSessionOperations500ms/approvals.list\n    session_ops_test.go:181: approvals.list wall_ms=8.883 limit_ms=500\n    session_ops_test.go:181: approvals.list wall_ms=8.997 limit_ms=500\n    session_ops_test.go:181: approvals.list wall_ms=8.699 limit_ms=500\n=== RUN   TestSessionOperations500ms/state.get\n    session_ops_test.go:181: state.get wall_ms=30.382 limit_ms=500\n    session_ops_test.go:181: state.get wall_ms=27.648 limit_ms=500\n    session_ops_test.go:181: state.get wall_ms=33.332 limit_ms=500\n=== RUN   TestSessionOperations500ms/sessions.list\n    session_ops_test.go:181: sessions.list wall_ms=10.552 limit_ms=500\n    session_ops_test.go:181: sessions.list wall_ms=9.365 limit_ms=500\n    session_ops_test.go:181: sessions.list wall_ms=9.677 limit_ms=500\n=== RUN   TestSessionOperations500ms/sessions.refresh\n    session_ops_test.go:181: sessions.refresh wall_ms=613.541 limit_ms=500\n    session_ops_test.go:181: PERFORMANCE REGRESSION: sessions.refresh took 613.541292ms, exceeds 500ms\n    session_ops_test.go:181: sessions.refresh wall_ms=238.020 limit_ms=500\n    session_ops_test.go:181: sessions.refresh wall_ms=237.670 limit_ms=500\n=== RUN   TestSessionOperations500ms/sessions.allocate\n    session_ops_test.go:181: sessions.allocate wall_ms=26.935 limit_ms=500\n    session_ops_test.go:181: sessions.allocate wall_ms=21.608 limit_ms=500\n    session_ops_test.go:181: sessions.allocate wall_ms=20.229 limit_ms=500\n=== RUN   TestSessionOperations500ms/model.set\n    session_ops_test.go:186: settings.get wall_ms=44.444 limit_ms=500\n    session_ops_test.go:192: state.get wall_ms=43.999 limit_ms=500\n    session_ops_test.go:231: model.set wall_ms=202.046 limit_ms=500\n    session_ops_test.go:231: model.set remote_timings_ms=map[remote_round_trip:185.645]\n    session_ops_test.go:239: model.set wall_ms=310.297 limit_ms=500\n    session_ops_test.go:239: model.set remote_timings_ms=map[remote_round_trip:280.661]\n=== RUN   TestSessionOperations500ms/send_0\n    session_ops_test.go:311: sessions.send wall_ms=964.805 limit_ms=500\n    session_ops_test.go:311: PERFORMANCE REGRESSION: sessions.send took 964.80525ms, exceeds 500ms\n    session_ops_test.go:311: sessions.send remote_timings_ms=map[herdr_send:723.092 identity_check:3.059 remote_operation:726.213 request_write:0.113 response_wait:934.978]\n=== RUN   TestSessionOperations500ms/read_0\n    session_ops_test.go:314: sessions.read wall_ms=205.712 limit_ms=500\n    session_ops_test.go:314: sessions.read remote_timings_ms=map[remote_operation:4.395 request_write:1.432 response_wait:174.672]\n=== RUN   TestSessionOperations500ms/send_existing_0\n    session_ops_test.go:323: sessions.send wall_ms=820.039 limit_ms=500\n    session_ops_test.go:323: PERFORMANCE REGRESSION: sessions.send took 820.039208ms, exceeds 500ms\n    session_ops_test.go:323: sessions.send remote_timings_ms=map[herdr_send:614.378 identity_check:3.869 remote_operation:618.454 request_write:0.081 response_wait:793.409]\n    session_ops_test.go:324: sessions.read wall_ms=233.941 limit_ms=500\n    session_ops_test.go:324: sessions.read remote_timings_ms=map[remote_operation:4.699 request_write:0.954 response_wait:203.566]\n=== RUN   TestSessionOperations500ms/send_mature_0\n    session_ops_test.go:342: sessions.send wall_ms=456.440 limit_ms=500\n    session_ops_test.go:342: sessions.send remote_timings_ms=map[herdr_send:203.904 identity_check:2.622 remote_operation:206.597 request_write:0.12 response_wait:426.008]\n    session_ops_test.go:343: sessions.read wall_ms=254.015 limit_ms=500\n    session_ops_test.go:343: sessions.read remote_timings_ms=map[remote_operation:4.628 request_write:0.181 response_wait:223.294]\n=== RUN   TestSessionOperations500ms/attach_usable_0\n    session_ops_test.go:356: attach usable_ms=270.172\n=== RUN   TestSessionOperations500ms/resume_usable_0\n    session_ops_test.go:356: resume usable_ms=309.954\n=== RUN   TestSessionOperations500ms/stop_0\n    session_ops_test.go:366: sessions.stop wall_ms=249.972 limit_ms=500\n    session_ops_test.go:366: sessions.stop remote_timings_ms=map[request_write:0.147 response_wait:217.678 stop_confirm:2.563 stop_kill:22.639 stop_lookup:2.188]\n=== RUN   TestSessionOperations500ms/send_1\n    session_ops_test.go:311: sessions.send wall_ms=1020.171 limit_ms=500\n    session_ops_test.go:311: PERFORMANCE REGRESSION: sessions.send took 1.020171417s, exceeds 500ms\n    session_ops_test.go:311: sessions.send remote_timings_ms=map[herdr_send:770.903 identity_check:2.501 remote_operation:773.494 request_write:0.11 response_wait:987.784]\n=== RUN   TestSessionOperations500ms/read_1\n    session_ops_test.go:314: sessions.read wall_ms=222.959 limit_ms=500\n    session_ops_test.go:314: sessions.read remote_timings_ms=map[remote_operation:5.041 request_write:0.216 response_wait:192.911]\n=== RUN   TestSessionOperations500ms/send_existing_1\n    session_ops_test.go:323: sessions.send wall_ms=825.813 limit_ms=500\n    session_ops_test.go:323: PERFORMANCE REGRESSION: sessions.send took 825.813208ms, exceeds 500ms\n    session_ops_test.go:323: sessions.send remote_timings_ms=map[herdr_send:561.414 identity_check:2.626 remote_operation:564.119 request_write:0.126 response_wait:795.558]\n    session_ops_test.go:324: sessions.read wall_ms=224.920 limit_ms=500\n    session_ops_test.go:324: sessions.read remote_timings_ms=map[remote_operation:4.944 request_write:0.169 response_wait:192.816]\n=== RUN   TestSessionOperations500ms/send_mature_1\n    session_ops_test.go:342: sessions.send wall_ms=789.712 limit_ms=500\n    session_ops_test.go:342: PERFORMANCE REGRESSION: sessions.send took 789.712667ms, exceeds 500ms\n    session_ops_test.go:342: sessions.send remote_timings_ms=map[herdr_send:204.931 identity_check:2.447 remote_operation:207.454 request_write:0.185 response_wait:754.763]\n    session_ops_test.go:343: sessions.read wall_ms=362.734 limit_ms=500\n    session_ops_test.go:343: sessions.read remote_timings_ms=map[remote_operation:4.383 request_write:0.142 response_wait:332.333]\n=== RUN   TestSessionOperations500ms/attach_usable_1\n    session_ops_test.go:356: attach usable_ms=266.632\n=== RUN   TestSessionOperations500ms/resume_usable_1\n    session_ops_test.go:356: resume usable_ms=319.734\n=== RUN   TestSessionOperations500ms/stop_1\n    session_ops_test.go:366: sessions.stop wall_ms=252.740 limit_ms=500\n    session_ops_test.go:366: sessions.stop remote_timings_ms=map[request_write:0.124 response_wait:223.87 stop_confirm:2.304 stop_kill:24.18 stop_lookup:2.455]\n=== RUN   TestSessionOperations500ms/send_2\n    session_ops_test.go:311: sessions.send wall_ms=969.200 limit_ms=500\n    session_ops_test.go:311: PERFORMANCE REGRESSION: sessions.send took 969.200541ms, exceeds 500ms\n    session_ops_test.go:311: sessions.send remote_timings_ms=map[herdr_send:764.601 identity_check:2.758 remote_operation:767.435 request_write:0.089 response_wait:944.26]\n=== RUN   TestSessionOperations500ms/read_2\n    session_ops_test.go:314: sessions.read wall_ms=219.704 limit_ms=500\n    session_ops_test.go:314: sessions.read remote_timings_ms=map[remote_operation:3.768 request_write:0.13 response_wait:192.978]\n=== RUN   TestSessionOperations500ms/send_existing_2\n    session_ops_test.go:323: sessions.send wall_ms=967.252 limit_ms=500\n    session_ops_test.go:323: PERFORMANCE REGRESSION: sessions.send took 967.252166ms, exceeds 500ms\n    session_ops_test.go:323: sessions.send remote_timings_ms=map[herdr_send:561.834 identity_check:2.217 remote_operation:564.211 request_write:0.147 response_wait:938.269]\n    session_ops_test.go:324: sessions.read wall_ms=521.087 limit_ms=500\n    session_ops_test.go:324: PERFORMANCE REGRESSION: sessions.read took 521.087666ms, exceeds 500ms\n    session_ops_test.go:324: sessions.read remote_timings_ms=map[remote_operation:4.433 request_write:0.137 response_wait:488.775]\n=== RUN   TestSessionOperations500ms/send_mature_2\n    session_ops_test.go:342: sessions.send wall_ms=426.928 limit_ms=500\n    session_ops_test.go:342: sessions.send remote_timings_ms=map[herdr_send:203.702 identity_check:1.99 remote_operation:205.891 request_write:0.13 response_wait:396.493]\n    session_ops_test.go:343: sessions.read wall_ms=226.765 limit_ms=500\n    session_ops_test.go:343: sessions.read remote_timings_ms=map[remote_operation:6.678 request_write:0.129 response_wait:197.282]\n=== RUN   TestSessionOperations500ms/attach_usable_2\n    session_ops_test.go:356: attach usable_ms=277.658\n=== RUN   TestSessionOperations500ms/resume_usable_2\n    session_ops_test.go:356: resume usable_ms=321.185\n=== RUN   TestSessionOperations500ms/stop_2\n    session_ops_test.go:366: sessions.stop wall_ms=258.598 limit_ms=500\n    session_ops_test.go:366: sessions.stop remote_timings_ms=map[request_write:0.196 response_wait:227.645 stop_confirm:2.365 stop_kill:22.944 stop_lookup:2.985]\n=== RUN   TestSessionOperations500ms/launch_receipt\n    session_ops_test.go:399: sessions.launch wall_ms=242.867 limit_ms=500\n=== RUN   TestSessionOperations500ms/launch_usable_tui\n    session_ops_test.go:426: launch usable_ms=347.946\n    session_ops_test.go:426: launch usable_ms=400.424\n    session_ops_test.go:426: launch usable_ms=429.733\n--- FAIL: TestSessionOperations500ms (60.18s)\n    --- PASS: TestSessionOperations500ms/cold_ssh (4.75s)\n    --- PASS: TestSessionOperations500ms/daemon.ping (0.04s)\n    --- PASS: TestSessionOperations500ms/connection.status (0.03s)\n    --- PASS: TestSessionOperations500ms/account.status (0.03s)\n    --- PASS: TestSessionOperations500ms/agents.list (0.03s)\n    --- PASS: TestSessionOperations500ms/settings.get (0.09s)\n    --- PASS: TestSessionOperations500ms/takeover.get (0.03s)\n    --- PASS: TestSessionOperations500ms/approvals.list (0.03s)\n    --- PASS: TestSessionOperations500ms/state.get (0.09s)\n    --- PASS: TestSessionOperations500ms/sessions.list (0.03s)\n    --- FAIL: TestSessionOperations500ms/sessions.refresh (1.09s)\n    --- PASS: TestSessionOperations500ms/sessions.allocate (0.07s)\n    --- PASS: TestSessionOperations500ms/model.set (0.81s)\n    --- FAIL: TestSessionOperations500ms/send_0 (0.97s)\n    --- PASS: TestSessionOperations500ms/read_0 (0.21s)\n    --- FAIL: TestSessionOperations500ms/send_existing_0 (1.05s)\n    --- PASS: TestSessionOperations500ms/send_mature_0 (9.49s)\n    --- PASS: TestSessionOperations500ms/attach_usable_0 (0.27s)\n    --- PASS: TestSessionOperations500ms/resume_usable_0 (0.31s)\n    --- PASS: TestSessionOperations500ms/stop_0 (0.28s)\n    --- FAIL: TestSessionOperations500ms/send_1 (1.02s)\n    --- PASS: TestSessionOperations500ms/read_1 (0.22s)\n    --- FAIL: TestSessionOperations500ms/send_existing_1 (1.05s)\n    --- FAIL: TestSessionOperations500ms/send_mature_1 (9.86s)\n    --- PASS: TestSessionOperations500ms/attach_usable_1 (0.27s)\n    --- PASS: TestSessionOperations500ms/resume_usable_1 (0.32s)\n    --- PASS: TestSessionOperations500ms/stop_1 (0.28s)\n    --- FAIL: TestSessionOperations500ms/send_2 (0.97s)\n    --- PASS: TestSessionOperations500ms/read_2 (0.22s)\n    --- FAIL: TestSessionOperations500ms/send_existing_2 (1.49s)\n    --- PASS: TestSessionOperations500ms/send_mature_2 (8.98s)\n    --- PASS: TestSessionOperations500ms/attach_usable_2 (0.28s)\n    --- PASS: TestSessionOperations500ms/resume_usable_2 (0.32s)\n    --- PASS: TestSessionOperations500ms/stop_2 (0.29s)\n    --- PASS: TestSessionOperations500ms/launch_receipt (0.27s)\n    --- PASS: TestSessionOperations500ms/launch_usable_tui (3.34s)\nFAIL\nFAIL\tfennec/internal/ope2e\t60.635s\nFAIL\n",
+  "routes": [
+    {
+      "agent": "claude",
+      "status": "configured"
+    },
+    {
+      "agent": "cursor",
+      "status": "credentials_required"
+    },
+    {
+      "agent": "codex",
+      "status": "configured"
+    },
+    {
+      "agent": "kimi",
+      "status": "configured"
+    },
+    {
+      "agent": "opencode",
+      "status": "configured"
+    },
+    {
+      "agent": "grok",
+      "status": "configured"
+    },
+    {
+      "agent": "pi",
+      "status": "configured"
+    }
+  ],
+  "startup": {
+    "account_authorized": true,
+    "broker_ready": true,
+    "connector_stage": "connected",
+    "live_sessions_before": 4,
+    "normal_cloud_agent_version": "codex-cli 0.169.0",
+    "retained_live_sessions": 4
+  },
+  "summary": {
+    "account.status": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 8.413,
+      "max_ms": 8.79,
+      "samples_ms": [
+        8.413,
+        8.784,
+        8.79
+      ]
+    },
+    "agents.list": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 9.968,
+      "max_ms": 13.899,
+      "samples_ms": [
+        13.899,
+        10.945,
+        9.968
+      ]
+    },
+    "approvals.list": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 8.699,
+      "max_ms": 8.997,
+      "samples_ms": [
+        8.883,
+        8.997,
+        8.699
+      ]
+    },
+    "attach": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 266.632,
+      "max_ms": 277.658,
+      "samples_ms": [
+        270.172,
+        266.632,
+        277.658
+      ]
+    },
+    "cold SSH": {
+      "count": 1,
+      "above_limit": 0,
+      "min_ms": 4754.71,
+      "max_ms": 4754.71,
+      "samples_ms": [
+        4754.71
+      ]
+    },
+    "connection.status": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 8.538,
+      "max_ms": 10.125,
+      "samples_ms": [
+        10.125,
+        9.127,
+        8.538
+      ]
+    },
+    "daemon.ping": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 11.224,
+      "max_ms": 18.498,
+      "samples_ms": [
+        18.498,
+        14.761,
+        11.224
+      ]
+    },
+    "launch": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 347.946,
+      "max_ms": 429.733,
+      "samples_ms": [
+        347.946,
+        400.424,
+        429.733
+      ]
+    },
+    "model.set": {
+      "count": 2,
+      "above_limit": 0,
+      "min_ms": 202.046,
+      "max_ms": 310.297,
+      "samples_ms": [
+        202.046,
+        310.297
+      ]
+    },
+    "resume": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 309.954,
+      "max_ms": 321.185,
+      "samples_ms": [
+        309.954,
+        319.734,
+        321.185
+      ]
+    },
+    "sessions.allocate": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 20.229,
+      "max_ms": 26.935,
+      "samples_ms": [
+        26.935,
+        21.608,
+        20.229
+      ]
+    },
+    "sessions.launch": {
+      "count": 1,
+      "above_limit": 0,
+      "min_ms": 242.867,
+      "max_ms": 242.867,
+      "samples_ms": [
+        242.867
+      ]
+    },
+    "sessions.list": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 9.365,
+      "max_ms": 10.552,
+      "samples_ms": [
+        10.552,
+        9.365,
+        9.677
+      ]
+    },
+    "sessions.read": {
+      "count": 9,
+      "above_limit": 1,
+      "min_ms": 205.712,
+      "max_ms": 521.087,
+      "samples_ms": [
+        205.712,
+        233.941,
+        254.015,
+        222.959,
+        224.92,
+        362.734,
+        219.704,
+        521.087,
+        226.765
+      ]
+    },
+    "sessions.refresh": {
+      "count": 3,
+      "above_limit": 1,
+      "min_ms": 237.67,
+      "max_ms": 613.541,
+      "samples_ms": [
+        613.541,
+        238.02,
+        237.67
+      ]
+    },
+    "sessions.send": {
+      "count": 9,
+      "above_limit": 7,
+      "min_ms": 426.928,
+      "max_ms": 1020.171,
+      "samples_ms": [
+        964.805,
+        820.039,
+        456.44,
+        1020.171,
+        825.813,
+        789.712,
+        969.2,
+        967.252,
+        426.928
+      ]
+    },
+    "sessions.stop": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 249.972,
+      "max_ms": 258.598,
+      "samples_ms": [
+        249.972,
+        252.74,
+        258.598
+      ]
+    },
+    "settings.get": {
+      "count": 4,
+      "above_limit": 0,
+      "min_ms": 27.545,
+      "max_ms": 44.444,
+      "samples_ms": [
+        27.545,
+        27.756,
+        30.222,
+        44.444
+      ]
+    },
+    "state.get": {
+      "count": 4,
+      "above_limit": 0,
+      "min_ms": 27.648,
+      "max_ms": 43.999,
+      "samples_ms": [
+        30.382,
+        27.648,
+        33.332,
+        43.999
+      ]
+    },
+    "takeover.get": {
+      "count": 3,
+      "above_limit": 0,
+      "min_ms": 9.208,
+      "max_ms": 10.329,
+      "samples_ms": [
+        10.329,
+        9.208,
+        9.426
+      ]
+    }
+  },
+  "warm_gate_passed": false
+}
