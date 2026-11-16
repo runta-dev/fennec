@@ -34,23 +34,25 @@ func platformKernelWake(ctx context.Context, paths []string) <-chan struct{} {
 		names[directory][filepath.Base(path)] = true
 	}
 	wake := make(chan struct{}, 1)
-	go func() {
-		defer unix.Close(fd)
-		watches := map[int]string{}
-		watched := map[string]bool{}
-		const mask = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM | unix.IN_CREATE | unix.IN_DELETE | unix.IN_ATTRIB | unix.IN_DELETE_SELF | unix.IN_MOVE_SELF
-		arm := func() {
-			for directory := range names {
-				if watched[directory] {
-					continue
-				}
-				if wd, err := unix.InotifyAddWatch(fd, directory, mask); err == nil {
-					watches[wd] = directory
-					watched[directory] = true
-				}
+	watches := map[int]string{}
+	watched := map[string]bool{}
+	const mask = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO | unix.IN_MOVED_FROM | unix.IN_CREATE | unix.IN_DELETE | unix.IN_ATTRIB | unix.IN_DELETE_SELF | unix.IN_MOVE_SELF
+	arm := func() {
+		for directory := range names {
+			if watched[directory] {
+				continue
+			}
+			if wd, err := unix.InotifyAddWatch(fd, directory, mask); err == nil {
+				watches[wd] = directory
+				watched[directory] = true
 			}
 		}
-		arm()
+	}
+	// Callers may replace a watched file immediately after WatchFiles returns.
+	// Register now, before scheduling the reader, so that first edit is queued.
+	arm()
+	go func() {
+		defer unix.Close(fd)
 		buffer := make([]byte, 64*(unix.SizeofInotifyEvent+unix.NAME_MAX+1))
 		lastArm := time.Now()
 		for ctx.Err() == nil {
