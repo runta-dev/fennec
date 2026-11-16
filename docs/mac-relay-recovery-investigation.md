@@ -32,6 +32,14 @@ output window), and the Mac daemon restarted at 11:21:10 UTC. That experiment
 has since been declared finished by the user. Its terminal-window change is
 retained in the merged recovery build, rather than reverted during installation.
 
+The recovery build `7dfa105` was installed successfully with the 32 KiB window,
+valid signatures, restored credentials, a ready daemon and a connected relay.
+At 11:38 UTC another experimental build replaced it with a 64 KiB window.
+Its daemon restart invalidated the in-progress warm-operation measurement;
+that run must not be reported as acceptance of either build. The user then
+requested combining both changes on main. The 64 KiB terminal window and relay
+recovery logic have no source conflict and are now integrated for one build.
+
 The cloud byte-relay process was PID 246255, started November 13. Its recorded
 revision matched both its installed source and the repository. An old process
 start time alone therefore did not establish that it was stale. Its log was

@@ -13,10 +13,10 @@ had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the
 [paired reports and limitations](ssh-backlog-investigation.md).
 
-The terminal encoded output window is now **32 KiB**, retaining the user's
-scrolling experiment. The previous 4 KiB window limited one terminal to about
-16 KiB/s at 250 ms RTT. This was an interaction regression even when a small
-ping could pass quickly. A future 64 KiB trial must measure scrolling,
+The terminal encoded output window is now **64 KiB**, integrating the user's
+latest scrolling experiment with the relay recovery changes. The previous 4 KiB
+window limited one terminal to about 16 KiB/s at 250 ms RTT. This was an
+interaction regression even when a small ping could pass quickly. Validate scrolling,
 full-screen repaint, typing and concurrent-terminal fairness alongside exact
 ping and file throughput. The 16 KiB file/socket window is a separate setting.
 Do not accept QoS changes using ping alone or restore the 4 KiB terminal cap.

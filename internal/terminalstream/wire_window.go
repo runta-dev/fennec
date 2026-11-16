@@ -12,7 +12,7 @@ const CapabilityWireWindow = "wire_output_window_v1"
 // returns once per round trip, so it caps a stream at about window/RTT: 4 KiB
 // gave about 17 KB/s at 250 ms on the real link (docs/predictive-echo.md,
 // "Scrolling the transcript"), a seventh of the host's 128 KB/s.
-const outputWireWindow = 32 << 10
+const outputWireWindow = 64 << 10
 
 // Keep bulk bytes handed to SSH bounded when TCP slows after packet loss.
 // A 16 KiB encoded window retains useful throughput at 180 ms RTT without
