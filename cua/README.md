@@ -4,20 +4,33 @@ fennec-cua is Fennec's computer-use (CUA) host: a Go program, macOS only, that l
 
 ## Install and use
 
-fennec-cua also ships on its own, without Fennec.app: one app, `FennecCUA.app`, for macOS 13 or later on Apple silicon. It holds the `fennec-cua` command (MCP server, daemon and CLI), the pinned [cua-driver](https://github.com/loomhand/cua) (MIT) for input and capture, and, in the full archive, its own signed Chromium for browser tabs. Agents drive it through one persistent JavaScript REPL whose `cua` object is OpenAI Codex's computer-use API ([docs/codex-parity.md](docs/codex-parity.md)).
+fennec-cua also ships on its own as **Fennec Computer Use**, without Fennec.app: one app, `Fennec Computer Use.app` (bundle id `com.runta.fennec.cua`; 0.1.0 called it `FennecCUA.app`), for macOS 13 or later on Apple silicon. It holds the `fennec-cua` command (MCP server, daemon and CLI), the pinned [cua-driver](https://github.com/loomhand/cua) (MIT) for input and capture, and, in the full archive, its own signed Chromium for browser tabs. Agents drive it through one persistent JavaScript REPL whose `cua` object is OpenAI Codex's computer-use API ([docs/codex-parity.md](docs/codex-parity.md)).
 
 **Agents: read the skill [skills/fennec-cua/SKILL.md](skills/fennec-cua/SKILL.md)** (setup checks, the API, the working loop, safety, troubleshooting); its [references](skills/fennec-cua/references) hold the details.
 
-### 1. Get the archive
+### 1. Install
 
-| Archive | Contents | Size |
+Download `Fennec-Computer-Use-<version>-macos-arm64.dmg` from [fennec.runta.com/computer-use](https://fennec.runta.com/computer-use) (served from R2) or the [releases](https://github.com/runta-dev/fennec/releases?q=fennec-cua&expanded=true) (tags `fennec-cua-v<version>`), open it, and drag Fennec Computer Use to Applications. Open it from Applications: the first open links `~/.local/bin/fennec-cua` to the app (unless that path holds someone else's command) and shows the setup window (permissions, then the command that connects Claude Code or Codex). Opening it straight from the mounted disk image shows the setup window but links nothing, since the image's path goes away when it is ejected.
+
+For scripted installs the releases also carry archives of the same app:
+
+| File | Contents | Size |
 |---|---|---|
+| `Fennec-Computer-Use-<version>-macos-arm64.dmg` | the app with Chromium, and an Applications shortcut | about 150 MB |
 | `fennec-cua-<version>-macos-arm64.tar.gz` | app, cua-driver, Chromium (browser tabs) | about 205 MB (460 MB installed) |
 | `fennec-cua-<version>-macos-arm64-core.tar.gz` | app and cua-driver; browser calls fail, native apps work | about 30 MB |
 
-Download both from the [FennecCUA releases](https://github.com/runta-dev/fennec/releases?q=fennec-cua&expanded=true) (tags `fennec-cua-v<version>`). Release builds are Developer ID signed, notarized and stapled, so a browser download opens without a Gatekeeper prompt. Each archive comes with a `.sha256` file (`shasum -a 256 -c <archive>.sha256`); `SHA256SUMS` and `provenance.json` name the source commit and the build run.
+```sh
+tar -xzf fennec-cua-<version>-macos-arm64.tar.gz
+cd fennec-cua-<version>-macos-arm64
+"./Fennec Computer Use.app/Contents/MacOS/fennec-cua" install
+```
 
-**Releases.** CI builds them in two steps. `runta-dev/errand`'s "Build FennecCUA macOS Release" workflow (run by hand, with a Fennec main commit and an optional version) checks out Fennec, runs `scripts/package-cua-release-macos.sh` with the Apple credentials of its `apple-release` environment and uploads the archives as an artifact. A maintainer pushes the tag (`git tag fennec-cua-v<version> <sha> && git push origin fennec-cua-v<version>`: the workflow token may not create a tag on a commit that changes workflow files), then this repository's "Publish FennecCUA release" workflow takes that run's id, verifies the run, the artifact digest, the checksums and that the commit is on main, and publishes `fennec-cua-v<version>` without rebuilding. It is never marked latest: Fennec's updater reads `releases/latest`. `scripts/package-cua-release-macos.sh --dry-run` builds the same archives locally with the development identity and no notarization.
+`install` copies the app to `~/Applications/Fennec Computer Use.app` (removing a 0.1.0 `FennecCUA.app` there), links `~/.local/bin/fennec-cua`, clears the quarantine attribute on the installed copy, and opens the setup window; the extracted folder's `INSTALL.txt` repeats these steps. Neither way registers anything system-wide: no launch agent (the daemon starts on demand and stays running), no shell-profile edits (add `export PATH="$HOME/.local/bin:$PATH"` yourself if needed).
+
+Release builds are Developer ID signed, notarized and stapled (the disk image too), so a browser download opens without a Gatekeeper prompt. `SHA256SUMS` lists every file and each archive has a `.sha256`; `provenance.json` names the source commit and the build run.
+
+**Releases.** CI builds them in two steps. `runta-dev/errand`'s "Build Fennec Computer Use macOS Release" workflow (run by hand, with a Fennec main commit and an optional version) checks out Fennec, runs `scripts/package-cua-release-macos.sh` with the Apple credentials of its `apple-release` environment and uploads the disk image and the archives as an artifact. A maintainer pushes the tag (`git tag fennec-cua-v<version> <sha> && git push origin fennec-cua-v<version>`: the workflow token may not create a tag on a commit that changes workflow files), then this repository's "Publish Fennec Computer Use release" workflow takes that run's id, verifies the run, the artifact digest, the checksums and that the commit is on main, and publishes `fennec-cua-v<version>` without rebuilding. It is never marked latest: Fennec's updater reads `releases/latest`. `scripts/package-cua-release-macos.sh --dry-run` builds the same files locally with the development identity and no notarization. `scripts/sync-release-r2.sh fennec-cua-v<version>` then copies a published release to the `fennec-releases` R2 bucket the website downloads from (`website/deploy/worker.js`) and points `/download/computer-use/latest` at it.
 
 To build one yourself from this directory (Apple silicon, Go, Xcode command-line tools, the `Fennec Local Development` signing identity from `scripts/create-development-identity.sh`):
 
@@ -31,21 +44,11 @@ go run ./cmd/cua-dist -out ../build/cua-dist-core -version 0.1.0 -no-chromium
 
 **Gatekeeper.** Builds you make yourself are signed with a local certificate and are not notarized. A file downloaded with a browser carries `com.apple.quarantine`, and macOS then refuses to run it ("cannot be opened", "developer cannot be verified"). Clear it once on the extracted folder: `xattr -dr com.apple.quarantine fennec-cua-<version>-macos-arm64`. Archives copied or fetched with `curl` are not quarantined. Releases use `cua-dist -identity "Developer ID Application: ..." -notarize-profile <notarytool profile>`: it signs with the team certificate, submits with `notarytool --wait`, staples, and checks with `spctl` before archiving; nothing else changes.
 
-### 2. Install (per user, no administrator rights)
+### 2. Grant the permissions
 
-```sh
-tar -xzf fennec-cua-<version>-macos-arm64.tar.gz
-cd fennec-cua-<version>-macos-arm64
-./FennecCUA.app/Contents/MacOS/fennec-cua install
-```
+The grants belong to the app "Fennec Computer Use" (the daemon is started through LaunchServices and cua-driver runs as its child), not to your terminal or agent.
 
-The extracted folder's `INSTALL.txt` repeats these steps. `install` copies the app to `~/Applications/FennecCUA.app`, links `~/.local/bin/fennec-cua`, clears the quarantine attribute on the installed copy, and prints what to do next. It registers nothing system-wide: no launch agent (the daemon starts on demand and stays running), no shell-profile edits (add `export PATH="$HOME/.local/bin:$PATH"` yourself if needed). Running it again from a newer archive replaces the app after the new copy verifies.
-
-### 3. Grant the permissions
-
-The grants belong to the app "Fennec CUA" (the daemon is started through LaunchServices and cua-driver runs as its child), not to your terminal or agent.
-
-**The setup window does it for you.** `install` opens it, and so do opening FennecCUA.app (Finder, Spotlight) and `fennec-cua setup`; the daemon opens it too when it starts without a grant (`FENNEC_CUA_NO_SETUP=1` or `install --no-setup` turns that off). It shows each permission live with an Allow button (the macOS prompt plus the right System Settings pane), runs the test capture and, on macOS 15 and later, the one-time direct-capture alert, and lists the commands that connect Claude Code and Codex. The steps below are the same thing by hand.
+**The setup window does it for you.** `install` opens it, and so do opening the app (Finder, Spotlight) and `fennec-cua setup`; the daemon opens it too when it starts without a grant (`FENNEC_CUA_NO_SETUP=1` or `install --no-setup` turns that off). It shows each permission live with an Allow button (the macOS prompt plus the right System Settings pane), runs the test capture and, on macOS 15 and later, the one-time direct-capture alert, and lists the commands that connect Claude Code and Codex. The steps below are the same thing by hand.
 
 | Permission | Needed for | Open |
 |---|---|---|
@@ -53,14 +56,14 @@ The grants belong to the app "Fennec CUA" (the daemon is started through LaunchS
 | Screen Recording | window screenshots | `open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"` |
 | Automation | optional: only if macOS asks while an action talks to another app | `open "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"` |
 
-`fennec-cua permissions --request` has the daemon ask macOS, which shows its prompts and lists "Fennec CUA" in the panes. Switch it on and run `fennec-cua quit` (Screen Recording applies to new processes). On macOS 15 and later, run `fennec-cua permissions --request` once more: macOS asks whether "FennecCUA" may bypass the system window picker and capture the screen directly; choose Allow (screenshots fail until then; the embedded cua-driver never raises that alert itself). Close any macOS prompt left on screen: a prompt in front blocks input to other apps. Then:
+`fennec-cua permissions --request` has the daemon ask macOS, which shows its prompts and lists "Fennec Computer Use" in the panes. Switch it on and run `fennec-cua quit` (Screen Recording applies to new processes). On macOS 15 and later, run `fennec-cua permissions --request` once more: macOS asks whether "Fennec Computer Use" may bypass the system window picker and capture the screen directly; choose Allow (screenshots fail until then; the embedded cua-driver never raises that alert itself). Close any macOS prompt left on screen: a prompt in front blocks input to other apps. Then:
 
 ```sh
 fennec-cua doctor     # one line each: app, quarantine, cua-driver, browser, command, config, daemon,
                       # Accessibility, Screen Recording, cua-driver process, screen capture (a test capture), browser surface
 ```
 
-### 4. Connect your agent
+### 3. Connect your agent
 
 ```sh
 claude mcp add --scope user fennec-cua -- "$HOME/.local/bin/fennec-cua" mcp     # Claude Code
@@ -71,7 +74,7 @@ fennec-cua skill install --claude      # or --codex, or --dest DIR: the agent sk
 
 Any stdio MCP client: command `~/.local/bin/fennec-cua` (as an absolute path), args `["mcp"]`. The tools are `js` and `js_reset`. MCP over Streamable HTTP is `fennec-cua serve --http 127.0.0.1:PORT` with a bearer token in `FENNEC_CUA_HTTP_TOKEN`; it runs the daemon in your terminal, so macOS attributes the permissions to the terminal: prefer stdio.
 
-### 5. First commands
+### 4. First commands
 
 Agents without MCP use the shell. `fennec-cua js` runs one REPL call in a **named session that persists across invocations** (bindings, state baselines and browser tabs survive). The session is `default` unless `--session NAME` or `FENNEC_CUA_SESSION` names another; code is one argument or stdin:
 
@@ -86,7 +89,7 @@ fennec-cua js-end            # end the session (its unmarked browser tabs close)
 
 Images are saved to files and printed as `[image saved: PATH]`; the exit status is 1 when the code threw (`fennec.act` resolves even when a step was refused: check its `ok`). A session ends after two idle hours. `fennec-cua stop` and `resume` are the user's emergency stop; `fennec-cua status` prints the daemon's state; `fennec-cua quit` ends the daemon and with it every session (bindings are lost). Calling `cua.getApp` again for the same app makes a new binding whose ids start again, so keep one binding per app. `fennec-cua --help` lists the commands.
 
-### 6. Uninstall
+### 5. Uninstall
 
 ```sh
 fennec-cua uninstall           # stops the daemon, removes the app and the link; keeps settings, flows, browser profile
@@ -95,7 +98,7 @@ fennec-cua uninstall --purge   # also those, the daemon files, and the app's Acc
 
 ### Troubleshooting
 
-`fennec-cua doctor` names the fix for each failing check. Common cases: `getApp` answers `<App> has no open window` for an app that has one, or reads nothing (grant both permissions to "Fennec CUA", then `fennec-cua quit`); `fail screen capture` or screenshots failing with "macOS has not yet asked" (`fennec-cua permissions --request`, then Allow); input refused with `the front window is ... of UserNotificationCenter` (a macOS prompt is in front: close it); a stale element id (read the state again); "command not found" (`~/.local/bin` is not on PATH); Fennec.app's daemon answering instead (`fennec-cua quit`). Files: `~/Library/Caches/fennec/cua/daemon.log`, `~/Library/Application Support/fennec/cua/config.toml`. More: [skills/fennec-cua/references/troubleshooting.md](skills/fennec-cua/references/troubleshooting.md).
+`fennec-cua doctor` names the fix for each failing check. Common cases: `getApp` answers `<App> has no open window` for an app that has one, or reads nothing (grant both permissions to "Fennec Computer Use", then `fennec-cua quit`); `fail screen capture` or screenshots failing with "macOS has not yet asked" (`fennec-cua permissions --request`, then Allow); input refused with `the front window is ... of UserNotificationCenter` (a macOS prompt is in front: close it); a stale element id (read the state again); "command not found" (`~/.local/bin` is not on PATH); Fennec.app's daemon answering instead (`fennec-cua quit`). Files: `~/Library/Caches/fennec/cua/daemon.log`, `~/Library/Application Support/fennec/cua/config.toml`. More: [skills/fennec-cua/references/troubleshooting.md](skills/fennec-cua/references/troubleshooting.md).
 
 
 - **Capability baseline:** everything [loomhand/shuttle](https://github.com/loomhand/shuttle) v0.1.50 (`6d70274`, pinned in [`tests/UPSTREAM`](tests/UPSTREAM)) can do on macOS.
@@ -146,7 +149,7 @@ agent ─MCP─▶ shuttle mcp (thin proxy) ─desk wire─▶ shuttle serve (on
 Two facts shape the design:
 
 1. **Input, capture and window control live in cua-driver (MIT).** fennec-cua bundles the loomhand/cua fork (it alone has `verify_hit`) and does not reimplement that layer.
-2. **macOS attributes Accessibility and Screen Recording grants to an app bundle.** The daemon and cua-driver run inside the signed Fennec.app, or inside the standalone FennecCUA.app, so one set of grants covers both.
+2. **macOS attributes Accessibility and Screen Recording grants to an app bundle.** The daemon and cua-driver run inside the signed Fennec.app, or inside the standalone "Fennec Computer Use.app", so one set of grants covers both.
 
 ---
 

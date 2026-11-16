@@ -1,12 +1,12 @@
-name: Publish FennecCUA release
-# Publishes a FennecCUA build that runta-dev/errand's "Build FennecCUA macOS
+name: Publish Fennec Computer Use release
+# Publishes a Fennec Computer Use build that runta-dev/errand's "Build Fennec Computer Use macOS
 # Release" workflow signed, notarized and uploaded, without rebuilding it.
 # The release is never marked latest: Fennec's updater reads releases/latest.
 on:
   workflow_dispatch:
     inputs:
       build_run_id:
-        description: Successful runta-dev/errand "Build FennecCUA macOS Release" run
+        description: Successful runta-dev/errand "Build Fennec Computer Use macOS Release" run
         required: true
         type: string
       notes:
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    name: Publish signed FennecCUA archives
+    name: Publish signed Fennec Computer Use files
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -67,11 +67,12 @@ jobs:
           version=$(jq -r .version provenance.json)
           source_sha=$(jq -r .source_sha provenance.json)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Bad version $version"; exit 1; }
-          test "$(jq -r .product provenance.json)" = FennecCUA
+          test "$(jq -r .product provenance.json)" = "Fennec Computer Use"
           test "$(jq -r .notarized provenance.json)" = true
+          dmg="Fennec-Computer-Use-$version-macos-arm64.dmg"
           full="fennec-cua-$version-macos-arm64.tar.gz"
           core="fennec-cua-$version-macos-arm64-core.tar.gz"
-          expected=$(printf '%s\n' SHA256SUMS provenance.json "$full" "$full.sha256" "$core" "$core.sha256" | sort)
+          expected=$(printf '%s\n' SHA256SUMS provenance.json "$dmg" "$full" "$full.sha256" "$core" "$core.sha256" | sort)
           test "$(ls -1 | sort)" = "$expected" || { echo '::error::Unexpected artifact contents'; ls -l; exit 1; }
           sha256sum -c SHA256SUMS
           sha256sum -c "$full.sha256" "$core.sha256"
@@ -93,25 +94,26 @@ jobs:
           if [ -z "$tag_sha" ]; then echo "::error::Push the tag first: git tag $tag $SOURCE_SHA && git push origin $tag"; exit 1; fi
           test "$tag_sha" = "$SOURCE_SHA" || { echo "::error::$tag points at $tag_sha, not $SOURCE_SHA"; exit 1; }
           latest_before=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
+          dmg="Fennec-Computer-Use-$VERSION-macos-arm64.dmg"
           full="fennec-cua-$VERSION-macos-arm64.tar.gz"
           core="fennec-cua-$VERSION-macos-arm64-core.tar.gz"
           notes="$RUNNER_TEMP/notes.md"
           {
             if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
-            printf 'FennecCUA lets an agent drive Mac apps and web pages through one JavaScript REPL (the Codex-compatible `cua` API), without Fennec.app.\n\n'
-            printf '| Archive | Contents |\n|---|---|\n'
-            printf '| `%s` | FennecCUA.app, cua-driver, Chromium for browser tabs |\n' "$full"
-            printf '| `%s` | without Chromium (browser calls fail) |\n\n' "$core"
-            printf 'Apple silicon, macOS 13 or later. Install without administrator rights:\n\n'
-            printf '```sh\ntar -xzf %s\n./fennec-cua-%s-macos-arm64/FennecCUA.app/Contents/MacOS/fennec-cua install\n```\n\n' "$full" "$VERSION"
-            printf 'The app is Developer ID signed, notarized and stapled. Check a download with `shasum -a 256 -c <archive>.sha256`.\n\n'
+            printf 'Fennec Computer Use lets an agent operate Mac apps and web pages through one JavaScript REPL (the Codex-compatible `cua` API), without the Fennec app.\n\n'
+            printf '**Install:** open `%s`, drag Fennec Computer Use to Applications, then open it. Its setup window grants the permissions and gives the command that connects Claude Code or Codex.\n\n' "$dmg"
+            printf '| File | Use |\n|---|---|\n'
+            printf '| `%s` | the app, for people (Apple silicon, macOS 13 or later) |\n' "$dmg"
+            printf '| `%s` | the same app as an archive, for scripted installs (`fennec-cua install`) |\n' "$full"
+            printf '| `%s` | without Chromium: browser calls fail, native apps work |\n\n' "$core"
+            printf 'Developer ID signed, notarized and stapled. `SHA256SUMS` lists every file; each archive also has a `.sha256`.\n\n'
             printf '### Build provenance\n\nSource commit: %s\nBuild run: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$BUILD_REPO" "$BUILD_RUN_ID"
           } > "$notes"
           cd "$DIR"
-          gh release create "$tag" --verify-tag --title "FennecCUA $VERSION" --notes-file "$notes" --latest=false \
-            "$full" "$full.sha256" "$core" "$core.sha256" SHA256SUMS provenance.json
+          gh release create "$tag" --verify-tag --title "Fennec Computer Use $VERSION" --notes-file "$notes" --latest=false \
+            "$dmg" "$full" "$full.sha256" "$core" "$core.sha256" SHA256SUMS provenance.json
           latest_after=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
           test "$latest_after" = "$latest_before" || { echo "::error::Latest release moved from $latest_before to $latest_after"; exit 1; }
           url=$(gh release view "$tag" --json url -q .url)
-          echo "Published [FennecCUA $VERSION]($url); latest release is still $latest_after." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published [Fennec Computer Use $VERSION]($url); latest release is still $latest_after." >> "$GITHUB_STEP_SUMMARY"
           echo "$url"

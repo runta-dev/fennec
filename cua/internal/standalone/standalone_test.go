@@ -321,3 +321,78 @@ func TestDiagnoseCaptureQuarantineConfig(t *testing.T) {
 		t.Errorf("failure: %+v", c)
 	}
 }
+
+// Opening the app from Finder links the command to it: a missing link is
+// created, a link to another copy of this app or to an app that is gone
+// moves, and a link or file that is not ours stays.
+func TestEnsureLink(t *testing.T) {
+	dir := t.TempDir()
+	app := fakeApp(t, filepath.Join(dir, "Applications"), "0.1.1")
+	exe := Executable(app)
+	link := filepath.Join(dir, "bin", BinName)
+
+	if changed, err := EnsureLink(link, exe); err != nil || !changed {
+		t.Fatalf("missing link: changed %v, err %v", changed, err)
+	}
+	if dest, _ := os.Readlink(link); dest != exe {
+		t.Fatalf("link -> %s", dest)
+	}
+	if changed, err := EnsureLink(link, exe); err != nil || changed {
+		t.Fatalf("same link: changed %v, err %v", changed, err)
+	}
+
+	// An earlier copy of this app (an older install) moves to this one.
+	old := fakeApp(t, filepath.Join(dir, "old"), "0.1.0")
+	_ = os.Remove(link)
+	if err := os.Symlink(Executable(old), link); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := EnsureLink(link, exe); err != nil || !changed {
+		t.Fatalf("older copy: changed %v, err %v", changed, err)
+	}
+
+	// A copy that is gone (an ejected disk image) moves too.
+	_ = os.Remove(link)
+	if err := os.Symlink("/Volumes/Gone/Fennec Computer Use.app/Contents/MacOS/fennec-cua", link); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := EnsureLink(link, exe); err != nil || !changed {
+		t.Fatalf("gone copy: changed %v, err %v", changed, err)
+	}
+
+	// Someone else's command stays.
+	_ = os.Remove(link)
+	other := filepath.Join(dir, "other-fennec-cua")
+	if err := os.WriteFile(other, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, link); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := EnsureLink(link, exe); err != nil || changed {
+		t.Fatalf("foreign link: changed %v, err %v", changed, err)
+	}
+	if dest, _ := os.Readlink(link); dest != other {
+		t.Fatalf("foreign link moved to %s", dest)
+	}
+	_ = os.Remove(link)
+	if err := os.WriteFile(link, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := EnsureLink(link, exe); err != nil || changed {
+		t.Fatalf("plain file: changed %v, err %v", changed, err)
+	}
+}
+
+func TestMounted(t *testing.T) {
+	for app, want := range map[string]bool{
+		"/Volumes/Fennec Computer Use/Fennec Computer Use.app":                  true,
+		"/private/var/folders/x/AppTranslocation/ABC/d/Fennec Computer Use.app": true,
+		"/Applications/Fennec Computer Use.app":                                 false,
+		"/Users/me/Applications/Fennec Computer Use.app":                        false,
+	} {
+		if Mounted(app) != want {
+			t.Errorf("Mounted(%q) = %v", app, !want)
+		}
+	}
+}

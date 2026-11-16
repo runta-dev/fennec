@@ -349,6 +349,15 @@ func uninstallCmd(ctx context.Context, paths daemon.Paths, args []string, out io
 	if err != nil {
 		return err
 	}
+	// An app dragged from the disk image lives where the user put it
+	// (usually /Applications): follow the command link to it.
+	if lf.appDir == "" {
+		if exe, err := filepath.EvalSymlinks(lay.Link()); err == nil {
+			if app := filepath.Dir(filepath.Dir(filepath.Dir(exe))); filepath.Base(app) == standalone.AppName && standalone.IsApp(app) {
+				lay.AppDir = filepath.Dir(app)
+			}
+		}
+	}
 	var data []string
 	if *purge {
 		if fennec := fennecApp(); fennec != "" {
@@ -675,4 +684,24 @@ func offerSetup(self string, logger *log.Logger) {
 		return
 	}
 	logger.Printf("a permission is missing: opened the setup window")
+}
+
+// linkOnOpen links ~/.local/bin/fennec-cua to the app the user just opened
+// from Finder or Spotlight, so an app dragged to Applications from the disk
+// image is ready for agents without `fennec-cua install`. Not from the disk
+// image itself, whose path goes away when it is ejected.
+func linkOnOpen(app string) {
+	if standalone.Mounted(app) {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	link := standalone.DefaultLayout(home).Link()
+	if changed, err := standalone.EnsureLink(link, standalone.Executable(app)); err != nil {
+		fmt.Fprintf(os.Stderr, "fennec-cua: linking %s: %v\n", link, err)
+	} else if changed {
+		fmt.Fprintf(os.Stderr, "fennec-cua: linked %s -> %s\n", link, standalone.Executable(app))
+	}
 }

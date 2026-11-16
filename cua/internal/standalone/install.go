@@ -122,6 +122,12 @@ func (in *Installer) Install(src string, path string) (InstallResult, error) {
 		}
 		_ = os.RemoveAll(old)
 		res.Copied = true
+		// 0.1.0 installed the app as FennecCUA.app; the renamed copy
+		// replaces it.
+		if legacy := filepath.Join(in.Layout.AppDir, LegacyAppName); IsApp(legacy) {
+			in.logf("removing the earlier %s", legacy)
+			_ = os.RemoveAll(legacy)
+		}
 	} else {
 		n, err := Unquarantine(res.App)
 		if err != nil {
@@ -134,6 +140,53 @@ func (in *Installer) Install(src string, path string) (InstallResult, error) {
 	}
 	res.OnPath = OnPath(in.Layout.BinDir, path)
 	return res, nil
+}
+
+// EnsureLink points the command link at exe when the app is opened from
+// where the user put it (Finder, Spotlight), so a drag-and-drop install from
+// the disk image needs no terminal step. It creates a missing link and moves
+// a link that points at another copy of this app (an older install, or one
+// that is gone); it leaves a link to this exe, and any file or link that is
+// not ours, alone. changed reports whether it wrote the link.
+func EnsureLink(link, exe string) (changed bool, err error) {
+	fi, err := os.Lstat(link)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return false, err
+	case fi.Mode()&os.ModeSymlink == 0:
+		return false, nil
+	default:
+		dest, err := os.Readlink(link)
+		if err != nil {
+			return false, err
+		}
+		if dest == exe {
+			return false, nil
+		}
+		// Ours: <something>.app/Contents/MacOS/fennec-cua whose bundle is
+		// this app (by bundle id) or no longer exists.
+		app := filepath.Dir(filepath.Dir(filepath.Dir(dest)))
+		if filepath.Base(dest) != BinName || filepath.Ext(app) != ".app" {
+			return false, nil
+		}
+		if _, err := os.Stat(app); err == nil && !IsApp(app) {
+			return false, nil
+		}
+		if err := os.Remove(link); err != nil {
+			return false, err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		return false, err
+	}
+	return true, os.Symlink(exe, link)
+}
+
+// Mounted reports whether app runs from a mounted disk image or a
+// translocated copy, where a command link would break once it is ejected.
+func Mounted(app string) bool {
+	return strings.HasPrefix(app, "/Volumes/") || strings.Contains(app, "/AppTranslocation/")
 }
 
 // link points the command link at exe, replacing an earlier link but never

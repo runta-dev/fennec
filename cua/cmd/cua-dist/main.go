@@ -4,7 +4,7 @@
 //	cua-dist -out DIR [-version V] [-chromium-stage DIR | -no-chromium]
 //	         [-identity NAME|SHA1|-] [-keychain PATH] [-notarize-profile PROFILE]
 //
-// It builds FennecCUA.app (layout in internal/standalone) from this
+// It builds "Fennec Computer Use.app" (layout in internal/standalone) from this
 // checkout, the pinned cua-driver release (internal/driver.Pinned, size
 // and SHA-256 checked) and a signed Chromium staging (cmd/cua-package
 // -stage, run here, or an existing one reused with -chromium-stage, such
@@ -596,7 +596,7 @@ archive with a browser, clear the download quarantine before running anything in
 	fmt.Fprintf(&b, `Install for this user (no administrator rights; copies the app to ~/Applications and links
 ~/.local/bin/fennec-cua):
 
-  ./%s/Contents/MacOS/fennec-cua install
+  "./%s/Contents/MacOS/fennec-cua" install
 
 Then grant the permissions it prints (on macOS 15 and later, also choose Allow when
 "fennec-cua permissions --request" makes macOS ask to capture the screen directly), close
@@ -609,7 +609,7 @@ Shell-only agents:    fennec-cua js 'await cua.listApps()'
 Agent skill:          fennec-cua skill install --claude   (or --codex, or --dest DIR)
 Uninstall:            fennec-cua uninstall [--purge]
 
-Licences and third-party notices: %s/Contents/Resources/licenses/
+Licences and third-party notices: "%s/Contents/Resources/licenses/"
 `, standalone.AppName, standalone.AppName)
 	if core {
 		b.WriteString("\nThis is the core archive without the bundled Chromium: browser tabs are unavailable; native apps work.\n")

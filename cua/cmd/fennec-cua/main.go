@@ -103,6 +103,7 @@ func run(args []string) error {
 	// setup window serves in place, as before.
 	if cli.LaunchedByLaunchd(os.Getppid(), self, args) {
 		if app := currentApp(self); app != "" && standalone.SetupHelper(app) != "" {
+			linkOnOpen(app)
 			return standalone.ExecSetup(app)
 		}
 		args = []string{"serve"}

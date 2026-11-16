@@ -2,10 +2,20 @@ name = "fennec-website"
 compatibility_date = "2026-11-10"
 workers_dev = true
 preview_urls = true
+main = "worker.js"
 
 [assets]
+binding = "ASSETS"
 directory = "../dist/client"
 not_found_handling = "404-page"
+# Release downloads come from R2 (worker.js); everything else is static.
+run_worker_first = ["/download/*"]
+
+[[r2_buckets]]
+binding = "RELEASES"
+bucket_name = "fennec-releases"
+# wrangler dev reads the real bucket, which holds only published releases.
+remote = true
 
 [[routes]]
 pattern = "fennec.runta.com"

@@ -1,10 +1,10 @@
-import { ArrowDown, ArrowUpRight, Terminal, Cloud, Laptop, Check, Code2 } from 'lucide-react';
+import { ArrowUpRight, Terminal, Cloud, Laptop, Check, Code2 } from 'lucide-react';
 import Demo from '../components/Demo';
-const runta='https://runta.com/';
-const repo='https://github.com/runta-dev/fennec';
+import { SiteHeader, SiteFooter, repo, runta } from '../components/SiteChrome';
 function Start({label='Get started on macOS'}:{label?:string}) {return <a className="button primary" href={repo+"#get-started"}><Laptop size={17}/>{label}</a>}
 export default function Home(){return <>
-<header className="site-header"><a className="wordmark" href="#" aria-label="Fennec home"><img src="/fennec.svg" width="34" height="34" alt=""/>Fennec</a><nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#faq">FAQ</a><a href={repo}>GitHub <ArrowUpRight size={12}/></a></nav><div className="header-actions"><a className="nav-download" href={repo+"#get-started"}>Get started <ArrowDown size={14}/></a></div></header>
+<SiteHeader/>
+
 <main><section className="hero"><h1>Cloud agents. <span>Local tools.</span></h1><p>Your coding agents, running in the cloud. Connected to your Mac.<br/>Close your laptop. Come back to the same work.</p><div className="hero-actions"><Start/><a className="button secondary" href="#demo"><Terminal size={18}/>See how it works</a></div><span className="platform-note">For macOS · Apple Silicon · Developer preview</span></section>
 <div className="demo-wrap"><Demo/></div>
 <section className="intro-section" id="how-it-works"><h2>Your familiar terminal.<br/><span>A little more freedom.</span></h2><p>Keep your agents, your editor, and your way of working.<br/>Give the long-running work a place to stay.</p><div className="feature-grid"><article><Terminal size={22} strokeWidth={1.5}/><h3>Start as you always do.</h3><p>Choose Cloud computer in Fennec, then run your agent from your terminal. Your local directory provides the starting context.</p></article><article><Cloud size={22} strokeWidth={1.5}/><h3>Let the cloud keep going.</h3><p>Agent sessions stay on your cloud computer. Closing a terminal or your Mac doesn’t stop cloud-independent work.</p></article><article><Laptop size={22} strokeWidth={1.5}/><h3>Pick up the same thread.</h3><p>Attach from your terminal or open the session in a browser. See what happened, add direction, and keep moving.</p></article></div></section>
@@ -21,4 +21,4 @@ export default function Home(){return <>
 ].map(([q,a])=><details key={q}><summary>{q}<span className="faq-plus" aria-hidden="true">+</span></summary><p>{a}</p></details>)}</div></section>
 <section className="getting-started" id="get-started"><div><div className="eyebrow">MEET FEN</div><h2>A short command.<br/>A long-running session.</h2><p>Once Fennec is installed and signed in, choose an agent to run in the cloud. Your sessions are always one command away.</p><span className="preview-note">Developer preview. Source and setup instructions are available on GitHub.</span></div><div className="cli-card"><code><span>›</span> codex <small>Start a cloud session</small><br/><span>›</span> fen <small>Choose a session</small><br/><span>›</span> fen attach sunny-spicy <small>Pick up where you left off</small><br/><span>›</span> fen stop sunny-spicy <small>Stop when you’re done</small></code></div></section>
 <section className="final-cta"><img src="/fennec.svg" width="72" height="72" alt="Fennec"/><h2>Step away. Keep going.</h2><p>Your work will be right where you left it.</p><Start label="Explore Fennec"/><span className="platform-note">macOS · Apple Silicon</span></section></main>
-<footer><a href="#" className="wordmark"><img src="/fennec.svg" width="28" height="28" alt=""/>Fennec</a><div><a href="#how-it-works">How it works</a><a href="#faq">FAQ</a><a href={repo}>GitHub</a><a href={runta}>Runta</a></div><small>© {new Date().getFullYear()} Runta</small><p className="footer-attribution">Cloud agents. Local tools. Built by <a href={runta}>Runta</a>.</p></footer></>}
+<SiteFooter/></>}

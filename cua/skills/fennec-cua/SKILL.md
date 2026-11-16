@@ -123,7 +123,7 @@ A tab's first `getAXState()` after `createBrowserTab` or `getTab` prints the ful
 | `getApp` says `<App> has no open window` for an app with windows, `permission_missing`, empty trees, or screenshots fail | `fennec-cua doctor`; ask the user to grant the permission it names; then `fennec-cua quit` |
 | `<id> is an invalid element ID` / `no longer in the app` | `await app.getAXState()` and use a fresh id |
 | `window "X" is not frontmost (the front window is ...)` | the named window is in front; nothing was sent. Ask the user to answer a macOS prompt; for a window of the same app, read the state again |
-| `the capture failed: macOS has not yet asked whether Fennec CUA may capture the screen directly` | ask the user to run `fennec-cua permissions --request` and click Allow; the state text works meanwhile |
+| `the capture failed: macOS has not yet asked whether Fennec Computer Use may capture the screen directly` | ask the user to run `fennec-cua permissions --request` and click Allow; the state text works meanwhile |
 | `getApp` cannot resolve a name | `await cua.listApps()`, then `cua.getApp("<bundle id>")` |
 | An app is not in `listApps()` | it lists running and recently used apps; pass the `.app` path, e.g. `cua.getApp("/Applications/Calculator.app")` |
 | `fennec-cua: command not found` | use the full path `~/.local/bin/fennec-cua`, or see setup |

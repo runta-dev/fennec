@@ -5,3 +5,40 @@
 @media(max-width:760px){.hero h1{white-space:normal;font-size:clamp(30px,7.8vw,50px)}.hero>p br{display:none}.fennec-demo{height:auto}.fennec-demo-body{display:flex;flex-direction:column}.demo-titlebar{font-size:9px;height:36px;padding:0 12px}.companion{padding:18px 14px 14px}.companion-header{margin-bottom:15px}.companion-header>span{font-size:17px}.companion-tabs{margin-bottom:12px}.preview-agent>button{padding:12px;gap:10px}.preview-agent>button>span{font-size:10px}.preview-agent-detail{padding-bottom:12px}.companion-foot{padding-top:14px;font-size:9px}.demo-terminal{border-left:0;min-height:470px}.demo-terminal>header{padding:0 16px;font-size:11px}.demo-terminal>header>span{font-size:9px}.terminal-content{min-height:390px;padding:20px 16px;font-size:10px}.terminal-content>p{font-size:10px}.terminal-prompt{left:16px;right:16px;font-size:10px}.terminal-status{padding:0 12px;font-size:8px}.terminal-status>span:last-child{font-size:8px}.demo-steps{gap:0;justify-content:space-between;margin-top:16px}.demo-steps button{font-size:10px;padding:9px 7px;gap:5px}.demo-steps button>span{font-size:8px}.getting-started{margin:0 24px;padding:30px 0 70px;grid-template-columns:1fr;gap:20px}.getting-started h2{font-size:29px}.cli-card{padding:22px;font-size:11px}.demo-caption{font-size:9px}.demo-caption>span{max-width:230px}.preview-sessions{min-height:155px}}
 
 .preview-agent-detail>span{white-space:nowrap}.preview-location{display:flex;flex:1;max-width:190px;min-width:0;padding:3px;gap:2px;background:#f1f1f4;border-radius:8px}.preview-location button{flex:1;white-space:nowrap;padding:7px 5px;border-radius:6px;background:transparent;color:#898992;font-size:9px;line-height:1.2}.preview-location button[aria-pressed=true]{background:#fff;color:#202024;box-shadow:0 2px 5px #00000012}.preview-location button:focus-visible{outline:2px solid #f8941d;outline-offset:1px}
+
+/* Fennec Computer Use page: hero, benchmark tables and install steps in the
+   landing page's type scale and colours. */
+.cu-hero .eyebrow{margin-bottom:18px}
+.cu-intro{padding-top:70px}
+.cu-bench{max-width:1120px;margin:0 auto;padding:30px 0 90px}
+.cu-bench h2{font-size:44px;line-height:1.15;letter-spacing:-1.8px;font-weight:500;margin-bottom:18px}
+.cu-bench h2 span{color:#858585}
+.cu-bench-lead{max-width:640px;color:var(--muted);font-size:15px;line-height:1.6;margin-bottom:36px}
+.cu-table-card{border:1px solid #e5e5e5;border-radius:14px;background:#fff;padding:26px 30px 20px;margin-bottom:22px}
+.cu-table-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:14px}
+.cu-table-head strong{font-size:16px;font-weight:500}
+.cu-table-head span{font-size:12px;color:var(--muted)}
+.cu-table{width:100%;border-collapse:collapse;font-size:13px}
+.cu-table th,.cu-table td{text-align:left;padding:14px 10px;border-top:1px solid #efefef;font-weight:400;vertical-align:middle}
+.cu-table thead th{border-top:0;font-size:11px;color:#8a8a8a;padding-top:4px;padding-bottom:10px}
+.cu-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cu-table tbody th{white-space:nowrap}
+.cu-table tbody th small{display:block;font-size:11px;color:#9a9a9a;margin-top:2px}
+.cu-table tr.ours th,.cu-table tr.ours td{font-weight:500}
+.cu-table tr.ours th{color:var(--text)}
+.cu-score{display:flex;align-items:center;gap:12px;min-width:240px}
+.cu-score b{font-weight:inherit;font-variant-numeric:tabular-nums;width:52px}
+.cu-score small{font-size:11px;color:#9a9a9a;font-variant-numeric:tabular-nums}
+.cu-bar{flex:1;max-width:260px;height:6px;background:#f1f1f1;border-radius:3px;overflow:hidden}
+.cu-bar i{display:block;height:100%;background:#c9c9c9;border-radius:3px}
+.cu-table tr.ours .cu-bar i{background:var(--primary)}
+.cu-table-note{font-size:12px;color:var(--muted);margin:12px 0 0;line-height:1.55}
+.text-link-inline{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.cu-steps ol{margin:0;padding:0;list-style:none;counter-reset:cu;line-height:1.5}
+.cu-steps li{counter-increment:cu;position:relative;padding-left:38px;margin:0 0 18px;font-size:14px}
+.cu-steps li:last-child{margin-bottom:0}
+.cu-steps li::before{content:counter(cu);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:#fff;border:1px solid #e5e5e5;font-size:11px;display:grid;place-items:center;color:#777}
+.cu-steps b{font-weight:500}
+.cu-steps small{display:block;font-size:12px;color:#8a8a8a;padding:0;margin:2px 0 0}
+@media(max-width:1180px){.cu-bench{margin:0 32px}}
+@media(max-width:760px){.cu-bench{margin:0 24px;padding-bottom:60px}.cu-bench h2{font-size:30px;letter-spacing:-1px}.cu-table-card{padding:18px 14px;overflow-x:auto}.cu-table-head{flex-direction:column;gap:4px}.cu-score{min-width:180px}.cu-bar{max-width:90px}}
