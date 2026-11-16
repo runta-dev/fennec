@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -105,6 +106,7 @@ type Engine struct {
 	ackSeq     uint64
 	ackQuiet   bool // the last ack reported no output
 	ackAt      time.Time
+	pastes     PasteSplitter
 	imagePaste bool
 
 	painted    map[int]bool
@@ -194,7 +196,7 @@ func (e *Engine) Server(data []byte) error {
 // that base so acknowledgements can be matched.
 func (e *Engine) Input(data []byte) uint64 {
 	e.opts.Record.Input(data)
-	keys := ParseKeys(data)
+	keys := e.pastes.Keys(data) // only the input goroutine calls Input
 	// The clipboard check runs a helper process; never hold the lock for it.
 	imageReady := false
 	e.mu.Lock()
@@ -428,7 +430,7 @@ func (e *Engine) reconcile(now time.Time) {
 	}
 	for {
 		if len(e.pending) == 0 {
-			e.confirmed = server
+			e.confirmed = e.adopt(e.confirmed, server)
 			return
 		}
 		// Longest prefix of predicted edits that reproduces the server state.
@@ -455,10 +457,10 @@ func (e *Engine) reconcile(now time.Time) {
 				}
 			}
 			e.pending = e.pending[best:]
-			// The server's parse is authoritative (token numbers, spacing);
-			// bestState only proved the edits were applied.
-			_ = bestState
-			e.confirmed = server
+			// The server's parse is authoritative (token numbers, spacing),
+			// except for trailing spaces the screen cannot show.
+			// bestState proved the edits were applied.
+			e.confirmed = e.adopt(bestState, server)
 			continue
 		}
 		first := e.pending[0]
@@ -502,6 +504,16 @@ func (e *Engine) barrierResolved(ed edit, server State, now time.Time) bool {
 		wait = max(wait, e.srtt*3/2)
 	}
 	return now.Sub(ed.at) > wait
+}
+
+// adopt returns the state to confirm when model explains the server's screen:
+// the server's reading (token numbers, spacing), except for trailing spaces
+// the screen cannot show, which only the model knows.
+func (e *Engine) adopt(model, server State) State {
+	if t := model.Text(); t != server.Text() && strings.TrimRight(t, " ") == server.Text() && e.profile.Same(model, server, e.shadow) {
+		return model
+	}
+	return server
 }
 
 // ackedSettled: the server acknowledged ed (with output) long enough ago that
@@ -666,6 +678,9 @@ func (e *Engine) paint(buf *bytes.Buffer) {
 			e.beginPaint(&out)
 		}
 		fmt.Fprintf(&out, "\x1b[%d;%dH", cursorRow+1, cursorCol+1)
+		if predicting && !e.display.CursorVisible {
+			out.WriteString("\x1b[?25h")
+		}
 	}
 	if out.Len() > 0 {
 		out.WriteString("\x1b[?2026l")
@@ -685,7 +700,9 @@ func (e *Engine) paint(buf *bytes.Buffer) {
 // canDraw reports whether injecting bytes now keeps the terminal consistent.
 func (e *Engine) canDraw() bool {
 	s := e.shadow
-	return s.Ground() && s.CursorVisible && !s.OriginMode && !s.PendingWrap
+	// The cursor may be hidden: profiles only lock where that is the agent's
+	// normal state (Grok hides it at the end of an exactly full row).
+	return s.Ground() && !s.OriginMode && !s.PendingWrap
 }
 
 func (e *Engine) beginPaint(out *bytes.Buffer) {

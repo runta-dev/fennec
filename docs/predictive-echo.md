@@ -523,12 +523,28 @@ character and back up when the draft empties. Codex's startup starfield
 animation (braille dots in the composer block, about 6 s) prevents a lock
 until it stops, which is the safe outcome.
 
+Grok's rules, from the recording: the box has a rounded border with `❯` at
+column 4 and text from column 6 to columns-4 (width columns-10); the bottom
+border (with the model) never moves and the box grows upward into blank rows;
+words wrap, and a space that does not fit at the end of a row starts the next
+row hidden and takes no width there. With the cursor at the end of an exactly
+full row Grok hides the cursor and parks it there, and a space typed then
+creates no row until the next character. The footer row shows a notice with
+an empty draft and key hints otherwise. A paste of four or more lines becomes
+a `[Pasted: N lines]` chip, after which Grok wraps differently and opens an
+expand popup; such pastes and drafts are left to the server.
+
+Two engine rules came from this recording: a bracketed paste split across
+reads is one unpredictable paste (its middle is never taken for typing), and
+a trailing space the screen cannot show is kept from the model when
+confirming a state.
+
 Other agents, from reading their packages:
 
 | Agent | Hardware cursor at the insertion point | Status |
 | --- | --- | --- |
-| OpenCode (OpenTUI) | Yes | Profile pending a recording; container width depends on the sidebar |
-| Grok (ratatui) | Yes | Profile pending a recording; installed 1.0.77 is newer than its public source |
+| OpenCode (OpenTUI) | Yes | Not modelled: on 2026-11-16 OpenCode 2.3.0 hung before drawing anything (its TUI waits on an outbound HTTPS request), in `fen` and in a plain terminal alike, so no recording could be made |
+| Grok (ratatui) | Yes | Profile from a real session (`testdata/traces/grok-100x30`, Grok Build 1.0.77): 202 of 202 predicted key packets match; see below |
 | Pi | Only with `PI_HARDWARE_CURSOR=1` | Needs that setting in Fennec's Pi launch |
 | Kimi | No (drawn reverse-video cursor) | Not predictable with this design |
 | Cursor | No (cursor parked below the composer) | Not predictable with this design |

@@ -246,3 +246,14 @@ func TestCodexStreamingRecordedSession(t *testing.T) {
 		t.Fatalf("%d rollbacks", res.stats.Diverged)
 	}
 }
+
+// TestGrokRecordedSession replays a real Grok Build session: typing that wraps
+// twice (including a space hidden after an exactly full row), Shift+Enter,
+// Backspace, Left with insertion, an inline paste, and a 6-line paste that
+// becomes a chip (not predicted).
+func TestGrokRecordedSession(t *testing.T) {
+	res := replayRecorded(t, "grok-100x30", 30, 100, func() Profile { return newGrokProfile() }, false)
+	if res.stats.Diverged != 0 || res.predicted < res.keys/2 {
+		t.Fatalf("predicted %d of %d, %d rollbacks", res.predicted, res.keys, res.stats.Diverged)
+	}
+}

@@ -40,3 +40,22 @@ func TestParseKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestPasteSplitAcrossReads(t *testing.T) {
+	var p PasteSplitter
+	var kinds []KeyKind
+	for _, chunk := range []string{"a\x1b[200~line one\n", "line two\n", "three\x1b[201~b"} {
+		for _, k := range p.Keys([]byte(chunk)) {
+			kinds = append(kinds, k.Kind)
+		}
+	}
+	want := []KeyKind{KeyText, KeyPasteFragment, KeyPasteFragment, KeyPasteFragment, KeyText}
+	if len(kinds) != len(want) {
+		t.Fatalf("kinds %v, want %v", kinds, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("kinds %v, want %v", kinds, want)
+		}
+	}
+}

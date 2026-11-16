@@ -25,19 +25,22 @@ const (
 	KeyEnd
 	KeyTab
 	KeyEscape
-	KeyCtrl         // Ctrl+letter; Rune holds the lowercase letter
-	KeyAlt          // Alt+key; Rune holds the key, or KeyBackspace in Base
-	KeyImagePaste   // the image paste shortcut
-	KeyNeutral      // mouse reports, focus reports, key releases
-	KeyWordLeft     // Alt+Left / Alt+B
-	KeyWordRight    // Alt+Right / Alt+F
-	KeyAltBackspace // delete previous word
+	KeyCtrl          // Ctrl+letter; Rune holds the lowercase letter
+	KeyAlt           // Alt+key; Rune holds the key, or KeyBackspace in Base
+	KeyImagePaste    // the image paste shortcut
+	KeyNeutral       // mouse reports, focus reports, key releases
+	KeyWordLeft      // Alt+Left / Alt+B
+	KeyWordRight     // Alt+Right / Alt+F
+	KeyAltBackspace  // delete previous word
+	KeyPasteFragment // part of a bracketed paste split across reads
 )
 
 type Key struct {
 	Kind KeyKind
 	Text string
 	Rune rune
+	// Open: a bracketed paste started and did not end in this input.
+	Open bool
 	// Bytes is the number of input bytes the key consumed.
 	Bytes int
 }
@@ -72,7 +75,7 @@ func parseKey(b []byte) (Key, int) {
 	if strings.HasPrefix(s, pasteStart) {
 		end := strings.Index(s, pasteEnd)
 		if end < 0 {
-			return Key{Kind: KeyPaste, Text: s[len(pasteStart):]}, len(s)
+			return Key{Kind: KeyPasteFragment, Open: true}, len(s)
 		}
 		return Key{Kind: KeyPaste, Text: s[len(pasteStart):end]}, end + len(pasteEnd)
 	}
@@ -321,4 +324,29 @@ func kittyKey(code rune, shifted string, shift, alt, ctrl bool) Key {
 		return Key{Kind: KeyText, Text: string(code)}
 	}
 	return Key{Kind: KeyUnknown}
+}
+
+// PasteSplitter carries the state of a bracketed paste across reads: a large
+// paste can arrive in several reads, and its middle must not be taken for
+// typing. Use one per input stream.
+type PasteSplitter struct{ open bool }
+
+// Keys parses data like ParseKeys, continuing an open paste.
+func (p *PasteSplitter) Keys(data []byte) []Key {
+	var keys []Key
+	if p.open {
+		end := strings.Index(string(data), pasteEnd)
+		if end < 0 {
+			return []Key{{Kind: KeyPasteFragment, Bytes: len(data)}}
+		}
+		n := end + len(pasteEnd)
+		keys = append(keys, Key{Kind: KeyPasteFragment, Bytes: n})
+		data = data[n:]
+		p.open = false
+	}
+	rest := ParseKeys(data)
+	if n := len(rest); n > 0 && rest[n-1].Open {
+		p.open = true
+	}
+	return append(keys, rest...)
 }
