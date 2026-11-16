@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,15 +38,16 @@ type comparisonBlock struct {
 	Duration float64 `json:"load_seconds"`
 }
 type comparisonReport struct {
-	Boundary  string                             `json:"boundary"`
-	Baseline  string                             `json:"baseline_terminal"`
-	Candidate string                             `json:"candidate_terminal"`
-	Started   time.Time                          `json:"started_utc"`
-	Duration  float64                            `json:"duration_seconds"`
-	Samples   []comparisonSample                 `json:"samples"`
-	Blocks    []comparisonBlock                  `json:"blocks"`
-	Summary   map[string]map[string]distribution `json:"summary"`
-	Error     string                             `json:"error,omitempty"`
+	Boundary      string                             `json:"boundary"`
+	Baseline      string                             `json:"baseline_terminal"`
+	Candidate     string                             `json:"candidate_terminal"`
+	BaselinePaced bool                               `json:"baseline_paced"`
+	Started       time.Time                          `json:"started_utc"`
+	Duration      float64                            `json:"duration_seconds"`
+	Samples       []comparisonSample                 `json:"samples"`
+	Blocks        []comparisonBlock                  `json:"blocks"`
+	Summary       map[string]map[string]distribution `json:"summary"`
+	Error         string                             `json:"error,omitempty"`
 }
 
 // Open one verified connection for every treatment and comparator. This probe
@@ -110,6 +112,10 @@ func compareVersions(ctx context.Context) error {
 		return fmt.Errorf("comparison requires staged baseline, terminal, remote and 1-40 samples per block")
 	}
 	result := comparisonReport{Boundary: "Same authenticated SSH connection, resident services kept warm. Identical continuous binary cat traffic with a sliding 64 KiB application flight limit and 4 KiB producer chunks: baseline uses ordinary SSH exec, candidate uses the paced resident command stream. Eight load blocks ordered BAAB ABBA (candidate first), no overlapping test transfers; both idle and recovery measure both services. Every sent/received byte is verified and exits must succeed. Rotated sequential gateway/guest/ping measurements are contemporaneous comparators, not per-packet component latency. Other live traffic remains uncontrolled. Throughput is reported because rate limiting is an intentional tradeoff.", Baseline: *baseline, Candidate: *terminal, Started: time.Now().UTC()}
+	result.BaselinePaced = *baselinePaced
+	if *baselinePaced {
+		result.Boundary = strings.Replace(result.Boundary, "baseline uses ordinary SSH exec", "baseline uses the paced resident command stream", 1)
+	}
 	err := runComparison(ctx, &result)
 	if err != nil {
 		result.Error = err.Error()
@@ -154,7 +160,9 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 		}
 		servers[v.name] = t
 	}
-	if servers["baseline"].Supports(terminalstream.CapabilityTrafficPackets) || !servers["candidate"].Supports(terminalstream.CapabilityCommand) {
+	if (!*baselinePaced && servers["baseline"].Supports(terminalstream.CapabilityTrafficPackets)) ||
+		(*baselinePaced && !servers["baseline"].Supports(terminalstream.CapabilityCommand)) ||
+		!servers["candidate"].Supports(terminalstream.CapabilityCommand) {
 		return fmt.Errorf("unexpected baseline/candidate capabilities")
 	}
 	echo, requests, err := client.OpenChannel("session", nil)
@@ -225,7 +233,11 @@ func runComparison(ctx context.Context, result *comparisonReport) error {
 		return err
 	}
 	for index, variant := range []string{"candidate", "baseline", "baseline", "candidate", "baseline", "candidate", "candidate", "baseline"} {
-		load, err := beginComparisonLoad(ctx, client, servers["candidate"], variant)
+		loadVariant := variant
+		if *baselinePaced {
+			loadVariant = "candidate"
+		}
+		load, err := beginComparisonLoad(ctx, client, servers[variant], loadVariant)
 		if err != nil {
 			return err
 		}

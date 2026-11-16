@@ -13,6 +13,12 @@ generated load, 637 ms during a paced command transfer, and 408 ms afterwards.
 The 240 ms target remains unmet. See the current command measurement below;
 local Mutagen integration passing does not change this result.
 
+The subsequent [SSH backlog investigation](ssh-backlog-investigation.md)
+observed up to 33,592 TCP bytes not yet transmitted on the exact diagnostic
+connection. A 16 KiB per-socket encoded window is now a candidate reduction
+from 32 KiB. Its real WAN comparison and deployment acceptance remain pending;
+the local delayed-link test does not establish the 240 ms target.
+
 ## Follow-up: application bandwidth scheduling (2026-11-16)
 
 Goal: bring exact TUI ping P95 close to 240 ms under conditions comparable to

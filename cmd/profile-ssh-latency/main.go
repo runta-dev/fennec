@@ -38,6 +38,7 @@ var shared = flag.Bool("shared-output", true, "use the shared cloud output broke
 var loadMode = flag.String("load-mode", "replies", "replies, duplex (synthetic socket echo), or command (real streamed cat)")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 var baseline = flag.String("baseline", "", "staged pre-scheduler terminal for an alternating A/B comparison; samples is per block")
+var baselinePaced = flag.Bool("baseline-paced", false, "baseline uses the resident command adapter too; compare two paced implementations")
 var tracePath = flag.String("ping-trace", "", "exclusive cloud output path for probe-server ping queue timings; requires shared output and no terminal/baseline override")
 
 const blobSize = 256 << 10

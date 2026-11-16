@@ -7,7 +7,9 @@ import (
 	"fennec/internal/traffic"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,10 +19,13 @@ import (
 // command or credential content is retained. All intervals use the server's
 // monotonic clock, and the wire encoding and broker route remain unchanged.
 type serverPingTiming struct {
-	ID         string  `json:"id"`
-	DispatchMS float64 `json:"dispatch_ms"`
-	WriteMS    float64 `json:"write_ms"`
-	Failed     bool    `json:"failed,omitempty"`
+	ID         string    `json:"id"`
+	DispatchMS float64   `json:"dispatch_ms"`
+	WriteMS    float64   `json:"write_ms"`
+	Failed     bool      `json:"failed,omitempty"`
+	Received   time.Time `json:"received_utc"`
+	Submitted  time.Time `json:"submitted_utc"`
+	Written    time.Time `json:"written_utc"`
 }
 
 type pingTrace struct {
@@ -46,15 +51,32 @@ func (t *pingTrace) close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	err := json.NewEncoder(t.file).Encode(struct {
-		Boundary string             `json:"boundary"`
-		Samples  []serverPingTiming `json:"samples"`
-		Dropped  int                `json:"dropped"`
-		Pending  int                `json:"pending"`
-	}{"Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Match client IDs; do not subtract independent percentiles or cross-host timestamps.", t.samples, t.dropped, len(t.pending)})
+		Boundary      string             `json:"boundary"`
+		Samples       []serverPingTiming `json:"samples"`
+		Dropped       int                `json:"dropped"`
+		Pending       int                `json:"pending"`
+		SSHConnection string             `json:"ssh_connection,omitempty"`
+		PID           int                `json:"pid"`
+	}{"Dedicated probe only. Dispatch runs from receipt of the complete ping line to broker submission; write runs until broker completion. Intervals include local scheduling. Broker completion means a write into sshd's pipe, not delivery over the network. Wall timestamps support same-guest packet/socket correlation only. Match client IDs; do not subtract independent percentiles or cross-host timestamps.", t.samples, t.dropped, len(t.pending), traceSSHConnection(), os.Getpid()})
 	if closeErr := t.file.Close(); err == nil {
 		err = closeErr
 	}
 	return err
+}
+
+// Record only a validated address/port tuple, never arbitrary environment data.
+func traceSSHConnection() string {
+	parts := strings.Fields(os.Getenv("SSH_CONNECTION"))
+	if len(parts) != 4 || net.ParseIP(parts[0]) == nil || net.ParseIP(parts[2]) == nil {
+		return ""
+	}
+	for _, index := range []int{1, 3} {
+		port, err := strconv.Atoi(parts[index])
+		if err != nil || port < 1 || port > 65535 {
+			return ""
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func pingID(line []byte, kind string) string {
@@ -148,7 +170,7 @@ func (w traceOutput) WritePacket(ctx context.Context, flow string, class traffic
 	if received, ok := w.trace.pending[id]; ok {
 		delete(w.trace.pending, id)
 		if len(w.trace.samples) < 4096 {
-			w.trace.samples = append(w.trace.samples, serverPingTiming{ID: id, DispatchMS: ms(started.Sub(received)), WriteMS: ms(ended.Sub(started)), Failed: err != nil})
+			w.trace.samples = append(w.trace.samples, serverPingTiming{ID: id, DispatchMS: ms(started.Sub(received)), WriteMS: ms(ended.Sub(started)), Failed: err != nil, Received: received.UTC(), Submitted: started.UTC(), Written: ended.UTC()})
 		} else {
 			w.trace.dropped++
 		}

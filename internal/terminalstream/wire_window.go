@@ -8,7 +8,10 @@ import (
 
 const CapabilityWireWindow = "wire_output_window_v1"
 const outputWireWindow = 4096
-const socketWireWindow = 32 << 10
+// Keep bulk bytes handed to SSH bounded when TCP slows after packet loss.
+// A 16 KiB encoded window retains useful throughput at 180 ms RTT without
+// allowing the previous 32 KiB of one socket's output ahead of a fresh pong.
+const socketWireWindow = 16 << 10
 
 // A peer opting in promises to return credits as it consumes each frame,
 // rather than waiting for the full legacy 64 KiB window. Bound encoded bytes

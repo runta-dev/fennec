@@ -83,9 +83,26 @@ func TestPingTraceHandlesSplitLinesAndPreservesWire(t *testing.T) {
 		result.Samples[0].DispatchMS < 50 || !result.Samples[0].Failed || result.Samples[0].ID != "measure-9" {
 		t.Fatalf("incorrect matched intervals: %+v", result)
 	}
+	timing := result.Samples[0]
+	if timing.Received.IsZero() || timing.Submitted.Before(timing.Received) || timing.Written.Before(timing.Submitted) {
+		t.Fatalf("missing or reordered same-host timestamps: %+v", timing)
+	}
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("private trace permissions: %v %v", info, err)
+	}
+}
+
+func TestTraceOnlyRecordsValidSSHTuple(t *testing.T) {
+	for _, value := range []string{"secret", "10.0.2.1 0 10.0.2.3 22", "10.0.2.1 42 host 22", "10.0.2.1 42 10.0.2.3 65536"} {
+		t.Setenv("SSH_CONNECTION", value)
+		if traceSSHConnection() != "" {
+			t.Fatal("unexpected environment data recorded")
+		}
+	}
+	t.Setenv("SSH_CONNECTION", "10.0.2.1 4242 10.0.2.3 22")
+	if traceSSHConnection() != "10.0.2.1 4242 10.0.2.3 22" {
+		t.Fatal("valid socket identity lost")
 	}
 }
 
