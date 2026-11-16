@@ -122,12 +122,6 @@ func (in *Installer) Install(src string, path string) (InstallResult, error) {
 		}
 		_ = os.RemoveAll(old)
 		res.Copied = true
-		// 0.1.0 installed the app as FennecCUA.app; the renamed copy
-		// replaces it.
-		if legacy := filepath.Join(in.Layout.AppDir, LegacyAppName); IsApp(legacy) {
-			in.logf("removing the earlier %s", legacy)
-			_ = os.RemoveAll(legacy)
-		}
 	} else {
 		n, err := Unquarantine(res.App)
 		if err != nil {

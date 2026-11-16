@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the signed, notarized Fennec Computer Use release with
-# cua/cmd/cua-dist: Fennec-Computer-Use-V-macos-arm64.dmg (the app and an
+# cua/cmd/cua-dist: FennecCUA-V-macos-arm64.dmg (FennecCUA.app and an
 # Applications shortcut to drag it to: what the website offers), the
 # archives fennec-cua-V-macos-arm64.tar.gz (with Chromium) and
 # fennec-cua-V-macos-arm64-core.tar.gz (without) for scripted installs, each
@@ -103,8 +103,8 @@ done
 
 # The disk image holds the app from the verified full archive (notarized and
 # stapled in a release) beside a link to /Applications.
-app_name="Fennec Computer Use.app"
-dmg="Fennec-Computer-Use-$version-macos-arm64.dmg"
+app_name="FennecCUA.app"
+dmg="FennecCUA-$version-macos-arm64.dmg"
 mkdir "$work/dmg-src" "$work/dmg"
 tar -xzf "$out/$full" -C "$work/dmg-src"
 ditto "$work/dmg-src/fennec-cua-$version-macos-arm64/$app_name" "$work/dmg/$app_name"
@@ -113,7 +113,7 @@ ln -s /Applications "$work/dmg/Applications"
 /bin/chmod -R -P a+rX,go-w "$work/dmg/$app_name"
 /bin/chmod 755 "$work/dmg"
 # ULMO (LZMA), as Fennec's image: smaller download, macOS 10.15 or later to mount.
-hdiutil create -volname "Fennec Computer Use" -srcfolder "$work/dmg" -format ULMO -ov "$out/$dmg" >/dev/null
+hdiutil create -volname FennecCUA -srcfolder "$work/dmg" -format ULMO -ov "$out/$dmg" >/dev/null
 codesign --force --timestamp --keychain "$keychain" --sign "$identity" "$out/$dmg"
 if [[ $dry_run == 0 ]]; then
   xcrun notarytool submit "$out/$dmg" --keychain-profile fennec-cua-release --wait --timeout 30m --output-format json > "$work/notarization-dmg.json"

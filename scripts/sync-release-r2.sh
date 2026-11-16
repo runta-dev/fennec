@@ -27,7 +27,7 @@ case "$tag" in
     full="fennec-cua-$version-macos-arm64.tar.gz"; core="fennec-cua-$version-macos-arm64-core.tar.gz"
     files=("$full" "$full.sha256" "$core" "$core.sha256" SHA256SUMS provenance.json)
     # 0.1.0 shipped archives only; later releases lead with the disk image.
-    dmg="Fennec-Computer-Use-$version-macos-arm64.dmg"
+    dmg="FennecCUA-$version-macos-arm64.dmg"
     if gh release view "$tag" -R runta-dev/fennec --json assets -q '.assets[].name' | grep -qx "$dmg"; then files=("$dmg" "${files[@]}"); else dmg=""; fi
     latest_files=$(jq -n --arg dmg "$dmg" --arg full "$full" --arg core "$core" '{full:$full, core:$core, checksums:"SHA256SUMS"} + (if $dmg == "" then {} else {dmg:$dmg} end)') ;;
   v*) product=fennec; version="${tag#v}"

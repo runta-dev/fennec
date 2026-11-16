@@ -306,7 +306,7 @@ func ConsentRequired(err error) bool {
 // ConsentReason is the capture failure an agent and the user see for
 // ConsentRequired: the driver's own text names its own command, which the
 // user does not run.
-const ConsentReason = "macOS has not yet asked whether Fennec Computer Use may capture the screen directly (a one-time alert on macOS 15 and later), so screenshots are off; the accessibility tree is unaffected. Ask the user to run `fennec-cua permissions --request` and choose Allow in the macOS alert"
+const ConsentReason = "macOS has not yet asked whether Fennec CUA may capture the screen directly (a one-time alert on macOS 15 and later), so screenshots are off; the accessibility tree is unaffected. Ask the user to run `fennec-cua permissions --request` and choose Allow in the macOS alert"
 
 // noContent is cua-driver's reason when a window state call produced
 // neither part; with the tree turned off it means only the capture failed.

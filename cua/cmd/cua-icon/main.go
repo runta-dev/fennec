@@ -1,4 +1,4 @@
-// Command cua-icon makes the standalone Fennec Computer Use app icon from Fennec's:
+// Command cua-icon makes the standalone Fennec CUA app icon from Fennec's:
 // the Fennec fox on its white tile with a small computer-use badge (a
 // pointer on a dark disc with a white ring) in the bottom-right corner.
 //

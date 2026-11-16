@@ -3,7 +3,7 @@
 // uninstalling it for one user, the macOS permissions it needs, and the
 // checks `fennec-cua doctor` runs.
 //
-// The distribution is one app bundle, "Fennec Computer Use.app":
+// The distribution is one app bundle, FennecCUA.app:
 //
 //	Contents/Info.plist                 com.runta.fennec.cua, LSUIElement
 //	Contents/MacOS/fennec-cua           the daemon, MCP bridge and CLI
@@ -28,14 +28,11 @@ import (
 
 // Names in the distribution.
 const (
-	AppName     = "Fennec Computer Use.app"
-	DisplayName = "Fennec Computer Use"
-	// LegacyAppName is the bundle name of 0.1.0 (FennecCUA.app); install
-	// replaces an app of that name in the same directory.
-	LegacyAppName = "FennecCUA.app"
-	BundleID      = "com.runta.fennec.cua"
-	BinName       = "fennec-cua"
-	SkillName     = "fennec-cua"
+	AppName     = "FennecCUA.app"
+	DisplayName = "Fennec CUA"
+	BundleID    = "com.runta.fennec.cua"
+	BinName     = "fennec-cua"
+	SkillName   = "fennec-cua"
 )
 
 // Layout is where an install puts the app and the command link.
@@ -101,9 +98,9 @@ func InfoPlist(version string) []byte {
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Fennec Computer Use sends Apple Events only when an action an agent asked for needs to talk to another app.</string>
+	<string>Fennec CUA sends Apple Events only when an action an agent asked for needs to talk to another app.</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Fennec Computer Use captures app windows so the agents you connect can see the apps they operate for you.</string>
+	<string>Fennec CUA captures app windows so the agents you connect can see the apps they operate for you.</string>
 </dict>
 </plist>
 `)

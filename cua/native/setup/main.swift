@@ -1,10 +1,10 @@
-// fennec-cua-setup is Fennec Computer Use's setup window: it walks the user through
+// fennec-cua-setup is Fennec CUA's setup window: it walks the user through
 // the macOS permissions the app needs and shows how to connect an agent.
 //
-// It runs from "Fennec Computer Use.app"/Contents/MacOS, started by the app itself
+// It runs from FennecCUA.app/Contents/MacOS, started by the app itself
 // (a Finder launch, `fennec-cua setup`, or the daemon when a grant is
 // missing), so macOS attributes it to the app: AXIsProcessTrusted and
-// CGPreflightScreenCaptureAccess here answer for "Fennec Computer Use", and, unlike
+// CGPreflightScreenCaptureAccess here answer for "Fennec CUA", and, unlike
 // in the long-running daemon, a fresh Screen Recording grant shows at once.
 // Everything else (the daemon, the test capture, the direct-capture alert)
 // goes through the bundled fennec-cua command.
@@ -70,7 +70,7 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
         if let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: l), dest == exe { return l }
         return exe
     }
-    // The command for a shell: single-quoted, as the app path has spaces.
+    // The command for a shell, single-quoted: the app may sit in a folder whose path has spaces.
     var quotedLink: String { "'" + link.replacingOccurrences(of: "'", with: "'\\''") + "'" }
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     let asksDirectCapture = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 15
@@ -106,7 +106,7 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
         window.backgroundColor = .clear
         window.hasShadow = true
         window.isReleasedWhenClosed = false
-        window.title = "Fennec Computer Use Setup"
+        window.title = "Fennec CUA Setup"
         window.center()
 
         if let page = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "setup") {
@@ -133,7 +133,7 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
         let appItem = NSMenuItem()
         main.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit Fennec Computer Use Setup", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Fennec CUA Setup", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         let editItem = NSMenuItem()
         main.addItem(editItem)
@@ -310,7 +310,7 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             run(["permissions", "--request"]) { [weak self] _, status in
                 guard let self else { return }
                 self.requesting = false
-                if status != 0 { self.notice = "Fennec Computer Use could not ask macOS. Run `fennec-cua permissions --request` in a terminal to see why." }
+                if status != 0 { self.notice = "Fennec CUA could not ask macOS. Run `fennec-cua permissions --request` in a terminal to see why." }
                 self.lastDoctor = .distantPast
                 self.doctor.capture = ""
                 self.runDoctor()

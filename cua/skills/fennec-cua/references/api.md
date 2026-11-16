@@ -109,7 +109,7 @@ Apps keep their own defaults. Examples: TextEdit opens new documents as rich tex
 | mentions of `permission`, `permissions_pending` | Accessibility or Screen Recording missing: `fennec-cua doctor` |
 | `not_allowed` | the app is outside the user's allowlist (`[safety] allow` in config.toml) |
 | `window "X" is not frontmost (the front window is ...)` | another window is in front; the message names it. A macOS prompt: ask the user to answer it. Otherwise read the state again |
-| `the capture failed: macOS has not yet asked whether Fennec Computer Use may capture the screen directly ...` | screenshots are off until the user runs `fennec-cua permissions --request` and clicks Allow; the accessibility state still works |
+| `the capture failed: macOS has not yet asked whether Fennec CUA may capture the screen directly ...` | screenshots are off until the user runs `fennec-cua permissions --request` and clicks Allow; the accessibility state still works |
 
 ## `nodeRepl`
 

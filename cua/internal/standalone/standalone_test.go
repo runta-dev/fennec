@@ -353,7 +353,7 @@ func TestEnsureLink(t *testing.T) {
 
 	// A copy that is gone (an ejected disk image) moves too.
 	_ = os.Remove(link)
-	if err := os.Symlink("/Volumes/Gone/Fennec Computer Use.app/Contents/MacOS/fennec-cua", link); err != nil {
+	if err := os.Symlink("/Volumes/Gone/FennecCUA.app/Contents/MacOS/fennec-cua", link); err != nil {
 		t.Fatal(err)
 	}
 	if changed, err := EnsureLink(link, exe); err != nil || !changed {
@@ -386,10 +386,10 @@ func TestEnsureLink(t *testing.T) {
 
 func TestMounted(t *testing.T) {
 	for app, want := range map[string]bool{
-		"/Volumes/Fennec Computer Use/Fennec Computer Use.app":                  true,
-		"/private/var/folders/x/AppTranslocation/ABC/d/Fennec Computer Use.app": true,
-		"/Applications/Fennec Computer Use.app":                                 false,
-		"/Users/me/Applications/Fennec Computer Use.app":                        false,
+		"/Volumes/FennecCUA/FennecCUA.app":                            true,
+		"/private/var/folders/x/AppTranslocation/ABC/d/FennecCUA.app": true,
+		"/Applications/FennecCUA.app":                                 false,
+		"/Users/me/Applications/FennecCUA.app":                        false,
 	} {
 		if Mounted(app) != want {
 			t.Errorf("Mounted(%q) = %v", app, !want)

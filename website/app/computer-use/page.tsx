@@ -86,15 +86,15 @@ export default function ComputerUse() {
         <div><div className="eyebrow">GET STARTED</div><h2>Three steps.<br/>No terminal.</h2><p>Open the disk image and drag the app to Applications. When you open it, its setup window walks you through the two macOS permissions, then gives you one command for your agent.</p><span className="preview-note">Prefer a script? The <a className="text-link-inline" href={releases}>releases</a> also carry archives and checksums.</span></div>
         <div className="cli-card cu-steps">
           <ol>
-            <li><b>Drag to Applications.</b><small>Open the downloaded .dmg and drag Fennec Computer Use into Applications.</small></li>
-            <li><b>Open it and allow access.</b><small>Accessibility and Screen Recording, so your agent can read and operate apps.</small></li>
+            <li><b>Drag to Applications.</b><small>Open the downloaded .dmg and drag FennecCUA into Applications.</small></li>
+            <li><b>Open FennecCUA and allow access.</b><small>Accessibility and Screen Recording, so your agent can read and operate apps.</small></li>
             <li><b>Connect your agent.</b><small>Paste the command it shows for Claude Code or Codex.</small></li>
           </ol>
         </div>
       </section>
 
       <section className="faq-section" id="faq"><h2>A few things to know.</h2><div>{[
-        ['Do I need the Fennec app?', 'No. Fennec Computer Use is a separate app. If you also use Fennec, both share the same settings.'],
+        ['Do I need the Fennec app?', 'No. Fennec Computer Use is a separate app, FennecCUA. If you also use Fennec, both share the same settings.'],
         ['Which agents work with it?', 'Any agent that speaks MCP. The setup window gives the command for Claude Code and Codex; agents with only a shell can call fennec-cua js.'],
         ['What can my agent see?', 'Only what it asks for: the windows of the apps it works in, as a list of controls or a screenshot,, sent to your agent and the model it uses.'],
         ['Can I stop it?', 'Yes. macOS shows when an app uses the screen, you can revoke its permissions in System Settings at any time, and Stop halts whatever the agent is doing.'],

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>Fennec Computer Use Setup</title>
+<title>Fennec CUA Setup</title>
 <style>
 /* Fennec's menu-bar panel tokens (native/macos/UI/panel.css): one flat
    layer of cards with hairlines on the window background. */
@@ -53,7 +53,7 @@ h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;marg
 </head>
 <body>
 <header>
-  <div class="brand"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#FFD8A1"/><path d="m8 6 24 16-12 9Z" fill="#FFB953"/><path d="m56 6-24 16 12 9Z" fill="#F7A136"/><path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#F38D25"/><path d="m5 39 27-17v36L30 57Z" fill="#FFA83F"/><circle cx="24" cy="40" r="2.6" fill="#3B332E"/><circle cx="40" cy="40" r="2.6" fill="#3B332E"/><ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/></svg>Fennec Computer Use</div>
+  <div class="brand"><svg aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#FFD8A1"/><path d="m8 6 24 16-12 9Z" fill="#FFB953"/><path d="m56 6-24 16 12 9Z" fill="#F7A136"/><path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#F38D25"/><path d="m5 39 27-17v36L30 57Z" fill="#FFA83F"/><circle cx="24" cy="40" r="2.6" fill="#3B332E"/><circle cx="40" cy="40" r="2.6" fill="#3B332E"/><ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/></svg>Fennec CUA</div>
   <div class="spacer"></div>
   <button class="icon" id="minimize" aria-label="Minimize"><svg viewBox="0 0 14 14"><path d="M3 7h8"/></svg></button>
   <button class="icon" id="close" aria-label="Close"><svg viewBox="0 0 14 14"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
@@ -159,11 +159,11 @@ window.setupRender = s => {
   else if (s.capture === "error" && s.accessibility && s.screen) { hint = s.captureDetail || "The test screenshot failed. Click Try again."; tone = "warn"; }
   else if (s.daemonError) { hint = s.daemonError; tone = "warn"; }
   else if (ready) { hint = copied ? "All set. Your agent can use this Mac after it restarts." : "Access allowed. Next, connect your agent."; tone = "ok"; }
-  else if (asked === "accessibility" && !s.accessibility) hint = "In System Settings › Accessibility, turn on “Fennec Computer Use”. This window updates by itself.";
-  else if (asked === "screen" && !s.screen) hint = "In System Settings › Screen & System Audio Recording, turn on “Fennec Computer Use”. This window updates by itself.";
+  else if (asked === "accessibility" && !s.accessibility) hint = "In System Settings › Accessibility, turn on “Fennec CUA”. This window updates by itself.";
+  else if (asked === "screen" && !s.screen) hint = "In System Settings › Screen & System Audio Recording, turn on “Fennec CUA”. This window updates by itself.";
   else if (s.capture === "consent" && s.accessibility && s.screen) hint = "One more: click Allow, then choose Allow in the macOS alert.";
   else if (s.accessibility && s.screen) hint = "Taking a test screenshot…";
-  else hint = "Each Allow opens System Settings: turn on “Fennec Computer Use” there, then come back here.";
+  else hint = "Each Allow opens System Settings: turn on “Fennec CUA” there, then come back here.";
   const h = document.getElementById("hint");
   h.textContent = hint;
   h.title = hint;

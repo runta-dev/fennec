@@ -69,7 +69,7 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Bad version $version"; exit 1; }
           test "$(jq -r .product provenance.json)" = "Fennec Computer Use"
           test "$(jq -r .notarized provenance.json)" = true
-          dmg="Fennec-Computer-Use-$version-macos-arm64.dmg"
+          dmg="FennecCUA-$version-macos-arm64.dmg"
           full="fennec-cua-$version-macos-arm64.tar.gz"
           core="fennec-cua-$version-macos-arm64-core.tar.gz"
           expected=$(printf '%s\n' SHA256SUMS provenance.json "$dmg" "$full" "$full.sha256" "$core" "$core.sha256" | sort)
@@ -94,14 +94,14 @@ jobs:
           if [ -z "$tag_sha" ]; then echo "::error::Push the tag first: git tag $tag $SOURCE_SHA && git push origin $tag"; exit 1; fi
           test "$tag_sha" = "$SOURCE_SHA" || { echo "::error::$tag points at $tag_sha, not $SOURCE_SHA"; exit 1; }
           latest_before=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name 2>/dev/null || true)
-          dmg="Fennec-Computer-Use-$VERSION-macos-arm64.dmg"
+          dmg="FennecCUA-$VERSION-macos-arm64.dmg"
           full="fennec-cua-$VERSION-macos-arm64.tar.gz"
           core="fennec-cua-$VERSION-macos-arm64-core.tar.gz"
           notes="$RUNNER_TEMP/notes.md"
           {
             if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
-            printf 'Fennec Computer Use lets an agent operate Mac apps and web pages through one JavaScript REPL (the Codex-compatible `cua` API), without the Fennec app.\n\n'
-            printf '**Install:** open `%s`, drag Fennec Computer Use to Applications, then open it. Its setup window grants the permissions and gives the command that connects Claude Code or Codex.\n\n' "$dmg"
+            printf 'Fennec Computer Use (the FennecCUA app) lets an agent operate Mac apps and web pages through one JavaScript REPL (the Codex-compatible `cua` API), without the Fennec app.\n\n'
+            printf '**Install:** open `%s`, drag FennecCUA to Applications, then open it. Its setup window grants the permissions and gives the command that connects Claude Code or Codex.\n\n' "$dmg"
             printf '| File | Use |\n|---|---|\n'
             printf '| `%s` | the app, for people (Apple silicon, macOS 13 or later) |\n' "$dmg"
             printf '| `%s` | the same app as an archive, for scripted installs (`fennec-cua install`) |\n' "$full"

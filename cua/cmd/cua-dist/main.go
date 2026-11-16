@@ -4,7 +4,7 @@
 //	cua-dist -out DIR [-version V] [-chromium-stage DIR | -no-chromium]
 //	         [-identity NAME|SHA1|-] [-keychain PATH] [-notarize-profile PROFILE]
 //
-// It builds "Fennec Computer Use.app" (layout in internal/standalone) from this
+// It builds FennecCUA.app (layout in internal/standalone) from this
 // checkout, the pinned cua-driver release (internal/driver.Pinned, size
 // and SHA-256 checked) and a signed Chromium staging (cmd/cua-package
 // -stage, run here, or an existing one reused with -chromium-stage, such
