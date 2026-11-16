@@ -707,6 +707,23 @@ host's egress is limited to about 128 KB/s (the QoS scheduler in
 `internal/traffic` keeps interactive output first within it, at 112 KB/s), so
 such a gesture takes over 1.5 s to arrive: bytes per gesture are what matter.
 
+The stream server therefore merges output that waits for the link
+(`internal/terminalstream/conflate.go`). Reading the attachment and sending
+are separate: the reader keeps reading, and what has not been sent yet waits
+in order. Segments that only change cells on the alternate screen (text,
+cursor moves, colours the screen model keeps, erases, scrolls, the scroll
+region, cursor visibility; checked token by token) merge into one target
+screen; anything else (titles, mode changes, bells, other SGR) waits as raw
+bytes in its place. When the sender has credit it takes everything waiting:
+a single segment goes as it was, several go as the difference between what
+the client shows and the latest screen (`predict.DiffScreen`, verified by
+replaying it onto a copy, and used only when smaller). Without a backlog the
+output is unchanged; after a resize the next difference repaints every cell.
+Replaying all 55 recordings with a sender that falls behind at random, the
+client shows exactly the real screen after every send; a Codex-like 40-step
+gesture drawn while one send per round trip goes out shrinks from 254 KB to
+under 8 KB.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.

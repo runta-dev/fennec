@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/creack/pty"
@@ -44,6 +45,8 @@ func SocketDevice(ctx context.Context) string {
 }
 
 type serverSession struct {
+	// conf merges output that waits for credit; nil when not attached.
+	conf                     *conflator
 	deviceRelay              bool
 	commandStream            bool
 	ctx                      context.Context
@@ -329,15 +332,25 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				}
 				probe := DisplayResponder{Facts: frame.Display}
 				var noop NoopFrameFilter
-				firstRead := float64(0)
+				// Reading and sending are separate: the reader keeps reading the
+				// attachment while the sender waits for credit, and output that
+				// piles up meanwhile is merged (see conflator).
+				conf := newConflator(int(session.rows), int(session.columns))
+				session.mu.Lock()
+				session.conf = conf
+				session.mu.Unlock()
+				var firstReadUS atomic.Int64
 				firstVisible := true
 				emitData := func(data []byte) error {
 					for len(data) > 0 {
-						n := min(len(data), OutputChunk)
+						n := session.window.take(min(len(data), OutputChunk))
+						if n == 0 {
+							return session.ctx.Err()
+						}
 						var timings map[string]float64
 						if firstVisible {
 							firstVisible = false
-							timings = map[string]float64{"first_pty_read": firstRead, "first_visible_output": float64(time.Since(opened).Microseconds()) / 1000}
+							timings = map[string]float64{"first_pty_read": float64(firstReadUS.Load()) / 1000, "first_visible_output": float64(time.Since(opened).Microseconds()) / 1000}
 						}
 						out := Frame{Type: "data", ID: frame.ID, Data: data[:n], Timings: timings}
 						if frame.OutputCompression == "gzip" {
@@ -353,43 +366,51 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					}
 					return nil
 				}
-				for {
-					count := session.window.take(OutputChunk)
-					if count == 0 {
-						break
+				var sendFailed atomic.Bool
+				sent := make(chan struct{})
+				go func() {
+					defer close(sent)
+					for {
+						data := conf.Take()
+						if data == nil {
+							return
+						}
+						if err := emitData(data); err != nil {
+							sendFailed.Store(true)
+							conf.Close() // unblock the reader
+							return
+						}
 					}
-					data := make([]byte, count)
-					length, err := session.read(data)
-					if length < count {
-						session.window.add(count - length)
-					}
+				}()
+				buffer := make([]byte, Chunk)
+				for !sendFailed.Load() {
+					length, err := session.read(buffer)
 					if length > 0 {
-						if firstRead == 0 {
-							firstRead = float64(time.Since(opened).Microseconds()) / 1000
-						}
-						shown, reply, refunded := probe.Filter(data[:length])
-						if refunded > 0 {
-							session.window.add(refunded)
-						}
+						firstReadUS.CompareAndSwap(0, max(1, time.Since(opened).Microseconds()))
+						// Credit is taken when sending; what the filters drop was
+						// never counted.
+						shown, reply, _ := probe.Filter(buffer[:length])
 						if len(reply) > 0 {
 							if err := session.write(reply); err != nil {
 								break
 							}
 						}
-						shown, dropped := noop.Filter(shown)
-						if dropped > 0 {
-							session.window.add(dropped)
-						}
-						if err := emitData(shown); err != nil {
-							break
+						shown, _ = noop.Filter(shown)
+						if len(shown) > 0 {
+							conf.Write(shown)
 						}
 					}
 					if err != nil {
-						emitData(noop.Flush())
-						emitData(probe.Flush())
+						conf.Write(noop.Flush())
+						conf.Write(probe.Flush())
 						break
 					}
 				}
+				conf.Close()
+				<-sent
+				session.mu.Lock()
+				session.conf = nil
+				session.mu.Unlock()
 				waitErr := command.Wait()
 				finishAttachment()
 				code := 0
@@ -449,6 +470,9 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 			session.mu.Lock()
 			session.rows = uint16(max(1, min(frame.Rows, 1000)))
 			session.columns = uint16(max(1, min(frame.Columns, 1000)))
+			if session.conf != nil {
+				session.conf.Resize(int(session.rows), int(session.columns))
+			}
 			if session.file != nil && !session.closed {
 				session.resizePTY()
 			}
