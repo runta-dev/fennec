@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       BUILD_REPO: runta-dev/errand
       BUILD_RUN_ID: ${{ inputs.build_run_id }}
       NOTES: ${{ inputs.notes }}
