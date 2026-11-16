@@ -1382,18 +1382,19 @@ function confirmChatGPT(copy, proceed) {
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'codex-desktop-dialog';
-    dialog.className = 'update-dialog';
+    dialog.className = 'confirmation-dialog';
     dialog.setAttribute('aria-labelledby', 'codex-desktop-dialog-title');
+    dialog.setAttribute('aria-describedby', 'codex-desktop-dialog-description');
     dialog.tabIndex = -1;
     dialog.setAttribute('autofocus', '');
-    dialog.innerHTML = '<div class="update-dialog-head"><strong id="codex-desktop-dialog-title"></strong></div><p class="update-dialog-hint"></p><div class="update-dialog-actions"><button type="button" class="update-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="update-dialog-confirm"></button></div>';
+    dialog.innerHTML = '<div class="confirmation-dialog-head"><strong id="codex-desktop-dialog-title"></strong></div><p id="codex-desktop-dialog-description" class="confirmation-dialog-hint"></p><div class="confirmation-dialog-actions"><button type="button" class="confirmation-dialog-cancel">[[i18n:ui.cloud_cancel]]</button><button type="button" class="confirmation-dialog-confirm"></button></div>';
     document.body.append(dialog);
-    dialog.querySelector('.update-dialog-cancel').onclick = () => dialog.close();
+    dialog.querySelector('.confirmation-dialog-cancel').onclick = () => dialog.close();
   }
   dialog.onclose = () => { if (pointer && opener && opener !== document.body) requestAnimationFrame(() => { if (document.activeElement === opener) opener.blur(); }); };
   dialog.querySelector('#codex-desktop-dialog-title').textContent = copy.title;
-  dialog.querySelector('.update-dialog-hint').textContent = copy.body;
-  const confirm = dialog.querySelector('.update-dialog-confirm');
+  dialog.querySelector('.confirmation-dialog-hint').textContent = copy.body;
+  const confirm = dialog.querySelector('.confirmation-dialog-confirm');
   confirm.textContent = copy.action;
   confirm.onclick = () => { dialog.close(); proceed(); };
   if (!dialog.open) dialog.showModal();

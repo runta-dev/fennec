@@ -601,6 +601,15 @@ nav button{padding:3px 7px}
 .audit-entry.is-blocked .audit-meta-text{color:#b06014}
 :root[data-theme=dark] .audit-entry.is-blocked .audit-meta-text{color:#f3a865}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .audit-entry.is-blocked .audit-meta-text{color:#f3a865}}
+/* ChatGPT confirmations have their own styles, independent of the updater. */
+.confirmation-dialog{width:min(368px,calc(100vw - 28px));max-height:calc(100vh - 28px);margin:auto;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);overflow:auto}
+.confirmation-dialog::backdrop{background:#0005}
+.confirmation-dialog-head{margin:0 0 8px;line-height:1.4}
+.confirmation-dialog-head strong{font-size:13.5px;font-weight:500}
+.confirmation-dialog-hint{margin:0;font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.confirmation-dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;margin-top:18px}
+.confirmation-dialog-actions button{min-height:30px;max-width:100%;padding:5px 10px;border-radius:7px;font-size:12px;line-height:18px;overflow-wrap:anywhere}
+.confirmation-dialog-confirm{background:var(--text);color:var(--card);border-color:var(--text);font-weight:500}
 #codex-desktop-dialog:focus,#codex-desktop-dialog button:focus:not(:focus-visible){outline:none}
 /* Bundled third-party notices: flat rows inside the Licenses disclosure, opened in a native window. */
 .license-links{display:flex;flex-direction:column;margin:8px 0 6px;border-top:1px solid var(--line)}
