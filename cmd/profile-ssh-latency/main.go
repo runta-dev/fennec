@@ -39,6 +39,7 @@ var loadMode = flag.String("load-mode", "replies", "replies, duplex (synthetic s
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 var baseline = flag.String("baseline", "", "staged pre-scheduler terminal for an alternating A/B comparison; samples is per block")
 var baselinePaced = flag.Bool("baseline-paced", false, "baseline uses the resident command adapter too; compare two paced implementations")
+var idleTerminals = flag.String("idle-terminals", "", "comma-separated staged terminals for an unloaded same-connection comparison; requires -load=false")
 var tracePath = flag.String("ping-trace", "", "exclusive cloud output path for probe-server ping queue timings; requires shared output and no terminal/baseline override")
 
 const blobSize = 256 << 10
@@ -187,6 +188,12 @@ func run() error {
 	case "client":
 	default:
 		return fmt.Errorf("invalid role")
+	}
+	if *idleTerminals != "" {
+		if *loaded {
+			return fmt.Errorf("idle comparison requires -load=false")
+		}
+		return compareIdleTerminals(ctx)
 	}
 	if *baseline != "" {
 		return compareVersions(ctx)

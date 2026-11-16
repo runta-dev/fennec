@@ -1083,6 +1083,139 @@
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "4026c67c9a14dbdfe05f1e8621b8a57371d9dc4410cec061a6674350735f84f6"
     },
+    "2026-11-16-idle-shared-comparison.json": {
+      "client_origin": "Singapore / Singtel (user reported)",
+      "recorded_metadata": {
+        "boundary": "One warm authenticated SSH connection, three persistent resident channels and one shared small JSON guest echo channel. Six permutations alternate resident order; gateway/echo/ping measurement order rotates. Three warm-up pings per resident are excluded. No generated bulk traffic or agent input; background traffic uncontrolled. Client pacing is fixed for every variant, so this compares staged cloud variants rather than changing both endpoints' budgets. Not a UI typing/rendering test.",
+        "finished_utc": "2026-11-16T12:50:29.17325Z",
+        "provenance": {
+          "client": {
+            "evidence": "User report in this session",
+            "host": "Mac",
+            "location": "Singapore",
+            "network_provider": "Singtel",
+            "vpn_proxy_and_route": "not captured"
+          },
+          "client_budget": "Fixed 160/128 KiB/s for all three cloud variants; small probes only",
+          "clock": "Mac UTC timestamps and monotonic elapsed RTT; no cross-host clock subtraction",
+          "diagnostic_source_sha256": {
+            "idle_compare.go": "975dce63d1f0b4dadaa2dae8cd35311e181fa764edae2d8768e309981960afc5",
+            "main.go": "97ebdbfccd43f11ba400dcdbf6e6ea7d8c88d3a5fa6ad224ccbfc25cdf33dba6"
+          },
+          "mac_probe_sha256": "7550881798420f13acb2453874c4bc2419047ce052536839fc56ae9d4ad4052e",
+          "samples_per_cloud_variant": 60,
+          "scope": "Singapore-to-US warm protocol RTT, not US-local latency or UI response; varying cloud budgets with a common client",
+          "server": {
+            "endpoint": "ssh.runta.xyz",
+            "evidence": "GCP inventory checked around 2026-11-16T12:04Z; exact runtime placement not re-resolved for each block",
+            "previously_identified_worker": "runta-integration-worker-xfs-04",
+            "project": "runta-integration",
+            "provider": "GCP",
+            "region": "us-west1",
+            "worker_zone": "us-west1-b"
+          },
+          "settings": "All variants retain 2 KiB bursts, interactive priority, 16 KiB socket credit and dynamic terminal window 8-64 KiB. Dynamic window derives from each variant's total rate. TCP output guard remains default-off. Broker directories isolate test budgets from production tokens; host network still shared.",
+          "source": "Cloud variants: e53f4ba with recorded rate/directory overrides. Mac: e53f4ba diagnostic source plus the new idle-terminals comparison mode, recorded in this report's commit. No application source or deployment changed.",
+          "toolchains": "Linux Go1.26.11; Mac Go1.27.1",
+          "variants": {
+            "a160": {
+              "broker_directory": "traffic-q128-a",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "79a5c04f9e6b0136d47ba9c42a8963754d28262c4d472ff590954430979c18ce",
+              "total_KiBps": 160
+            },
+            "b128": {
+              "broker_directory": "traffic-q128-b",
+              "bulk_KiBps": 128,
+              "terminal_sha256": "bee19cfa2cf212bc5dde3b57b846510b28246aa81159725be0c339fe995a6401",
+              "total_KiBps": 128
+            },
+            "c128": {
+              "broker_directory": "traffic-q128-c",
+              "bulk_KiBps": 96,
+              "terminal_sha256": "757a12e2fa3af678bbe93251f6e5f30daaf9ce6b75a39a02e377fbfa4ea45bac",
+              "total_KiBps": 128
+            }
+          },
+          "workload": "No generated bulk traffic, agent input or scrolling. One authenticated SSH connection with three persistent resident channels. Nine warm-up pings excluded. Existing live traffic uncontrolled. Six permutations rotate resident order; ping, echo, gateway order rotates."
+        },
+        "started_utc": "2026-11-16T12:48:38.044447Z",
+        "summary": {
+          "/tmp/fennec-q128-a160-terminal": {
+            "echo": {
+              "count": 60,
+              "min_ms": 159.253125,
+              "median_ms": 166.3515,
+              "p95_ms": 466.971792,
+              "max_ms": 790.002792
+            },
+            "gateway": {
+              "count": 60,
+              "min_ms": 155.028208,
+              "median_ms": 162.620042,
+              "p95_ms": 197.217209,
+              "max_ms": 208.080792
+            },
+            "ping": {
+              "count": 60,
+              "min_ms": 159.340125,
+              "median_ms": 189.207459,
+              "p95_ms": 366.944875,
+              "max_ms": 489.304375
+            }
+          },
+          "/tmp/fennec-q128-b128-terminal": {
+            "echo": {
+              "count": 60,
+              "min_ms": 161.111458,
+              "median_ms": 169.153042,
+              "p95_ms": 336.266459,
+              "max_ms": 453.646833
+            },
+            "gateway": {
+              "count": 60,
+              "min_ms": 155.298,
+              "median_ms": 162.318458,
+              "p95_ms": 197.640667,
+              "max_ms": 198.670583
+            },
+            "ping": {
+              "count": 60,
+              "min_ms": 160.492084,
+              "median_ms": 166.926,
+              "p95_ms": 348.362375,
+              "max_ms": 507.616
+            }
+          },
+          "/tmp/fennec-q128-c128-terminal": {
+            "echo": {
+              "count": 60,
+              "min_ms": 159.8595,
+              "median_ms": 191.65525,
+              "p95_ms": 347.09475,
+              "max_ms": 584.7855
+            },
+            "gateway": {
+              "count": 60,
+              "min_ms": 155.356791,
+              "median_ms": 161.808084,
+              "p95_ms": 195.637833,
+              "max_ms": 202.551084
+            },
+            "ping": {
+              "count": 60,
+              "min_ms": 160.3025,
+              "median_ms": 167.168042,
+              "p95_ms": 322.044375,
+              "max_ms": 366.999458
+            }
+          }
+        }
+      },
+      "sample_records": 180,
+      "server_location_at_capture": "GCP runta-integration / us-west1; see evidence bounds",
+      "sha256": "a38ea93c29dfe7fef682cc22fd8d4c2ec88cee14c5a8988954bea6d10731e429"
+    },
     "2026-11-16-managed-migration-failure.txt": {
       "boundary": "Text artifact; consult its named tests and original investigation. No WAN endpoint or timestamp inferred.",
       "client_origin": "unknown; use recorded boundary for host role",
@@ -2165,5 +2298,5 @@
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-16T12:36:17.499652638Z"
+  "updated_utc": "2026-11-16T12:51:26.829106934Z"
 }

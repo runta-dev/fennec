@@ -26,6 +26,15 @@ The experiment retained all slow blocks and did not change production defaults
 or replace the installed app. These results must not be compared as equivalent
 samples with the earlier 260/304 ms observation.
 
+The subsequent [unloaded comparison](benchmarks/2026-11-16-idle-shared-comparison.md)
+kept one authenticated connection warm and alternated three staged cloud
+variants, with the Mac sender fixed at 160/128 KiB/s. With 60 samples per variant
+and no generated bulk traffic, TUI P95 was 367/348/322 ms for cloud budgets
+160/128, 128/128 and 128/96. Gateway P95 was 196–198 ms; ordinary guest echo
+also showed long tails. Existing background traffic was uncontrolled. This
+establishes unloaded tails, not their cause or a winning budget. The installed
+application and production defaults were not changed by this measurement.
+
 Earlier WAN check (11:22 UTC, November 16): the TCP output feedback candidate
 had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the
