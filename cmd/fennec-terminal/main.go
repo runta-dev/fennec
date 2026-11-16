@@ -279,6 +279,9 @@ func run() (int, error) {
 	if serving {
 		cpusched.Interactive(home)
 		terminalstream.FocusSession = cpusched.Focus
+		// Also here: an upgrade keeps the running traffic broker, so only a
+		// current serve is sure to prune destroyed sessions' groups.
+		go cpusched.KeepPruned(ctx, 30*time.Second)
 		streamInput, err := streamPipe(os.Stdin)
 		if err != nil {
 			return 1, err
