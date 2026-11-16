@@ -11,6 +11,16 @@ import (
 var ErrPingBusy = errors.New("too many pending terminal measurements")
 var ErrPingUnsupported = errors.New("terminal peer does not support matched ping IDs")
 
+// PingMeasurement uses only the client's monotonic clock. SendDuration includes
+// local scheduling and the underlying write; it is not network transit time.
+// A fast peer may reply before Write returns, so these durations must not be
+// subtracted as disjoint RTT components.
+type PingMeasurement struct {
+	ID           string
+	RTT          time.Duration
+	SendDuration time.Duration
+}
+
 // Ping measures a fresh ping's elapsed time through the production writer to
 // receipt of its matching pong. It includes application queueing, but excludes
 // initial readiness. Unlike Probe it never coalesces with a heartbeat, accepts
@@ -18,20 +28,29 @@ var ErrPingUnsupported = errors.New("terminal peer does not support matched ping
 // At most eight measurements/writes can be outstanding. A timed-out write may
 // still finish, but retains its slot until it releases the transport buffer.
 func (transport *Transport) Ping(ctx context.Context) (time.Duration, error) {
+	measurement, err := transport.MeasurePing(ctx)
+	return measurement.RTT, err
+}
+
+// MeasurePing exposes the matched ID and local send duration for diagnostics.
+// It sends exactly the same frame as Ping and has identical admission bounds.
+func (transport *Transport) MeasurePing(ctx context.Context) (PingMeasurement, error) {
+	var measurement PingMeasurement
 	if err := transport.Ready(ctx); err != nil {
-		return 0, err
+		return measurement, err
 	}
 	transport.mu.Lock()
 	if !transport.capabilities["probe_id"] {
 		transport.mu.Unlock()
-		return 0, ErrPingUnsupported
+		return measurement, ErrPingUnsupported
 	}
 	if transport.measuredPingWrites >= 8 || len(transport.measuredPings) >= 8 {
 		transport.mu.Unlock()
-		return 0, ErrPingBusy
+		return measurement, ErrPingBusy
 	}
 	transport.probeSequence++
 	id := "measure-" + strconv.FormatUint(transport.probeSequence, 10)
+	measurement.ID = id
 	ack := make(chan time.Time, 1)
 	if transport.measuredPings == nil {
 		transport.measuredPings = make(map[string]chan time.Time)
@@ -45,33 +64,40 @@ func (transport *Transport) Ping(ctx context.Context) (time.Duration, error) {
 		transport.mu.Unlock()
 	}()
 	started := time.Now()
-	sent := make(chan error, 1)
+	type sendResult struct {
+		err     error
+		elapsed time.Duration
+	}
+	sent := make(chan sendResult, 1)
 	go func() {
 		err := ctx.Err()
 		if err == nil {
 			err = transport.Send(Frame{Type: "ping", ID: id})
 		}
+		elapsed := time.Since(started)
 		transport.mu.Lock()
 		transport.measuredPingWrites--
 		transport.mu.Unlock()
-		sent <- err
+		sent <- sendResult{err: err, elapsed: elapsed}
 	}()
 	select {
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		return measurement, ctx.Err()
 	case <-transport.done:
-		return 0, io.EOF
-	case err := <-sent:
-		if err != nil {
-			return 0, err
+		return measurement, io.EOF
+	case result := <-sent:
+		measurement.SendDuration = result.elapsed
+		if result.err != nil {
+			return measurement, result.err
 		}
 	}
 	select {
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		return measurement, ctx.Err()
 	case <-transport.done:
-		return 0, io.EOF
+		return measurement, io.EOF
 	case received := <-ack:
-		return received.Sub(started), nil
+		measurement.RTT = received.Sub(started)
+		return measurement, nil
 	}
 }

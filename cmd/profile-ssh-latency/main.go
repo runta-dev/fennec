@@ -21,7 +21,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -39,6 +38,7 @@ var shared = flag.Bool("shared-output", true, "use the shared cloud output broke
 var loadMode = flag.String("load-mode", "replies", "replies, duplex (synthetic socket echo), or command (real streamed cat)")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 var baseline = flag.String("baseline", "", "staged pre-scheduler terminal for an alternating A/B comparison; samples is per block")
+var tracePath = flag.String("ping-trace", "", "exclusive cloud output path for probe-server ping queue timings; requires shared output and no terminal/baseline override")
 
 const blobSize = 256 << 10
 
@@ -61,6 +61,8 @@ type sample struct {
 	PingMS    float64   `json:"ping_ms"`
 	EchoMS    float64   `json:"echo_ms"`
 	GatewayMS float64   `json:"gateway_ms"`
+	PingID    string    `json:"ping_id,omitempty"`
+	SendMS    float64   `json:"send_ms"`
 }
 type report struct {
 	Boundary     string                             `json:"boundary"`
@@ -115,6 +117,9 @@ func run() error {
 	if *deadline <= 0 || *deadline > 30*time.Minute || *count < 1 || *count > 1000 || (*loadMode != "replies" && *loadMode != "duplex" && *loadMode != "command") {
 		return fmt.Errorf("invalid probe bounds")
 	}
+	if *tracePath != "" && (!safePath(*tracePath) || !*shared || *terminal != "" || *baseline != "") {
+		return fmt.Errorf("ping trace requires a safe path, shared output and the dedicated probe server")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), *deadline)
 	defer cancel()
 	switch *role {
@@ -127,6 +132,7 @@ func run() error {
 		context.AfterFunc(ctx, func() { os.Exit(70) })
 		data := payload()
 		var output io.Writer = os.Stdout
+		var input io.Reader = os.Stdin
 		if *shared {
 			home, err := os.UserHomeDir()
 			if err != nil {
@@ -143,7 +149,20 @@ func run() error {
 			defer broker.Close()
 			output = broker
 		}
-		return terminalstream.ServeWithSockets(ctx, os.Stdin, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
+		if *tracePath != "" {
+			trace, err := openPingTrace(*tracePath)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err := trace.close(); err != nil {
+					fmt.Fprintln(os.Stderr, "ping trace:", err)
+				}
+			}()
+			input = &traceInput{in: os.Stdin, trace: trace}
+			output = traceOutput{packetWriter: output.(packetWriter), trace: trace}
+		}
+		return terminalstream.ServeWithSockets(ctx, input, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
 			if op.Kind != "list" {
 				return nil, fmt.Errorf("unsupported probe operation")
 			}
@@ -182,6 +201,9 @@ func run() error {
 	} else if *loadMode == "command" {
 		result.Boundary = "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage."
 	}
+	if *tracePath != "" {
+		result.Boundary += " Dedicated probe server records local ping dispatch and broker-write durations without changing wire frames. Client send duration can overlap RTT; no cross-host clock subtraction."
+	}
 	err := measure(ctx, &result)
 	result.Duration = time.Since(result.Started).Seconds()
 	if err != nil {
@@ -189,16 +211,17 @@ func run() error {
 	}
 	result.Summary = make(map[string]map[string]distribution)
 	for _, phase := range []string{"idle", "bulk", "recovery"} {
-		var p, e, g []float64
+		var p, e, g, send []float64
 		for _, s := range result.Samples {
 			if s.Phase == phase {
 				p = append(p, s.PingMS)
 				e = append(e, s.EchoMS)
 				g = append(g, s.GatewayMS)
+				send = append(send, s.SendMS)
 			}
 		}
 		if len(p) > 0 {
-			result.Summary[phase] = map[string]distribution{"ping": summarize(p), "echo": summarize(e), "gateway": summarize(g)}
+			result.Summary[phase] = map[string]distribution{"ping": summarize(p), "echo": summarize(e), "gateway": summarize(g), "send": summarize(send)}
 		}
 	}
 	if encodeErr := json.NewEncoder(os.Stdout).Encode(result); encodeErr != nil {
@@ -207,7 +230,16 @@ func run() error {
 	return err
 }
 func safePath(path string) bool {
-	return filepath.IsAbs(path) && !strings.ContainsAny(path, " '\"\n\r\t;$`\\")
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	for _, c := range path {
+		if c != '/' && c != '.' && c != '_' && c != '-' &&
+			(c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
 }
 func ms(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
@@ -261,6 +293,9 @@ func measure(ctx context.Context, result *report) error {
 	client := ssh.NewClient(conn, channels, requests)
 	defer client.Close()
 	command := *remote + " -role server -timeout " + deadline.String() + fmt.Sprintf(" -shared-output=%t", *shared)
+	if *tracePath != "" {
+		command += " -ping-trace " + *tracePath
+	}
 	if *terminal != "" {
 		command = *terminal + fmt.Sprintf(" serve --protocol=%d", terminalstream.ProtocolVersion)
 	}
@@ -298,12 +333,14 @@ func measure(ctx context.Context, result *report) error {
 				switch (i + j) % 3 {
 				case 0:
 					step, cancel := context.WithTimeout(ctx, 5*time.Second)
-					d, e := transport.Ping(step)
+					measurement, e := transport.MeasurePing(step)
 					cancel()
 					if e != nil {
 						return fmt.Errorf("%s ping %d: %w", name, i, e)
 					}
-					s.PingMS = ms(d)
+					s.PingMS = ms(measurement.RTT)
+					s.PingID = measurement.ID
+					s.SendMS = ms(measurement.SendDuration)
 				case 1:
 					body, _ := json.Marshal(terminalstream.Frame{Type: "ping", ID: fmt.Sprintf("measure-%d", i+1)})
 					body = append(body, '\n')
