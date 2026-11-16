@@ -214,7 +214,7 @@ func record(cfg config, agent string, steps []step) (string, string, error) {
 		case <-done:
 		}
 	}()
-	command := fmt.Sprintf("cd %s && FEN_PREDICT_TRACE=%s %s attach %s; sleep 600", shellQuote(work), shellQuote(traces), shellQuote(cfg.fen), shellQuote(session))
+	command := fmt.Sprintf("cd %s && FEN_PREDICT_TRACE=%s FEN_PREDICT_STATS=test %s attach %s; sleep 600", shellQuote(work), shellQuote(traces), shellQuote(cfg.fen), shellQuote(session))
 	if _, err := tmux("new-session", "-d", "-s", pane, "-x", strconv.Itoa(cfg.cols), "-y", strconv.Itoa(cfg.rows), command); err != nil {
 		stopSession(cfg, session)
 		return "", session, fmt.Errorf("tmux: %w", err)

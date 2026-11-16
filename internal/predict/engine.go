@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Mode selects when predictions are shown.
@@ -68,9 +70,19 @@ type Stats struct {
 	Locked bool
 	// BarrierKeys counts the keys that waited for the agent, by key name.
 	BarrierKeys map[string]int
-	// Version is the first version number the agent drew before any key was
-	// typed (its startup banner), or "".
+	// Version is the version in the agent's startup banner, or "" when the
+	// banner was not on screen (attaching to a running session).
 	Version string
+	// Typed counts the keys the user typed; Keys also counts Neutral events
+	// (mouse and focus reports, key releases).
+	Typed, Neutral int
+	// Chars counts the characters typed as text; Commits the text inputs
+	// with non-ASCII letters (an input method committing a phrase).
+	Chars, Commits int
+	// RollbackCauses counts rollbacks by cause: "wrong" (the agent drew
+	// something else) or "missing" (it did not draw the key in time), the
+	// key's name, and ":busy" when the agent was busy producing output.
+	RollbackCauses map[string]int
 }
 
 type edit struct {
@@ -83,6 +95,7 @@ type edit struct {
 	dropped    bool
 	deferred   bool  // typed behind a barrier; mapped when it resolves
 	before     State // for a barrier: the composer it was typed into
+	counted    bool  // counted as predicted or barrier (Stats)
 }
 
 // Options configure an engine.
@@ -205,9 +218,9 @@ func (e *Engine) Server(data []byte) error {
 	buf.Write(data)
 	e.shadow.Write(data)
 	e.display.Write(data)
-	if e.stats.Version == "" && e.stats.Keys == 0 && e.versionScans < 200 && e.shadow.Ground() {
+	if e.stats.Version == "" && e.versionScans < 400 && e.shadow.Ground() {
 		e.versionScans++
-		e.stats.Version = screenVersion(e.shadow)
+		e.stats.Version = bannerVersion(e.profile.Name(), e.shadow)
 	}
 	if e.shadow.Scrolled {
 		e.shadow.Scrolled = false
@@ -260,7 +273,15 @@ func (e *Engine) Input(data []byte) uint64 {
 		offset += uint64(k.Bytes)
 		e.stats.Keys++
 		if k.Kind == KeyNeutral {
+			e.stats.Neutral++
 			continue
+		}
+		e.stats.Typed++
+		if k.Kind == KeyText {
+			e.stats.Chars += utf8.RuneCountInString(k.Text)
+			if strings.IndexFunc(k.Text, func(r rune) bool { return r > unicode.MaxASCII && unicode.IsLetter(r) }) >= 0 {
+				e.stats.Commits++
+			}
 		}
 		if !e.locked {
 			// Sent unpredicted; see the barrier added when the composer is
@@ -289,14 +310,20 @@ func (e *Engine) mapEdit(ed *edit, st State) {
 	ed.deferred = false
 	ed.apply = e.profile.Edit(ed.key, st, EditContext{Pending: len(e.pending), ImageReady: ed.imageReady})
 	ed.image = ed.key.Kind == KeyImagePaste && ed.apply != nil
+	// A key mapped again after a rollback is counted once.
+	counted := ed.counted
+	ed.counted = true
 	if ed.apply == nil {
 		ed.before = st
+		if counted {
+			return
+		}
 		e.stats.Barriers++
 		if e.stats.BarrierKeys == nil {
 			e.stats.BarrierKeys = map[string]int{}
 		}
 		e.stats.BarrierKeys[ed.key.Name()]++
-	} else {
+	} else if !counted {
 		e.stats.Predicted++
 	}
 }
@@ -393,6 +420,7 @@ func (e *Engine) Stats() Stats {
 	defer e.mu.Unlock()
 	s := e.stats
 	s.BarrierKeys = maps.Clone(e.stats.BarrierKeys)
+	s.RollbackCauses = maps.Clone(e.stats.RollbackCauses)
 	if n := len(e.paintSamples); n > 0 {
 		sorted := append([]time.Duration(nil), e.paintSamples...)
 		sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
@@ -547,14 +575,24 @@ func (e *Engine) reconcile(now time.Time) {
 				return
 			}
 		}
+		cause := "wrong"
 		if best == 0 {
 			// Nothing processed yet, unless the server says otherwise.
 			if !e.expired(first, now) {
 				return
 			}
+			cause = "missing"
 		} else if !e.diverged(first, now) {
 			return
 		}
+		cause += ":" + first.key.Name()
+		if e.opts.EchoAck && e.ackQuiet {
+			cause += ":busy"
+		}
+		if e.stats.RollbackCauses == nil {
+			e.stats.RollbackCauses = map[string]int{}
+		}
+		e.stats.RollbackCauses[cause]++
 		e.rollback(server)
 		return
 	}

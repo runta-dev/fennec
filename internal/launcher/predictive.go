@@ -122,8 +122,11 @@ func recordPredictionStats(engine *predict.Engine, agent, home string, rows, col
 	}
 	stats := engine.Stats()
 	now := time.Now()
-	if stats.Keys > 0 && strings.TrimSpace(strings.ToLower(os.Getenv("FEN_PREDICT_STATS"))) != "off" {
-		_ = predictstats.Append(home, predictstats.FromStats(agent, rows, columns, engine.EchoAck(), stats, now))
+	// FEN_PREDICT_STATS=off writes nothing; =test marks a recording tool's
+	// session, which summaries leave out by default.
+	mode := strings.TrimSpace(strings.ToLower(os.Getenv("FEN_PREDICT_STATS")))
+	if stats.Keys > 0 && mode != "off" {
+		_ = predictstats.Append(home, predictstats.FromStats(agent, rows, columns, engine.EchoAck(), mode == "test", stats, now))
 	}
 	if stats.Predicted == 0 {
 		return

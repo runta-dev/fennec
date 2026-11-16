@@ -307,7 +307,7 @@ Usage: fen [attach [session-id]]
   fen control <method>  (JSON parameters on stdin)
   fen settings [theme|language <value> | magpie on|off | auto-update on|off]
   fen login-item status|on|off|settings
-  fen predict-stats [--json]  (local predictive echo statistics per agent version)
+  fen predict-stats [--json] [--all] [--since <24h|date>]  (local predictive echo statistics per agent version)
 
 Picker: ↑/↓ j/k select · enter attach · x kill · r refresh · esc quit
 Control commands return JSON; --json is accepted explicitly.

@@ -30,12 +30,33 @@ func (k Key) Name() string {
 	return "other"
 }
 
-var versionPattern = regexp.MustCompile(`(?:^|[\s(])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?:$|[\s)])`)
+const semver = `(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)`
 
-// screenVersion returns the first version number drawn on the screen.
-func screenVersion(s *Screen) string {
-	for r := 0; r < s.Rows; r++ {
-		if m := versionPattern.FindStringSubmatch(s.RowText(r, 0, s.Cols)); m != nil {
+// bannerVersions match the version in each agent's own startup banner, so a
+// version number in the transcript (another tool's, a project's) is not
+// taken for the agent's.
+var bannerVersions = map[string]*regexp.Regexp{
+	"claude":   regexp.MustCompile(`Claude Code v` + semver),
+	"codex":    regexp.MustCompile(`OpenAI Codex \(v` + semver + `\)`),
+	"grok":     regexp.MustCompile(`Grok Build\s+` + semver + `\s*$`),
+	"opencode": regexp.MustCompile(`^\s*` + semver + `\s*$`), // alone, bottom right
+	"pi":       regexp.MustCompile(`█\s+v` + semver),
+	"kimi":     regexp.MustCompile(`│\s+Version:\s+` + semver),
+}
+
+// bannerVersion returns the version in the agent's startup banner on the
+// screen, or "".
+func bannerVersion(agent string, s *Screen) string {
+	re := bannerVersions[agent]
+	if re == nil {
+		return ""
+	}
+	from := 0
+	if agent == "opencode" {
+		from = max(0, s.Rows-3)
+	}
+	for r := from; r < s.Rows; r++ {
+		if m := re.FindStringSubmatch(s.RowText(r, 0, s.Cols)); m != nil {
 			return m[1]
 		}
 	}

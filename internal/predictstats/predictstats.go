@@ -43,19 +43,50 @@ type Entry struct {
 	ConfirmP50MS float64        `json:"confirm_p50_ms,omitempty"`
 	ConfirmP95MS float64        `json:"confirm_p95_ms,omitempty"`
 	PaintP95MS   float64        `json:"paint_p95_ms,omitempty"`
+	// Test marks a session started by a recording tool (record-composer
+	// sets FEN_PREDICT_STATS=test); it is left out of summaries by default.
+	Test bool `json:"test,omitempty"`
+	// Typed excludes Neutral events (mouse and focus reports) from Keys.
+	// Entries written before these fields have only Keys.
+	Typed          int            `json:"typed,omitempty"`
+	Neutral        int            `json:"neutral,omitempty"`
+	Chars          int            `json:"chars,omitempty"`
+	Commits        int            `json:"commits,omitempty"` // input method commits
+	RollbackCauses map[string]int `json:"rollback_causes,omitempty"`
+}
+
+// typed is the number of keys typed (Keys for entries without Typed).
+func (e Entry) typed() int {
+	if e.Typed > 0 || e.Neutral > 0 {
+		return e.Typed
+	}
+	return e.Keys
+}
+
+// Filter keeps entries at or after since (zero: all), without test sessions
+// unless includeTest.
+func Filter(entries []Entry, since time.Time, includeTest bool) []Entry {
+	var out []Entry
+	for _, e := range entries {
+		if (includeTest || !e.Test) && !e.At.Before(since) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // Path is the log file under home.
 func Path(home string) string { return filepath.Join(home, ".config", "fennec", "predict-stats.jsonl") }
 
 // FromStats builds an entry from an engine's counters.
-func FromStats(agent string, rows, columns int, echoAck bool, s predict.Stats, at time.Time) Entry {
+func FromStats(agent string, rows, columns int, echoAck, test bool, s predict.Stats, at time.Time) Entry {
 	ms := func(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 	return Entry{
 		At: at.UTC().Truncate(time.Second), Agent: agent, Version: s.Version, Rows: rows, Columns: columns, EchoAck: echoAck,
 		Locked: s.Locked, Keys: s.Keys, Predicted: s.Predicted, Confirmed: s.Confirmed, Diverged: s.Diverged,
 		Expired: s.Expired, Barriers: s.Barriers, BarrierKeys: s.BarrierKeys, Unlocked: s.Unlocked,
 		UnlockedKeys: s.UnlockedKeys, ConfirmP50MS: ms(s.ConfirmP50), ConfirmP95MS: ms(s.ConfirmP95), PaintP95MS: ms(s.LocalPaintP95),
+		Test: test, Typed: s.Typed, Neutral: s.Neutral, Chars: s.Chars, Commits: s.Commits, RollbackCauses: s.RollbackCauses,
 	}
 }
 
@@ -110,21 +141,24 @@ func Load(home string) ([]Entry, error) {
 
 // Summary aggregates the sessions of one agent version.
 type Summary struct {
-	Agent        string         `json:"agent"`
-	Version      string         `json:"version"`
-	Sessions     int            `json:"sessions"`
-	NeverLocked  int            `json:"never_locked"` // sessions with keys but no recognised composer
-	Keys         int            `json:"keys"`
-	Predicted    int            `json:"predicted"`
-	Confirmed    int            `json:"confirmed"`
-	Diverged     int            `json:"diverged"`
-	Expired      int            `json:"expired"`
-	Barriers     int            `json:"barriers"`
-	UnlockedKeys int            `json:"unlocked_keys"`
-	BarrierKeys  map[string]int `json:"barrier_keys,omitempty"`
-	ConfirmP50MS float64        `json:"confirm_p50_ms"` // median of session medians
-	First        time.Time      `json:"first"`
-	Last         time.Time      `json:"last"`
+	Agent          string         `json:"agent"`
+	Version        string         `json:"version"`
+	Sessions       int            `json:"sessions"`
+	NeverLocked    int            `json:"never_locked"` // sessions with keys but no recognised composer
+	Typed          int            `json:"typed"`
+	Chars          int            `json:"chars"`
+	Commits        int            `json:"commits"`
+	Predicted      int            `json:"predicted"`
+	Confirmed      int            `json:"confirmed"`
+	Diverged       int            `json:"diverged"`
+	Expired        int            `json:"expired"`
+	Barriers       int            `json:"barriers"`
+	UnlockedKeys   int            `json:"unlocked_keys"`
+	BarrierKeys    map[string]int `json:"barrier_keys,omitempty"`
+	RollbackCauses map[string]int `json:"rollback_causes,omitempty"`
+	ConfirmP50MS   float64        `json:"confirm_p50_ms"` // median of session medians
+	First          time.Time      `json:"first"`
+	Last           time.Time      `json:"last"`
 }
 
 // Summarize groups entries by agent and version, newest version first.
@@ -135,14 +169,19 @@ func Summarize(entries []Entry) []Summary {
 		key := [2]string{e.Agent, e.Version}
 		s := groups[key]
 		if s == nil {
-			s = &Summary{Agent: e.Agent, Version: e.Version, BarrierKeys: map[string]int{}, First: e.At}
+			s = &Summary{Agent: e.Agent, Version: e.Version, BarrierKeys: map[string]int{}, RollbackCauses: map[string]int{}, First: e.At}
 			groups[key] = s
 		}
 		s.Sessions++
-		if !e.Locked && e.Keys > 0 {
+		if !e.Locked && e.typed() > 0 {
 			s.NeverLocked++
 		}
-		s.Keys += e.Keys
+		s.Typed += e.typed()
+		s.Chars += e.Chars
+		s.Commits += e.Commits
+		for k, n := range e.RollbackCauses {
+			s.RollbackCauses[k] += n
+		}
 		s.Predicted += e.Predicted
 		s.Confirmed += e.Confirmed
 		s.Diverged += e.Diverged
@@ -201,16 +240,19 @@ func topKeys(m map[string]int, n int) string {
 
 // Write prints the summaries as a table.
 //
+//	typed:     keys typed (mouse and focus reports excluded); IME: input
+//	           method commits among them
 //	predicted: keys shown at once / keys typed into a recognised composer
-//	rollback:  predictions the agent drew differently / predictions
-//	unlocked:  keys typed while no composer was recognised / all keys
+//	rollback:  predictions the agent drew differently or not in time /
+//	           predictions; causes: wrong|missing:<key>[:busy]
+//	unlocked:  keys typed while no composer was recognised / typed
 func Write(w io.Writer, summaries []Summary) error {
 	if len(summaries) == 0 {
 		_, err := fmt.Fprintf(w, "No sessions recorded yet. Statistics are written when a session detaches.\n")
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "AGENT\tVERSION\tSESSIONS\tKEYS\tPREDICTED\tROLLBACK\tEXPIRED\tUNLOCKED\tCONFIRM P50\tWAITED FOR AGENT")
+	fmt.Fprintln(tw, "AGENT\tVERSION\tSESSIONS\tTYPED\tIME\tPREDICTED\tROLLBACK\tUNLOCKED\tCONFIRM P50\tWAITED FOR AGENT\tROLLBACK CAUSES")
 	for _, s := range summaries {
 		version := s.Version
 		if version == "" {
@@ -224,9 +266,9 @@ func Write(w io.Writer, summaries []Summary) error {
 		if s.ConfirmP50MS > 0 {
 			confirm = fmt.Sprintf("%.0f ms", s.ConfirmP50MS)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Agent, version, sessions, s.Keys,
-			percent(s.Predicted, s.Predicted+s.Barriers), percent(s.Diverged, s.Predicted), percent(s.Expired, s.Predicted),
-			percent(s.UnlockedKeys, s.Keys), confirm, topKeys(s.BarrierKeys, 5))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Agent, version, sessions, s.Typed, s.Commits,
+			percent(s.Predicted, s.Predicted+s.Barriers), percent(s.Diverged, s.Predicted),
+			percent(s.UnlockedKeys, s.Typed), confirm, topKeys(s.BarrierKeys, 5), topKeys(s.RollbackCauses, 3))
 	}
 	return tw.Flush()
 }

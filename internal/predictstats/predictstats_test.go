@@ -16,7 +16,7 @@ func TestAppendSummarize(t *testing.T) {
 	add := func(agent, version string, s predict.Stats) {
 		t.Helper()
 		s.Version = version
-		if err := Append(home, FromStats(agent, 30, 100, true, s, at)); err != nil {
+		if err := Append(home, FromStats(agent, 30, 100, true, false, s, at)); err != nil {
 			t.Fatal(err)
 		}
 		at = at.Add(time.Minute)
@@ -71,5 +71,36 @@ func TestRotation(t *testing.T) {
 	entries, _ := Load(home)
 	if len(entries) != 2 || entries[1].Keys != 2 {
 		t.Fatalf("entries %+v", entries)
+	}
+}
+
+// TestTypedCausesAndFilter: typing excludes mouse and focus reports,
+// rollback causes add up, and recording-tool sessions and old entries are
+// filtered out.
+func TestTypedCausesAndFilter(t *testing.T) {
+	at := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	entries := []Entry{
+		FromStats("codex", 37, 143, true, false, predict.Stats{Keys: 300, Typed: 100, Neutral: 200, Chars: 140, Commits: 12, Predicted: 90, Barriers: 10, Diverged: 3, Locked: true,
+			RollbackCauses: map[string]int{"wrong:text:busy": 2, "missing:backspace": 1}}, at),
+		FromStats("codex", 37, 143, true, false, predict.Stats{Keys: 50, Typed: 50, Predicted: 50, Diverged: 1, Locked: true,
+			RollbackCauses: map[string]int{"wrong:text:busy": 1}}, at.Add(time.Hour)),
+		FromStats("codex", 30, 100, true, true, predict.Stats{Keys: 200, Typed: 200, Predicted: 200, Locked: true}, at.Add(time.Hour)),
+		{At: at.Add(-24 * time.Hour), Agent: "codex", Keys: 500, Predicted: 5, Locked: true}, // before typed was recorded
+	}
+	s := Summarize(Filter(entries, at, false))
+	if len(s) != 1 || s[0].Sessions != 2 || s[0].Typed != 150 || s[0].Commits != 12 || s[0].RollbackCauses["wrong:text:busy"] != 3 {
+		t.Fatalf("summary %+v", s)
+	}
+	if all := Summarize(Filter(entries, time.Time{}, true)); all[0].Sessions != 4 || all[0].Typed != 850 {
+		t.Fatalf("all %+v", all)
+	}
+	var out bytes.Buffer
+	if err := Write(&out, s); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"150", "12", "2.9%", "wrong:text:busy 3, missing:backspace 1"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("table lacks %q:\n%s", want, out.String())
+		}
 	}
 }

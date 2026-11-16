@@ -485,13 +485,20 @@ Built:
 - Usage statistics: each attached session appends one line of counters to
   `~/.config/fennec/predict-stats.jsonl` (mode 0600, rotated at 2 MB, never
   sent anywhere; `FEN_PREDICT_STATS=off` disables it). A line holds the agent,
-  the version its startup banner showed, the terminal size, and counts of
-  keys, predictions, confirmations, rollbacks, expiries, keys typed with no
-  recognised composer, and the keys that waited for the agent by name
-  (`up`, `tab`, `ctrl+k`, `text/` for a `/` menu, ...). It never holds typed
-  text or screen content. `fen predict-stats [--json]` groups them by agent
-  version; a new version whose sessions are "never locked" means its profile
-  no longer matches the layout.
+  the version in the agent's own startup banner (empty when attaching to a
+  running session, whose banner is gone; version numbers in the conversation
+  are never taken), the terminal size, keys typed (mouse and focus reports
+  counted apart), characters and input method commits (one commit is one
+  key however many characters it holds), predictions, confirmations,
+  rollbacks with their causes (`wrong` or `missing`, the key's name, `:busy`
+  when the agent was producing output), keys typed with no recognised
+  composer, and the keys that waited for the agent by name (`up`, `tab`,
+  `ctrl+k`, `text/` for a `/` menu, ...). A key predicted again after a
+  rollback is counted once. It never holds typed text or screen content.
+  `fen predict-stats [--json] [--all] [--since <24h|date>]` groups them by
+  agent version; sessions of `record-composer` (`FEN_PREDICT_STATS=test`)
+  are left out unless `--all`. A new version whose sessions are "never
+  locked" means its profile no longer matches the layout.
 - The macOS app's terminal runs `fen attach` in a PTY, so it uses the same
   engine with no extra work.
 
