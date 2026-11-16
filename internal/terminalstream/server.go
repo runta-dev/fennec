@@ -204,9 +204,10 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				session.wire = newWireWindow()
 				if frame.Type == "socket" && writes.packets.enabled.Load() {
 					// Paced bulk streams need enough outstanding bytes to use a
-					// high-RTT link. Terminals retain the tighter 4 KiB allowance;
-					// the shared scheduler still paces every bulk packet.
-					session.wire.limit = socketWireWindow
+					// high-RTT link; their window is fixed. Terminal windows
+					// follow the stream's round trip (adaptiveWindow); the
+					// shared scheduler still paces every bulk packet.
+					session.wire.limit, session.wire.adaptive = socketWireWindow, false
 				}
 				context.AfterFunc(sessionCtx, session.wire.close)
 			}

@@ -13,8 +13,12 @@ had loaded ping P95 424 ms versus 333 ms without feedback. Feedback remains
 experimental and default-off. The 240 ms target remains unmet; see the
 [paired reports and limitations](ssh-backlog-investigation.md).
 
-The terminal encoded output window is now **64 KiB**, integrating the user's
-latest scrolling experiment with the relay recovery changes. The previous 4 KiB
+The terminal encoded output window now **follows each stream's round trip**:
+1.5 x the 112 KB/s paced rate x the minimum round trip, between 8 and 64 KiB
+(about 13 KiB at 80 ms, 41 KiB at 250 ms; see
+[predictive echo, "The window follows the round trip"](predictive-echo.md)).
+It replaces the fixed 32 KiB and then 64 KiB windows of the user's scrolling
+experiments, which suited one round trip only. The previous 4 KiB
 window limited one terminal to about 16 KiB/s at 250 ms RTT. This was an
 interaction regression even when a small ping could pass quickly. Validate scrolling,
 full-screen repaint, typing and concurrent-terminal fairness alongside exact

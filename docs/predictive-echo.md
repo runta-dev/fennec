@@ -765,6 +765,60 @@ lossy-link backlog of file/socket output, whose window stays 16 KiB. Under
 packet loss a 32 KiB terminal window can add the same kind of delay; the
 `profile-ssh-latency` comparison should include it.
 
+A second pass the same evening (32, then 64 KiB, same method) was much
+noisier: echo in B rose to 0.4–2.4 s at 32 KiB and 0.2–1.7 s at 64 KiB,
+including keys typed before a scroll, so the link itself was slower then;
+scrolls arrived in 1.0–4.9 s and 1.1–3.0 s. The planned 16 and 48 KiB runs
+were lost when the sweep died. At 64 KiB the window exceeds the
+bandwidth-delay product at this round trip, so the extra 32 KiB can only
+queue ahead of other output; no run showed a gain worth that.
+
+### The window follows the round trip
+
+A fixed window suits one round trip: 32 KiB is about the bandwidth-delay
+product at 250 ms, twice what a user at 80 ms needs (who then queues
+16 KiB ahead of their echo) and too little at 400 ms. Each terminal stream
+therefore sizes its own window from its measured round trip:
+
+    window = clamp(1.5 x 112 KB/s x minRTT, 8 KiB, 64 KiB)
+
+- 112 KB/s is the paced output rate (`traffic.DefaultConfig`), below the
+  host's 128 KB/s egress limit. The 1.5 gain covers credit returning in
+  bursts and round-trip jitter.
+- A sample is the time from handing a frame to SSH until the peer has
+  credited all of it. Only frames sent while nothing else of the stream was
+  in flight are sampled, so a stream's own queue cannot inflate them;
+  otherwise sustained output would raise the samples, the window with them,
+  and the queue again.
+- minRTT is the minimum over the last 10 s, so a slower path is followed
+  once its old minimum expires, while output of other streams queued ahead
+  in the pacer rarely raises it.
+- The window starts at 16 KiB until the first sample and never stops an
+  idle stream: one frame always goes when nothing is in flight.
+- Socket streams keep their fixed 16 KiB window
+  (`docs/ssh-backlog-investigation.md`).
+
+| Round trip | Window |
+| --- | ---: |
+| 20 ms (same region) | 8 KiB (floor) |
+| 80 ms (US) | 13 KiB |
+| 220 ms | 36 KiB |
+| 250 ms (Singapore) | 41 KiB |
+| 400 ms and above | 64 KiB (cap) |
+
+Measured with the same two-session method right after the second pass
+(2 runs, 12 scrolls, 24 keys; the round trip was about 200–250 ms, so the
+window was about 33–41 KiB): scrolls arrived in 1.0–3.3 s (median about
+1.3 s), as fast as the fixed 32 and 64 KiB windows. Echo in B was 194–428 ms
+in the first run; in the second, 5 of the 9 keys typed during a scroll took
+1.0–1.35 s while the 3 typed before one stayed at 200–230 ms, the same kind
+of delay the 32 and 64 KiB windows showed in the second pass. Scrolling is
+as fast as with either fixed window; echo during a scroll is not yet
+reliably at the idle round trip, and where that delay comes from is not yet
+measured (candidates: A's frames ahead in the pacer, the TCP backlog in
+`docs/ssh-backlog-investigation.md`). These runs cannot
+show the gain for short round trips, which needs a user near the region.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.

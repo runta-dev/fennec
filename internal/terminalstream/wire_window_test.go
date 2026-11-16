@@ -106,3 +106,121 @@ func TestWireWindowCancellationReleasesWriter(t *testing.T) {
 		t.Fatal("writer leaked")
 	}
 }
+
+// fakeClockWindow returns a terminal window driven by a fake clock.
+func fakeClockWindow() (*wireWindow, *time.Time) {
+	now := time.Unix(1000, 0)
+	w := newWireWindow()
+	w.now = func() time.Time { return now }
+	return w, &now
+}
+
+// sendAndCredit sends one 1 KiB frame and credits it after rtt.
+func sendAndCredit(t *testing.T, w *wireWindow, now *time.Time, rtt time.Duration) {
+	t.Helper()
+	if !w.reserve(OutputChunk, 1000) {
+		t.Fatal("reserve")
+	}
+	*now = now.Add(rtt)
+	if !w.ack(OutputChunk) {
+		t.Fatal("ack")
+	}
+}
+
+// TestWireWindowFollowsRoundTrip: the window is about one and a half
+// bandwidth-delay products of the stream's own round trip, within bounds.
+func TestWireWindowFollowsRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		rtt      time.Duration
+		min, max int
+	}{
+		{20 * time.Millisecond, outputWireWindowMin, outputWireWindowMin}, // same machine: floor
+		{80 * time.Millisecond, 12 << 10, 14 << 10},                       // US
+		{220 * time.Millisecond, 35 << 10, 38 << 10},
+		{250 * time.Millisecond, 41 << 10, 43 << 10}, // Singapore
+		{400 * time.Millisecond, outputWireWindowMax, outputWireWindowMax},
+	} {
+		w, now := fakeClockWindow()
+		if w.limit != outputWireWindow {
+			t.Fatalf("initial window %d", w.limit)
+		}
+		sendAndCredit(t, w, now, tc.rtt)
+		if w.limit < tc.min || w.limit > tc.max {
+			t.Errorf("rtt %v: window %d, want %d..%d", tc.rtt, w.limit, tc.min, tc.max)
+		}
+	}
+}
+
+// TestWireWindowIgnoresQueueing: round trips of frames that waited behind
+// the stream's own output do not grow the window, and a minimum older than
+// the filter expires, so a lasting change of path is followed.
+func TestWireWindowIgnoresQueueing(t *testing.T) {
+	w, now := fakeClockWindow()
+	reserve := func() {
+		t.Helper()
+		if !w.reserve(OutputChunk, 1000) {
+			t.Fatal("reserve")
+		}
+	}
+	credit := func(after time.Duration) {
+		t.Helper()
+		*now = now.Add(after)
+		if !w.ack(OutputChunk) {
+			t.Fatal("ack")
+		}
+	}
+	// Sustained output: one frame always in flight, so every frame after
+	// the first waits behind the previous one for 900 ms.
+	reserve()
+	reserve()
+	credit(80 * time.Millisecond)
+	small := w.limit
+	if small != adaptiveWindow(80*time.Millisecond) {
+		t.Fatalf("window %d after an 80 ms round trip", small)
+	}
+	for i := 0; i < 20; i++ {
+		reserve()
+		credit(900 * time.Millisecond)
+	}
+	credit(900 * time.Millisecond)
+	if w.limit != small {
+		t.Fatalf("window grew from %d to %d on queued samples", small, w.limit)
+	}
+	for i := 0; i < 15; i++ { // the path really became slower
+		*now = now.Add(time.Second)
+		sendAndCredit(t, w, now, 300*time.Millisecond)
+	}
+	if w.limit != adaptiveWindow(300*time.Millisecond) {
+		t.Fatalf("window %d after the round trip rose to 300 ms", w.limit)
+	}
+}
+
+// TestWireWindowSmallerThanFrame: one frame always goes when nothing is in
+// flight, however small the window became.
+func TestWireWindowSmallerThanFrame(t *testing.T) {
+	w, now := fakeClockWindow()
+	sendAndCredit(t, w, now, time.Millisecond)
+	if w.limit != outputWireWindowMin {
+		t.Fatalf("window %d", w.limit)
+	}
+	done := make(chan bool, 1)
+	go func() { done <- w.reserve(OutputChunk, outputWireWindowMin+500) }()
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Fatal("reservation failed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("frame larger than the window blocked an idle stream")
+	}
+}
+
+// TestSocketWindowStaysFixed: sockets keep their fixed window.
+func TestSocketWindowStaysFixed(t *testing.T) {
+	w, now := fakeClockWindow()
+	w.limit, w.adaptive = socketWireWindow, false
+	sendAndCredit(t, w, now, 400*time.Millisecond)
+	if w.limit != socketWireWindow {
+		t.Fatalf("socket window changed to %d", w.limit)
+	}
+}
