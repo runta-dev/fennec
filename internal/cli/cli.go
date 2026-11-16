@@ -30,6 +30,8 @@ func Run(arguments []string, output io.Writer) error {
 		return nil
 	}
 	switch arguments[0] {
+	case "transfer-ssh":
+		return transferSSH(arguments[1:], os.Stdin, output, os.Stderr)
 	case "app-restart", "app-restart-worker":
 		return appRestartCommand(arguments[1:], arguments[0] == "app-restart-worker")
 	case "transport-worker":

@@ -51,6 +51,7 @@ type daemonServices struct {
 	metricsCacheAt                             time.Time
 	metricsDemandAt                            time.Time
 	channel                                    *terminalChannel
+	transferSlots                              chan struct{}
 	initializeMu                               sync.Mutex
 	user                                       string
 	mu                                         sync.Mutex

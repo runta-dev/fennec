@@ -15,7 +15,6 @@ import (
 
 	"fennec/internal/project"
 	"fennec/internal/runta"
-	"fennec/internal/setup"
 	"fennec/internal/syncengine"
 )
 
@@ -60,15 +59,7 @@ func syncProject(input io.Reader, output io.Writer) error {
 	if computer.Status != "running" || computer.Degraded {
 		return fmt.Errorf("cloud computer not ready")
 	}
-	identity := filepath.Join(home, ".config/fennec/cloud")
-	client, err := api.Connect(ctx, request.RuntimeID, identity)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-	stop := context.AfterFunc(ctx, func() { client.Close() })
-	defer stop()
-	session, err := client.NewSession()
+	session, err := openManagedCommand(ctx, home, user, request.RuntimeID)
 	if err != nil {
 		return err
 	}
@@ -82,13 +73,23 @@ func syncProject(input io.Reader, output io.Writer) error {
 		return err
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
-	if err = setup.Exec(ctx, client, "umask 077\nmkdir -p -- "+quote(mapping.CloudDirectory)+"\n"); err != nil {
+	session, err = openManagedCommand(ctx, home, user, request.RuntimeID)
+	if err != nil {
+		return err
+	}
+	err = session.Run("umask 077\nmkdir -p -- " + quote(mapping.CloudDirectory) + "\n")
+	session.Close()
+	if err != nil {
 		return err
 	}
 	scope := sha256.Sum256([]byte(user + "\x00" + request.RuntimeID))
 	state := filepath.Join(home, ".config/fennec/sync", hex.EncodeToString(scope[:16]))
 	wrapper := filepath.Join(state, "ssh")
-	alias, err := syncengine.ConfigureSSH(wrapper, request.RuntimeID, filepath.Join(identity, "runtime_key"), filepath.Join(identity, "known_hosts"))
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	alias, err := syncengine.ConfigureManagedSSH(wrapper, executable, user, request.RuntimeID)
 	if err != nil {
 		return err
 	}

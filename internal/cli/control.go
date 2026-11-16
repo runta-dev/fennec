@@ -158,6 +158,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
+	controller.Additional["transfer.open"] = services.openTransfer
 	services.chatgpt = newChatGPTBridge(home, services)
 	for method, handler := range services.chatgpt.handlers() {
 		controller.Additional[method] = handler

@@ -80,6 +80,21 @@ func run() (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	if len(os.Args) == 2 && os.Args[1] == "sftp-stdio" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+		defer stop()
+		input, err := streamPipe(os.Stdin)
+		if err != nil {
+			return 1, err
+		}
+		defer input.Close()
+		output, err := streamPipe(os.Stdout)
+		if err != nil {
+			return 1, err
+		}
+		defer output.Close()
+		return 0, serveSFTP(ctx, home, input, output)
+	}
 	if len(os.Args) == 3 && os.Args[1] == "receive-project" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
