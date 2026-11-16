@@ -182,6 +182,10 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  if request['agent']=='claude':command=['env','IS_SANDBOX=1']+command
  # Fennec made the session directory: Kimi Code trusts it up front.
  if request['agent']=='kimi':command=['env','` + kimiTrustWorkspace + `']+command
+ # The cloud runtime has no session bus. Without an address, Go and shell
+ # dbus clients run dbus-launch, and every such daemon outlives its agent and
+ # holds an inotify instance until the user's limit is exhausted.
+ if not os.environ.get('DBUS_SESSION_BUS_ADDRESS'):command=['env','` + noSessionBus + `']+command
  args=['herdr-core','run','--bg','--no-parent','--outlive-parent','--json','--cwd',request['cwd'],'--label','fennec.session='+request['id'],'--label','fennec.agent='+request['agent'],'--']+command
  launched=subprocess.run(args,capture_output=True,text=True,timeout=80)
  if launched.returncode:raise SystemExit('Herdr launch failed; inspect before retrying')
@@ -197,3 +201,7 @@ LAUNCH
 // kimiTrustWorkspace trusts the session's working directory, which Fennec
 // creates, so Kimi Code does not stop at its "Trust this folder?" prompt.
 const kimiTrustWorkspace = "KIMI_CODE_TRUST_WORKSPACE=1"
+
+// noSessionBus tells dbus clients there is no session bus, so they fail fast
+// instead of starting one (the Magpie supervisor sets the same).
+const noSessionBus = "DBUS_SESSION_BUS_ADDRESS=disabled:"

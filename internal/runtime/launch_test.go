@@ -170,8 +170,21 @@ else:
 	}
 	for i, arg := range args {
 		if arg == "--" {
-			if i+1 >= len(args) || filepath.Clean(args[i+1]) != filepath.Clean(original) {
+			rest := args[i+1:]
+			// An env prefix sets variables for the agent only.
+			bus := false
+			if len(rest) > 0 && rest[0] == "env" {
+				rest = rest[1:]
+				for len(rest) > 0 && strings.Contains(rest[0], "=") {
+					bus = bus || rest[0] == "DBUS_SESSION_BUS_ADDRESS=disabled:"
+					rest = rest[1:]
+				}
+			}
+			if len(rest) == 0 || filepath.Clean(rest[0]) != filepath.Clean(original) {
 				t.Fatalf("unpinned command %q", args)
+			}
+			if !bus && os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+				t.Fatalf("agent may start a session bus: %q", args)
 			}
 			return
 		}

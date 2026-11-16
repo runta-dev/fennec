@@ -70,6 +70,17 @@ const MagpieServiceScript = `set -eu
 export PATH="$HOME/.local/fennec/node/bin:$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
 base="$HOME/.local/fennec"
 mkdir -p "$base/logs" "$HOME/.config/fennec"
+# Agents, their tools and file watchers each hold inotify instances; the
+# default limit of 128 per user ran out and OpenCode then hangs at startup.
+# Best effort: raise it when allowed, never fail preparation over it.
+instances=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)
+case "$instances" in ''|*[!0-9]*) instances=0 ;; esac
+if [ "$instances" -lt 1024 ] && [ -w /proc/sys/fs/inotify/max_user_instances ]; then
+ echo 1024 > /proc/sys/fs/inotify/max_user_instances 2>/dev/null || true
+ if [ -d /etc/sysctl.d ] && [ -w /etc/sysctl.d ]; then
+  printf '%s\n' 'fs.inotify.max_user_instances = 1024' > /etc/sysctl.d/60-inotify-instances.conf 2>/dev/null || true
+ fi
+fi
 umask 077
 cat > "$base/magpie-supervisor.sh" <<'SUPERVISOR'
 #!/bin/sh
@@ -81,6 +92,10 @@ if [ -z "${SSL_CERT_FILE:-}" ] && [ -f /etc/ssl/certs/ca-certificates.crt ]; the
  export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 fi
 export MAGPIE_ADDR=127.0.0.1:3425
+# No session bus exists here. Unset, Magpie's dbus client (and anything it
+# starts, such as Claude Code and its MCP helper) runs dbus-launch, and each
+# daemon outlives its caller holding an inotify instance.
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-disabled:}"
 export CODEX_HOME="$HOME/.local/fennec/native/codex"
 export CLAUDE_CONFIG_DIR="$HOME/.local/fennec/native/claude"
 export PI_CODING_AGENT_DIR="$HOME/.local/fennec/native/pi"
