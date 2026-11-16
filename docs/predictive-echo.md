@@ -724,6 +724,47 @@ client shows exactly the real screen after every send; a Codex-like 40-step
 gesture drawn while one send per round trip goes out shrinks from 254 KB to
 under 8 KB.
 
+### Measured on the real link (2026-11-16)
+
+Merging alone did not make Codex scrolling fast on the real link. The setup:
+two labelled Fennec test sessions on the Mac, attached in tmux with
+`FEN_PREDICT_TRACE`: A resumes an old Codex conversation and scrolls (40
+wheel steps in about 80 ms, sent in bursts of five; `tmux send-keys` costs
+about 120 ms a call, so one step per call would be far slower than a
+trackpad); B is an idle Claude Code session in which a key is typed before
+and 0.3, 1.3 and 2.3 s into each of A's scrolls. Nothing is submitted.
+Arrival is the last output A receives after the first step; echo is the
+first complete frame in which B's composer shows the key. Per-frame
+timestamps come from the client's trace.
+
+With the 4 KiB terminal output wire window (`outputWireWindow`), output
+reached the Mac at a steady 4 KB per 250 ms, about 17 KB/s, a seventh of the
+host's 128 KB/s: credit for each frame returns only after the Mac consumed
+it, so a stream has at most 4 KiB of encoded output in flight per round trip
+(a 1 KiB chunk is about 0.9 KiB after gzip, base64 and JSON). Raising the
+window to 32 KiB (about 128 KB/s times 250 ms):
+
+| | 4 KiB window | 32 KiB window |
+| --- | ---: | ---: |
+| Codex 40-step scroll, last output after the first step | 8.0–11.6 s (3 runs) | 1.1–2.9 s (6 runs) |
+| Output per scroll | 48–76 KB | 76–79 KB |
+| Claude Code echo while A's output was arriving | 389–861 ms (12 keys) | 198–339 ms (12 keys) |
+
+A single session with the 4 KiB window measured 4.0–5.4 s per scroll earlier
+the same day; the two-session 4 KiB run also had one reconnection, so its
+upper values are pessimistic. Echo improved too: with 4 KiB, scrolling back
+to the bottom (60 steps) was still arriving 12 s later, so B's keys waited
+behind it; with 32 KiB the backlog drained within a few round trips and B's
+echo stayed at the idle round trip (about 200–340 ms). Merging keeps the
+larger window from filling the link with stale frames.
+
+This is one pair of runs on one connection at one time of day. It does not
+contradict `docs/ssh-backlog-investigation.md`, which found that about 32 KiB
+of unsent TCP data delayed pongs under paced bulk load; that concerned
+lossy-link backlog of file/socket output, whose window stays 16 KiB. Under
+packet loss a 32 KiB terminal window can add the same kind of delay; the
+`profile-ssh-latency` comparison should include it.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.
