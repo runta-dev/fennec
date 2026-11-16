@@ -4,6 +4,75 @@ Status: implemented and deployed; sustained-load gate passed; the separate
 500 ms warm-operation gate remains unmet.
 Owner: Fennec runtime and terminal transport.
 
+The application bandwidth follow-up below is in progress. The implementation
+and acceptance status of the original four items does not imply that the new
+network latency target has been met.
+
+## Follow-up: application bandwidth scheduling (2026-11-16)
+
+Goal: bring exact TUI ping P95 close to 240 ms under conditions comparable to
+the measured gateway keepalive P95 of 242 ms. This is an optimization target,
+not a proven physical minimum. Also measure the extra interactive latency
+caused by saturated file transfer; target no more than 20–30 ms at P95.
+
+Host packet capture identified the same runtime reply entering the TAP and
+leaving its IFB 169.472 ms and 178.950 ms later. Guest turnaround for those
+requests was about 0.5 ms. The host currently sends all guest egress through
+one 1048576 bit/s token bucket; its priority map does not separate SSH traffic.
+The user's chosen scope is Fennec-managed SSH traffic, with application-level
+scheduling and no required host QoS change. Traffic from unrelated guest
+processes and public-network loss remain outside this application's guarantee.
+
+### Required coverage
+
+| Path | Existing behavior | Required integration |
+| --- | --- | --- |
+| Resident TUI and socket streams | Priority frame writer, per-stream 4 KiB output credit | Shared directional rate budget, fair streams, bounded aggregate pending writes |
+| Setup, archive upload and other exec channels | Independent SSH channel writes | Small paced writes and controlled remote output, sharing the same budget |
+| Mutagen SSH wrappers | Independent OpenSSH connections | Route through the managed scheduler; never claim coverage from TUI-only tests |
+| Mac reverse connector and SSH relay | Opaque forwarding and multiple bridge sockets | Include both directions in the aggregate budget without changing authentication or approvals |
+| Large protocol replies | Whole JSON frames | Bound serialization head-of-line blocking without interleaving invalid JSON |
+
+Scheduling must happen before SSH/TCP buffering on the sending endpoint. A
+Mac receive-side limiter cannot remove bytes already queued on the cloud.
+Do not wrap a potentially window-blocked SSH channel in a connection-wide
+serial callback without isolating that blockage: a stalled file reader must
+not stop a different terminal. Similarly, independently limiting each channel
+or process does not enforce an aggregate runtime budget.
+
+### Scheduling foundation
+
+`internal/traffic` provides a bounded scheduler with interactive and bulk
+classes, a shared root token bucket, a separate bulk bucket, per-flow FIFO and
+fair turns. Waiting bulk requests reserve neither root tokens nor every queue
+slot, so a heartbeat can enter and preempt a bulk token wait. A bounded run of
+interactive packets is followed by a bulk opportunity; tiny interactive
+packets cannot perpetually consume the tokens needed by a larger bulk packet.
+
+Initial tuning values are 112 KiB/s total, 96 KiB/s bulk, a 2 KiB burst/atomic
+packet limit, and 1 KiB data chunks with per-packet transport overhead charged
+by the adapter. These values leave headroom below the host cap and must be
+calibrated against measured wire traffic. They are not deployed settings.
+Cancellation never returns a caller's buffer while a running write still
+references it. Oversized atomic writes are refused rather than waiting forever
+for a bucket that cannot hold them.
+
+Current status: the foundation has focused race tests for rate envelopes,
+priority under saturation, FIFO/fairness, cancellation and lossless chunking.
+Production adapters, shared cross-process ownership, deployment and WAN
+acceptance remain outstanding. No achieved latency improvement is claimed yet.
+
+### Acceptance
+
+Use unique matched ping IDs; background heartbeat coalescing is unsuitable for
+exact RTT measurements. Interleave protocol, ordinary echo and gateway
+keepalive on one authenticated connection, report their sample distributions,
+and never subtract independent percentiles as a component cost. Test idle,
+bulk upload/download and sustained terminal output, including a stalled reader
+and multiple sessions. Record throughput as well as latency, errors, ordering,
+reconnections and aggregate backlog. Keep the existing warm-operation and
+installed startup checks visible, including any remaining failures.
+
 ## Problem and evidence
 
 During 2026-11-15 23:00 through 2026-11-16 02:00 China Standard Time,
