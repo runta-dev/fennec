@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fennec/internal/commandstream"
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
@@ -31,11 +32,11 @@ import (
 
 var role = flag.String("role", "client", "client, server, or echo")
 var remote = flag.String("remote", "", "absolute path to this probe staged on the cloud")
-var terminal = flag.String("terminal", "", "optional installed/staged terminal binary for idle-only measurements")
+var terminal = flag.String("terminal", "", "optional installed/staged terminal binary for idle or command-load measurements")
 var count = flag.Int("samples", 60, "samples per phase")
 var loaded = flag.Bool("load", true, "also measure sustained large resident replies from the probe server")
 var shared = flag.Bool("shared-output", true, "use the shared cloud output broker in the probe server")
-var loadMode = flag.String("load-mode", "replies", "replies or duplex (socket bytes verified in both directions)")
+var loadMode = flag.String("load-mode", "replies", "replies, duplex (synthetic socket echo), or command (real streamed cat)")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 
 const blobSize = 256 << 10
@@ -69,6 +70,7 @@ type report struct {
 	Samples      []sample                           `json:"samples"`
 	Summary      map[string]map[string]distribution `json:"summary"`
 	LoadBytes    int64                              `json:"verified_load_bytes"`
+	UploadBytes  int64                              `json:"verified_upload_bytes"`
 	LoadMode     string                             `json:"load_mode"`
 	LoadDuration float64                            `json:"load_seconds"`
 	Error        string                             `json:"error,omitempty"`
@@ -146,6 +148,9 @@ func run() error {
 			}
 			return data, nil
 		}, func(ctx context.Context, target string) (net.Conn, error) {
+			if target == terminalstream.SocketCommand {
+				return commandstream.Dial(ctx), nil
+			}
 			if target != terminalstream.SocketDeviceRelay {
 				return nil, fmt.Errorf("unsupported probe socket")
 			}
@@ -162,14 +167,19 @@ func run() error {
 	default:
 		return fmt.Errorf("invalid role")
 	}
-	if !safePath(*remote) || *terminal != "" && !safePath(*terminal) || *terminal != "" && *loaded {
-		return fmt.Errorf("use a staged absolute remote path; terminal override requires -load=false")
+	if *loadMode != "replies" && *loadMode != "duplex" && *loadMode != "command" {
+		return fmt.Errorf("invalid load mode")
+	}
+	if !safePath(*remote) || *terminal != "" && !safePath(*terminal) || *terminal != "" && *loaded && *loadMode != "command" {
+		return fmt.Errorf("use a staged absolute remote path; terminal override requires idle or command load")
 	}
 	result := report{Boundary: "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.", Started: time.Now().UTC()}
-	result.SharedOutput = *shared && *terminal == ""
+	result.SharedOutput = *shared || *terminal != ""
 	result.LoadMode = *loadMode
 	if *loadMode == "duplex" {
-		result.Boundary = "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load uses the resident device-relay socket adapter with a synthetic echo endpoint, SHA-256 verified in both directions; verified_load_bytes counts bytes in each direction. No claim of real Mac SSH authentication, Mutagen or generic exec coverage."
+		result.Boundary = "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load uses the resident device-relay socket adapter with a synthetic echo endpoint, SHA-256 verified. verified_load_bytes counts received application bytes, verified_upload_bytes counts the matching uploaded bytes. No claim of real Mac SSH authentication, Mutagen or generic exec coverage."
+	} else if *loadMode == "command" {
+		result.Boundary = "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load runs cat through the production resident command adapter, verifies binary stdin/stdout SHA-256 and requires successful exit status. verified_load_bytes counts received bytes; verified_upload_bytes counts matching uploaded bytes. No claim of Mutagen or installed-daemon coverage."
 	}
 	err := measure(ctx, &result)
 	result.Duration = time.Since(result.Started).Seconds()
@@ -262,6 +272,9 @@ func measure(ctx context.Context, result *report) error {
 		return err
 	}
 	result.Packets = transport.Supports(terminalstream.CapabilityTrafficPackets)
+	if *loaded && *loadMode == "command" && !transport.Supports(terminalstream.CapabilityCommand) {
+		return fmt.Errorf("command load requires resident command capability; no legacy fallback")
+	}
 	echo, req, err := client.OpenChannel("session", nil)
 	if err != nil {
 		return err
@@ -336,9 +349,19 @@ func measure(ctx context.Context, result *report) error {
 	var stopLoad atomic.Bool
 	loadDone := make(chan error, 1)
 	started := time.Now()
+	defer func() {
+		result.LoadBytes = transferred.Load()
+		if *loadMode == "duplex" || *loadMode == "command" {
+			result.UploadBytes = result.LoadBytes
+		}
+	}()
 	go func() {
 		if *loadMode == "duplex" {
 			loadDone <- duplexLoad(ctx, transport, &stopLoad, &transferred)
+			return
+		}
+		if *loadMode == "command" {
+			loadDone <- commandLoad(ctx, client, &stopLoad, &transferred)
 			return
 		}
 		want := sha256.Sum256(payload())
@@ -372,6 +395,28 @@ func measure(ctx context.Context, result *report) error {
 	result.LoadBytes = transferred.Load()
 	result.LoadDuration = time.Since(started).Seconds()
 	return phase("recovery")
+}
+
+func commandLoad(ctx context.Context, client *ssh.Client, stopLoad *atomic.Bool, transferred *atomic.Int64) error {
+	data := payload()
+	want := sha256.Sum256(data)
+	for !stopLoad.Load() {
+		session, err := commandstream.NewSession(ctx, client)
+		if err != nil {
+			return err
+		}
+		session.Stdin = bytes.NewReader(data)
+		got, err := session.Output("cat")
+		session.Close()
+		if err != nil {
+			return err
+		}
+		if sha256.Sum256(got) != want {
+			return fmt.Errorf("command bulk content changed")
+		}
+		transferred.Add(int64(len(got)))
+	}
+	return nil
 }
 
 func duplexLoad(ctx context.Context, transport *terminalstream.Transport, stopLoad *atomic.Bool, transferred *atomic.Int64) error {

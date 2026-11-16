@@ -219,6 +219,16 @@ Mutagen still needs integration. Cold bootstrap, older peers and standalone
 senders also remain outside full aggregate coverage. This stage does not
 resolve the separate warm-operation gate.
 
+Linux and Mac race suites passed for command streams, setup, terminal transport,
+CLI and terminal commands. The Go project receiver and its production-entrypoint
+upload test also passed race tests on both platforms. These are source-level
+checks; no replacement of the running application has occurred for this stage.
+`profile-ssh-latency -load-mode command -terminal <staged-terminal>` can now
+measure real `cat` commands through the resident instead of a synthetic echo
+endpoint. It requires the negotiated capability, verifies bytes and exit status,
+and records uploads separately from verified received bytes. Historical duplex
+reports' `verified_load_bytes` is a per-direction payload count, not their sum.
+
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.
 It never substitutes unrelated traffic or a coalesced health probe for a
