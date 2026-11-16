@@ -110,16 +110,42 @@ func run() error {
 		if len(report.Errors) != 0 {
 			return fmt.Errorf("scheduling degraded: %v", report.Errors)
 		}
+		if err := checkPlacement("control", -5); err != nil {
+			return err
+		}
+		placementErrors := make(chan error, 1)
+		go func() {
+			tick := time.NewTicker(5 * time.Second)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					if err := checkPlacement("control", -5); err != nil {
+						placementErrors <- err
+						cancel()
+						return
+					}
+				}
+			}
+		}()
 		exe, _ := os.Executable()
 		// An independent wall deadline terminates owned load even if the client
 		// loses its connection. Serve also closes and reaps each attachment.
-		return terminalstream.Serve(ctx, input, output, func(ctx context.Context, req cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+		err = terminalstream.Serve(ctx, input, output, func(ctx context.Context, req cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			if len(req.Arguments) != 1 || req.Arguments[0] != "echo" && req.Arguments[0] != "burn" && req.Arguments[0] != "flood" {
 				return cloudruntime.LocalTerminal{}, nil, fmt.Errorf("invalid probe role")
 			}
 			cmd := exec.Command(*terminal, "workload-exec", exe, "-role", req.Arguments[0], "-duration", duration.String())
 			return cloudruntime.LocalTerminal{Address: "t1", State: "live", Agent: "codex"}, cmd, nil
 		})
+		select {
+		case placementErr := <-placementErrors:
+			return placementErr
+		default:
+			return err
+		}
 	}
 	if *role != "client" || *terminal == "" || *duration <= 0 || *workers < 1 || *workers > 64 {
 		return fmt.Errorf("invalid probe options")
@@ -353,9 +379,13 @@ func pollable(file *os.File) (*os.File, error) {
 // Check the exec boundary and every existing Go thread, not merely the
 // parent's requested settings. All role children inherit the workload group.
 func checkWorkload() error {
+	return checkPlacement("workload", 0)
+}
+
+func checkPlacement(expectedGroup string, expectedNice int) error {
 	group, err := os.ReadFile("/proc/self/cgroup")
-	if err != nil || !strings.Contains(string(group), "0::/fennec/workload\n") {
-		return fmt.Errorf("probe child escaped workload group: %v", err)
+	if err != nil || !strings.Contains(string(group), "0::/fennec/"+expectedGroup+"\n") {
+		return fmt.Errorf("probe escaped %s group: %v", expectedGroup, err)
 	}
 	tasks, err := os.ReadDir("/proc/self/task")
 	if err != nil {
@@ -378,8 +408,8 @@ func checkWorkload() error {
 			return fmt.Errorf("short task stat")
 		}
 		nice, err := strconv.Atoi(fields[16])
-		if err != nil || nice != 0 {
-			return fmt.Errorf("workload inherited priority %s", fields[16])
+		if err != nil || nice != expectedNice {
+			return fmt.Errorf("%s thread priority %s, expected %d", expectedGroup, fields[16], expectedNice)
 		}
 	}
 	return nil

@@ -1,0 +1,26 @@
+=== RUN   TestClaudePredictionsMatchRecordedFrames
+=== RUN   TestClaudePredictionsMatchRecordedFrames/claude-100x30
+=== RUN   TestClaudePredictionsMatchRecordedFrames/claude-wrap-40x20
+=== RUN   TestClaudePredictionsMatchRecordedFrames/claude-paste-80x24
+--- PASS: TestClaudePredictionsMatchRecordedFrames (0.13s)
+    --- PASS: TestClaudePredictionsMatchRecordedFrames/claude-100x30 (0.05s)
+    --- PASS: TestClaudePredictionsMatchRecordedFrames/claude-wrap-40x20 (0.05s)
+    --- PASS: TestClaudePredictionsMatchRecordedFrames/claude-paste-80x24 (0.02s)
+=== RUN   TestCodexRecordedSession
+    recorded_test.go:229: local paint p50=152.708µs p95=383.167µs (wall time, separate from recorded cloud confirmations)
+    recorded_test.go:229: keys=116 predicted=113 exact=113 merged=0 paused=0 confirmed=113 diverged=0 expired=0 p50=482.585ms p95=785.689999ms
+--- PASS: TestCodexRecordedSession (0.21s)
+=== RUN   TestClaudeTranscriptRecordedSession
+    recorded_test.go:242: local paint p50=223.708µs p95=625.333µs (wall time, separate from recorded cloud confirmations)
+    recorded_test.go:242: keys=228 predicted=220 exact=220 merged=0 paused=0 confirmed=221 diverged=0 expired=0 p50=389.146ms p95=581.339ms
+--- PASS: TestClaudeTranscriptRecordedSession (0.40s)
+=== RUN   TestClaudeStreamingRecordedSession
+    recorded_test.go:254: local paint p50=171.625µs p95=499.583µs (wall time, separate from recorded cloud confirmations)
+    recorded_test.go:254: keys=327 predicted=321 exact=321 merged=0 paused=0 confirmed=321 diverged=0 expired=0 p50=448.358ms p95=633.439ms
+--- PASS: TestClaudeStreamingRecordedSession (0.36s)
+=== RUN   TestCodexStreamingRecordedSession
+    recorded_test.go:264: local paint p50=139.5µs p95=404.041µs (wall time, separate from recorded cloud confirmations)
+    recorded_test.go:264: keys=173 predicted=173 exact=173 merged=0 paused=0 confirmed=173 diverged=0 expired=0 p50=485.739999ms p95=698.966999ms
+--- PASS: TestCodexStreamingRecordedSession (0.47s)
+PASS
+ok  	fennec/internal/predict	2.377s

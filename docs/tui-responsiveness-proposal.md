@@ -1,6 +1,7 @@
 # Proposal: responsive terminals under CPU and output load
 
-Status: implementation in progress. Owner: Fennec runtime and terminal transport.
+Status: implemented; sustained-load and installed acceptance in progress.
+Owner: Fennec runtime and terminal transport.
 
 ## Problem and evidence
 
@@ -12,8 +13,8 @@ Missing per-attachment telemetry prevents attribution of every interruption.
 The D-Bus leak was addressed separately by ee22ea7; this proposal does not
 assume CPU saturation caused that incident.
 
-The runtime currently has two vCPUs. SSH, the resident terminal service, Herdr,
-and agents share a CPU cgroup with weight 100 and nice 0. Network IPQoS does not
+The incident runtime had two vCPUs. SSH, the resident terminal service, Herdr,
+and agents shared a CPU cgroup with weight 100 and nice 0. Network IPQoS does not
 reserve CPU time. An unpredicted key also waits for the cloud render round trip
 (historically about 200–300 ms). The old sessions.send benchmark measures a
 different RPC path and must not be presented as per-keystroke latency.
@@ -92,4 +93,100 @@ uses the prior application bundle. Existing agent sessions must survive.
 
 ## Implementation and results
 
-Pending.
+### Implemented behavior
+
+- `internal/cpusched` creates control/workload sibling cgroups with weights
+  1000/100 and applies nice -5/0 to all existing threads. The resident reconciles
+  verified Herdr, terminal helpers, authenticated SSH ancestors and managed
+  agent descendants. The SSH listener remains in `ssh.service`, nice 0.
+  `workload-exec` fences actual Herdr child and Codex app-server launches.
+  Missing host delegation remains a diagnostic degraded mode.
+- The shared frame writer has a bounded queue and prioritizes input/credits/
+  heartbeat traffic across streams. Same-stream FIFO is preserved, and bulk
+  traffic gets a turn after at most eight urgent writes. Output chunks are
+  2 KiB while the accepted legacy wire maximum remains 16 KiB.
+- New consumers request `wire_output_window_v1`, promising per-frame credit
+  return. Each stream then has a 4 KiB encoded JSON/base64 output allowance in
+  addition to its existing 64 KiB original-byte window. Partial/coalesced
+  credits release the corresponding frame reservations. Old consumers retain
+  their original window. Compressible screen paints can still transmit tens
+  of KiB without waiting for another round trip. This limits per-stream SSH
+  backlog; it does not impose a connection-wide cap for arbitrary stream counts.
+- Echo acknowledgement records input/output association before transport
+  waiting, and cannot report successful echo while output is waiting for
+  credit. Local prediction paint P50/P95 is recorded separately from cloud
+  confirmation, without prompt contents.
+- `cmd/profile-tui-load` runs a PTY echo child, two CPU burners, two output
+  producers, input equality checks and heartbeat probes. It checks every child
+  thread's workload placement, and continuously checks the server's control
+  placement. Its Mac mode uses the production Go SSH implementation and
+  TCP_NODELAY policy with the existing identity and pinned host keys.
+
+### Measurements on 2026-11-16
+
+| Boundary | Idle echo P95 | Loaded echo P95 | Added P95 | Result |
+| --- | ---: | ---: | ---: | --- |
+| Cloud-local, initial 10 s smoke before encoded-window change | 2.063 ms | 4.505 ms | 2.442 ms | Pass; not sustained acceptance |
+| Mac-to-cloud, final transport, 60 s / 120 inputs | 223.913 ms | 266.377 ms | 42.464 ms | Pass; zero disconnects |
+| Cloud-local, independent 30 min run | Pending | Pending | Pending | Running |
+
+The WAN short run used two CPU workers and two pseudo-random printable output
+streams, each producing 32 KiB/s before backpressure. It consumed 1,249,280
+output bytes and measured heartbeat P95 257.619 ms. Before encoded output
+limits, a Go-SSH diagnostic exceeded its 3 s echo deadline; a separate plain
+OpenSSH diagnostic also exceeded the 50 ms increment gate. Neither is treated
+as an equivalent before/after baseline, and no diagnostic timeout is hidden.
+
+Mac recorded Claude/Codex typing tests, including streaming and long transcripts,
+passed the 50 ms local-paint gate. Observed local paint P95 ranged from 0.383 to
+0.625 ms. These are replay wall times, not an end-to-end measurement through a
+busy live agent. Recorded cloud confirmation latency remains separately logged.
+
+Focused package tests, terminal transport race tests, Go vet, source-language
+and UI checks passed. New regressions cover encoded backlog, compressed paints,
+partial credits, slow-peer isolation, cancellation and echo acknowledgement
+ordering. Installed 500 ms warm-operation results remain pending.
+
+The development bundle uses the existing `Fennec Local Development` signer.
+The credential-helper SHA-256 remains
+`f69a5f6c9bd8a928771bf151f564ff4c25c065df8ee390bad8291a0dbad539fe`.
+The installed broker successfully launched cloud `codex-cli 0.169.0`; its owned
+test session exited normally. Three sessions live immediately before the
+development install remained live afterwards. Final merged-build verification
+is in progress.
+
+The Mac relay investigation independently confirmed successful direct Mac SSH
+while an older multiplexed route failed. Retiring the old ControlMaster restored
+the alias. A later interruption also affected fresh/direct connections and
+recovered afterwards, so stale multiplexing is not a proven explanation for
+every outage. Do not count 122 server authentications as 122 TUI reconnections.
+
+### Reproduction and measurement boundaries
+
+Build the probe and terminal service from the same source. Run the cloud probe
+outside an agent's descendant tree: a resident restart correctly reclassifies
+agent descendants as workload, which would invalidate a temporary probe placed
+under that tree. A task-owned transient systemd service provides an independent
+parent and deadline:
+
+```sh
+go build -o /tmp/fennec-tui-probe ./cmd/profile-tui-load
+go build -o /tmp/fennec-tui-terminal ./cmd/fennec-terminal
+systemd-run --unit=fennec-tui-acceptance --property=RuntimeMaxSec=33m \
+  --property=Nice=-5 \
+  --property=StandardOutput=append:/tmp/fennec-tui-result.json \
+  --property=StandardError=append:/tmp/fennec-tui-progress.log \
+  /tmp/fennec-tui-probe -terminal /tmp/fennec-tui-terminal -duration 30m
+```
+
+Use a fresh unit/output path for each run. For WAN measurements, build the same
+probe on the Mac and run it through an independent `cmd/run-macos-check` job:
+
+```sh
+/tmp/fennec-tui-probe-mac -remote /tmp/fennec-tui-probe \
+  -terminal /tmp/fennec-tui-terminal -duration 30m
+```
+
+Do not combine overlapping probe baselines, count interrupted runs as 30-minute
+acceptance, or equate process priority with a hard latency guarantee. Cgroups
+cannot remove WAN latency or make an internally blocked agent render input.

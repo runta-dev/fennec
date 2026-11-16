@@ -1,0 +1,1 @@
+{"added_echo_p95_ms":42.464,"boundary":"Mac-to-cloud Go SSH (TCP_NODELAY=true) + protocol + PTY (not agent rendering)","bulk_bytes":1249280,"cpu_workers":2,"duration_seconds":60.218585041,"flood_sessions":2,"heartbeat_p95_ms":257.619,"idle_echo_p95_ms":223.913,"loaded_echo_p95_ms":266.377,"passed":true,"samples":120,"unexpected_disconnects":0}
