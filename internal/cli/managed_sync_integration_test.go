@@ -118,7 +118,7 @@ func TestManagedMutagenOverResident(t *testing.T) {
 		t.Fatal("initial managed agent installation", err)
 	}
 	if ready, err := manager.Flush(ctx, session.Name); err != nil || !ready.Ready() {
-		t.Fatal("initial transfer not ready", err)
+		t.Fatalf("initial transfer not ready: error=%v state=%+v", err, ready)
 	}
 	data, err := os.ReadFile(filepath.Join(beta, "binary"))
 	if err != nil || !bytes.Equal(data, payload) {

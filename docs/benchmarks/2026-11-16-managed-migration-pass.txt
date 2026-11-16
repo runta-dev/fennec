@@ -1,0 +1,5 @@
+=== RUN   TestManagedMutagenOverResident
+    managed_sync_integration_test.go:191: cold agent installation, two-way transfer, deletion and active/paused migration verified in 2m4.545082417s; 2442 exact pings, maximum 2.619209ms
+--- PASS: TestManagedMutagenOverResident (124.59s)
+PASS
+ok  	fennec/internal/cli	126.231s

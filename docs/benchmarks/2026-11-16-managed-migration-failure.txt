@@ -1,0 +1,9 @@
+ok  	fennec/internal/syncengine	3.281s
+ok  	fennec/internal/cli	37.687s
+=== RUN   TestManagedMutagenOverResident
+    managed_sync_integration_test.go:121: initial transfer not ready <nil>
+--- FAIL: TestManagedMutagenOverResident (124.88s)
+FAIL
+FAIL	fennec/internal/cli	125.214s
+FAIL
+exit status 1

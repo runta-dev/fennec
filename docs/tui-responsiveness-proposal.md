@@ -8,6 +8,11 @@ The application bandwidth follow-up below is in progress. The implementation
 and acceptance status of the original four items does not imply that the new
 network latency target has been met.
 
+Latest WAN check (09:40 UTC, November 16): exact ping P95 was 450 ms before
+generated load, 637 ms during a paced command transfer, and 408 ms afterwards.
+The 240 ms target remains unmet. See the current command measurement below;
+local Mutagen integration passing does not change this result.
+
 ## Follow-up: application bandwidth scheduling (2026-11-16)
 
 Goal: bring exact TUI ping P95 close to 240 ms under conditions comparable to
@@ -512,6 +517,82 @@ resident both had clean revision `c40492b`, which includes the prior pacing
 work but predates record packing. The packed change is committed and tested
 with staged processes; this task has not installed or restarted the app to
 apply it. Source synchronization is separate from installed-build acceptance.
+
+### Managed project synchronization and migration
+
+Revisions `0ba1dca` through `ab59885` route scoped Mutagen SSH commands through
+the existing daemon resident. The adapter also covers the first agent upload:
+the private scp wrapper selects the managed SSH wrapper, whose SFTP subsystem
+request uses the production Go `sftp-stdio` entrypoint. The wrapper accepts only
+the fixed cloud target and supported noninteractive options. The control plane
+checks the authenticated owner, runtime and lifecycle again after recovery;
+uncertain command outcomes are never replayed. Remote exit status is retained.
+`syncProject` now uses the same managed command path.
+
+Existing registered sessions are migrated only in the matching owner/runtime's
+private Mutagen daemon and wrapper directory. Active sessions pause/resume to
+release their previous connection, while paused sessions remain paused. Session
+identifiers and synchronization history are preserved. Persistent transition
+intent and the shared registry lock allow interrupted migration to recover and
+explicit user pause intent to prevail. Migration runs in the background after
+resident readiness, not on the interactive launch path.
+
+Linux/macOS focused race tests passed in the preceding implementation work.
+The Mac migration acceptance at 09:30 UTC passed its package race suites but
+failed the real integration at the first post-flush readiness observation;
+`Flush` returned no error, but the session did not satisfy `Ready`. That attempt
+did not log the observed session state. Its
+[failure log](benchmarks/2026-11-16-managed-migration-failure.txt) is retained.
+The test now records the complete isolated-fixture state on such a failure;
+readiness criteria and timeouts have not been relaxed.
+
+A fresh isolated run at 09:37:39–09:39:47 UTC passed cold agent installation,
+two-way binary transfer, executable mode, credential exclusion, deletion,
+active/paused migration with unchanged session IDs, and post-migration file
+verification. It completed 2,442 exact resident pings, maximum 2.619209 ms,
+over 124.545 seconds of integration work. The
+[passing log](benchmarks/2026-11-16-managed-migration-pass.txt) does not explain
+the earlier intermittent readiness failure. Both endpoints were local fixtures;
+this is neither WAN acceptance nor proof of installed-daemon migration.
+
+### Current command measurement after migration work
+
+At 09:40:22–09:42:20 UTC, a dedicated probe built from `ab59885` completed all
+135 exact comparisons using the production packet scheduler, shared output
+broker and command adapter. All 1,747,695 bytes in each direction were verified;
+the load lasted 37.687 seconds, about 45.29 KiB/s effective payload throughput
+per direction. All client/server ping IDs matched, with no failed, pending or
+dropped trace entries. The [client report](benchmarks/2026-11-16-current-command-client.json)
+and [server report](benchmarks/2026-11-16-current-command-server.json) show:
+
+| Phase (45 samples each) | Gateway P95 | Guest echo P95 | Exact TUI P95 |
+| --- | ---: | ---: | ---: |
+| Before generated load | 193.738 ms | 397.902 ms | 450.025 ms |
+| Paced command load | 223.195 ms | 753.402 ms | 637.152 ms |
+| After generated load | 187.186 ms | 363.128 ms | 407.844 ms |
+
+Loaded local-send/server-dispatch/broker-write P95 values were
+0.227 / 0.159 / 1.888 ms. The slowest exact ping (`measure-120`) took
+1,769.591 ms, while its respective observed local intervals were
+0.219 / 0.080 / 0.525 ms. These measured application intervals do not account
+for the large tail. Bytes already handed to SSH, TCP loss/retransmission,
+unobserved client scheduling and host/network queues remain outside these
+trace intervals. No individual slow sample has yet been attributed among them.
+
+A read-only worker check during this run still found the unchanged 1048576
+bit/s shaper, with a 6,364-byte / 12-packet backlog. This snapshot is not a
+packet residence measurement. No host QoS or unrelated traffic was changed.
+The installed Mac binary was still clean `cfb56da`, which contains pacing and
+record packing but predates managed Mutagen integration. The WAN probe used
+dedicated staged services, not an application install or a TUI restart.
+
+This repeat confirms that the remaining WAN tail is real. It does not establish
+a before/after regression from the previous 411 ms or 580 ms observations,
+whose background/network conditions differed. The earlier balanced A/B remains
+the comparable evidence: partial loaded latency improvement with a substantial
+throughput tradeoff, not achievement of the target. Next diagnosis must examine
+the managed bytes already handed to SSH; faster application queue callbacks
+alone cannot establish the required end-to-end improvement.
 
 ### Acceptance
 
