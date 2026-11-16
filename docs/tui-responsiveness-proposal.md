@@ -106,12 +106,67 @@ quota wait, whole socket packets after backpressure, duplicate process startup,
 resident fragmentation/ping through the broker, and inherited-pipe cancellation.
 
 Coverage remains incomplete: this stage shares **cloud resident outputs**.
-Mac senders, generic exec output, Mutagen and reverse-SSH adapters do not yet
-share this budget. Even registered stdout pipes can feed data into sshd's own
+Generic exec output, Mutagen and independent Mac senders do not yet share this
+budget. The reverse connector integration described below adds the daemon's
+reverse streams to the resident's directional budgets. Even registered stdout pipes can feed data into sshd's own
 buffers when the far reader stalls. Receiver credits and a resume-burst test
 are still required; a userspace broker alone does not establish a bound on
 already-buffered network bytes. Development installation and full WAN acceptance
 remain outstanding.
+
+### Reverse connector on the resident channel
+
+The daemon now uses a negotiated `device_relay_v1` socket stream for each reverse
+bridge. Both directions share the resident's packet scheduler; socket uploads
+are explicitly bulk, rather than inheriting keyboard input priority. The cloud
+accepts a device ID from the fixed socket target, verifies its recorded relay
+process and listener, and chooses the loopback port itself. Inner SSH identity,
+host-key verification, command approvals and sandbox behavior remain at their
+existing endpoints. The retained SSH transport worker remains opaque and keeps
+its current compatibility epoch.
+
+The net.Conn adapter processes input credits independently of application reads.
+A stopped output consumer cannot prevent a concurrent upload from receiving its
+credits, nor block the main protocol reader or another stream's ping. Payload
+buffering is bounded by the existing byte window; timeouts use net.Conn deadline
+semantics, and final output is drained before EOF. Closing the adapter closes
+only its stream. Account/runtime scope is rechecked after an in-flight open.
+
+Reverse streams have separate admission capacity: 64 active connections, eight
+parked bridges, and eight server-side slots for retiring streams racing their
+replacement. The usual terminal/control stream capacity remains available.
+Legacy remote services use the previous direct-tcpip connector until upgraded;
+the standalone legacy link path also remains outside the new coverage. Neither
+fallback should be counted as successful aggregate scheduling.
+
+For negotiated, paced socket streams, the encoded output credit allowance is
+32 KiB. Terminal streams and unpaced legacy peers retain 4 KiB. The larger bulk
+allowance covers the bandwidth-delay product without bypassing packet pacing.
+An asynchronous 90 ms propagation delay in each direction demonstrated the
+reason: a 128 KiB echo transfer exceeded the 4 s deadline with the 4 KiB window;
+with 32 KiB it verified 128 KiB in each direction in 2.157 s (about 59.4 KiB/s
+per direction), while six fresh pings stayed below the 260 ms test bound. This
+is an emulated link result, not a WAN performance claim or the final 20–30 ms
+added-P95 acceptance.
+
+Additional tests cover stalled readers with simultaneous uploads, payload and
+EOF integrity, deadlines, 80 occupied reverse stream slots with normal control
+still available, account changes during opening, and replenishing parked
+bridges with 24 active connections. `profile-ssh-latency -load-mode duplex` now
+uses the same socket adapter with a dedicated synthetic echo endpoint and
+verifies every byte in both directions. It does not claim to test real Mac SSH
+authorization or Mutagen.
+
+During validation, an existing Linux credential-watch failure was reproduced
+with an immediate atomic replacement: the inotify watches were armed only after
+the API returned. Initial registration is now synchronous; the regression test
+fails before that fix and passes after it. The CLI race suite then passed.
+Initial Mac terminalstream/localssh/terminal-command race tests passed; CLI
+validation needed an explicit Homebrew PATH for Node. The detached follow-up
+job's result is pending retrieval because the Mac relay lost its device bridge
+connections. Later window-tuning changes still require Mac synchronization and
+WAN remeasurement. No development installation has been performed for this
+stage.
 
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.

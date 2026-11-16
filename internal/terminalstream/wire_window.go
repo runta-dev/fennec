@@ -8,6 +8,7 @@ import (
 
 const CapabilityWireWindow = "wire_output_window_v1"
 const outputWireWindow = 4096
+const socketWireWindow = 32 << 10
 
 // A peer opting in promises to return credits as it consumes each frame,
 // rather than waiting for the full legacy 64 KiB window. Bound encoded bytes
@@ -19,13 +20,14 @@ type wireWindow struct {
 	changed       *sync.Cond
 	closed        bool
 	used, pending int
+	limit         int
 	frames        []wireCredit
 }
 
 type wireCredit struct{ original, encoded int }
 
 func newWireWindow() *wireWindow {
-	w := &wireWindow{}
+	w := &wireWindow{limit: outputWireWindow}
 	w.changed = sync.NewCond(&w.mu)
 	return w
 }
@@ -33,7 +35,7 @@ func newWireWindow() *wireWindow {
 func (w *wireWindow) reserve(original, encoded int) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for !w.closed && w.used+encoded > outputWireWindow {
+	for !w.closed && w.used+encoded > w.limit {
 		w.changed.Wait()
 	}
 	if w.closed {

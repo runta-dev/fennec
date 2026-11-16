@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/terminalstream"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -129,5 +130,78 @@ func TestConnectorRechecksScopeAfterWaitingForRecovery(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("borrower stuck")
+	}
+}
+
+func TestConnectorReverseBytesUseResidentWithoutNewSSHChannels(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	seen := make(chan string, 1)
+	channel := startFakeCloudWith(t, ctx, func(ctx context.Context, target string) (net.Conn, error) {
+		seen <- target + "/" + terminalstream.SocketDevice(ctx)
+		local, remote := net.Pipe()
+		go func() { defer remote.Close(); io.Copy(remote, remote) }()
+		return local, nil
+	})
+	services := &daemonServices{ctx: ctx, epoch: 7, config: brokerConfiguration{RuntimeID: "owned"}, channel: channel}
+	// No prepared SSH client exists: opening a direct-tcpip channel would fail.
+	conn, err := services.dialResidentRelay(ctx, 7, "owned", "1234abcd", 12345)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if target := <-seen; target != terminalstream.SocketDeviceRelay+"/1234abcd" {
+		t.Fatal(target)
+	}
+	conn.SetDeadline(time.Now().Add(time.Second))
+	if _, err := conn.Write([]byte("reverse")); err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 7)
+	if _, err := io.ReadFull(conn, data); err != nil || string(data) != "reverse" {
+		t.Fatal(string(data), err)
+	}
+	conn.Close()
+	if _, err := channel.transport.Ping(ctx); err != nil {
+		t.Fatal("reverse close damaged resident", err)
+	}
+}
+
+func TestConnectorReverseDialRechecksAccountAfterOpen(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	opening, release := make(chan struct{}), make(chan struct{})
+	channel := startFakeCloudWith(t, ctx, func(context.Context, string) (net.Conn, error) {
+		close(opening)
+		<-release
+		local, remote := net.Pipe()
+		context.AfterFunc(ctx, func() { remote.Close() })
+		return local, nil
+	})
+	services := &daemonServices{ctx: ctx, epoch: 7, config: brokerConfiguration{RuntimeID: "owned"}, channel: channel}
+	result := make(chan error, 1)
+	go func() {
+		conn, err := services.dialResidentRelay(ctx, 7, "owned", "1234abcd", 12345)
+		if conn != nil {
+			conn.Close()
+		}
+		result <- err
+	}()
+	select {
+	case <-opening:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	services.mu.Lock()
+	services.epoch++
+	services.mu.Unlock()
+	close(release)
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("published reverse stream from an obsolete account")
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }

@@ -304,6 +304,9 @@ func run() (int, error) {
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
 		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+			if target == terminalstream.SocketDeviceRelay {
+				return localssh.DialExistingRelay(ctx, home, terminalstream.SocketDevice(ctx))
+			}
 			if target == terminalstream.SocketSessionImport {
 				return cloudruntime.DialSessionImport(ctx, home), nil
 			}

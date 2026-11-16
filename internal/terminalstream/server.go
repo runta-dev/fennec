@@ -45,6 +45,7 @@ func SocketDevice(ctx context.Context) string {
 }
 
 type serverSession struct {
+	deviceRelay              bool
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	window                   *flowWindow
@@ -126,7 +127,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "magpie_credentials_sync", "preparation_health")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -169,19 +170,37 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				return fmt.Errorf("invalid terminal launch")
 			}
 			sessionsMu.Lock()
+			deviceRelay := frame.Type == "socket" && frame.Target == SocketDeviceRelay
+			used := 0
+			for _, active := range sessions {
+				if active.deviceRelay == deviceRelay {
+					used++
+				}
+			}
 			limit := 16
 			if frame.Type == "stop" || frame.Type == "operation" {
 				limit = 32
 			}
-			if sessions[frame.ID] != nil || len(sessions) >= limit {
+			if deviceRelay {
+				// Eight parked bridges, 64 active connections and eight retiring
+				// streams whose close frames can race replacement opens.
+				limit = 80
+			}
+			if sessions[frame.ID] != nil || used >= limit {
 				sessionsMu.Unlock()
 				emit(Frame{Type: "error", ID: frame.ID, Message: "session already exists or capacity exhausted"})
 				continue
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
-			session := &serverSession{ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			session := &serverSession{deviceRelay: deviceRelay, ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
 			if hasFeature(frame.Features, CapabilityWireWindow) {
 				session.wire = newWireWindow()
+				if frame.Type == "socket" && writes.packets.enabled.Load() {
+					// Paced bulk streams need enough outstanding bytes to use a
+					// high-RTT link. Terminals retain the tighter 4 KiB allowance;
+					// the shared scheduler still paces every bulk packet.
+					session.wire.limit = socketWireWindow
+				}
 				context.AfterFunc(sessionCtx, session.wire.close)
 			}
 			sessions[frame.ID] = session

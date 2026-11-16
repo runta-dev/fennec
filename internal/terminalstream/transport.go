@@ -64,6 +64,7 @@ type Session struct {
 	id        string
 	events    *mailbox
 	once      sync.Once
+	bulk      bool
 }
 
 func Start(command *exec.Cmd) (*Transport, error) {
@@ -512,7 +513,7 @@ func (transport *Transport) Launch(frame Frame) (*Session, error) {
 	box := newMailbox()
 	transport.sessions[frame.ID] = box
 	transport.mu.Unlock()
-	session := &Session{transport: transport, id: frame.ID, events: box}
+	session := &Session{transport: transport, id: frame.ID, events: box, bulk: frame.Type == "socket"}
 	if err := transport.Send(frame); err != nil {
 		session.Close()
 		return nil, fmt.Errorf("terminal launch outcome unknown: %w", err)
@@ -538,6 +539,9 @@ func (session *Session) Send(frame Frame) error {
 		return fmt.Errorf("invalid terminal control frame")
 	}
 	frame.ID = session.id
+	if frame.Type == "input" && session.bulk {
+		frame.bulk = true
+	}
 	return session.transport.Send(frame)
 }
 func (session *Session) Close() {

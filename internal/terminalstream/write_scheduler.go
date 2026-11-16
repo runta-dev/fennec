@@ -41,7 +41,7 @@ func newWriteScheduler(ctx context.Context) *writeScheduler {
 }
 
 func urgentFrames(frames []Frame) bool {
-	if len(frames) != 1 {
+	if len(frames) != 1 || frames[0].bulk {
 		return false
 	}
 	switch frames[0].Type {

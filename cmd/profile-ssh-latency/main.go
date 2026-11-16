@@ -35,6 +35,7 @@ var terminal = flag.String("terminal", "", "optional installed/staged terminal b
 var count = flag.Int("samples", 60, "samples per phase")
 var loaded = flag.Bool("load", true, "also measure sustained large resident replies from the probe server")
 var shared = flag.Bool("shared-output", true, "use the shared cloud output broker in the probe server")
+var loadMode = flag.String("load-mode", "replies", "replies or duplex (socket bytes verified in both directions)")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 
 const blobSize = 256 << 10
@@ -68,6 +69,7 @@ type report struct {
 	Samples      []sample                           `json:"samples"`
 	Summary      map[string]map[string]distribution `json:"summary"`
 	LoadBytes    int64                              `json:"verified_load_bytes"`
+	LoadMode     string                             `json:"load_mode"`
 	LoadDuration float64                            `json:"load_seconds"`
 	Error        string                             `json:"error,omitempty"`
 }
@@ -107,7 +109,7 @@ func main() {
 	}
 }
 func run() error {
-	if *deadline <= 0 || *deadline > 30*time.Minute || *count < 1 || *count > 1000 {
+	if *deadline <= 0 || *deadline > 30*time.Minute || *count < 1 || *count > 1000 || (*loadMode != "replies" && *loadMode != "duplex") {
 		return fmt.Errorf("invalid probe bounds")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *deadline)
@@ -138,11 +140,23 @@ func run() error {
 			defer broker.Close()
 			output = broker
 		}
-		return terminalstream.ServeWithOperations(ctx, os.Stdin, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
+		return terminalstream.ServeWithSockets(ctx, os.Stdin, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
 			if op.Kind != "list" {
 				return nil, fmt.Errorf("unsupported probe operation")
 			}
 			return data, nil
+		}, func(ctx context.Context, target string) (net.Conn, error) {
+			if target != terminalstream.SocketDeviceRelay {
+				return nil, fmt.Errorf("unsupported probe socket")
+			}
+			local, remote := net.Pipe()
+			go func() {
+				defer remote.Close()
+				stop := context.AfterFunc(ctx, func() { remote.Close() })
+				defer stop()
+				io.Copy(remote, remote)
+			}()
+			return local, nil
 		})
 	case "client":
 	default:
@@ -153,6 +167,10 @@ func run() error {
 	}
 	result := report{Boundary: "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.", Started: time.Now().UTC()}
 	result.SharedOutput = *shared && *terminal == ""
+	result.LoadMode = *loadMode
+	if *loadMode == "duplex" {
+		result.Boundary = "One authenticated Go SSH connection; exact resident ping, equal-size guest echo and gateway keepalive. Load uses the resident device-relay socket adapter with a synthetic echo endpoint, SHA-256 verified in both directions; verified_load_bytes counts bytes in each direction. No claim of real Mac SSH authentication, Mutagen or generic exec coverage."
+	}
 	err := measure(ctx, &result)
 	result.Duration = time.Since(result.Started).Seconds()
 	if err != nil {
@@ -319,6 +337,10 @@ func measure(ctx context.Context, result *report) error {
 	loadDone := make(chan error, 1)
 	started := time.Now()
 	go func() {
+		if *loadMode == "duplex" {
+			loadDone <- duplexLoad(ctx, transport, &stopLoad, &transferred)
+			return
+		}
 		want := sha256.Sum256(payload())
 		for !stopLoad.Load() {
 			data, e := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"})
@@ -350,4 +372,41 @@ func measure(ctx context.Context, result *report) error {
 	result.LoadBytes = transferred.Load()
 	result.LoadDuration = time.Since(started).Seconds()
 	return phase("recovery")
+}
+
+func duplexLoad(ctx context.Context, transport *terminalstream.Transport, stopLoad *atomic.Bool, transferred *atomic.Int64) error {
+	conn, err := transport.DialSocket(ctx, terminalstream.SocketDeviceRelay, "1234abcd")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	payload := payload()
+	want := sha256.Sum256(payload)
+	for !stopLoad.Load() {
+		written := make(chan error, 1)
+		go func() {
+			n, err := conn.Write(payload)
+			if err == nil && n != len(payload) {
+				err = io.ErrShortWrite
+			}
+			written <- err
+		}()
+		got := make([]byte, len(payload))
+		_, err := io.ReadFull(conn, got)
+		if err != nil {
+			conn.Close()
+			<-written
+			return err
+		}
+		if err := <-written; err != nil {
+			return err
+		}
+		if sha256.Sum256(got) != want {
+			return fmt.Errorf("duplex bulk content changed")
+		}
+		transferred.Add(int64(len(got)))
+	}
+	return nil
 }

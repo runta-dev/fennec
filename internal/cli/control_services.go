@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -478,6 +479,9 @@ func (s *daemonServices) startLinkLocked() {
 	config.SharedSSH = func(ctx context.Context) (*ssh.Client, error) { return s.linkSSH(ctx, epoch, runtimeID) }
 	config.Bootstrap = func(ctx context.Context, request localssh.LinkBootstrap) (localssh.LinkBootstrapResult, error) {
 		return s.bootstrapLink(ctx, epoch, runtimeID, request)
+	}
+	config.RelayDial = func(ctx context.Context, device string, port int) (net.Conn, error) {
+		return s.dialResidentRelay(ctx, epoch, runtimeID, device, port)
 	}
 	s.workers.Add(1)
 	go func() {
