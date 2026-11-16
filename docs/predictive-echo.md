@@ -927,7 +927,11 @@ values are pessimistic. In the second after run echo rose steadily to
 3.4 s for keys typed before a scroll as well, so the link itself was slow
 then; the third run kept every key at the idle round trip (0.17–0.32 s)
 while A scrolled. Two scrolls of the first after run still sent 58 and
-66 KB; why is not yet known.
+66 KB: the client trace shows 16 and 19 full-screen frames (3 to 5 KB each,
+nothing unmergeable) instead of 6 to 8, because Codex drew those steps over
+about 700 ms, about 45 ms apart, so few fell within one 16 ms interval, and
+the link (83 KB/s) never backed up. Their last output arrived as early as the
+others (0.90 and 1.00 s); only spare bandwidth was spent.
 
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
