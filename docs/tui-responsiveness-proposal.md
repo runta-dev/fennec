@@ -72,9 +72,46 @@ Current status: the foundation and resident integration have passed Linux
 race tests, terminal-service and CLI tests, vet and source-language checks.
 Regression coverage includes a fresh ping completing while a 96 KiB operation
 reply is still transferring, lossless reconstruction and image paste across
-many fragments. Cross-process budget ownership, other SSH adapters, deployment
-and WAN acceptance remain outstanding. No achieved WAN latency improvement is
-claimed yet.
+many fragments. No achieved WAN latency improvement is claimed yet.
+
+### Shared cloud output broker
+
+The cloud resident service now obtains its stdout writer from
+`internal/trafficbroker`. A single per-user helper owns the root/bulk buckets
+for all registered process outputs. Clients register a pipe/socket descriptor
+over a private Unix socket and submit bounded packets with independent request
+IDs, allowing a pong to enter while a bulk request waits for quota. Negotiated
+resident packets go directly to this shared queue; wrapping the broker with a
+second serial rate-limiter would restore head-of-line blocking.
+
+The broker performs nonblocking writes only. An unwritable destination refunds
+its unused token reservation and yields for 5 ms; writable peers continue.
+Partial socket writes retain exclusive ownership of that destination until the
+packet tail completes, while other destinations continue. Disk descriptors are
+rejected. Cancellation closes IPC, drains queued callbacks, then closes passed
+descriptors, preventing descriptor-reuse races. A canceled submitted packet is
+not replayed because its write outcome is uncertain.
+
+Admission is bounded to 128 registered clients, 64 outstanding packets per
+client (56 bulk), and the scheduler's aggregate 64 slots (56 bulk). Packets carry
+at most 1,792 data bytes and reserve 96 bytes of transport overhead. The helper
+uses a versioned private directory, an exclusive owner lock and serialized
+startup; duplicate starters never unlink a live owner's socket. It exits after
+30 seconds without clients. A required scheduling compatibility change must use
+a new broker directory version so old active sessions can drain normally.
+
+Tests cover the aggregate rate across independent clients, a full destination
+pipe with a responsive peer, interactive admission during a same-client bulk
+quota wait, whole socket packets after backpressure, duplicate process startup,
+resident fragmentation/ping through the broker, and inherited-pipe cancellation.
+
+Coverage remains incomplete: this stage shares **cloud resident outputs**.
+Mac senders, generic exec output, Mutagen and reverse-SSH adapters do not yet
+share this budget. Even registered stdout pipes can feed data into sshd's own
+buffers when the far reader stalls. Receiver credits and a resume-burst test
+are still required; a userspace broker alone does not establish a bound on
+already-buffered network bytes. Development installation and full WAN acceptance
+remain outstanding.
 
 `Transport.Ping` now measures an independent, uniquely identified round trip
 through the production writer, recording the matching pong's receive time.
@@ -111,7 +148,35 @@ latency goal: the contemporaneous network baseline is substantially below the
 earlier 242 ms observation, and resident pacing alone leaves tail latency.
 These are separate empirical distributions, not additive component costs.
 This test covers resident replies only, not full SSH file-transfer coverage.
-The aggregate scheduler, deployment and remaining acceptance are still pending.
+The remaining SSH adapters, deployment and full acceptance are still pending.
+
+A second staged run at 06:21–06:23 UTC enabled the shared cloud output broker,
+again with 45 samples per phase:
+
+| Phase | Gateway P95 | Guest echo P95 | Exact TUI ping P95 |
+| --- | ---: | ---: | ---: |
+| Idle | 221.517 ms | 187.402 ms | 223.443 ms |
+| Resident bulk replies | 225.351 ms | 239.015 ms | 243.750 ms |
+| Recovery | 184.341 ms | 221.755 ms | 224.160 ms |
+
+All 135 comparisons completed. The client verified 2,097,234 JSON reply bytes
+over 34.216 s of load (about 59.9 KiB/s of logical content), and the maximum
+loaded ping was 272.044 ms. This is promising evidence near the requested
+240 ms target for resident traffic. It is not a controlled attribution of the
+change from the first run: the network distributions changed, and ordinary
+guest echo also changed. Independent phase percentiles describe observed
+distributions, not per-packet queue delay. Broader SSH coverage, long-duration
+tests and an installed development build are still required before completion.
+The raw per-sample records are preserved in
+[resident pacing](benchmarks/2026-11-16-resident-pacing-ping.json) and
+[shared output](benchmarks/2026-11-16-shared-output-ping.json).
+
+Linux and Mac race suites passed for the scheduler, broker, resident protocol
+and terminal command. The cancellation command test needed a short temporary
+home on macOS to fit its Unix socket path limit; the test executable also
+dispatches the real broker entrypoint when launched by the resident. Vet,
+source-language and UI checks passed. These checks do not replace the unchanged
+500 ms installed warm-operation gate, whose earlier failures remain unresolved.
 
 ### Acceptance
 

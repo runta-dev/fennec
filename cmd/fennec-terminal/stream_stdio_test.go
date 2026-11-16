@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fennec/internal/terminalstream"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -17,7 +19,10 @@ func TestStreamServiceCommandChild(t *testing.T) {
 		return
 	}
 	os.Args = []string{"fennec-terminal", "serve", "--protocol=" + strconv.Itoa(terminalstream.ProtocolVersion)}
-	code, _ := run()
+	code, err := run()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
 	os.Exit(code)
 }
 
@@ -29,7 +34,15 @@ func TestStreamServiceCancelsInheritedPipes(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := exec.Command(binary, "-test.run=^TestStreamServiceCommandChild$")
-			command.Env = append(os.Environ(), "FENNEC_STREAM_SERVICE_CHILD=1", "HOME="+t.TempDir())
+			// Native macOS test temp paths exceed the Unix socket path limit.
+			home, err := os.MkdirTemp("/tmp", "fn-stream-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.RemoveAll(home) })
+			command.Env = append(os.Environ(), "FENNEC_STREAM_SERVICE_CHILD=1", "HOME="+home)
+			var stderr bytes.Buffer
+			command.Stderr = &stderr
 			input, err := command.StdinPipe()
 			if err != nil {
 				t.Fatal(err)
@@ -46,7 +59,9 @@ func TestStreamServiceCancelsInheritedPipes(t *testing.T) {
 			defer command.Process.Kill()
 			var ready terminalstream.Frame
 			if err := json.NewDecoder(output).Decode(&ready); err != nil || ready.Type != "ready" {
-				t.Fatal(ready, err)
+				command.Process.Kill()
+				command.Wait()
+				t.Fatal(ready, err, stderr.String())
 			}
 			if blocked == "output" {
 				// Its pong cannot fit in the inherited stdout pipe. Leave the

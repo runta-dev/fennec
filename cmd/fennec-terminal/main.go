@@ -12,6 +12,7 @@ import (
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
+	"fennec/internal/trafficbroker"
 	"fmt"
 	"io"
 	"net"
@@ -76,6 +77,12 @@ func run() (int, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 1, err
+	}
+	if len(os.Args) == 2 && os.Args[1] == "traffic-broker" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		cpusched.Interactive(home)
+		return 0, trafficbroker.Run(ctx, home)
 	}
 	// ProxyCommand of the Mac device alias; see localssh.ServeMacRelay. It
 	// serves a ControlMaster that outlives the terminal and the client that
@@ -271,7 +278,12 @@ func run() (int, error) {
 		if err != nil {
 			return 1, err
 		}
-		return 0, terminalstream.ServeWithSockets(ctx, input, streamOutput, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
+		sharedOutput, err := trafficbroker.Ensure(ctx, home, executable, streamOutput)
+		if err != nil {
+			return 1, fmt.Errorf("terminal output scheduler: %w", err)
+		}
+		defer sharedOutput.Close()
+		return 0, terminalstream.ServeWithSockets(ctx, input, sharedOutput, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			terminal, err := runtime.Launch(ctx, request)
 			if err != nil {
 				return terminal, nil, err

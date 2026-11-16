@@ -11,15 +11,18 @@ import (
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
+	"fennec/internal/trafficbroker"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -31,6 +34,7 @@ var remote = flag.String("remote", "", "absolute path to this probe staged on th
 var terminal = flag.String("terminal", "", "optional installed/staged terminal binary for idle-only measurements")
 var count = flag.Int("samples", 60, "samples per phase")
 var loaded = flag.Bool("load", true, "also measure sustained large resident replies from the probe server")
+var shared = flag.Bool("shared-output", true, "use the shared cloud output broker in the probe server")
 var deadline = flag.Duration("timeout", 10*time.Minute, "total bound for the probe and its owned server")
 
 const blobSize = 256 << 10
@@ -60,6 +64,7 @@ type report struct {
 	Started      time.Time                          `json:"started_utc"`
 	Duration     float64                            `json:"duration_seconds"`
 	Packets      bool                               `json:"traffic_packets"`
+	SharedOutput bool                               `json:"shared_output_requested"`
 	Samples      []sample                           `json:"samples"`
 	Summary      map[string]map[string]distribution `json:"summary"`
 	LoadBytes    int64                              `json:"verified_load_bytes"`
@@ -82,6 +87,19 @@ func summarize(v []float64) distribution {
 	return distribution{len(v), v[0], v[len(v)/2], v[(len(v)*95+99)/100-1], v[len(v)-1]}
 }
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "traffic-broker" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		home, err := os.UserHomeDir()
+		if err == nil {
+			err = trafficbroker.Run(ctx, home)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	flag.Parse()
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -103,7 +121,24 @@ func run() error {
 	case "server":
 		context.AfterFunc(ctx, func() { os.Exit(70) })
 		data := payload()
-		return terminalstream.ServeWithOperations(ctx, os.Stdin, os.Stdout, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
+		var output io.Writer = os.Stdout
+		if *shared {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			executable, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			broker, err := trafficbroker.Ensure(ctx, home, executable, os.Stdout)
+			if err != nil {
+				return err
+			}
+			defer broker.Close()
+			output = broker
+		}
+		return terminalstream.ServeWithOperations(ctx, os.Stdin, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
 			if op.Kind != "list" {
 				return nil, fmt.Errorf("unsupported probe operation")
 			}
@@ -117,6 +152,7 @@ func run() error {
 		return fmt.Errorf("use a staged absolute remote path; terminal override requires -load=false")
 	}
 	result := report{Boundary: "One authenticated Go SSH connection; exact matched resident ping through production writer, equal-length guest echo and gateway keepalive, rotated sequential order. Synthetic bulk replies are resident-only; no aggregate SSH coverage claimed.", Started: time.Now().UTC()}
+	result.SharedOutput = *shared && *terminal == ""
 	err := measure(ctx, &result)
 	result.Duration = time.Since(result.Started).Seconds()
 	if err != nil {
@@ -195,7 +231,7 @@ func measure(ctx context.Context, result *report) error {
 	raw.SetDeadline(time.Time{})
 	client := ssh.NewClient(conn, channels, requests)
 	defer client.Close()
-	command := *remote + " -role server -timeout " + deadline.String()
+	command := *remote + " -role server -timeout " + deadline.String() + fmt.Sprintf(" -shared-output=%t", *shared)
 	if *terminal != "" {
 		command = *terminal + fmt.Sprintf(" serve --protocol=%d", terminalstream.ProtocolVersion)
 	}

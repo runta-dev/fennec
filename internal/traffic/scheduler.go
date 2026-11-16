@@ -35,6 +35,11 @@ func DefaultConfig() Config {
 
 var ErrPacketSize = errors.New("traffic packet exceeds the configured atomic write limit")
 
+// ErrWouldBlock is returned by a TryWrite callback that wrote no bytes. The
+// scheduler releases its tokens and tries this packet again after a short
+// delay, allowing unrelated writable destinations to keep progressing.
+var ErrWouldBlock = errors.New("traffic destination is not writable")
+
 type packet struct {
 	ctx   context.Context
 	flow  string
@@ -42,6 +47,8 @@ type packet struct {
 	bytes int
 	write func() error
 	done  chan error
+	retry bool
+	ready time.Time
 }
 
 // Scheduler preserves FIFO within each flow and fairly visits ready flows.
@@ -87,6 +94,18 @@ func (s *Scheduler) signal() {
 }
 
 func (s *Scheduler) Write(ctx context.Context, flow string, class Class, wireBytes int, write func() error) error {
+	return s.write(ctx, flow, class, wireBytes, write, false)
+}
+
+// TryWrite is for nonblocking destination writes only. Its callback may return
+// ErrWouldBlock only when it made no progress. SSH Channel.Write is blocking
+// and must not be used here. A successful partial write must return nil and
+// submit its remaining bytes separately, with framing ownership retained.
+func (s *Scheduler) TryWrite(ctx context.Context, flow string, class Class, wireBytes int, write func() error) error {
+	return s.write(ctx, flow, class, wireBytes, write, true)
+}
+
+func (s *Scheduler) write(ctx context.Context, flow string, class Class, wireBytes int, write func() error, retry bool) error {
 	if wireBytes <= 0 || wireBytes > s.config.MaxPacketBytes {
 		return ErrPacketSize
 	}
@@ -112,7 +131,7 @@ func (s *Scheduler) Write(ctx context.Context, flow string, class Class, wireByt
 	case <-s.ctx.Done():
 		return s.ctx.Err()
 	}
-	p := &packet{ctx: ctx, flow: flow, class: class, bytes: wireBytes, write: write, done: make(chan error, 1)}
+	p := &packet{ctx: ctx, flow: flow, class: class, bytes: wireBytes, write: write, retry: retry, done: make(chan error, 1)}
 	stop := context.AfterFunc(ctx, s.signal)
 	defer stop()
 	s.mu.Lock()
@@ -149,6 +168,10 @@ func (s *Scheduler) selectPacket(now time.Time) (int, time.Duration) {
 			continue
 		}
 		seen[p.flow] = true
+		if now.Before(p.ready) {
+			wait = min(wait, p.ready.Sub(now))
+			continue
+		}
 		if p.class == Bulk && s.bulk.delay(p.bytes, now) == 0 &&
 			(bulkTurn < 0 || s.queue[bulkTurn].flow == s.lastFlow[Bulk] && p.flow != s.lastFlow[Bulk]) {
 			bulkTurn = i
@@ -206,6 +229,7 @@ func (s *Scheduler) drain() {
 		}
 		p := s.queue[index]
 		s.queue = append(s.queue[:index], s.queue[index+1:]...)
+		root, bulk, urgentRun, lastFlow := s.root, s.bulk, s.urgentRun, s.lastFlow
 		err := s.ctx.Err()
 		if err == nil {
 			err = p.ctx.Err()
@@ -223,6 +247,21 @@ func (s *Scheduler) drain() {
 		s.mu.Unlock()
 		if err == nil {
 			err = p.write()
+		}
+		if p.retry && errors.Is(err, ErrWouldBlock) {
+			s.mu.Lock()
+			// Only drain mutates the buckets. Returning the exact prior state
+			// neither spends bandwidth on a stalled destination nor mints a
+			// fresh burst when it becomes writable again.
+			s.root, s.bulk, s.urgentRun, s.lastFlow = root, bulk, urgentRun, lastFlow
+			p.ready = time.Now().Add(5 * time.Millisecond)
+			// Retain FIFO before later packets of the same flow, including
+			// callers admitted while the callback ran.
+			s.queue = append(s.queue, nil)
+			copy(s.queue[index+1:], s.queue[index:])
+			s.queue[index] = p
+			s.mu.Unlock()
+			continue
 		}
 		p.done <- err
 		<-s.slots

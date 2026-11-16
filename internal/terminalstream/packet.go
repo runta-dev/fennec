@@ -2,6 +2,7 @@ package terminalstream
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fennec/internal/traffic"
 	"fmt"
@@ -181,6 +182,13 @@ func (s *writeScheduler) fragment(output io.Writer, flow string, class traffic.C
 
 func (s *writeScheduler) sendPacket(output io.Writer, flow string, class traffic.Class, data []byte) error {
 	data = append(data, '\n')
+	// Enqueue directly into a shared broker. Waiting for its bulk quota in
+	// our serial scheduler would prevent later pongs from entering its queue.
+	if shared, ok := output.(interface {
+		WritePacket(context.Context, string, traffic.Class, []byte) error
+	}); ok {
+		return shared.WritePacket(s.ctx, flow, class, data)
+	}
 	return s.packets.schedule.Write(s.ctx, flow, class, len(data)+packetOverhead, func() error {
 		s.packets.ioMu.Lock()
 		defer s.packets.ioMu.Unlock()

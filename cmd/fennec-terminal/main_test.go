@@ -14,6 +14,16 @@ import (
 	"testing"
 )
 
+// Resident startup launches the same executable's standalone traffic helper.
+// Dispatch that real entrypoint when this test binary is used as the service.
+func TestMain(m *testing.M) {
+	if len(os.Args) == 2 && os.Args[1] == "traffic-broker" {
+		main()
+		return
+	}
+	os.Exit(m.Run())
+}
+
 func TestProtocolGateRejectsBeforeReadingLaunch(t *testing.T) {
 	for _, args := range [][]string{{"serve", "--protocol=0"}, {"serve", "--protocol=999"}, {"serve", "--protocol="}, {"serve", "--protocol=6", "extra"}} {
 		if serving, err := serveMode(args); err == nil || serving {

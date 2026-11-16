@@ -270,3 +270,45 @@ func TestOversizedPacketIsRejectedInsteadOfWaitingForever(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestBlockedDestinationDoesNotSpendPeerBandwidth(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{BytesPerSecond: 2048, BulkBytesPerSecond: 2048, BurstBytes: 1024, MaxPacketBytes: 1024, QueuePackets: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked, stopBlocked := context.WithCancel(ctx)
+	attempted := make(chan struct{}, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- s.TryWrite(blocked, "stalled", Bulk, 1024, func() error {
+			select {
+			case attempted <- struct{}{}:
+			default:
+			}
+			return ErrWouldBlock
+		})
+	}()
+	select {
+	case <-attempted:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	start := time.Now()
+	if err := s.Write(ctx, "peer", Interactive, 1024, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 100*time.Millisecond {
+		t.Fatalf("stalled destination spent the peer's tokens: %s", d)
+	}
+	stopBlocked()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("canceled stalled packet succeeded")
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
