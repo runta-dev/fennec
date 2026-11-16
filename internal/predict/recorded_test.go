@@ -212,6 +212,10 @@ func replayRecorded(t *testing.T, name string, rows, cols int, profile func() Pr
 		t.Fatalf("terminal did not converge: %s", why)
 	}
 	res.stats = engine.Stats()
+	t.Logf("local paint p50=%v p95=%v (wall time, separate from recorded cloud confirmations)", res.stats.LocalPaintP50, res.stats.LocalPaintP95)
+	if os.Getenv("FENNEC_TUI_PAINT_BUDGET") == "1" && res.stats.LocalPaintP95 >= 50*time.Millisecond {
+		t.Errorf("local paint P95 %v exceeds 50 ms", res.stats.LocalPaintP95)
+	}
 	t.Logf("keys=%d predicted=%d exact=%d merged=%d paused=%d confirmed=%d diverged=%d expired=%d p50=%v p95=%v", res.keys, res.predicted, res.exact, res.merged, res.paused, res.stats.Confirmed, res.stats.Diverged, res.stats.Expired, res.stats.ConfirmP50, res.stats.ConfirmP95)
 	if res.exact+res.merged != res.predicted || res.merged*20 > res.predicted {
 		t.Fatalf("%d of %d shown predictions matched the agent", res.exact, res.predicted)

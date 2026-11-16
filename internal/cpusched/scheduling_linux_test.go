@@ -18,14 +18,14 @@ func TestOnlyVerifiedControlProcessesAreElevated(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := map[int]process{
-		10: {10, 1, herdr, "serve"},
-		11: {11, 10, "/agent/claude", ""},
-		12: {12, 11, "/usr/bin/make", ""},
-		20: {20, 1, "/usr/sbin/sshd", ""},
-		21: {21, 20, filepath.Join(home, ".local/fennec/terminal/build/fennec-terminal"), "serve"},
-		22: {22, 21, herdr, "attach"},
-		30: {30, 1, "/unrelated/herdr-core", ""},
-		31: {31, 30, "/unrelated/claude", ""},
+		10: {10, 1, herdr, "serve", "1"},
+		11: {11, 10, "/agent/claude", "", "1"},
+		12: {12, 11, "/usr/bin/make", "", "1"},
+		20: {20, 1, "/usr/sbin/sshd", "", "1"},
+		21: {21, 20, filepath.Join(home, ".local/fennec/terminal/build/fennec-terminal"), "serve", "1"},
+		22: {22, 21, herdr, "attach", "1"},
+		30: {30, 1, "/unrelated/herdr-core", "", "1"},
+		31: {31, 30, "/unrelated/claude", "", "1"},
 	}
 	got := classify(home, all, 21)
 	for _, pid := range []int{10, 20, 21, 22} {

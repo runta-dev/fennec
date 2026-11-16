@@ -68,6 +68,7 @@ func place(pid int, group string, nice int) error {
 type process struct {
 	pid, parent int
 	exe, mode   string
+	start       string
 }
 
 func processes() map[int]process {
@@ -92,7 +93,7 @@ func processes() map[int]process {
 			continue
 		}
 		fields := strings.Fields(string(stat[end+1:]))
-		if len(fields) < 2 {
+		if len(fields) < 20 {
 			continue
 		}
 		parent, _ := strconv.Atoi(fields[1])
@@ -102,7 +103,7 @@ func processes() map[int]process {
 		if len(parts) > 1 {
 			mode = parts[1]
 		}
-		result[pid] = process{pid, parent, strings.TrimSuffix(exe, " (deleted)"), mode}
+		result[pid] = process{pid, parent, strings.TrimSuffix(exe, " (deleted)"), mode, fields[19]}
 	}
 	return result
 }
@@ -159,7 +160,22 @@ func Interactive(home string) Report {
 	if err := groups(); err != nil {
 		report.Errors = append(report.Errors, err.Error())
 	}
-	for pid, group := range classify(home, processes(), os.Getpid()) {
+	all := processes()
+	for pid, group := range classify(home, all, os.Getpid()) {
+		// A short-lived agent may exit while this snapshot is being applied.
+		// Fence PID reuse before touching a different process's scheduling.
+		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+		if err != nil {
+			continue
+		}
+		end := strings.LastIndexByte(string(stat), ')')
+		if end < 0 {
+			continue
+		}
+		fields := strings.Fields(string(stat[end+1:]))
+		if len(fields) < 20 || fields[19] != all[pid].start {
+			continue
+		}
 		nice := 0
 		if group == "control" {
 			nice = -5

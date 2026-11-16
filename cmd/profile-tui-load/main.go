@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -44,6 +45,11 @@ func main() {
 }
 
 func run() error {
+	if *role == "echo" || *role == "burn" || *role == "flood" {
+		if err := checkWorkload(); err != nil {
+			return err
+		}
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, *duration+2*time.Minute)
@@ -263,6 +269,41 @@ func run() error {
 	_ = json.NewEncoder(os.Stdout).Encode(result)
 	if result["passed"] != true {
 		return fmt.Errorf("added echo P95 exceeds %s", *budget)
+	}
+	return nil
+}
+
+// Check the exec boundary and every existing Go thread, not merely the
+// parent's requested settings. All role children inherit the workload group.
+func checkWorkload() error {
+	group, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil || !strings.Contains(string(group), "0::/fennec/workload\n") {
+		return fmt.Errorf("probe child escaped workload group: %v", err)
+	}
+	tasks, err := os.ReadDir("/proc/self/task")
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		data, err := os.ReadFile("/proc/self/task/" + task.Name() + "/stat")
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		end := strings.LastIndexByte(string(data), ')')
+		if end < 0 {
+			return fmt.Errorf("invalid task stat")
+		}
+		fields := strings.Fields(string(data[end+1:]))
+		if len(fields) < 17 {
+			return fmt.Errorf("short task stat")
+		}
+		nice, err := strconv.Atoi(fields[16])
+		if err != nil || nice != 0 {
+			return fmt.Errorf("workload inherited priority %s", fields[16])
+		}
 	}
 	return nil
 }
