@@ -44,6 +44,8 @@ h2{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;marg
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 .copy{width:92px;white-space:nowrap}
+.text small.warn{color:var(--warn)}
+.row.off strong{color:var(--muted)}
 .copied{display:inline-flex;align-items:center;justify-content:center;gap:5px;color:var(--ok)}
 /* The hint keeps its two lines whether or not it has text: no layout shift. */
 .hint{height:50px;margin:0;padding:8px 2px 0;font-size:11.5px;line-height:1.45;color:var(--muted);overflow:hidden}
@@ -107,37 +109,65 @@ function step(id, n, done) {
 
 let copied = "";
 let agentsShown = "";
-function renderAgents(commands) {
-  const key = JSON.stringify(commands) + copied;
+// One row per known agent, always the same rows: no layout shift. The
+// button connects in place; a failed connect offers the command instead.
+function renderAgents(s) {
+  const list = s.agentsLoaded ? s.agents : [{id: "claude", name: "Claude Code", loading: true}, {id: "codex", name: "Codex", loading: true}];
+  const key = JSON.stringify([list, s.connecting, s.mounted, copied]);
   if (key === agentsShown) return;
   agentsShown = key;
   const box = document.getElementById("agents");
   box.innerHTML = "";
-  for (const c of commands) {
+  for (const a of list) {
     const row = document.createElement("div");
-    row.className = "row";
+    row.className = "row" + (a.installed || a.loading ? "" : " off");
     const text = document.createElement("div");
     text.className = "text";
     const name = document.createElement("strong");
-    name.textContent = c.name;
+    name.textContent = a.name;
     const help = document.createElement("small");
-    help.textContent = copied === c.id ? "Paste into Terminal, then restart " + c.name : "Copy a command, then paste it into Terminal";
-    text.append(name, help);
-    const button = document.createElement("button");
-    button.className = "copy";
-    button.title = c.command;
-    if (copied === c.id) {
-      button.innerHTML = `<span class="copied">${tick}Copied</span>`;
-    } else {
-      button.textContent = "Copy";
-    }
-    button.onclick = () => {
-      post("copy", {text: c.command});
-      copied = c.id;
-      renderAgents(commands);
-      if (last) window.setupRender(last);
+    const action = document.createElement("div");
+    action.className = "action";
+    const busy = (s.connecting || []).includes(a.id);
+    const button = (label, cls, fn) => {
+      const b = document.createElement("button");
+      b.className = cls;
+      b.textContent = label;
+      b.onclick = fn;
+      action.append(b);
     };
-    row.append(text, button);
+    if (a.loading) {
+      help.textContent = "Looking for it on this Mac…";
+      action.innerHTML = working;
+    } else if (busy) {
+      help.textContent = "Adding Fennec CUA and its skill";
+      action.innerHTML = '<span class="state"><span class="spin"></span>Connecting</span>';
+    } else if (a.connected) {
+      help.textContent = (s.justConnected || []).includes(a.name) ? "Connected. Restart " + a.name + " to use it" : "Connected";
+      action.innerHTML = `<span class="state ok">${tick}Connected</span>`;
+    } else if (!a.installed) {
+      help.textContent = "Not installed on this Mac";
+    } else if (s.mounted) {
+      help.textContent = "Drag FennecCUA to Applications first";
+    } else if (a.error) {
+      help.textContent = a.error;
+      help.className = "warn";
+      help.title = a.error;
+      if (a.mcp === "other" || a.skill === "other" || !a.manual) {
+        button("Try again", "allow", () => post("connect", {id: a.id}));
+      } else if (copied === a.id) {
+        action.innerHTML = `<span class="copied">${tick}Copied</span>`;
+      } else {
+        button("Copy", "copy", () => { post("copy", {text: a.manual}); copied = a.id; renderAgents(last); });
+        help.textContent = "Couldn't connect. Copy the command and run it in Terminal";
+        help.title = a.error;
+      }
+    } else {
+      help.textContent = a.mcp === "ours" || a.skill === "ours" ? "Connected to an older copy: update it" : "Adds Fennec CUA and its skill";
+      button(a.mcp === "ours" || a.skill === "ours" ? "Update" : "Connect", "allow", () => post("connect", {id: a.id}));
+    }
+    text.append(name, help);
+    row.append(text, action);
     box.append(row);
   }
 }
@@ -158,7 +188,16 @@ window.setupRender = s => {
   if (s.notice) { hint = s.notice; tone = "warn"; }
   else if (s.capture === "error" && s.accessibility && s.screen) { hint = s.captureDetail || "The test screenshot failed. Click Try again."; tone = "warn"; }
   else if (s.daemonError) { hint = s.daemonError; tone = "warn"; }
-  else if (ready) { hint = copied ? "All set. Your agent can use this Mac after it restarts." : "Access allowed. Next, connect your agent."; tone = "ok"; }
+  else if (ready) {
+    const done = (s.justConnected || []);
+    const any = (s.agents || []).some(a => a.connected);
+    const installed = (s.agents || []).some(a => a.installed);
+    if (done.length) hint = "All set. Restart " + done.join(" and ") + ", then ask it to use an app on this Mac.";
+    else if (any) hint = "All set. Your agent can use the apps on this Mac.";
+    else if (s.agentsLoaded && !installed) hint = "Access allowed. Install Claude Code or Codex, then connect it here.";
+    else hint = "Access allowed. Next, connect your agent.";
+    tone = "ok";
+  }
   else if (asked === "accessibility" && !s.accessibility) hint = "In System Settings › Accessibility, turn on “Fennec CUA”. This window updates by itself.";
   else if (asked === "screen" && !s.screen) hint = "In System Settings › Screen & System Audio Recording, turn on “Fennec CUA”. This window updates by itself.";
   else if (s.capture === "consent" && s.accessibility && s.screen) hint = "One more: click Allow, then choose Allow in the macOS alert.";
@@ -170,8 +209,8 @@ window.setupRender = s => {
   h.className = "hint" + (tone ? " " + tone : "");
 
   step("step-access", 1, ready);
-  step("step-connect", 2, copied !== "");
-  renderAgents(s.commands);
+  step("step-connect", 2, (s.agents || []).some(a => a.connected));
+  renderAgents(s);
 };
 </script>
 </body>

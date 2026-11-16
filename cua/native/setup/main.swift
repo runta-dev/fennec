@@ -65,13 +65,6 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
 
     let app = Bundle.main.bundleURL
     var exe: String { app.appendingPathComponent("Contents/MacOS/fennec-cua").path }
-    var link: String {
-        let l = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/fennec-cua").path
-        if let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: l), dest == exe { return l }
-        return exe
-    }
-    // The command for a shell, single-quoted: the app may sit in a folder whose path has spaces.
-    var quotedLink: String { "'" + link.replacingOccurrences(of: "'", with: "'\\''") + "'" }
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     let asksDirectCapture = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 15
 
@@ -82,6 +75,16 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
     var restartedForScreen = false
     var requesting = false
     var notice = ""
+
+    // Agents: what `fennec-cua agents --json` last said, and the ones a
+    // connect runs for. connected lists the agents this window connected, so
+    // the hint can ask to restart them.
+    var agents: [[String: Any]] = []
+    var mounted = false
+    var agentsRunning = false
+    var lastAgents = Date.distantPast
+    var connecting: Set<String> = []
+    var justConnected: [String] = []
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -115,6 +118,7 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
         DistributedNotificationCenter.default().addObserver(forName: showRequest, object: nil, queue: .main) { [weak self] _ in self?.bringForward() }
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in NSApp.terminate(nil) }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in self?.lastAgents = .distantPast }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
@@ -174,6 +178,9 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
 
     func tick() {
         push()
+        // Agents can be installed or connected elsewhere while the window
+        // is open: look again now and then, and whenever it comes forward.
+        if !agentsRunning, connecting.isEmpty, Date().timeIntervalSince(lastAgents) > 15 { runAgents() }
         // Once both grants are in, the daemon's own view decides the
         // last step: its test capture (and, on macOS 15 and later, whether
         // macOS has asked about direct capture).
@@ -196,6 +203,61 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
                 self.restartedForScreen = true
                 self.run(["quit"]) { _, _ in self.lastDoctor = .distantPast; self.tick() }
             }
+            self.push()
+        }
+    }
+
+    func runAgents() {
+        agentsRunning = true
+        run(["agents", "--json"]) { [weak self] out, _ in
+            guard let self else { return }
+            self.agentsRunning = false
+            self.lastAgents = Date()
+            self.takeAgents(out)
+            self.push()
+        }
+    }
+
+    // takeAgents keeps the agents of a report; an error a connect reported
+    // stays until the next connect.
+    func takeAgents(_ out: String) {
+        guard let data = out.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = obj["agents"] as? [[String: Any]] else { return }
+        let errors = Dictionary(uniqueKeysWithValues: agents.compactMap { a -> (String, Any)? in
+            guard let id = a["id"] as? String, let e = a["error"] as? String, !e.isEmpty else { return nil }
+            return (id, e)
+        })
+        agents = list.map { a in
+            var a = a
+            if let id = a["id"] as? String, (a["error"] as? String ?? "").isEmpty, (a["connected"] as? Bool) != true, let e = errors[id] {
+                a["error"] = e
+            }
+            return a
+        }
+        mounted = obj["mounted"] as? Bool ?? false
+    }
+
+    func connect(_ id: String) {
+        guard !connecting.contains(id) else { return }
+        connecting.insert(id)
+        if let i = agents.firstIndex(where: { $0["id"] as? String == id }) { agents[i]["error"] = "" }
+        push()
+        run(["connect", id, "--json"]) { [weak self] out, status in
+            guard let self else { return }
+            self.connecting.remove(id)
+            let before = self.agents
+            self.takeAgents(out)
+            if self.agents.isEmpty || out.isEmpty {
+                self.agents = before
+                if let i = self.agents.firstIndex(where: { $0["id"] as? String == id }) {
+                    self.agents[i]["error"] = status == 0 ? "No answer from fennec-cua" : "fennec-cua connect failed (status \(status))"
+                }
+            }
+            if let a = self.agents.first(where: { $0["id"] as? String == id }), a["connected"] as? Bool == true, let name = a["name"] as? String, !self.justConnected.contains(name) {
+                self.justConnected.append(name)
+            }
+            self.lastAgents = Date()
             self.push()
         }
     }
@@ -271,11 +333,11 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             "captureDetail": doctor.captureDetail,
             "daemonError": doctor.daemonError,
             "notice": notice,
-            "commands": [
-                // One paste in a terminal: the MCP server and the skill.
-                ["id": "claude", "name": "Claude Code", "command": "claude mcp add --scope user fennec-cua -- \(quotedLink) mcp && \(quotedLink) skill install --claude"],
-                ["id": "codex", "name": "Codex", "command": "codex mcp add fennec-cua -- \(quotedLink) mcp && \(quotedLink) skill install --codex"],
-            ],
+            "agents": agents,
+            "agentsLoaded": lastAgents != .distantPast || !agents.isEmpty,
+            "mounted": mounted,
+            "connecting": Array(connecting),
+            "justConnected": justConnected,
         ]
     }
 
@@ -319,6 +381,8 @@ final class Controller: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             doctor = Doctor()
             restartedForScreen = false
             run(["quit"]) { [weak self] _, _ in self?.lastDoctor = .distantPast; self?.runDoctor() }
+        case "connect":
+            if let id = body["id"] as? String { connect(id) }
         case "copy":
             if let text = body["text"] as? String {
                 NSPasteboard.general.clearContents()

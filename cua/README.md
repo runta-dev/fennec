@@ -65,6 +65,16 @@ fennec-cua doctor     # one line each: app, quarantine, cua-driver, browser, com
 
 ### 3. Connect your agent
 
+The setup window's second step does it: it lists Claude Code and Codex, finds the ones installed (through your login shell's PATH and the usual install directories), and its Connect button registers the MCP server with the agent's own command (`claude mcp add --scope user`, `codex mcp add`) and links the skill into the agent's skills directory (`~/.claude/skills/fennec-cua`, `$CODEX_HOME/skills/fennec-cua`) to the copy inside the app, so updating the app updates the skill. It replaces only entries of its own (an older install, a copied skill) and never a server or skill of the same name that is someone else's. Restart the agent afterwards. From a shell, the same:
+
+```sh
+fennec-cua agents              # installed agents and whether they are connected
+fennec-cua connect             # every installed agent (or: connect claude, connect codex)
+fennec-cua disconnect          # remove them again; uninstall does this too
+```
+
+By hand, or for other clients:
+
 ```sh
 claude mcp add --scope user fennec-cua -- "$HOME/.local/bin/fennec-cua" mcp     # Claude Code
 codex mcp add fennec-cua -- "$HOME/.local/bin/fennec-cua" mcp                   # Codex

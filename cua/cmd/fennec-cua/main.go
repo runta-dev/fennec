@@ -80,7 +80,10 @@ const usage = `usage: fennec-cua COMMAND
   doctor [--json] [--no-start]         check install, daemon, permissions, driver and browser
   setup                                open the setup window (permissions, connecting an agent)
   permissions [--request] [--open]     the macOS permissions and how to grant them
-  mcp-config [claude|codex|json|http]  how to connect an agent
+  agents [--json]                      installed agents (Claude Code, Codex) and whether they are connected
+  connect [claude] [codex] [--json]    register the MCP server and link the skill in installed agents
+  disconnect [claude] [codex]          remove them again
+  mcp-config [claude|codex|json|http]  how to connect an agent by hand
   skill path | install [--claude] [--codex] [--dest DIR]
   install [--app-dir DIR] [--bin-dir DIR] | uninstall [--purge]
   status | stop | resume | quit | serve [--http ADDR] | version
@@ -152,7 +155,7 @@ func run(args []string) error {
 	case "install":
 		return installCmd(ctx, paths, self, args[1:], os.Stdout)
 	case "uninstall":
-		return uninstallCmd(ctx, paths, args[1:], os.Stdout)
+		return uninstallCmd(ctx, paths, self, args[1:], os.Stdout)
 	case "doctor":
 		return doctorCmd(ctx, paths, self, args[1:], os.Stdout)
 	case "setup":
@@ -163,6 +166,12 @@ func run(args []string) error {
 		return mcpConfigCmd(self, args[1:], os.Stdout)
 	case "skill":
 		return skillCmd(self, args[1:], os.Stdout)
+	case "agents":
+		return agentsCmd(ctx, self, args[1:], os.Stdout)
+	case "connect":
+		return connectCmd(ctx, self, args[1:], os.Stdout)
+	case "disconnect":
+		return disconnectCmd(ctx, self, args[1:], os.Stdout)
 	case "quit":
 		quit, err := quitDaemon(ctx, paths)
 		if err == nil && !quit {

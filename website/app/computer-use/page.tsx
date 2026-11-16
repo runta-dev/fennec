@@ -48,7 +48,7 @@ export default function ComputerUse() {
         <p>Fennec Computer Use runs on its own, without the Fennec app.<br/>Your agent drives it through one JavaScript REPL, compatible with the Codex computer-use API.</p>
         <div className="feature-grid">
           <article><ScanEye size={22} strokeWidth={1.5}/><h3>Reads apps, not pixels.</h3><p>Your agent sees each window's controls through macOS accessibility, acts on them by id, and reads the change back. Screenshots are there when it needs them.</p></article>
-          <article><Plug size={22} strokeWidth={1.5}/><h3>Works with your agent.</h3><p>One command connects Claude Code or Codex as an MCP server, with a skill that teaches the API. Web pages open in its own Chromium, apart from your browser.</p></article>
+          <article><Plug size={22} strokeWidth={1.5}/><h3>Works with your agent.</h3><p>One click connects Claude Code or Codex: the setup window adds the MCP server and a skill that teaches the API. Web pages open in its own Chromium, apart from your browser.</p></article>
           <article><ShieldCheck size={22} strokeWidth={1.5}/><h3>Careful by default.</h3><p>It hands back anything that needs your password or a purchase, asks before it deletes or sends, and closes pop-ups it did not open instead of following them.</p></article>
         </div>
       </section>
@@ -83,19 +83,19 @@ export default function ComputerUse() {
       </section>
 
       <section className="getting-started" id="install">
-        <div><div className="eyebrow">GET STARTED</div><h2>Three steps.<br/>No terminal.</h2><p>Open the disk image and drag the app to Applications. When you open it, its setup window walks you through the two macOS permissions, then gives you one command for your agent.</p><span className="preview-note">Prefer a script? The <a className="text-link-inline" href={releases}>releases</a> also carry archives and checksums.</span></div>
+        <div><div className="eyebrow">GET STARTED</div><h2>Three steps.<br/>No terminal.</h2><p>Open the disk image and drag the app to Applications. When you open it, its setup window walks you through the two macOS permissions, then connects Claude Code or Codex with one click.</p><span className="preview-note">Prefer a script? The <a className="text-link-inline" href={releases}>releases</a> also carry archives and checksums.</span></div>
         <div className="cli-card cu-steps">
           <ol>
             <li><b>Drag to Applications.</b><small>Open the downloaded .dmg and drag FennecCUA into Applications.</small></li>
             <li><b>Open FennecCUA and allow access.</b><small>Accessibility and Screen Recording, so your agent can read and operate apps.</small></li>
-            <li><b>Connect your agent.</b><small>Paste the command it shows for Claude Code or Codex.</small></li>
+            <li><b>Connect your agent.</b><small>Click Connect next to Claude Code or Codex. It adds the tools and the skill for you.</small></li>
           </ol>
         </div>
       </section>
 
       <section className="faq-section" id="faq"><h2>A few things to know.</h2><div>{[
         ['Do I need the Fennec app?', 'No. Fennec Computer Use is a separate app, FennecCUA. If you also use Fennec, both share the same settings.'],
-        ['Which agents work with it?', 'Any agent that speaks MCP. The setup window gives the command for Claude Code and Codex; agents with only a shell can call fennec-cua js.'],
+        ['Which agents work with it?', 'Any agent that speaks MCP. The setup window connects Claude Code and Codex for you; other MCP clients take one config entry, and agents with only a shell can call fennec-cua js.'],
         ['What can my agent see?', 'Only what it asks for: the windows of the apps it works in, as a list of controls or a screenshot,, sent to your agent and the model it uses.'],
         ['Can I stop it?', 'Yes. macOS shows when an app uses the screen, you can revoke its permissions in System Settings at any time, and Stop halts whatever the agent is doing.'],
         ['What does it run on?', 'Apple Silicon Macs with macOS 13 or later. The app is signed and notarized by Apple.'],

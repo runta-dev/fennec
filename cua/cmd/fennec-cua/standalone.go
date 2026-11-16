@@ -336,7 +336,7 @@ func installCmd(ctx context.Context, paths daemon.Paths, self string, args []str
 	return nil
 }
 
-func uninstallCmd(ctx context.Context, paths daemon.Paths, args []string, out io.Writer) error {
+func uninstallCmd(ctx context.Context, paths daemon.Paths, self string, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var lf layoutFlags
@@ -374,6 +374,15 @@ func uninstallCmd(ctx context.Context, paths daemon.Paths, args []string, out io
 		data = append(data, filepath.Dir(cfgPath), profile)
 		for _, p := range []string{paths.MCP, paths.Control, paths.Lock, paths.Driver, paths.Log, strings.TrimSuffix(paths.Driver, filepath.Ext(paths.Driver)) + ".pid", filepath.Join(paths.Dir, "recordings")} {
 			data = append(data, p)
+		}
+	}
+	// Agents connected to this app lose their MCP entry and skill link
+	// first, while the app that knows them is still there.
+	if env, _, err := agentEnv(ctx, self, false); err == nil {
+		for _, a := range standalone.Agents {
+			if s := env.Disconnect(ctx, a); s.Error != "" {
+				fmt.Fprintf(out, "%s: %s\n", s.Name, s.Error)
+			}
 		}
 	}
 	in := &standalone.Installer{Layout: lay, StopDaemon: stopDaemonIn(ctx, paths, lay.App())}

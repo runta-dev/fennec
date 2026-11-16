@@ -12,7 +12,7 @@ fennec-cua doctor
 
 ## Install from the disk image (people)
 
-The user downloads `FennecCUA-<version>-macos-arm64.dmg` from https://fennec.runta.com/computer-use, opens it, drags FennecCUA to Applications and opens it there. The first open links `~/.local/bin/fennec-cua` to the app and shows the setup window: the permissions, then one command that connects Claude Code or Codex (the MCP server and this skill). An agent asks the user to do this; it cannot drag the app for them.
+The user downloads `FennecCUA-<version>-macos-arm64.dmg` from https://fennec.runta.com/computer-use, opens it, drags FennecCUA to Applications and opens it there. The first open links `~/.local/bin/fennec-cua` to the app and shows the setup window: the permissions, then a Connect button for each installed agent (Claude Code, Codex) that registers the MCP server and links this skill; no terminal. An agent asks the user to do this; it cannot drag the app for them. `fennec-cua connect` does the same from a shell.
 
 ## Install from the archive (scripts)
 
