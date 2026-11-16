@@ -1,0 +1,786 @@
+/* Herdr chrome follows the supplied desktop reference. Fennec uses the shipping
+   native/macos/UI/panel.css in an isolated frame. */
+.demo-wrap:has(.workflow-demo) {
+  max-width: 1400px;
+  padding: 0 32px;
+}
+.workflow-demo {
+  scroll-margin-top: 32px;
+  text-align: left;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.workflow-desktop {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.fennec-window {
+  height: 550px;
+  margin-top: 35px;
+  border: 1px solid #dedee3;
+  border-radius: 15px;
+  overflow: hidden;
+  background: #f2f2f5;
+  box-shadow: 0 5px 20px #00000008;
+}
+.native-panel {
+  border: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.herdr-window {
+  display: grid;
+  grid-template-columns: 154px minmax(0, 1fr);
+  height: 600px;
+  border: 1px solid #303135;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #17181b;
+  color: #c8c9cc;
+  box-shadow: 0 5px 20px #0000000a;
+  min-width: 0;
+  font-size: 12px;
+}
+.herdr-window button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+.herdr-window button:focus-visible,
+.workflow-player button:focus-visible,
+.workflow-chapters button:focus-visible {
+  outline: 2px solid #f38d25;
+  outline-offset: -2px;
+}
+.herdr-sidebar {
+  background: #101114;
+  border-right: 1px solid #2b2c30;
+  min-width: 0;
+}
+.herdr-brand {
+  height: 45px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border-bottom: 1px solid #25262a;
+}
+.herdr-brand strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.herdr-brand > svg {
+  margin-left: auto;
+  color: #86878c;
+}
+.mac-dots {
+  display: flex;
+  gap: 4px;
+}
+.mac-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.mac-dots i:nth-child(2) {
+  background: #febc2e;
+}
+.mac-dots i:nth-child(3) {
+  background: #28c840;
+}
+.herdr-sidebar-heading {
+  display: flex;
+  justify-content: space-between;
+  color: #73757c;
+  font-size: 11px;
+  padding: 20px 12px 12px;
+}
+.herdr-computer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8d8f96;
+  font-size: 10px;
+  padding: 0 12px 9px;
+}
+.herdr-computer > svg:last-child {
+  margin-left: auto;
+}
+.herdr-project {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 7px;
+  padding: 8px;
+  background: #27282c;
+  border-radius: 7px;
+  font-weight: 500;
+}
+.herdr-project > span {
+  background: #299f94;
+  color: white;
+  border-radius: 5px;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+}
+.herdr-agents-heading {
+  margin-top: 26px;
+  border-top: 1px solid #2b2c30;
+}
+.herdr-group {
+  padding: 6px 6px 9px;
+}
+.herdr-group > small {
+  display: block;
+  padding: 0 6px 9px;
+  font-size: 10px;
+  color: #8c8e95;
+}
+.herdr-group > small > span {
+  margin-left: 4px;
+  color: #5d5f66;
+}
+.herdr-group > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 6px;
+  text-align: left;
+  border-radius: 6px;
+}
+.herdr-group > button.selected {
+  background: #27282c;
+}
+.herdr-group > button > img {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+}
+.herdr-group > button > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  flex: 1;
+}
+.herdr-state {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #7c7c80;
+  border-radius: 50%;
+  flex: none;
+}
+.herdr-state.working {
+  border-color: #c8b078;
+  border-right-color: transparent;
+  animation: tour-spin 1s linear infinite;
+}
+.herdr-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.herdr-tabs {
+  height: 45px;
+  min-height: 45px;
+  border-bottom: 1px solid #2b2c30;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  gap: 5px;
+  background: #101114;
+}
+.herdr-tabs > button {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  min-width: 55px;
+}
+.herdr-tabs > button[aria-selected="true"] {
+  background: #2b2c30;
+  box-shadow: inset 0 0 0 1px #45464b;
+}
+.herdr-tabs > button > img {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+}
+.herdr-tabs > button > .lucide-x {
+  color: #777980;
+}
+.herdr-tabs > .herdr-new-tab {
+  min-width: 25px;
+  padding: 0 5px;
+  color: #92949a;
+}
+.herdr-new-tab:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.herdr-terminal {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.herdr-terminal-heading {
+  height: 42px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid #2b2c30;
+  font-size: 12px;
+}
+.herdr-terminal-heading > img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.herdr-terminal-heading > strong {
+  font-weight: 500;
+}
+.herdr-terminal-heading > span {
+  color: #75777e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.demo-shell,
+.agent-tui,
+.fen-picker {
+  font:
+    11px/1.65 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+}
+.demo-shell {
+  padding: 25px 20px;
+}
+.demo-shell p {
+  margin: 0 0 3px;
+  color: #84878c;
+  font-size: 11px;
+}
+.demo-shell p > span {
+  color: #79b6a4;
+}
+.demo-shell b {
+  color: #c5c7cb;
+  font-weight: 400;
+}
+.demo-shell em {
+  font-style: normal;
+  color: #a59bbd;
+  margin-left: 8px;
+}
+.agent-tui {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 20px 0;
+}
+.tui-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #42434a transparent;
+}
+.codex-welcome {
+  font-size: 10px;
+  line-height: 1.6;
+  color: #94969e;
+  margin-bottom: 19px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.codex-welcome strong {
+  display: block;
+  color: #dbdce0;
+  font-weight: 500;
+}
+.codex-welcome p {
+  margin: 0;
+  font: inherit;
+  color: #94969e;
+}
+.claude-welcome {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 0 0 22px;
+  border: 1px solid #5f4940;
+  padding: 12px 15px;
+  border-radius: 3px;
+  width: max-content;
+  max-width: 100%;
+}
+.claude-welcome > span {
+  font-size: 34px;
+  line-height: 1;
+  color: #d5977b;
+}
+.claude-welcome strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: #dedfe3;
+}
+.claude-welcome p,
+.pi-welcome p {
+  font:
+    10px/1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #8b8d95;
+  margin: 3px 0 0;
+}
+.pi-welcome {
+  margin-bottom: 22px;
+}
+.pi-welcome strong {
+  color: #d5d7dc;
+  font-size: 14px;
+  font-weight: 500;
+}
+.tui-request {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #2c2d33;
+  padding: 8px 10px;
+  margin: 0 0 16px;
+  color: #e2e3e7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tui-response {
+  color: #bec0c7;
+  margin-bottom: 15px;
+}
+.tui-output {
+  display: grid;
+  gap: 9px;
+}
+.tui-output > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #aaadb6;
+}
+.tui-output > div > span {
+  color: #a8b997;
+}
+.tui-output > div > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tui-output b {
+  font-weight: 500;
+  color: #d8d9de;
+}
+.tui-output small {
+  display: block;
+  color: #696c75;
+  font-size: 10px;
+}
+.tui-output > .tui-success {
+  color: #a3c69a;
+}
+.tui-result {
+  font: inherit;
+  color: #d0d3da;
+  margin: 18px 0 12px;
+}
+.tui-working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font:
+    10px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #b4b6bd;
+  margin: 18px 0;
+}
+.tui-working > span:last-child {
+  color: #70737c;
+}
+.tui-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #b9b5a0;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: tour-spin 1s linear infinite;
+}
+.tui-composer {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-height: 40px;
+  padding: 10px;
+  margin-top: 13px;
+  background: #292a30;
+  color: #e0e2e7;
+  flex: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tui-composer > span:last-child {
+  min-width: 0;
+}
+.tui-claude .tui-composer {
+  background: transparent;
+  border-top: 1px solid #62636a;
+  border-bottom: 1px solid #62636a;
+}
+.tui-pi .tui-composer {
+  background: transparent;
+  border-top: 1px solid #8e8fd3;
+  border-bottom: 1px solid #8e8fd3;
+}
+.tui-cursor {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-left: 2px;
+  width: 6px;
+  height: 13px;
+  background: #c6c7cf;
+  animation: tour-cursor 1.1s step-end infinite;
+}
+.tui-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 0 10px;
+  font-size: 9px;
+  color: #777a85;
+  flex: none;
+}
+.fen-picker {
+  flex: 1;
+  position: relative;
+  padding: 24px 14px;
+  outline: none;
+  min-width: 0;
+}
+.fen-picker:focus-visible {
+  box-shadow: inset 0 0 0 1px #777;
+}
+.fen-picker > strong {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e1e2e5;
+}
+.fen-picker > p {
+  font:
+    10px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #858894;
+  margin: 2px 0 24px;
+}
+.fen-picker-list {
+  display: grid;
+  gap: 2px;
+}
+.fen-picker-list > button {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  padding: 9px 7px;
+  border-radius: 0;
+  font:
+    10px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.fen-picker-list > button.selected {
+  background: #dedfe3;
+  color: #191a1d;
+}
+.fen-picker-list > button > span {
+  flex: 1;
+  min-width: 0;
+}
+.fen-picker-list small {
+  font: inherit;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.fen-picker-help {
+  position: absolute;
+  bottom: 16px;
+  left: 21px;
+  color: #858894;
+  font-size: 9px;
+}
+.workflow-player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  height: 30px;
+}
+.workflow-player button {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: #444;
+  cursor: pointer;
+}
+.workflow-player button:hover {
+  background: #f2f2f4;
+}
+.workflow-time {
+  font:
+    10px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #8a8a90;
+  white-space: nowrap;
+}
+.workflow-player input {
+  flex: 1;
+  min-width: 30px;
+  accent-color: #393a3e;
+  height: 3px;
+  cursor: pointer;
+}
+.workflow-scene {
+  width: 200px;
+  text-align: right;
+  font-size: 11px;
+  color: #777;
+}
+.workflow-chapters {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.workflow-chapters button {
+  font:
+    11px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 7px 12px;
+  border-radius: 6px;
+  color: #777;
+  cursor: pointer;
+}
+.workflow-chapters button[aria-current="step"] {
+  background: #f4f4f5;
+  border-color: #e9e9eb;
+  color: #222;
+}
+.workflow-chapters span {
+  color: #a0a0a8;
+  font-size: 9px;
+  margin-right: 8px;
+}
+.workflow-caption {
+  text-align: center;
+  color: #92929a;
+  font-size: 10px;
+  margin: 15px 0 0;
+  line-height: 1.5;
+}
+@keyframes tour-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tour-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+@media (min-width: 1400px) {
+  .workflow-desktop {
+    grid-template-columns: 410px minmax(0, 1fr);
+  }
+  .herdr-window {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .agent-tui,
+  .demo-shell,
+  .fen-picker {
+    font-size: 12px;
+  }
+}
+@media (max-width: 1150px) {
+  .workflow-desktop {
+    grid-template-columns: 350px minmax(0, 1fr);
+  }
+  .herdr-window {
+    grid-template-columns: 1fr;
+  }
+  .herdr-sidebar {
+    display: none;
+  }
+  .herdr-tabs::before {
+    content: "Herdr";
+    font-size: 12px;
+    color: #c8c9cc;
+    margin: 0 7px;
+  }
+  .workflow-scene {
+    width: 170px;
+  }
+}
+@media (max-width: 800px) {
+  .demo-wrap:has(.workflow-demo) {
+    padding: 0 16px;
+  }
+  .workflow-desktop {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .fennec-window {
+    margin: 0;
+    height: 350px;
+  }
+  .herdr-window {
+    height: 540px;
+  }
+  .herdr-sidebar {
+    display: block;
+  }
+  .herdr-window {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+  .herdr-tabs::before {
+    display: none;
+  }
+  .workflow-scene {
+    display: none;
+  }
+  .workflow-player {
+    gap: 8px;
+  }
+  .workflow-chapters {
+    gap: 3px;
+  }
+  .workflow-chapters button {
+    padding: 6px 9px;
+  }
+  .workflow-caption {
+    font-size: 9px;
+  }
+}
+@media (max-width: 560px) {
+  .herdr-window {
+    grid-template-columns: 1fr;
+  }
+  .herdr-sidebar {
+    display: none;
+  }
+  .herdr-tabs::before {
+    display: block;
+  }
+  .agent-tui {
+    padding: 17px 13px 0;
+  }
+  .herdr-terminal-heading {
+    padding: 0 13px;
+  }
+  .tui-footer {
+    font-size: 8px;
+  }
+  .fen-picker {
+    padding: 20px 10px;
+  }
+  .fen-picker-list > button {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .fen-picker-list small {
+    padding-left: 20px;
+  }
+  .workflow-chapters button {
+    font-size: 10px;
+  }
+  .workflow-chapters span {
+    display: none;
+  }
+  .herdr-tabs {
+    gap: 2px;
+    padding: 0 6px;
+  }
+  .herdr-tabs > button {
+    min-width: 40px;
+    padding: 0 6px;
+    gap: 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-demo * {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+.workflow-demo[data-playing="false"] .tui-cursor,
+.workflow-demo[data-playing="false"] .herdr-state,
+.workflow-demo[data-playing="false"] .tui-spinner {
+  animation-play-state: paused;
+}
+.herdr-window img[src$="/pi.svg"] {
+  filter: invert(1) brightness(0.9);
+}
+.herdr-window .picker-reopen {
+  margin-top: 12px;
+  padding: 5px 9px;
+  border: 1px solid #50515a;
+  border-radius: 4px;
+  font: inherit;
+}
+.picker-confirm p {
+  font: inherit;
+  color: #c8c9cc;
+  margin-bottom: 8px;
+}
+.picker-confirm button {
+  padding: 5px 9px !important;
+  border: 1px solid #50515a !important;
+  margin-right: 8px;
+  font: inherit;
+}

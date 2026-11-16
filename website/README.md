@@ -16,13 +16,29 @@ npm run build
 The vinext static export is written to `dist/client`. The shared landing CSS
 (`app/globals.css`) and design tokens (`app/reference-design.css`) retain the
 reference template's typography, navigation, spacing, buttons, section layouts,
-and responsive rules. `app/fennec.css` supplies the Fennec-specific companion and
-terminal preview. Agent/fox artwork is copied from this repository's native UI.
+and responsive rules. `components/demo.css` describes the Herdr window and
+playback controls. Agent/fox artwork is copied from this repository's native UI.
 
 The interactive preview is local React state only. It does not attach to real
-sessions, run commands, or use model credentials. It supports agent selection,
-three workflow stages, session view, copy attach command, and reset. FAQs use
-native disclosure controls. Reduced-motion settings disable animation.
+sessions, run commands, or use model credentials. Its 44-second timeline opens
+Codex, Claude Code and Pi in separate Herdr tabs, types sample development tasks,
+and runs `fen` to show the live-session picker. Session titles, counts and
+Working/Idle groups share the same timeline across both windows.
+
+`FennecPanel.tsx` imports the shipping `native/macos/UI/panel.css` as raw text
+inside an isolated iframe. It reuses native component classes for Agents,
+Sessions, Governance and Account without loading the native bridge. The sample
+installed-agent list includes ChatGPT and two Coming soon entries, matching the
+app's discovery model; the public harness list remains the seven cloud CLIs.
+Accounts, usage, commands and sessions are fictional. The terminal renderers
+are styled illustrations, not recordings or measurements of agent latency.
+
+Playback starts once when visible and pauses offscreen or in a background tab.
+Reduced motion disables autoplay and decorative animation. Users can play,
+pause, replay, seek, switch panels/tabs, copy attach commands, attach to a sample
+session, inspect/filter activity, change the sample permission mode or stop a
+sample session. The `fen` picker supports arrows/j/k, Enter, x with confirmation,
+r and Escape. Replay restores the initial state. FAQs use native disclosures.
 
 ## Publish to Cloudflare
 
@@ -66,6 +82,16 @@ separate app, not a prerequisite for cloud sessions.
 - 390px mobile: document width 390px, no horizontal overflow.
 - Verified agent switching, all three workflow steps, copy command, reset, FAQ.
 - Verified the site locally before initiating the Cloudflare deployment.
+
+## Workflow demo acceptance (2026-11-16)
+
+- Checked the command typing, prompt typing, launches, session counts/titles and
+  Working/Idle transitions throughout the timeline.
+- Exercised the four Fennec panels and Herdr tabs, native tab indicator, activity
+  filter, permission select, clipboard, session stop, and picker keyboard flow.
+- Verified play/pause, offscreen suspension, reduced motion, and replay reset.
+- Checked 1440, 1024, 800, 768, 390 and 320 px widths: no horizontal overflow in
+  the page or native frame, no broken images, and no browser exceptions.
 
 ## Live deployment
 

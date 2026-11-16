@@ -33,7 +33,7 @@ export default function Home() {
           <article><Cloud size={22} strokeWidth={1.5}/><h3>Let the cloud keep going.</h3><p>Agent sessions stay on your cloud computer. Closing a terminal or your Mac doesn’t stop cloud-independent work.</p></article>
           <article><Laptop size={22} strokeWidth={1.5}/><h3>Pick up the same thread.</h3><p>Attach from your terminal or open the session in a browser. If the connection drops, Fennec automatically tries to reconnect to your running session.</p></article>
           <article><History size={22} strokeWidth={1.5}/><h3>Bring your conversation.</h3><p>Continue a conversation you started on your Mac using your agent’s supported resume command. Fennec brings its history into the cloud session.</p></article>
-          <article><Keyboard size={22} strokeWidth={1.5}/><h3>Keep typing. Paste a screenshot.</h3><p>Local input prediction makes supported terminal input feel responsive, including Chinese text. Paste clipboard images into supported cloud agent terminals.</p></article>
+          <article><Keyboard size={22} strokeWidth={1.5}/><h3>Keep typing. Paste a screenshot.</h3><p>Local input prediction makes supported terminal input feel responsive. Paste clipboard images into supported cloud agent terminals.</p></article>
           <article><ShieldCheck size={22} strokeWidth={1.5}/><h3>You choose the access.</h3><p>Choose Ask for approval, Approve for me, or Full access. Local files and tools stay behind the permissions you set.</p></article>
         </div>
       </section>
