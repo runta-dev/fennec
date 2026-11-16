@@ -19,6 +19,9 @@ type Screen struct {
 	Row, Col    int
 	PendingWrap bool
 	Pen         Attr
+	// PenLink is the open OSC 8 hyperlink ("params;URI", empty: none). Like
+	// xterm.js, SGR does not change it and erased cells carry none.
+	PenLink string
 
 	CursorVisible bool
 	OriginMode    bool
@@ -42,12 +45,17 @@ type Screen struct {
 	utf8buf []byte
 	lastCh  string
 	strEsc  bool
+	// osc collects an OSC string (nil for other strings); oscOver: it
+	// exceeded MaxLinkBytes.
+	osc     []byte
+	oscOver bool
 }
 
 type savedCursor struct {
 	valid                 bool
 	row, col              int
 	pen                   Attr
+	link                  string
 	origin, wrapPending   bool
 	g0Graphics, g1Graphic bool
 	shiftOut              bool
@@ -64,11 +72,18 @@ const (
 )
 
 // Cell holds one grapheme. Width 0 marks the trailing half of a wide glyph.
+// Link is the OSC 8 hyperlink it was printed with ("params;URI").
 type Cell struct {
 	Text  string
 	Width uint8
 	Attr  Attr
+	Link  string
 }
+
+// MaxLinkBytes bounds an OSC 8 string the screen models; a longer link is
+// dropped (the cells print without it), so output containing one must not be
+// reproduced from the screen.
+const MaxLinkBytes = 4096
 
 func (c Cell) Blank() bool { return (c.Text == "" || c.Text == " ") && c.Width != 0 }
 
@@ -156,6 +171,9 @@ func (s *Screen) Clone() *Screen {
 	c.params = append([]byte(nil), s.params...)
 	c.inter = append([]byte(nil), s.inter...)
 	c.utf8buf = append([]byte(nil), s.utf8buf...)
+	if s.osc != nil {
+		c.osc = append([]byte{}, s.osc...)
+	}
 	return &c
 }
 
@@ -231,9 +249,20 @@ func (s *Screen) Write(data []byte) {
 		case stString:
 			if b == 0x07 || (s.strEsc && b == '\\') {
 				s.state, s.strEsc = stGround, false
+				s.endOSC()
 				continue
 			}
+			if s.strEsc && s.osc != nil && !s.oscOver {
+				s.osc = append(s.osc, 0x1b) // not the start of ST after all
+			}
 			s.strEsc = b == 0x1b
+			if s.osc != nil && !s.strEsc && !s.oscOver {
+				if len(s.osc) >= MaxLinkBytes+2 {
+					s.oscOver = true
+				} else {
+					s.osc = append(s.osc, b)
+				}
+			}
 			continue
 		case stEscape:
 			s.escape(b)
@@ -324,8 +353,12 @@ func (s *Screen) escape(b byte) {
 	case '[':
 		s.state = stCSI
 		s.params, s.inter = s.params[:0], s.inter[:0]
-	case ']', 'P', '_', '^', 'X':
+	case ']':
 		s.state, s.strEsc = stString, false
+		s.osc, s.oscOver = []byte{}, false
+	case 'P', '_', '^', 'X':
+		s.state, s.strEsc = stString, false
+		s.osc = nil
 	case '7':
 		s.saveCursor()
 	case '8':
@@ -403,9 +436,9 @@ func (s *Screen) print(r rune) {
 	if w == 2 {
 		s.clearWideAt(s.Row, s.Col+1)
 	}
-	s.grid[s.Row][s.Col] = Cell{Text: text, Width: uint8(w), Attr: s.Pen}
+	s.grid[s.Row][s.Col] = Cell{Text: text, Width: uint8(w), Attr: s.Pen, Link: s.PenLink}
 	if w == 2 {
-		s.grid[s.Row][s.Col+1] = Cell{Width: 0, Attr: s.Pen}
+		s.grid[s.Row][s.Col+1] = Cell{Width: 0, Attr: s.Pen, Link: s.PenLink}
 	}
 	s.lastCh = text
 	if s.Col+w >= s.Cols {
@@ -501,7 +534,7 @@ func (s *Screen) insertBlank(n int) {
 }
 
 func (s *Screen) saveCursor() {
-	saved := savedCursor{valid: true, row: s.Row, col: s.Col, pen: s.Pen, origin: s.OriginMode, wrapPending: s.PendingWrap, g0Graphics: s.G0Graphics, g1Graphic: s.G1Graphics, shiftOut: s.ShiftOut}
+	saved := savedCursor{valid: true, row: s.Row, col: s.Col, pen: s.Pen, link: s.PenLink, origin: s.OriginMode, wrapPending: s.PendingWrap, g0Graphics: s.G0Graphics, g1Graphic: s.G1Graphics, shiftOut: s.ShiftOut}
 	if s.AltActive {
 		s.savedAlt = saved
 	} else {
@@ -515,11 +548,11 @@ func (s *Screen) restoreCursor() {
 		saved = s.savedAlt
 	}
 	if !saved.valid {
-		s.Row, s.Col, s.Pen, s.OriginMode, s.PendingWrap = 0, 0, Attr{}, false, false
+		s.Row, s.Col, s.Pen, s.PenLink, s.OriginMode, s.PendingWrap = 0, 0, Attr{}, "", false, false
 		return
 	}
 	s.Row, s.Col = min(saved.row, s.Rows-1), min(saved.col, s.Cols-1)
-	s.Pen, s.OriginMode, s.PendingWrap = saved.pen, saved.origin, saved.wrapPending
+	s.Pen, s.PenLink, s.OriginMode, s.PendingWrap = saved.pen, saved.link, saved.origin, saved.wrapPending
 	s.G0Graphics, s.G1Graphics, s.ShiftOut = saved.g0Graphics, saved.g1Graphic, saved.shiftOut
 }
 
@@ -914,4 +947,23 @@ func extendedColorParts(rest []string) (Color, int, bool) {
 		return Color{}, len(rest), false
 	}
 	return Color{}, 1, false
+}
+
+// endOSC applies a finished OSC string: OSC 8 opens or closes a hyperlink.
+func (s *Screen) endOSC() {
+	osc, over := s.osc, s.oscOver
+	s.osc, s.oscOver = nil, false
+	if osc == nil || len(osc) < 2 || osc[0] != '8' || osc[1] != ';' {
+		return
+	}
+	link := string(osc[2:])
+	params, uri, ok := strings.Cut(link, ";")
+	switch {
+	case over || !ok:
+		s.PenLink = "" // too long to model, or malformed: dropped
+	case uri == "":
+		s.PenLink = ""
+	default:
+		s.PenLink = params + ";" + uri
+	}
 }

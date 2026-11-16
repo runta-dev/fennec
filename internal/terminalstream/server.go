@@ -337,8 +337,9 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				probe := DisplayResponder{Facts: frame.Display}
 				var noop NoopFrameFilter
 				// Reading and sending are separate: the reader keeps reading the
-				// attachment while the sender waits for credit, and output that
-				// piles up meanwhile is merged (see conflator).
+				// attachment while the sender waits for credit or for the merge
+				// interval, and output that piles up meanwhile is merged (see
+				// conflator).
 				conf := newConflator(int(session.rows), int(session.columns))
 				session.mu.Lock()
 				session.conf = conf
@@ -374,12 +375,22 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				sent := make(chan struct{})
 				go func() {
 					defer close(sent)
-					for {
-						data := conf.Take()
-						if data == nil {
-							return
+					var lastTake time.Time
+					for conf.Wait() {
+						// At most one take per outputMergeInterval: output
+						// arriving within it merges into one frame (see
+						// conflator). Meanwhile it counts as queued, so no echo
+						// acknowledgement overtakes it.
+						done := func() {}
+						if wait := time.Until(lastTake.Add(outputMergeInterval)); wait > 0 {
+							done = session.echo.beginOutput()
+							time.Sleep(wait)
 						}
-						if err := emitData(data); err != nil {
+						data := conf.Take()
+						lastTake = time.Now()
+						err := emitData(data)
+						done()
+						if err != nil {
 							sendFailed.Store(true)
 							conf.Close() // unblock the reader
 							return

@@ -144,3 +144,37 @@ func TestSafeSGR(t *testing.T) {
 		}
 	}
 }
+
+// TestConflatorMergesHyperlinks: frames with OSC 8 links (Codex links URLs in
+// its transcript) merge like any other cell change, the client ends with the
+// same links, and a title between frames is still passed on.
+func TestConflatorMergesHyperlinks(t *testing.T) {
+	c := newConflator(30, 100)
+	reference := predict.NewScreen(30, 100)
+	client := predict.NewScreen(30, 100)
+	start := "\x1b[?1049h\x1b[2J"
+	c.Write([]byte(start))
+	reference.Write([]byte(start))
+	client.Write(c.Take())
+	raw := 0
+	for step := 0; step < 20; step++ {
+		frame := strings.ReplaceAll(codexLikeStep(500-3*step), " explaining", " \x1b]8;;https://docs.example/"+fmt.Sprint(step)+"\x07explaining\x1b]8;;\x07")
+		if step == 10 {
+			frame += "\x1b]0;title\x07"
+		}
+		c.Write([]byte(frame))
+		reference.Write([]byte(frame))
+		raw += len(frame)
+	}
+	out := c.Take()
+	client.Write(out)
+	if same, why := predict.SameScreen(client, reference); !same {
+		t.Fatal(why)
+	}
+	if !strings.Contains(string(out), "\x1b]0;title\x07") {
+		t.Fatal("the title was lost")
+	}
+	if merged, _, _ := c.Stats(); merged < 18 || len(out)*4 > raw {
+		t.Fatalf("%d frames merged, %d of %d bytes sent", merged, len(out), raw)
+	}
+}

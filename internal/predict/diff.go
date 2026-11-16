@@ -7,7 +7,8 @@ import (
 
 // DiffScreen returns bytes that turn a terminal showing from into one showing
 // to: the changed cells, then the scroll region, pen, cursor position and
-// cursor visibility of to, inside one synchronized-output frame. full
+// cursor visibility of to, inside one synchronized-output frame. Cells keep
+// their OSC 8 hyperlinks, and the open hyperlink is to's. full
 // repaints every cell (when what the terminal shows may differ from from).
 //
 // It only handles what it can reproduce exactly and returns false otherwise:
@@ -26,6 +27,14 @@ func DiffScreen(from, to *Screen, full bool) ([]byte, bool) {
 		if !penKnown || a != pen {
 			b.WriteString(SGR(a))
 			pen, penKnown = a, true
+		}
+	}
+	// The hyperlink the terminal prints with: from's, until changed.
+	link := from.PenLink
+	setLink := func(l string) {
+		if l != link {
+			b.WriteString(OSC8(l))
+			link = l
 		}
 	}
 	for r := 0; r < to.Rows; r++ {
@@ -53,6 +62,7 @@ func DiffScreen(from, to *Screen, full bool) ([]byte, bool) {
 					continue
 				}
 				setPen(cell.Attr)
+				setLink(cell.Link)
 				b.WriteString(cell.Glyph())
 			}
 			c = max(end, c+1)
@@ -62,6 +72,7 @@ func DiffScreen(from, to *Screen, full bool) ([]byte, bool) {
 		fmt.Fprintf(&b, "\x1b[%d;%dr", to.Top+1, to.Bottom+1) // homes the cursor
 	}
 	b.WriteString(SGR(to.Pen))
+	setLink(to.PenLink)
 	fmt.Fprintf(&b, "\x1b[%d;%dH", to.Row+1, to.Col+1)
 	if to.CursorVisible {
 		b.WriteString("\x1b[?25h")
@@ -84,8 +95,8 @@ func diffable(s *Screen) bool {
 }
 
 // SameScreen compares what two screens show and the state later output
-// depends on: every cell, the cursor and its visibility, pending wrap, pen,
-// scroll region and modes.
+// depends on: every cell (with its hyperlink), the cursor and its visibility,
+// pending wrap, pen and open hyperlink, scroll region and modes.
 func SameScreen(a, b *Screen) (bool, string) {
 	if a.Rows != b.Rows || a.Cols != b.Cols {
 		return false, "size"
@@ -104,7 +115,7 @@ func SameScreen(a, b *Screen) (bool, string) {
 		return false, "cursor visibility"
 	case a.PendingWrap != b.PendingWrap:
 		return false, "pending wrap"
-	case a.Pen != b.Pen:
+	case a.Pen != b.Pen || a.PenLink != b.PenLink:
 		return false, "pen"
 	case a.Top != b.Top || a.Bottom != b.Bottom:
 		return false, "scroll region"
@@ -112,4 +123,12 @@ func SameScreen(a, b *Screen) (bool, string) {
 		return false, "modes"
 	}
 	return true, ""
+}
+
+// OSC8 opens the hyperlink link ("params;URI"), or closes it when empty.
+func OSC8(link string) string {
+	if link == "" {
+		return "\x1b]8;;\x1b\\"
+	}
+	return "\x1b]8;" + link + "\x1b\\"
 }

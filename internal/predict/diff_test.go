@@ -7,13 +7,14 @@ import (
 )
 
 // randomFrame writes a frame of the kind agents draw: cursor moves, colours,
-// text (wide characters included), erases and scrolls of a region.
+// text (wide characters included), erases, scrolls of a region and OSC 8
+// hyperlinks.
 func randomFrame(rng *rand.Rand, rows, cols int) string {
 	var b strings.Builder
 	b.WriteString("\x1b[?2026h")
 	words := []string{"hello", "world", "\u4f60\u597d", "x", "  ", "line", "\u2500\u2500\u2500", "a\u0301"}
 	for i := 0; i < 1+rng.Intn(12); i++ {
-		switch rng.Intn(9) {
+		switch rng.Intn(10) {
 		case 0, 1, 2:
 			b.WriteString("\x1b[" + itoa(1+rng.Intn(rows)) + ";" + itoa(1+rng.Intn(cols)) + "H")
 		case 3:
@@ -27,6 +28,8 @@ func randomFrame(rng *rand.Rand, rows, cols int) string {
 			b.WriteString("\x1b[" + itoa(top) + ";" + itoa(top+1+rng.Intn(rows-top)) + "r\x1b[" + itoa(1+rng.Intn(2)) + []string{"S", "T", "L", "M"}[rng.Intn(4)])
 		case 8:
 			b.WriteString([]string{"\r\n", "\x1b[?25l", "\x1b[?25h", "\x1b[2C", "\x1b[A"}[rng.Intn(5)])
+		case 9:
+			b.WriteString([]string{"\x1b]8;;https://a.example/1\x07", "\x1b]8;id=x;https://b.example\x1b\\", "\x1b]8;;\x07", "\x1b]8;;\x1b\\"}[rng.Intn(4)])
 		}
 	}
 	b.WriteString("\x1b[?2026l")

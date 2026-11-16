@@ -1,9 +1,11 @@
 package terminalstream
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"fennec/internal/predict"
 )
@@ -13,16 +15,24 @@ import (
 // screen late: Codex redraws the whole screen for every mouse wheel step,
 // about 4.5 KB through Herdr, so a 40-step gesture is some 180 KB.
 //
+// outputMergeInterval: output arriving within one display frame of the
+// last take is merged with it. A terminal shows at most one frame per refresh
+// (xterm.js renders once per animation frame), so nothing visible is lost;
+// with OSC 8 merged too, a 40-step Codex scroll on a 220 ms link dropped from
+// 104 KB to 24 KB (cmd/profile-scroll, docs/predictive-echo.md).
+const outputMergeInterval = 16 * time.Millisecond
+
 // conflator sits between reading the attachment and sending its output. The
 // reader keeps reading; what has not been sent yet waits in order. Frames
 // that only change cells (text, cursor moves, colours the screen model keeps,
-// erases, scrolls) merge into one target screen; anything else waits as raw
-// bytes in its place. When the sender is free it takes everything waiting: a
-// single frame goes as it was; several merged frames go as the difference
-// between what the client shows and the latest screen (predict.DiffScreen,
-// checked by replay), when that is smaller. Without a backlog nothing changes.
-// Only the alternate screen is merged (herdr-core attach always uses it), so
-// there is no scrollback to keep.
+// OSC 8 hyperlinks, erases, scrolls) merge into one target screen; anything
+// else waits as raw bytes in its place. The sender takes everything waiting
+// when it is free, at most once per outputMergeInterval: a single frame goes
+// as it was; several merged frames go as the difference between what the
+// client shows and the latest screen (predict.DiffScreen, checked by replay),
+// when that is smaller. Output after a quiet interval goes at once. Only the
+// alternate screen is merged (herdr-core attach always uses it), so there is
+// no scrollback to keep.
 type conflator struct {
 	mu      sync.Mutex
 	changed *sync.Cond
@@ -101,6 +111,17 @@ func (c *conflator) closeSegment() {
 	c.bound.Write(c.seg)
 	c.held += len(c.seg)
 	c.seg, c.safe = nil, true
+}
+
+// Wait waits for output to take and reports false when the stream is finished
+// with nothing left. Only the sender takes, so a later Take does not block.
+func (c *conflator) Wait() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for len(c.queue) == 0 && !c.done {
+		c.changed.Wait()
+	}
+	return len(c.queue) > 0
 }
 
 // Take waits for output and returns the bytes to send now, or nil when the
@@ -225,10 +246,10 @@ func nextToken(data []byte) (n int, safe, complete bool) {
 			// A string ends with BEL or ESC \.
 			for i := 2; i < len(data); i++ {
 				if data[i] == 0x07 {
-					return i + 1, false, true
+					return i + 1, safeOSC(data[1], data[2:i]), true
 				}
 				if data[i] == 0x1b && i+1 < len(data) && data[i+1] == '\\' {
-					return i + 2, false, true
+					return i + 2, safeOSC(data[1], data[2:i]), true
 				}
 				if data[i] == 0x1b && i+1 == len(data) {
 					return 0, false, false
@@ -316,6 +337,21 @@ func safeSGR(p string) bool {
 				return false
 			}
 		default:
+			return false
+		}
+	}
+	return true
+}
+
+// safeOSC: an OSC 8 hyperlink predict.Screen keeps exactly (well formed, no
+// longer than it models, no control characters). Titles, clipboard and other
+// strings are passed on in their place.
+func safeOSC(kind byte, payload []byte) bool {
+	if kind != ']' || len(payload) > predict.MaxLinkBytes || !bytes.HasPrefix(payload, []byte("8;")) || bytes.Count(payload, []byte(";")) < 2 {
+		return false
+	}
+	for _, b := range payload {
+		if b < 0x20 || b == 0x7f {
 			return false
 		}
 	}

@@ -822,6 +822,53 @@ measured (candidates: A's frames ahead in the pacer, the TCP backlog in
 `docs/ssh-backlog-investigation.md`). These runs cannot
 show the gain for short round trips, which needs a user near the region.
 
+### Merging by time and hyperlinks
+
+With a window near the bandwidth-delay product the sender is rarely blocked,
+so the conflator, which merged only output piling up behind it, sent almost
+every Codex redraw. `cmd/profile-scroll` now records the real attachment
+output of a gesture (Codex resumed in a throwaway Herdr terminal on the
+cloud, wheel reports only) and replays it through the conflator and a
+modelled sender and link (`terminalstream.SimulateSender`: per-chunk window
+credit, first-in first-out link, credit a round trip later). Every recorded
+agent session replays to the exact screen at every interval and window.
+
+It showed two things. A take at most once per 16 ms alone saved little,
+because about 72 KB of the 180 KB Codex draws for 40 steps (40 %) could not
+be merged at all: those frames contain OSC 8 hyperlinks (the transcript
+links to documentation), which the screen model consumed and ignored. So:
+
+- `predict.Screen` keeps OSC 8 links as xterm.js does: printed cells carry
+  the open link (`Cell.Link`, `Screen.PenLink`), SGR does not end it, erased
+  cells have none, DECSC/DECRC keep it, and a link over `MaxLinkBytes` is
+  dropped. `DiffScreen` emits OSC 8 where the link changes and leaves the
+  target's link open; `SameScreen` compares links.
+- The conflator treats a well-formed OSC 8 within that bound and without
+  control characters as a cell change; titles and other strings still go
+  raw in their place.
+- The sender takes at most once per `outputMergeInterval` (16 ms, one
+  display frame; xterm.js renders at most once per animation frame, so no
+  visible frame is lost). Output after a quiet interval goes at once, so a
+  single echo is not delayed. While output waits for the interval it counts
+  as queued for echo acknowledgements, so no acknowledgement overtakes it.
+
+40-step Codex scroll, wheel reports coalesced per round trip as the client
+sends them, 220 ms round trip, 128 KiB/s, the live window (54 KB):
+
+| | Bytes sent | Last output arrives |
+| --- | ---: | ---: |
+| Before | 104 KB | 1.01 s |
+| Merging by time only | about 81 KB | 0.95 s |
+| Merging by time and hyperlinks | 24 KB | 0.81 s |
+
+The arrival floor is about 0.79 s: the client sends the gesture's wheel
+reports once per round trip and Codex draws the last step about 0.68 s in.
+The gain is mainly the link: a gesture occupies it for about 0.2 s instead
+of 0.8 s, which leaves room for other sessions' echo. With wheel reports one
+per event 16 ms apart, each frame is a separate full redraw and little is
+saved (124 to 121 KB). This is one transcript, heavy with links; Claude Code
+was not measured.
+
 Herdr Core 0.1.18 has no scrolling of its own while attached (`--history N`
 only prints history to the main screen before switching to the alternate
 screen); Fennec has used the same attach since its first commit.
