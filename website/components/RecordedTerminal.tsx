@@ -73,5 +73,6 @@ export default function RecordedTerminal({ name, progress }: { name: string; pro
     return () => { cancelled = true; playback.current = null; observer?.disconnect(); terminal?.dispose(); };
   }, [name]);
   useEffect(() => { playback.current?.(); }, [progress]);
-  return <div className="recorded-terminal" role="img" aria-label={`Recorded ${name} terminal session`}><div className="recorded-viewport" ref={viewport}><div className="recorded-screen" ref={host} /></div>{failed && <p className="recording-error">Terminal recording could not load.</p>}</div>;
+  // Recorded mouse modes must not capture page scrolling or keyboard focus.
+  return <div className="recorded-terminal" role="img" aria-label={`Recorded ${name} terminal session`}><div className="recorded-viewport" ref={viewport}><div className="recorded-screen" ref={host} inert /></div>{failed && <p className="recording-error">Terminal recording could not load.</p>}</div>;
 }

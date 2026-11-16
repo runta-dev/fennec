@@ -265,7 +265,7 @@
 
 .recorded-terminal { min-width:0; min-height:0; flex:1; overflow:hidden; background:#17181b; padding:16px 10px; }
 .recorded-viewport { width:100%; position:relative; overflow:hidden; }
-.recorded-screen { width:max-content; transform-origin:top left; }
+.recorded-screen { width:max-content; transform-origin:top left; pointer-events:none; }
 .recorded-screen .xterm { padding:0; }
 .recorded-screen .xterm-viewport { overflow:hidden!important; }
 .recording-error { color:#92929c; padding:16px; font-size:12px; }
