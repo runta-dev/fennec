@@ -40,6 +40,8 @@ not rebuild the application or rerun historical live benchmarks.
   followed by dated implementation and experiment records.
 - [SSH backlog investigation](ssh-backlog-investigation.md) and
   [Mac relay investigation](mac-relay-recovery-investigation.md): historical diagnoses.
+- [Mac relay heartbeat investigation](mac-relay-heartbeat-investigation.md):
+  reproduced five-second keepalive false disconnects during bulk transfers.
 - [Benchmark provenance](benchmarks/README.md): raw artifact catalog, measurement
   boundaries, source versions, and known metadata gaps.
 
