@@ -26,7 +26,7 @@ func pairingServer(t *testing.T, organizations []string, approveStatus int, appr
 				"expires_at":                time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
 			}})
 		case "/v1/auth/device/authorization":
-			if r.Header.Get("Authorization") != "Bearer mac-token" || r.URL.Query().Get("code") != "ABCDEFGH" {
+			if r.Header.Get("Authorization") != "Bearer mac-token" || r.URL.Query().Get("code") != "ABCD-EFGH" {
 				t.Errorf("lookup auth=%q code=%q", r.Header.Get("Authorization"), r.URL.Query().Get("code"))
 			}
 			rows := []map[string]string{}
@@ -71,7 +71,7 @@ func TestPairDeviceApprovesAndReturnsDeviceCodeURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if approved["code"] != "ABCDEFGH" || approved["organization_id"] != "org-a" {
+	if approved["code"] != "ABCD-EFGH" || approved["organization_id"] != "org-a" {
 		t.Fatalf("approve body = %v", approved)
 	}
 	code, api, err := ParsePairingURL(pairing.URL)

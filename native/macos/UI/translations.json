@@ -1,20 +1,52 @@
 {
   "messages": {
-    "ui.sign_in_on_iphone": {
-      "en-US": "Sign in on iPhone",
-      "en-GB": "Sign in on iPhone",
-      "zh-CN": "在 iPhone 上登录",
-      "zh-TW": "在 iPhone 上登入",
-      "ja": "iPhone でサインイン",
-      "ko": "iPhone에서 로그인"
+    "ui.get_fennec_ios_app": {
+      "en-US": "Get Fennec iOS App",
+      "en-GB": "Get Fennec iOS App",
+      "zh-CN": "获取 Fennec iOS 应用",
+      "zh-TW": "取得 Fennec iOS App",
+      "ja": "Fennec iOS アプリを入手",
+      "ko": "Fennec iOS 앱 받기"
     },
-    "ui.scan_with_your_iphone": {
-      "en-US": "Scan with your iPhone",
-      "en-GB": "Scan with your iPhone",
-      "zh-CN": "用 iPhone 扫码",
-      "zh-TW": "用 iPhone 掃描",
-      "ja": "iPhone でスキャン",
-      "ko": "iPhone으로 스캔"
+    "ui.get_fennec_for_iphone": {
+      "en-US": "Get Fennec for iPhone",
+      "en-GB": "Get Fennec for iPhone",
+      "zh-CN": "在 iPhone 上使用 Fennec",
+      "zh-TW": "在 iPhone 上使用 Fennec",
+      "ja": "iPhone で Fennec を使う",
+      "ko": "iPhone에서 Fennec 사용"
+    },
+    "ui.download_fennec_app_store": {
+      "en-US": "Download Fennec from the App Store",
+      "en-GB": "Download Fennec from the App Store",
+      "zh-CN": "在 App Store 下载 Fennec",
+      "zh-TW": "在 App Store 下載 Fennec",
+      "ja": "App Store で Fennec をダウンロード",
+      "ko": "App Store에서 Fennec 다운로드"
+    },
+    "ui.scan_with_fennec_to_sign_in": {
+      "en-US": "Scan with Fennec to sign in",
+      "en-GB": "Scan with Fennec to sign in",
+      "zh-CN": "用 Fennec 扫码登录",
+      "zh-TW": "用 Fennec 掃描登入",
+      "ja": "Fennec でスキャンしてサインイン",
+      "ko": "Fennec으로 스캔해 로그인"
+    },
+    "ui.sign_in_on_this_mac_first": {
+      "en-US": "Sign in on this Mac first.",
+      "en-GB": "Sign in on this Mac first.",
+      "zh-CN": "请先在这台 Mac 上登录",
+      "zh-TW": "請先在這台 Mac 上登入",
+      "ja": "先にこの Mac でサインインしてください",
+      "ko": "먼저 이 Mac에서 로그인하세요"
+    },
+    "ui.close": {
+      "en-US": "Close",
+      "en-GB": "Close",
+      "zh-CN": "关闭",
+      "zh-TW": "關閉",
+      "ja": "閉じる",
+      "ko": "닫기"
     },
     "ui.expires_in": {
       "en-US": "Expires in",
@@ -24,21 +56,13 @@
       "ja": "残り",
       "ko": "남은 시간"
     },
-    "ui.cancel": {
-      "en-US": "Cancel",
-      "en-GB": "Cancel",
-      "zh-CN": "取消",
-      "zh-TW": "取消",
-      "ja": "キャンセル",
-      "ko": "취소"
-    },
     "ui.pairing_failed": {
-      "en-US": "Couldn't create a sign-in code. Try again.",
-      "en-GB": "Couldn't create a sign-in code. Try again.",
-      "zh-CN": "无法生成登录码，请重试",
-      "zh-TW": "無法產生登入碼，請重試",
-      "ja": "サインインコードを作成できませんでした。もう一度お試しください",
-      "ko": "로그인 코드를 만들지 못했습니다. 다시 시도하세요"
+      "en-US": "Couldn't create a sign-in code.",
+      "en-GB": "Couldn't create a sign-in code.",
+      "zh-CN": "无法生成登录码",
+      "zh-TW": "無法產生登入碼",
+      "ja": "サインインコードを作成できませんでした",
+      "ko": "로그인 코드를 만들지 못했습니다"
     },
     "ui.pairing_not_allowed": {
       "en-US": "Runta doesn't allow this Mac to approve iPhone sign-in yet.",

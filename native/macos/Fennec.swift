@@ -57,7 +57,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private let licenseViewer = LicenseViewer()
     private var shownApprovalID: String?
     private var approvals: [[String:String]] = []
-    private lazy var popup = PopupPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 430), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+    private lazy var popup = PopupPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 470), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
     private var outsideMonitor: Any?
     private var popupPresentationID: UUID?
     private var pageLoaded = false
@@ -402,7 +402,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "fennec")
-        web = PanelWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 430), configuration: configuration)
+        web = PanelWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 470), configuration: configuration)
         web.navigationDelegate = self
         let controller = NSViewController()
         controller.view = web

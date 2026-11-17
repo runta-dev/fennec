@@ -114,7 +114,8 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			case errors.Is(err, account.ErrPairingOrganization):
 				return nil, &control.Fault{Code: "pairing_organization_required", Message: "Choose an organization on the Runta dashboard first"}
 			default:
-				return nil, &control.Fault{Code: "pairing_failed", Message: "Couldn't create a sign-in code", Retryable: true}
+				// The panel shows its own copy for this code; the message helps `fen control` diagnosis.
+				return nil, &control.Fault{Code: "pairing_failed", Message: "Couldn't create a sign-in code: " + err.Error(), Retryable: true}
 			}
 		},
 		"account.logout": func(ctx context.Context, _ json.RawMessage) (any, error) {

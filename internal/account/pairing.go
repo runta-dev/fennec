@@ -44,23 +44,32 @@ func (m *Manager) PairDevice(parent context.Context, deviceName string) (Pairing
 	endpoint := m.Endpoint()
 
 	var authorization struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 		Data struct {
 			DeviceCode string    `json:"device_code"`
+			UserCode   string    `json:"user_code"`
 			URL        string    `json:"verification_uri_complete"`
 			ExpiresAt  time.Time `json:"expires_at"`
 		} `json:"data"`
 	}
 	status, err := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": deviceName, "app_url": m.DashboardURL()}, &authorization)
-	if err != nil || status < 200 || status >= 300 || authorization.Data.DeviceCode == "" {
-		return Pairing{}, errPairingInvalidPayload
+	if err != nil {
+		return Pairing{}, fmt.Errorf("start authorization: %w", err)
 	}
-	link, err := url.Parse(authorization.Data.URL)
-	code := ""
-	if err == nil {
-		code = link.Query().Get("code")
+	if status < 200 || status >= 300 || authorization.Data.DeviceCode == "" {
+		return Pairing{}, fmt.Errorf("start authorization: HTTP %d (%s: %s): %w", status, authorization.Error.Code, authorization.Error.Message, errPairingInvalidPayload)
+	}
+	code := normalizeUserCode(authorization.Data.UserCode)
+	if code == "" {
+		if link, err := url.Parse(authorization.Data.URL); err == nil {
+			code = normalizeUserCode(link.Query().Get("code"))
+		}
 	}
 	if code == "" {
-		return Pairing{}, errPairingInvalidPayload
+		return Pairing{}, fmt.Errorf("verification link without code: %w", errPairingInvalidPayload)
 	}
 
 	var lookup struct {
@@ -71,14 +80,14 @@ func (m *Manager) PairDevice(parent context.Context, deviceName string) (Pairing
 		} `json:"data"`
 	}
 	if err := m.pairingRequest(ctx, token, http.MethodGet, endpoint+"/v1/auth/device/authorization?code="+url.QueryEscape(code), nil, &lookup); err != nil {
-		return Pairing{}, err
+		return Pairing{}, fmt.Errorf("look up code: %w", err)
 	}
 	organization, err := m.pairingOrganization(ctx, token, endpoint, epoch, lookup.Data.Organizations)
 	if err != nil {
 		return Pairing{}, err
 	}
 	if err := m.pairingRequest(ctx, token, http.MethodPost, endpoint+"/v1/auth/device/authorization/approve", map[string]string{"code": code, "organization_id": organization}, nil); err != nil {
-		return Pairing{}, err
+		return Pairing{}, fmt.Errorf("approve code: %w", err)
 	}
 
 	expiry := authorization.Data.ExpiresAt
@@ -86,6 +95,22 @@ func (m *Manager) PairDevice(parent context.Context, deviceName string) (Pairing
 		expiry = limit
 	}
 	return Pairing{URL: PairingURL(authorization.Data.DeviceCode, endpoint), ExpiresAt: expiry}, nil
+}
+
+// normalizeUserCode matches the dashboard's /device page: uppercase letters
+// and digits, shown as XXXX-XXXX when eight long. The device API rejects other forms.
+func normalizeUserCode(raw string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(raw) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	code := b.String()
+	if len(code) == 8 {
+		return code[:4] + "-" + code[4:]
+	}
+	return code
 }
 
 // PairingURL encodes a device code and the Runta API origin it belongs to, so
@@ -165,7 +190,14 @@ func (m *Manager) pairingRequest(ctx context.Context, token, method, address str
 		return ErrPairingNotAllowed
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &httpStatusError{status: response.StatusCode}
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope)
+		return fmt.Errorf("%w (%s: %s)", &httpStatusError{status: response.StatusCode, code: envelope.Error.Code}, envelope.Error.Code, envelope.Error.Message)
 	}
 	if out == nil {
 		return nil
