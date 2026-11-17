@@ -22,13 +22,14 @@ import (
 )
 
 type LocalLaunch struct {
-	NativeLogin    bool                 `json:"native_login,omitempty"`
-	Hooks          []hookbridge.Binding `json:"hooks,omitempty"`
-	ID             string               `json:"id"`
-	Agent          string               `json:"agent"`
-	LocalDirectory string               `json:"local_directory"`
-	Device         string               `json:"device"`
-	Arguments      []string             `json:"arguments,omitempty"`
+	ClaudeSettings []hookbridge.ClaudeSettings `json:"claude_settings,omitempty"`
+	NativeLogin    bool                        `json:"native_login,omitempty"`
+	Hooks          []hookbridge.Binding        `json:"hooks,omitempty"`
+	ID             string                      `json:"id"`
+	Agent          string                      `json:"agent"`
+	LocalDirectory string                      `json:"local_directory"`
+	Device         string                      `json:"device"`
+	Arguments      []string                    `json:"arguments,omitempty"`
 }
 
 type LocalTerminal struct {
@@ -53,6 +54,9 @@ type LocalRuntime struct {
 }
 
 func (request LocalLaunch) Validate() error {
+	if err := hookbridge.ValidateClaudeSettings(request.Agent, request.Arguments, request.ClaudeSettings); err != nil {
+		return err
+	}
 	if request.NativeLogin && (request.Agent == "opencode" || len(request.Arguments) != 0 || len(request.Hooks) != 0) {
 		return fmt.Errorf("invalid native login launch")
 	}
@@ -180,7 +184,10 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		return LocalTerminal{}, err
 	}
 	command := []string{binary}
-	agentArguments := request.Arguments
+	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, request.Arguments, request.ClaudeSettings)
+	if err != nil {
+		return LocalTerminal{}, err
+	}
 	switch request.Agent {
 	case "cursor":
 		command = append(command, "--force", "--trust", "--sandbox", "disabled")

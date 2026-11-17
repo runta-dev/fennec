@@ -17,17 +17,19 @@ import (
 	"time"
 )
 
-// LaunchIntent contains no credentials. The broker retains login context and
-// returns only a confirmed attach receipt, never the Runta token.
+// LaunchIntent contains no broker login credentials. Claude settings can contain
+// private user configuration and travel only over private IPC/protocol frames.
+// The broker returns a confirmed attach receipt, never the Runta token.
 type LaunchIntent struct {
-	Hooks     []hookbridge.Binding `json:"hooks,omitempty"`
-	RequestID string               `json:"request_id"`
-	Agent     string               `json:"agent"`
-	Directory string               `json:"directory"`
-	Arguments []string             `json:"arguments"`
-	Version   string               `json:"version,omitempty"`
-	Prepare   bool                 `json:"prepare,omitempty"`
-	Cold      bool                 `json:"cold,omitempty"`
+	ClaudeSettings []hookbridge.ClaudeSettings `json:"claude_settings,omitempty"`
+	Hooks          []hookbridge.Binding        `json:"hooks,omitempty"`
+	RequestID      string                      `json:"request_id"`
+	Agent          string                      `json:"agent"`
+	Directory      string                      `json:"directory"`
+	Arguments      []string                    `json:"arguments"`
+	Version        string                      `json:"version,omitempty"`
+	Prepare        bool                        `json:"prepare,omitempty"`
+	Cold           bool                        `json:"cold,omitempty"`
 }
 type BrokerReply struct {
 	Receipt *LaunchReceipt `json:"receipt,omitempty"`
@@ -49,6 +51,9 @@ type LaunchPlan struct {
 }
 
 func (r LaunchIntent) Validate() error {
+	if err := hookbridge.ValidateClaudeSettings(r.Agent, r.Arguments, r.ClaudeSettings); err != nil {
+		return err
+	}
 	if err := hookbridge.ValidateBindings(r.Hooks); err != nil {
 		return err
 	}
@@ -155,7 +160,7 @@ func ServeBrokerPrepared(ctx context.Context, path string, launch func(context.C
 			defer closeOnCancel()
 			conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			var intent LaunchIntent
-			if json.NewDecoder(io.LimitReader(conn, 65536)).Decode(&intent) != nil || intent.Validate() != nil {
+			if json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&intent) != nil || intent.Validate() != nil {
 				json.NewEncoder(conn).Encode(BrokerReply{Error: "invalid launch request"})
 				return
 			}
@@ -208,7 +213,7 @@ func RequestLaunch(ctx context.Context, path string, intent LaunchIntent) (Launc
 		return LaunchReceipt{}, err
 	}
 	var reply BrokerReply
-	if err = json.NewDecoder(io.LimitReader(conn, 65536)).Decode(&reply); err != nil {
+	if err = json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&reply); err != nil {
 		return LaunchReceipt{}, fmt.Errorf("launch outcome unknown; inspect request %s before retrying", intent.RequestID)
 	}
 	if reply.Error != "" {

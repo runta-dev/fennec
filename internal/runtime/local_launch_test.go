@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/hookbridge"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,5 +215,35 @@ func TestPiLaunchShowsHardwareCursor(t *testing.T) {
 	}
 	if !strings.Contains(script, `if request['agent']=='pi':command=['env','PI_HARDWARE_CURSOR=1']+command`) {
 		t.Fatal("cloud launch script does not show Pi's hardware cursor")
+	}
+}
+
+func TestClaudeLaunchMaterializesSettingsBeforeAgentStarts(t *testing.T) {
+	home := t.TempDir()
+	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ls" {
+			return []byte(`{"terminals":[]}`), nil
+		}
+		found := false
+		for i, a := range args {
+			if a == "--settings" && i+1 < len(args) {
+				found = true
+				raw, err := os.ReadFile(args[i+1])
+				if err != nil || string(raw) != `{"env":{"PRIVATE":"test-private"}}` {
+					t.Fatal("snapshot unavailable at exec", err)
+				}
+			}
+			if strings.Contains(a, "test-private") {
+				t.Fatal("private contents in argv")
+			}
+		}
+		if !found {
+			t.Fatal("missing settings argument")
+		}
+		return []byte(`{"address":"t1","state":"live"}`), nil
+	}}
+	request := LocalLaunch{ID: "calm-fox", Agent: "claude", LocalDirectory: "/project", Device: "1234abcd", Arguments: []string{"--settings", hookbridge.SettingsPlaceholder}, ClaudeSettings: []hookbridge.ClaudeSettings{{Index: 1, Data: json.RawMessage(`{"env":{"PRIVATE":"test-private"}}`)}}}
+	if _, err := backend.Launch(context.Background(), request); err != nil {
+		t.Fatal(err)
 	}
 }

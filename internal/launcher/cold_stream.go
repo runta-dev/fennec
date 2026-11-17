@@ -47,7 +47,8 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	}
 	// The payload contains validated launch arguments, never the daemon API token.
 	remote := `"$HOME/.local/fennec/bin/fennec-terminal" serve-initial ` + base64.StdEncoding.EncodeToString(payload)
-	if opening.HookBridge {
+	framed := opening.HookBridge || len(plan.Launch.ClaudeSettings) > 0
+	if framed {
 		remote = fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion)
 	}
 	directory := filepath.Join(home, ".config/fennec/cloud")
@@ -56,7 +57,7 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", "-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@"+runta.ActiveSSHHost(home), remote)
 	var transport *terminalstream.Transport
 	var session *terminalstream.Session
-	if opening.HookBridge {
+	if framed {
 		transport, err = terminalstream.Start(command)
 		if err == nil {
 			err = transport.Ready(ctx)

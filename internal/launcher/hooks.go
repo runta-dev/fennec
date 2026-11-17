@@ -15,10 +15,10 @@ type localHookClient struct {
 }
 
 func prepareLocalHooks(ctx context.Context, plan LaunchPlan, home string) (*localHookClient, error) {
-	if plan.Agent != "codex" {
+	if plan.Agent != "codex" && plan.Agent != "claude" {
 		return nil, nil
 	}
-	context := hookplugins.Capture()
+	context := hookplugins.CaptureAgent(plan.Agent)
 	catalog, err := hookplugins.Catalog(home, context)
 	if err != nil {
 		return nil, err

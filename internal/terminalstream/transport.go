@@ -510,6 +510,13 @@ func (transport *Transport) writeFrame(frame Frame) error {
 }
 
 func (transport *Transport) Launch(frame Frame) (*Session, error) {
+	launch := frame.Launch
+	if frame.Operation != nil {
+		launch = frame.Operation.Launch
+	}
+	if launch != nil && len(launch.ClaudeSettings) > 0 && !transport.Supports("claude_settings_v1") {
+		return nil, fmt.Errorf("update Fennec to use local Claude settings")
+	}
 	if frame.validateOpen() != nil {
 		return nil, fmt.Errorf("invalid terminal launch")
 	}

@@ -40,7 +40,7 @@ func runAgentOriginal(arguments []string, original string) error {
 	if err != nil {
 		return err
 	}
-	args, bindings, err := hookplugins.Rewrite(home, id, arguments[0], args, hookplugins.Capture())
+	args, bindings, settings, err := hookplugins.Prepare(home, id, arguments[0], args, hookplugins.CaptureAgent(arguments[0]))
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func runAgentOriginal(arguments []string, original string) error {
 	if err != nil {
 		return err
 	}
-	intent := launcher.LaunchIntent{RequestID: id, Agent: arguments[0], Directory: directory, Arguments: args, Hooks: bindings, Prepare: true, Cold: os.Getenv("FENNEC_COLD_START") == "1"}
+	intent := launcher.LaunchIntent{RequestID: id, Agent: arguments[0], Directory: directory, Arguments: args, Hooks: bindings, ClaudeSettings: settings, Prepare: true, Cold: os.Getenv("FENNEC_COLD_START") == "1"}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	socket := filepath.Join(home, ".config/fennec/ipc/launch.sock")

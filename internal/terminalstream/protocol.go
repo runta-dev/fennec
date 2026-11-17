@@ -64,7 +64,7 @@ const Chunk = 16384
 // accepted from older peers. At constrained link speeds a 16 KiB frame delays
 // every following control reply; 1 KiB fits an ordinary paced wire packet.
 const OutputChunk = 1024
-const ProtocolVersion = 10
+const ProtocolVersion = 11
 
 // Socket targets are a fixed allowlist: the owner's Codex app-server and the
 // bounded conversation import service. Peers advertise each capability.

@@ -95,3 +95,34 @@ func TestCmuxHookPathsAreRewrittenBeforeBrokerDispatch(t *testing.T) {
 		t.Fatal("broker not exercised", err)
 	}
 }
+
+func TestClaudeSettingsSnapshotReachesBroker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CMUX_WORKSPACE_ID", "")
+	t.Setenv("FENNEC_COLD_START", "")
+	path := filepath.Join(home, "cmux-claude-settings.fixture")
+	if err := os.WriteFile(path, []byte(`{"env":{"TEST_PRIVATE":"not-in-argv"},"model":"test-model"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldRequest, oldReadiness := brokerPlanRequest, brokerReadiness
+	t.Cleanup(func() { brokerPlanRequest = oldRequest; brokerReadiness = oldReadiness })
+	brokerReadiness = func(context.Context, string) error { return nil }
+	called := false
+	brokerPlanRequest = func(_ context.Context, _ string, intent launcher.LaunchIntent) (launcher.LaunchPlan, error) {
+		called = true
+		if err := intent.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if len(intent.ClaudeSettings) != 1 || strings.Contains(strings.Join(intent.Arguments, " "), path) || strings.Contains(strings.Join(intent.Arguments, " "), "not-in-argv") {
+			t.Fatal("settings not captured safely")
+		}
+		if !strings.Contains(string(intent.ClaudeSettings[0].Data), "not-in-argv") {
+			t.Fatal("settings lost")
+		}
+		return launcher.LaunchPlan{}, errors.New("fixture: stop before remote launch")
+	}
+	if err := runAgentOriginal([]string{"claude", "--settings", path}, "/unused/original"); err == nil || !called {
+		t.Fatal("broker not reached", err)
+	}
+}

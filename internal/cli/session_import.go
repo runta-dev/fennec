@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fennec/internal/agent"
+	"fennec/internal/hookbridge"
 	"fennec/internal/launcher"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -37,5 +38,9 @@ func resumeLocalSession(ctx context.Context, channel *terminalChannel, intent la
 		return intent, err
 	}
 	intent.Arguments = args
+	intent.ClaudeSettings, err = hookbridge.ReindexClaudeSettings(args, intent.ClaudeSettings)
+	if err != nil {
+		return intent, err
+	}
 	return intent, nil
 }

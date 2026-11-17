@@ -10,11 +10,18 @@ import (
 )
 
 type Context struct {
-	Cmux *cmuxhooks.Local `json:"cmux,omitempty"`
+	Agent string           `json:"agent,omitempty"`
+	Cmux  *cmuxhooks.Local `json:"cmux,omitempty"`
 }
 
 func Capture() Context { return Context{Cmux: cmuxhooks.Capture()} }
+func CaptureAgent(agent string) Context {
+	return Context{Agent: agent, Cmux: cmuxhooks.CaptureAgent(agent)}
+}
 func (ctx Context) Validate() error {
+	if ctx.Agent != "" && ctx.Agent != "codex" && ctx.Agent != "claude" {
+		return fmt.Errorf("invalid hook agent")
+	}
 	if ctx.Cmux == nil {
 		return nil
 	}
@@ -45,6 +52,16 @@ func Catalog(home string, ctx Context) (map[string]hookbridge.Executor, error) {
 	for _, executor := range custom {
 		result[executor.Binding().ID] = executor
 	}
+	if ctx.Agent == "claude" {
+		adapters, err := cmuxhooks.ClaudeAdapters(ctx.Cmux)
+		if err != nil {
+			return nil, err
+		}
+		for _, adapter := range adapters {
+			result[adapter.Binding().ID] = adapter
+		}
+		return result, nil
+	}
 	adapters, err := cmuxhooks.Adapters(ctx.Cmux)
 	if err != nil {
 		return nil, err
@@ -53,6 +70,31 @@ func Catalog(home string, ctx Context) (map[string]hookbridge.Executor, error) {
 		result[adapter.Binding().ID] = adapter
 	}
 	return result, nil
+}
+func Prepare(home, session, agent string, args []string, ctx Context) ([]string, []hookbridge.Binding, []hookbridge.ClaudeSettings, error) {
+	if agent != "claude" {
+		args, bindings, err := Rewrite(home, session, agent, args, ctx)
+		return args, bindings, nil, err
+	}
+	adapters, err := cmuxhooks.ClaudeAdapters(ctx.Cmux)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return hookbridge.PrepareClaude(args, session, func(event, command string) (*hookbridge.Binding, error) {
+		key, err := cmuxhooks.MatchClaude(event, command)
+		if err != nil {
+			return nil, err
+		}
+		if key == "" {
+			return nil, nil
+		}
+		adapter := adapters[key]
+		if adapter == nil {
+			return nil, fmt.Errorf("cmux context is unavailable; restart this cmux terminal")
+		}
+		binding := adapter.Binding()
+		return &binding, nil
+	})
 }
 func Rewrite(home, session, agent string, args []string, ctx Context) ([]string, []hookbridge.Binding, error) {
 	if agent != "codex" {

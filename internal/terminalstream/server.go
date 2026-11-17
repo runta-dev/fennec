@@ -125,7 +125,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"hook_bridge_v1", CapabilityImagePaste, "probe_id", CapabilityTrafficPackets}
+	capabilities := []string{"claude_settings_v1", "hook_bridge_v1", CapabilityImagePaste, "probe_id", CapabilityTrafficPackets}
 	if guard, ok := output.(interface{ TCPQueueGuarded() bool }); ok && guard.TCPQueueGuarded() {
 		capabilities = append(capabilities, CapabilityTCPOutputGuard)
 	}

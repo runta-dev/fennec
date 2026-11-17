@@ -214,7 +214,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 				if err != nil {
 					return launcher.LaunchReceipt{}, err
 				}
-				raw, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "launch", Launch: &cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks}})
+				raw, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "launch", Launch: &cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks, ClaudeSettings: intent.ClaudeSettings}})
 				if err != nil {
 					return launcher.LaunchReceipt{}, err
 				}
@@ -239,7 +239,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		if intent, err = resumeLocalSession(operation, channel, intent); err != nil {
 			return launcher.LaunchPlan{}, err
 		}
-		native := cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks}
+		native := cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks, ClaudeSettings: intent.ClaudeSettings}
 		if err := native.Validate(); err != nil {
 			return launcher.LaunchPlan{}, err
 		}

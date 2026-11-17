@@ -32,11 +32,14 @@ type Local struct {
 }
 
 func Capture() *Local {
+	return CaptureAgent("codex")
+}
+func CaptureAgent(agent string) *Local {
 	workspace, surface := os.Getenv("CMUX_WORKSPACE_ID"), os.Getenv("CMUX_SURFACE_ID")
-	if !uuid.MatchString(workspace) || !uuid.MatchString(surface) || os.Getenv("CMUX_CODEX_HOOKS_DISABLED") == "1" {
+	if !uuid.MatchString(workspace) || !uuid.MatchString(surface) || os.Getenv("CMUX_"+strings.ToUpper(agent)+"_HOOKS_DISABLED") == "1" {
 		return nil
 	}
-	path := os.Getenv("CMUX_CODEX_HOOK_CMUX_BIN")
+	path := os.Getenv("CMUX_"+strings.ToUpper(agent)+"_HOOK_CMUX_BIN")
 	if path == "" {
 		path = os.Getenv("CMUX_BUNDLED_CLI_PATH")
 	}
