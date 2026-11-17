@@ -72,7 +72,7 @@ func TestPromptUsesInstalledAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Shiqis-MacBook-Pro.local.a3f", "context, not permission", "creates, edits and deletions", "verify changes reached the local project"} {
+	for _, want := range []string{"Shiqis-MacBook-Pro.local.a3f", "context, not permission", "creates, edits, and deletions", "verify any sync required by the task"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("missing %q", want)
 		}
