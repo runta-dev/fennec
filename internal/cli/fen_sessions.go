@@ -40,6 +40,27 @@ func fenTitle(value string) string {
 	return value
 }
 
+var codexSpinner = regexp.MustCompile(`^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s+|$)`)
+
+// fenSessionTitle applies the Mac panel's rules (UI/panel.js readableName):
+// Codex puts an animated braille spinner before its OSC title; a trailing
+// "| <session>" or "· <session>" is dropped; a title that is only the
+// session name counts as no title.
+func fenSessionTitle(value, sessionID, agent string) string {
+	value = strings.TrimSpace(value)
+	if agent == "codex" {
+		value = strings.TrimSpace(codexSpinner.ReplaceAllString(value, ""))
+	}
+	if sessionID != "" {
+		suffix := regexp.MustCompile(`(?i)\s*[|·]\s*` + regexp.QuoteMeta(sessionID) + `\s*$`)
+		value = strings.TrimSpace(suffix.ReplaceAllString(value, ""))
+		if strings.EqualFold(value, sessionID) {
+			return ""
+		}
+	}
+	return fenTitle(value)
+}
+
 func fenParseSessions(data []byte, runtimeID string) ([]fenSession, error) {
 	var listing struct {
 		Terminals []struct {
@@ -71,9 +92,9 @@ func fenParseSessions(data []byte, runtimeID string) ([]fenSession, error) {
 		if _, err := launcher.AttachArgs(runtimeID, terminal.Address, id, "/validation"); err != nil {
 			return nil, err
 		}
-		title := fenTitle(terminal.Title)
+		title := fenSessionTitle(terminal.Title, id, agent)
 		if title == "" {
-			title = fenTitle(terminal.Name)
+			title = fenSessionTitle(terminal.Name, id, agent)
 		}
 		if title == "" {
 			title = "Untitled session"

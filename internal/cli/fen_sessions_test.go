@@ -155,3 +155,19 @@ func TestFenPickerKeyboardAndTerminalRestore(t *testing.T) {
 		})
 	}
 }
+
+func TestFenSessionTitleMatchesMacPanel(t *testing.T) {
+	for _, c := range []struct{ value, id, agent, want string }{
+		{"⠹ Fix flaky test", "cone-leaf", "codex", "Fix flaky test"},
+		{"⠹", "cone-leaf", "codex", ""},
+		{"⠹ keep", "cone-leaf", "claude", "⠹ keep"},
+		{"Fix flaky test | cone-leaf", "cone-leaf", "claude", "Fix flaky test"},
+		{"Fix flaky test · CONE-LEAF", "cone-leaf", "codex", "Fix flaky test"},
+		{"cone-leaf", "cone-leaf", "codex", ""},
+		{"Fennec iOS 设计稿", "free-bone", "claude", "Fennec iOS 设计稿"},
+	} {
+		if got := fenSessionTitle(c.value, c.id, c.agent); got != c.want {
+			t.Errorf("fenSessionTitle(%q, %q, %q) = %q, want %q", c.value, c.id, c.agent, got, c.want)
+		}
+	}
+}

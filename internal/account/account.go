@@ -388,7 +388,8 @@ func (m *Manager) Redeem(deviceCode string) Snapshot {
 		// Device authorizations live 15 minutes on the server.
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 		defer cancel()
-		m.pollToken(ctx, epoch, deviceCode, 0)
+		// The code may already be approved in the browser: check once right away.
+		m.pollTokenFrom(ctx, epoch, deviceCode, 0, 0)
 	}()
 	return m.state
 }
@@ -397,8 +398,19 @@ func (m *Manager) pollToken(ctx context.Context, epoch uint64, deviceCode string
 	if interval < 5*time.Second {
 		interval = 5 * time.Second
 	}
+	m.pollTokenFrom(ctx, epoch, deviceCode, interval, interval)
+}
+
+// pollTokenFrom waits first before the first request, then interval (at
+// least the server's 5 seconds) between requests.
+func (m *Manager) pollTokenFrom(ctx context.Context, epoch uint64, deviceCode string, first, interval time.Duration) {
+	if interval < 5*time.Second {
+		interval = 5 * time.Second
+	}
+	wait := first
 	for {
-		timer := time.NewTimer(interval)
+		timer := time.NewTimer(wait)
+		wait = interval
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -443,6 +455,7 @@ func (m *Manager) pollToken(ctx context.Context, epoch uint64, deviceCode string
 			if hinted := time.Duration(response.Interval * float64(time.Second)); hinted > interval {
 				interval = hinted
 			}
+			wait = interval
 		case "access_denied":
 			m.fail(epoch, "access_denied")
 			return

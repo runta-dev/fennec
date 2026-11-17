@@ -97,3 +97,10 @@ FENNEC_ACCEPTANCE_APP ?= $(CURDIR)/build/Fennec.app
 test-e2e-installation:
 	test "$$(uname -s)" = Darwin
 	go run ./cmd/check-installation --app "$(FENNEC_ACCEPTANCE_APP)"
+
+# iPhone app: bind the shared Go client (mobile/) into ios/Frameworks.
+.PHONY: ios-core ios
+ios-core:
+	gomobile bind -target ios/arm64,iossimulator/arm64 -iosversion 26.0 -o ios/Frameworks/FennecCore.xcframework ./mobile
+ios: ios-core
+	cd ios && xcodegen generate

@@ -1,0 +1,86 @@
+name: Fennec
+options:
+  bundleIdPrefix: com.runta
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.99.1
+targets:
+  Fennec:
+    type: application
+    platform: iOS
+    sources:
+      - path: Fennec
+    info:
+      path: Fennec/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.runta.fennec.pair
+            CFBundleURLSchemes: [fennec]
+    dependencies:
+      - framework: Frameworks/FennecCore.xcframework
+        embed: false
+      - package: SwiftTerm
+    settings:
+      base:
+        OTHER_LDFLAGS: ["-lresolv"]
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        PRODUCT_BUNDLE_IDENTIFIER: com.runta.fennec.ios
+        PRODUCT_NAME: Fennec
+        INFOPLIST_KEY_CFBundleDisplayName: Fennec
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan the sign-in code shown by Fennec on your Mac.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+  FennecTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: FennecTests
+    dependencies:
+      - target: Fennec
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.runta.fennec.ios.tests
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Fennec.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fennec"
+  FennecUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FennecUITests
+    dependencies:
+      - target: Fennec
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.runta.fennec.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Fennec
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+schemes:
+  Fennec:
+    build:
+      targets:
+        Fennec: all
+        FennecTests: [test]
+    test:
+      targets:
+        - FennecTests
+        - FennecUITests

@@ -1,0 +1,6 @@
+Fennec.xcodeproj/
+build/
+DerivedData/
+Frameworks/
+*.xcuserstate
+Fennec/Info.plist
