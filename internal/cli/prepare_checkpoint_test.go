@@ -77,6 +77,8 @@ func TestPreparationHealthRequiresRemoteMarkerAndBinaries(t *testing.T) {
 	bin := filepath.Join(home, ".local/bin")
 	os.MkdirAll(bin, 0700)
 	os.MkdirAll(filepath.Join(home, ".local/fennec/bin"), 0700)
+	os.MkdirAll(filepath.Join(home, ".local/fennec/gateway"), 0700)
+	os.WriteFile(filepath.Join(home, ".local/fennec/gateway/fennec-terminal"), []byte("#!/bin/sh\n"), 0700)
 	os.MkdirAll(filepath.Join(home, ".config/fennec"), 0700)
 	for _, name := range []string{"node", "magpie", "herdr-core", "curl", "codex"} {
 		os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 0\n"), 0700)

@@ -621,3 +621,5 @@ nav button{padding:3px 7px}
 /* Keep Kimi's blue accent when adapting its letterform to a dark surface. */
 :root[data-theme=dark] img[src$="/kimi-color.svg"]{content:url("icons/kimi-color-dark.svg");filter:none}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) img[src$="/kimi-color.svg"]{content:url("icons/kimi-color-dark.svg");filter:none}}
+
+#gateway-notice{height:28px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);visibility:hidden}#gateway-notice button{margin-left:auto;font-size:12px;padding:2px 8px}

@@ -479,6 +479,9 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 }
 
 func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsRequest) (ModelAccountsResult, error) {
+	return applyNativeAccounts(ctx, home, r, true)
+}
+func applyNativeAccounts(ctx context.Context, home string, r ModelAccountsRequest, changeMode bool) (ModelAccountsResult, error) {
 	result := ModelAccountsResult{Version: 1, Migrated: len(r.Files), Timings: map[string]float64{}, NativeReady: map[string]bool{}}
 	if err := ValidateModelAccountsRequest(r); err != nil {
 		return result, err
@@ -534,8 +537,10 @@ func ApplyNativeAccounts(ctx context.Context, home string, r ModelAccountsReques
 		result.NativeReady[id] = (cloud || r.NativeProblems[id] == "") && nativeHasCredentials(accountRoot, id)
 	}
 	result.AvailableAgents = availableAgentInventory(home, r.Agents)
-	if e := ConfigureAgentMode(home, true); e != nil {
-		return result, e
+	if changeMode {
+		if e := ConfigureAgentMode(home, true); e != nil {
+			return result, e
+		}
 	}
 	return result, nil
 }

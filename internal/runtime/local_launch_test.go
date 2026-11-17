@@ -174,7 +174,7 @@ func TestOpenCodeLaunchVersionAndSubcommand(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := strings.Join(command, " ")
+			got := strings.TrimPrefix(strings.Join(command, " "), "env FENNEC_GATEWAY_DEPENDENCY=1 ")
 			if strings.Contains(version, "v2") {
 				if got != binary+" run --auto --standalone hello" {
 					t.Fatal(got)

@@ -8,6 +8,7 @@ import (
 	agents "fennec/internal/agentcmd"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/cpusched"
+	"fennec/internal/gateway"
 	"fennec/internal/hookbridge"
 	"fennec/internal/setup"
 	"fmt"
@@ -234,6 +235,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		if request.Agent == "opencode" {
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		}
+	}
+	if !setup.NativeAgentMode(runtime.Home) && !agents.NativeOnly(request.Agent) {
+		command = append([]string{"env", gateway.DependencyEnv + "=1"}, command...)
 	}
 	if request.Agent == "pi" {
 		command = append([]string{"env", piHardwareCursor}, command...)

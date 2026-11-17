@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/gateway"
 	"fmt"
 	"io/fs"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,25 +33,7 @@ func ReconcileLocalModelPlugins(ctx context.Context, home string, plugins []Mode
 	if err != nil || !added {
 		return err
 	}
-	// Reload the supervised gateway process when a new plugin was installed so
-	// /v1/models immediately exposes the newly added plugin's models.
-	_ = exec.CommandContext(ctx, "/usr/bin/pkill", "-f", "/magpie serve").Run()
-	client := &http.Client{Timeout: 1500 * time.Millisecond}
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		if ctx.Err() != nil {
-			break
-		}
-		resp, reqErr := client.Get("http://127.0.0.1:3425/v1/models")
-		if reqErr == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				break
-			}
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	return nil
+	return gateway.Restart(ctx, home)
 }
 
 func reconcileLocalModelPlugins(ctx context.Context, home string, plugins []ModelPlugin, run func(context.Context, ...string) error) error {

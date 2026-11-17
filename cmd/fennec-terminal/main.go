@@ -8,6 +8,7 @@ import (
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/commandstream"
 	"fennec/internal/cpusched"
+	"fennec/internal/gateway"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
 	"fennec/internal/project"
@@ -141,6 +142,20 @@ func run() (int, error) {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
+	if len(os.Args) == 3 && os.Args[1] == "magpie-service" {
+		switch os.Args[2] {
+		case "install":
+			return 0, gateway.Install(ctx, home)
+		case "check":
+			return 0, gateway.Check(ctx, home)
+		case "restart":
+			return 0, gateway.Restart(ctx, home)
+		case "status":
+			return 0, json.NewEncoder(os.Stdout).Encode(gateway.ReadState(home))
+		default:
+			return 1, fmt.Errorf("unknown gateway operation")
+		}
+	}
 	runtime := cloudruntime.NewLocalRuntime(home)
 	if len(os.Args) == 2 && os.Args[1] == "refresh-magpie" {
 		return 0, setup.RefreshMagpieProcess(ctx, home)

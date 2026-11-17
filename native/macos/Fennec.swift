@@ -758,6 +758,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] {
+            render("renderGatewayState", [listing["gateway"] ?? ["status":"unknown"]])
             let nextData = try? JSONSerialization.data(withJSONObject: terminals, options: [.sortedKeys])
             if nextData != lastSessionsData {
                 lastSessionsData = nextData
@@ -795,7 +796,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         control.call("sessions.refresh") { [weak self] result in
             guard let self else { return }; self.loadingRuntimes = false; self.renderRefreshActivity()
             guard self.accountEpoch == epoch else { return }
-            if case .success(let value) = result, let listing = value as? [String:Any], let rows = listing["terminals"] { self.render("renderHerdrSessions", [rows]) }
+            if case .success(let value) = result, let listing = value as? [String:Any], let rows = listing["terminals"] { self.render("renderHerdrSessions", [rows]); self.render("renderGatewayState", [listing["gateway"] ?? ["status":"unknown"]]) }
             else if self.isOnline { self.render("renderSessionRefreshError") }
         }
     }

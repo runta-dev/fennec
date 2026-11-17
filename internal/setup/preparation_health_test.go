@@ -24,6 +24,7 @@ func TestResidentPreparationHealthChecksLiveServicesAndScope(t *testing.T) {
 		write(".local/bin/"+name, "#!/bin/sh\nexit 0\n", 0700)
 	}
 	write(".local/fennec/bin/fennec-terminal", "#!/bin/sh\nexit 0\n", 0700)
+	write(".local/fennec/gateway/fennec-terminal", "#!/bin/sh\nexit 0\n", 0700)
 	health := PreparationHealth{Fingerprint: strings.Repeat("a", 64), Marker: "prepared-runtime", Agents: []string{"codex"}, Magpie: true}
 	if CheckPreparationHealth(context.Background(), home, health) == nil {
 		t.Fatal("missing marker accepted")

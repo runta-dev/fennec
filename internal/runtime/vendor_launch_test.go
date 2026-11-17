@@ -45,7 +45,7 @@ func TestVendorLaunchRespectsMagpieSupport(t *testing.T) {
 			if id == "cursor" && (command[0] != filepath.Join(home, ".local/fennec/bin/fennec-terminal") || command[1] != "native-agent" || command[2] != id) {
 				t.Fatal(command)
 			}
-			if id == "grok" && command[0] != "/bin/grok" {
+			if id == "grok" && (len(command) < 3 || command[0] != "env" || command[1] != "FENNEC_GATEWAY_DEPENDENCY=1" || command[2] != "/bin/grok") {
 				t.Fatal("Grok did not use its Magpie configuration", command)
 			}
 			if !strings.HasSuffix(strings.Join(command, " "), "--model native-model") {

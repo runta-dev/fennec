@@ -1,14 +1,17 @@
 package setup
 
 import (
+	"context"
 	"encoding/json"
 	agents "fennec/internal/agentcmd"
+	"fennec/internal/gateway"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // ConfigureAgentMode is account-scoped by the verified sandbox owner. Existing
@@ -19,7 +22,14 @@ func ConfigureAgentMode(home string, native bool) error {
 		return err
 	}
 	b, _ := json.Marshal(map[string]bool{"native": native})
-	return atomicCredential(filepath.Join(root, "agent-mode.json"), b)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return gateway.WithLock(ctx, home, func() error {
+		if err := atomicCredential(filepath.Join(root, "agent-mode.json"), b); err != nil {
+			return err
+		}
+		return gateway.SetEnabledLocked(home, !native)
+	})
 }
 func NativeAgentMode(home string) bool {
 	var mode struct {

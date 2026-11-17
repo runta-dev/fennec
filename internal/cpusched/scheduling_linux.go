@@ -150,6 +150,11 @@ func processes() map[int]process {
 			continue
 		}
 		base := "/proc/" + entry.Name()
+		group, _ := os.ReadFile(base + "/cgroup")
+		if strings.Contains(string(group), "/fennec-magpie.service") || strings.Contains(string(group), "/fennec-magpie-health.service") {
+			// systemd owns this entire service tree, including plugin agent children.
+			continue
+		}
 		exe, err := os.Readlink(base + "/exe")
 		if err != nil {
 			continue

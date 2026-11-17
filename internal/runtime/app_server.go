@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fennec/internal/cpusched"
+	"fennec/internal/gateway"
 	"fennec/internal/setup"
 	"fmt"
 	"net"
@@ -230,6 +231,9 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides
 	command := exec.Command(workload[0], workload[1:]...)
 	command.Dir = home
 	command.Env = env
+	if !setup.NativeAgentMode(home) {
+		command.Env = append(command.Env, gateway.DependencyEnv+"=1")
+	}
 	command.Stdout, command.Stderr = logFile, logFile
 	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	err = command.Start()

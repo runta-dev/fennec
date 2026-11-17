@@ -1,5 +1,15 @@
 {
   "messages": {
+    "ui.model_connection_recovering": {
+      "en-GB": "Restoring model connection…", "en-US": "Restoring model connection…",
+      "zh-CN": "正在恢复模型连接…", "zh-TW": "正在恢復模型連線…",
+      "ja": "モデルへの接続を復旧中…", "ko": "모델 연결을 복구하는 중…"
+    },
+    "ui.model_connection_failed": {
+      "en-GB": "Could not restore the model connection", "en-US": "Could not restore the model connection",
+      "zh-CN": "模型连接未能恢复", "zh-TW": "無法恢復模型連線",
+      "ja": "モデルへの接続を復旧できませんでした", "ko": "모델 연결을 복구하지 못했습니다"
+    },
     "ui.restart_failed": {
       "en-GB": "Could not restart Fennec, try again",
       "en-US": "Could not restart Fennec, try again",

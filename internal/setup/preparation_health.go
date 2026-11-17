@@ -51,7 +51,7 @@ test -x "$HOME/.local/fennec/bin/fennec-terminal"
 herdr-core server status >/dev/null 2>&1
 `
 	if h.Magpie {
-		script += "command -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
+		script += "test -x \"$HOME/.local/fennec/gateway/fennec-terminal\"\ncommand -v magpie >/dev/null\ncurl --fail --silent --max-time 2 http://127.0.0.1:3425/v1/models >/dev/null\n"
 	}
 	for _, id := range h.Agents {
 		script += "command -v " + agentcmd.BinaryName(id) + " >/dev/null\n"

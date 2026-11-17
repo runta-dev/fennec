@@ -1235,6 +1235,15 @@ window.renderModelSaving = busy => {
   if(!busy)window.renderAgents(detectedAgents);
 };
 
+window.renderGatewayState = value => {
+ const notice=document.querySelector('#gateway-notice');
+ if(!notice)return;
+ const status=value?.status;
+ notice.style.visibility=(status==='recovering'||status==='failed')?'visible':'hidden';
+ notice.querySelector('span').textContent=status==='failed'?"[[i18n:ui.model_connection_failed]]":"[[i18n:ui.model_connection_recovering]]";
+ const retry=notice.querySelector('button');retry.hidden=status!=='failed';
+ retry.onclick=()=>send('retry-runtime');
+};
 let lastSessionTerminals=[];
 const confirmedStoppedSessions=new Set();
 window.renderSessionStopped = sessionID => {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/agentcmd"
+	"fennec/internal/gateway"
 	"fmt"
 	"os"
 	"os/exec"
@@ -101,6 +102,12 @@ type runtimeConfigurationOps struct {
 }
 
 func ReconfigureRuntime(ctx context.Context, home string, request RuntimeConfiguration) (RuntimeConfigurationResult, error) {
+	if !request.Accounts.Native && gateway.NeedsSetup(home) {
+		if err := request.Validate(); err != nil {
+			return RuntimeConfigurationResult{}, err
+		}
+		return RuntimeConfigurationResult{NeedsSetup: true}, nil
+	}
 	return reconfigureRuntimeWith(ctx, home, request, runtimeConfigurationOps{LocalGatewayModels, ApplyModelAccounts, ReconcileLocalRoutes})
 }
 func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeConfiguration, ops runtimeConfigurationOps) (RuntimeConfigurationResult, error) {

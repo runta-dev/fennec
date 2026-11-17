@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/gateway"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
 	"fmt"
@@ -350,5 +351,6 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	if accounts, e := setup.SelectedNativeLogins(r.Home); e == nil && len(accounts) > 0 {
 		listing["native_accounts"], _ = json.Marshal(accounts)
 	}
+	listing["gateway"], _ = json.Marshal(map[string]string{"status": gateway.ReadState(r.Home).Status})
 	return json.Marshal(listing)
 }
