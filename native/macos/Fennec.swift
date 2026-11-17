@@ -649,6 +649,11 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    private var pairingApprovalURL: URL?
+    static func isRuntaDashboardURL(_ url: URL) -> Bool {
+        // The daemon already checked the host against the account's dashboard (custom environments included).
+        url.scheme == "https" && url.user == nil && url.host != nil
+    }
     /// QR code for a pairing link, drawn with Core Image as a PNG data URI.
     static func qrCodeDataURI(_ text: String) -> String? {
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
@@ -899,17 +904,23 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 guard let self, self.accountEpoch == epoch else { return }
                 switch result {
                 case .success(let value):
-                    if let pairing = value as? [String:Any], let url = pairing["url"] as? String, let qr = Self.qrCodeDataURI(url) {
-                        self.render("renderPairing",[["qr":qr,"expires_at":pairing["expires_at"] as? String ?? ""]])
-                    } else {
-                        self.render("renderPairing",[["error":"[[i18n:ui.pairing_failed]]"]])
+                    guard let pairing = value as? [String:Any], let url = pairing["url"] as? String, let qr = Self.qrCodeDataURI(url),
+                          let approve = (pairing["approve_url"] as? String).flatMap(URL.init(string:)), Self.isRuntaDashboardURL(approve) else {
+                        self.render("renderPairing",[["error":"[[i18n:ui.pairing_failed]]"]]); return
                     }
+                    self.pairingApprovalURL = approve
+                    self.render("renderPairing",[["qr":qr,"expires_at":pairing["expires_at"] as? String ?? ""]])
+                    // The dashboard, normally already signed in, approves the iPhone in one click.
+                    NSWorkspace.shared.open(approve)
                 case .failure(let error):
                     let code = (error as NSError).userInfo["FennecCode"] as? String ?? ""
-                    let message = code == "pairing_not_allowed" ? "[[i18n:ui.pairing_not_allowed]]" : code == "pairing_organization_required" ? "[[i18n:ui.pairing_organization_required]]" : "[[i18n:ui.pairing_failed]]"
-                    self.render("renderPairing",[["error":message]])
+                    self.render("renderPairing",[["error":code == "pairing_rate_limited" ? "[[i18n:ui.pairing_rate_limited]]" : "[[i18n:ui.pairing_failed]]"]])
                 }
             }
+            return
+        }
+        if action == "open-pairing-approval" {
+            if let url = pairingApprovalURL { NSWorkspace.shared.open(url) }
             return
         }
         if action == "audit-clear" {

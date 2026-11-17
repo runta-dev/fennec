@@ -1,48 +1,41 @@
 package account
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-// Pairing is a sign-in code for another device, approved by this signed-in
-// client. URL carries only the short-lived device code (in the fragment, so it
-// never reaches a server log); the other device redeems it at
-// /v2/auth/device/token for a token of its own.
+// Pairing signs in another device without copying this client's token. The
+// Mac starts a device authorization for the iPhone; the QR code (URL) carries
+// only the short-lived device code, in the fragment so it never reaches a
+// server log; the user approves ApproveURL on the Runta dashboard, where the
+// browser is normally signed in; the iPhone redeems the code for a token of
+// its own (Manager.Redeem).
 type Pairing struct {
-	URL       string    `json:"url"`
-	ExpiresAt time.Time `json:"expires_at"`
+	URL        string    `json:"url"`
+	ApproveURL string    `json:"approve_url"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
-// Pairing errors are deliberately distinct from login errors: a refusal here
-// means the approve endpoint does not accept this client, not that the Mac's
-// own sign-in expired, so it must never sign the Mac out.
-var (
-	ErrPairingNotAllowed     = errors.New("pairing_not_allowed")
-	ErrPairingOrganization   = errors.New("pairing_organization_required")
-	errPairingInvalidPayload = errors.New("pairing_failed")
-)
+// ErrPairingRateLimited reports Runta's per-network limit on new device
+// authorizations (10 per 15 minutes). Runta currently returns it as HTTP 500.
+var ErrPairingRateLimited = errors.New("pairing_rate_limited")
 
 const pairingScheme = "fennec://pair"
 
-// PairDevice starts a device authorization for deviceName and approves it with
-// this account, the same two calls the Runta dashboard's /device page makes.
+// PairDevice starts a device authorization named deviceName. It needs no
+// credential, but the Mac must be signed in so the code belongs to its
+// environment and the dashboard approval matches the account in use.
 func (m *Manager) PairDevice(parent context.Context, deviceName string) (Pairing, error) {
-	ctx, token, epoch, done, err := m.queryContext(parent)
+	ctx, _, _, done, err := m.queryContext(parent)
 	if err != nil {
 		return Pairing{}, err
 	}
 	defer done()
-	endpoint := m.Endpoint()
-
 	var authorization struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -50,67 +43,33 @@ func (m *Manager) PairDevice(parent context.Context, deviceName string) (Pairing
 		} `json:"error"`
 		Data struct {
 			DeviceCode string    `json:"device_code"`
-			UserCode   string    `json:"user_code"`
 			URL        string    `json:"verification_uri_complete"`
 			ExpiresAt  time.Time `json:"expires_at"`
 		} `json:"data"`
 	}
-	status, err := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": deviceName, "app_url": m.DashboardURL()}, &authorization)
-	if err != nil {
+	dashboard := m.DashboardURL()
+	status, err := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": deviceName, "app_url": dashboard}, &authorization)
+	if err != nil && status == 0 {
 		return Pairing{}, fmt.Errorf("start authorization: %w", err)
 	}
+	// Runta maps its rate limit to 500 "internal" (identity_auth_error has no
+	// ResourceExhausted case); treat both forms as the limit.
+	if status == 429 || (status == 500 && authorization.Error.Code == "internal") {
+		return Pairing{}, fmt.Errorf("start authorization: HTTP %d: %w", status, ErrPairingRateLimited)
+	}
 	if status < 200 || status >= 300 || authorization.Data.DeviceCode == "" {
-		return Pairing{}, fmt.Errorf("start authorization: HTTP %d (%s: %s): %w", status, authorization.Error.Code, authorization.Error.Message, errPairingInvalidPayload)
+		return Pairing{}, fmt.Errorf("start authorization: HTTP %d (%s: %s)", status, authorization.Error.Code, authorization.Error.Message)
 	}
-	code := normalizeUserCode(authorization.Data.UserCode)
-	if code == "" {
-		if link, err := url.Parse(authorization.Data.URL); err == nil {
-			code = normalizeUserCode(link.Query().Get("code"))
-		}
+	approve, err := url.Parse(authorization.Data.URL)
+	want, _ := url.Parse(dashboard)
+	if err != nil || approve.Scheme != "https" || want == nil || approve.Host != want.Host || approve.User != nil {
+		return Pairing{}, fmt.Errorf("start authorization: unexpected approval link")
 	}
-	if code == "" {
-		return Pairing{}, fmt.Errorf("verification link without code: %w", errPairingInvalidPayload)
-	}
-
-	var lookup struct {
-		Data struct {
-			Organizations []struct {
-				ID string `json:"id"`
-			} `json:"organizations"`
-		} `json:"data"`
-	}
-	if err := m.pairingRequest(ctx, token, http.MethodGet, endpoint+"/v1/auth/device/authorization?code="+url.QueryEscape(code), nil, &lookup); err != nil {
-		return Pairing{}, fmt.Errorf("look up code: %w", err)
-	}
-	organization, err := m.pairingOrganization(ctx, token, endpoint, epoch, lookup.Data.Organizations)
-	if err != nil {
-		return Pairing{}, err
-	}
-	if err := m.pairingRequest(ctx, token, http.MethodPost, endpoint+"/v1/auth/device/authorization/approve", map[string]string{"code": code, "organization_id": organization}, nil); err != nil {
-		return Pairing{}, fmt.Errorf("approve code: %w", err)
-	}
-
 	expiry := authorization.Data.ExpiresAt
-	if limit := time.Now().Add(10 * time.Minute); expiry.IsZero() || expiry.After(limit) {
+	if limit := time.Now().Add(15 * time.Minute); expiry.IsZero() || expiry.After(limit) {
 		expiry = limit
 	}
-	return Pairing{URL: PairingURL(authorization.Data.DeviceCode, endpoint), ExpiresAt: expiry}, nil
-}
-
-// normalizeUserCode matches the dashboard's /device page: uppercase letters
-// and digits, shown as XXXX-XXXX when eight long. The device API rejects other forms.
-func normalizeUserCode(raw string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(raw) {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		}
-	}
-	code := b.String()
-	if len(code) == 8 {
-		return code[:4] + "-" + code[4:]
-	}
-	return code
+	return Pairing{URL: PairingURL(authorization.Data.DeviceCode, m.Endpoint()), ApproveURL: approve.String(), ExpiresAt: expiry}, nil
 }
 
 // PairingURL encodes a device code and the Runta API origin it belongs to, so
@@ -131,79 +90,4 @@ func ParsePairingURL(raw string) (deviceCode, endpoint string, err error) {
 		return "", "", fmt.Errorf("not a Fennec pairing code")
 	}
 	return values.Get("code"), values.Get("api"), nil
-}
-
-func (m *Manager) pairingOrganization(ctx context.Context, token, endpoint string, epoch uint64, organizations []struct {
-	ID string `json:"id"`
-}) (string, error) {
-	if len(organizations) == 1 && organizations[0].ID != "" {
-		return organizations[0].ID, nil
-	}
-	if len(organizations) == 0 {
-		return "", ErrPairingOrganization
-	}
-	// Several organizations: approve for the account's current one, as the
-	// dashboard would preselect it.
-	me, err := m.me(ctx, token, endpoint, epoch)
-	if err == nil {
-		data, _ := me["data"].(map[string]any)
-		if data == nil {
-			data = me
-		}
-		if current, _ := data["organization_id"].(string); current != "" {
-			for _, organization := range organizations {
-				if organization.ID == current {
-					return current, nil
-				}
-			}
-		}
-	}
-	return "", ErrPairingOrganization
-}
-
-// pairingRequest calls the dashboard device-authorization API with this
-// client's token. 401 and 403 are reported as ErrPairingNotAllowed and do not
-// invalidate the stored credential.
-func (m *Manager) pairingRequest(ctx context.Context, token, method, address string, body, out any) error {
-	var reader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(data)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, address, reader)
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := m.http.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return ErrPairingNotAllowed
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		var envelope struct {
-			Error struct {
-				Code    string `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		_ = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope)
-		return fmt.Errorf("%w (%s: %s)", &httpStatusError{status: response.StatusCode, code: envelope.Error.Code}, envelope.Error.Code, envelope.Error.Message)
-	}
-	if out == nil {
-		return nil
-	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(out) != nil {
-		return errPairingInvalidPayload
-	}
-	return nil
 }

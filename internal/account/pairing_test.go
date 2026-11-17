@@ -7,50 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
-
-func pairingServer(t *testing.T, organizations []string, approveStatus int, approved *map[string]string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v2/auth/device/authorization":
-			var body map[string]string
-			json.NewDecoder(r.Body).Decode(&body)
-			if body["client_id"] != "runta_crew" || body["device_name"] != "Fennec on iPhone" {
-				t.Errorf("authorization body = %v", body)
-			}
-			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
-				"device_code": "device-secret", "user_code": "ABCD-EFGH",
-				"verification_uri_complete": "https://dashboard.runta.com/device?code=ABCDEFGH",
-				"expires_at":                time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
-			}})
-		case "/v1/auth/device/authorization":
-			if r.Header.Get("Authorization") != "Bearer mac-token" || r.URL.Query().Get("code") != "ABCD-EFGH" {
-				t.Errorf("lookup auth=%q code=%q", r.Header.Get("Authorization"), r.URL.Query().Get("code"))
-			}
-			rows := []map[string]string{}
-			for _, id := range organizations {
-				rows = append(rows, map[string]string{"id": id, "name": id})
-			}
-			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"organizations": rows}})
-		case "/v2/me":
-			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"user_id": "u", "organization_id": "org-b"}})
-		case "/v1/auth/device/authorization/approve":
-			if approveStatus != 0 {
-				w.WriteHeader(approveStatus)
-				return
-			}
-			var body map[string]string
-			json.NewDecoder(r.Body).Decode(&body)
-			*approved = body
-			json.NewEncoder(w).Encode(map[string]any{"ok": true})
-		default:
-			t.Errorf("unexpected path %s", r.URL.Path)
-			w.WriteHeader(404)
-		}
-	}))
-}
 
 func signedIn(t *testing.T, endpoint string) (*Manager, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,18 +21,29 @@ func signedIn(t *testing.T, endpoint string) (*Manager, context.CancelFunc) {
 	return m, cancel
 }
 
-func TestPairDeviceApprovesAndReturnsDeviceCodeURL(t *testing.T) {
-	var approved map[string]string
-	server := pairingServer(t, []string{"org-a"}, 0, &approved)
+func TestPairDeviceReturnsQRAndApprovalLinks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/auth/device/authorization" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			return
+		}
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["client_id"] != "runta_crew" || body["device_name"] != "Fennec on iPhone" {
+			t.Errorf("authorization body = %v", body)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+			"device_code": "device-secret", "user_code": "ABCD-EFGH",
+			"verification_uri_complete": "https://dashboard.runta.com/device?code=ABCD-EFGH",
+			"expires_at":                time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339),
+		}})
+	}))
 	defer server.Close()
 	m, cancel := signedIn(t, server.URL)
 	defer cancel()
 	pairing, err := m.PairDevice(context.Background(), "Fennec on iPhone")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if approved["code"] != "ABCD-EFGH" || approved["organization_id"] != "org-a" {
-		t.Fatalf("approve body = %v", approved)
 	}
 	code, api, err := ParsePairingURL(pairing.URL)
 	if err != nil || code != "device-secret" || api != server.URL {
@@ -81,36 +52,69 @@ func TestPairDeviceApprovesAndReturnsDeviceCodeURL(t *testing.T) {
 	if strings.Contains(pairing.URL, "?") {
 		t.Fatal("device code must stay in the fragment")
 	}
-	if time.Until(pairing.ExpiresAt) <= 0 || time.Until(pairing.ExpiresAt) > 10*time.Minute {
-		t.Fatalf("expiry %v", pairing.ExpiresAt)
+	if pairing.ApproveURL != "https://dashboard.runta.com/device?code=ABCD-EFGH" {
+		t.Fatalf("approve url %q", pairing.ApproveURL)
 	}
 }
 
-func TestPairDevicePicksCurrentOrganization(t *testing.T) {
-	var approved map[string]string
-	server := pairingServer(t, []string{"org-a", "org-b"}, 0, &approved)
+func TestPairDeviceRejectsForeignApprovalHost(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"device_code": "d", "verification_uri_complete": "https://evil.example/device?code=X"}})
+	}))
 	defer server.Close()
 	m, cancel := signedIn(t, server.URL)
 	defer cancel()
-	if _, err := m.PairDevice(context.Background(), "Fennec on iPhone"); err != nil {
-		t.Fatal(err)
-	}
-	if approved["organization_id"] != "org-b" {
-		t.Fatalf("approved for %q", approved["organization_id"])
+	if _, err := m.PairDevice(context.Background(), "Fennec on iPhone"); err == nil {
+		t.Fatal("accepted a foreign approval link")
 	}
 }
 
-func TestPairDeviceRefusalKeepsMacSignedIn(t *testing.T) {
-	var approved map[string]string
-	server := pairingServer(t, []string{"org-a"}, http.StatusForbidden, &approved)
+func TestPairDeviceReportsRateLimitServedAs500(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":{"code":"internal","message":"internal server error"}}`))
+	}))
 	defer server.Close()
 	m, cancel := signedIn(t, server.URL)
 	defer cancel()
-	if _, err := m.PairDevice(context.Background(), "Fennec on iPhone"); !errors.Is(err, ErrPairingNotAllowed) {
+	if _, err := m.PairDevice(context.Background(), "Fennec on iPhone"); !errors.Is(err, ErrPairingRateLimited) {
 		t.Fatalf("err = %v", err)
 	}
 	if m.Snapshot().Status != "authorized" {
-		t.Fatalf("status = %s", m.Snapshot().Status)
+		t.Fatal("a refused pairing must not sign the Mac out")
+	}
+}
+
+func TestRedeemPollsUntilApproved(t *testing.T) {
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		if r.URL.Path != "/v2/auth/device/token" || body["device_code"] != "device-secret" {
+			t.Errorf("unexpected %s %v", r.URL.Path, body)
+		}
+		if polls.Add(1) < 2 {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]any{"error": "authorization_pending"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"access_token": "phone-token"})
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &memoryCredentials{}
+	m := New(ctx, store, server.URL)
+	if state := m.Redeem("device-secret"); state.Status != "authorizing" {
+		t.Fatalf("status %s", state.Status)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for m.Snapshot().Status != "authorized" && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	stored, _ := store.Read(context.Background())
+	if token, _ := m.Token(); token != "phone-token" || stored != "phone-token" {
+		t.Fatalf("token %q stored %q status %s", token, stored, m.Snapshot().Status)
 	}
 }
 

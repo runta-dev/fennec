@@ -109,10 +109,8 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			switch {
 			case err == nil:
 				return pairing, nil
-			case errors.Is(err, account.ErrPairingNotAllowed):
-				return nil, &control.Fault{Code: "pairing_not_allowed", Message: "This account can't approve iPhone sign-in yet"}
-			case errors.Is(err, account.ErrPairingOrganization):
-				return nil, &control.Fault{Code: "pairing_organization_required", Message: "Choose an organization on the Runta dashboard first"}
+			case errors.Is(err, account.ErrPairingRateLimited):
+				return nil, &control.Fault{Code: "pairing_rate_limited", Message: "Too many sign-in codes from this network; try again in 15 minutes", Retryable: true}
 			default:
 				// The panel shows its own copy for this code; the message helps `fen control` diagnosis.
 				return nil, &control.Fault{Code: "pairing_failed", Message: "Couldn't create a sign-in code: " + err.Error(), Retryable: true}

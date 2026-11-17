@@ -371,7 +371,29 @@ func (m *Manager) authorize(ctx context.Context, epoch uint64) {
 	m.state.ExpiresAt = expiry
 	m.notifyLocked()
 	m.mu.Unlock()
-	interval := time.Duration(data.Interval * float64(time.Second))
+	m.pollToken(ctx, epoch, data.DeviceCode, time.Duration(data.Interval*float64(time.Second)))
+}
+
+// Redeem signs in with a device code another signed-in client started and the
+// user approved (Fennec's Mac panel shows it as a QR code). It polls the same
+// token endpoint as Login and reports through the same snapshot states.
+func (m *Manager) Redeem(deviceCode string) Snapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if deviceCode == "" || m.state.Status == "authorized" {
+		return m.state
+	}
+	ctx, epoch := m.resetLocked("authorizing")
+	go func() {
+		// Device authorizations live 15 minutes on the server.
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		defer cancel()
+		m.pollToken(ctx, epoch, deviceCode, 0)
+	}()
+	return m.state
+}
+
+func (m *Manager) pollToken(ctx context.Context, epoch uint64, deviceCode string, interval time.Duration) {
 	if interval < 5*time.Second {
 		interval = 5 * time.Second
 	}
@@ -389,7 +411,7 @@ func (m *Manager) authorize(ctx context.Context, epoch uint64) {
 			Error    string  `json:"error"`
 			Interval float64 `json:"interval"`
 		}
-		status, err = m.post(ctx, "token", map[string]string{"device_code": data.DeviceCode}, &response)
+		status, err := m.post(ctx, "token", map[string]string{"device_code": deviceCode}, &response)
 		if err != nil {
 			m.fail(epoch, "authorization_failed")
 			return

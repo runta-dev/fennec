@@ -1,5 +1,45 @@
 {
   "messages": {
+    "ui.scan_with_fennec": {
+      "en-US": "Scan with Fennec",
+      "en-GB": "Scan with Fennec",
+      "zh-CN": "用 Fennec 扫码",
+      "zh-TW": "用 Fennec 掃描",
+      "ja": "Fennec でスキャン",
+      "ko": "Fennec으로 스캔"
+    },
+    "ui.authorize_in_browser": {
+      "en-US": "Click Authorize in your browser",
+      "en-GB": "Click Authorize in your browser",
+      "zh-CN": "在浏览器中点击 Authorize",
+      "zh-TW": "在瀏覽器中點擊 Authorize",
+      "ja": "ブラウザで Authorize をクリック",
+      "ko": "브라우저에서 Authorize 클릭"
+    },
+    "ui.open_again": {
+      "en-US": "Open again",
+      "en-GB": "Open again",
+      "zh-CN": "重新打开",
+      "zh-TW": "重新開啟",
+      "ja": "もう一度開く",
+      "ko": "다시 열기"
+    },
+    "ui.code_expired": {
+      "en-US": "Code expired",
+      "en-GB": "Code expired",
+      "zh-CN": "二维码已过期",
+      "zh-TW": "QR 碼已過期",
+      "ja": "コードの有効期限が切れました",
+      "ko": "코드가 만료되었습니다"
+    },
+    "ui.pairing_rate_limited": {
+      "en-US": "Too many sign-in codes. Try again in 15 minutes.",
+      "en-GB": "Too many sign-in codes. Try again in 15 minutes.",
+      "zh-CN": "登录码请求过多，请 15 分钟后再试",
+      "zh-TW": "登入碼請求過多，請 15 分鐘後再試",
+      "ja": "サインインコードが多すぎます。15 分後にもう一度お試しください",
+      "ko": "로그인 코드 요청이 너무 많습니다. 15분 후에 다시 시도하세요"
+    },
     "ui.get_fennec_ios_app": {
       "en-US": "Get Fennec iOS App",
       "en-GB": "Get Fennec iOS App",
@@ -23,14 +63,6 @@
       "zh-TW": "在 App Store 下載 Fennec",
       "ja": "App Store で Fennec をダウンロード",
       "ko": "App Store에서 Fennec 다운로드"
-    },
-    "ui.scan_with_fennec_to_sign_in": {
-      "en-US": "Scan with Fennec to sign in",
-      "en-GB": "Scan with Fennec to sign in",
-      "zh-CN": "用 Fennec 扫码登录",
-      "zh-TW": "用 Fennec 掃描登入",
-      "ja": "Fennec でスキャンしてサインイン",
-      "ko": "Fennec으로 스캔해 로그인"
     },
     "ui.sign_in_on_this_mac_first": {
       "en-US": "Sign in on this Mac first.",
@@ -63,22 +95,6 @@
       "zh-TW": "無法產生登入碼",
       "ja": "サインインコードを作成できませんでした",
       "ko": "로그인 코드를 만들지 못했습니다"
-    },
-    "ui.pairing_not_allowed": {
-      "en-US": "Runta doesn't allow this Mac to approve iPhone sign-in yet.",
-      "en-GB": "Runta doesn't allow this Mac to approve iPhone sign-in yet.",
-      "zh-CN": "Runta 暂不允许这台 Mac 批准 iPhone 登录",
-      "zh-TW": "Runta 暫不允許這台 Mac 核准 iPhone 登入",
-      "ja": "Runta はまだこの Mac による iPhone サインインの承認を許可していません",
-      "ko": "Runta가 아직 이 Mac의 iPhone 로그인 승인을 허용하지 않습니다"
-    },
-    "ui.pairing_organization_required": {
-      "en-US": "Choose an organization on the Runta dashboard first.",
-      "en-GB": "Choose an organization on the Runta dashboard first.",
-      "zh-CN": "请先在 Runta 控制台选择组织",
-      "zh-TW": "請先在 Runta 控制台選擇組織",
-      "ja": "先に Runta ダッシュボードで組織を選択してください",
-      "ko": "먼저 Runta 대시보드에서 조직을 선택하세요"
     },
     "ui.magpie_control_panel": {
       "en-US": "Control panel",
