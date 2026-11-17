@@ -63,7 +63,9 @@ func (request LocalLaunch) Validate() error {
 	if err := hookbridge.ValidateBindings(request.Hooks); err != nil {
 		return err
 	}
-	if !sessionIDPattern.MatchString(request.ID) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(request.Device) || !filepath.IsAbs(request.LocalDirectory) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
+	// Sessions started from the iPhone have no Mac starting directory.
+	if !sessionIDPattern.MatchString(request.ID) || !regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(request.Device) ||
+		(request.LocalDirectory != "" && !filepath.IsAbs(request.LocalDirectory)) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
 		return fmt.Errorf("invalid local session identity")
 	}
 	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[request.Agent] {

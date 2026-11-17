@@ -247,3 +247,23 @@ func TestClaudeLaunchMaterializesSettingsBeforeAgentStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLaunchAllowsEmptyMacDirectory(t *testing.T) {
+	for _, agent := range []string{"codex", "claude", "pi", "grok"} {
+		t.Run(agent, func(t *testing.T) {
+			if _, err := CloudLaunchScript("cone-leaf", agent, "", "1234abcd", nil); err != nil {
+				t.Fatal(err)
+			}
+			home := t.TempDir()
+			cwd, err := prepareSessionWorkspace(home, LocalLaunch{ID: "cone-leaf", Agent: agent, Device: "1234abcd"})
+			if err != nil || cwd != filepath.Join(home, ".fen", "cone-leaf") {
+				t.Fatal(cwd, err)
+			}
+		})
+	}
+	for _, directory := range []string{"relative", "/project\n", "/project\r", "/project\x00"} {
+		if (LocalLaunch{ID: "cone-leaf", Agent: "pi", LocalDirectory: directory, Device: "1234abcd"}).Validate() == nil {
+			t.Errorf("invalid Mac directory accepted: %q", directory)
+		}
+	}
+}
