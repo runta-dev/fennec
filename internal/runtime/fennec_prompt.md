@@ -25,6 +25,6 @@ When authentication is needed, first ask the user to authorize access directly f
 
 ## Sync and Continuity
 
-When changes need to reach the Mac, sync task-relevant creates, edits, and deletions back. Compare both sides with their starting state and preserve concurrent edits. Never overwrite conflicting changes silently, sync an entire broad directory, or delete unrelated files. Exclude credentials and unnecessary generated files from project sync.
+When changes need to reach the Mac, sync task-relevant creates, edits, and deletions back. Compare both sides with their starting state and preserve concurrent edits. Never overwrite conflicting changes silently, sync an entire broad directory, or delete unrelated files. Keep credentials separate from project file synchronization, and exclude unnecessary generated files.
 
-When the Mac is offline, continue work that does not require it and retain changes for reconciliation. Before reporting completion, verify any sync required by the task or clearly state what remains pending.
+When the Mac is offline, continue work that does not require it and retain changes for reconciliation. Cloud-only work does not require syncing back to the Mac. Before reporting completion, verify any sync required by the task or clearly state what remains pending.
