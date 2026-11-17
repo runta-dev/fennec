@@ -32,9 +32,10 @@ daemon restarts. This debounce affects notifications only, never repair.
 The cloud outbox records one delivery outcome per live Fennec agent terminal,
 including detached terminals. Ordinary shells and exited terminals are excluded.
 A batch reuses its outbox, so delivered terminals do not receive repeated prompts.
-Blocked, busy or unreported terminals remain pending; delivery uses Herdr's
-conditional `terminal.send` with `force=false` and `if=idle`, including its input
-quiet period. No stop keys or permission answers are injected. A new batch
+Working agents receive the message immediately through Herdr so their own input
+queue handles it. Blocked or unreported terminals remain pending. Delivery uses
+conditional `terminal.send` with `force=false` and `if` matching the observed
+`idle` or `working` state, including Herdr's input quiet period. No stop keys or permission answers are injected. A new batch
 replaces obsolete pending events. Each send rechecks the actual SSH path.
 
 Attempts are recorded before sending. A confirmed `blocked` or `status_mismatch`

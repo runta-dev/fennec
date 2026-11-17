@@ -25,7 +25,7 @@ func TestLiveMacOnlineDelivery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	real := NewLocalRuntime(home)
-	script := `stty -echo; printf '\033]7501;state=idle:app=codex\033\\'; while IFS= read -r line; do printf '\033]7501;state=working:app=codex\033\\'; printf 'receipt:%s\n' "$line"; printf '\033]7501;state=idle:app=codex\033\\'; done`
+	script := `stty -echo; printf '\033]7501;state=working:app=codex\033\\'; while IFS= read -r line; do printf '\033]7501;state=working:app=codex\033\\'; printf 'receipt:%s\n' "$line"; printf '\033]7501;state=idle:app=codex\033\\'; done`
 	raw, err := real.Run(ctx, "run", "--json", "--bg", "--no-parent", "--no-notify", "--label", "fennec.session=relay-notice", "--label", "fennec.agent=codex", "--", "/bin/sh", "-c", script)
 	if err != nil {
 		t.Fatal(err)

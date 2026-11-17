@@ -115,7 +115,7 @@ func (r *LocalRuntime) deliverMacOnline(ctx context.Context, h localssh.LinkHeal
 			State string `json:"state"`
 			App   string `json:"app"`
 		}
-		if json.Unmarshal(t.Status, &status) != nil || status.State != "idle" || !notificationAgent(status.App) {
+		if json.Unmarshal(t.Status, &status) != nil || (status.State != "idle" && status.State != "working") || !notificationAgent(status.App) {
 			continue
 		}
 		if ctx.Err() != nil {
@@ -131,7 +131,7 @@ func (r *LocalRuntime) deliverMacOnline(ctx context.Context, h localssh.LinkHeal
 		}
 		alias := localssh.RegisteredAlias(r.Home, h.Device)
 		text := fmt.Sprintf("<fennec-event type=\"mac-online\" device=\"%s\" generation=\"%s\">\nMac is back online. Mac Relay has recovered and cloud-to-Mac connectivity has been verified.\nSSH alias: %s\nOperations previously blocked by Mac connectivity can now be retried.\n</fennec-event>", h.Device, h.Generation, alias)
-		_, sendErr := r.Query(ctx, "terminal.send", map[string]any{"terminal": t.Address, "text": text, "force": false, "if": "idle"})
+		_, sendErr := r.Query(ctx, "terminal.send", map[string]any{"terminal": t.Address, "text": text, "force": false, "if": status.State})
 		if sendErr == nil {
 			state.Targets[t.Address] = "delivered"
 		} else {

@@ -15,7 +15,7 @@ func onlineFixture(address, state, agent string) LocalTerminal {
 }
 
 func TestMacOnlineOutboxDefersDeduplicatesAndFences(t *testing.T) {
-	terminals := []LocalTerminal{onlineFixture("t1", "idle", "codex"), onlineFixture("t2", "blocked", "claude"), onlineFixture("t3", "idle", "bash")}
+	terminals := []LocalTerminal{onlineFixture("t1", "idle", "codex"), onlineFixture("t2", "blocked", "claude"), onlineFixture("t3", "idle", "bash"), onlineFixture("t4", "working", "codex")}
 	sent := map[string]int{}
 	probes := 0
 	r := &LocalRuntime{Home: t.TempDir(), Query: func(_ context.Context, method string, params any) (json.RawMessage, error) {
@@ -26,7 +26,7 @@ func TestMacOnlineOutboxDefersDeduplicatesAndFences(t *testing.T) {
 			t.Fatal(method)
 		}
 		p := params.(map[string]any)
-		if p["force"] != false || p["if"] != "idle" {
+		if p["force"] != false || (p["if"] != "idle" && p["if"] != "working") {
 			t.Fatal("unsafe submission", p)
 		}
 		text := p["text"].(string)
@@ -53,7 +53,7 @@ func TestMacOnlineOutboxDefersDeduplicatesAndFences(t *testing.T) {
 	}
 	deliver(h)
 	deliver(h)
-	if sent["t1"] != 1 || sent["t2"] != 0 || sent["t3"] != 0 {
+	if sent["t1"] != 1 || sent["t2"] != 0 || sent["t3"] != 0 || sent["t4"] != 1 {
 		t.Fatal(sent)
 	}
 	// A replacement resident loads the same on-disk outbox.
