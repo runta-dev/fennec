@@ -78,7 +78,7 @@ func TestChatGPTPathFilterMovesThreadsIntoFennecWorkspaces(t *testing.T) {
 		t.Fatal("cwd not moved to a Fennec workspace", cloud)
 	}
 	instructions, err := os.ReadFile(filepath.Join(cloud, "AGENTS.md"))
-	if err != nil || !strings.Contains(string(instructions), mac) || !strings.Contains(string(instructions), "You run in the cloud") {
+	if err != nil || !strings.Contains(string(instructions), mac) || !strings.Contains(string(instructions), "Treat the cloud computer as the user's second personal computer") {
 		t.Fatal("Fennec instructions missing", string(instructions), err)
 	}
 

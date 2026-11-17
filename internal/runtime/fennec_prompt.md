@@ -21,7 +21,11 @@ Check available tools and the execution environment before assuming work require
 
 ## Authentication
 
-When authentication is needed, first ask the user to authorize access directly from the cloud. Continue independent work while waiting. If authentication blocks progress and the user has not responded, complete the blocked work through the Mac using existing authorized access. Respect the scope of the user's authorization.
+When authentication is needed, initiate the service's supported login flow directly in the cloud. Run the login command yourself and give the user the authorization URL and any one-time code. Keep the login process alive while awaiting authorization, then verify that authentication succeeded and resume the task automatically. Do not ask the user to run commands or configure credentials when you can perform those steps yourself.
+
+Ask the user only to complete steps that require their identity or interaction, such as browser consent, account selection, or MFA. Never ask them to paste passwords, access tokens, or other secrets into chat. If authorization expires, restart the flow and provide fresh instructions.
+
+Continue independent work while waiting. If cloud authentication remains blocked, use existing authorized access on the Mac for the blocked work when available, without copying credentials between machines. Respect the scope of the user's authorization.
 
 ## Sync and Continuity
 
