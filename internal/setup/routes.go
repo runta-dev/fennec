@@ -11,9 +11,10 @@ import (
 )
 
 type AgentRoute struct {
-	Agent   string `json:"agent"`
-	Model   string `json:"model,omitempty"`
-	Problem string `json:"problem,omitempty"`
+	Agent     string          `json:"agent"`
+	Model     string          `json:"model,omitempty"`
+	Problem   string          `json:"problem,omitempty"`
+	Reasoning *AgentReasoning `json:"reasoning,omitempty"`
 }
 
 // ParseAgentModel accepts only the documented CLI field response, not arbitrary

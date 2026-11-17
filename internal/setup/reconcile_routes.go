@@ -115,9 +115,10 @@ func parseGatewayCatalog(raw []byte, logins map[string]string) ([]GatewayModelIt
 }
 
 type RouteResult struct {
-	Agent  string `json:"agent"`
-	Model  string `json:"model,omitempty"`
-	Status string `json:"status"`
+	Agent     string          `json:"agent"`
+	Model     string          `json:"model,omitempty"`
+	Status    string          `json:"status"`
+	Reasoning *AgentReasoning `json:"reasoning,omitempty"`
 }
 
 // ReconcileRoutes repairs routes individually and verifies their readback.
@@ -166,6 +167,13 @@ func DecodeRouteResults(data []byte, routes []AgentRoute) ([]RouteResult, error)
 		if result.Agent != routes[i].Agent || result.Model != routes[i].Model {
 			return nil, fmt.Errorf("route result identity mismatch")
 		}
+		if result.Status == "configured" && routes[i].Reasoning != nil {
+			wanted, _ := json.Marshal(routes[i].Reasoning)
+			actual, _ := json.Marshal(result.Reasoning)
+			if string(wanted) != string(actual) {
+				return nil, fmt.Errorf("reasoning synchronization not confirmed")
+			}
+		}
 		if routes[i].Problem != "" {
 			if result.Status != routes[i].Problem {
 				return nil, fmt.Errorf("route blocker was not preserved")
@@ -182,6 +190,9 @@ func ValidateDesiredRoutes(routes []AgentRoute) error {
 		return fmt.Errorf("too many routes")
 	}
 	for _, route := range routes {
+		if err := validateAgentReasoning(route.Agent, route.Reasoning); err != nil {
+			return err
+		}
 		if route.Problem != "" {
 			continue
 		}
@@ -247,6 +258,20 @@ func ReconcileLocalRoutes(ctx context.Context, home string, routes []AgentRoute)
 			return nil, err
 		}
 		results = append(results, single...)
+	}
+	// Even an unchanged model must reconcile reasoning defaults. Model-only
+	// operations carry no reasoning payload and preserve the current defaults.
+	for i, route := range routes {
+		if results[i].Status == "configured" {
+			if err := applyRouteReasoning(ctx, home, route); err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				results[i].Status = "configuration_failed"
+			} else {
+				results[i].Reasoning = route.Reasoning
+			}
+		}
 	}
 	return results, nil
 }

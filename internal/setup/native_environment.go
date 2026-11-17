@@ -80,7 +80,7 @@ func PrewarmNativeEnvironment(ctx context.Context) {
 // roots. Read only this fixed allowlist; never print it or execute credential
 // helper commands referenced inside agent configuration.
 func nativeSourceEnvironment(ctx context.Context) map[string]string {
-	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "KIMI_CODE_HOME", "CURSOR_CONFIG_DIR", "AGENT_CLI_CREDENTIAL_STORE", "GROK_HOME", "GROK_AUTH_PATH", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "ZDOTDIR", "USER")
+	keys := append(append([]string{}, nativeEnvKeys...), "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "KIMI_CODE_HOME", "CURSOR_CONFIG_DIR", "AGENT_CLI_CREDENTIAL_STORE", "GROK_HOME", "GROK_AUTH_PATH", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "OPENCODE_CONFIG_DIR", "ZDOTDIR", "USER")
 	result := map[string]string{}
 	for _, key := range keys {
 		if value := os.Getenv(key); value != "" {

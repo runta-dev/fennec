@@ -218,3 +218,26 @@ enable native Cursor loader and Grok export acceptance tests in
 `internal/runtime/session_import_vendor_test.go`. Cursor's SQLite adapter uses
 pure-Go SQLite so consistent snapshots work without a system sqlite3 executable
 or a C toolchain. No provider inference is required by these checks.
+
+## Reasoning defaults across launch modes
+
+Preparation exports portable reasoning defaults separately from model routing.
+Codex uses the selected local profile's effort; Claude includes global and
+per-model effort, thinking enablement, and its allowlisted reasoning environment
+variables. Pi, Kimi and Grok retain their native thinking/effort settings.
+OpenCode reads JSONC/JSON in its normal precedence and exports only agent
+reasoning settings, never agent prompts or commands.
+
+A preparation snapshot makes these local defaults authoritative in both the
+isolated native configuration and the active Magpie configuration, including
+removal of a local default. Native cloud model selections and unrelated cloud
+settings remain separate. Project and explicit session/CLI overrides still
+follow each agent's own precedence; a configuration update does not promise to
+change an already-running turn.
+
+Gateway reconciliation applies and verifies reasoning even when the model is
+unchanged. An absent reasoning payload means a model-only operation and leaves
+reasoning alone. A present empty payload clears stale defaults. The reply must
+acknowledge the payload, so an older cloud terminal cannot silently report
+success after ignoring it. ChatGPT's isolated Codex configuration continues to
+copy reasoning from the active gateway configuration on connection.

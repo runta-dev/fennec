@@ -36,7 +36,7 @@ var nativeFiles = map[string]bool{
 	kimiConfigFile: true, kimiCredentialFile: true, kimiRegionFile: true,
 	"env.json": true,
 }
-var nativeEnvKeys = []string{"CURSOR_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"}
+var nativeEnvKeys = []string{"CURSOR_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "CLAUDE_CODE_EFFORT_LEVEL", "MAX_THINKING_TOKENS", "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"}
 
 type NativeSource struct {
 	Gateway  bool
@@ -208,6 +208,13 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 		if e != nil {
 			return fmt.Errorf("cannot read native %s configuration", strings.Split(name, "/")[0])
 		}
+		if name == "opencode/config/opencode/opencode.json" {
+			cfg, err := decodeReasoningConfig(path, b)
+			if err != nil {
+				return fmt.Errorf("invalid OpenCode configuration")
+			}
+			b, _ = json.Marshal(cfg)
+		}
 		if keys != nil {
 			var src map[string]json.RawMessage
 			if json.Unmarshal(b, &src) != nil {
@@ -233,6 +240,22 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 				}
 			}
 			cfg["env"], _ = json.Marshal(safe)
+			b, _ = json.Marshal(cfg)
+		}
+		if name == "claude/settings.json" || name == "opencode/config/opencode/opencode.json" {
+			agent, key := "claude", "modelSettings"
+			if strings.HasPrefix(name, "opencode/") {
+				agent, key = "opencode", "agent"
+			}
+			cfg, err := decodeReasoningConfig(name, b)
+			if err != nil {
+				return err
+			}
+			if selected, ok := reasoningSettings(agent, cfg)[key]; ok {
+				cfg[key] = selected
+			} else {
+				delete(cfg, key)
+			}
 			b, _ = json.Marshal(cfg)
 		}
 		return add(name, b)
@@ -348,12 +371,18 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 					return r, e
 				}
 			}
-			if e := read("claude/settings.json", filepath.Join(dir, "settings.json"), []string{"model", "env"}); e != nil {
+			if e := read("claude/settings.json", filepath.Join(dir, "settings.json"), []string{"model", "env", "effortLevel", "alwaysThinkingEnabled", "modelSettings"}); e != nil {
 				return r, e
 			}
 			cfg := map[string]any{}
 			settings, _ := base64.StdEncoding.DecodeString(r.Files["claude/settings.json"])
 			_ = json.Unmarshal(settings, &cfg)
+			// Model-specific preferences contain only portable reasoning fields.
+			if selected, ok := reasoningSettings("claude", cfg)["modelSettings"]; ok {
+				cfg["modelSettings"] = selected
+			} else {
+				delete(cfg, "modelSettings")
+			}
 			values, _ := cfg["env"].(map[string]any)
 			if values == nil {
 				values = map[string]any{}
@@ -455,8 +484,19 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 			if e := read("opencode/data/opencode/auth.json", filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json"), nil); e != nil {
 				return r, e
 			}
-			if e := read("opencode/config/opencode/opencode.json", filepath.Join(s.dir("XDG_CONFIG_HOME", ".config"), "opencode/opencode.json"), []string{"model", "small_model", "provider"}); e != nil {
-				return r, e
+			dir := filepath.Join(s.dir("XDG_CONFIG_HOME", ".config"), "opencode")
+			if s.Env("OPENCODE_CONFIG_DIR") != "" {
+				dir = s.dir("OPENCODE_CONFIG_DIR", ".config/opencode")
+			}
+			for _, name := range []string{"opencode.jsonc", "opencode.json", "config.json"} {
+				path := filepath.Join(dir, name)
+				if _, err := os.Lstat(path); os.IsNotExist(err) {
+					continue
+				}
+				if e := read("opencode/config/opencode/opencode.json", path, []string{"model", "small_model", "provider", "agent"}); e != nil {
+					return r, e
+				}
+				break
 			}
 		}
 	}
@@ -638,8 +678,13 @@ func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, 
 		}
 	}
 	source := credentialHash(data)
+	localDefaults := append([]byte(nil), data...)
 	old := baseline[name]
-	if exists && source == old.Source && !bytes.Equal(previous, data) && name != "codex/config.toml" && name != "claude/settings.json" && name != "pi/settings.json" && name != kimiConfigFile {
+	_, reasoningFile := reasoningSpecs[strings.Split(name, "/")[0]]
+	if spec := reasoningSpecs[strings.Split(name, "/")[0]]; spec.file != name {
+		reasoningFile = false
+	}
+	if exists && source == old.Source && !bytes.Equal(previous, data) && !reasoningFile {
 		return nil, false, nil
 	}
 	if exists && !bytes.Equal(previous, data) {
@@ -662,6 +707,10 @@ func reconcileNativeFile(ctx context.Context, home, root, name, encoded string, 
 			}
 			data = merged
 		}
+	}
+	data, e = syncNativeReasoning(name, data, localDefaults)
+	if e != nil {
+		return nil, false, e
 	}
 	if name == "pi/settings.json" {
 		data, e = sanitizeNativePiSettings(data, nativePiProviderFiles(func(name string) []byte { raw, _ := base64.StdEncoding.DecodeString(files[name]); return raw }))
@@ -850,7 +899,7 @@ func nativeEnvForAgent(agent, key string) bool {
 	case "codex":
 		return strings.HasPrefix(key, "OPENAI_") || strings.HasPrefix(key, "AZURE_OPENAI_")
 	case "claude":
-		return strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "CLAUDE_") || strings.HasPrefix(key, "AWS_")
+		return key == "MAX_THINKING_TOKENS" || strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "CLAUDE_") || strings.HasPrefix(key, "AWS_")
 	case "pi", "opencode", "magpie":
 		return true
 	}

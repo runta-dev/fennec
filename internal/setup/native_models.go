@@ -619,6 +619,10 @@ func nativeSettingsModelKeys(name string) ([]string, bool) {
 		return []string{"defaultProvider", "defaultModel", "defaultThinkingLevel"}, true
 	case kimiConfigFile:
 		return []string{"default_model", "thinking"}, true
+	case grokConfigFile:
+		return []string{"models", "model"}, true
+	case "opencode/config/opencode/opencode.json":
+		return []string{"model", "small_model", "provider"}, true
 	case "claude/.claude.json":
 		// The Mac sends only the account identity; Claude Code keeps its own
 		// runtime state (projects, counters, tips) in the cloud copy.

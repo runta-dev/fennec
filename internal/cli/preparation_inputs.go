@@ -44,6 +44,9 @@ func gatherPreparationInputs(ctx context.Context, home, token, owner, runtimeID,
 			return
 		}
 		inputs.plugins, inputs.err = setup.DesiredModelPlugins(home)
+		if inputs.err == nil {
+			inputs.routes, inputs.err = setup.WithAgentReasoning(inputs.routes, inputs.native)
+		}
 		if inputs.err != nil {
 			return
 		}
