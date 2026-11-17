@@ -17,12 +17,18 @@ whose `Refresh` compares the systemd process's executable inode with the target
 and restarts the owned service when necessary. It does not kill agent sessions
 or alter credentials, models, reasoning effort or the saved Magpie toggle.
 
-The initial runtime, `0.1.4177-runta.1`, is based on upstream commit
+The runtime, `0.1.4177-runta.2`, is based on upstream commit
 `e6e0585bd3d92a79dab08f0955789a5801382b71`. Codex omits the backend's output
 `metadata.turn_id` from replayed history. The downstream ignores only this
 top-level attribution when checking WebSocket continuation; other metadata and
 content changes still force full requests. Runta versions do not self-update
 from the upstream release feed, which would otherwise overwrite the fix.
+
+Version `runta.2` also disables unused next-prompt suggestions in Magpie's hidden
+Claude child. These requests resent full history even when the main Messages
+request used thread continuation. User preferences are unchanged, and feature
+fetching remains enabled. The pinned source is Magpie commit
+`c90479245f71f0d1e4c20eba7956fe2a9a596030`.
 
 To upgrade:
 
