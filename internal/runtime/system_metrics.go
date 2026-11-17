@@ -126,6 +126,17 @@ func CollectSystemMetrics() SystemMetrics {
 	return sampleAndRecord(&globalMetricsState)
 }
 
+// RecentTxBPS reports the last sampled egress rate without triggering a new
+// sample. Zero means no fresh sample is available.
+func RecentTxBPS() uint64 {
+	globalMetricsState.mu.Lock()
+	defer globalMetricsState.mu.Unlock()
+	if globalMetricsState.lastAt.IsZero() || time.Since(globalMetricsState.lastAt) > 5*time.Second {
+		return 0
+	}
+	return globalMetricsState.last.NetTxBPS
+}
+
 func collectSystemMetricsFromPaths(procStat, procMeminfo, procNetDev, cgroupDir string, state *metricsSampleState) SystemMetrics {
 	now := time.Now()
 	total1, idle1, okCPU := readProcStatCPU(procStat)
