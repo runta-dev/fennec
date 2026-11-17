@@ -1019,6 +1019,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "logout": mutate("account.logout")
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics()
+        case "open-magpie-panel":
+            control.call("magpie.panel") { [weak self] result in
+                DispatchQueue.main.async {
+                    var opened = false
+                    if case .success(let value) = result, let reply = value as? [String:Any], let text = reply["url"] as? String, let url = URL(string:text), url.scheme == "http", url.host == "127.0.0.1" { opened = NSWorkspace.shared.open(url) }
+                    self?.render("renderMagpiePanelResult", [opened])
+                }
+            }
         case "open-dashboard": if let url = URL(string: activeDashboardURL), url.scheme == "https" { NSWorkspace.shared.open(url) }
         case "update-check": mutate("update.check") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }
         case "update-download": mutate("update.download") { [weak self] success,value in if success,let value { self?.render("renderUpdateState",[value]) } else { self?.lastState = nil; self?.pollState() } }

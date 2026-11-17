@@ -11,6 +11,7 @@ import (
 	"fennec/internal/gateway"
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
+	"fennec/internal/magpieweb"
 	"fennec/internal/project"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -343,6 +344,8 @@ func run() (int, error) {
 			return 1, fmt.Errorf("terminal output scheduler: %w", err)
 		}
 		defer sharedOutput.Close()
+		panel := &magpieweb.Cloud{}
+		defer panel.Close()
 		return 0, terminalstream.ServeWithSockets(ctx, input, sharedOutput, func(ctx context.Context, request cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error) {
 			terminal, err := runtime.Launch(ctx, request)
 			if err != nil {
@@ -364,6 +367,9 @@ func run() (int, error) {
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
 		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+			if target == terminalstream.SocketMagpieWeb {
+				return panel.Dial(ctx, home)
+			}
 			if target == terminalstream.SocketCommand {
 				return commandstream.Dial(ctx), nil
 			}

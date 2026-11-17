@@ -167,6 +167,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		controller.Additional[name] = handler
 	}
 	installBrowserTerminal(ctx, services, controller)
+	installMagpiePanel(ctx, services, controller, settings)
 	controller.Settings = func() any {
 		prefs := settings.snapshot().(desktopPreferences)
 		env := runta.ActiveEnvironment(home)

@@ -21,6 +21,9 @@ func (t *Transport) DialSocket(ctx context.Context, target, device string) (net.
 	if err := t.Ready(ctx); err != nil {
 		return nil, err
 	}
+	if target == SocketMagpieWeb && !t.Supports(CapabilityMagpieWeb) {
+		return nil, fmt.Errorf("resident Magpie panel unavailable")
+	}
 	if target == SocketDeviceRelay && !t.Supports(CapabilityDeviceRelay) {
 		return nil, fmt.Errorf("resident device relay unavailable")
 	}

@@ -668,6 +668,7 @@ window.exportLocalPreferences = () => ({theme:appearance.value,language:document
 window.renderMagpiePreference = enabled => {
  if(magpieEnabled!==enabled){nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();localGatewayModels.clear();localGatewayPending.clear();}
  magpieEnabled=enabled;
+ document.querySelector('#magpie-panel-row').hidden=!enabled;
  document.querySelector('#magpie-integration')?.setAttribute('aria-checked',String(magpieEnabled));
 };
 window.renderPreferences = value => {
@@ -1470,4 +1471,16 @@ window.animateFox = motion => {
   foxMotionFrame=requestAnimationFrame(tick);
  };
  tick();
+};
+
+document.querySelector('#magpie-panel').onclick=()=>{
+ const button=document.querySelector('#magpie-panel');
+ button.disabled=true;button.setAttribute('aria-busy','true');
+ document.querySelector('#magpie-panel-status').textContent="[[i18n:ui.magpie_panel_opening]]";
+ send('open-magpie-panel');
+};
+window.renderMagpiePanelResult=success=>{
+ const button=document.querySelector('#magpie-panel');
+ button.disabled=false;button.setAttribute('aria-busy','false');
+ document.querySelector('#magpie-panel-status').textContent=success?'':"[[i18n:ui.magpie_panel_retry]]";
 };

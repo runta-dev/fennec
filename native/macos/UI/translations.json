@@ -1,5 +1,29 @@
 {
   "messages": {
+    "ui.magpie_control_panel": {
+      "en-US": "Control panel",
+      "en-GB": "Control panel",
+      "zh-CN": "控制面板",
+      "zh-TW": "控制面板",
+      "ja": "コントロールパネル",
+      "ko": "제어판"
+    },
+    "ui.magpie_panel_opening": {
+      "en-US": "Opening…",
+      "en-GB": "Opening…",
+      "zh-CN": "正在打开…",
+      "zh-TW": "正在開啟…",
+      "ja": "開いています…",
+      "ko": "여는 중…"
+    },
+    "ui.magpie_panel_retry": {
+      "en-US": "Try again",
+      "en-GB": "Try again",
+      "zh-CN": "点击重试",
+      "zh-TW": "點擊重試",
+      "ja": "再試行",
+      "ko": "다시 시도"
+    },
     "ui.model_connection_recovering": {
       "en-GB": "Restoring model connection…", "en-US": "Restoring model connection…",
       "zh-CN": "正在恢复模型连接…", "zh-TW": "正在恢復模型連線…",
