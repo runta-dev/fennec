@@ -166,6 +166,9 @@ func TestReasoningReadbackRejectsOldCloud(t *testing.T) {
 
 func TestOpenCodeReasoningJSONC(t *testing.T) {
 	home := t.TempDir()
+	// Keep reconciliation on the fixture even when the host sets config overrides.
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
 	nativeFixture(t, home, ".config/opencode/opencode.jsonc", `{
  // Keep provider comments.
  "model":"magpie/codex/test",
