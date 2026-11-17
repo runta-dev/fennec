@@ -39,7 +39,7 @@ func CaptureAgent(agent string) *Local {
 	if !uuid.MatchString(workspace) || !uuid.MatchString(surface) || os.Getenv("CMUX_"+strings.ToUpper(agent)+"_HOOKS_DISABLED") == "1" {
 		return nil
 	}
-	path := os.Getenv("CMUX_"+strings.ToUpper(agent)+"_HOOK_CMUX_BIN")
+	path := os.Getenv("CMUX_" + strings.ToUpper(agent) + "_HOOK_CMUX_BIN")
 	if path == "" {
 		path = os.Getenv("CMUX_BUNDLED_CLI_PATH")
 	}
