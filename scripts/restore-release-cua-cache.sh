@@ -10,7 +10,13 @@ repository="${FENNEC_RELEASE_REPOSITORY:-runta-dev/fennec}"
 source_digest=$(cd cua && find cmd/cua-package internal/chromium internal/credits -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d ' ' -f 1)
 key=$(printf '%s' "$identity:$source_digest" | shasum -a 256 | cut -d ' ' -f 1)
 mkdir -p "$work" "$cache"
-curl -fSL --retry 3 "https://api.github.com/repos/$repository/releases/latest" -o "$work/release.json"
+# Hosted runners share anonymous API limits. Use the workflow's read-only
+# token through gh's environment support; never put it in curl's argv/logs.
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  gh api "repos/$repository/releases/latest" > "$work/release.json"
+else
+  curl -fSL --retry 3 "https://api.github.com/repos/$repository/releases/latest" -o "$work/release.json"
+fi
 manifest_url=$(jq -er '[.assets[] | select(.name | endswith("-components.json"))][0].browser_download_url' "$work/release.json")
 curl -fSL --retry 3 "$manifest_url" -o "$work/components.json"
 previous_key=$(jq -er '.components[] | select(.name == "chromium") | .key' "$work/components.json")
