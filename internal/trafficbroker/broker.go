@@ -59,10 +59,10 @@ func Listen(path string) (*net.UnixListener, error) {
 // closes IPC connections, waits for queued callbacks, then releases passed FDs.
 // It never closes a descriptor while a queued callback can still access it.
 func Serve(ctx context.Context, listener *net.UnixListener, config traffic.Config) error {
-	return serve(ctx, listener, config, 0)
+	return serve(ctx, listener, config, 0, nil)
 }
 
-func serve(ctx context.Context, listener *net.UnixListener, config traffic.Config, idle time.Duration) error {
+func serve(ctx context.Context, listener *net.UnixListener, config traffic.Config, idle time.Duration, monitor *traffic.CapacityMonitor) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	schedule, err := traffic.New(ctx, config)
@@ -71,6 +71,10 @@ func serve(ctx context.Context, listener *net.UnixListener, config traffic.Confi
 	}
 	stop := context.AfterFunc(ctx, func() { listener.Close() })
 	defer stop()
+	if monitor != nil {
+		monitor.SetTarget(schedule.UpdateConfig)
+		go monitor.Watch(ctx, traffic.DefaultCapacityConfig())
+	}
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	clients := make(chan struct{}, 128)

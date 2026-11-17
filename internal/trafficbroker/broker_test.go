@@ -325,7 +325,7 @@ func TestIdleBrokerRetainsConnectedClientThenExits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, listener, traffic.DefaultConfig(), 80*time.Millisecond) }()
+	go func() { done <- serve(ctx, listener, traffic.DefaultConfig(), 80*time.Millisecond, nil) }()
 	client, output := pipeClient(t, ctx, path)
 	time.Sleep(200 * time.Millisecond)
 	if err := client.WritePacket(ctx, "ping", traffic.Interactive, []byte("ok")); err != nil {

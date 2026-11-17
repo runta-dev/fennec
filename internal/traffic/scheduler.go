@@ -35,6 +35,12 @@ func DefaultConfig() Config {
 
 var ErrPacketSize = errors.New("traffic packet exceeds the configured atomic write limit")
 
+// InteractiveReserveBytesPerSecond is the minimum egress the scheduler leaves
+// for urgent frames when adapting to a detected host bandwidth limit. Bulk
+// traffic is capped below the root budget by this reserve; interactive packets
+// may still use the full root budget.
+const InteractiveReserveBytesPerSecond = 32 * 1024
+
 // ErrWouldBlock is returned by a TryWrite callback that wrote no bytes. The
 // scheduler releases its tokens and tries this packet again after a short
 // delay, allowing unrelated writable destinations to keep progressing.
@@ -84,6 +90,25 @@ func New(ctx context.Context, config Config) (*Scheduler, error) {
 		root:      newBucket(config.BytesPerSecond, config.BurstBytes, now),
 		bulk:      newBucket(config.BulkBytesPerSecond, config.BurstBytes, now),
 	}, nil
+}
+
+// UpdateConfig changes rate budgets without dropping queued packets. Bucket
+// tokens stay as-is: refilling converts them under the new rate on next use.
+// Callers must not mutate the passed config afterwards.
+func (s *Scheduler) UpdateConfig(config Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if config.BytesPerSecond <= 0 || config.BulkBytesPerSecond <= 0 ||
+		config.BulkBytesPerSecond > config.BytesPerSecond || config.MaxPacketBytes <= 0 ||
+		config.BurstBytes < config.MaxPacketBytes || config.QueuePackets < 2 {
+		return errors.New("invalid traffic scheduler budget")
+	}
+	// Keep BurstBytes and queue capacity stable while running; only adaptive
+	// rates change. Admission slots have live waiters that cannot be resized.
+	s.root.rate = float64(config.BytesPerSecond)
+	s.bulk.rate = float64(config.BulkBytesPerSecond)
+	s.config = config
+	return nil
 }
 
 func (s *Scheduler) signal() {

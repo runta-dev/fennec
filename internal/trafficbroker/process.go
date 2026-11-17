@@ -75,7 +75,8 @@ func Run(ctx context.Context, home string) error {
 		return err
 	}
 	defer listener.Close()
-	return serve(ctx, listener, traffic.DefaultConfig(), 30*time.Second)
+	monitor := traffic.NewCapacityMonitor()
+	return serve(ctx, listener, traffic.ConfigForCapacity(monitor.Detected()), 30*time.Second, monitor)
 }
 
 // Ensure starts a standalone helper lazily using the same installed executable.
