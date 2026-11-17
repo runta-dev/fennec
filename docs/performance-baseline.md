@@ -1,6 +1,6 @@
 # Fennec internal performance baseline
 
-Updated: 2026-11-15 UTC. This is the current measurement ledger, not a claim that
+Updated: 2026-11-15 UTC. This is a historical measurement ledger, not a claim that
 Fennec has reached its latency target. Keep failures and superseded measurements
 visible. Unless a row says otherwise, the development build tested here is `0.3.11151959-dev` (v33), build ID
 `65beaa5bd8d5ccbd60e33aa94cdf9e1ba099f4f0e1d70838bd844bad366fa18c`.
@@ -8,6 +8,10 @@ The source is `a229eb0` plus this recovery-latency changeset. Measurements use t
 installed signed Mac application and its real shared cloud machine; existing
 user sessions remain running. Local temporary-file tests and UI fixtures do not
 count as network or application recovery measurements.
+
+For current source behavior and later experiments, see
+[terminal responsiveness](tui-responsiveness-proposal.md). These measurements do
+not establish the current installed build's performance.
 
 ## Recovery and application lifecycle
 

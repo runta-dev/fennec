@@ -44,7 +44,7 @@ Cursor CLI uses `cursor-agent` and Grok Build uses `grok`; Fennec leaves the Cur
 
 OpenCode supports cloud launch, Magpie model selection, and persistent terminal sessions with both CLI generations. Version 2 runs a private server for each Fennec session. Native credential migration currently covers the legacy `auth.json` format; credentials stored only in OpenCode 2's database are not synchronized. Use Magpie for OpenCode 2 accounts.
 
-Magpie is optional and **off by default**. Sign in to your agent locally; Fennec copies its supported native credentials into an isolated configuration directory in your cloud sandbox. Enable **Settings → Magpie** only if you want to select cloud models through Magpie. The same setting is available with `fen settings magpie on|off`.
+Magpie is optional. **It stays off unless an existing local installation is detected on first setup or you enable it.** Saved choices are preserved. Sign in to your agent locally; Fennec copies its supported native credentials into an isolated configuration directory in your cloud sandbox. Enable **Settings → Magpie** only if you want to select cloud models through Magpie. The same setting is available with `fen settings magpie on|off`.
 
 ## Meet `fen`
 

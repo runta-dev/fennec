@@ -10,8 +10,10 @@ Status: incomplete. Green CI, a working development machine, and isolated Linux
 fixtures are not clean-Mac acceptance with a real account and the final DMG.
 Do not check off items without verification.
 
-Current requirement-by-requirement evidence gaps are recorded in the
-[final acceptance audit](docs/tasks/final-acceptance-gap.md).
+The [archived acceptance audit](docs/archive/tasks/final-acceptance-gap.md) records
+evidence at source `94830f2`; it is not the current installed-state inventory.
+This checklist retains the release requirements until newer artifact-specific
+evidence accepts them. See [the documentation index](docs/README.md).
 
 User clarification on 2026-11-11: finish development before arranging clean-device
 acceptance. Also develop `fen uninstall` for test cleanup of development and DMG
@@ -31,8 +33,8 @@ failures must never be mistaken for permission to run locally. Track the CLI clo
 deletion safeguards and remaining disposable-runtime verification in
 [cloud deletion](docs/tasks/cloud-deletion.md).
 
-Development evidence and outstanding work are in the
-[onboarding audit](docs/tasks/onboarding-audit-2026-11-11.md).
+Historical development evidence and the gaps recorded then are in the
+[onboarding audit](docs/archive/tasks/onboarding-audit-2026-11-11.md).
 
 ## P0 development and acceptance
 
@@ -119,9 +121,9 @@ Development evidence and outstanding work are in the
 
 Existing implementation and historical evidence:
 [native credentials](docs/native-agent-credentials.md),
-[macOS acceptance](docs/macos-acceptance.md), and
-[control plane/performance](docs/tasks/go-control-plane.md), and
-[model reads and switch acceptance](docs/tasks/model-read-acceptance.md).
+[macOS acceptance](docs/archive/macos-acceptance.md), and
+[control plane/performance](docs/archive/tasks/go-control-plane.md), and
+[model reads and switch acceptance](docs/archive/tasks/model-read-acceptance.md).
 Historical results are not acceptance of a newer build.
 
 ## Deferred compatibility: cmux Computer Use

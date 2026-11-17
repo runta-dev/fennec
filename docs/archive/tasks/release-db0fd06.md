@@ -1,5 +1,9 @@
 # Diagnostic candidate db0fd06
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Candidate `0.2.11120314`, source
 `db0fd0663d24b18a5e8c79b8ed55b20f48500875`.
 Release CI 43085266917 and source CI 43085266199 succeeded. Downloaded SHA256SUMS,

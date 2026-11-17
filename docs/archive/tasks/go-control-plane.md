@@ -1,5 +1,9 @@
 # Go control plane and performance acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 ## Implemented and exercised locally
 
 - The Go daemon independently owns account state, the Keychain helper, runtime preparation,

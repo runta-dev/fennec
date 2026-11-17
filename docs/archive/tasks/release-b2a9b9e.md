@@ -1,5 +1,9 @@
 # Candidate b2a9b9e measurements and fixes
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Candidate: `0.2.11121023`, arm64, source
 `b2a9b9e250b1a920da87637ad5a5bfaffe0b7392`.
 

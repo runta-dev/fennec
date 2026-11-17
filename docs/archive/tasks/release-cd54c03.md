@@ -1,5 +1,9 @@
 # Signed candidate cd54c03 acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Candidate: `0.2.11120259`, arm64, source
 `cd54c0389dbbfb68b524714a66ac2d25fabae4ab`.
 

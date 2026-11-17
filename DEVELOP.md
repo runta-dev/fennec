@@ -2,6 +2,7 @@
 
 Build, architecture, signing, and verification notes for contributors.
 For product usage and terminal commands, see [README.md](README.md).
+For current references versus historical acceptance, see [docs/README.md](docs/README.md).
 
 ## Development
 
@@ -73,7 +74,7 @@ docs/                           Design references
 
 ## Design references
 
-[DESIGN.md](DESIGN.md) describes the architecture, trust boundaries, and delivery stages. [docs/references.md](docs/references.md) records the Magpie layout reference and the Runta brand source. [docs/codex-desktop-cloud.md](docs/codex-desktop-cloud.md) records the Codex Desktop app-server research and the separate native-client acceptance boundary; it is not a claim that Desktop support has shipped.
+[DESIGN.md](DESIGN.md) describes the architecture, trust boundaries, and remaining offline-task requirements. [docs/references.md](docs/references.md) records the Magpie layout reference and the Runta brand source. [docs/codex-desktop-cloud.md](docs/codex-desktop-cloud.md) records the Codex Desktop app-server research and the separate native-client acceptance boundary; it is not a claim that Desktop support has shipped.
 
 Fennec is an independent application. Selected Agent SVGs and compact layout metrics are reused under MIT; see THIRD_PARTY_NOTICES.md. Magpie's Go entry point, `internal/` packages, embedded web surface, and familiar-agent-first experience inform the layout.
 
@@ -160,7 +161,7 @@ only and must not be distributed as a release.
 
 To build a signed artifact, dispatch `.github/workflows/fennec-release.yml` in
 `runta-dev/errand` with `source_sha` set to the full Fennec main commit. `version`
-is optional; by default it uses `0.2.MMDDHHmm` in Asia/Singapore. `CFBundleVersion`
+is optional; by default it uses `0.3.MMDDHHmm` in Asia/Singapore. `CFBundleVersion`
 uses the CI run number separately. Download the verified artifact from that run.
 This workflow does not publish a GitHub Release automatically.
 
@@ -207,7 +208,7 @@ the browser terminal accepts a PNG paste event. PNG and native TIFF clipboard
 representations become a PNG upload, limited to 20 MB and 32 megapixels. Plain
 text paste and control bytes inside bracketed text remain unchanged.
 
-Terminal protocol 9 carries images in the existing credited input queue and
+The terminal protocol carries images in the existing credited input queue and
 delivers a complete private cloud file to Codex as a bracketed path paste.
 Partial/invalid uploads never reach the composer. Completed files remain in the
 cloud temporary directory after detach, allowing pending drafts and reattached

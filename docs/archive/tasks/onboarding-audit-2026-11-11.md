@@ -1,5 +1,9 @@
 # Clean-environment onboarding audit: 2026-11-11
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Final end-user acceptance has not passed. This record describes source changes and
 isolated test evidence, with later development-machine observations identified separately.
 The user chose to finish development before arranging a clean Mac/test account.

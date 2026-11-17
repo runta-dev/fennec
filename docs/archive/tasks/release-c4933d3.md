@@ -1,5 +1,9 @@
 # Signed candidate c4933d3 acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Candidate: `0.2.11120939`, arm64, source
 `c4933d3689ce2394f2d48ab1257ac53778fddd72`.
 

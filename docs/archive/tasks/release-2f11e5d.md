@@ -1,5 +1,9 @@
 # Candidate 2f11e5d acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Version `0.2.11120351`, source
 `2f11e5dbca34d342a7b6853d3df88e37976a4770`.
 Release CI 43090963108 and source CI 43090961019 succeeded. SHA256SUMS, App

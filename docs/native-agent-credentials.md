@@ -46,9 +46,10 @@ The Mac's agents and credentials are not rewritten. Native config exports omit
 session histories, hooks, MCP commands, and local extensions. Existing cloud
 sessions keep their process environment when the integration mode changes.
 
-Magpie is enabled only by `settings.set {"magpie":true}` through Settings or
-`fen settings magpie on`. The default is false, including upgrades and legacy
-settings imports. Enabling it installs/starts the cloud gateway and permits
+A saved Magpie choice is preserved. On first initialization, Magpie is enabled
+only when actual local installation is verified; old configuration/cache files
+are not installation evidence. Otherwise it stays off. Settings and
+`fen settings magpie on|off` use the same `settings.set` control. Enabling it installs/starts the cloud gateway and permits
 `fen model <agent> <provider/model>` or the agent card's cloud model selector.
 Existing local Magpie provider stores are imported only in this opted-in mode;
 they are not a prerequisite for native onboarding. Disabling uses the preserved

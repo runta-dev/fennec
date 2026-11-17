@@ -72,7 +72,7 @@ Cursor CLI 使用 `cursor-agent`，Grok Build 使用 `grok`；Fennec 不接管 C
 
 OpenCode 的两个 CLI 版本均支持云端启动、Magpie 模型选择和持久终端会话。版本 2 为每个 Fennec 会话启动独立服务。原生凭据迁移目前支持旧版 `auth.json` 格式，不同步仅存于 OpenCode 2 数据库中的凭据；OpenCode 2 账号请使用 Magpie。尚未支持的 Coming soon 项统一排在列表末尾。
 
-Magpie 是可选功能，**默认关闭**。先在本地登录代理，Fennec 会把受支持的原生凭据同步到云端沙箱中的隔离配置目录。只有需要通过 Magpie 选择云端模型时，才需启用 **Settings → Magpie**；也可以使用 `fen settings magpie on|off` 调整同一设置。
+Magpie 是可选功能。**首次设置时，只有检测到本地已安装 Magpie 才会自动启用；否则保持关闭，也可手动开启。** 已保存的选择会保留。先在本地登录代理，Fennec 会把受支持的原生凭据同步到云端沙箱中的隔离配置目录。只有需要通过 Magpie 选择云端模型时，才需启用 **Settings → Magpie**；也可以使用 `fen settings magpie on|off` 调整同一设置。
 
 ## 认识 `fen`
 

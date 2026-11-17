@@ -1,4 +1,22 @@
-# Proposal: responsive terminals under CPU and output load
+# Terminal responsiveness: implementation and experiment history
+
+## Current source summary (2026-11-17, 9553de0)
+
+The adaptive capacity monitor and `traffic-v5` broker supersede the fixed v4
+budgets described below. `internal/traffic/capacity.go` sets the current ceiling
+to 450,000 bytes/s (3.6 Mbps) for the selected 4 Mbps egress profile; unknown
+initial capacity falls back to 128 KiB/s. These are configuration values, not
+measured throughput or a guarantee about the SSH path. Probe failures preserve
+the previous measurement; idle probes back off. See `internal/traffic` and
+`internal/trafficbroker` for the current implementation.
+
+The dated observations below retain their original failures, versions and
+measurement boundaries. Present-tense phrases such as "now", "installed",
+or "not yet" within them refer to that stage, not today's deployment. The
+warm-operation gate needs evidence for each candidate; this documentation
+cleanup makes no new latency or deployment acceptance claim.
+
+## Historical implementation and acceptance records
 
 Status: implemented and deployed; sustained-load gate passed; the separate
 500 ms warm-operation gate remains unmet.

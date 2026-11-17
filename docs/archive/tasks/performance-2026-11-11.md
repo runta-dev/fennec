@@ -1,5 +1,9 @@
 # Installed-path performance acceptance, 2026-11-11
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Status: **FAIL; goal remains active**. Command: `make test-e2e-performance`.
 This target serializes real cold/warm PTY launches and live session operations,
 including under `make -j`. Cold usable-screen budget is 5 seconds; warm usable

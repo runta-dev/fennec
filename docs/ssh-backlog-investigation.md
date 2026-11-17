@@ -1,6 +1,9 @@
 # SSH backlog after application prioritization
 
-Status: the 16 KiB window passed a WAN comparison with partial improvement.
+Historical investigation (2026-11-16). The status below belongs to that experiment;
+see [terminal responsiveness](tui-responsiveness-proposal.md) for the later source summary.
+
+Recorded status: the 16 KiB window passed a WAN comparison with partial improvement.
 TCP queue feedback is a new candidate; deployment acceptance remains pending.
 The approximately 240 ms TUI P95 target is not met.
 

@@ -1,15 +1,19 @@
 # Final acceptance gap audit
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Scope: every P0 and release gate in `TODO.md`. Status: not complete. This audit
 records missing evidence; it does not narrow the goal or check off requirements.
 
-## Current authoritative state
+## Recorded state at source 94830f2
 
 - Source: `94830f2` (source CI [43146511455](https://github.com/runta-dev/fennec/actions/runs/43146511455) passed Linux `flock`/race/connector/UI and macOS arm64 package checks; release packaging intentionally paused while in fast local development mode per user instruction)
 - Latest installed signed app on developer Mac: `/Applications/Fennec.app`, version `0.2.11121023` (`5d5e703000381f9005e0a61dcdca3ce32802ac4b57b94dc4ac6c7817d31112de`), plus up-to-date local development bundle `build/Fennec.app`
 - Live Magpie switch now passes the 1-second gate (`444.3 ms` switch, `331.9 ms` restore), warm Codex TUI passes the 500ms gate (`342.3–390.1 ms`), and cold SSH Codex TUI passes the 5s gate (`3709.3–3999.6 ms`); see [candidate evidence](release-b2a9b9e.md)
 - Offline detection/auto-reconnect (`c4933d3`), hiding `Delete cloud computer` from production UI (`c8fa4ba`), and cloud TLS egress CA + `fd` on `PATH` (`1c17fcf`) are shipped and verified live
-- Trash watcher unregistration, `.Trash` installation guard, persistent `shell-files.json` custom `ZDOTDIR`/`XDG_CONFIG_HOME` cleanup, POSIX-only cloud setup scripts, `xcode-select -p` Git guard, and [hidden dependency audit](../hidden-dependency-audit.md) landed in `7a075df`
+- Trash watcher unregistration, `.Trash` installation guard, persistent `shell-files.json` custom `ZDOTDIR`/`XDG_CONFIG_HOME` cleanup, POSIX-only cloud setup scripts, `xcode-select -p` Git guard, and [hidden dependency audit](../../hidden-dependency-audit.md) landed in `7a075df`
 - Account HTTP 403 (`billing:read` absent) now guides users to Runta Dashboard via `Open in browser` instead of an ineffective `Retry` button (`94830f2`)
 - `TestLaunchAgentWaitsForExplicitDemand` (`make test-e2e-launchd-demand`) and full rendered bounding-box / layout-shift visual QA across `Agents`, `Sessions` (`Copied` slot stability), `Account`, and `Settings` (light/dark, zero trailing periods) passed on current `HEAD`
 

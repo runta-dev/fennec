@@ -1,5 +1,9 @@
 # Model and account read acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../../README.md) and the active release checklist.
+
 Recorded at 2026-11-11T17:53Z on the developer Mac, against installed daemon PID
 58307, build `a8c76277299e3fdffbf422a3bff5e410f11d296e4d6567eb58ff91e550647196`.
 This is read-only IPC-to-response evidence, not UI or Magpie-switch acceptance.

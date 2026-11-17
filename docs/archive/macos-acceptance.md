@@ -1,5 +1,9 @@
 # macOS popover acceptance
 
+> Historical record. Claims, instructions, installed versions, passes, and gaps
+> below apply to the recorded work only, not the current build or a new task.
+> See [current documentation](../README.md) and the active release checklist.
+
 ## 2026-11-10: fen resume latency and loading
 
 The old resume path cleared its spinner immediately after the local service
