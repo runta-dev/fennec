@@ -17,18 +17,26 @@ whose `Refresh` compares the systemd process's executable inode with the target
 and restarts the owned service when necessary. It does not kill agent sessions
 or alter credentials, models, reasoning effort or the saved Magpie toggle.
 
-The runtime, `0.1.4177-runta.2`, is based on upstream commit
+The runtime, `0.1.4177-runta.3`, is based on upstream commit
 `e6e0585bd3d92a79dab08f0955789a5801382b71`. Codex omits the backend's output
-`metadata.turn_id` from replayed history. The downstream ignores only this
-top-level attribution when checking WebSocket continuation; other metadata and
-content changes still force full requests. Runta versions do not self-update
+`metadata.turn_id` from replayed history. The downstream excludes this
+top-level attribution when checking WebSocket continuation. Version `runta.3`
+extends that comparison as described below; substantive content changes still
+force full requests. Runta versions do not self-update
 from the upstream release feed, which would otherwise overwrite the fix.
 
 Version `runta.2` also disables unused next-prompt suggestions in Magpie's hidden
 Claude child. These requests resent full history even when the main Messages
 request used thread continuation. User preferences are unchanged, and feature
 fetching remains enabled. The pinned source is Magpie commit
-`c90479245f71f0d1e4c20eba7956fe2a9a596030`.
+`f33819cf9f45dba32dcf48b60ec79db309b1c3c5`.
+
+Version `runta.3` also handles backend assistant messages whose top-level
+`internal_chat_message_metadata_passthrough` is omitted by Codex 0.169.0 on
+replay. Comparison ignores only its string `turn_id` and numeric `create_time`
+and `content_token_count`. Unknown fields, unexpected types, other roles and
+substantive history changes still require a full request; transmitted items
+are unchanged.
 
 To upgrade:
 
