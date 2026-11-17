@@ -50,8 +50,8 @@ command -v fd >/dev/null
 // The private downstream's runtime artifacts are published with Fennec so cloud
 // installation never needs credentials for the source repository.
 const MagpieRuntimeVersion = "0.1.4177-runta.1"
-const MagpieAMD64SHA256 = "60b5e62ddc5ce36630ba5f260bee76bc6bcd559ece3b761986392af784328f0f"
-const MagpieARM64SHA256 = "fc47553a9b2095731cef754e40d0543b91c67a01e48836555afa479174f4e1c3"
+const MagpieAMD64SHA256 = "94d365a1b57b365f33d9e2c1336e83e0c1918fc561aca7ee58ad81fc711bab9b"
+const MagpieARM64SHA256 = "9db86fc11430716af40b332ead79f15678df6759fe9a0c79b1fb0e4764100248"
 
 const MagpieSetupScript = `set -eu
 base="$HOME/.local/fennec"
