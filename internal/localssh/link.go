@@ -124,6 +124,10 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 			emit(stage, detail)
 		}
 		err = linkOnce(ctx, api, config, device, alias, hostKey, user, report)
+		batch.disconnected(time.Now())
+		if saveErr := saveOnlineBatch(config.Directory, batch); saveErr != nil {
+			return saveErr
+		}
 		config.repair = errors.Is(err, errMacUnreachable)
 		if connected {
 			delay = time.Second

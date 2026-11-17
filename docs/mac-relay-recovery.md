@@ -25,7 +25,13 @@ Network-offline cancellation does not force replacement of a healthy relay.
 
 Reachability is published only after a successful complete probe. An English
 `<fennec-event type="mac-online">` notification additionally waits for at least
-three seconds of verified stability. Recoveries less than thirty seconds apart
+three seconds of verified stability, and is sent only when the preceding outage
+lasted more than thirty seconds. Short outages (including exactly thirty seconds)
+and initial startup are silent. The outage duration is fixed at the first
+successful recovery probe, so stability waiting cannot turn a short outage into
+a notification. Last healthy and disconnect timestamps survive daemon restarts;
+after an abrupt exit, the last successful probe is the fallback outage boundary.
+Recoveries less than thirty seconds apart
 share one batch (a sliding window). The Mac persists its batch identity across
 daemon restarts. This debounce affects notifications only, never repair.
 

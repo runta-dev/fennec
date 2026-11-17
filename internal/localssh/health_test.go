@@ -242,3 +242,28 @@ func TestLinkAutomaticallyRequestsRepairBeforePublishingConnected(t *testing.T) 
 		t.Fatalf("connected=%v prepares=%d probes=%d", connected, preparations, checks)
 	}
 }
+
+func TestMonitorLinkSuppressesShortOutageNotifications(t *testing.T) {
+	for _, seconds := range []int{0, 29, 31} {
+		t.Run(fmt.Sprint(seconds), func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			batch := onlineBatch{Runtime: "runtime"}
+			if seconds > 0 {
+				batch.LastHealthy = time.Now().Add(-time.Minute).UnixNano()
+				batch.OfflineSince = time.Now().Add(-time.Duration(seconds) * time.Second).UnixNano()
+			}
+			var notified atomic.Int32
+			config := LinkConfig{RuntimeID: "runtime", Directory: t.TempDir(), onlineBatch: &batch, Health: func(context.Context, LinkHealth) error { return nil }, Notify: func(context.Context, LinkHealth) { notified.Add(1) }}
+			_ = monitorLink(ctx, config, "aabbccdd", "Mac.local", func(string, string) {})
+			want := int32(0)
+			if seconds > 30 {
+				want = 1
+			}
+			if got := notified.Load(); got != want {
+				t.Fatalf("outage=%ds notifications=%d want=%d", seconds, got, want)
+			}
+		})
+	}
+}

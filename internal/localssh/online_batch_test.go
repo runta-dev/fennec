@@ -39,3 +39,41 @@ func TestOnlineBatchMergesBurstAndPersists(t *testing.T) {
 		t.Fatal("clock rollback extended batch indefinitely")
 	}
 }
+
+func TestRecoveryRequiresMoreThanThirtySecondsOffline(t *testing.T) {
+	now := time.Unix(10000, 0)
+	for _, outage := range []time.Duration{time.Second, 29 * time.Second, 30 * time.Second, 30*time.Second + time.Nanosecond, time.Minute} {
+		t.Run(outage.String(), func(t *testing.T) {
+			b := onlineBatch{Runtime: "runtime", LastHealthy: now.Add(-time.Hour).UnixNano()}
+			b.disconnected(now)
+			b.disconnected(now.Add(time.Second)) // Retries must not reset the outage.
+			dir := t.TempDir()
+			if err := saveOnlineBatch(dir, b); err != nil {
+				t.Fatal(err)
+			}
+			b = loadOnlineBatch(dir) // Includes state before any notification generation.
+			if got := b.recovered("runtime", now.Add(outage)); got != (outage > 30*time.Second) {
+				t.Fatalf("notification=%v for %s", got, outage)
+			}
+			if b.OfflineSince != 0 || b.LastHealthy != now.Add(outage).UnixNano() {
+				t.Fatal(b)
+			}
+			if b.recovered("runtime", now.Add(outage+4*time.Second)) {
+				t.Fatal("stability delay created a new outage")
+			}
+		})
+	}
+	b := onlineBatch{}
+	if b.recovered("runtime", now) {
+		t.Fatal("initial startup notified")
+	}
+	if !b.recovered("runtime", now.Add(time.Minute)) {
+		t.Fatal("abrupt restart lost outage")
+	}
+	if b.recovered("different-runtime", now.Add(time.Hour)) {
+		t.Fatal("cross-runtime outage")
+	}
+	if b.recovered("different-runtime", now) {
+		t.Fatal("clock rollback notified")
+	}
+}

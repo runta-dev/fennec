@@ -17,6 +17,8 @@ type onlineBatch struct {
 	Generation   string `json:"generation"`
 	Since        int64  `json:"since"`
 	LastRecovery int64  `json:"last_recovery"`
+	LastHealthy  int64  `json:"last_healthy,omitempty"`
+	OfflineSince int64  `json:"offline_since,omitempty"`
 }
 
 // A sliding batch window merges flapping recoveries, including daemon restarts.
@@ -32,7 +34,7 @@ func nextOnlineBatch(previous onlineBatch, runtimeID string, now time.Time) (onl
 	if _, err := rand.Read(raw[:]); err != nil {
 		return onlineBatch{}, err
 	}
-	return onlineBatch{Runtime: runtimeID, Generation: hex.EncodeToString(raw[:]), Since: now.UnixNano(), LastRecovery: now.UnixNano()}, nil
+	return onlineBatch{Runtime: runtimeID, Generation: hex.EncodeToString(raw[:]), Since: now.UnixNano(), LastRecovery: now.UnixNano(), LastHealthy: previous.LastHealthy}, nil
 }
 
 func loadOnlineBatch(directory string) onlineBatch {
@@ -41,7 +43,7 @@ func loadOnlineBatch(directory string) onlineBatch {
 	if err == nil {
 		_ = json.Unmarshal(raw, &batch)
 	}
-	if batch.Since <= 0 || (LinkHealth{Device: "aabbccdd", Generation: batch.Generation}).Validate() != nil {
+	if batch.Generation != "" && (batch.Since <= 0 || (LinkHealth{Device: "aabbccdd", Generation: batch.Generation}).Validate() != nil) {
 		return onlineBatch{}
 	}
 	return batch
@@ -57,4 +59,25 @@ func saveOnlineBatch(directory string, batch onlineBatch) error {
 		return err
 	}
 	return os.Rename(path+".next", path)
+}
+
+// Recovery eligibility is fixed at the first successful probe, before stability
+// debounce. Initial startup is silent; persisted health covers abrupt restarts.
+func (b *onlineBatch) recovered(runtimeID string, now time.Time) bool {
+	if b.Runtime != runtimeID {
+		*b = onlineBatch{Runtime: runtimeID}
+	}
+	since := b.OfflineSince
+	if since == 0 {
+		since = b.LastHealthy
+	}
+	notify := since > 0 && now.Sub(time.Unix(0, since)) > onlineBatchWindow
+	b.OfflineSince = 0
+	b.LastHealthy = now.UnixNano()
+	return notify
+}
+func (b *onlineBatch) disconnected(now time.Time) {
+	if b.LastHealthy > 0 && b.OfflineSince == 0 {
+		b.OfflineSince = now.UnixNano()
+	}
 }

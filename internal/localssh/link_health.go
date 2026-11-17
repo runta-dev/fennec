@@ -18,6 +18,7 @@ func monitorLink(ctx context.Context, config LinkConfig, device, alias string, e
 	round := 0
 	stableSince := time.Time{}
 	notifying := false
+	eligible := false
 	notifyCtx, cancelNotify := context.WithCancel(ctx)
 	defer cancelNotify()
 	for {
@@ -35,11 +36,20 @@ func monitorLink(ctx context.Context, config LinkConfig, device, alias string, e
 			return ctx.Err()
 		}
 		if first {
+			if config.onlineBatch != nil {
+				eligible = config.onlineBatch.recovered(config.RuntimeID, time.Now())
+			}
 			emit("connected", alias)
 			stableSince = time.Now()
 			first = false
 		}
-		if !notifying && config.Notify != nil && time.Since(stableSince) >= onlineStableWindow {
+		if config.onlineBatch != nil {
+			config.onlineBatch.LastHealthy = time.Now().UnixNano()
+			if err := saveOnlineBatch(config.Directory, *config.onlineBatch); err != nil {
+				return err
+			}
+		}
+		if eligible && !notifying && config.Notify != nil && time.Since(stableSince) >= onlineStableWindow {
 			previous := onlineBatch{}
 			if config.onlineBatch != nil {
 				previous = *config.onlineBatch
