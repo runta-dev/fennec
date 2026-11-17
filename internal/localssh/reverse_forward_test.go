@@ -322,7 +322,14 @@ func TestReverseForwardOpenSSH(t *testing.T) {
 	}
 	bind := reserved.Addr().String()
 	reserved.Close()
-	control := filepath.Join(dir, "control")
+	// Darwin's long per-test temp path exceeds sockaddr_un once OpenSSH adds
+	// its temporary socket suffix. Keep only the control socket under /tmp.
+	controlDir, err := os.MkdirTemp("/tmp", "fen-r-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(controlDir) })
+	control := filepath.Join(controlDir, "control")
 	forward := bind + ":" + target.Addr().String()
 	args := []string{"-F", "/dev/null", "-i", key, "-p", strconv.Itoa(relay.Addr().(*net.TCPAddr).Port), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "HostKeyAlias=reverse-test", "-o", "UserKnownHostsFile=" + known, "-o", "ExitOnForwardFailure=yes", "-M", "-S", control, "-NT", "-R", forward, "fennec@127.0.0.1"}
 	cmd := exec.Command(sshPath, args...)
