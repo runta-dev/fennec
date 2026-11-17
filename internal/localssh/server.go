@@ -180,8 +180,8 @@ func (b *Broker) decide(d Decision) {
 
 // Run uses parent-owned stdin/stdout as private approval IPC; EOF shuts down SSH.
 // Paired keys execute as the current OS user by default. No password auth,
-// PTY, shell or agent forwarding is enabled. SFTP and local TCP forwarding
-// (-L/-D) use explicit approval and the same pairing/revocation policy.
+// PTY, shell or agent forwarding is enabled. SFTP and TCP forwarding
+// (-L/-D/-R) use the same approval and pairing/revocation policy.
 func Run(ctx context.Context, directory string, input io.Reader, output io.Writer) error {
 	return RunWithApproval(ctx, directory, input, output, true)
 }
@@ -387,6 +387,11 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		"direct-tcpip": directForward(ctx, paired, broker, requireApproval),
 	}
 	server.SubsystemHandlers = map[string]ssh.SubsystemHandler{"sftp": fileTransfer(ctx, paired, broker, requireApproval)}
+	reverse := reverseForward(ctx, paired, broker, requireApproval)
+	server.RequestHandlers = map[string]ssh.RequestHandler{
+		"tcpip-forward":        reverse,
+		"cancel-tcpip-forward": reverse,
+	}
 	server.AddHostKey(signer)
 	go func() {
 		scanner := bufio.NewScanner(input)

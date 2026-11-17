@@ -145,14 +145,14 @@ func RunMacRelay(ctx context.Context, local net.Conn, options MacRelayOptions) e
 	})
 	defer stop()
 	defer local.Close()
-	// Reach the Mac while the local handshake runs.
-	go upstream.connect()
 	connection, channels, requests, err := gossh.NewServerConn(local, config)
 	if err != nil {
 		return err
 	}
 	defer connection.Close()
-	go gossh.DiscardRequests(requests) // keepalives get a reply; nothing else is offered
+	upstream.downstream = connection
+	go upstream.connect()
+	go upstream.relayRequests(requests)
 	var sessions sync.WaitGroup
 	for channel := range channels {
 		sessions.Add(1)
@@ -184,13 +184,15 @@ type macUpstream struct {
 	options MacRelayOptions
 	ctx     context.Context
 
-	mu      sync.Mutex
-	client  *gossh.Client
-	dialing chan struct{} // closed when the current dial attempt ends
-	err     error
-	filling *gossh.Client
-	closed  bool
-	pool    chan pooledSession
+	mu          sync.Mutex
+	client      *gossh.Client
+	dialing     chan struct{} // closed when the current dial attempt ends
+	err         error
+	filling     *gossh.Client
+	closed      bool
+	pool        chan pooledSession
+	downstream  *gossh.ServerConn
+	forwardUsed bool // a lost Mac connection must not leave a successful -R alive
 }
 
 // connect returns the live connection to the Mac, dialing once for all
@@ -263,7 +265,14 @@ func (u *macUpstream) dial() (*gossh.Client, error) {
 		conn.Close()
 		return nil, err
 	}
-	return gossh.NewClient(connection, channels, requests), nil
+	client := gossh.NewClient(connection, channels, requests)
+	forwarded := client.HandleChannelOpen("forwarded-tcpip")
+	go func() {
+		for channel := range forwarded {
+			go u.relayReverseChannel(client, channel)
+		}
+	}()
+	return client, nil
 }
 
 // watch keeps the connection alive and forgets it once it ends, so the next
@@ -376,11 +385,15 @@ func channelRejected(err error) bool {
 // goroutine alone lets a concurrent command reuse a connection that just died.
 func (u *macUpstream) invalidate(client *gossh.Client) {
 	u.mu.Lock()
+	closeDownstream := u.client == client && u.forwardUsed
 	if u.client == client {
 		u.client = nil
 	}
 	u.mu.Unlock()
 	client.Close()
+	if closeDownstream && u.downstream != nil {
+		u.downstream.Close()
+	}
 }
 
 // A failed channel open has sent no exec/shell/subsystem request. Reconnect
@@ -484,6 +497,7 @@ func (u *macUpstream) relayChannel(incoming gossh.NewChannel) {
 // the Mac closes the channel or the client goes away.
 func relayStreams(local gossh.Channel, localRequests <-chan *gossh.Request, remote gossh.Channel, remoteRequests <-chan *gossh.Request) {
 	var requestReply sync.Mutex
+	inputDone := make(chan struct{})
 	go func() {
 		// Requests keep their order; one awaiting a reply holds the next.
 		for request := range localRequests {
@@ -494,29 +508,40 @@ func relayStreams(local gossh.Channel, localRequests <-chan *gossh.Request, remo
 			}
 			requestReply.Unlock()
 		}
-		remote.Close() // the client is gone
+		// Channel close can arrive before io.Copy drains its buffered data.
+		// Preserve that final data before propagating the close to the peer.
+		<-inputDone
+		remote.Close()
 	}()
 	go func() {
 		io.Copy(remote, local)
 		remote.CloseWrite()
+		close(inputDone)
 	}()
 	var output sync.WaitGroup
+	outputDone := make(chan struct{})
 	output.Add(2)
 	go func() { defer output.Done(); io.Copy(local, remote) }()
 	go func() { defer output.Done(); io.Copy(local.Stderr(), remote.Stderr()) }()
+	go func() {
+		output.Wait()
+		// TCP peers may wait for EOF before sending a response. Forward the
+		// half-close without waiting for the remote channel to close entirely.
+		local.CloseWrite()
+		close(outputDone)
+	}()
 	for request := range remoteRequests { // exit-status, exit-signal, keepalives
 		ok, err := local.SendRequest(request.Type, request.WantReply, request.Payload)
 		if request.WantReply {
 			request.Reply(ok && err == nil, nil)
 		}
 	}
-	output.Wait()
+	<-outputDone
 	// A fast command can close the remote channel while its exec reply is
 	// still being forwarded. Send that reply before closing the local side,
 	// or the client reports EOF instead of accepting the command's result.
 	requestReply.Lock()
 	defer requestReply.Unlock()
-	local.CloseWrite()
 }
 
 // EnsureRelayHostKey creates the relay's host key and the known_hosts file

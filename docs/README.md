@@ -21,6 +21,8 @@ not rebuild the application or rerun historical live benchmarks.
   and [gateway lifetime](cloud-gateway.md).
 - [Transport lifecycle](transport-worker.md), [TUI reattachment](tasks/tui-auto-reconnect.md),
   [predictive echo](predictive-echo.md), and [cmux hooks](cmux-hooks.md).
+- [SSH port forwarding](ssh-port-forwarding.md): local, dynamic, and remote TCP
+  forwarding through the paired Mac alias, policy, and lifecycle.
 - [Cloud handoff workflow](../skills/cloud-handoff/SKILL.md): use available tools;
   synchronization is not a production offline-readiness guarantee.
 - [Hidden dependency audit](hidden-dependency-audit.md): source inventory, not

@@ -108,12 +108,13 @@ func (c *latencyConn) Close() error {
 }
 
 type relayHarness struct {
-	mac      string // the Mac's listening address
-	macKey   gossh.Signer
-	identity gossh.Signer
-	relayKey gossh.Signer
-	delay    time.Duration
-	opened   chan struct{} // one value per session channel the Mac accepted
+	mac         string // the Mac's listening address
+	macKey      gossh.Signer
+	identity    gossh.Signer
+	identityPEM []byte // optional external OpenSSH client fixture
+	relayKey    gossh.Signer
+	delay       time.Duration
+	opened      chan struct{} // one value per session channel the Mac accepted
 }
 
 // newMacServer runs a stand-in for the Mac's SSH service: it echoes the
