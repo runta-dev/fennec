@@ -555,6 +555,13 @@ func relayStreams(local gossh.Channel, localRequests <-chan *gossh.Request, remo
 		close(outputDone)
 	}()
 	for request := range remoteRequests { // exit-status, exit-signal, keepalives
+		if request.Type == "exit-status" || request.Type == "exit-signal" {
+			// sshd sends output, EOF, then the status; the Mac's reaches the
+			// relay while output may still be buffered for a slow client. A
+			// client can finish on the status (OpenSSH multiplexing does), so
+			// pass it on only after all output and EOF, or the tail is lost.
+			<-outputDone
+		}
 		ok, err := local.SendRequest(request.Type, request.WantReply, request.Payload)
 		if request.WantReply {
 			request.Reply(ok && err == nil, nil)

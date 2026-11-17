@@ -135,6 +135,11 @@ func newMacServer(t *testing.T, delay time.Duration) *relayHarness {
 			case "cat":
 				io.Copy(session, session)
 				session.Exit(0)
+			case "big":
+				// Output well past the SSH window, then exit at once, as cat
+				// of a large file does.
+				session.Write(bytes.Repeat([]byte("x"), bigOutput))
+				session.Exit(0)
 			case "fail":
 				io.WriteString(session.Stderr(), "no such file\n")
 				session.Exit(3)
@@ -318,3 +323,100 @@ func socketPair(t *testing.T) (net.Conn, net.Conn) {
 	}
 	return local, <-accepted
 }
+
+const bigOutput = 6 << 20
+
+// sshd sends a command's output, then EOF, then exit-status. A client may
+// finish as soon as it has the status (OpenSSH multiplexing does), so the
+// relay must pass the status on only after all output and EOF, or the end of
+// a large output is lost behind a slow link.
+func TestMacRelayForwardsExitStatusAfterAllOutput(t *testing.T) {
+	h := newMacServer(t, 0)
+	options := h.options()
+	conn, err := options.Dial(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, channels, requests, err := gossh.NewClientConn(conn, "mac", &gossh.ClientConfig{User: "fennec", Auth: []gossh.AuthMethod{gossh.PublicKeys(h.identity)}, HostKeyCallback: gossh.FixedHostKey(h.macKey.PublicKey())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := gossh.NewClient(connection, channels, requests)
+	defer mac.Close()
+	remote, remoteRequests, err := mac.OpenChannel("session", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := &recordingChannel{localRequests: make(chan *gossh.Request)}
+	go func() {
+		// The client asks for the command, then closes its input.
+		remote.SendRequest("exec", true, gossh.Marshal(struct{ Command string }{"big"}))
+	}()
+	done := make(chan struct{})
+	go func() { relayStreams(local, local.localRequests, remote, remoteRequests); close(done) }()
+	// The client closes the channel once it has the exit status.
+	go func() {
+		for {
+			local.mu.Lock()
+			finished := local.status
+			local.mu.Unlock()
+			if finished {
+				close(local.localRequests)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("relay did not finish")
+	}
+	local.mu.Lock()
+	defer local.mu.Unlock()
+	if local.atStatus != bigOutput || !local.eofBeforeStatus {
+		t.Fatalf("exit-status forwarded after %d of %d bytes (EOF first: %v)", local.atStatus, bigOutput, local.eofBeforeStatus)
+	}
+}
+
+// recordingChannel stands in for the client's channel behind a slow link: it
+// records how much output was written, and whether EOF came before the status.
+type recordingChannel struct {
+	mu              sync.Mutex
+	written         int
+	eof             bool
+	status          bool
+	atStatus        int
+	eofBeforeStatus bool
+	localRequests   chan *gossh.Request
+}
+
+func (c *recordingChannel) Read([]byte) (int, error) { return 0, io.EOF }
+func (c *recordingChannel) Write(data []byte) (int, error) {
+	time.Sleep(200 * time.Microsecond) // a slow downstream link
+	c.mu.Lock()
+	c.written += len(data)
+	c.mu.Unlock()
+	return len(data), nil
+}
+func (c *recordingChannel) Close() error { return nil }
+func (c *recordingChannel) CloseWrite() error {
+	c.mu.Lock()
+	c.eof = true
+	c.mu.Unlock()
+	return nil
+}
+func (c *recordingChannel) SendRequest(name string, _ bool, _ []byte) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if name == "exit-status" {
+		c.status, c.atStatus, c.eofBeforeStatus = true, c.written, c.eof
+	}
+	return true, nil
+}
+func (c *recordingChannel) Stderr() io.ReadWriter { return discardStderr{} }
+
+type discardStderr struct{}
+
+func (discardStderr) Read([]byte) (int, error)       { return 0, io.EOF }
+func (discardStderr) Write(data []byte) (int, error) { return len(data), nil }
