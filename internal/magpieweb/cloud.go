@@ -23,16 +23,26 @@ type Cloud struct {
 	mu           sync.Mutex
 	address, key string
 	cancel       context.CancelFunc
+	done         <-chan struct{}
 }
 
 func (c *Cloud) Close() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.cancel != nil {
 		c.cancel()
 		c.cancel = nil
 	}
 	c.address = ""
+	done := c.done
+	c.mu.Unlock()
+	// Reap the owned child before terminal serve exits; cancel alone schedules
+	// an asynchronous kill that can lose the race with the parent's os.Exit.
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 func enabled(home string) bool {
 	b, _ := os.ReadFile(filepath.Join(home, ".config/fennec/gateway-enabled"))
@@ -63,7 +73,7 @@ func (c *Cloud) start(ctx context.Context, home string) error {
 		return err
 	}
 	life, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(life, filepath.Join(home, ".local/bin/magpie"), "web", "--no-open", "--gateway", "--addr", address)
+	cmd := exec.CommandContext(life, filepath.Join(home, ".local/bin/magpie"), "web", "--no-open", "--addr", address)
 	cmd.Env = append(os.Environ(), "HOME="+home, "MAGPIE_ADDR=127.0.0.1:3425", "MAGPIE_WEB_KEY="+key, "DBUS_SESSION_BUS_ADDRESS=disabled:", "CODEX_HOME="+home+"/.local/fennec/native/codex", "CLAUDE_CONFIG_DIR="+home+"/.local/fennec/native/claude", "PI_CODING_AGENT_DIR="+home+"/.local/fennec/native/pi", "KIMI_CODE_HOME="+home+"/.local/fennec/native/kimi")
 	// Magpie prints its authenticated link; never forward its output to logs.
 	if err = cmd.Start(); err != nil {
@@ -90,7 +100,7 @@ func (c *Cloud) start(ctx context.Context, home string) error {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	c.address, c.key, c.cancel = address, key, cancel
+	c.address, c.key, c.cancel, c.done = address, key, cancel, done
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()

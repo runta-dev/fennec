@@ -19,6 +19,9 @@ func TestPanelAuthenticationForwardingAndDisable(t *testing.T) {
 	var enabled atomic.Bool
 	enabled.Store(true)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/app.js" {
+			w.Header().Set("Cache-Control", "max-age=31536000, immutable")
+		}
 		if r.URL.Path == "/events" {
 			w.Header().Set("Content-Type", "text/event-stream")
 		}
@@ -50,11 +53,19 @@ func TestPanelAuthenticationForwardingAndDisable(t *testing.T) {
 	get(http.DefaultClient, origin, 403)
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
-	if got := get(client, link, 200); got != "GET /" {
+	if got := get(client, link, 200); got != "GET /?view=agents" {
 		t.Fatal(got)
 	}
 	if got := get(client, origin+"/events?q=1", 200); got != "GET /events?q=1" {
 		t.Fatal(got)
+	}
+	asset, err := client.Get(origin + "/app.js?v=hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	asset.Body.Close()
+	if got := asset.Header.Values("Cache-Control"); len(got) != 1 || got[0] != "max-age=31536000, immutable" {
+		t.Fatalf("proxy defeats browser asset caching: %v", got)
 	}
 	req, _ := http.NewRequest("POST", origin+"/settings", nil)
 	req.Header.Set("Origin", "https://untrusted.example")

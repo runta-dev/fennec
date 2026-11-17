@@ -1,0 +1,22 @@
+<style id="fennec-panel-boot-style">
+html[data-fennec-panel-boot] body{visibility:hidden}
+html[data-fennec-panel-boot]::before{content:'';position:fixed;inset:0;background:#f4f4f6;z-index:2147483646}
+html[data-fennec-panel-boot]::after{content:'';position:fixed;left:calc(50% - 11px);top:calc(50% - 11px);width:22px;height:22px;border:2px solid #85858d40;border-top-color:#85858d;border-radius:50%;z-index:2147483647;animation:fennec-panel-boot-spin .8s linear infinite}
+@keyframes fennec-panel-boot-spin{to{transform:rotate(360deg)}}
+@media(prefers-color-scheme:dark){html[data-fennec-panel-boot]::before{background:#1a1a1e}}
+@media(prefers-reduced-motion:reduce){html[data-fennec-panel-boot]::after{animation:none}}
+</style>
+<script>
+(()=>{
+ const root=document.documentElement;
+ root.setAttribute('data-fennec-panel-boot','');
+ root.setAttribute('aria-busy','true');
+ // Magpie draws its own data-loading skeletons once its scripts have run.
+ // Until then the slow cloud link must not expose an empty settings page.
+ document.addEventListener('DOMContentLoaded',()=>{
+  root.removeAttribute('data-fennec-panel-boot');
+  root.removeAttribute('aria-busy');
+  document.getElementById('fennec-panel-boot-style')?.remove();
+ },{once:true});
+})();
+</script>
