@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ import (
 // There is deliberately no minimum rate that could exceed a slow measured link.
 type CapacityConfig struct {
 	ProbeBytes     int
+	ProbeSamples   int
 	ProbeTarget    string
 	ProbeTimeout   time.Duration
 	BaseInterval   time.Duration
@@ -29,8 +31,10 @@ type CapacityConfig struct {
 
 func DefaultCapacityConfig() CapacityConfig {
 	return CapacityConfig{
-		ProbeBytes: 128 * 1024, ProbeTarget: "https://speed.cloudflare.com/__up", ProbeTimeout: 30 * time.Second,
-		BaseInterval: time.Hour, MaxInterval: 24 * time.Hour, MaxBudget: DefaultConfig().BytesPerSecond,
+		ProbeBytes: 128 * 1024, ProbeSamples: 3, ProbeTarget: "https://speed.cloudflare.com/__up", ProbeTimeout: 30 * time.Second,
+		// The current 4 Mbps egress profile retains 10% headroom. Unknown or
+		// failed initial measurements still use the 128 KiB/s fallback.
+		BaseInterval: time.Hour, MaxInterval: 24 * time.Hour, MaxBudget: 4_000_000 / 8 * 9 / 10,
 		IdleFraction: 0.7, IdleWindow: time.Minute, SampleInterval: time.Second,
 	}
 }
@@ -40,7 +44,7 @@ func (c CapacityConfig) validate() error {
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
 		return errors.New("capacity probe requires an HTTPS upload endpoint")
 	}
-	if c.ProbeBytes <= 0 || c.ProbeBytes > 4*1024*1024 || c.ProbeTimeout <= 0 ||
+	if c.ProbeBytes <= 0 || c.ProbeBytes > 4*1024*1024 || c.ProbeSamples < 1 || c.ProbeSamples > 5 || c.ProbeTimeout <= 0 ||
 		c.BaseInterval <= 0 || c.MaxInterval < c.BaseInterval || c.MaxBudget < 2 ||
 		c.IdleFraction <= 0 || c.IdleFraction > 1 || math.IsNaN(c.IdleFraction) ||
 		c.SampleInterval <= 0 || c.IdleWindow < c.SampleInterval || c.IdleWindow/c.SampleInterval > 3600 {
@@ -98,10 +102,18 @@ func (m *CapacityMonitor) Detect(ctx context.Context, cfg CapacityConfig) (int, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.ProbeTimeout)
 	defer cancel()
-	bps, err := uploadCapacity(ctx, m.client, cfg)
-	if err != nil {
-		return 0, err
+	measurements := make([]int, 0, cfg.ProbeSamples)
+	for range cfg.ProbeSamples {
+		bps, err := uploadCapacity(ctx, m.client, cfg)
+		if err != nil {
+			return 0, err
+		}
+		measurements = append(measurements, bps)
 	}
+	// One transient stall or unusually fast short upload must not set the
+	// budget for an entire probe interval. Publish only one completed batch.
+	slices.Sort(measurements)
+	bps := measurements[(len(measurements)-1)/2]
 	config := ConfigForCapacity(bps)
 	if config.BytesPerSecond > cfg.MaxBudget {
 		config.BytesPerSecond = cfg.MaxBudget

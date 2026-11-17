@@ -39,6 +39,7 @@ func probeServer(t *testing.T, handler http.HandlerFunc) (*CapacityMonitor, Capa
 	m.client = server.Client()
 	m.client.CheckRedirect = capacityHTTPClient().CheckRedirect
 	cfg := DefaultCapacityConfig()
+	cfg.ProbeSamples = 1
 	cfg.ProbeTarget = server.URL
 	cfg.ProbeTimeout = time.Second
 	return m, cfg
@@ -370,5 +371,35 @@ func TestCapacityBudgetCeilingIsIndependentOfProbeThroughput(t *testing.T) {
 	m.mu.Unlock()
 	if budget != applied.BytesPerSecond {
 		t.Fatal("utilization compared against raw probe throughput")
+	}
+}
+
+func TestDefaultCapacitySupportsFourMegabitProfile(t *testing.T) {
+	cfg := DefaultCapacityConfig()
+	if cfg.MaxBudget != 450000 || cfg.MaxBudget <= DefaultConfig().BytesPerSecond {
+		t.Fatalf("4 Mbps profile budget: %d", cfg.MaxBudget)
+	}
+	if cfg.ProbeSamples != 3 {
+		t.Fatalf("sample count: %d", cfg.ProbeSamples)
+	}
+}
+
+func TestCapacityPublishesOneCompletedBatch(t *testing.T) {
+	var calls atomic.Int32
+	m, cfg := probeServer(t, func(w http.ResponseWriter, r *http.Request) { calls.Add(1); acknowledgeUpload(w, r) })
+	cfg.ProbeSamples = 3
+	updates := 0
+	m.SetTarget(func(Config) error {
+		updates++
+		if calls.Load() != 3 {
+			t.Error("published partial batch")
+		}
+		return nil
+	})
+	if _, err := m.Detect(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 3 || updates != 1 {
+		t.Fatalf("calls=%d updates=%d", calls.Load(), updates)
 	}
 }

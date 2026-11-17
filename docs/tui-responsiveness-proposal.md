@@ -186,10 +186,13 @@ accepted budget. The upload contains random synthetic bytes only, never user dat
 This measures payload throughput to that endpoint, not host wire capacity or the
 SSH path. Budgets leave 10% measurement headroom and reserve up to 32 KiB/s for
 interactive packets (one quarter on slower links). There is no 64/128 KiB/s floor.
-An independent `MaxBudget` ceiling defaults to 128 KiB/s; a fast third-party
-result cannot raise the scheduler above that ceiling. Raising the ceiling needs
-separate evidence about the actual path. Probes remain bounded background uploads
-(128 KiB and a 30-second timeout by default), not paced SSH packets; they can
+The current user-reported 4 Mbps egress profile sets an independent `MaxBudget`
+ceiling of 450,000 B/s (3.6 Mbps), retaining 10% headroom. The unknown-capacity
+fallback remains 128 KiB/s. A fast third-party result cannot raise the scheduler
+above that ceiling. Raising it further needs separate evidence about the actual
+path. Each detection takes the median of three completed uploads; a failed batch
+keeps the previous budget. Probes remain bounded background uploads
+(three 128 KiB uploads and a 30-second total timeout by default), not paced SSH packets; they can
 temporarily contend with SSH, and these changes do not establish a WAN latency
 guarantee or control unrelated egress.
 
