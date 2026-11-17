@@ -8,6 +8,15 @@ Source: https://github.com/yetone/magpie
 Revision: 1615e5a149acbaed6e9395ddb9775f96d95e4728
 License: MIT, reproduced in `docs/licenses/magpie-MIT.txt` and the app bundle.
 
+The cloud gateway runtime uses Runta's private downstream at
+`https://github.com/runta-dev/magpie`, based on upstream `v0.1.4177`
+(`e6e0585bd3d92a79dab08f0955789a5801382b71`). Runtime release
+`0.1.4177-runta.1` fixes Codex WebSocket incremental-history matching and is
+updated by Fennec instead of Magpie's upstream self-updater. Its binaries,
+upstream MIT license, third-party notices and build provenance are distributed
+in Fennec's `magpie-v0.1.4177-runta.1` dependency release. The installer pins
+each architecture's SHA-256 in `internal/setup/toolchain.go`.
+
 Copied unchanged from `internal/gui/assets/icons/`:
 - `claudecode-color.svg`
 - `codex-color.svg`
