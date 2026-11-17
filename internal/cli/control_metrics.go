@@ -180,32 +180,43 @@ func (s *daemonServices) runtimeMetrics(ctx context.Context, _ json.RawMessage, 
 	channel, runtimeID, current := s.channel, s.config.RuntimeID, s.epoch
 	s.mu.Unlock()
 	notReady := func() map[string]any {
-		status := "not_created"
+		status := "unknown"
+		if runtimeID != "" {
+			status = "unavailable"
+		}
 		if controller != nil {
 			if h, ok := controller.Handlers()["runtime.status"]; ok {
 				if val, err := h(ctx, nil); err == nil {
 					if rt, ok := val.(controlplane.RuntimeState); ok {
-						switch rt.Stage {
-						case "preparing", "retrying":
-							status = "creating"
-						case "offline":
-							status = "offline"
-						case "disabled":
-							status = "not_created"
-						case "failed":
-							if rt.Events["runtime_progress"]["status"] == "billing_restricted" {
-								status = "billing_restricted"
-							} else if rt.RuntimeID == "" || rt.Events["runtime_progress"]["status"] != "" {
-								status = "not_created"
-							} else {
-								status = "failed"
+						if runtimeID == "" {
+							runtimeID = rt.RuntimeID
+							if runtimeID != "" {
+								status = "unavailable"
 							}
+						}
+						if rt.Stage == "preparing" || rt.Stage == "retrying" {
+							status = "connecting"
+						}
+						if rt.Stage == "offline" {
+							status = "offline"
 						}
 					}
 				}
 			}
 		}
-		return map[string]any{"ready": false, "status": status}
+		if runtimeID == "" && status != "connecting" && status != "offline" {
+			queryCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			client := runta.NewClient(s.home, token)
+			owner, err := client.CurrentUser(queryCtx)
+			if err == nil {
+				runtimes, err := client.List(queryCtx)
+				if err == nil {
+					status, runtimeID = cloudPresenceStatus(runtimes, owner)
+				}
+			}
+		}
+		return map[string]any{"ready": false, "status": status, "runtime_id": runtimeID}
 	}
 	if channel == nil || runtimeID == "" || current != epoch {
 		return notReady(), nil
@@ -225,16 +236,21 @@ func (s *daemonServices) runtimeMetrics(ctx context.Context, _ json.RawMessage, 
 
 	transport, err := channel.get(opCtx)
 	if err != nil || transport == nil || !transport.Supports("system_metrics") {
-		if cached := s.cachedRuntimeMetrics(runtimeID); cached != nil {
-			return cached, nil
-		}
 		return notReady(), nil
 	}
 	if out, ok := s.fetchMetricsFromTransport(opCtx, transport, token, runtimeID); ok {
 		return out, nil
 	}
-	if cached := s.cachedRuntimeMetrics(runtimeID); cached != nil {
-		return cached, nil
-	}
 	return notReady(), nil
+}
+
+// Only a complete authenticated listing can establish absence. Failed and
+// paused machines still exist and must never offer creation as recovery.
+func cloudPresenceStatus(runtimes []runta.Runtime, owner string) (string, string) {
+	for _, rt := range runtimes {
+		if rt.Owner == owner && rt.Environment["FENNEC_PURPOSE"] == "shared-v1" && rt.Status != "deleted" {
+			return "unavailable", rt.ID
+		}
+	}
+	return "not_created", ""
 }

@@ -59,3 +59,17 @@ assert.ok(panelJS.includes('formatMemoryMiB(exactUsedMiB)'), 'memory value shoul
 assert.ok(!panelJS.includes("M7.5 17.5h5M10 14.5v3"), 'cloud icon should not have server stem tail underneath');
 assert.ok(!panelJS.includes("M6 16V4m0 0L3 7m3-3 3 3m5-3v12"), 'network icon should not duplicate up/down arrows');
 assert.ok(!panelCSS.includes('.runtime-metrics-spec{display:inline-flex;align-items:center;height:20px;padding:0 8px;border:1px solid #f38d2540'), 'runtime spec should not use accent yellow badge');
+
+// Unknown and existing-but-unavailable states must never offer Create.
+const render = panelJS.match(/function drawRuntimeMetrics\(\) \{[\s\S]*?\n\}/)[0];
+function element(tag) {
+ return {tag, dataset:{}, children:[], append(...children){this.children.push(...children)}, replaceChildren(){this.children=[]}, setAttribute(){}};
+}
+for (const status of [undefined,'paused','failed','unavailable','unknown','checking','connecting','offline','not_created']) {
+ const card=element('card');
+ const context=vm.createContext({lastMetricsPayload:{ready:false,status},ensureRuntimeMetricsCard:()=>card,document:{createElement:element},translate:x=>x});
+ vm.runInContext(render,context);
+ vm.runInContext('drawRuntimeMetrics()',context);
+ const buttons=card.children.flatMap(x=>x.children).filter(x=>x.tag==='button');
+ assert.equal(buttons.length,status==='not_created'?1:0,`${status} creation eligibility`);
+}

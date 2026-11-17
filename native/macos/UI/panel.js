@@ -1044,12 +1044,15 @@ function drawRuntimeMetrics() {
   titleWrap.append(headIcon, title);
   const spec = document.createElement('span');
   spec.className = 'runtime-metrics-spec is-inactive';
-  const st = payload.status || 'not_created';
+  const st = payload.status || 'checking';
   spec.textContent = st === 'creating'
    ? t('[[i18n:ui.creating]]')
    : st === 'offline'
     ? t('[[i18n:ui.offline]]')
-    : t('[[i18n:ui.not_created]]');
+    : st === 'not_created' ? t('[[i18n:ui.not_created]]')
+    : (st === 'checking' || st === 'unknown') ? t('[[i18n:ui.cloud_status_checking]]')
+    : st === 'connecting' ? t('[[i18n:ui.connecting]]')
+    : t('[[i18n:ui.cloud_temporarily_unavailable]]');
   head.append(titleWrap, spec);
   const emptyRow = document.createElement('div');
   emptyRow.className = 'runtime-metrics-empty';
@@ -1060,9 +1063,12 @@ function drawRuntimeMetrics() {
     ? t('[[i18n:ui.preparing_cloud_computer]]')
     : st === 'offline'
      ? t('[[i18n:ui.offline_waiting_for_network]]')
-     : t('[[i18n:ui.no_cloud_computer_created_yet]]');
+     : st === 'not_created' ? t('[[i18n:ui.no_cloud_computer_created_yet]]')
+     : (st === 'checking' || st === 'unknown') ? t('[[i18n:ui.cloud_status_checking]]')
+     : st === 'connecting' ? t('[[i18n:ui.connecting_to_cloud_computer]]')
+     : t('[[i18n:ui.cloud_waiting_for_recovery]]');
   emptyRow.append(msg);
-  if (st !== 'creating' && st !== 'offline') {
+  if (st === 'not_created' || st === 'billing_restricted') {
    const btn = document.createElement('button');
    btn.type = 'button';
    btn.className = 'version-action';

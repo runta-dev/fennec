@@ -2435,6 +2435,30 @@
       "zh-CN": "尚未创建云电脑",
       "zh-TW": "尚未建立雲端電腦"
     },
+    "ui.cloud_status_checking": {
+      "en-GB": "Checking cloud computer status",
+      "en-US": "Checking cloud computer status",
+      "ja": "クラウドコンピュータの状態を確認中",
+      "ko": "클라우드 컴퓨터 상태 확인 중",
+      "zh-CN": "正在检查云电脑状态",
+      "zh-TW": "正在檢查雲端電腦狀態"
+    },
+    "ui.cloud_temporarily_unavailable": {
+      "en-GB": "Temporarily unavailable",
+      "en-US": "Temporarily unavailable",
+      "ja": "一時的に利用できません",
+      "ko": "일시적으로 사용할 수 없음",
+      "zh-CN": "暂时不可用",
+      "zh-TW": "暫時無法使用"
+    },
+    "ui.cloud_waiting_for_recovery": {
+      "en-GB": "Cloud computer is temporarily unavailable. Waiting for recovery.",
+      "en-US": "Cloud computer is temporarily unavailable. Waiting for recovery.",
+      "ja": "クラウドコンピュータは一時的に利用できません。復旧を待っています。",
+      "ko": "클라우드 컴퓨터를 일시적으로 사용할 수 없습니다. 복구를 기다리는 중입니다.",
+      "zh-CN": "云电脑暂时不可用，正在等待恢复。",
+      "zh-TW": "雲端電腦暫時無法使用，正在等待恢復。"
+    },
     "ui.not_created": {
       "en-GB": "Not created",
       "en-US": "Not created",
