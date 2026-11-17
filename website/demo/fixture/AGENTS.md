@@ -2,7 +2,7 @@
 
 This tiny Go project is the source fixture for a recorded Fennec walkthrough.
 The recording copy lives on the paired Mac at `/tmp/relay-mac-demo`. During
-recording, the cloud agent reads and edits that copy through `ssh machine`, then
+recording, the cloud agent reads and edits that copy through `ssh Alexs-Mac.local`, then
 runs tests in the Mac shell. Do not make a cloud copy for these demonstration
 tasks: their purpose is to show direct access to the user's local files and shell.
 

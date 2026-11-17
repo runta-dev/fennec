@@ -24,7 +24,7 @@ tmux -L fennec-landing pipe-pane -O -t codex "/tmp/record-website-pty pipe /tmp/
 
 Type the installed Fennec-managed `codex`, `claude` or `pi` command and a prompt
 against the isolated Go project in `fixture`. The committed recordings use
-Mac → Fennec → cloud agent → `ssh machine` → Mac. Copy the fixture to
+Mac → Fennec → cloud agent → `ssh Alexs-Mac.local` → Mac. Copy the fixture to
 `/tmp/relay-mac-demo` on the Mac first. Codex fixes duplicate deliveries, Claude
 fixes cross-workspace authorization, and Pi adds retry edge cases. Run them in
 that order against the same fixture. Each reads and edits Mac files, then runs
@@ -69,7 +69,7 @@ substitute for reviewing output. Keep originals outside the repository.
 ```
 
 The Claude range is specific to this capture, not a generic trust-dialog filter.
-It resumes at a complete alternate-screen repaint. Retained bytes are unchanged,
+It resumes at a complete alternate-screen repaint. Except for the SSH display alias replacement documented below, retained bytes are unchanged,
 including split UTF-8 characters, cursor motion, colors and terminal mode changes.
 Only shell setup preceding its initial clear, an explicit chunk range, source
 end boundary and timing are edited. Update provenance when replacing a capture.
@@ -77,13 +77,20 @@ end boundary and timing are edited. Update provenance when replacing a capture.
 Each agent excerpt further compresses opening waits and holds the final result
 for 2500ms. `recordings.json` lists exact packed chunk index / display millisecond
 landmarks. Interpolate linearly between their original packed timestamps, keeping
-every byte payload unchanged. Pi's initial SSH timeouts and successful retry are
+every other byte payload unchanged. Pi's initial SSH timeouts and successful retry are
 retained with shorter waits. The picker was captured on Linux using the same
 production renderer with sample session titles matching the Mac tasks.
 
 The website lets each agent recording finish before switching to the next tab.
 The requests, SSH commands, and final Mac test results are the content of the
 walkthrough; the original dual-window layout is preserved.
+
+## Display hostname edit
+
+On 2026-11-17, the published Codex, Claude and Pi payloads were edited to replace
+the SSH alias `machine` with `Alexs-Mac.local` (28, 4 and 75 occurrences).
+Chunk timestamps and recording durations were preserved. Raw capture hashes
+refer to the original captures before this presentation edit.
 
 ## Native panel
 

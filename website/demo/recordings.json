@@ -16,7 +16,7 @@
   "remote": {
     "platform": "Linux Fennec cloud runtime",
     "provider_region": "not measured",
-    "fixture": "None: agents read and edit the Mac fixture over ssh machine",
+    "fixture": "None: agents read and edit the Mac fixture over ssh Alexs-Mac.local",
     "fixture_source": "website/demo/fixture"
   },
   "captures": [
@@ -26,7 +26,7 @@
       "raw_sha256": "83fb37bf680ae975d8515451890b8b09b3ccccf0a6dfcbd90b5e7eb0716362fd",
       "raw_duration_ms": 173518,
       "display_duration_ms": 18000,
-      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms.",
+      "edits": "Idle gaps capped at 650ms; timing scaled. SSH display alias machine replaced with Alexs-Mac.local on 2026-11-17; other retained payload bytes unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms.",
       "packed_chunk_timing_landmarks": [
         [
           0,
@@ -68,7 +68,7 @@
       "raw_sha256": "92354ba4f9953a970698eccb820d9c736edae42abc5f9e12ff3152fbfe47abc5",
       "raw_duration_ms": 218171,
       "display_duration_ms": 18000,
-      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Trust dialog chunks 22–29 omitted before full alternate-screen repaint; cut at 160000ms before the next suggested prompt.",
+      "edits": "Idle gaps capped at 650ms; timing scaled. SSH display alias machine replaced with Alexs-Mac.local on 2026-11-17; other retained payload bytes unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Trust dialog chunks 22–29 omitted before full alternate-screen repaint; cut at 160000ms before the next suggested prompt.",
       "packed_chunk_timing_landmarks": [
         [
           0,
@@ -119,7 +119,7 @@
       "raw_sha256": "b30ea051afbb20c54b4b6b0217f278aeda7a26fcf656049d3178da9fcd608a5c",
       "raw_duration_ms": 627673,
       "display_duration_ms": 16000,
-      "edits": "Idle gaps capped at 650ms; timing scaled. All retained terminal payloads unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Initial SSH timeouts and successful retry retained; waits compressed, not a connectivity benchmark.",
+      "edits": "Idle gaps capped at 650ms; timing scaled. SSH display alias machine replaced with Alexs-Mac.local on 2026-11-17; other retained payload bytes unchanged. Piecewise linear retiming by packed chunk index; final hold 2500ms. Initial SSH timeouts and successful retry retained; waits compressed, not a connectivity benchmark.",
       "packed_chunk_timing_landmarks": [
         [
           0,
@@ -172,7 +172,7 @@
   "local_fixture": {
     "path": "/tmp/relay-mac-demo",
     "source": "website/demo/fixture",
-    "execution": "macOS via the configured paired-device SSH alias machine",
+    "execution": "macOS via the configured paired-device SSH alias Alexs-Mac.local",
     "sequence": "Codex, Claude, Pi share the fixture in that order; fixes accumulate",
     "instructions": "prompts.json and recording-brief.txt; per-session developer/system instructions, no global settings changed"
   },
