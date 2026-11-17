@@ -2,10 +2,8 @@ package localssh
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -29,7 +27,7 @@ func TestExistingRelayRequiresRevisionProcessIdentityAndListener(t *testing.T) {
 	}
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
-	state := map[string]any{"pid": 123, "bridge_port": port, "agent_port": port, "revision": fmt.Sprintf("%x", sha256.Sum256([]byte(relaySource)))}
+	state := map[string]any{"pid": 123, "bridge_port": port, "agent_port": port, "revision": relayRevision}
 	save := func() {
 		raw, _ := json.Marshal(state)
 		if err := os.WriteFile(filepath.Join(base, "state.json"), raw, 0600); err != nil {
@@ -38,7 +36,7 @@ func TestExistingRelayRequiresRevisionProcessIdentityAndListener(t *testing.T) {
 	}
 	save()
 	read := func(string) ([]byte, error) {
-		return []byte("python3\x00" + filepath.Join(base, "relay.py") + "\x00--state\x00" + filepath.Join(base, "state.json") + "\x00"), nil
+		return []byte(filepath.Join(home, ".local/fennec/bin/fennec-terminal") + "\x00relay-serve\x00" + device + "\x00"), nil
 	}
 	result, err := inspectExistingRelay(context.Background(), home, device, read)
 	if err != nil || !result.Ready || result.NeedsSetup {
@@ -57,7 +55,7 @@ func TestExistingRelayRequiresRevisionProcessIdentityAndListener(t *testing.T) {
 	if err != nil || !result.NeedsSetup {
 		t.Fatal("stale relay revision reused", result, err)
 	}
-	state["revision"] = fmt.Sprintf("%x", sha256.Sum256([]byte(relaySource)))
+	state["revision"] = relayRevision
 	save()
 	listener.Close()
 	result, err = inspectExistingRelay(context.Background(), home, device, read)

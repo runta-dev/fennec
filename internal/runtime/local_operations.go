@@ -14,6 +14,7 @@ import (
 )
 
 type LocalOperation struct {
+	Health            *localssh.LinkHealth         `json:"health,omitempty"`
 	MagpieCredentials map[string]string            `json:"magpie_credentials,omitempty"`
 	Connector         *localssh.LinkBootstrap      `json:"connector,omitempty"`
 	Preparation       *setup.PreparationHealth     `json:"preparation,omitempty"`
@@ -32,6 +33,15 @@ type LocalOperation struct {
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "connector_health" || o.Kind == "mac_online" {
+		if o.Health == nil {
+			return fmt.Errorf("health identity required")
+		}
+		if o.Kind == "mac_online" && (o.Health.Generation == "" || o.Health.Since <= 0) {
+			return fmt.Errorf("generation required")
+		}
+		return o.Health.Validate()
+	}
 	if o.Kind == "magpie_credentials_sync" {
 		return setup.ValidateMagpieCredentials(o.MagpieCredentials)
 	}
@@ -113,6 +123,15 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "connector_health" || o.Kind == "mac_online" {
+		if err := localssh.ProbeMac(ctx, r.Home, *o.Health); err != nil {
+			return nil, err
+		}
+		if o.Kind == "mac_online" {
+			return r.notifyMacOnline(ctx, *o.Health)
+		}
+		return json.RawMessage(`{"healthy":true}`), nil
 	}
 	if o.Kind == "preparation_health" {
 		if err := setup.CheckPreparationHealth(ctx, r.Home, *o.Preparation); err != nil {

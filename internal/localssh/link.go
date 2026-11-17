@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -18,11 +19,15 @@ import (
 )
 
 type LinkConfig struct {
-	RuntimeID    string                `json:"runtime_id"`
-	LocalAddress string                `json:"local_address"`
-	Name         string                `json:"name"`
-	Directory    string                `json:"-"`
-	Network      *connectivity.Monitor `json:"-"`
+	repair       bool
+	onlineBatch  *onlineBatch
+	Health       func(context.Context, LinkHealth) error `json:"-"`
+	Notify       func(context.Context, LinkHealth)       `json:"-"`
+	RuntimeID    string                                  `json:"runtime_id"`
+	LocalAddress string                                  `json:"local_address"`
+	Name         string                                  `json:"name"`
+	Directory    string                                  `json:"-"`
+	Network      *connectivity.Monitor                   `json:"-"`
 	// Only the account-scoped daemon may supply a previously verified owner
 	// and borrow its connection. Neither can be supplied by serialized input.
 	VerifiedOwner string                                                            `json:"-"`
@@ -99,6 +104,8 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 		return err
 	}
 	hostKey := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+	batch := loadOnlineBatch(config.Directory)
+	config.onlineBatch = &batch
 	delay := time.Second
 	for ctx.Err() == nil {
 		if config.Network != nil && !config.Network.Online() {
@@ -117,6 +124,7 @@ func Link(ctx context.Context, api *runta.Client, config LinkConfig, emit func(s
 			emit(stage, detail)
 		}
 		err = linkOnce(ctx, api, config, device, alias, hostKey, user, report)
+		config.repair = errors.Is(err, errMacUnreachable)
 		if connected {
 			delay = time.Second
 		}
@@ -196,7 +204,7 @@ func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device,
 	prepared := false
 	if config.Bootstrap != nil {
 		phase := launchprofile.Begin("connector.resident")
-		result, prepareErr := config.Bootstrap(setupCtx, LinkBootstrap{Device: device, Alias: alias, HostKey: hostKey})
+		result, prepareErr := config.Bootstrap(setupCtx, LinkBootstrap{Device: device, Alias: alias, HostKey: hostKey, Repair: config.repair})
 		phase()
 		if prepareErr != nil {
 			return prepareErr
@@ -246,7 +254,9 @@ func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device,
 	}
 	cancelSetup()
 	setupDone()
-	emit("connected", alias)
+	if config.Health == nil {
+		emit("connected", alias)
+	}
 	// Standalone connectors own their connection and health checks. A daemon
 	// connector relies on the shared resident health/recovery loop instead.
 	keepaliveCtx, cancel := context.WithCancel(ctx)
@@ -296,12 +306,23 @@ func linkOnce(ctx context.Context, api *runta.Client, config LinkConfig, device,
 			}
 		}()
 	}
+	var healthResult chan error
+	if config.Health != nil {
+		healthResult = make(chan error, 1)
+		go func() { healthResult <- monitorLink(keepaliveCtx, config, device, alias, emit); cancel() }()
+	}
 	if config.RelayDial != nil {
 		err = serveResidentRelay(keepaliveCtx, func(ctx context.Context) (net.Conn, error) {
 			return config.RelayDial(ctx, device, bridgePort)
 		}, config.LocalAddress, config.RelayFailure)
 	} else {
 		err = serveRelay(keepaliveCtx, client, bridgePort, config.LocalAddress, config.SharedSSH == nil)
+	}
+	if healthResult != nil {
+		cancel()
+		if healthErr := <-healthResult; healthErr != nil {
+			return healthErr
+		}
 	}
 	if err == nil {
 		return fmt.Errorf("reverse tunnel closed")

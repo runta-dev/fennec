@@ -491,6 +491,32 @@ func (s *daemonServices) startLinkLocked() {
 	config.RelayDial = func(ctx context.Context, device string, port int) (net.Conn, error) {
 		return s.dialResidentRelay(ctx, epoch, runtimeID, device, port)
 	}
+	config.Health = func(ctx context.Context, health localssh.LinkHealth) error {
+		_, err := s.connectorHealthOperation(ctx, epoch, runtimeID, "connector_health", health)
+		return err
+	}
+	config.Notify = func(ctx context.Context, health localssh.LinkHealth) {
+		health.Fresh = false
+		for ctx.Err() == nil {
+			step, cancel := context.WithTimeout(ctx, 15*time.Second)
+			result, err := s.connectorHealthOperation(step, epoch, runtimeID, "mac_online", health)
+			cancel()
+			if err == nil {
+				var counts map[string]int
+				if json.Unmarshal(result, &counts) == nil && counts["pending"] == 0 {
+					return
+				}
+			}
+			if err != nil && ctx.Err() == nil {
+				log.Printf("Mac online delivery: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
 	config.RelayFailure = func(phase string, err error) {
 		log.Printf("device relay retry: phase=%s error=%v", phase, err)
 	}

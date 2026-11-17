@@ -33,7 +33,7 @@ func TestRelayKeepsIdleBridgesWhileConnectionsStayOpen(t *testing.T) {
 			go func() { io.Copy(c, c); c.Close() }()
 		}
 	}()
-	// Bridge listener stands in for relay.py's bridge port.
+	// Bridge listener stands in for the cloud relay's bridge port.
 	bridges, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer bridges.Close()
 	parked := make(chan net.Conn, 128)

@@ -53,8 +53,7 @@ check-ui:
 	node scripts/tests/runtime-metrics.cjs
 
 test-connector: build
-	python3 scripts/tests/relay.py
-	FENNEC_TEST_BINARY="$(CURDIR)/bin/fennec" python3 scripts/tests/relay-ssh.py
+	go test ./internal/localssh -run "TestRelay|TestGoRelay"
 	FENNEC_TEST_BINARY="$(CURDIR)/bin/fennec" python3 scripts/tests/never-ask.py
 	FENNEC_TEST_BINARY="$(CURDIR)/bin/fennec" python3 scripts/tests/connector-cancellation.py
 	FENNEC_TEST_BINARY="$(CURDIR)/bin/fennec" python3 scripts/tests/forward.py

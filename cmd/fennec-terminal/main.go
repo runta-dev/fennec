@@ -112,6 +112,20 @@ func run() (int, error) {
 		go cpusched.KeepPruned(ctx, 30*time.Second)
 		return 0, trafficbroker.Run(ctx, home)
 	}
+	if len(os.Args) == 3 && (os.Args[1] == "relay-serve" || os.Args[1] == "relay-ensure") {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		if os.Args[1] == "relay-serve" {
+			return 0, localssh.ServeRelay(ctx, home, os.Args[2])
+		}
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		result, err := localssh.EnsureRelay(ctx, home, os.Args[2])
+		if err != nil {
+			return 1, err
+		}
+		return 0, json.NewEncoder(os.Stdout).Encode(result)
+	}
 	// ProxyCommand of the Mac device alias; see localssh.ServeMacRelay. It
 	// serves a ControlMaster that outlives the terminal and the client that
 	// started it, so only the end of its stdio or SIGTERM stops it.

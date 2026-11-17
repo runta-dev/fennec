@@ -169,3 +169,30 @@ func (channel *terminalChannel) borrowSSH(ctx context.Context) (*ssh.Client, err
 		}
 	}
 }
+
+func (s *daemonServices) connectorHealthOperation(ctx context.Context, epoch uint64, runtimeID, kind string, health localssh.LinkHealth) (json.RawMessage, error) {
+	s.mu.Lock()
+	valid := s.epoch == epoch && s.config.RuntimeID == runtimeID && s.ctx != nil && s.ctx.Err() == nil
+	channel := s.channel
+	s.mu.Unlock()
+	if !valid || channel == nil {
+		return nil, fmt.Errorf("connector owner changed")
+	}
+	transport, err := channel.get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err = transport.Ready(ctx); err != nil {
+		return nil, err
+	}
+	if !transport.Supports(kind) {
+		return nil, fmt.Errorf("resident lacks %s capability", kind)
+	}
+	s.mu.Lock()
+	valid = s.epoch == epoch && s.config.RuntimeID == runtimeID && s.channel == channel
+	s.mu.Unlock()
+	if !valid || ctx.Err() != nil {
+		return nil, fmt.Errorf("connector owner changed")
+	}
+	return transport.Operate(ctx, cloudruntime.LocalOperation{Kind: kind, Health: &health})
+}

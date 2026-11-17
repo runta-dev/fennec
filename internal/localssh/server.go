@@ -238,6 +238,10 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			return
 		}
 		command := session.RawCommand()
+		if session.Subsystem() == "" && HealthReply(command, session) {
+			session.Exit(0)
+			return
+		}
 		if command == "" || len(command) > 8192 || session.Subsystem() != "" {
 			io.WriteString(session.Stderr(), "Fennec supports approved exec requests only.\n")
 			session.Exit(126)

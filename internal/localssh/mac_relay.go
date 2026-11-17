@@ -87,10 +87,16 @@ func ServeMacRelay(ctx context.Context, home, device, port string, input io.Read
 	if err != nil {
 		return err
 	}
-	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(number))
 	options := MacRelayOptions{HostKey: hostKey, Identity: identity, MacHostKey: macKey, Dial: func(ctx context.Context) (net.Conn, error) {
+		state, err := inspectExistingRelay(ctx, home, device, os.ReadFile)
+		if err != nil {
+			return nil, err
+		}
+		if !state.Ready {
+			return nil, fmt.Errorf("device relay unavailable")
+		}
 		var dialer net.Dialer
-		return dialer.DialContext(ctx, "tcp", address)
+		return dialer.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(state.AgentPort)))
 	}}
 	return RunMacRelay(ctx, stdioConn{Reader: input, WriteCloser: output}, options)
 }
@@ -268,7 +274,7 @@ func (u *macUpstream) watch(client *gossh.Client) {
 		client.Wait()
 		close(ended)
 	}()
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -276,7 +282,7 @@ func (u *macUpstream) watch(client *gossh.Client) {
 			u.invalidate(client)
 			return
 		case <-ticker.C:
-			go func() {
+			func() {
 				reply := make(chan error, 1)
 				go func() {
 					_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
@@ -287,7 +293,7 @@ func (u *macUpstream) watch(client *gossh.Client) {
 					if err != nil {
 						client.Close()
 					}
-				case <-time.After(45 * time.Second):
+				case <-time.After(5 * time.Second):
 					client.Close()
 				}
 			}()

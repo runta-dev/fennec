@@ -18,6 +18,14 @@ func TestRelayLifecycle(t *testing.T) {
 		t.Skip("guest relay requires Linux /proc")
 	}
 	home := t.TempDir()
+	binary := filepath.Join(home, ".local/fennec/bin/fennec-terminal")
+	if err := os.MkdirAll(filepath.Dir(binary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/fennec-terminal")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build relay: %v %s", err, out)
+	}
 	device := strings.Repeat("a", 32)
 	statePath := filepath.Join(home, ".local/fennec/relay-"+device, "state.json")
 	type state struct {
@@ -27,7 +35,9 @@ func TestRelayLifecycle(t *testing.T) {
 	var owned []int
 	defer func() {
 		for _, pid := range owned {
-			syscall.Kill(pid, syscall.SIGTERM)
+			if pid > 1 {
+				syscall.Kill(pid, syscall.SIGTERM)
+			}
 		}
 	}()
 	run := func() (state, error) {
@@ -49,6 +59,9 @@ func TestRelayLifecycle(t *testing.T) {
 	first, err := run()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if first.PID <= 1 {
+		t.Fatalf("invalid PID: %+v", first)
 	}
 	owned = append(owned, first.PID)
 	again, err := run()

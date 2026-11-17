@@ -3,7 +3,6 @@ package localssh
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -19,12 +18,15 @@ import (
 // Ready=false before any mutation when cold installation is needed. Errors after
 // alias registration must not be replayed through a second transport.
 type LinkBootstrap struct {
+	Repair  bool   `json:"repair,omitempty"`
 	Device  string `json:"device"`
 	Alias   string `json:"alias"`
 	HostKey string `json:"host_key"`
 }
 
 type LinkBootstrapResult struct {
+	PID        int    `json:"pid,omitempty"`
+	Revision   string `json:"revision,omitempty"`
 	NeedsSetup bool   `json:"needs_setup,omitempty"`
 	Ready      bool   `json:"ready"`
 	BridgePort int    `json:"bridge_port,omitempty"`
@@ -44,7 +46,7 @@ func BootstrapExistingLink(ctx context.Context, home string, r LinkBootstrap) (L
 	if err := ctx.Err(); err != nil {
 		return LinkBootstrapResult{}, err
 	}
-	result, err := inspectExistingRelay(ctx, home, r.Device, os.ReadFile)
+	result, err := EnsureRelay(ctx, home, r.Device, r.Repair)
 	if err != nil || !result.Ready {
 		return result, err
 	}
@@ -95,7 +97,7 @@ func inspectExistingRelay(ctx context.Context, home, device string, readProc fun
 	if json.Unmarshal(data, &state) != nil || state.PID <= 1 || state.Bridge < 1 || state.Bridge > 65535 || state.Agent < 1 || state.Agent > 65535 {
 		return LinkBootstrapResult{}, fmt.Errorf("invalid relay state")
 	}
-	if state.Revision != fmt.Sprintf("%x", sha256.Sum256([]byte(relaySource))) {
+	if state.Revision != relayRevision {
 		return LinkBootstrapResult{NeedsSetup: true}, nil
 	}
 	cmdline, err := readProc(filepath.Join("/proc", strconv.Itoa(state.PID), "cmdline"))
@@ -105,8 +107,10 @@ func inspectExistingRelay(ctx context.Context, home, device string, readProc fun
 	if err != nil {
 		return LinkBootstrapResult{}, err
 	}
-	args := bytes.Split(cmdline, []byte{0})
-	if !containsArg(args, filepath.Join(base, "relay.py")) || !containsArg(args, "--state") || !containsArg(args, path) {
+	if len(cmdline) == 0 {
+		return LinkBootstrapResult{NeedsSetup: true}, nil
+	}
+	if !relayProcessMatches(cmdline, base, device) {
 		return LinkBootstrapResult{}, fmt.Errorf("relay process identity mismatch")
 	}
 	probe, err := (&net.Dialer{Timeout: 500 * time.Millisecond}).DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(state.Bridge)))
@@ -117,7 +121,7 @@ func inspectExistingRelay(ctx context.Context, home, device string, readProc fun
 		return LinkBootstrapResult{NeedsSetup: true}, nil
 	}
 	probe.Close()
-	return LinkBootstrapResult{Ready: true, BridgePort: state.Bridge, AgentPort: state.Agent}, nil
+	return LinkBootstrapResult{Ready: true, BridgePort: state.Bridge, AgentPort: state.Agent, PID: state.PID, Revision: state.Revision}, nil
 }
 
 func containsArg(args [][]byte, value string) bool {
@@ -128,3 +132,5 @@ func containsArg(args [][]byte, value string) bool {
 	}
 	return false
 }
+
+func splitRelayArgs(raw []byte) [][]byte { return bytes.Split(raw, []byte{0}) }

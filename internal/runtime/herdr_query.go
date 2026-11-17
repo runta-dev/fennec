@@ -31,12 +31,26 @@ func herdrQuery(home string) func(context.Context, string, any) (json.RawMessage
 	}
 }
 
+type herdrRefusal struct {
+	Data struct {
+		Kind string `json:"kind"`
+	} `json:"data"`
+}
+
+func (e *herdrRefusal) Error() string { return "Herdr refused input: " + e.Data.Kind }
+
 func decodeHerdrReply(raw []byte) (json.RawMessage, error) {
 	var reply struct {
 		Version string          `json:"jsonrpc"`
 		ID      int             `json:"id"`
 		Result  json.RawMessage `json:"result"`
 		Error   json.RawMessage `json:"error"`
+	}
+	if len(raw) <= (4<<20)+65536 && json.Unmarshal(raw, &reply) == nil && reply.Version == "2.0" && reply.ID == 1 && len(reply.Error) > 0 && string(reply.Error) != "null" {
+		var refusal herdrRefusal
+		if json.Unmarshal(reply.Error, &refusal) == nil && refusal.Data.Kind != "" {
+			return nil, &refusal
+		}
 	}
 	if len(raw) > (4<<20)+65536 || json.Unmarshal(raw, &reply) != nil || reply.Version != "2.0" || reply.ID != 1 || len(reply.Error) > 0 && string(reply.Error) != "null" || len(reply.Result) == 0 || string(reply.Result) == "null" {
 		return nil, fmt.Errorf("Herdr query was not confirmed")
