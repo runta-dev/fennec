@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import Foundation
 import WebKit
 import ServiceManagement
@@ -648,6 +649,17 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// QR code for a pairing link, drawn with Core Image as a PNG data URI.
+    static func qrCodeDataURI(_ text: String) -> String? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(text.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let image = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
+              let cgImage = CIContext().createCGImage(image, from: image.extent) else { return nil }
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        return "data:image/png;base64," + png.base64EncodedString()
+    }
     private func render(_ function: String, _ arguments: [Any] = []) {
         guard let data = try? JSONSerialization.data(withJSONObject: arguments) else { return }
         web.evaluateJavaScript("window.\(function)(...\(String(decoding: data, as: UTF8.self)))", completionHandler: nil)
@@ -878,6 +890,25 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             if let filter = params["filter"] as? String, !filter.isEmpty { activeAuditFilter = filter }
             control.call("audit.list",params) { [weak self] result in
                 if case .success(let value) = result { self?.render("renderAuditLog",[value]) }
+            }
+            return
+        }
+        if action == "pair-device" {
+            let epoch = accountEpoch
+            control.call("account.pair_device") { [weak self] result in
+                guard let self, self.accountEpoch == epoch else { return }
+                switch result {
+                case .success(let value):
+                    if let pairing = value as? [String:Any], let url = pairing["url"] as? String, let qr = Self.qrCodeDataURI(url) {
+                        self.render("renderPairing",[["qr":qr,"expires_at":pairing["expires_at"] as? String ?? ""]])
+                    } else {
+                        self.render("renderPairing",[["error":"[[i18n:ui.pairing_failed]]"]])
+                    }
+                case .failure(let error):
+                    let code = (error as NSError).userInfo["FennecCode"] as? String ?? ""
+                    let message = code == "pairing_not_allowed" ? "[[i18n:ui.pairing_not_allowed]]" : code == "pairing_organization_required" ? "[[i18n:ui.pairing_organization_required]]" : "[[i18n:ui.pairing_failed]]"
+                    self.render("renderPairing",[["error":message]])
+                }
             }
             return
         }

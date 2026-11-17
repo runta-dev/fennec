@@ -5,6 +5,7 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fennec/internal/account"
 	"fennec/internal/agent"
 	"fennec/internal/connectivity"
@@ -102,6 +103,19 @@ func (c *Controller) Handlers() map[string]control.Handler {
 				return nil, err
 			}
 			return c.Account.Login(), nil
+		},
+		"account.pair_device": func(ctx context.Context, _ json.RawMessage) (any, error) {
+			pairing, err := c.Account.PairDevice(ctx, "Fennec on iPhone")
+			switch {
+			case err == nil:
+				return pairing, nil
+			case errors.Is(err, account.ErrPairingNotAllowed):
+				return nil, &control.Fault{Code: "pairing_not_allowed", Message: "This account can't approve iPhone sign-in yet"}
+			case errors.Is(err, account.ErrPairingOrganization):
+				return nil, &control.Fault{Code: "pairing_organization_required", Message: "Choose an organization on the Runta dashboard first"}
+			default:
+				return nil, &control.Fault{Code: "pairing_failed", Message: "Couldn't create a sign-in code", Retryable: true}
+			}
 		},
 		"account.logout": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			if err := c.Account.Logout(ctx); err != nil {

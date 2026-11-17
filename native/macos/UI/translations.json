@@ -1,5 +1,61 @@
 {
   "messages": {
+    "ui.sign_in_on_iphone": {
+      "en-US": "Sign in on iPhone",
+      "en-GB": "Sign in on iPhone",
+      "zh-CN": "在 iPhone 上登录",
+      "zh-TW": "在 iPhone 上登入",
+      "ja": "iPhone でサインイン",
+      "ko": "iPhone에서 로그인"
+    },
+    "ui.scan_with_your_iphone": {
+      "en-US": "Scan with your iPhone",
+      "en-GB": "Scan with your iPhone",
+      "zh-CN": "用 iPhone 扫码",
+      "zh-TW": "用 iPhone 掃描",
+      "ja": "iPhone でスキャン",
+      "ko": "iPhone으로 스캔"
+    },
+    "ui.expires_in": {
+      "en-US": "Expires in",
+      "en-GB": "Expires in",
+      "zh-CN": "剩余",
+      "zh-TW": "剩餘",
+      "ja": "残り",
+      "ko": "남은 시간"
+    },
+    "ui.cancel": {
+      "en-US": "Cancel",
+      "en-GB": "Cancel",
+      "zh-CN": "取消",
+      "zh-TW": "取消",
+      "ja": "キャンセル",
+      "ko": "취소"
+    },
+    "ui.pairing_failed": {
+      "en-US": "Couldn't create a sign-in code. Try again.",
+      "en-GB": "Couldn't create a sign-in code. Try again.",
+      "zh-CN": "无法生成登录码，请重试",
+      "zh-TW": "無法產生登入碼，請重試",
+      "ja": "サインインコードを作成できませんでした。もう一度お試しください",
+      "ko": "로그인 코드를 만들지 못했습니다. 다시 시도하세요"
+    },
+    "ui.pairing_not_allowed": {
+      "en-US": "Runta doesn't allow this Mac to approve iPhone sign-in yet.",
+      "en-GB": "Runta doesn't allow this Mac to approve iPhone sign-in yet.",
+      "zh-CN": "Runta 暂不允许这台 Mac 批准 iPhone 登录",
+      "zh-TW": "Runta 暫不允許這台 Mac 核准 iPhone 登入",
+      "ja": "Runta はまだこの Mac による iPhone サインインの承認を許可していません",
+      "ko": "Runta가 아직 이 Mac의 iPhone 로그인 승인을 허용하지 않습니다"
+    },
+    "ui.pairing_organization_required": {
+      "en-US": "Choose an organization on the Runta dashboard first.",
+      "en-GB": "Choose an organization on the Runta dashboard first.",
+      "zh-CN": "请先在 Runta 控制台选择组织",
+      "zh-TW": "請先在 Runta 控制台選擇組織",
+      "ja": "先に Runta ダッシュボードで組織を選択してください",
+      "ko": "먼저 Runta 대시보드에서 조직을 선택하세요"
+    },
     "ui.magpie_control_panel": {
       "en-US": "Control panel",
       "en-GB": "Control panel",

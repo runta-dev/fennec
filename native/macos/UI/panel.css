@@ -638,3 +638,5 @@ nav button{padding:3px 7px}
 #magpie-panel[aria-busy=true] .magpie-panel-spinner{display:block;animation:refresh-rotate .9s linear infinite}
 .magpie-panel-spinner circle{opacity:.25}
 @media(prefers-reduced-motion:reduce){#magpie-panel[aria-busy=true] .magpie-panel-spinner{animation:none}}
+
+.pairing-card{margin-top:10px}.pairing-card .preference-row{border:0;border-radius:0;background:transparent;text-align:left}.pairing-panel{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 14px 12px}.pairing-qr{width:168px;height:168px;border-radius:8px;background:#fff;padding:6px;image-rendering:pixelated}.pairing-panel strong{font-size:13px;font-weight:500}.pairing-row{display:flex;width:100%;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.pairing-row button{font-size:12px;padding:3px 10px;border-radius:7px}.pairing-message{min-height:0;padding:0 12px;color:#c74949;font-size:11.5px}.pairing-message:not(:empty){padding:0 12px 10px}

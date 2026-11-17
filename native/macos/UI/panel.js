@@ -414,6 +414,7 @@ let sessionListConnecting = true;
 let visibleSessionCount = 0;
 window.renderAuthorized = () => {
   authorized = true;
+  window.renderPairingAvailable?.(true);
   document.querySelector('#notice').hidden = true;
   const header = document.querySelector('.header-login');
   header.textContent = "[[i18n:ui.account]]";
@@ -614,6 +615,7 @@ window.renderSignedOut = () => {
   currentProfileName = '';
   window.resetAgentLogin?.();
   authorized = false;
+  window.renderPairingAvailable?.(false);
   sessionListConnecting = true;
   visibleSessionCount = 0;
   routeResults.clear();
