@@ -162,3 +162,12 @@ suite exceeded a three-minute overall timeout in `TestConflatorRecordedSessions`
 the ordinary terminalstream suite passed. The installed-client operation gate
 also reported five `sessions.send` samples above its 500 ms per-sample limit, so
 this change does not claim complete performance acceptance.
+
+A follow-up checks hook delivery after reattachment, not just a usable screen.
+The wrapper's spool path, resolved hook CLI environment hint, Node preload/CUA
+metadata, and explicit `CMUX_CLAUDE_HEADLESS=0` are not hook execution inputs.
+They are removed before fingerprinting and execution so `fen attach`, which does
+not run the wrapper, recreates the same bindings. Behavior-changing settings
+(such as headless mode enabled) still change the fingerprint. The regression and
+official CLI tests pass; the initial live reconnect exposed this mismatch, so
+screen-only reconnect acceptance must not be used as proof of hook delivery.

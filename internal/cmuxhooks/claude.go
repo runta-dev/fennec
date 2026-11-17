@@ -49,7 +49,7 @@ func ClaudeAdapters(local *Local) (map[string]*ClaudeAdapter, error) {
 	if !ValidContext(local) {
 		return nil, fmt.Errorf("invalid cmux context")
 	}
-	local = cleanLocal(local)
+	local = cleanClaudeLocal(local)
 	hash, err := hookbridge.FileDigest(local.Executable)
 	if err != nil {
 		return nil, err
@@ -70,6 +70,23 @@ func ClaudeAdapters(local *Local) (map[string]*ClaudeAdapter, error) {
 		}
 	}
 	return result, nil
+}
+
+func cleanClaudeLocal(local *Local) *Local {
+	local = cleanLocal(local)
+	var env []string
+	for _, entry := range local.Env {
+		key, value, _ := strings.Cut(entry, "=")
+		// The wrapper exports these only for the native child. Fixed CLI hooks
+		// use neither its shell spool nor Node preload/CUA configuration. Keeping
+		// them would change binding IDs when plain `fen attach` reconnects.
+		if key == "CMUX_CLAUDE_HOOK_CMUX_BIN" || key == "CMUX_CLAUDE_HOOK_SPOOL_DIR" || strings.HasPrefix(key, "CMUX_ORIGINAL_NODE_OPTIONS") || strings.HasPrefix(key, "CMUX_CUA_") || key == "CMUX_CLAUDE_HEADLESS" && value == "0" {
+			continue
+		}
+		env = append(env, entry)
+	}
+	local.Env = env
+	return local
 }
 func (a *ClaudeAdapter) fingerprint(hash string) string {
 	// The shared adapter already filters per-invocation routing data out of grants.

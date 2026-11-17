@@ -90,3 +90,33 @@ func TestOfficialCmuxClaudeSettings(t *testing.T) {
 	}
 	t.Logf("recognized all %d official Claude handlers", count)
 }
+
+func TestClaudeReattachKeepsBindingsWithoutWrapperEnvironment(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "cmux")
+	os.WriteFile(binary, []byte("#!/bin/sh\nexit 0\n"), 0700)
+	local := &Local{Executable: binary, Workspace: "11111111-1111-1111-1111-111111111111", Surface: "22222222-2222-2222-2222-222222222222", Env: []string{"PATH=/usr/bin:/bin", "HOME=/fixture", "CMUX_SOCKET_CAPABILITY=fixture-capability"}}
+	attached, err := ClaudeAdapters(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped := *local
+	wrapped.Env = append(append([]string{}, local.Env...), "CMUX_CLAUDE_HEADLESS=0", "CMUX_CLAUDE_HOOK_CMUX_BIN="+binary, "CMUX_CLAUDE_PID=123", "CMUX_CLAUDE_HOOK_SPOOL_DIR=/private/tmp/wrapper-spool", "CMUX_ORIGINAL_NODE_OPTIONS_PRESENT=0", "CMUX_CUA_SOCKET_AUTH_TOKEN=fixture-only")
+	launched, err := ClaudeAdapters(&wrapped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, a := range attached {
+		if launched[key].Ref.ID != a.Ref.ID {
+			t.Fatal("reattach invalidated binding", key)
+		}
+	}
+	changed := *local
+	changed.Env = append(append([]string{}, local.Env...), "CMUX_CLAUDE_HEADLESS=1")
+	headless, err := ClaudeAdapters(&changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headless["SessionStart/session-start"].Ref.ID == attached["SessionStart/session-start"].Ref.ID {
+		t.Fatal("behavior-changing configuration reused grant")
+	}
+}
