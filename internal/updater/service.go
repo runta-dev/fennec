@@ -17,7 +17,7 @@ import (
 const (
 	// CheckInterval spaces background checks; one costs a single
 	// unauthenticated GitHub API call (60 per hour per address).
-	CheckInterval = time.Hour
+	CheckInterval = 5 * time.Minute
 	FreshAfter    = 5 * time.Minute
 	// RetryAfterError retries a check that failed (offline, a release
 	// being published) soon instead of a whole CheckInterval later.
