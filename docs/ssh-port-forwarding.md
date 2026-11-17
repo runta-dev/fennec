@@ -9,11 +9,14 @@ To preview a service running on cloud loopback port 8765 on the Mac, run on the
 cloud computer:
 
 ```sh
-ssh -NT -o ExitOnForwardFailure=yes \
+ssh -NT -o ControlPath=none -o ExitOnForwardFailure=yes \
   -R 127.0.0.1:8765:127.0.0.1:8765 machine
 ```
 
-Keep this SSH process running and open `http://localhost:8765` on the Mac.
+Keep this dedicated SSH process running and open `http://localhost:8765` on the Mac.
+`ControlPath=none` gives the tunnel its own lifetime rather than attaching a
+no-command session to an existing exec ControlMaster. Existing masters also
+support adding and canceling forwards with OpenSSH's `-O forward` / `-O cancel`.
 The first address is the Mac listener; the destination is resolved and connected
 by the cloud SSH client. Use an unused Mac port when an existing service already
 owns 8765. Port zero requests are supported and return the allocated port.
