@@ -168,6 +168,45 @@ old process cannot silently retain the previous 160/128 KiB/s settings; old
 brokers drain naturally, and coexistence does not imply one shared rate cap.
 Historical measurements below retain their original budgets. Deployment and
 paired WAN validation of the new budget must be recorded separately.
+
+### Adaptive budget safety (2026-11-17)
+
+The adaptive broker uses `traffic-v5`. Existing brokers drain with their live
+sessions; new clients must not silently join a v4 broker with the old capacity
+probe. During coexistence the versions still have independent aggregate budgets.
+
+Capacity detection uses a bounded HTTPS POST to the documented
+[Cloudflare upload endpoint](https://github.com/cloudflare/speedtest), whose
+successful response acknowledges receipt of the complete body. Timing includes
+connection establishment, TLS, upload and the complete bounded response. A TCP
+write into local buffers is not a measurement. Redirects, TLS errors, incomplete
+requests/responses, non-2xx status, cancellation and timeouts preserve the last
+accepted budget. The upload contains random synthetic bytes only, never user data.
+
+This measures payload throughput to that endpoint, not host wire capacity or the
+SSH path. Budgets leave 10% measurement headroom and reserve up to 32 KiB/s for
+interactive packets (one quarter on slower links). There is no 64/128 KiB/s floor.
+An independent `MaxBudget` ceiling defaults to 128 KiB/s; a fast third-party
+result cannot raise the scheduler above that ceiling. Raising the ceiling needs
+separate evidence about the actual path. Probes remain bounded background uploads
+(128 KiB and a 30-second timeout by default), not paced SSH packets; they can
+temporarily contend with SSH, and these changes do not establish a WAN latency
+guarantee or control unrelated egress.
+
+The standalone broker starts its own 1 Hz metrics sampler. Missing or stale
+telemetry is unknown, not idle; utilization is compared with the applied budget.
+Probe deadlines are independent of sampling ticks. The base interval is one hour;
+three measurements within 10% of the previous result double it up to 24 hours.
+Changed results and failures reset it. Idle checks also back off, but a real
+measurement is attempted at least every maximum interval while the broker lives.
+
+Rate updates refill elapsed time at the old rate, preserve immutable packet and
+queue limits, wake token waiters, and refund only the failed packet on a
+nonblocking retry. Failed target updates do not publish a new measurement.
+Regression coverage includes local TLS acknowledgement, cancellation and failure
+cases, deterministic scheduling/backoff, slow-link budgets, standalone sampler
+initialization, concurrent detection, and rate updates during writes and retries.
+These are correctness tests, not production throughput or latency measurements.
 Cancellation never returns a caller's buffer while a running write still
 references it. Oversized atomic writes are refused rather than waiting forever
 for a bucket that cannot hold them.

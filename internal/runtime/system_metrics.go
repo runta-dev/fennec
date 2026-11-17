@@ -127,14 +127,18 @@ func CollectSystemMetrics() SystemMetrics {
 }
 
 // RecentTxBPS reports the last sampled egress rate without triggering a new
-// sample. Zero means no fresh sample is available.
-func RecentTxBPS() uint64 {
-	globalMetricsState.mu.Lock()
-	defer globalMetricsState.mu.Unlock()
-	if globalMetricsState.lastAt.IsZero() || time.Since(globalMetricsState.lastAt) > 5*time.Second {
-		return 0
+// sample. The boolean distinguishes unavailable telemetry from real idle egress.
+func RecentTxBPS() (uint64, bool) {
+	return globalMetricsState.recentTxBPS(time.Now())
+}
+
+func (state *metricsSampleState) recentTxBPS(now time.Time) (uint64, bool) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.lastAt.IsZero() || now.Sub(state.lastAt) > 5*time.Second {
+		return 0, false
 	}
-	return globalMetricsState.last.NetTxBPS
+	return state.last.NetTxBPS, true
 }
 
 func collectSystemMetricsFromPaths(procStat, procMeminfo, procNetDev, cgroupDir string, state *metricsSampleState) SystemMetrics {

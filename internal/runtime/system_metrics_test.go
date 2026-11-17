@@ -51,3 +51,22 @@ func TestCollectSystemMetricsParsesProcAndDeltaRates(t *testing.T) {
 		t.Fatalf("unexpected network metrics (loopback should be excluded): %+v", got)
 	}
 }
+
+func TestRecentEgressDistinguishesUnavailableFromIdle(t *testing.T) {
+	now := time.Now()
+	state := metricsSampleState{}
+	if _, ok := state.recentTxBPS(now); ok {
+		t.Fatal("missing sample treated as idle")
+	}
+	state.lastAt = now
+	if bps, ok := state.recentTxBPS(now); !ok || bps != 0 {
+		t.Fatal("fresh idle sample unavailable")
+	}
+	state.last.NetTxBPS = 123
+	if bps, ok := state.recentTxBPS(now); !ok || bps != 123 {
+		t.Fatal("fresh busy sample unavailable")
+	}
+	if _, ok := state.recentTxBPS(now.Add(6 * time.Second)); ok {
+		t.Fatal("stale sample available")
+	}
+}

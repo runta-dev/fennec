@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fennec/internal/runtime"
 	"fennec/internal/traffic"
 	"fmt"
 	"io"
@@ -72,6 +73,9 @@ func serve(ctx context.Context, listener *net.UnixListener, config traffic.Confi
 	stop := context.AfterFunc(ctx, func() { listener.Close() })
 	defer stop()
 	if monitor != nil {
+		// The broker is a standalone process; resident-service sampler state
+		// is not shared across processes.
+		runtime.StartMetricsSampler(ctx)
 		monitor.SetTarget(schedule.UpdateConfig)
 		go monitor.Watch(ctx, traffic.DefaultCapacityConfig())
 	}

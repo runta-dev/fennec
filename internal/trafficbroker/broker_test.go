@@ -3,6 +3,7 @@ package trafficbroker
 import (
 	"bytes"
 	"context"
+	"fennec/internal/runtime"
 	"fennec/internal/traffic"
 	"io"
 	"os"
@@ -13,6 +14,29 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+func TestAdaptiveBrokerStartsItsOwnMetricsSampler(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "fen-traffic-metrics-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	listener, err := Listen(filepath.Join(dir, "out.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	// Exercise broker initialization with an already canceled context so the
+	// production monitor cannot issue an external upload from a unit test.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := serve(ctx, listener, traffic.DefaultConfig(), 0, traffic.NewCapacityMonitor()); err != nil {
+		t.Fatal(err)
+	}
+	if _, valid := runtime.RecentTxBPS(); !valid {
+		t.Fatal("broker did not initialize its in-process sampler")
+	}
+}
 
 func fixture(t *testing.T, config traffic.Config) (context.Context, string) {
 	t.Helper()

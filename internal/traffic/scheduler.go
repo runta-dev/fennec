@@ -35,10 +35,9 @@ func DefaultConfig() Config {
 
 var ErrPacketSize = errors.New("traffic packet exceeds the configured atomic write limit")
 
-// InteractiveReserveBytesPerSecond is the minimum egress the scheduler leaves
-// for urgent frames when adapting to a detected host bandwidth limit. Bulk
-// traffic is capped below the root budget by this reserve; interactive packets
-// may still use the full root budget.
+// InteractiveReserveBytesPerSecond is the reserve on ordinary links. Capacity
+// adaptation scales it down to one quarter of the root budget on slow links.
+// Interactive packets may still use the full root budget.
 const InteractiveReserveBytesPerSecond = 32 * 1024
 
 // ErrWouldBlock is returned by a TryWrite callback that wrote no bytes. The
@@ -92,9 +91,8 @@ func New(ctx context.Context, config Config) (*Scheduler, error) {
 	}, nil
 }
 
-// UpdateConfig changes rate budgets without dropping queued packets. Bucket
-// tokens stay as-is: refilling converts them under the new rate on next use.
-// Callers must not mutate the passed config afterwards.
+// UpdateConfig changes only rate budgets without dropping queued packets.
+// Packet, burst and admission limits are immutable for the scheduler lifetime.
 func (s *Scheduler) UpdateConfig(config Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -103,11 +101,19 @@ func (s *Scheduler) UpdateConfig(config Config) error {
 		config.BurstBytes < config.MaxPacketBytes || config.QueuePackets < 2 {
 		return errors.New("invalid traffic scheduler budget")
 	}
-	// Keep BurstBytes and queue capacity stable while running; only adaptive
-	// rates change. Admission slots have live waiters that cannot be resized.
+	if config.BurstBytes != s.config.BurstBytes || config.MaxPacketBytes != s.config.MaxPacketBytes || config.QueuePackets != s.config.QueuePackets {
+		return errors.New("traffic scheduler packet and queue limits are immutable")
+	}
+	// Account for elapsed time at the old rate before installing the new one.
+	now := time.Now()
+	s.root.refill(now)
+	s.bulk.refill(now)
 	s.root.rate = float64(config.BytesPerSecond)
 	s.bulk.rate = float64(config.BulkBytesPerSecond)
-	s.config = config
+	// Do not rewrite immutable fields read by admission and Writer without locks.
+	s.config.BytesPerSecond = config.BytesPerSecond
+	s.config.BulkBytesPerSecond = config.BulkBytesPerSecond
+	s.signal()
 	return nil
 }
 
@@ -254,7 +260,7 @@ func (s *Scheduler) drain() {
 		}
 		p := s.queue[index]
 		s.queue = append(s.queue[:index], s.queue[index+1:]...)
-		root, bulk, urgentRun, lastFlow := s.root, s.bulk, s.urgentRun, s.lastFlow
+		urgentRun, lastFlow := s.urgentRun, s.lastFlow
 		err := s.ctx.Err()
 		if err == nil {
 			err = p.ctx.Err()
@@ -275,10 +281,14 @@ func (s *Scheduler) drain() {
 		}
 		if p.retry && errors.Is(err, ErrWouldBlock) {
 			s.mu.Lock()
-			// Only drain mutates the buckets. Returning the exact prior state
-			// neither spends bandwidth on a stalled destination nor mints a
-			// fresh burst when it becomes writable again.
-			s.root, s.bulk, s.urgentRun, s.lastFlow = root, bulk, urgentRun, lastFlow
+			// Refund only this reservation. UpdateConfig may have changed rates
+			// and refilled the buckets while the callback ran outside the lock.
+			// Restoring a bucket snapshot would silently undo that update.
+			s.root.tokens = min(s.root.burst, s.root.tokens+float64(p.bytes))
+			if p.class == Bulk {
+				s.bulk.tokens = min(s.bulk.burst, s.bulk.tokens+float64(p.bytes))
+			}
+			s.urgentRun, s.lastFlow = urgentRun, lastFlow
 			p.ready = time.Now().Add(5 * time.Millisecond)
 			// Retain FIFO before later packets of the same flow, including
 			// callers admitted while the callback ran.
