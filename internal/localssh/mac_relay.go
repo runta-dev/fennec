@@ -192,7 +192,8 @@ type macUpstream struct {
 	closed      bool
 	pool        chan pooledSession
 	downstream  *gossh.ServerConn
-	forwardUsed bool // a lost Mac connection must not leave a successful -R alive
+	forwardUsed bool     // a lost Mac connection must not leave a successful -R alive
+	health      sync.Map // data client -> independent authenticated health connection
 }
 
 // connect returns the live connection to the Mac, dialing once for all
@@ -228,6 +229,7 @@ func (u *macUpstream) connect() (*gossh.Client, error) {
 	u.dialing = nil
 	if err == nil && u.closed {
 		client.Close()
+		u.closeHealth(client)
 		client, err = nil, net.ErrClosed
 	}
 	u.err = err
@@ -245,6 +247,41 @@ func (u *macUpstream) connect() (*gossh.Client, error) {
 func (u *macUpstream) dial() (*gossh.Client, error) {
 	ctx, cancel := context.WithTimeout(u.ctx, 15*time.Second)
 	defer cancel()
+	client, err := u.dialSSH(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { client.Close() })
+	registered, _, err := client.SendRequest(registerConnectionHealth, true, nil)
+	if err != nil {
+		stop()
+		client.Close()
+		return nil, err
+	}
+	control, err := u.dialSSH(ctx)
+	if !stop() || err != nil {
+		client.Close()
+		if control != nil {
+			control.Close()
+		}
+		if err == nil {
+			err = ctx.Err()
+		}
+		return nil, err
+	}
+	u.health.Store(client, &macRelayHealth{client: control, registered: registered})
+	forwarded := client.HandleChannelOpen("forwarded-tcpip")
+	go func() {
+		for channel := range forwarded {
+			go u.relayReverseChannel(client, channel)
+		}
+	}()
+	return client, nil
+}
+
+// Each inner SSH connection is a byte stream on the existing resident link;
+// this does not create another Mac-to-cloud gateway connection or daemon.
+func (u *macUpstream) dialSSH(ctx context.Context) (*gossh.Client, error) {
 	conn, err := u.options.Dial(ctx)
 	if err != nil {
 		return nil, err
@@ -265,19 +302,13 @@ func (u *macUpstream) dial() (*gossh.Client, error) {
 		conn.Close()
 		return nil, err
 	}
-	client := gossh.NewClient(connection, channels, requests)
-	forwarded := client.HandleChannelOpen("forwarded-tcpip")
-	go func() {
-		for channel := range forwarded {
-			go u.relayReverseChannel(client, channel)
-		}
-	}()
-	return client, nil
+	return gossh.NewClient(connection, channels, requests), nil
 }
 
 // watch keeps the connection alive and forgets it once it ends, so the next
 // session dials again.
 func (u *macUpstream) watch(client *gossh.Client) {
+	defer u.closeHealth(client)
 	ended := make(chan struct{})
 	go func() {
 		client.Wait()
@@ -291,21 +322,12 @@ func (u *macUpstream) watch(client *gossh.Client) {
 			u.invalidate(client)
 			return
 		case <-ticker.C:
-			func() {
-				reply := make(chan error, 1)
-				go func() {
-					_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
-					reply <- err
-				}()
-				select {
-				case err := <-reply:
-					if err != nil {
-						client.Close()
-					}
-				case <-time.After(5 * time.Second):
-					client.Close()
-				}
-			}()
+			if !u.probeHealth(client, ended) {
+				u.invalidate(client)
+				return
+			}
+		case <-u.ctx.Done():
+			return
 		}
 	}
 }
@@ -391,6 +413,7 @@ func (u *macUpstream) invalidate(client *gossh.Client) {
 	}
 	u.mu.Unlock()
 	client.Close()
+	u.closeHealth(client)
 	if closeDownstream && u.downstream != nil {
 		u.downstream.Close()
 	}
@@ -425,6 +448,7 @@ func (u *macUpstream) close() {
 	if client != nil {
 		client.Close()
 	}
+	u.health.Range(func(key, _ any) bool { u.closeHealth(key.(*gossh.Client)); return true })
 	for {
 		select {
 		case pooled := <-u.pool:

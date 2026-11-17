@@ -23,6 +23,8 @@ not rebuild the application or rerun historical live benchmarks.
   [predictive echo](predictive-echo.md), and [cmux hooks](cmux-hooks.md).
 - [SSH port forwarding](ssh-port-forwarding.md): local, dynamic, and remote TCP
   forwarding through the paired Mac alias, policy, and lifecycle.
+- [Mac relay connection health](mac-relay-health.md): independent authenticated
+  probes that do not queue behind data transfers or forwarding approval.
 - [Cloud handoff workflow](../skills/cloud-handoff/SKILL.md): use available tools;
   synchronization is not a production offline-readiness guarantee.
 - [Hidden dependency audit](hidden-dependency-audit.md): source inventory, not

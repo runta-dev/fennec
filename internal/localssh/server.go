@@ -388,9 +388,12 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 	}
 	server.SubsystemHandlers = map[string]ssh.SubsystemHandler{"sftp": fileTransfer(ctx, paired, broker, requireApproval)}
 	reverse := reverseForward(ctx, paired, broker, requireApproval)
+	health := connectionHealth(ctx, paired)
 	server.RequestHandlers = map[string]ssh.RequestHandler{
-		"tcpip-forward":        reverse,
-		"cancel-tcpip-forward": reverse,
+		"tcpip-forward":          reverse,
+		"cancel-tcpip-forward":   reverse,
+		registerConnectionHealth: health,
+		probeConnectionHealth:    health,
 	}
 	server.AddHostKey(signer)
 	go func() {

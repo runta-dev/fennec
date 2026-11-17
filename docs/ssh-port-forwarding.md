@@ -3,7 +3,7 @@
 The cloud computer's paired-device SSH alias supports local and dynamic
 forwarding (`-L`, `-D`) and remote TCP forwarding (`-R`). Both the cloud terminal
 binary and Mac connector must include remote-forwarding support. Alias
-registration uses `relay-v4` ControlMaster sockets so older masters are not reused.
+registration uses `relay-v5` ControlMaster sockets so older masters are not reused.
 
 To preview a service running on cloud loopback port 8765 on the Mac, run on the
 cloud computer:
@@ -22,6 +22,10 @@ by the cloud SSH client. Use an unused Mac port when an existing service already
 owns 8765. Port zero requests are supported and return the allocated port.
 
 ## Transport and policy
+
+[Connection health](mac-relay-health.md) is checked through a separate
+authenticated resident byte stream, so bulk data and pending forwarding
+approvals cannot hold up the probe. The per-attempt timeout remains five seconds.
 
 - The relay forwards `tcpip-forward` and `cancel-tcpip-forward` global requests,
   including success payloads and cancellation without a requested reply.

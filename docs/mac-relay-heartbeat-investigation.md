@@ -1,5 +1,9 @@
 # Mac relay heartbeat false disconnects (November 17, 2026)
 
+This is the original diagnosis and controlled experiment. The subsequent
+[connection-health implementation](mac-relay-health.md) separates authenticated
+health probes from the data stream without increasing the probe timeout.
+
 ## Finding
 
 The reproduced disconnects were initiated by the cloud Mac relay's own
