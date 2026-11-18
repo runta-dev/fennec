@@ -17,7 +17,7 @@ whose `Refresh` compares the systemd process's executable inode with the target
 and restarts the owned service when necessary. It does not kill agent sessions
 or alter credentials, models, reasoning effort or the saved Magpie toggle.
 
-The runtime, `0.1.4177-runta.3`, is based on upstream commit
+The runtime, `0.1.4177-runta.5`, is based on upstream commit
 `e6e0585bd3d92a79dab08f0955789a5801382b71`. Codex omits the backend's output
 `metadata.turn_id` from replayed history. The downstream excludes this
 top-level attribution when checking WebSocket continuation. Version `runta.3`
@@ -37,6 +37,17 @@ replay. Comparison ignores only its string `turn_id` and numeric `create_time`
 and `content_token_count`. Unknown fields, unexpected types, other roles and
 substantive history changes still require a full request; transmitted items
 are unchanged.
+
+Version `runta.5` lists the model catalog of an account signed in after the
+gateway started. Fennec starts a new cloud computer's gateway before it copies
+the Mac's sign-ins in; `magpie serve` fetched account lists only at start and
+while one was missing, and the hourly relist leaves accounts without a list to
+that fetch, so the Codex account was never listed and Codex was offered only
+Claude models until the gateway restarted. The gateway now looks for such
+accounts every minute. It also re-reads catalog, memory and session database
+files written within two seconds of their last read, so a same-size rewrite is
+not missed. The pinned source is Magpie commit
+`9f7f7faa2d5b364951a8fdee2731550c910557aa`; `runta.4` was not released.
 
 To upgrade:
 
