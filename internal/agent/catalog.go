@@ -25,7 +25,7 @@ type definition struct {
 // Config files are stat'ed only; credentials and file contents are never read.
 var catalog = []definition{
 	{"claude", "Claude Code", "claudecode-color.svg", []string{"claude"}, []string{".claude/settings.json"}, nil, true},
-	{"codex", "Codex", "codex-color.svg", []string{"codex"}, []string{".codex/config.toml"}, nil, true},
+	{"codex", "Codex CLI", "codex-color.svg", []string{"codex"}, []string{".codex/config.toml"}, nil, true},
 	{"pi", "Pi", "pi.svg", []string{"pi"}, []string{".pi/agent/settings.json"}, nil, true},
 	{"kimi", "Kimi Code", "kimi-color.svg", []string{"kimi"}, []string{".kimi-code/config.toml"}, nil, true},
 	{"claude-desktop", "Claude Desktop", "claude-color.svg", nil, nil, []string{"Claude.app"}, false},
@@ -143,7 +143,7 @@ func PanelList(discovered []Agent) []Agent {
 }
 
 func panelList(discovered []Agent, appRoots []string) []Agent {
-	desktop := Agent{ID: CodexDesktopID, Name: "ChatGPT", Icon: "chatgpt.svg", Cloud: true}
+	desktop := Agent{ID: CodexDesktopID, Name: "ChatGPT / Codex Desktop", Icon: "chatgpt.svg", Cloud: true}
 	if codexDesktopInstalled(appRoots) {
 		desktop.Installed, desktop.Evidence = true, "application"
 	}
