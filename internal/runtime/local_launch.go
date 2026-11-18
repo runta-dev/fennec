@@ -251,6 +251,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	if request.Agent == "pi" {
 		command = append([]string{"env", piHardwareCursor}, command...)
 	}
+	if request.Agent == "claude" {
+		command = append([]string{"env", claudeNativeCursor}, command...)
+	}
 	if request.NativeLogin {
 		if err := setup.PrepareNativeLogin(ctx, runtime.Home, setup.NativeLogin{ID: request.ID, Agent: request.Agent}); err != nil {
 			return LocalTerminal{}, err

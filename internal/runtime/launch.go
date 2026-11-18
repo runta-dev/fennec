@@ -185,6 +185,8 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  # Pi then keeps the terminal cursor at the insertion point (not a drawn one),
  # which predictive echo needs; an explicit Pi setting still wins.
  if request['agent']=='pi':command=['env','` + piHardwareCursor + `']+command
+ # Claude Code likewise, instead of a drawn cursor behind a remote flag.
+ if request['agent']=='claude':command=['env','` + claudeNativeCursor + `']+command
  # The cloud runtime has no session bus. Without an address, Go and shell
  # dbus clients run dbus-launch, and every such daemon outlives its agent and
  # holds an inotify instance until the user's limit is exhausted.
@@ -210,6 +212,13 @@ const kimiTrustWorkspace = "KIMI_CODE_TRUST_WORKSPACE=1"
 // value in the user's Pi settings takes precedence). The composer-aware
 // predictive echo locates the composer by the terminal cursor.
 const piHardwareCursor = "PI_HARDWARE_CURSOR=1"
+
+// claudeNativeCursor makes Claude Code show the terminal cursor at the
+// insertion point. Without it Claude Code hides the terminal cursor and draws
+// an inverse-video one unless its remote "tengu_native_cursor" flag is on for
+// the machine, so a newly created cloud computer silently loses predictive
+// echo. An explicit value in the user's Claude settings env still wins.
+const claudeNativeCursor = "CLAUDE_CODE_NATIVE_CURSOR=1"
 
 // noSessionBus tells dbus clients there is no session bus, so they fail fast
 // instead of starting one (the Magpie supervisor sets the same).

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/hookbridge"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,6 +216,48 @@ func TestPiLaunchShowsHardwareCursor(t *testing.T) {
 	}
 	if !strings.Contains(script, `if request['agent']=='pi':command=['env','PI_HARDWARE_CURSOR=1']+command`) {
 		t.Fatal("cloud launch script does not show Pi's hardware cursor")
+	}
+}
+
+// Claude Code shows the terminal cursor at the insertion point
+// (CLAUDE_CODE_NATIVE_CURSOR=1) in both launch paths and both agent modes, so
+// predictive echo does not depend on Claude Code's remote cursor flag.
+func TestClaudeLaunchShowsNativeCursor(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		home := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(home, ".local/fennec"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".local/fennec/agent-mode.json"), []byte(fmt.Sprintf(`{"native":%v}`, native)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var command []string
+		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/claude", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+			if args[0] == "ls" {
+				return []byte(`{"terminals":[]}`), nil
+			}
+			for i, arg := range args {
+				if arg == "--" {
+					command = append([]string{}, args[i+1:]...)
+				}
+			}
+			return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+		}}
+		request := LocalLaunch{ID: strings.Repeat("c", 32), Agent: "claude", LocalDirectory: "/project", Device: "1234abcd"}
+		if _, err := backend.Launch(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(command, " ")
+		if !strings.Contains(joined, "env CLAUDE_CODE_NATIVE_CURSOR=1 ") || !strings.Contains(joined, "env IS_SANDBOX=1 ") {
+			t.Fatalf("native=%v claude command %q", native, joined)
+		}
+	}
+	script, err := LaunchScriptWithArgs(strings.Repeat("f", 32), "claude", "/tmp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `if request['agent']=='claude':command=['env','CLAUDE_CODE_NATIVE_CURSOR=1']+command`) {
+		t.Fatal("cloud launch script does not show Claude Code's native cursor")
 	}
 }
 
