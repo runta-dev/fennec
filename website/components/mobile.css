@@ -15,24 +15,20 @@
   --shimmer-base: light-dark(#6c665f8c, #a39d968c);
   --shimmer-band: light-dark(#15120fbf, #f4f1edbf);
   --send-disabled: light-dark(#15120f59, #f4f1ed59);
-  /* Titanium rim: silver in light, graphite in dark. */
-  --rim-light: light-dark(#f4f4f6, #77767a); --rim-mid: light-dark(#cfd0d3, #48474b); --rim-low: light-dark(#e6e7e9, #626165);
-  --rim-edge: light-dark(#b9babe, #85848a);
   position: relative;
   min-width: 0;
-  aspect-ratio: 416 / 888;
+  aspect-ratio: 424 / 896;
 }
 .iphone {
   position: absolute;
   top: 0;
   left: 0;
-  width: 416px;
-  height: 888px;
-  /* 4 pt of rim, then a 3 pt black border around the display. */
-  padding: 7px;
-  border-radius: 64px;
-  background: linear-gradient(145deg, var(--rim-light), var(--rim-mid) 45%, var(--rim-low));
-  box-shadow: inset 0 0 0 1px var(--rim-edge), 0 14px 32px #0000001c, 0 4px 14px #0000000d;
+  width: 424px;
+  height: 896px;
+  padding: 11px;
+  border-radius: 68px;
+  background: linear-gradient(145deg, #4a4744, #1f1d1c 40%, #2c2a28);
+  box-shadow: inset 0 0 0 1.5px #5d5955, inset 0 0 0 5px #121110, 0 18px 40px #00000024, 0 5px 20px #0000000a;
   transform-origin: top left;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -46,12 +42,11 @@
   border-radius: 57px;
   overflow: hidden;
   background: var(--bg);
-  box-shadow: 0 0 0 3px #0b0b0c;
   isolation: isolate;
 }
 .iphone-island {
   position: absolute;
-  top: 18px;
+  top: 22px;
   left: 50%;
   width: 126px;
   height: 37px;
