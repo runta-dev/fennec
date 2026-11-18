@@ -186,18 +186,16 @@ window.renderAgents = agents => {
     icon.src = 'icons/' + agent.icon;
     const name = document.createElement('span');
     name.className = 'agent-name';
-    // "ChatGPT / Codex Desktop": the slash is a drawn hairline exactly as tall
-    // as the capitals. Any font's "/" glyph rises above the cap line and drops
-    // below the baseline. The hidden "/" keeps the name whole for VoiceOver.
-    agent.name.split(' / ').forEach((part, index) => {
-      if (index) {
-        const separator = document.createElement('span');
-        separator.className = 'agent-name-separator';
-        separator.innerHTML = '<svg viewBox="0 0 10 36" preserveAspectRatio="none" aria-hidden="true"><line x1="10" y1="0" x2="0" y2="36" vector-effect="non-scaling-stroke"/></svg><span class="agent-name-separator-text">/</span>';
-        name.append(separator);
-      }
-      name.append(part);
-    });
+    // "ChatGPT / Codex Desktop" shows as the name ChatGPT followed by a muted
+    // "Codex Desktop" label: no separator glyph to align against the text.
+    const [primary, ...secondary] = agent.name.split(' / ');
+    name.append(primary);
+    if (secondary.length) {
+      const label = document.createElement('span');
+      label.className = 'agent-name-secondary';
+      label.textContent = secondary.join(' ');
+      name.append(' ', label);
+    }
     const state = document.createElement('span');
     state.className = 'detected';
     state.textContent = "[[i18n:ui.this_mac]]";
