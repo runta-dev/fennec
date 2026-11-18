@@ -115,9 +115,9 @@ struct ScanSignInView: View {
 
     private var choicesPanel: some View {
         VStack(spacing: 12) {
-            loginButton("Google", asset: "auth-google", method: "google")
-            loginButton("GitHub", asset: "auth-github", method: "github")
-            Button { mode = "email" } label: { loginLabel(L10n.text("ios.email"), symbol: "envelope") }
+            loginButton(L10n.text("ios.google_signin"), asset: "auth-google", method: "google")
+            loginButton(L10n.text("ios.github_signin"), asset: "auth-github", method: "github")
+            Button { mode = "email" } label: { loginLabel(L10n.text("ios.email_signin"), symbol: "envelope") }
                 .disabled(auth.isAuthorizing)
             Button { mode = "scan" } label: { loginLabel(L10n.text("ios.scan"), symbol: "qrcode.viewfinder") }
                 .disabled(auth.isAuthorizing)

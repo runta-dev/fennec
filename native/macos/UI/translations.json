@@ -13,8 +13,8 @@
       "zh-CN": "邮箱"
     },
     "ios.scan": {
-      "en-US": "Scan",
-      "zh-CN": "扫码"
+      "en-US": "Scan QR code",
+      "zh-CN": "扫码登录"
     },
     "ios.kill_session": {
       "en-US": "Kill",
@@ -309,7 +309,7 @@
       "zh-CN": "使用 GitHub 继续"
     },
     "ios.email_signin": {
-      "en-US": "Continue with email",
+      "en-US": "Continue with Email",
       "zh-CN": "使用邮箱继续"
     },
     "ios.approve_mac": {

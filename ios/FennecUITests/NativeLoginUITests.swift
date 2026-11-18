@@ -9,20 +9,20 @@ final class NativeLoginUITests: XCTestCase {
         app.launchArguments += ["-RuntaEnvironment", "integration", "-appLanguage", "en-US"]
         app.launch()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        XCTAssertTrue(app.buttons["Google"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["GitHub"].exists)
-        XCTAssertTrue(app.buttons["Email"].exists)
-        XCTAssertTrue(app.buttons["Scan"].exists)
+        XCTAssertTrue(app.buttons["Continue with Google"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Continue with GitHub"].exists)
+        XCTAssertTrue(app.buttons["Continue with Email"].exists)
+        XCTAssertTrue(app.buttons["Scan QR code"].exists)
         XCTAssertFalse(app.buttons["Choose from Photos"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "Native-Login-Choices"
         shot.lifetime = .keepAlways
         add(shot)
-        app.buttons["Email"].tap()
+        app.buttons["Continue with Email"].tap()
         XCTAssertTrue(app.textFields["login-email-address"].exists)
         XCTAssertTrue(app.buttons["Send code"].exists)
         app.buttons["Back"].tap()
-        app.buttons["Scan"].tap()
+        app.buttons["Scan QR code"].tap()
         let cameraPrompt = springboard.alerts.firstMatch
         if cameraPrompt.waitForExistence(timeout: 3), cameraPrompt.buttons["Allow"].firstMatch.exists {
             cameraPrompt.buttons["Allow"].firstMatch.tap()
@@ -31,7 +31,7 @@ final class NativeLoginUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Choose from Photos"].exists)
         app.buttons["Back"].tap()
         for provider in ["Google", "GitHub"] {
-            let button = app.buttons[provider]
+            let button = app.buttons["Continue with \(provider)"]
             let enabled = NSPredicate(format: "enabled == true")
             expectation(for: enabled, evaluatedWith: button)
             waitForExpectations(timeout: 10)
@@ -41,7 +41,7 @@ final class NativeLoginUITests: XCTestCase {
             let text = prompt.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " ")
             XCTAssertTrue(text.contains("runta.xyz"), "Wrong authentication environment")
             prompt.buttons["Cancel"].tap()
-            XCTAssertTrue(app.buttons["Scan"].exists)
+            XCTAssertTrue(app.buttons["Scan QR code"].exists)
         }
     }
 }

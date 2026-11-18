@@ -19,9 +19,9 @@ final class EnvironmentSwitchUITests: XCTestCase {
         integration.tap()
         XCTAssertTrue(app.staticTexts["Integration environment"].waitForExistence(timeout: 5))
 
-        XCTAssertTrue(app.buttons["Google"].exists)
-        XCTAssertTrue(app.buttons["GitHub"].exists)
-        app.buttons["Google"].tap()
+        XCTAssertTrue(app.buttons["Continue with Google"].exists)
+        XCTAssertTrue(app.buttons["Continue with GitHub"].exists)
+        app.buttons["Continue with Google"].tap()
         // iOS asks before opening the sign-in sheet and names the domain.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let prompt = springboard.alerts.firstMatch
