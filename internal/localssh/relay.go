@@ -55,7 +55,13 @@ func relaySetupScript(device string) string {
 const (
 	parkedBridges       = 8
 	maxRelayConnections = 64
+	// bridgeDialAttempts consecutive failures to park one bridge stop the
+	// relay; earlier failures wait bridgeRetryDelay, doubling.
+	bridgeDialAttempts = 3
 )
+
+// bridgeRetryDelay is a variable for tests.
+var bridgeRetryDelay = 200 * time.Millisecond
 
 func serveRelay(ctx context.Context, client *ssh.Client, port int, local string, owned ...bool) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -83,26 +89,42 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string,
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
+			// One slot's failure is retried here. Cancelling the whole relay
+			// for it dropped every forwarded connection and left the cloud with
+			// no bridges, so new connections failed their handshake, probes
+			// failed and the relay was force-repaired. Only a slot that cannot
+			// park again (the cloud relay is gone) stops the relay, so Link
+			// reconciles it.
+			failures := 0
 			for ctx.Err() == nil {
 				remote, err := client.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 				if err != nil {
-					if ctx.Err() == nil {
-						log.Printf("device relay stopping: parking a bridge failed: %v", err)
+					if ctx.Err() != nil {
+						return
 					}
-					cancel()
-					return
+					failures++
+					if failures >= bridgeDialAttempts {
+						log.Printf("device relay stopping: parking a bridge failed %d times: %v", failures, err)
+						cancel()
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(bridgeRetryDelay << (failures - 1)):
+					}
+					continue
 				}
+				failures = 0
 				stop := context.AfterFunc(ctx, func() { remote.Close() })
 				var marker [1]byte
 				_, err = io.ReadFull(remote, marker[:])
 				stop()
 				if err != nil {
+					// The cloud closed this idle bridge (it keeps a bounded set,
+					// or it restarted): park another; a dead relay fails the dial.
 					remote.Close()
-					if ctx.Err() == nil {
-						log.Printf("device relay stopping: parked bridge closed before use: %v", err)
-					}
-					cancel()
-					return
+					continue
 				}
 				if marker[0] != 'F' {
 					remote.Close()
