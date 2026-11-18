@@ -33,6 +33,9 @@ not rebuild the application or rerun historical live benchmarks.
   clean-device acceptance.
 - [Codex Desktop research](codex-desktop-cloud.md): protocol research with its own
   acceptance boundary; CLI support does not imply Desktop support.
+- [Local agent shims](agent-shims.md): how terminal commands reach the cloud
+  computer, the environments that break it, the proposed redesign, and safe
+  removal after Trash or uninstall, including Codex Desktop's environment.
 
 ## Historical evidence and investigations
 
