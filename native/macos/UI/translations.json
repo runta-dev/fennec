@@ -1,12 +1,12 @@
 {
   "messages": {
     "ios.empty_chat_title": {
-      "en-US": "What would you like to work on?",
+      "en-US": "What would you like to do?",
       "zh-CN": "想从哪里开始？"
     },
     "ios.empty_chat_detail": {
-      "en-US": "Describe a feature, a bug, or a question about your code.",
-      "zh-CN": "开发新功能、修复问题，或一起探索代码。"
+      "en-US": "Start with a task, question, or idea.",
+      "zh-CN": "从一个任务、问题或想法开始。"
     },
     "ios.authorize_phone": {
       "en-US": "Authorize this iPhone",
