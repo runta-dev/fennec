@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"fennec/internal/guardian"
@@ -20,7 +21,13 @@ const (
 	decisionAutoDenied   = "auto_review_denied"
 	decisionAutoTimedOut = "auto_review_timeout"
 	decisionForbidden    = "policy_forbidden"
+	// decisionUserAllowed: the user allowed this command from Activity after
+	// auto-review refused it (see allowlist.go).
+	decisionUserAllowed = "user_allowed"
 )
+
+// allowHint tells the agent that the user can still overrule auto-review.
+const allowHint = "The user can allow this command in Fennec Activity on the Mac; if they do, retry the same command unchanged."
 
 type approvalRequest struct {
 	Display     string // shown to the user and recorded in audit
@@ -45,6 +52,10 @@ func (b *Broker) authorize(ctx context.Context, request approvalRequest) approva
 	if policy.Approval == "never" {
 		return approvalOutcome{Allowed: true, Decision: "auto_sandbox"}
 	}
+	if Granted(b.directory, GrantKey(request.Fingerprint, request.Action.Command)) {
+		b.resetBreaker(request.Fingerprint)
+		return approvalOutcome{Allowed: true, Decision: decisionUserAllowed}
+	}
 	if policy.Approval == sandbox.PresetAuto && b.Reviewer != nil && !b.breakerTripped(request.Fingerprint) {
 		started := time.Now()
 		result := b.Reviewer.Review(ctx, request.Action)
@@ -59,9 +70,9 @@ func (b *Broker) authorize(ctx context.Context, request approvalRequest) approva
 			if result.Assessment.Outcome == "deny" {
 				b.recordReview(request.Fingerprint, true)
 			}
-			return approvalOutcome{Decision: decisionAutoDenied, Message: result.Message, Rationale: result.Assessment.Rationale}
+			return approvalOutcome{Decision: decisionAutoDenied, Message: withAllowHint(result.Message), Rationale: result.Assessment.Rationale}
 		case guardian.TimedOut:
-			return approvalOutcome{Decision: decisionAutoTimedOut, Message: result.Message}
+			return approvalOutcome{Decision: decisionAutoTimedOut, Message: withAllowHint(result.Message)}
 		}
 		// Unavailable: ask the user.
 	}
@@ -70,6 +81,19 @@ func (b *Broker) authorize(ctx context.Context, request approvalRequest) approva
 		b.resetBreaker(request.Fingerprint)
 	}
 	return approvalOutcome{Allowed: allowed, Decision: decision}
+}
+
+func withAllowHint(message string) string {
+	message = strings.TrimRight(message, "\n")
+	if message == "" {
+		return allowHint
+	}
+	return message + "\n" + allowHint
+}
+
+// Grantable reports whether the user may overrule this audited decision.
+func Grantable(decision string) bool {
+	return decision == decisionAutoDenied || decision == decisionAutoTimedOut
 }
 
 // Codex circuit breaker: 3 consecutive auto-review denials, or 10 in the last

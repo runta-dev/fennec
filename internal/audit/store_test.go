@@ -149,3 +149,17 @@ func TestConnectivityProbesAreNotActivity(t *testing.T) {
 		t.Fatalf("got %d entries (%d total), want the blocked probe and the real command", len(result.Entries), result.Summary.Total7d)
 	}
 }
+
+func TestFindAndReasonRedaction(t *testing.T) {
+	store := &Store{Directory: t.TempDir(), Now: func() time.Time { return time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC) }}
+	if err := store.Record(Entry{ID: "abc", Kind: "exec", Command: "git push", Reason: "push with TOKEN=supersecret", Grant: "g", Allowed: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := store.Find("abc")
+	if !ok || got.Grant != "g" || got.Allowed || strings.Contains(got.Reason, "supersecret") || !strings.Contains(got.Reason, "push with") {
+		t.Fatalf("unexpected entry: %+v %v", got, ok)
+	}
+	if _, ok := store.Find("missing"); ok {
+		t.Fatal("unknown id must not be found")
+	}
+}

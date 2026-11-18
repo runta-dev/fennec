@@ -601,6 +601,18 @@ nav button{padding:3px 7px}
 .audit-entry.is-blocked .audit-meta-text{color:#b06014}
 :root[data-theme=dark] .audit-entry.is-blocked .audit-meta-text{color:#f3a865}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .audit-entry.is-blocked .audit-meta-text{color:#f3a865}}
+.audit-entry{display:flex;align-items:flex-start;gap:8px}
+.audit-entry>.audit-entry-head{flex:1;min-width:0}
+.audit-entry-reason{display:flex;gap:6px;min-width:0;font-size:11px;line-height:1.45}
+.audit-reason-label{flex:none;font-weight:500;color:var(--muted)}
+.audit-reason-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.audit-entry-reason.is-expanded .audit-reason-text{white-space:pre-wrap;overflow:visible;overflow-wrap:anywhere}
+.audit-entry-action{flex:none;display:flex;align-items:center;min-width:52px;justify-content:flex-end;padding-top:7px}
+.audit-allow{height:22px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-size:11px;font-weight:500;color:var(--text)}
+.audit-allow:hover{background:var(--expanded);filter:none}
+.audit-allowed{font-size:11px;font-weight:500;color:#4f9a65;line-height:22px}
+:root[data-theme=dark] .audit-allowed{color:#6dbe84}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .audit-allowed{color:#6dbe84}}
 /* ChatGPT confirmations have their own styles, independent of the updater. */
 .confirmation-dialog{width:min(368px,calc(100vw - 28px));max-height:calc(100vh - 28px);margin:auto;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);overflow:auto}
 .confirmation-dialog::backdrop{background:#0005}

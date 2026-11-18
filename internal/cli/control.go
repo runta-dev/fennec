@@ -205,8 +205,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		if len(raw) > 0 && json.Unmarshal(raw, &opts) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid audit query"}
 		}
-		return auditStore.Query(opts)
+		return queryAudit(home, auditStore, opts)
 	}
+	controller.Additional["audit.allow"] = allowAudit(home, auditStore)
 	controller.Additional["audit.clear"] = func(context.Context, json.RawMessage) (any, error) {
 		if err := auditStore.Clear(); err != nil {
 			return nil, err

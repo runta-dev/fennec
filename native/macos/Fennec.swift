@@ -929,6 +929,13 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
             return
         }
+        if action.hasPrefix("audit-allow:"),let data=String(action.dropFirst(12)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
+            control.call("audit.allow",params) { [weak self] result in
+                // On failure reload, which drops the optimistic "Allowed" state.
+                if case .success(let value) = result { self?.render("renderAuditLog",[value]) } else { self?.loadAuditLog() }
+            }
+            return
+        }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
         if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else if visibleRefreshTab == "governance" { loadAuditLog() } else { refreshAgents() }; return }

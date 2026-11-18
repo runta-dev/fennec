@@ -38,6 +38,12 @@ type Entry struct {
 	ExitCode       int    `json:"exit_code"`
 	DurationMS     int64  `json:"duration_ms"`
 	Detail         string `json:"detail,omitempty"` // sanitized stderr snippet or block reason
+	// Reason is the agent's justification for an escalation request.
+	Reason string `json:"reason,omitempty"`
+	// Grant is an opaque device+command key the user can allow after an
+	// auto-review refusal; Allowed is filled in on queries once they have.
+	Grant   string `json:"grant,omitempty"`
+	Allowed bool   `json:"allowed,omitempty"`
 	// Count is set on query results when repeats were grouped into this row.
 	Count int `json:"count,omitempty"`
 }
@@ -62,7 +68,40 @@ func connectivityProbe(e Entry) bool {
 const RepeatWindow = 10 * time.Minute
 
 func sameActivity(a, b Entry) bool {
-	return a.Kind == b.Kind && a.Command == b.Command && a.Workdir == b.Workdir && a.SandboxMode == b.SandboxMode && a.Decision == b.Decision && a.Blocked == b.Blocked
+	return a.Kind == b.Kind && a.Command == b.Command && a.Workdir == b.Workdir && a.SandboxMode == b.SandboxMode && a.Decision == b.Decision && a.Blocked == b.Blocked && a.Reason == b.Reason && a.Grant == b.Grant
+}
+
+// Find returns the retained entry with this ID.
+func (s *Store) Find(id string) (Entry, bool) {
+	if s == nil || s.Directory == "" || id == "" {
+		return Entry{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	items, err := os.ReadDir(s.Directory)
+	if err != nil {
+		return Entry{}, false
+	}
+	minDate := cutoffDate(s.now().UTC())
+	for _, item := range items {
+		m := dateShardPattern.FindStringSubmatch(item.Name())
+		if item.IsDir() || m == nil || m[1] < minDate {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(s.Directory, item.Name()))
+		if readErr != nil || !bytes.Contains(raw, []byte(`"id":"`+id+`"`)) {
+			continue
+		}
+		scanner := bufio.NewScanner(bytes.NewReader(raw))
+		scanner.Buffer(make([]byte, 4096), 256<<10)
+		for scanner.Scan() {
+			var e Entry
+			if json.Unmarshal(scanner.Bytes(), &e) == nil && e.ID == id {
+				return e, true
+			}
+		}
+	}
+	return Entry{}, false
 }
 
 // Summary provides top-level counts for the Settings badge and audit header.
@@ -147,6 +186,8 @@ func (s *Store) Record(e Entry) error {
 	}
 	e.Command = Redact(e.Command, 1024)
 	e.Detail = Redact(e.Detail, 384)
+	e.Reason = Redact(e.Reason, 384)
+	e.Allowed = false
 	if e.Decision == "user_denied" || e.Decision == "sandbox_blocked" {
 		e.Blocked = true
 	}

@@ -173,3 +173,28 @@ assert.equal(modeSelect.value, 'ask');
 modeSelect.value = 'auto';
 modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
+
+// Escalation reasons are visible, and an auto-review refusal can be allowed in place.
+context.window.renderAuditLog({
+  summary: { total_7d: 2, today_count: 2, blocked_7d: 1, retention_days: 7 },
+  entries: [
+    { id: 'd1', timestamp_ms: Date.now(), kind: 'exec', command: 'git push --force', reason: 'publish the rebased release branch', decision: 'auto_review_denied', blocked: true, grant: 'g1' },
+    { id: 'a1', timestamp_ms: Date.now(), kind: 'exec', command: 'npm install', reason: 'install dependencies', decision: 'auto_review_approved', blocked: false, grant: '' }
+  ]
+});
+const deniedRow = nodes['#audit-list'].children[0];
+const deniedBody = deniedRow.children[0].children[1];
+assert.equal(deniedBody.children[1].className, 'audit-entry-reason');
+assert.equal(deniedBody.children[1].children[0].textContent, 'audit_agent_reason');
+assert.equal(deniedBody.children[1].children[1].textContent, 'publish the rebased release branch');
+assert.equal(deniedRow.children.length, 2, 'refused row has an action slot');
+const allowButton = deniedRow.children[1].children[0];
+assert.equal(allowButton.className, 'audit-allow');
+assert.equal(allowButton.textContent, 'audit_allow');
+assert.equal(nodes['#audit-list'].children[1].children.length, 1, 'approved row has no Allow control');
+allowButton.onclick();
+assert.equal(sent.pop(), 'audit-allow:{"id":"d1","filter":"all"}');
+assert.equal(nodes['#audit-list'].children[0].children[1].children[0].className, 'audit-allowed', 'switch flips to Allowed immediately');
+context.window.renderAuditLog({ summary: { total_7d: 1, blocked_7d: 0, retention_days: 7 }, entries: [{ id: 'u1', kind: 'exec', command: 'git push --force', decision: 'user_allowed', blocked: false }] });
+assert.ok(nodes['#audit-list'].children[0].children[0].children[1].children[1].children[0].textContent.startsWith('audit_decision_user_allowed'));
+console.log('PASS escalation reasons and Allow after auto-review refusal');

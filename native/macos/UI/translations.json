@@ -2813,6 +2813,46 @@
       "zh-CN": "自动审查已拒绝",
       "zh-TW": "自動審查已拒絕"
     },
+    "ui.audit_agent_reason": {
+      "en-GB": "Reason",
+      "en-US": "Reason",
+      "ja": "理由",
+      "ko": "사유",
+      "zh-CN": "理由",
+      "zh-TW": "理由"
+    },
+    "ui.audit_allow": {
+      "en-GB": "Allow",
+      "en-US": "Allow",
+      "ja": "許可",
+      "ko": "허용",
+      "zh-CN": "允许",
+      "zh-TW": "允許"
+    },
+    "ui.audit_allow_hint": {
+      "en-GB": "Allow this command from this cloud computer from now on",
+      "en-US": "Allow this command from this cloud computer from now on",
+      "ja": "今後このクラウドコンピュータからのこのコマンドを許可",
+      "ko": "앞으로 이 클라우드 컴퓨터의 이 명령을 허용",
+      "zh-CN": "今后允许这台云电脑运行此命令",
+      "zh-TW": "今後允許這台雲端電腦執行此命令"
+    },
+    "ui.audit_allowed": {
+      "en-GB": "Allowed",
+      "en-US": "Allowed",
+      "ja": "許可済み",
+      "ko": "허용됨",
+      "zh-CN": "已允许",
+      "zh-TW": "已允許"
+    },
+    "ui.audit_decision_user_allowed": {
+      "en-GB": "Allowed by you",
+      "en-US": "Allowed by you",
+      "ja": "あなたが許可",
+      "ko": "내가 허용함",
+      "zh-CN": "你已允许",
+      "zh-TW": "你已允許"
+    },
     "ui.audit_decision_auto_review_timeout": {
       "en-GB": "Auto-review timed out",
       "en-US": "Auto-review timed out",

@@ -259,31 +259,38 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		home, _ := os.UserHomeDir()
 		// Codex parity: ordinary commands run in the workspace sandbox without
 		// review; an explicit escalation request or a dangerous command is
-		// reviewed; Full access forbids dangerous commands instead of asking.
+		// reviewed; Full access never asks and refuses only catastrophic deletions
+		// (root, home, system directories, unresolved targets).
 		inner, reason, escalated := sandbox.ParseEscalation(command)
 		full := policy.Approval == "never"
 		onRequest := policy.Approval == sandbox.PresetAsk || policy.Approval == sandbox.PresetAuto
 		dangerous := sandbox.IsDangerousCommand(inner)
 		runPolicy := policy
 		rationale := ""
+		grant := GrantKey(fingerprint, inner)
 		refuse := func(decision, message, detail string) {
-			broker.recordAudit(audit.Entry{
+			entry := audit.Entry{
 				Kind:           "exec",
 				Command:        inner,
+				Reason:         reason,
 				SandboxMode:    sandbox.NormalizeMode(policy.Mode),
 				NetworkAllowed: policy.Network,
 				Decision:       decision,
 				Blocked:        true,
 				ExitCode:       126,
 				Detail:         detail,
-			})
+			}
+			if Grantable(decision) {
+				entry.Grant = grant
+			}
+			broker.recordAudit(entry)
 			io.WriteString(session.Stderr(), message)
 			session.Exit(126)
 		}
 		if requireApproval {
 			switch {
-			case full && dangerous:
-				refuse(decisionForbidden, "Fennec: this command was rejected by policy: forced deletion is not allowed without review in Full access.\n", "Dangerous command forbidden in Full access")
+			case full && sandbox.IsCatastrophicDeletion(inner, home):
+				refuse(decisionForbidden, "Fennec: this command was rejected by policy: it would delete the filesystem root, the home directory, a system directory, or an unresolved target. Name the exact path to delete.\n", "Catastrophic deletion forbidden in Full access")
 				return
 			case !full && (escalated || dangerous || !sandbox.Available() || !onRequest):
 				approval, cancelApproval := context.WithTimeout(operation, 2*time.Minute)
@@ -371,6 +378,7 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		broker.recordAudit(audit.Entry{
 			Kind:           "exec",
 			Command:        command,
+			Reason:         reason,
 			Workdir:        cmd.Dir,
 			SandboxMode:    effectiveMode,
 			NetworkAllowed: runPolicy.Network || effectiveMode == sandbox.ModeFull,
@@ -523,6 +531,9 @@ func (b *Broker) clearTrust() error {
 	b.active = map[string]context.CancelFunc{}
 	if b.directory == "" {
 		return fmt.Errorf("trust directory unavailable")
+	}
+	if err := clearAllowList(b.directory); err != nil {
+		return err
 	}
 	err := os.Remove(filepath.Join(b.directory, "trusted_devices.json"))
 	if os.IsNotExist(err) {

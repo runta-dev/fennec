@@ -120,3 +120,33 @@ func TestEscalationHintRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+func TestFullAccessAllowsOrdinaryForcedDeletion(t *testing.T) {
+	home := "/Users/me"
+	for _, command := range []string{
+		"rm -rf /tmp/fennec-check && mkdir /tmp/fennec-check",
+		"pkill -f 'http.server 18741'; rm -rf /tmp/fennec-ios-design; echo mac-cleaned",
+		"rm -rf build dist", "rm -f a.txt", "rm -rf ~/repos/x/node_modules", `rm -rf "$TMPDIR/fennec"`,
+		"rm -rf /Users/me/repos/fennec/bin", "sudo rm -rf /opt/homebrew/Cellar/old", "rm -rf ./build", "rm -rf proj*",
+	} {
+		if IsCatastrophicDeletion(command, home) {
+			t.Fatalf("Full access must allow: %q", command)
+		}
+	}
+	for _, command := range []string{
+		"rm -rf /", "rm -rf /*", "sudo rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", `rm -rf "$DIR"/`,
+		"rm -rf ${DIR}", "rm -rf $DIR/*", "rm -rf .", "rm -rf ..", "rm -rf *", "rm -rf /Users/me", "rm -rf /Users/me/",
+		"rm -rf /Users", "rm -rf /System", "rm -r /usr", "rm -rf /tmp", "bash -lc 'cd x && rm -rf /'",
+		`echo "$(rm -rf ~)"`, "rm -rf -- /", "rm --recursive --force /Library",
+	} {
+		if !IsCatastrophicDeletion(command, home) {
+			t.Fatalf("Full access must refuse: %q", command)
+		}
+	}
+	if IsCatastrophicDeletion("rm /tmp", home) || IsCatastrophicDeletion("rm ~/.zshrc.bak", home) {
+		t.Fatal("non-recursive, unforced rm of a single file is not catastrophic")
+	}
+	if !IsCatastrophicDeletion(strings.Repeat("$(", 10)+"true"+strings.Repeat(")", 10), home) {
+		t.Fatal("deep nesting must fail closed")
+	}
+}

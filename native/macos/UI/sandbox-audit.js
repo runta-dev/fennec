@@ -81,6 +81,8 @@
         return t('[[i18n:ui.audit_decision_user_denied]]');
       case 'chatgpt_cloud':
         return t('[[i18n:ui.audit_decision_chatgpt_cloud]]');
+      case 'user_allowed':
+        return t('[[i18n:ui.audit_decision_user_allowed]]');
       case 'user_approved':
       case 'previously_approved':
         return t('[[i18n:ui.audit_decision_user_approved]]');
@@ -139,7 +141,8 @@
       const id = String(entry.id || entry.timestamp_ms || '');
       const blocked = Boolean(entry.blocked || entry.decision === 'sandbox_blocked' || entry.decision === 'user_denied');
       const titleInfo = cleanCommandDisplay(entry);
-      const canExpand = titleInfo.code && titleInfo.text.length > 44;
+      const reasonText = String(entry.reason || '').replace(/\[REDACTED\]/g, '••••').trim();
+      const canExpand = (titleInfo.code && titleInfo.text.length > 44) || reasonText.length > 56;
       const isExpanded = canExpand && expandedIds.has(id);
 
       const item = document.createElement('div');
@@ -198,7 +201,21 @@
       summaryText.textContent = parts.join(' · ');
       meta.append(summaryText);
 
-      body.append(top, meta);
+      body.append(top);
+      // The agent's escalation reason, so the user sees why it asked.
+      if (reasonText) {
+        const reasonRow = document.createElement('div');
+        reasonRow.className = 'audit-entry-reason' + (isExpanded ? ' is-expanded' : '');
+        const label = document.createElement('span');
+        label.className = 'audit-reason-label';
+        label.textContent = t('[[i18n:ui.audit_agent_reason]]');
+        const text = document.createElement('span');
+        text.className = 'audit-reason-text';
+        text.textContent = reasonText;
+        reasonRow.append(label, text);
+        body.append(reasonRow);
+      }
+      body.append(meta);
       head.append(statusIcon, body);
       if (canExpand) {
         head.onclick = () => {
@@ -208,6 +225,28 @@
         };
       }
       item.append(head);
+
+      // Like a denied switch in macOS Privacy settings: the user can overrule an
+      // auto-review refusal, and the same command then runs without review.
+      if (entry.grant && GRANTABLE.has(entry.decision)) {
+        const slot = document.createElement('div');
+        slot.className = 'audit-entry-action';
+        if (entry.allowed) {
+          const done = document.createElement('span');
+          done.className = 'audit-allowed';
+          done.textContent = t('[[i18n:ui.audit_allowed]]');
+          slot.append(done);
+        } else {
+          const allow = document.createElement('button');
+          allow.type = 'button';
+          allow.className = 'audit-allow';
+          allow.textContent = t('[[i18n:ui.audit_allow]]');
+          allow.title = t('[[i18n:ui.audit_allow_hint]]');
+          allow.onclick = () => allowEntry(entry);
+          slot.append(allow);
+        }
+        item.append(slot);
+      }
 
       // Expanded rows show the full command in place, wrapped in the title column.
       return item;
@@ -222,6 +261,15 @@
       send('audit-clear');
     };
     auditListEl.replaceChildren(...rows, clear);
+  }
+
+  const GRANTABLE = new Set(['auto_review_denied', 'auto_review_timeout']);
+
+  function allowEntry(entry) {
+    // Optimistic; the daemon's reply (or a reload on failure) replaces the list.
+    auditEntries = auditEntries.map(e => (e.grant && e.grant === entry.grant ? { ...e, allowed: true } : e));
+    drawAuditView();
+    send('audit-allow:' + JSON.stringify({ id: String(entry.id || ''), filter: auditFilter }));
   }
 
   function selectMode(nextMode) {

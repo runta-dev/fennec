@@ -161,20 +161,22 @@ func IsLikelySandboxDenied(exitCode int, output string) bool {
 // IsDangerousCommand ports Codex's POSIX dangerous-command rule: a forced rm,
 // seen through sudo, env assignments and `sh -c` style scripts. Nesting deeper
 // than 8 fails closed.
-func IsDangerousCommand(command string) bool { return dangerousScript(command, 0) }
+func IsDangerousCommand(command string) bool { return dangerousScript(command, 0, forcedRm) }
 
-func dangerousScript(script string, depth int) bool {
+type rmCheck func(args []string) bool
+
+func dangerousScript(script string, depth int, check rmCheck) bool {
 	if depth > 8 {
 		return true
 	}
 	for _, segment := range shellSegments(script) {
-		if dangerousWords(segment, depth) {
+		if dangerousWords(segment, depth, check) {
 			return true
 		}
 	}
 	// Substitutions inside double quotes still execute; inspect their bodies.
 	for _, body := range substitutionBodies(script) {
-		if dangerousScript(body, depth+1) {
+		if dangerousScript(body, depth+1, check) {
 			return true
 		}
 	}
@@ -214,7 +216,7 @@ func substitutionBodies(script string) []string {
 	return bodies
 }
 
-func dangerousWords(words []string, depth int) bool {
+func dangerousWords(words []string, depth int, check rmCheck) bool {
 	for len(words) > 0 {
 		head := filepath.Base(words[0])
 		switch {
@@ -239,20 +241,12 @@ func dangerousWords(words []string, depth int) bool {
 		case head == "bash" || head == "sh" || head == "zsh" || head == "dash" || head == "ksh":
 			for i := 1; i < len(words); i++ {
 				if strings.HasPrefix(words[i], "-") && !strings.HasPrefix(words[i], "--") && strings.Contains(words[i], "c") {
-					return i+1 < len(words) && dangerousScript(words[i+1], depth+1)
+					return i+1 < len(words) && dangerousScript(words[i+1], depth+1, check)
 				}
 			}
 			return false
 		case head == "rm":
-			for _, arg := range words[1:] {
-				if arg == "--" {
-					break
-				}
-				if arg == "--force" || (strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "f")) {
-					return true
-				}
-			}
-			return false
+			return check(words[1:])
 		default:
 			return false
 		}
@@ -330,4 +324,100 @@ func shellSegments(script string) [][]string {
 	}
 	flushSegment()
 	return segments
+}
+
+// rmOptions splits rm arguments into flags and targets.
+func rmOptions(args []string) (force, recursive bool, targets []string) {
+	options := true
+	for _, arg := range args {
+		switch {
+		case options && arg == "--":
+			options = false
+		case options && (arg == "--force"):
+			force = true
+		case options && (arg == "--recursive"):
+			recursive = true
+		case options && strings.HasPrefix(arg, "--"):
+		case options && strings.HasPrefix(arg, "-") && len(arg) > 1:
+			force = force || strings.Contains(arg, "f")
+			recursive = recursive || strings.ContainsAny(arg, "rR")
+		default:
+			targets = append(targets, arg)
+		}
+	}
+	return force, recursive, targets
+}
+
+func forcedRm(args []string) bool {
+	force, _, _ := rmOptions(args)
+	return force
+}
+
+// IsCatastrophicDeletion is the Full access guard. Full access runs everything
+// without review, including forced deletion of temporary and project files,
+// but still refuses a recursive or forced rm whose target is the filesystem
+// root, the home directory, a top-level system directory, or a target that
+// cannot be resolved safely (`.`, `..`, a bare glob, or a bare variable such as
+// "$DIR" or "$DIR/" that expands to / when unset). Nesting deeper than 8 fails
+// closed.
+func IsCatastrophicDeletion(command, home string) bool {
+	return dangerousScript(command, 0, func(args []string) bool {
+		force, recursive, targets := rmOptions(args)
+		if !force && !recursive {
+			return false
+		}
+		for _, target := range targets {
+			if protectedDeletionTarget(target, home) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+var protectedTopLevel = map[string]bool{
+	"/Applications": true, "/Library": true, "/System": true, "/Users": true, "/Volumes": true,
+	"/bin": true, "/cores": true, "/dev": true, "/etc": true, "/home": true, "/opt": true,
+	"/private": true, "/root": true, "/sbin": true, "/usr": true, "/var": true,
+	"/private/etc": true, "/private/var": true, "/private/tmp": true, "/tmp": true,
+}
+
+func protectedDeletionTarget(target, home string) bool {
+	t := strings.TrimSpace(target)
+	switch t {
+	case "", ".", "..", "./", "../", "*", ".*", "./*", "~", "~/", "~/*":
+		return true
+	}
+	// "$HOME", "${HOME}/", "$DIR/*": a variable with nothing after it.
+	if strings.HasPrefix(t, "$") {
+		rest := strings.TrimLeft(t[1:], "{")
+		end := strings.IndexFunc(rest, func(r rune) bool {
+			return !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+		})
+		if end < 0 {
+			return true
+		}
+		tail := strings.TrimPrefix(rest[end:], "}")
+		if tail == "" || tail == "/" || tail == "/*" || tail == "/.*" {
+			return true
+		}
+		return false
+	}
+	if strings.HasPrefix(t, "~/") {
+		if home == "" {
+			return false
+		}
+		t = home + t[1:]
+	}
+	if !strings.HasPrefix(t, "/") {
+		return false
+	}
+	cleaned := filepath.Clean(strings.TrimSuffix(strings.TrimSuffix(t, "*"), "/"))
+	if cleaned == "/" || cleaned == "." || protectedTopLevel[cleaned] {
+		return true
+	}
+	if home != "" && (cleaned == filepath.Clean(home) || cleaned == filepath.Dir(filepath.Clean(home))) {
+		return true
+	}
+	return false
 }
