@@ -44,6 +44,12 @@ func (s *Sessions) exec(command string) ([]byte, error) {
 	return output, err
 }
 
+// read runs a command that only reads, so it may repeat after a dropped link.
+func (s *Sessions) read(command string) ([]byte, error) {
+	output, _, err := s.runRead(func(string) (string, error) { return command, nil })
+	return output, err
+}
+
 // transcriptPath resolves (and caches) the session log behind a terminal.
 func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 	key := address + "/" + sessionID
@@ -58,7 +64,7 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 	if !addressPattern.MatchString(address) || !sessionPattern.MatchString(sessionID) {
 		return "", errors.New("invalid terminal")
 	}
-	raw, err := s.exec(`"$HOME/.local/bin/herdr-core" get ` + address + ` --json`)
+	raw, err := s.read(`"$HOME/.local/bin/herdr-core" get ` + address + ` --json`)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +75,7 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 	if json.Unmarshal(raw, &terminal) != nil || terminal.Labels["fennec.session"] != sessionID || terminal.PID <= 1 {
 		return "", errors.New("session not found")
 	}
-	table, err := s.exec(`ps -eo pid=,ppid=`)
+	table, err := s.read(`ps -eo pid=,ppid=`)
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +95,7 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 		// One block per process: its Claude session record, then open logs.
 		fmt.Fprintf(&script, `echo "@%s"; d=$(tr '\0' '\n' < /proc/%s/environ 2>/dev/null | sed -n 's/^CLAUDE_CONFIG_DIR=//p'); d=${d:-$HOME/.claude}; [ -f "$d/sessions/%s.json" ] && { printf 'claude %%s ' "$d"; tr -d '\n' < "$d/sessions/%s.json"; echo; }; ls -l /proc/%s/fd 2>/dev/null | sed -n 's/.* -> \(.*rollout-.*\.jsonl\)$/open \1/p'; `, p, p, p, p, p)
 	}
-	out, err := s.exec(script.String())
+	out, err := s.read(script.String())
 	if err != nil {
 		return "", err
 	}
@@ -100,7 +106,7 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 		}
 	}
 	if dir := piSessions(string(out)); path == "" && dir != "" {
-		if newest, err := s.exec(`ls -t ` + shellQuote(dir) + `/*.jsonl 2>/dev/null | head -n 1`); err == nil {
+		if newest, err := s.read(`ls -t ` + shellQuote(dir) + `/*.jsonl 2>/dev/null | head -n 1`); err == nil {
 			path = strings.TrimSpace(string(newest))
 		}
 	}
@@ -197,7 +203,8 @@ func pickTranscript(output string) string {
 // most of a log and never shown, so awk drops them on the cloud computer and
 // tags each kept line with its byte offset. The first read can then look far
 // back for the earlier conversation while sending little.
-func (s *Sessions) Transcript(address, sessionID string, offset int64) (string, error) {
+func (s *Sessions) Transcript(address, sessionID string, offset int64) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	path, err := s.transcriptPath(address, sessionID)
 	if err != nil {
 		return "", err
@@ -222,7 +229,7 @@ func (s *Sessions) readTranscript(address, sessionID, path string, offset int64)
 			file, offset, offset, offset+1, file, maxTranscriptRead, keepLines)
 	}
 	command = `[ -e ` + file + ` ] || { printf '__FENNEC_TRANSCRIPT_PENDING__\n'; exit 0; }; ` + command
-	raw, err := s.exec(command)
+	raw, err := s.read(command)
 	if err != nil {
 		s.mu.Lock()
 		delete(s.paths, address+"/"+sessionID) // the agent may have moved to a new log

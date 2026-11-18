@@ -23,6 +23,9 @@ struct ChatView: View {
     @State private var showPhotos = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var importingAttachments = false
+    /// The question the person swiped away; the pill brings it back.
+    @State private var dismissedPrompt: LivePrompt?
+    @State private var promptFailed = false
 
     private var draftKey: String {
         "chatDraft.\(app.environment.rawValue).\(auth.profile?.email ?? "preview").\(sessionID)"
@@ -92,7 +95,9 @@ struct ChatView: View {
                         ChatSkeleton()
                     } else if session.messages.isEmpty, let error = session.transcriptError {
                         VStack(spacing: 12) {
-                            Text(error).font(.system(size: 14)).foregroundStyle(Theme.fg2).multilineTextAlignment(.center)
+                            ConnectionIssueCard(issue: transcriptIssue(error),
+                                                onRetry: { Task { await store.loadTranscript(session.id) } },
+                                                onSignIn: { auth.signOut() })
                             Button(L10n.text("ios.open_terminal")) { showTerminal = true }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 200)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 80)
@@ -125,6 +130,8 @@ struct ChatView: View {
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.horizontal, 16)
+                // Never wider than the screen: wide content scrolls in its own block.
+                .containerRelativeFrame(.horizontal, alignment: .leading)
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
@@ -169,15 +176,39 @@ struct ChatView: View {
                     .accessibilityLabel(L10n.text("ios.session_menu"))
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { composer(session) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ConnectionIssueBanner(issue: store.issue,
+                                  onRetry: { Task { await store.refresh() } },
+                                  onSignIn: { auth.signOut() })
+                .padding(.horizontal, 16).padding(.top, 4)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 8) {
+                if store.livePrompts[session.id] != nil && store.livePrompts[session.id] == dismissedPrompt {
+                    PromptWaitingPill { dismissedPrompt = nil }
+                }
+                composer(session)
+            }
+        }
         .task(id: session.id) {
             while !Task.isCancelled {
                 // The home list's refresh stops while this page is in front, so
                 // Keep Herdr's state current here: it ends the working indicator.
                 await store.refresh()
                 await store.loadTranscript(session.id)
+                await store.loadPrompt(session.id)
                 // New lines arrive fast while the agent works; idle logs rarely change.
                 try? await Task.sleep(for: .seconds(store.session(session.id)?.state == .working ? 1.5 : 4))
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { !showTerminal && !showMenu && store.livePrompts[session.id] != nil && store.livePrompts[session.id] != dismissedPrompt },
+            set: { shown in if !shown { dismissedPrompt = store.livePrompts[session.id] } })) {
+            if let prompt = store.livePrompts[session.id] {
+                LivePromptSheet(agent: session.agent, prompt: prompt, answering: store.answeringPrompts.contains(session.id),
+                                onAnswer: { key in Task { promptFailed = !(await store.answerPrompt(session.id, key: key)) } },
+                                onOpenTerminal: { dismissedPrompt = prompt; showTerminal = true })
+                    .alert(L10n.text("ios.answer_failed"), isPresented: $promptFailed) { Button(L10n.text("ui.ok")) {} }
             }
         }
         .navigationDestination(isPresented: $showTerminal) {
@@ -187,12 +218,18 @@ struct ChatView: View {
             SessionMenu(session: session, onStop: {
                 store.stop(session.id)
                 dismiss()
-            }, onOpenTerminal: session.address == nil ? nil : {
+            }, onOpenTerminal: session.address == nil || store.core == nil ? nil : {
                 showMenu = false
                 showTerminal = true
             })
             .presentationDetents([.height(360)])
         }
+    }
+
+    private func transcriptIssue(_ message: String) -> ConnectionIssue {
+        var issue = ConnectionIssue(message: message)
+        issue.otherTitle = L10n.text("ios.conversation_unavailable")
+        return issue
     }
 
     private func demoContent(_ session: Session) -> some View {
@@ -210,6 +247,8 @@ struct ChatView: View {
                     }
                 }
                 .padding(.horizontal, 16)
+                // Never wider than the screen: wide content scrolls in its own block.
+                .containerRelativeFrame(.horizontal, alignment: .leading)
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
@@ -562,10 +601,15 @@ struct MessageView: View {
                     }
                 }
                 }
+                LinkCardList(text: text).padding(.leading, 48)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         case .agent(let text):
-            PreviewMessageText(text: text, lineLimit: lineLimit)
+            VStack(alignment: .leading, spacing: 10) {
+                PreviewMessageText(text: text, lineLimit: lineLimit)
+                // Folded notes stay one line; cards only on the full reply.
+                if lineLimit == nil { LinkCardList(text: text) }
+            }
         case .step(let text):
             HStack(spacing: 6) {
                 Text(text)

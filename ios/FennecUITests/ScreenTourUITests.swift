@@ -64,7 +64,11 @@ final class ScreenTourUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         let send = app.keyboards.buttons.matching(NSPredicate(format: "label == 'Send' OR label == 'send'")).firstMatch
-        XCTAssertTrue(send.exists)
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        // The keyboard may still be sliding in after earlier tests; tapping a
+        // key mid-animation fails XCTest's scroll-to-visible.
+        expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: send)
+        waitForExpectations(timeout: 5)
         send.tap()
         XCTAssertEqual(input.value as? String, "")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'First message'")).firstMatch.waitForExistence(timeout: 5))

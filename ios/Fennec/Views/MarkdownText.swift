@@ -175,7 +175,14 @@ private struct BlockView: View {
             }
             .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .table(let header, let alignments, let rows):
-            TableBlock(header: header, alignments: alignments, rows: rows)
+            // A table that fits keeps the screen's width; a wider one scrolls
+            // inside its own block instead of widening the conversation.
+            ViewThatFits(in: .horizontal) {
+                TableBlock(header: header, alignments: alignments, rows: rows)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    TableBlock(header: header, alignments: alignments, rows: rows).fixedSize(horizontal: true, vertical: false)
+                }
+            }
         case .rule:
             Rectangle().fill(Theme.line).frame(height: 1)
         }

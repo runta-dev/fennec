@@ -121,6 +121,40 @@ final class FennecTests: XCTestCase {
         if case .agent(let text)? = messages.last?.kind { XCTAssertTrue(text.contains("ok relay")) } else { XCTFail("expected the closing reply") }
     }
 
+    func testLinkCardsTakePublicHTTPSLinksOutsideCode() {
+        let text = """
+        See https://fennec.runta.com and [docs](https://fennec.runta.com/) again.
+        `curl https://example.com/inline` and http://plain.example.com
+        ```
+        open https://example.com/in-code
+        ```
+        Local: https://localhost:3000 https://192.168.1.4/x https://10.0.0.2 https://mac.local/
+        Port: https://8080-7f3c2a91-5d4e.runta.dev/ File: fennec-preview:pv_123
+        Third: https://github.com/runta-dev/fennec https://apple.com
+        """
+        XCTAssertEqual(LinkCards.urls(in: text).map(\.absoluteString),
+                       ["https://fennec.runta.com", "https://github.com/runta-dev/fennec"])
+        XCTAssertTrue(LinkCards.previewable(URL(string: "https://8.8.8.8/")!))
+        XCTAssertFalse(LinkCards.previewable(URL(string: "https://172.20.1.1/")!))
+    }
+
+    func testConnectionIssueHidesRawErrorsAndReconnectsQuietlyAtFirst() {
+        let start = Date.now
+        let dropped = ConnectionIssue(message: "[network] read tcp 192.168.1.4:52311: connection reset by peer", since: start)
+        XCTAssertEqual(dropped.kind, .network)
+        XCTAssertEqual(dropped.detail, "read tcp 192.168.1.4:52311: connection reset by peer")
+        XCTAssertFalse(dropped.title.contains("tcp"))
+        XCTAssertTrue(dropped.reconnecting(at: start.addingTimeInterval(5)))
+        XCTAssertFalse(dropped.reconnecting(at: start.addingTimeInterval(ConnectionIssue.quietPeriod + 1)))
+        XCTAssertEqual(ConnectionIssue(message: "[signed_out] sign in first").kind, .signedOut)
+        XCTAssertEqual(ConnectionIssue(message: "[cloud_stopped] the cloud computer is stopped").kind, .cloudStopped)
+        XCTAssertEqual(ConnectionIssue(message: "[no_computer] none").kind, .noComputer)
+        let other = ConnectionIssue(message: "session not found")
+        XCTAssertEqual(other.kind, .other)
+        XCTAssertFalse(other.reconnecting(at: .now))
+        XCTAssertEqual(other.detail, "session not found")
+    }
+
     func testInitials() {
         XCTAssertEqual(Profile(displayName: "Ada Lovelace", email: "ada@example.com").initials, "AL")
     }

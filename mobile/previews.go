@@ -62,7 +62,8 @@ func checkPreviewResponse(response *http.Response) error {
 	}
 	return fmt.Errorf("preview request failed (%d)", response.StatusCode)
 }
-func (s *Sessions) PreviewMetadata(id, ref string) (string, error) {
+func (s *Sessions) PreviewMetadata(id, ref string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	endpoint, err := previewEndpoint(id, ref)
 	if err != nil {
 		return "", err
@@ -94,7 +95,8 @@ func (s *Sessions) PreviewMetadata(id, ref string) (string, error) {
 	return string(data), err
 }
 
-func (s *Sessions) DownloadPreview(id, ref, destination string) error {
+func (s *Sessions) DownloadPreview(id, ref, destination string) (err error) {
+	defer func() { err = classify(err) }()
 	endpoint, err := previewEndpoint(id, ref)
 	if err != nil {
 		return err
@@ -146,7 +148,8 @@ func savePreview(response *http.Response, destination string) error {
 
 // UploadFile returns the canonical workspace path and registered preview metadata.
 // uploadID comes from the draft's UUID and is retained across manual retries.
-func (s *Sessions) UploadFile(address, sessionID, uploadID, localPath, name string) (string, error) {
+func (s *Sessions) UploadFile(address, sessionID, uploadID, localPath, name string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	id := sessionID
 	if !addressPattern.MatchString(address) || !sessionid.Valid(id) {
 		return "", errors.New("invalid session")

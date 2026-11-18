@@ -45,7 +45,11 @@ final class SessionStore {
     var enabledAgents: Set<AgentKind>
     /// Nil in demo mode.
     let core: FennecmobileSessions?
-    var loadError: String?
+    /// Why the last call to the cloud computer failed; nil once one succeeds.
+    var issue: ConnectionIssue?
+    /// What each waiting live session asks (LivePromptSheet.swift).
+    var livePrompts: [String: LivePrompt] = [:]
+    var answeringPrompts: Set<String> = []
     var loaded = false
     /// Sessions whose log is being read now.
     @ObservationIgnored var transcriptReads: Set<String> = []
@@ -206,7 +210,7 @@ extension SessionStore {
     static func demo() -> SessionStore {
         let now = Date.now
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
-        return SessionStore(sessions: [
+        let store = SessionStore(sessions: [
             Session(id: "s1", title: "Fix flaky reconnect test", agent: .codex, model: "GPT-5", project: "fennec",
                     location: .cloud, state: .needsInput, updatedAt: ago(2),
                     messages: [
@@ -258,6 +262,45 @@ extension SessionStore {
                     location: .mac, state: .idle, updatedAt: ago(60 * 50),
                     messages: [.init(kind: .agent("Drafted notes for v0.9.2"))]),
         ])
+        store.sessions.append(wideSession(updatedAt: ago(60 * 70)))
+        return store
+    }
+
+    /// Wide content drawn the way a live session is (turns from a log), so
+    /// tests cover the real conversation view: a many-column table, long
+    /// commands, a long path, code and URLs must never widen the page.
+    static func wideSession(updatedAt: Date) -> Session {
+        var session = Session(id: "s8", title: "Compare SSH latency by region", agent: .codex, model: "GPT-5", project: "ops",
+                              location: .cloud, state: .idle, updatedAt: updatedAt, messages: [])
+        session.address = "tdemo8"
+        session.transcriptLoaded = true
+        let base = Int64(updatedAt.timeIntervalSince1970 * 1000) - 120_000
+        let items: [TranscriptItem] = [
+            .init(kind: "user", text: "Compare round-trip latency to the cloud computer from each office, using /Users/alex/Library/Application Support/Fennec/benchmarks/ssh-latency-2026-11-18/offices-singapore-sanfrancisco-berlin.json", time: base),
+            .init(kind: "tool", text: "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 runtime@ssh.runta.com 'for i in $(seq 1 200); do date +%s%N; done' | ./rtt-histogram --buckets 10,20,50,100,200,500 --output /tmp/rtt-histogram-singapore-sanfrancisco-berlin.json", tool: "ran", time: base + 4000),
+            .init(kind: "tool", text: "/home/runtime/repos/runta-dev/fennec/docs/benchmarks/2026-11-16-budget128-96-deployment-singapore-singtel.md", tool: "read", time: base + 6000),
+            .init(kind: "agent", text: """
+            Measured 200 round trips from each office over the resident SSH channel:
+
+            | Office | Network | Median RTT | p95 RTT | Reconnects | Notes |
+            | --- | --- | ---: | ---: | ---: | --- |
+            | Singapore | Singtel fibre | 182 ms | 241 ms | 0 | Routed through us-west1-b via Los Angeles |
+            | San Francisco | Comcast business | 21 ms | 34 ms | 0 | Same region as the cloud computer |
+            | Berlin | Deutsche Telekom | 158 ms | 203 ms | 1 | One reset after a Wi-Fi handover |
+
+            ```
+            ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 runtime@ssh.runta.com 'for i in $(seq 1 200); do date +%s%N; done' | ./rtt-histogram --buckets 10,20,50,100,200,500
+            ```
+
+            Setup guide for each office: https://fennec.runta.com
+
+            Raw samples: https://dashboard.runta.com/runtimes/7f3c2a91-5d4e-4b8a-9c1f-2e6d8b0a4f17/artifacts/ssh-latency-samples-2026-11-18.csv
+            """, time: base + 9000),
+            .init(kind: "end", text: "", time: base + 9500, duration: 9500),
+        ]
+        for item in items { append(item, to: &session) }
+        session.transcriptItems = items
+        return session
     }
 }
 
@@ -334,10 +377,12 @@ extension SessionStore {
     fileprivate func live(_ call: @escaping @Sendable () throws -> String) async -> String? {
         do {
             let result = try await Task.detached { try call() }.value
-            loadError = nil
+            issue = nil
             return result
         } catch {
-            loadError = (error as NSError).localizedDescription
+            // Consecutive dropped links keep the time the first one began.
+            let next = ConnectionIssue(error)
+            issue = issue?.kind == .network && next.kind == .network ? ConnectionIssue(error, since: issue!.since) : next
             return nil
         }
     }

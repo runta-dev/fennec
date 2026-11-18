@@ -38,7 +38,10 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 4) {
-                    if let error = store.loadError { errorBanner(error) }
+                    ConnectionIssueBanner(issue: store.issue,
+                                          onRetry: { Task { await store.refresh() } },
+                                          onSignIn: { auth.signOut() })
+                        .padding(.horizontal, 16)
                     if !store.macOnline { offlineBanner }
                 }
             }
@@ -160,17 +163,6 @@ struct HomeView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.danger)
-            Text(message).font(.system(size: 14)).foregroundStyle(Theme.fg).lineLimit(3)
-            Spacer()
-        }
-        .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .padding(.horizontal, 16)
     }
 
     private var offlineBanner: some View {

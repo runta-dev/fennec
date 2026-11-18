@@ -52,7 +52,8 @@ func (s *Sessions) resident(ctx context.Context, client *ssh.Client) (*terminals
 // SendImages uses the same native TUI image frames as the desktop client.
 // Every paste is acknowledged before the next image, text, or Return is sent.
 // Never retry after an uncertain delivery: the native composer may hold it.
-func (s *Sessions) SendImages(address, sessionID, text, imagePathsJSON string) (string, error) {
+func (s *Sessions) SendImages(address, sessionID, text, imagePathsJSON string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	id := sessionID
 	if !addressPattern.MatchString(address) || !sessionid.Valid(id) || len(text) > 16384 || strings.ContainsAny(text, "\x00\x1b") {
 		return "", errors.New("invalid message")

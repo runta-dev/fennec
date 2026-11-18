@@ -231,8 +231,9 @@ type Sessions struct {
 // Metrics samples the cloud computer: the Mac panel's SystemMetrics as JSON
 // (cpu_percent, vcpus, memory, disk, network, cpu_history, mem_history).
 // Call about every two seconds while the account page is open.
-func (s *Sessions) Metrics() (string, error) {
-	output, err := s.exec(cloudruntime.RemoteMetricsScript)
+func (s *Sessions) Metrics() (out0 string, err error) {
+	defer func() { err = classify(err) }()
+	output, err := s.read(cloudruntime.RemoteMetricsScript)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +259,7 @@ var errNoComputer = errors.New("no Fennec cloud computer yet; start an agent fro
 func (s *Sessions) runtimeClient() (*runta.Client, string, uint64, error) {
 	_, token, epoch, ok := s.auth.manager.Session()
 	if !ok {
-		return nil, "", 0, errors.New("sign in first")
+		return nil, "", 0, errSignedOut
 	}
 	return &runta.Client{Endpoint: s.auth.manager.Endpoint(), Token: token}, token, epoch, nil
 }
@@ -313,19 +314,19 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 		var apiErr *runta.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == 401 {
 			s.auth.manager.RejectCredential(token, epoch)
-			return nil, "", errors.New("your session expired; sign in again")
+			return nil, "", errSessionExpired
 		}
 		return nil, "", err
 	}
 	if shared.Status != "running" {
-		return nil, "", fmt.Errorf("the cloud computer is %s", shared.Status)
+		return nil, "", cloudStoppedError{shared.Status}
 	}
 	connection, err := client.ConnectOwned(ctx, shared.ID, s.directory)
 	if err != nil {
 		var apiErr *runta.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == 401 {
 			s.auth.manager.RejectCredential(token, epoch)
-			return nil, "", errors.New("your session expired; sign in again")
+			return nil, "", errSessionExpired
 		}
 		return nil, "", err
 	}
@@ -384,9 +385,23 @@ func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, s
 	return nil, "", lastErr
 }
 
+// runRead runs a script that only reads, reconnecting and trying again when
+// the link dropped (up to three attempts). Commands with effects use run,
+// which never repeats one whose outcome is unknown.
+func (s *Sessions) runRead(script func(runtimeID string) (string, error)) ([]byte, string, error) {
+	for attempt := 1; ; attempt++ {
+		output, runtimeID, err := s.run(script)
+		if err == nil || attempt == 3 || !transient(err) {
+			return output, runtimeID, err
+		}
+		time.Sleep(time.Duration(attempt) * 700 * time.Millisecond)
+	}
+}
+
 // List returns a JSON array of cli.SessionSummary for live sessions.
-func (s *Sessions) List() (string, error) {
-	raw, runtimeID, err := s.run(func(string) (string, error) { return cloudruntime.ListScript, nil })
+func (s *Sessions) List() (out0 string, err error) {
+	defer func() { err = classify(err) }()
+	raw, runtimeID, err := s.runRead(func(string) (string, error) { return cloudruntime.ListScript, nil })
 	if err != nil {
 		return "", err
 	}
@@ -428,19 +443,22 @@ func (s *Sessions) List() (string, error) {
 }
 
 // Read returns {"terminal":{...},"screen":{...}} for one session.
-func (s *Sessions) Read(address, sessionID string) (string, error) {
-	raw, _, err := s.run(func(string) (string, error) { return cloudruntime.ReadScript(address, sessionID) })
+func (s *Sessions) Read(address, sessionID string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
+	raw, _, err := s.runRead(func(string) (string, error) { return cloudruntime.ReadScript(address, sessionID) })
 	return string(raw), err
 }
 
 // Send types text into the session and presses Return.
-func (s *Sessions) Send(address, sessionID, text string) (string, error) {
+func (s *Sessions) Send(address, sessionID, text string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	raw, _, err := s.run(func(string) (string, error) { return cloudruntime.SendScript(address, sessionID, text) })
 	return string(raw), err
 }
 
 // Stop ends the cloud process for the session.
-func (s *Sessions) Stop(address, sessionID string) (string, error) {
+func (s *Sessions) Stop(address, sessionID string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
 	raw, _, err := s.run(func(string) (string, error) { return cloudruntime.StopScript(address, sessionID) })
 	return string(raw), err
 }
@@ -485,7 +503,8 @@ var (
 
 // Attach opens a new viewer through fennec-terminal attach (the entry
 // `fen attach` uses), on a PTY of cols x rows.
-func (s *Sessions) Attach(address, sessionID string, cols, rows int, out TerminalOutput) (*Terminal, error) {
+func (s *Sessions) Attach(address, sessionID string, cols, rows int, out TerminalOutput) (out0 *Terminal, err error) {
+	defer func() { err = classify(err) }()
 	if !addressPattern.MatchString(address) || !sessionPattern.MatchString(sessionID) {
 		return nil, errors.New("invalid terminal")
 	}
@@ -544,7 +563,7 @@ func (s *Sessions) Attach(address, sessionID string, cols, rows int, out Termina
 		message := ""
 		if err := session.Wait(); err != nil {
 			if _, exit := err.(*ssh.ExitError); !exit {
-				message = err.Error()
+				message = classify(err).Error()
 			}
 		}
 		out.Closed(message)
@@ -578,8 +597,9 @@ func (t *Terminal) Close() {
 // ~/.fen/<word>-<word>, the workspace a Mac launch gets, with no Mac starting
 // directory. The Mac is the most recently registered device on the cloud
 // computer. Returns the terminal as JSON (address, id, labels).
-func (s *Sessions) Launch(agent string) (string, error) {
-	raw, err := s.exec(`ls -t "$HOME/.ssh/fennec/" 2>/dev/null | sed -n 's/^\([a-f0-9]\{8,64\}\)\.conf$/\1/p' | head -1`)
+func (s *Sessions) Launch(agent string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
+	raw, err := s.read(`ls -t "$HOME/.ssh/fennec/" 2>/dev/null | sed -n 's/^\([a-f0-9]\{8,64\}\)\.conf$/\1/p' | head -1`)
 	if err != nil {
 		return "", err
 	}

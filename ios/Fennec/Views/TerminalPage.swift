@@ -23,9 +23,12 @@ struct TerminalPage: View {
                 link.connect(core: core, address: address, sessionID: session.id, cols: cols, rows: rows)
             }
             .padding(.horizontal, 4)
-            if let message = link.ended {
+            if link.reconnecting {
+                ReconnectingPill().environment(\.colorScheme, .dark)
+            } else if let issue = link.ended {
                 VStack(spacing: 12) {
-                    Text(message).font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
+                    Text(issue.kind == .other && issue.detail.isEmpty ? L10n.text("ios.terminal_closed") : issue.title)
+                        .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
                     Button(L10n.text("ios.reconnect")) { link.reconnect() }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 180)
                 }
                 .padding(24)
@@ -47,7 +50,11 @@ struct TerminalPage: View {
 @MainActor
 @Observable
 final class TerminalLink {
-    private(set) var ended: String?
+    /// Why the viewer stopped, once it gave up reconnecting on its own.
+    private(set) var ended: ConnectionIssue?
+    /// A dropped link is retried a few times before `ended` is shown.
+    private(set) var reconnecting = false
+    @ObservationIgnored private var attempts = 0
     @ObservationIgnored weak var view: TerminalView?
     @ObservationIgnored private var terminal: FennecmobileTerminal?
     @ObservationIgnored private var size = (cols: 0, rows: 0)
@@ -74,9 +81,11 @@ final class TerminalLink {
                 self.connecting = false
                 if let terminal {
                     self.terminal = terminal
+                    self.reconnecting = false
+                    self.attempts = 0
                     if self.size != (cols, rows) { try? terminal.resize(self.size.cols, rows: self.size.rows) }
                 } else {
-                    self.ended = failure ?? "Couldn't open the terminal."
+                    self.stopped(failure ?? "")
                 }
             }
         }
@@ -84,6 +93,7 @@ final class TerminalLink {
 
     func reconnect() {
         guard let request else { return }
+        attempts = 0
         terminal?.close()
         terminal = nil
         connect(core: request.core, address: request.address, sessionID: request.sessionID, cols: size.cols, rows: size.rows)
@@ -101,7 +111,27 @@ final class TerminalLink {
 
     fileprivate func closed(_ message: String) {
         terminal = nil
-        ended = message.isEmpty ? "The terminal closed." : message
+        stopped(message)
+    }
+
+    /// A dropped link reconnects by itself (three tries, a little apart);
+    /// anything else, or a link that stays down, shows why and Reconnect.
+    private func stopped(_ message: String) {
+        let issue = ConnectionIssue(message: message)
+        guard issue.kind == .network, attempts < 3, let request else {
+            reconnecting = false
+            ended = issue
+            return
+        }
+        attempts += 1
+        reconnecting = true
+        let delay = Double(attempts)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, self.terminal == nil, !self.connecting, self.reconnecting else { return }
+            self.connect(core: request.core, address: request.address, sessionID: request.sessionID,
+                         cols: self.size.cols, rows: self.size.rows)
+        }
     }
 }
 

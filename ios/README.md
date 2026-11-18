@@ -83,10 +83,14 @@ Dashboard allowlist. `fennec://pair` remains the QR handoff route. See the
 Verify Supabase email OTP expiry, rate limits, SMTP delivery, and the OTP email
 template in each environment.
 
+## Approvals and questions
+
+Approvals and questions are read from the waiting session's screen
+(`mobile/prompt.go`): any agent's numbered menu becomes a sheet, and an
+option presses only its number (`herdr-core keys`). A screen without a menu
+leaves the terminal as the way to answer. Free-text replies go through the
+composer after choosing the agent's "tell it what to do differently" option.
+
 ## Not built yet
 
-- Live sessions show the agent's terminal screen (like the Mac panel's session
-  view) and accept text. Approval and question sheets only appear for example
-  sessions, because the cloud listing reports a state (Needs input), not the
-  request's content.
 - Lock Screen notifications and Live Activity need APNs from the Runta backend.
