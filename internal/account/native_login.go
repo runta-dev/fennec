@@ -197,7 +197,7 @@ func (m *Manager) loginRequest(ctx context.Context, method, endpoint, token, key
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New("login request rejected")
+		return loginRejected{status: resp.StatusCode}
 	}
 	if out == nil {
 		_, e = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
@@ -331,8 +331,17 @@ func (m *Manager) registerNative(ctx context.Context, epoch uint64, a *nativeAtt
 	// Names are unique among an organization's active keys, so this device's
 	// key from an earlier sign-in (never revoked, or expired) must go first.
 	m.revokeNativeKeys(ctx, a, path, token, keyName)
-	request := map[string]any{"name": keyName, "expires_at": time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339), "scopes": []string{"identity:self:read", "org:read", "billing:read", "runtime:read", "runtime:manage", "events:read", "secrets:read", "secrets:manage", "ai-agent-auth:read", "github:read", "github:manage"}}
-	if err := m.nativeRequest(ctx, a, "POST", path, token, request, &created); err != nil || created.Data.Key == "" {
+	scopes := []string{"identity:self:read", "org:read", "billing:read", "runtime:read", "runtime:manage", "events:read", "secrets:read", "secrets:manage", "ai-agent-auth:read", "github:read", "github:manage"}
+	request := map[string]any{"name": keyName, "expires_at": time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339), "scopes": scopes}
+	err := m.nativeRequest(ctx, a, "POST", path, token, request, &created)
+	// A Runta deployment older than identity:self:read rejects the whole
+	// request (400) for that one scope; ask again without it.
+	var rejected loginRejected
+	if errors.As(err, &rejected) && rejected.status == http.StatusBadRequest {
+		request["scopes"] = scopes[1:]
+		err = m.nativeRequest(ctx, a, "POST", path, token, request, &created)
+	}
+	if err != nil || created.Data.Key == "" {
 		m.fail(epoch, "credential_creation_failed")
 		return
 	}
@@ -441,3 +450,9 @@ func (m *Manager) revokeNativeKeys(ctx context.Context, a *nativeAttempt, path, 
 		_ = m.nativeRequest(ctx, a, "DELETE", path+"/"+url.PathEscape(key.ID), token, nil, nil)
 	}
 }
+
+// loginRejected is a non-2xx answer to a sign-in request; the status lets a
+// caller tell a rejected body (400) from the rest.
+type loginRejected struct{ status int }
+
+func (e loginRejected) Error() string { return "login request rejected" }
