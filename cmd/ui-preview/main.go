@@ -125,8 +125,8 @@ func main() {
 
 const bridge = `
 const previewAgents=[
- {id:'codex-desktop',name:'ChatGPT',icon:'chatgpt.svg',installed:true,cloudSupported:true},
- {id:'codex',name:'Codex',icon:'codex-color.svg',installed:true,cloudSupported:true},
+ {id:'codex-desktop',name:'ChatGPT / Codex Desktop',icon:'chatgpt.svg',installed:true,cloudSupported:true},
+ {id:'codex',name:'Codex CLI',icon:'codex-color.svg',installed:true,cloudSupported:true},
  {id:'claude',name:'Claude Code',icon:'claudecode-color.svg',installed:true,cloudSupported:true},
  {id:'pi',name:'Pi',icon:'pi.svg',installed:true,cloudSupported:true},
  {id:'kimi',name:'Kimi Code',icon:'kimi-color.svg',installed:true,cloudSupported:true},

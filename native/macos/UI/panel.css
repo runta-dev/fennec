@@ -325,6 +325,8 @@ main{min-height:0}
 .agent-head.agent-coming-soon{opacity:1;cursor:default;color:var(--muted)}
 .agent-coming-soon .agent-icon{opacity:.45}
 .agent-coming-soon .agent-name{color:var(--muted)}
+/* A drawn 0.5px stroke, so the slash stays a hairline whatever weights the font has; the "/" text stays for copy and VoiceOver. */
+.agent-name-separator{display:inline-block;width:.5px;height:14px;margin:0 6px;vertical-align:-2px;background:var(--muted);transform:rotate(18deg);font-size:0;overflow:hidden}
 .agent-coming-soon .detected{font-size:11px}
 /* Working is activity, not a warning; reserve amber/red for attention/errors. */
 .session-agent-identity>.session-state-dot[data-state=working]{background:#4f9a65;animation:session-working-breathe 2s ease-in-out infinite}

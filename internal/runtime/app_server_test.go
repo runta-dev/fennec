@@ -132,6 +132,42 @@ func TestGatewayHomeLinksRoutingAndUserAccount(t *testing.T) {
 	}
 }
 
+// Codex creates skills/ and plugins/ in its own home when the gateway had none
+// at its first start. Once the gateway gains them, the ChatGPT home must still
+// prepare (and link them) instead of failing every connection.
+func TestGatewayHomeReplacesDirectoriesCodexCreated(t *testing.T) {
+	home := appServerHome(t, false)
+	gateway := filepath.Join(home, ".codex")
+	codexHome := filepath.Join(home, ".local/fennec/chatgpt/codex")
+	os.MkdirAll(filepath.Join(codexHome, "skills/.system"), 0700)
+	os.WriteFile(filepath.Join(codexHome, "skills/.system/marker"), []byte("local"), 0600)
+	os.MkdirAll(filepath.Join(codexHome, "plugins/cache"), 0700)
+	for _, name := range []string{"skills", "plugins"} {
+		if err := os.MkdirAll(filepath.Join(gateway, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(gateway, "config.toml"), []byte("model = 'zai/glm-5.3'\n"), 0600)
+	if _, _, _, err := codexAppServerEnvironment(context.Background(), home); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"skills", "plugins"} {
+		if link, err := os.Readlink(filepath.Join(codexHome, name)); err != nil || link != filepath.Join(gateway, name) {
+			t.Fatalf("%s link=%q err=%v", name, link, err)
+		}
+		if _, err := os.Lstat(filepath.Join(codexHome, name+".fennec-link")); err == nil {
+			t.Fatalf("%s temporary link left behind", name)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(codexHome, "skills.fennec-local/.system/marker")); err != nil || string(data) != "local" {
+		t.Fatal("Codex's own skills directory was not kept aside", err)
+	}
+	// A second preparation is a no-op.
+	if _, _, _, err := codexAppServerEnvironment(context.Background(), home); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGatewayOverridesSelectMagpieWithoutOpenAILogin(t *testing.T) {
 	home := t.TempDir()
 	if overrides := gatewayOverrides(home); overrides != nil {
