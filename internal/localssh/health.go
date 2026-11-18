@@ -50,6 +50,13 @@ func (h LinkHealth) Validate() error {
 	return nil
 }
 
+// Bounds of one ProbeMac attempt over the existing master and over a fresh
+// connection.
+const (
+	macProbeTimeout      = 4 * time.Second
+	macFreshProbeTimeout = 10 * time.Second
+)
+
 // ProbeMac checks the actual user-facing alias, including ProxyCommand and Mac
 // session creation. A nonce cannot be satisfied by the cloud relay's keepalive.
 func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
@@ -63,7 +70,14 @@ func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
 			return e
 		}
 		command := healthCommand + hex.EncodeToString(nonce[:])
-		step, cancel := context.WithTimeout(ctx, 4*time.Second)
+		// A fresh connection starts a relay and authenticates to the Mac
+		// twice (data and health streams): about 3.2 s at 170 ms RTT on an
+		// idle link, so the old shared 4 s bound failed on any jitter.
+		timeout := macProbeTimeout
+		if fresh {
+			timeout = macFreshProbeTimeout
+		}
+		step, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		args := []string{"-F", filepath.Join(home, ".ssh/config"), "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", "-o", "ConnectionAttempts=1", "-o", "StrictHostKeyChecking=yes"}
 		if fresh {

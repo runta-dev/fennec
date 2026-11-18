@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -265,5 +266,41 @@ func TestMonitorLinkSuppressesShortOutageNotifications(t *testing.T) {
 				t.Fatalf("outage=%ds notifications=%d want=%d", seconds, got, want)
 			}
 		})
+	}
+}
+
+// A verified link survives isolated failed probes (congestion from a user
+// transfer shares the probe's path) and is torn down only after
+// linkUnhealthyAfter consecutive failures.
+func TestMonitorLinkToleratesIsolatedProbeFailures(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// ok, fail, fail, ok, fail x linkUnhealthyAfter
+	script := []bool{true, false, false, true}
+	for range linkUnhealthyAfter {
+		script = append(script, false)
+	}
+	previous := linkProbeInterval
+	linkProbeInterval = time.Millisecond
+	defer func() { linkProbeInterval = previous }()
+	var calls int
+	config := LinkConfig{Health: func(context.Context, LinkHealth) error {
+		calls++
+		if calls > len(script) {
+			t.Error("probed after the link should have been torn down")
+			cancel()
+			return nil
+		}
+		if script[calls-1] {
+			return nil
+		}
+		return fmt.Errorf("probe timed out")
+	}}
+	err := monitorLink(ctx, config, "aabbccdd", "Mac.local", func(string, string) {})
+	if !errors.Is(err, errMacUnreachable) {
+		t.Fatalf("err = %v", err)
+	}
+	if calls != len(script) {
+		t.Fatalf("torn down after %d probes, want %d", calls, len(script))
 	}
 }

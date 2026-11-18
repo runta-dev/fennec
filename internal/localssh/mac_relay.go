@@ -134,6 +134,7 @@ func RunMacRelay(ctx context.Context, local net.Conn, options MacRelayOptions) e
 	}}
 	config.AddHostKey(options.HostKey)
 	upstream := &macUpstream{options: options, ctx: ctx, pool: make(chan pooledSession, relayPoolSize)}
+	upstream.lanes = newRelayLanes(upstream)
 	defer upstream.close()
 	// Cancellation must retire the local SSH connection as well as the Mac
 	// connection. Otherwise ControlMaster keeps accepting commands against a
@@ -192,8 +193,9 @@ type macUpstream struct {
 	closed      bool
 	pool        chan pooledSession
 	downstream  *gossh.ServerConn
-	forwardUsed bool     // a lost Mac connection must not leave a successful -R alive
-	health      sync.Map // data client -> independent authenticated health connection
+	forwardUsed bool        // a lost Mac connection must not leave a successful -R alive
+	health      sync.Map    // data client -> independent authenticated health connection
+	lanes       *relayLanes // the relay's upstream only: sessions spread over lanes
 }
 
 // connect returns the live connection to the Mac, dialing once for all
@@ -440,6 +442,7 @@ func (u *macUpstream) openChannel(client *gossh.Client, kind string, data []byte
 }
 
 func (u *macUpstream) close() {
+	u.closeLanes()
 	u.mu.Lock()
 	u.closed = true
 	client := u.client
@@ -468,7 +471,9 @@ func (u *macUpstream) relaySession(incoming gossh.NewChannel) {
 		return
 	}
 	defer local.Close()
-	remote, remoteRequests, err := u.session()
+	lane, release := u.acquireLane()
+	defer release()
+	remote, remoteRequests, err := lane.session()
 	if err != nil {
 		// Answer like a server whose command failed, so ssh prints the reason
 		// and exits 255 as it does for an unreachable host.
@@ -493,12 +498,14 @@ func (u *macUpstream) relaySession(incoming gossh.NewChannel) {
 
 // relayChannel carries a forwarded TCP connection (ssh -L/-D).
 func (u *macUpstream) relayChannel(incoming gossh.NewChannel) {
-	client, err := u.connect()
+	lane, release := u.acquireLane()
+	defer release()
+	client, err := lane.connect()
 	if err != nil {
 		incoming.Reject(gossh.ConnectionFailed, "this Mac is not reachable")
 		return
 	}
-	remote, remoteRequests, err := u.openChannel(client, incoming.ChannelType(), incoming.ExtraData())
+	remote, remoteRequests, err := lane.openChannel(client, incoming.ChannelType(), incoming.ExtraData())
 	if err != nil {
 		var open *gossh.OpenChannelError
 		if errors.As(err, &open) {

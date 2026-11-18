@@ -215,12 +215,29 @@ func TestWireWindowSmallerThanFrame(t *testing.T) {
 	}
 }
 
-// TestSocketWindowStaysFixed: sockets keep their fixed window.
-func TestSocketWindowStaysFixed(t *testing.T) {
-	w, now := fakeClockWindow()
-	w.limit, w.adaptive = socketWireWindow, false
-	sendAndCredit(t, w, now, 400*time.Millisecond)
-	if w.limit != socketWireWindow {
-		t.Fatalf("socket window changed to %d", w.limit)
+// TestSocketWindowFollowsRoundTrip: sockets size their window for the egress
+// ceiling, within the bounds every peer's raw credit window already accepts.
+func TestSocketWindowFollowsRoundTrip(t *testing.T) {
+	cases := []struct {
+		rtt  time.Duration
+		want int
+	}{
+		{time.Millisecond, socketWireWindowMin},
+		{50 * time.Millisecond, socketWindow(50 * time.Millisecond)},
+		{400 * time.Millisecond, socketWireWindowMax},
+	}
+	for _, tc := range cases {
+		w, now := fakeClockWindow()
+		w.limit, w.socket = socketWireWindow, true
+		sendAndCredit(t, w, now, tc.rtt)
+		if w.limit != tc.want {
+			t.Errorf("rtt %v: socket window %d, want %d", tc.rtt, w.limit, tc.want)
+		}
+	}
+	if got := socketWindow(200 * time.Millisecond); got <= socketWireWindow {
+		t.Fatalf("socket window at 200 ms is %d, no larger than the old fixed 16 KiB", got)
+	}
+	if socketWireWindowMax*2/3 > Window {
+		t.Fatalf("socket window %d exceeds the peer's raw credit window", socketWireWindowMax)
 	}
 }

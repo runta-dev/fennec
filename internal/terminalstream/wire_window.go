@@ -38,10 +38,28 @@ func adaptiveWindow(rtt time.Duration) int {
 	return max(outputWireWindowMin, min(outputWireWindowMax, w))
 }
 
-// Keep bulk bytes handed to SSH bounded when TCP slows after packet loss.
-// A 16 KiB encoded window retains useful throughput at 180 ms RTT without
-// allowing the previous 32 KiB of one socket's output ahead of a fresh pong.
-const socketWireWindow = 16 << 10
+// A socket stream's window also follows its round trip, sized for the
+// egress ceiling rather than the terminal output rate: a fixed 16 KiB of
+// encoded (JSON/base64) bytes carried only about 11 KiB of payload per round
+// trip, roughly 50 KB/s at 200 ms, far below the paced budget, so ssh/scp
+// through the device relay stalled. The shared scheduler still paces every
+// bulk packet and keeps interactive traffic ahead of it; the window only has
+// to keep the pacer busy. socketWireWindowMax stays within the 64 KiB of raw
+// credit (Window, x1.45 encoding) that every peer already accepts.
+const (
+	socketWireWindow    = 16 << 10
+	socketWireWindowMin = 16 << 10
+	socketWireWindowMax = 96 << 10
+)
+
+// socketRate is the egress ceiling a socket window is sized for, bytes/s.
+var socketRate = float64(traffic.DefaultCapacityConfig().MaxBudget)
+
+// socketWindow is the socket window for a minimum round trip.
+func socketWindow(rtt time.Duration) int {
+	w := int(wireWindowGain * socketRate * rtt.Seconds())
+	return max(socketWireWindowMin, min(socketWireWindowMax, w))
+}
 
 // A peer opting in promises to return credits as it consumes each frame,
 // rather than waiting for the full legacy 64 KiB window. Bound encoded bytes
@@ -55,9 +73,10 @@ type wireWindow struct {
 	used, pending int
 	limit         int
 	frames        []wireCredit
-	// adaptive: limit follows the measured round trip (terminal output);
-	// otherwise it is fixed (sockets).
+	// adaptive: limit follows the measured round trip; socket selects the
+	// socket sizing (socketWindow) instead of the terminal one.
 	adaptive bool
+	socket   bool
 	now      func() time.Time
 	rtt      rttFilter
 }
@@ -73,6 +92,12 @@ type wireCredit struct {
 func newWireWindow() *wireWindow {
 	w := &wireWindow{limit: outputWireWindow, adaptive: true, now: time.Now}
 	w.changed = sync.NewCond(&w.mu)
+	return w
+}
+
+func newSocketWireWindow() *wireWindow {
+	w := newWireWindow()
+	w.limit, w.socket = socketWireWindow, true
 	return w
 }
 
@@ -98,7 +123,11 @@ func (w *wireWindow) reserve(original, encoded int) bool {
 func (w *wireWindow) observe(rtt time.Duration) {
 	now := w.now()
 	w.rtt.add(now, rtt)
-	if w.adaptive {
+	switch {
+	case !w.adaptive:
+	case w.socket:
+		w.limit = socketWindow(w.rtt.min(now))
+	default:
 		w.limit = adaptiveWindow(w.rtt.min(now))
 	}
 }

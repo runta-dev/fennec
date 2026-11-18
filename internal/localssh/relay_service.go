@@ -76,6 +76,7 @@ func EnsureRelay(ctx context.Context, home, device string, force ...bool) (LinkB
 			if !relayProcessMatches(args, base, device) {
 				return current, fmt.Errorf("relay process identity mismatch")
 			}
+			appendRelayLog(base, fmt.Sprintf("repair: stopping relay-serve %d (ready=%v, forced=%v)", state.PID, current.Ready, len(force) > 0 && force[0]))
 			if e = syscall.Kill(state.PID, syscall.SIGTERM); e != nil && e != syscall.ESRCH {
 				return current, e
 			}
@@ -149,7 +150,27 @@ func ServeRelay(ctx context.Context, home, device string) error {
 	if err = os.Rename(filepath.Join(base, "state.json.next"), filepath.Join(base, "state.json")); err != nil {
 		return err
 	}
-	return serveRelayListeners(ctx, bridges, agents)
+	relayLog("relay-serve %d started: bridge %d, agent %d", state.PID, state.Bridge, state.Agent)
+	err = serveRelayListeners(ctx, bridges, agents)
+	relayLog("relay-serve %d stopped: %v", state.PID, relayStopReason(ctx, err))
+	if ctx.Err() != nil {
+		// SIGTERM from a repair is the normal end, not an accept failure.
+		return nil
+	}
+	return err
+}
+
+// relayLog appends one timestamped line to the relay log (the service's
+// stderr), so restarts can be matched with link failures.
+func relayLog(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "%s "+format+"\n", append([]any{time.Now().UTC().Format(time.RFC3339Nano)}, args...)...)
+}
+
+func relayStopReason(ctx context.Context, err error) string {
+	if ctx.Err() != nil {
+		return "signaled"
+	}
+	return fmt.Sprint(err)
 }
 
 func serveRelayListeners(ctx context.Context, bridges, agents net.Listener) error {
@@ -275,4 +296,13 @@ func idleRelayAlive(c net.Conn) bool {
 		alive = err == unix.EAGAIN || err == unix.EWOULDBLOCK
 	})
 	return e == nil && alive
+}
+
+func appendRelayLog(base, line string) {
+	file, err := os.OpenFile(filepath.Join(base, "log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintf(file, "%s %s\n", time.Now().UTC().Format(time.RFC3339Nano), line)
 }
