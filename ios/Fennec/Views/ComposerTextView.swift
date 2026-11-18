@@ -10,6 +10,7 @@ struct ComposerTextView: UIViewRepresentable {
     var canSend: Bool
     var onSend: () -> Void
     var onPasteImage: ((Data) -> Void)? = nil
+    var resetRevision = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -35,13 +36,7 @@ struct ComposerTextView: UIViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.updatingView = true
         defer { context.coordinator.updatingView = false }
-        if view.text != text, view.markedTextRange == nil || text.isEmpty {
-            let selection = view.selectedRange
-            if text.isEmpty { view.unmarkText() }
-            view.text = text
-            view.selectedRange = NSRange(location: min(selection.location, (text as NSString).length), length: 0)
-            view.invalidateIntrinsicContentSize()
-        }
+        context.coordinator.synchronizeText(view, text: text, resetRevision: resetRevision)
         let foreground = UIColor(Theme.fg).resolvedColor(with: view.traitCollection)
         if view.textColor != foreground { view.textColor = foreground }
         if view.tintColor != foreground { view.tintColor = foreground }
@@ -69,8 +64,29 @@ struct ComposerTextView: UIViewRepresentable {
         weak var textView: UITextView?
         private var insertingLineBreak = false
         var updatingView = false
+        private var appliedResetRevision: Int
 
-        init(_ parent: ComposerTextView) { self.parent = parent }
+        init(_ parent: ComposerTextView) {
+            self.parent = parent
+            appliedResetRevision = parent.resetRevision
+        }
+
+        func synchronizeText(_ view: UITextView, text: String, resetRevision: Int) {
+            let reset = appliedResetRevision != resetRevision
+            appliedResetRevision = resetRevision
+            // UIKit owns in-flight edits and their selection. SwiftUI can render
+            // an older binding value between keystrokes; writing it back moves
+            // the caret and reorders later input. Only explicit resets may
+            // replace text while the editor has focus (including marked text).
+            guard reset || !view.isFirstResponder else { return }
+            guard view.text != text || reset else { return }
+            if reset { view.unmarkText() }
+            guard reset || view.markedTextRange == nil else { return }
+            let selection = view.selectedRange
+            view.text = text
+            view.selectedRange = NSRange(location: min(selection.location, (text as NSString).length), length: 0)
+            view.invalidateIntrinsicContentSize()
+        }
         func textViewDidBeginEditing(_ textView: UITextView) {
             if !updatingView { parent.focused = true }
         }

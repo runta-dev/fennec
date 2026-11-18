@@ -82,9 +82,18 @@ final class ScreenTourUITests: XCTestCase {
         input.tap()
         let text = "Follow up " + UUID().uuidString
         input.typeText(text)
+        XCTAssertTrue((input.value as? String)?.contains(text) == true, "Composer value: \(String(describing: input.value)); typed: \(text)")
         app.buttons["composer-send"].tap()
         XCTAssertFalse((input.value as? String)?.contains(text) == true)
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.waitForExistence(timeout: 3))
+        let visible = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.waitForExistence(timeout: 3)
+        if !visible {
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Missing-Sent-Message"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            print(app.debugDescription)
+        }
+        XCTAssertTrue(visible)
         app.navigationBars.buttons.firstMatch.tap()
         title.tap()
         XCTAssertFalse((input.value as? String)?.contains(text) == true)

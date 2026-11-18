@@ -18,6 +18,7 @@ struct ChatView: View {
     @State private var showTerminal = false
     @State private var showDeliveryIssue = false
     @State private var composerFocused = false
+    @State private var composerResetRevision = 0
     @State private var showFiles = false
     @State private var showPhotos = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -288,7 +289,7 @@ struct ChatView: View {
                                  placeholder: L10n.text("ios.message_agent", values: ["agent": session.agent.displayName]),
                                  canSend: canSend,
                                  onSend: { sendMessage(session) },
-                                 onPasteImage: { data in importImage(data) })
+                                 onPasteImage: { data in importImage(data) }, resetRevision: composerResetRevision)
             }
             if draft.isEmpty && (store.attachmentDrafts[sessionID] ?? []).isEmpty && session.state == .working {
                 Button { } label: {
@@ -353,9 +354,16 @@ struct ChatView: View {
         followBottom = true
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
             if !(store.attachmentDrafts[sessionID] ?? []).isEmpty {
-                store.sendAttachments(text, to: session.id) { if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draftBinding.wrappedValue = "" } }
-            } else { draftBinding.wrappedValue = ""; store.send(text, to: session.id) }
+                store.sendAttachments(text, to: session.id) {
+                    if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { clearDraft() }
+                }
+            } else { clearDraft(); store.send(text, to: session.id) }
         }
+    }
+
+    private func clearDraft() {
+        draftBinding.wrappedValue = ""
+        composerResetRevision += 1
     }
 
     private func emptyConversation(_ session: Session) -> some View {
