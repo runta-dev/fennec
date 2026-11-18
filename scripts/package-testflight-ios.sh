@@ -67,7 +67,9 @@ key="$work/AuthKey_${APPLE_ASC_KEY_ID}.p8"
 printf '%s' "$APPLE_ASC_KEY_BASE64" | base64 --decode > "$key"
 auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$APPLE_ASC_KEY_ID" -authenticationKeyIssuerID "$APPLE_ASC_ISSUER_ID")
 
-signing=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic)
+# Distribution from the start: automatic signing otherwise asks for a
+# development profile, which needs a registered device.
+signing=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Distribution")
 profile_name=
 if $manual; then
   password=$(uuidgen)
