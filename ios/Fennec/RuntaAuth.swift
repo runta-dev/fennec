@@ -130,7 +130,7 @@ final class RuntaAuth {
         failSignIn("sign-in window: \(ns.domain) \(ns.code)")
     }
 
-    /// Ends the attempt with "Couldn't finish sign-in" and a detail for 详情.
+    /// Ends the attempt with "Couldn't finish sign-in" and a detail for the Details view.
     /// Recorded in the Go account manager, not only here: its next snapshot
     /// would otherwise replace this with a plain sign-out (that was the
     /// silence in 0.1.4 and 0.1.5).
