@@ -86,6 +86,66 @@ final class FennecTests: XCTestCase {
         XCTAssertTrue(ChatTurn.turns(messages, working: false)[1].finished)
     }
 
+    /// With stop records, a message sent before the agent stopped steers the
+    /// turn; one sent after starts the next. Replies it stopped on stay
+    /// visible, and the duration is the one it reports.
+    func testTurnsFollowTheAgentsStopRecords() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        let messages: [ChatMessage] = [
+            .init(kind: .user("Check the disk"), time: t0),
+            .init(kind: .tools([ToolUse(name: "ran", summary: "df -h")]), time: t0.addingTimeInterval(5)),
+            .init(kind: .agent("97% used."), time: t0.addingTimeInterval(9)),
+            .init(kind: .user("which folders?"), time: t0.addingTimeInterval(10)), // sent while it worked
+            .init(kind: .tools([ToolUse(name: "ran", summary: "du -sh ~/*")]), time: t0.addingTimeInterval(20)),
+            .init(kind: .agent("~/repos is 261 GiB."), time: t0.addingTimeInterval(40)),
+            .init(kind: .end(duration: 42, stopped: false), time: t0.addingTimeInterval(40)),
+            .init(kind: .user("thanks"), time: t0.addingTimeInterval(60)),
+            .init(kind: .agent("Stopping."), time: t0.addingTimeInterval(61)),
+            .init(kind: .end(duration: nil, stopped: true), time: t0.addingTimeInterval(62)),
+            .init(kind: .user("go on"), time: t0.addingTimeInterval(70)),
+        ]
+        let turns = ChatTurn.turns(messages, working: true)
+        XCTAssertEqual(turns.count, 3)
+        XCTAssertTrue(turns[0].finished)
+        XCTAssertEqual(turns[0].duration, 42)
+        XCTAssertTrue(turns[0].work.contains { if case .user("which folders?") = $0.kind { return true } else { return false } })
+        if case .agent(let text)? = turns[0].summary?.kind { XCTAssertEqual(text, "~/repos is 261 GiB.") } else { XCTFail("summary") }
+        XCTAssertTrue(turns[1].stopped)
+        XCTAssertFalse(turns[2].finished)
+        // A reply the agent did not stop on is folded; one it stopped on is kept.
+        let early = ChatTurn.turns([
+            .init(kind: .user("a"), time: t0), .init(kind: .agent("first answer"), time: t0),
+            .init(kind: .end(duration: 1, stopped: false), time: t0),
+            .init(kind: .tools([ToolUse(name: "ran", summary: "ls")]), time: t0), // woken by a background task
+            .init(kind: .agent("final"), time: t0), .init(kind: .end(duration: 2, stopped: false), time: t0),
+        ], working: false)
+        XCTAssertEqual(early.count, 1)
+        XCTAssertEqual(early[0].closingReplies.count, 2)
+        XCTAssertEqual(early[0].duration, 3)
+    }
+
+    /// Claude Code: each typed message starts a turn even when the previous
+    /// stop was not recorded; messages it marked as sent mid-turn steer.
+    func testClaudeCodeTurnsFollowPrompts() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        let messages: [ChatMessage] = [
+            .init(kind: .user("one"), time: t0),
+            .init(kind: .tools([ToolUse(name: "ran", summary: "ls")]), time: t0),
+            .init(kind: .user("also this"), time: t0, steer: true),
+            .init(kind: .agent("done one"), time: t0),
+            .init(kind: .user("two"), time: t0),
+            .init(kind: .agent("done two"), time: t0),
+            .init(kind: .end(duration: 5, stopped: false), time: t0),
+            .init(kind: .user("three"), time: t0),
+        ]
+        let turns = ChatTurn.turns(messages, working: true, byPrompt: true)
+        XCTAssertEqual(turns.count, 3)
+        XCTAssertTrue(turns[0].work.contains { if case .user("also this") = $0.kind { return true } else { return false } })
+        if case .agent(let text)? = turns[0].summary?.kind { XCTAssertEqual(text, "done one") } else { XCTFail("summary") }
+        XCTAssertEqual(turns[1].duration, 5)
+        XCTAssertFalse(turns[2].finished)
+    }
+
     func testMarkdownBlocks() {
         let blocks = MarkdownBlock.parse("Disk is **full**.\n\n| Path | Size |\n|---|---:|\n| ~/repos | 261 GiB |\n| ~/.tart | 187 GiB |\n\n- one\n- two\n\n1. first\n\n```\ngo test\n```")
         XCTAssertEqual(blocks.count, 5)

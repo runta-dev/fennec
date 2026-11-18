@@ -223,6 +223,11 @@ struct TranscriptItem: Codable, Hashable {
     var tool: String?
     var time: Int64?
     var images: [String]?
+    /// For "user": sent while the agent worked (Claude Code says so).
+    var steer: Bool?
+    /// For "end": milliseconds the agent says it worked, and why it stopped.
+    var duration: Int64?
+    var reason: String?
 }
 
 struct TranscriptChunk: Decodable {
@@ -378,20 +383,23 @@ extension SessionStore {
                 guard let comma = url.firstIndex(of: ",") else { return nil }
                 return Data(base64Encoded: String(url[url.index(after: comma)...]))
             }
-            // Claude Code records a message sent mid-turn twice: when queued
-            // and inside the next tool result (with its images). Keep one.
+            // Claude Code can record a message sent mid-turn twice: when it is
+            // queued and beside the next tool result. Keep one.
             if let index = session.messages.indices.suffix(12).last(where: {
                 if case .user(let text) = session.messages[$0].kind { return text == item.text } else { return false }
             }), !item.text.isEmpty {
                 if session.messages[index].images.isEmpty { session.messages[index].images = images }
                 return
             }
-            session.messages.append(.init(kind: .user(item.text), time: time, images: images))
+            session.messages.append(.init(kind: .user(item.text), time: time, images: images, steer: item.steer ?? false))
             if let time { session.turnStarted = time }
         case "agent":
             session.messages.append(.init(kind: .agent(item.text), time: time))
         case "compacted":
             session.messages.append(.init(kind: .compacted, time: time))
+        case "end":
+            let duration = item.duration.map { TimeInterval($0) / 1000 }
+            session.messages.append(.init(kind: .end(duration: duration, stopped: item.reason == "interrupted"), time: time))
         case "tool":
             let use = ToolUse(name: item.tool ?? "", summary: item.text)
             if case .tools(let uses)? = session.messages.last?.kind {

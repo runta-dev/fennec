@@ -87,6 +87,9 @@ struct ChatMessage: Identifiable, Hashable {
         case tools([ToolUse])
         /// The agent summarized its context; shown as a hairline divider.
         case compacted
+        /// The agent recorded that it stopped: how long it says it worked,
+        /// and whether the person stopped it. Not shown; it draws turns.
+        case end(duration: TimeInterval?, stopped: Bool)
     }
     let id = UUID()
     var kind: Kind
@@ -94,12 +97,15 @@ struct ChatMessage: Identifiable, Hashable {
     var time: Date? = nil
     /// Images pasted into a user message.
     var images: [Data] = []
+    /// A message the agent recorded as sent while it worked (Claude Code).
+    var steer = false
 }
 
 extension ChatMessage {
     var isReply: Bool { if case .agent = kind { return true } else { return false } }
     var isUser: Bool { if case .user = kind { return true } else { return false } }
     var isCompaction: Bool { if case .compacted = kind { return true } else { return false } }
+    var isEnd: Bool { if case .end = kind { return true } else { return false } }
 }
 
 /// One user message and everything the agent did for it.
@@ -110,8 +116,16 @@ struct ChatTurn: Identifiable {
     /// The agent's closing reply, shown when the turn is folded.
     var summary: ChatMessage?
     var finished: Bool
+    /// From the agent's own records that it stopped (transcript "end").
+    var ended = false
+    var stopped = false
+    var reportedDuration: TimeInterval = 0
+    /// The reply the agent stopped on each time it stopped in this turn;
+    /// replies like these never fold away.
+    var closingReplies: Set<UUID> = []
 
     var duration: TimeInterval? {
+        if reportedDuration > 0 { return reportedDuration }
         // A turn may begin before the part of the log that was read, or right
         // after a compaction, with no prompt: time it from its first step.
         let start = prompt?.time ?? work.compactMap(\.time).first
@@ -120,36 +134,60 @@ struct ChatTurn: Identifiable {
         return end.timeIntervalSince(start)
     }
 
-    /// Splits messages at each user message. Every turn but the last is
-    /// finished; the last one is finished when the agent is not working.
-    static func turns(_ messages: [ChatMessage], working: Bool) -> [ChatTurn] {
+    /// Draws turns the way the agent recorded them, as ctx does.
+    /// - Claude Code (byPrompt) records a message sent while it works apart
+    ///   from one that starts a turn, so every other message starts a turn,
+    ///   whether or not it recorded the previous stop (it often doesn't).
+    /// - Codex, Pi and Kimi record every stop: a message starts a turn once
+    ///   the agent stopped, and before that steers the running turn.
+    /// - Logs with neither fall back to: a turn has stopped once it ends on a reply.
+    /// Every turn but the last is finished; the last when the agent stopped
+    /// or is no longer working.
+    static func turns(_ messages: [ChatMessage], working: Bool, byPrompt: Bool = false) -> [ChatTurn] {
+        let recordsStops = messages.contains(where: \.isEnd)
         var turns: [ChatTurn] = []
         var afterCompaction = false
+        func start(_ message: ChatMessage, prompt: Bool) {
+            turns.append(ChatTurn(id: message.id, prompt: prompt ? message : nil, work: prompt ? [] : [message], summary: nil, finished: true))
+        }
         for message in messages {
-            if case .compacted = message.kind {
-                // Always its own row between turns, never inside one; work the
-                // agent continues after it forms the next turn.
-                turns.append(ChatTurn(id: message.id, prompt: message, work: [], summary: nil, finished: true))
+            switch message.kind {
+            case .end(let duration, let stopped):
+                guard let index = turns.indices.last, turns[index].prompt?.isCompaction != true else { continue }
+                turns[index].ended = true
+                turns[index].stopped = stopped
+                turns[index].reportedDuration += duration ?? 0
+                if let reply = turns[index].work.last, reply.isReply { turns[index].closingReplies.insert(reply.id) }
+            case .compacted:
+                // Its own row between turns; what the agent does next forms the next turn.
+                start(message, prompt: true)
+                turns[turns.count - 1].ended = true
                 afterCompaction = true
-            } else if case .user = message.kind {
+            case .user:
                 afterCompaction = false
-                // A message sent while the agent was still working (its turn has
-                // no reply yet) steers that turn, as in Codex; it doesn't start one.
-                if let last = turns.last?.work.last, !last.isReply {
+                guard let last = turns.last, last.prompt?.isCompaction != true else { start(message, prompt: true); continue }
+                let running = message.steer || (!byPrompt && (recordsStops ? !last.ended : !(last.work.last?.isReply ?? true)))
+                if running {
                     turns[turns.count - 1].work.append(message)
                 } else {
-                    turns.append(ChatTurn(id: message.id, prompt: message, work: [], summary: nil, finished: true))
+                    start(message, prompt: true)
                 }
-            } else if turns.isEmpty || afterCompaction {
-                turns.append(ChatTurn(id: message.id, prompt: nil, work: [message], summary: nil, finished: true))
-                afterCompaction = false
-            } else {
-                turns[turns.count - 1].work.append(message)
+            default:
+                if turns.isEmpty || afterCompaction {
+                    start(message, prompt: false)
+                    afterCompaction = false
+                } else {
+                    // Work after a stop with no new message (a background task
+                    // woke the agent) continues the turn until it stops again.
+                    turns[turns.count - 1].work.append(message)
+                    turns[turns.count - 1].ended = false
+                }
             }
         }
-        if working, !turns.isEmpty { turns[turns.count - 1].finished = false }
-        for index in turns.indices where turns[index].finished {
-            if let last = turns[index].work.last, case .agent = last.kind {
+        for index in turns.indices {
+            let last = index == turns.count - 1
+            turns[index].finished = !last || turns[index].ended || !working
+            if turns[index].finished, let reply = turns[index].work.last, reply.isReply {
                 turns[index].summary = turns[index].work.removeLast()
             }
         }

@@ -42,7 +42,7 @@ struct ChatView: View {
                         }
                         .frame(maxWidth: .infinity).padding(.top, 80)
                     }
-                    let turns = ChatTurn.turns(session.messages, working: session.state == .working)
+                    let turns = ChatTurn.turns(session.messages, working: session.state == .working, byPrompt: session.agent == .claudeCode)
                     ForEach(turns) { turn in
                         TurnView(turn: turn,
                                  since: turn.prompt?.time ?? session.turnStarted ?? session.statusSince ?? session.updatedAt,
@@ -344,6 +344,8 @@ struct MessageView: View {
             ChangesCard(files: files)
         case .tools(let uses):
             ToolStep(uses: uses)
+        case .end:
+            EmptyView()
         case .compacted:
             HStack(spacing: 10) {
                 Rectangle().fill(Theme.line).frame(height: 1)
@@ -586,7 +588,8 @@ private struct TurnView: View {
             // No closing reply (stopped, or ended on a tool): keep the latest
             // agent note, else the last step, so a folded turn still says something.
             let latest = turn.summary == nil ? (turn.work.last(where: \.isReply) ?? turn.work.last(where: { !$0.isUser })) : nil
-            return turn.work.filter { $0.isUser || $0.isCompaction || $0.id == latest?.id }
+            // Replies the agent stopped on stay too: they answer a message.
+            return turn.work.filter { $0.isUser || $0.isCompaction || turn.closingReplies.contains($0.id) || $0.id == latest?.id }
         }
         // Working: only the latest few items, yours included, so the turn's
         // header with "Working for…" stays in view; earlier ones fold into it.
@@ -619,7 +622,9 @@ private struct TurnView: View {
         Button { if foldable { withAnimation(.snappy) { expanded.toggle() } } } label: {
             HStack(spacing: 6) {
                 if turn.finished {
-                    Text(turn.duration.map { "Worked for \(Self.format($0))" } ?? "Worked")
+                    Text(turn.stopped
+                         ? turn.duration.map { "Stopped after \(Self.format($0))" } ?? "Stopped"
+                         : turn.duration.map { "Worked for \(Self.format($0))" } ?? "Worked")
                 } else {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         let elapsed = context.date.timeIntervalSince(since)
