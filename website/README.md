@@ -23,12 +23,13 @@ The walkthrough replays real Codex, Claude Code, Pi and fen PTY output using
 the shipping xterm renderer. The Fennec panel loads the original native HTML,
 CSS, scripts and custom menus with isolated browser-only sample data. It never
 connects to an account or daemon. See [recording workflow and provenance](demo/README.md).
-Between them, `components/MobileApp.tsx` redraws the SwiftUI iPhone app
-(`ios/Fennec`: session list, conversation, Liquid Glass bars) at its point sizes
-with `Theme` light and dark colors. It follows the system appearance until the
-panel's Appearance setting is changed, then matches it. It follows the same timeline. Its messages come from the
-recordings (`components/mobile-scenario.ts`). Keep it aligned with `HomeView`,
-`ChatView` and `Theme` when the app changes.
+The "On your iPhone" section below the walkthrough uses `components/MobileApp.tsx`
+to redraw the SwiftUI iPhone app (`ios/Fennec`: session list, conversation,
+Liquid Glass bars) at its point sizes, with `Theme` light and dark colors that
+follow the system appearance. `components/MobileShowcase.tsx` replays the same
+three sessions on its own clock, using the same playback rules as the
+walkthrough. Its messages come from the recordings (`components/mobile-scenario.ts`).
+Keep it aligned with `HomeView`, `ChatView` and `Theme` when the app changes.
 
 Playback loops while visible and pauses offscreen or in a background tab.
 Reduced motion shows the completed scene. Clicking terminal tabs or native

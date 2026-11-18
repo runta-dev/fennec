@@ -102,3 +102,20 @@
   .benefit-proof { padding:16px; }
   .resume-session strong { font-size:11px; }
 }
+/* Fennec for iPhone: copy beside the replaying phone (components/MobileShowcase). */
+.landing-mobile { max-width:1120px; margin:0 auto; display:grid; grid-template-columns:1fr 1.1fr; align-items:center; gap:100px; padding:72px 0; border-bottom:1px solid var(--border); }
+.mobile-copy > p { font-size:14px; color:var(--muted); margin:24px 0 0; max-width:440px; }
+.mobile-copy > .benefit-detail { display:flex; gap:7px; align-items:baseline; font-size:12px; margin-top:26px; }
+.mobile-copy > .benefit-detail > svg { flex:none; position:relative; top:2px; }
+.mobile-features { list-style:none; padding:0; margin:28px 0 0; display:grid; gap:18px; }
+.mobile-features li { display:flex; gap:12px; }
+.mobile-features li > svg { flex:none; color:var(--accent, #f38d25); margin-top:2px; }
+.mobile-features strong { display:block; font-size:14px; font-weight:500; }
+.mobile-features span { display:block; font-size:13px; color:var(--muted); margin-top:3px; }
+.mobile-stage { margin:0; padding:44px 26px 22px; background:#fafafa; border:1px solid var(--border); border-radius:10px; display:flex; flex-direction:column; align-items:center; }
+.mobile-showcase { width:290px; max-width:100%; }
+.mobile-stage figcaption { color:var(--muted); font-size:11px; margin-top:22px; }
+@media(max-width:1200px) { .landing-mobile { margin-inline:32px; gap:48px; } }
+@media(max-width:800px) { .landing-mobile { grid-template-columns:1fr; gap:32px; } .mobile-stage { max-width:560px; width:100%; } }
+@media(max-width:760px) { .landing-mobile { margin-inline:24px; padding-block:45px; } .mobile-showcase { width:260px; } .mobile-stage { padding:28px 16px 18px; } }
+@media(max-width:360px) { .landing-mobile { margin-inline:20px; } .mobile-showcase { width:230px; } }

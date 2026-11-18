@@ -9,7 +9,5 @@ export const tasks = [
 ] as const;
 export type Task = (typeof tasks)[number];
 export type PanelTab = "Agents" | "Sessions" | "Governance" | "Account";
-/** The panel's Appearance choice; the phone follows it. */
-export type Appearance = "system" | "light" | "dark";
 export function sessionState(task: Task, time: number) { return time >= task.done ? "Idle" : time >= task.start + 2500 ? "Working" : "Idle"; }
 export function sessionTitle(task: Task, time: number) { return time >= task.start + 2500 ? task.title : "Untitled session"; }

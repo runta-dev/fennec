@@ -1,5 +1,6 @@
-import { ArrowRight, ArrowUpRight, Download, Github, Terminal, Cloud, Laptop, Check, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Download, Github, Terminal, Cloud, Laptop, Check, ShieldCheck, Smartphone } from 'lucide-react';
 import Demo from '../components/Demo';
+import MobileShowcase from '../components/MobileShowcase';
 import { agents } from '../components/agents';
 import { SiteHeader, SiteFooter, repo } from '../components/SiteChrome';
 import './landing.css';
@@ -41,6 +42,20 @@ export default function Home() {
           <div className="benefit-copy"><span className="benefit-number">03 / STAY IN CONTROL</span><h3>Your Mac’s tools.<br/>Your permission.</h3><p>Your cloud agent can reach local files and tools through the access you choose. Set Ask for approval, Approve for me, or Full access in Fennec.</p><p className="benefit-detail">Local access needs your Mac to be online. You can review activity and manage permissions from the app.</p></div>
           <figure className="benefit-proof permission-proof"><div className="proof-topline"><ShieldCheck size={16}/><span>Example: Ask for approval</span></div><ol><li><span>1</span><div><strong>Agent requests local access</strong><small>Read the project’s files on your Mac</small></div></li><li><span>2</span><div><strong>You review the request</strong><small>Approve or decline before it runs</small></div></li><li><Check size={16}/><div><strong>Approved access can proceed</strong><small>Your Mac provides the local tool</small></div></li></ol></figure>
         </article>
+      </section>
+
+      <section className="landing-mobile" id="mobile" aria-labelledby="mobile-title">
+        <div className="mobile-copy">
+          <div className="landing-section-heading"><div className="eyebrow">ON YOUR IPHONE</div><h2 id="mobile-title">Your sessions.<br/><span>Wherever you are.</span></h2></div>
+          <p>Fennec for iPhone connects to the same cloud computer as your Mac. Check on your agents away from your desk, and keep them moving.</p>
+          <ul className="mobile-features">
+            <li><Check size={16}/><div><strong>Every session at a glance</strong><span>Grouped by Working and Idle, as on your Mac.</span></div></li>
+            <li><Check size={16}/><div><strong>Follow the work</strong><span>The agent’s replies, the commands it ran, and how long it worked.</span></div></li>
+            <li><Check size={16}/><div><strong>Reply, stop, or start</strong><span>Send a follow-up, stop a session, open its terminal, or start a new one.</span></div></li>
+          </ul>
+          <p className="benefit-detail"><Smartphone size={14}/>To pair, open the Fennec menu bar app, choose Get Fennec iOS App, and scan the code.</p>
+        </div>
+        <figure className="mobile-stage" aria-label="Fennec for iPhone, replaying the sessions from the walkthrough above"><MobileShowcase/><figcaption>Example sessions from the walkthrough above.</figcaption></figure>
       </section>
 
       <section className="landing-setup" id="get-started" aria-labelledby="setup-title">
