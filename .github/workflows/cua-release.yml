@@ -15,7 +15,7 @@ on:
         type: string
 permissions:
   contents: write
-  actions: read
+  actions: write
 concurrency:
   group: cua-release-${{ inputs.build_run_id }}
   cancel-in-progress: false
@@ -117,3 +117,5 @@ jobs:
           url=$(gh release view "$tag" --json url -q .url)
           echo "Published [Fennec Computer Use $VERSION]($url); latest release is still $latest_after." >> "$GITHUB_STEP_SUMMARY"
           echo "$url"
+          # GITHUB_TOKEN's release event starts no workflow: send the files to R2 explicitly.
+          gh workflow run release-r2.yml -f tag="$tag" -f latest=true

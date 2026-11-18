@@ -1,0 +1,82 @@
+name: Publish release downloads to R2
+# Copies a published release into the fennec-releases R2 bucket with
+# scripts/sync-release-r2.sh. The website's download buttons resolve
+# /download/<product>/latest from that bucket at request time, so updating
+# latest.json is all a new version needs; the site is not redeployed.
+#
+# Fennec app releases (v*) are published with a user token, so the release
+# event starts this. cua-release.yml publishes with GITHUB_TOKEN, whose events
+# start no workflow, and dispatches this one instead.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag (v<version> or fennec-cua-v<version>)
+        required: true
+        type: string
+      latest:
+        description: Point /download/<product>/latest at this version
+        required: false
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: release-r2
+  cancel-in-progress: false
+jobs:
+  r2:
+    name: Upload to R2 and update the latest download
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') || startsWith(github.event.release.tag_name, 'fennec-cua-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release-r2
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Decide whether this version becomes the latest download
+        id: latest
+        env:
+          EVENT: ${{ github.event_name }}
+          WANTED: ${{ inputs.latest }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_dispatch ]; then latest="$WANTED"
+          elif [ "$PRERELEASE" = true ]; then latest=false
+          elif [[ "$TAG" == v* ]]; then
+            # The app's latest download follows GitHub's Latest release, which
+            # the updater reads too; dependency or older tags never move it.
+            current=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)
+            if [ "$current" = "$TAG" ]; then latest=true; else latest=false; fi
+          else latest=true
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "$TAG: latest=$latest"
+      - name: Upload the release files and latest.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo '::error::CLOUDFLARE_API_TOKEN is not set in the release-r2 environment'; exit 1; }
+          if [ "$LATEST" = true ]; then ./scripts/sync-release-r2.sh "$TAG"; else ./scripts/sync-release-r2.sh "$TAG" --no-latest; fi
+      - name: Check the public download
+        if: steps.latest.outputs.latest == 'true'
+        run: |
+          set -euo pipefail
+          case "$TAG" in fennec-cua-v*) product=computer-use; version="${TAG#fennec-cua-v}" ;; *) product=fennec; version="${TAG#v}" ;; esac
+          for host in fennec.runta.com runfennec.com; do
+            location=$(curl -fsS -o /dev/null -w '%{redirect_url}' "https://$host/download/$product/latest")
+            case "$location" in */download/$product/v$version/*) echo "$host -> $location" ;; *) echo "::error::$host latest is $location, not v$version"; exit 1 ;; esac
+            curl -fsSI "$location" >/dev/null
+          done
+          echo "Downloads: https://fennec.runta.com/download/$product/latest -> v$version" >> "$GITHUB_STEP_SUMMARY"
