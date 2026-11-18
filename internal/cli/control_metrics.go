@@ -115,6 +115,10 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 			s.metricsCurMiB = rt.Resources.Current.Memory
 			s.metricsMaxMiB = rt.Resources.Limits.Memory
 			s.metricsVCPUs = int(rt.Resources.Requests.VCPUs)
+			if rt.Resources.Current.VCPUs > 0 {
+				// With dynamic vCPU the visible count can exceed the request.
+				s.metricsVCPUs = int(rt.Resources.Current.VCPUs)
+			}
 			s.metricsAPIMu.Unlock()
 		}
 	}

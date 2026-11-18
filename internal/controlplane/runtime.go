@@ -92,6 +92,12 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 		c.mu.Unlock()
 		return nil, &control.Fault{Code: "uninstall_pending", Message: "Finish the pending uninstall before starting cloud work"}
 	}
+	if c.replacing {
+		// ReplaceDeletedRuntime starts preparation itself once the services
+		// bound to the deleted computer are gone.
+		c.mu.Unlock()
+		return c.runtimeSnapshot(), nil
+	}
 	if c.runtime.Epoch == epoch && (c.runtime.Running || c.runtime.Stage == "ready") {
 		c.mu.Unlock()
 		return c.runtimeSnapshot(), nil
@@ -483,6 +489,59 @@ func (c *Controller) QuiesceCloud(ctx context.Context, epoch uint64, runtimeID s
 		c.runtime.Events = nil
 	}
 	return nil
+}
+
+// ReplaceDeletedRuntime recovers from a cloud computer deleted outside Fennec
+// (for example in the Runta console). Unlike QuiesceCloud it records no deletion
+// and does not pause the lifecycle: it stops preparation, lets teardown release
+// the services still bound to the deleted runtime, then prepares again so
+// EnsureShared creates a replacement. A deletion made through Fennec pauses the
+// cloud (cloudPaused) and is never replaced here.
+func (c *Controller) ReplaceDeletedRuntime(ctx context.Context, epoch uint64, runtimeID string, teardown func(context.Context) error) error {
+	_, _, current, ok := c.Account.Session()
+	if !ok || current != epoch {
+		return fmt.Errorf("cloud account changed")
+	}
+	c.mu.Lock()
+	if c.maintenance || c.replacing || (c.cloudPaused && c.cloudPausedEpoch == epoch) {
+		c.mu.Unlock()
+		return fmt.Errorf("cloud lifecycle is busy")
+	}
+	if runtimeID == "" || c.runtime.Epoch != epoch || (c.runtime.RuntimeID != "" && c.runtime.RuntimeID != runtimeID) {
+		c.mu.Unlock()
+		return fmt.Errorf("cloud runtime changed")
+	}
+	c.replacing = true
+	c.runtimeAgain = false
+	cancel, done := c.runtimeCancel, c.runtimeDone
+	c.mu.Unlock()
+	finish := func(err error) error {
+		c.mu.Lock()
+		c.replacing = false
+		if err == nil && c.runtime.Epoch == epoch && !c.runtime.Running {
+			// Drop the deleted computer's ID and events; "retrying" makes the
+			// next ensureRuntime prepare instead of reporting a stale "ready".
+			c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Stage: "retrying", Events: map[string]map[string]string{}}
+		}
+		c.notifyRuntimeWakeLocked()
+		c.mu.Unlock()
+		return err
+	}
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return finish(ctx.Err())
+		}
+	}
+	if err := finish(teardown(ctx)); err != nil {
+		return err
+	}
+	_, err := c.ensureRuntime(ctx, nil)
+	return err
 }
 
 // ResumeCloud is used only after explicit create-again authorization. It does
