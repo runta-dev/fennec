@@ -583,3 +583,85 @@ func TestOfflinePausesPreparationAndReconnectRecoversAutomatically(t *testing.T)
 		t.Fatalf("unexpected ready state after reconnect: %+v", ready)
 	}
 }
+
+// A cloud computer deleted outside Fennec leaves the controller "ready" with a
+// stale runtime. ReplaceDeletedRuntime must hold off preparation during
+// teardown, then prepare again so a replacement is created.
+func TestReplaceDeletedRuntimePreparesReplacementAfterTeardown(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, _, epoch, _ := manager.Session()
+	var calls atomic.Int64
+	c := &Controller{Account: manager, Prepare: func(_ context.Context, _ string, w io.Writer) error {
+		id := "old"
+		if calls.Add(1) > 1 {
+			id = "new"
+		}
+		io.WriteString(w, `{"type":"runtime_progress","runtime_id":"`+id+`","stage":"agents_installed"}`+"\n")
+		return nil
+	}}
+	waitStage := func(stage, runtimeID string) {
+		t.Helper()
+		for {
+			got := c.runtimeSnapshot()
+			if got.Stage == stage && got.RuntimeID == runtimeID && !got.Running {
+				return
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("want %s/%s, got %+v", stage, runtimeID, got)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if _, err := c.ensureRuntime(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	waitStage("ready", "old")
+	if err := c.ReplaceDeletedRuntime(ctx, epoch, "other", func(context.Context) error {
+		t.Error("tore down services for a runtime the controller does not use")
+		return nil
+	}); err == nil {
+		t.Fatal("replaced a runtime the controller does not use")
+	}
+	torn := false
+	err := c.ReplaceDeletedRuntime(ctx, epoch, "old", func(context.Context) error {
+		torn = true
+		if _, err := c.retryRuntime(ctx, nil); err != nil {
+			return err
+		}
+		if c.runtimeSnapshot().Running {
+			t.Error("prepared during teardown of the deleted runtime")
+		}
+		return nil
+	})
+	if err != nil || !torn {
+		t.Fatalf("replacement failed: torn=%v err=%v", torn, err)
+	}
+	waitStage("ready", "new")
+	if calls.Load() != 2 {
+		t.Fatalf("expected exactly one replacement preparation, got %d", calls.Load()-1)
+	}
+}
+
+func TestReplaceDeletedRuntimeRespectsFennecDeletion(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, _, epoch, _ := manager.Session()
+	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return nil }}
+	c.runtime = RuntimeState{Epoch: epoch, Stage: "disabled", RuntimeID: "old"}
+	c.cloudPaused, c.cloudPausedEpoch = true, epoch
+	if err := c.ReplaceDeletedRuntime(ctx, epoch, "old", func(context.Context) error {
+		t.Error("tore down a cloud paused by a Fennec deletion")
+		return nil
+	}); err == nil {
+		t.Fatal("replaced a cloud paused by a Fennec deletion")
+	}
+}

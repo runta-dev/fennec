@@ -145,6 +145,15 @@ func (s *Store) AllowCreation(owner, runtime, request string) error {
 	return syncDirectory(s.Directory)
 }
 
+// RecordReplacedRuntime records a runtime deleted outside Fennec as the
+// creation generation, so its automatic replacement uses a fresh
+// Idempotency-Key instead of the key that created the deleted runtime.
+func (s *Store) RecordReplacedRuntime(owner, runtime string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeGeneration(owner, runtime)
+}
+
 func (s *Store) generationPath(owner string) string {
 	sum := sha256.Sum256([]byte("gen:" + owner))
 	return filepath.Join(s.Directory, hex.EncodeToString(sum[:])+".gen")

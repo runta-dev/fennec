@@ -52,6 +52,7 @@ type daemonServices struct {
 	metricsCacheAt                             time.Time
 	metricsDemandAt                            time.Time
 	channel                                    *terminalChannel
+	onRuntimeDeleted                           func(ctx context.Context, epoch uint64, owner, runtimeID string) error
 	transferSlots                              chan struct{}
 	syncMigrationRuntime                       string
 	syncMigrationCancel                        context.CancelFunc
@@ -195,6 +196,8 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	go func() { defer s.workers.Done(); s.runEntryRepair(ctx, epoch) }()
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.runMetricsCollector(ctx, epoch) }()
+	s.workers.Add(1)
+	go func() { defer s.workers.Done(); s.runRuntimePresence(ctx, epoch) }()
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.runCredentialSync(ctx, epoch) }()
 	s.startMagpieCredentialSync(ctx, epoch)

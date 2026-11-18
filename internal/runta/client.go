@@ -17,10 +17,20 @@ import (
 	"time"
 )
 
+// Default Fennec runtime shape: 4-8 vCPU, 4-16 GiB memory, 100 GiB disk.
+// SharedRuntimeMaxVCPUs is sent as limits.vcpus; an API that predates dynamic
+// vCPU rejects that field, so creation falls back to a fixed
+// SharedRuntimeVCPUs runtime (see sharedCreateIntents).
 const (
-	SharedRuntimeVCPUs             = 2
+	SharedRuntimeVCPUs             = 4
+	SharedRuntimeMaxVCPUs          = 8
 	SharedRuntimeBaselineMemoryMiB = 4096
 	SharedRuntimeMaxMemoryMiB      = 16384
+	SharedRuntimeDiskGiB           = 100
+
+	// legacySharedRuntimeVCPUs is the fixed vCPU count of Fennec runtimes
+	// created before the 4-8 vCPU default; memory reconciliation still applies.
+	legacySharedRuntimeVCPUs = 2
 )
 
 type Runtime struct {
@@ -38,6 +48,7 @@ type Runtime struct {
 }
 type RuntimeResources struct {
 	Current struct {
+		VCPUs           uint32 `json:"vcpus"`
 		Memory          uint64 `json:"memory_mib"`
 		ObservedDiskGiB uint32 `json:"observed_disk_gib"`
 	} `json:"current"`
@@ -47,6 +58,7 @@ type RuntimeResources struct {
 		DiskGiB uint32 `json:"disk_gib"`
 	} `json:"requests"`
 	Limits struct {
+		VCPUs  uint32 `json:"vcpus"`
 		Memory uint64 `json:"memory_mib"`
 	} `json:"limits"`
 }
@@ -225,21 +237,6 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		}
 		return c.reconcileSharedResources(ctx, matches[0], user), nil
 	}
-	body := map[string]any{
-		"name":                  "Fennec",
-		"environment_variables": map[string]string{"FENNEC_PURPOSE": "shared-v1"},
-		"resources": map[string]any{
-			"requests": map[string]any{"vcpus": SharedRuntimeVCPUs, "memory_mib": SharedRuntimeBaselineMemoryMiB},
-			"limits":   map[string]any{"memory_mib": SharedRuntimeMaxMemoryMiB},
-		},
-	}
-	var response struct {
-		Data Runtime `json:"data"`
-	}
-	encodedIntent, err := json.Marshal(body)
-	if err != nil {
-		return Runtime{}, err
-	}
 	seed := "fennec/shared-v1/" + user
 	if c.CreationGeneration != nil {
 		if gen := strings.TrimSpace(c.CreationGeneration(user)); gen != "" {
@@ -249,32 +246,20 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 	if len(terminalIDs) > 0 {
 		seed += "/skip-" + strings.Join(terminalIDs, ",")
 	}
-	digest := sha256.Sum256(append([]byte(seed+"\x00"), encodedIntent...))
-	err = c.request(ctx, "POST", "/v2/runtimes", body, "fennec-"+hex.EncodeToString(digest[:]), &response)
-	var apiError *APIError
-	if errors.As(err, &apiError) && apiError.Status == http.StatusConflict {
-		// Another device may have created the shared runtime since our list.
-		// Reconcile by ownership, never by changing keys and issuing another POST.
-		current, listErr := c.List(ctx)
-		if listErr != nil {
-			return Runtime{}, fmt.Errorf("runtime creation conflict; reconciliation failed: %w", listErr)
-		}
-		var candidate *Runtime
-		for _, r := range current {
-			if r.Owner != user || r.Environment["FENNEC_PURPOSE"] != "shared-v1" {
-				continue
-			}
-			if r.ID == "" || candidate != nil {
-				return Runtime{}, fmt.Errorf("runtime creation conflict; ambiguous Fennec runtime identity")
-			}
-			copy := r
-			candidate = &copy
-		}
-		if candidate != nil {
-			return *candidate, nil
-		}
+	created, err := c.createShared(ctx, user, seed)
+	if err == nil && (created.Status == "deleted" || created.Status == "deleting") && created.ID != "" {
+		// The server replayed an earlier creation under this key whose runtime
+		// has since been deleted; derive a fresh key from that runtime.
+		created, err = c.createShared(ctx, user, seed+"/after-"+created.ID)
 	}
-	if err == nil && response.Data.ID != "" && response.Data.Owner == user && response.Data.Environment == nil {
+	if err != nil {
+		return Runtime{}, err
+	}
+	var response struct {
+		Data Runtime `json:"data"`
+	}
+	response.Data = created
+	if response.Data.ID != "" && response.Data.Owner == user && response.Data.Environment == nil {
 		// Environment fields are optional in the API envelope. Verify an omitted
 		// marker through readback rather than treating creation as fully verified.
 		response.Data, err = c.Get(ctx, response.Data.ID)
@@ -283,6 +268,98 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		return Runtime{}, fmt.Errorf("runtime ownership or purpose response mismatch")
 	}
 	return response.Data, err
+}
+
+// createShared POSTs the shared runtime, newest API shape first (see
+// sharedCreateIntents). The Idempotency-Key digests seed and body, so retries
+// of one logical creation reuse it.
+func (c *Client) createShared(ctx context.Context, user, seed string) (Runtime, error) {
+	var response struct {
+		Data Runtime `json:"data"`
+	}
+	var err error
+	intents := sharedCreateIntents()
+	for i, body := range intents {
+		var encodedIntent []byte
+		if encodedIntent, err = json.Marshal(body); err != nil {
+			return Runtime{}, err
+		}
+		digest := sha256.Sum256(append([]byte(seed+"\x00"), encodedIntent...))
+		response.Data = Runtime{}
+		err = c.request(ctx, "POST", "/v2/runtimes", body, "fennec-"+hex.EncodeToString(digest[:]), &response)
+		var apiError *APIError
+		if errors.As(err, &apiError) && apiError.Status == http.StatusConflict {
+			// Another device may have created the shared runtime since our list.
+			// Reconcile by ownership, never by changing keys and issuing another POST.
+			current, listErr := c.List(ctx)
+			if listErr != nil {
+				return Runtime{}, fmt.Errorf("runtime creation conflict; reconciliation failed: %w", listErr)
+			}
+			var candidate *Runtime
+			for _, r := range current {
+				if r.Owner != user || r.Environment["FENNEC_PURPOSE"] != "shared-v1" {
+					continue
+				}
+				if r.ID == "" || candidate != nil {
+					return Runtime{}, fmt.Errorf("runtime creation conflict; ambiguous Fennec runtime identity")
+				}
+				copy := r
+				candidate = &copy
+			}
+			if candidate != nil {
+				return *candidate, nil
+			}
+		}
+		// A validation rejection means the API predates a requested field
+		// (limits.vcpus for dynamic vCPU, then disk_gib); a rejected request
+		// creates nothing, so retry with the next older shape.
+		if errors.As(err, &apiError) && (apiError.Status == http.StatusBadRequest || apiError.Status == http.StatusUnprocessableEntity) && i+1 < len(intents) {
+			continue
+		}
+		if err != nil {
+			return Runtime{}, err
+		}
+		break
+	}
+	return response.Data, nil
+}
+
+// sharedCreateIntents lists Fennec runtime creation bodies, newest API shape
+// first: dynamic 4-8 vCPU, then fixed 4 vCPU for an API without limits.vcpus,
+// then without disk_gib for an API that cannot size the overlay. Each shape has
+// its own idempotency key because the key digests the body.
+func sharedCreateIntents() []map[string]any {
+	shape := func(dynamicVCPU, disk bool) map[string]any {
+		requests := map[string]any{"vcpus": SharedRuntimeVCPUs, "memory_mib": SharedRuntimeBaselineMemoryMiB}
+		if disk {
+			requests["disk_gib"] = SharedRuntimeDiskGiB
+		}
+		limits := map[string]any{"memory_mib": SharedRuntimeMaxMemoryMiB}
+		if dynamicVCPU {
+			limits["vcpus"] = SharedRuntimeMaxVCPUs
+		}
+		return map[string]any{
+			"name":                  "Fennec",
+			"environment_variables": map[string]string{"FENNEC_PURPOSE": "shared-v1"},
+			"resources":             map[string]any{"requests": requests, "limits": limits},
+		}
+	}
+	return []map[string]any{shape(true, true), shape(false, true), shape(false, false)}
+}
+
+// RuntimeGone reports whether the API authoritatively says runtime id no longer
+// exists: 404, or status deleted or deleting. Any other error is returned and
+// never counts as gone, so an outage cannot look like a deletion.
+func (c *Client) RuntimeGone(ctx context.Context, id string) (bool, error) {
+	r, err := c.Get(ctx, id)
+	var apiError *APIError
+	if errors.As(err, &apiError) && apiError.Status == http.StatusNotFound {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return r.Status == "deleted" || r.Status == "deleting", nil
 }
 func (c *Client) WaitReady(ctx context.Context, id string, emit func(Runtime)) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -343,14 +420,16 @@ func (c *Client) Resume(ctx context.Context, id string) error {
 	return c.request(ctx, "POST", fmt.Sprintf("/v2/runtimes/%s/resume?expected_revision=%d", url.PathEscape(id), r.Revision), nil, "", nil)
 }
 
-// reconcileSharedResources patches an existing 2-vCPU Fennec runtime (for example
-// a legacy fixed 2c4g or fixed 2c16g machine) to 4 GiB baseline / 16 GiB max
+// reconcileSharedResources patches an existing Fennec runtime (for example a
+// legacy fixed 2c4g or fixed 2c16g machine) to 4 GiB baseline / 16 GiB max
 // dynamic memory scaling so idle memory automatically drops back to 4 GiB.
+// vCPU and disk are left alone: changing them needs a restart or full
+// shutdown, so existing runtimes get the 4-8 vCPU / 100 GiB shape on recreate.
 func (c *Client) reconcileSharedResources(ctx context.Context, r Runtime, expectedOwner string) Runtime {
 	if r.ID == "" || r.Resources == nil || r.Status == "deleting" || r.Status == "deleted" {
 		return r
 	}
-	if r.Resources.Requests.VCPUs != SharedRuntimeVCPUs {
+	if v := r.Resources.Requests.VCPUs; v != SharedRuntimeVCPUs && v != legacySharedRuntimeVCPUs {
 		return r
 	}
 	if r.Resources.Requests.Memory == SharedRuntimeBaselineMemoryMiB && r.Resources.Limits.Memory == SharedRuntimeMaxMemoryMiB {

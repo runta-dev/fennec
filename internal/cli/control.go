@@ -158,6 +158,13 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
 	controller.Additional = services.handlers(controller)
+	// runRuntimePresence calls this when the cloud computer was deleted outside
+	// Fennec, to tear down services bound to it and prepare a replacement.
+	services.onRuntimeDeleted = func(ctx context.Context, epoch uint64, owner, runtimeID string) error {
+		return controller.ReplaceDeletedRuntime(ctx, epoch, runtimeID, func(ctx context.Context) error {
+			return services.quiesceCloud(ctx, owner, runtimeID, epoch)
+		})
+	}
 	controller.Additional["transfer.open"] = services.openTransfer
 	services.chatgpt = newChatGPTBridge(home, services)
 	for method, handler := range services.chatgpt.handlers() {

@@ -56,10 +56,12 @@ func TestCreateStableIdempotency(t *testing.T) {
 		var body struct {
 			Resources struct {
 				Requests struct {
-					VCPUs  int `json:"vcpus"`
-					Memory int `json:"memory_mib"`
+					VCPUs   int `json:"vcpus"`
+					Memory  int `json:"memory_mib"`
+					DiskGiB int `json:"disk_gib"`
 				} `json:"requests"`
 				Limits struct {
+					VCPUs  int `json:"vcpus"`
 					Memory int `json:"memory_mib"`
 				} `json:"limits"`
 			} `json:"resources"`
@@ -67,7 +69,7 @@ func TestCreateStableIdempotency(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body.Resources.Requests.VCPUs != SharedRuntimeVCPUs || body.Resources.Requests.Memory != SharedRuntimeBaselineMemoryMiB || body.Resources.Limits.Memory != SharedRuntimeMaxMemoryMiB {
+		if body.Resources.Requests.VCPUs != 4 || body.Resources.Limits.VCPUs != 8 || body.Resources.Requests.Memory != 4096 || body.Resources.Limits.Memory != 16384 || body.Resources.Requests.DiskGiB != 100 {
 			t.Errorf("wrong default resources: %+v", body.Resources)
 		}
 		keys = append(keys, r.Header.Get("Idempotency-Key"))
@@ -102,6 +104,75 @@ func TestCreateStableIdempotency(t *testing.T) {
 	}
 	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
 		t.Fatal(keys)
+	}
+}
+
+// An API that predates dynamic vCPU rejects limits.vcpus; creation must fall
+// back to a fixed 4 vCPU runtime instead of failing.
+func TestCreateFallsBackWithoutDynamicVCPU(t *testing.T) {
+	var keys []string
+	var vcpuLimits []bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/me" {
+			fmt.Fprint(w, `{"data":{"user_id":"mine"}}`)
+			return
+		}
+		if r.Method == "GET" {
+			fmt.Fprint(w, `{"data":[],"pagination":{"has_more":false}}`)
+			return
+		}
+		var body struct {
+			Resources struct {
+				Requests map[string]any `json:"requests"`
+				Limits   map[string]any `json:"limits"`
+			} `json:"resources"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		_, hasLimit := body.Resources.Limits["vcpus"]
+		vcpuLimits = append(vcpuLimits, hasLimit)
+		if hasLimit {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			fmt.Fprint(w, `{"error":{"code":"invalid_request","message":"unknown field vcpus"}}`)
+			return
+		}
+		if body.Resources.Requests["vcpus"] != float64(4) || body.Resources.Requests["disk_gib"] != float64(100) || body.Resources.Limits["memory_mib"] != float64(16384) {
+			t.Errorf("unexpected fallback resources: %+v", body.Resources)
+		}
+		fmt.Fprint(w, `{"data":{"id":"shared","owner_user_id":"mine","environment_variables":{"FENNEC_PURPOSE":"shared-v1"},"resources":{"current":{"vcpus":4,"memory_mib":4096,"observed_disk_gib":1},"requests":{"vcpus":4,"memory_mib":4096,"disk_gib":100},"limits":{"memory_mib":16384}}}}`)
+	}))
+	defer server.Close()
+	c := Client{Endpoint: server.URL}
+	got, err := c.EnsureShared(context.Background())
+	if err != nil || got.ID != "shared" || got.Resources.Requests.VCPUs != 4 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if len(keys) != 2 || !vcpuLimits[0] || vcpuLimits[1] || keys[0] == keys[1] {
+		t.Fatalf("expected dynamic attempt then fixed fallback with distinct keys: %v %v", vcpuLimits, keys)
+	}
+}
+
+// Non-validation failures must not trigger a fallback POST.
+func TestCreateDoesNotFallBackOnServerError(t *testing.T) {
+	posts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/me":
+			fmt.Fprint(w, `{"data":{"user_id":"mine"}}`)
+		case r.Method == "GET":
+			fmt.Fprint(w, `{"data":[],"pagination":{"has_more":false}}`)
+		default:
+			posts++
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+	c := Client{Endpoint: server.URL}
+	var apiError *APIError
+	if _, err := c.EnsureShared(context.Background()); !errors.As(err, &apiError) || apiError.Status != http.StatusServiceUnavailable || posts != 1 {
+		t.Fatalf("err=%v posts=%d", err, posts)
 	}
 }
 
@@ -327,5 +398,59 @@ func TestSharedDeletionPolicyRunsBeforeCreation(t *testing.T) {
 	}
 	if mutations.Load() != 0 {
 		t.Fatal("cloud recreated after deletion")
+	}
+}
+
+func TestRuntimeGoneOnlyOnAuthoritativeAnswers(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/runtimes/missing":
+			w.WriteHeader(http.StatusNotFound)
+		case "/v2/runtimes/deleted", "/v2/runtimes/deleting", "/v2/runtimes/running", "/v2/runtimes/failed":
+			id := r.URL.Path[len("/v2/runtimes/"):]
+			fmt.Fprintf(w, `{"data":{"id":%q,"status":%q}}`, id, id)
+		default:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+	c := Client{Endpoint: server.URL}
+	for id, want := range map[string]bool{"missing": true, "deleted": true, "deleting": true, "running": false, "failed": false} {
+		if gone, err := c.RuntimeGone(context.Background(), id); err != nil || gone != want {
+			t.Errorf("%s: gone=%v err=%v", id, gone, err)
+		}
+	}
+	if gone, err := c.RuntimeGone(context.Background(), "outage"); err == nil || gone {
+		t.Fatalf("an outage must not look like a deletion: gone=%v err=%v", gone, err)
+	}
+}
+
+// A creation key replayed for a runtime deleted since must not hand the
+// deleted runtime back as the shared computer.
+func TestCreateReplayOfDeletedRuntimeUsesFreshKey(t *testing.T) {
+	var keys []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/me":
+			fmt.Fprint(w, `{"data":{"user_id":"mine"}}`)
+		case r.Method == "GET":
+			fmt.Fprint(w, `{"data":[],"pagination":{"has_more":false}}`)
+		default:
+			keys = append(keys, r.Header.Get("Idempotency-Key"))
+			if len(keys) == 1 {
+				fmt.Fprint(w, `{"data":{"id":"gone","status":"deleted","owner_user_id":"mine","environment_variables":{"FENNEC_PURPOSE":"shared-v1"}}}`)
+				return
+			}
+			fmt.Fprint(w, `{"data":{"id":"fresh","status":"provisioning","owner_user_id":"mine","environment_variables":{"FENNEC_PURPOSE":"shared-v1"}}}`)
+		}
+	}))
+	defer server.Close()
+	c := Client{Endpoint: server.URL}
+	got, err := c.EnsureShared(context.Background())
+	if err != nil || got.ID != "fresh" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if len(keys) != 2 || keys[0] == keys[1] {
+		t.Fatalf("expected a second creation under a fresh key: %v", keys)
 	}
 }

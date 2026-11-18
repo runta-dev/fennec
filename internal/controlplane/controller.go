@@ -42,6 +42,9 @@ type Controller struct {
 	maintenance        bool
 	cloudPaused        bool
 	cloudPausedEpoch   uint64
+	// replacing holds off preparation while services bound to a cloud computer
+	// deleted outside Fennec are torn down (ReplaceDeletedRuntime).
+	replacing bool
 }
 
 func (c *Controller) Handlers() map[string]control.Handler {
