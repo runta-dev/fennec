@@ -19,6 +19,16 @@
 
   const commandOf = id => (id === 'cursor' ? 'cursor-agent' : id);
   const prefs = { hidden: false, done: false, known: false };
+  // Values this card saved that the preferences have not echoed back yet. A
+  // reply read before the save would otherwise undo it and bring the card back.
+  const saving = {};
+  // Panel state drops for a moment (a takeover or session refresh, the
+  // preparation re-checking), so a step that was done stays done for HOLD and
+  // only undoes itself when its condition stays false.
+  const HOLD = 15_000;
+  const lastTrue = {};
+  let holdTimer = null;
+  let lastActive = [];
   let coverage = null; // last renderTerminalCoverage reply
   let coverageAsked = 0;
   let coverageKey = '';
@@ -37,7 +47,15 @@
     b.onclick = () => { send('copy-text:' + text); b.textContent = "[[i18n:ui.gs_copied]]"; setTimeout(() => { b.textContent = "[[i18n:ui.gs_copy]]"; }, 1500); };
     return b;
   };
-  const save = value => send('settings:' + JSON.stringify(value));
+  const save = value => { Object.assign(saving, value); send('settings:' + JSON.stringify(value)); };
+  const held = (name, value, keep = true) => {
+    const now = Date.now();
+    if (value) { lastTrue[name] = now; return true; }
+    const since = now - (lastTrue[name] ?? -Infinity);
+    if (!keep || since >= HOLD) { delete lastTrue[name]; return false; }
+    if (!holdTimer) holdTimer = setTimeout(() => { holdTimer = null; render(); }, HOLD - since + 50);
+    return true;
+  };
 
   // Installed agents the cloud computer can run, Codex and Claude Code first.
   const candidates = () => {
@@ -50,8 +68,8 @@
   const hasSession = ids => (typeof lastSessionTerminals === 'undefined' ? [] : lastSessionTerminals)
     .some(t => t.state === 'live' && ids.includes(t.labels?.['fennec.agent'] || t.agent));
 
-  function requestCoverage(force) {
-    const key = activeAgents().map(a => a.id).sort().join(',');
+  function requestCoverage(force, active = activeAgents()) {
+    const key = active.map(a => a.id).sort().join(',');
     const now = Date.now();
     if (!force && key === coverageKey && now - coverageAsked < 60_000) return;
     coverageKey = key; coverageAsked = now; checking = true;
@@ -62,7 +80,7 @@
     const row = el('li', 'gs-step' + (done ? ' done' : '') + (current ? ' current' : ''));
     const mark = el('span', 'gs-mark', done ? '' : String(n));
     mark.setAttribute('aria-hidden', 'true');
-    if (done) mark.innerHTML = '<svg viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></svg>';
+    if (done) mark.innerHTML = '<svg viewBox="0 0 16 16"><path d="m4.5 8.25 2.25 2.25 4.75-5"/></svg>';
     const main = el('div', 'gs-main');
     const head = el('div', 'gs-title', title);
     main.append(head);
@@ -111,9 +129,8 @@
     return body;
   }
 
-  function stepTerminal() {
+  function stepTerminal(active) {
     const body = el('div', 'gs-body');
-    const active = activeAgents();
     body.append(el('p', 'gs-note', "[[i18n:ui.gs_open_new_terminal]]"));
     for (const agent of active) {
       const line = el('div', 'gs-command');
@@ -155,18 +172,33 @@
     const selectionKnown = typeof takeoverSelectionKnown !== 'undefined' && takeoverSelectionKnown;
     // Finished, then nothing selected any more: the card comes back.
     if (prefs.known && prefs.done && selectionKnown && takeoverAgents.size === 0) { prefs.done = false; save({ get_started_done: false }); }
+    if (!signedIn) for (const name of Object.keys(lastTrue)) delete lastTrue[name];
     if (!signedIn || !prefs.known || prefs.hidden || (prefs.done && !finishing)) { card.hidden = true; shown = ''; return; }
-    const ready = window.fennecPreparationStage === 'agents_installed';
-    const active = activeAgents();
-    const running = active.length > 0;
-    const started = running && hasSession(active.map(a => a.id));
+    const ready = held('ready', window.fennecPreparationStage === 'agents_installed');
+    const activeNow = activeAgents();
+    // Only an agent that is still selected keeps step 2: removing it is the
+    // user's choice, not a refresh.
+    const stillSelected = lastActive.filter(a => takeoverAgents.has(a.id) && candidates().some(c => c.id === a.id));
+    const running = held('running', activeNow.length > 0, stillSelected.length > 0);
+    if (activeNow.length) lastActive = activeNow;
+    const active = activeNow.length ? activeNow : (running ? stillSelected : []);
+    const started = running && held('started', hasSession(active.map(a => a.id)));
     const doneCount = [ready, running, started].filter(Boolean).length;
-    if (running && !started) requestCoverage(false);
+    if (running && !started) requestCoverage(false, active);
+    // Before the key, so starting the timer does not rebuild the card.
+    if (doneCount === 3) {
+      if (!finishing) finishing = setTimeout(() => { prefs.done = true; save({ get_started_done: true }); finishing = null; render(); }, 8000);
+    } else if (finishing) { clearTimeout(finishing); finishing = null; }
 
+    // Only what the card shows: a newer coverage check with the same result
+    // (checked_at) or a re-check behind a shown result changes nothing.
+    const coverageShown = !coverage ? null : coverage.error ? 'error'
+      : [active.map(a => coverage.agents?.[a.id]?.coverage || ''), coverage.snippet || ''];
     const key = JSON.stringify({
-      ready, doneCount, finishing: !!finishing, checking, fixing, coverage,
+      ready, doneCount, finishing: !!finishing, checking: checking && !coverage, fixing, coverage: coverageShown,
+      active: active.map(a => a.id),
       changing: takeoverChanging, known: selectionKnown,
-      agents: candidates().map(a => [a.id, a.name, a.icon, takeoverAgents.has(a.id), activeTakeoverAgents.has(a.id), routeResults.get(a.id)?.status || '']),
+      agents: candidates().map(a => [a.id, a.name, a.icon, takeoverAgents.has(a.id), routeResults.get(a.id)?.status || '']),
     });
     if (key === shown && !card.hidden) return;
     shown = key;
@@ -179,25 +211,26 @@
     close.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8"/></svg>';
     close.onclick = () => { prefs.hidden = true; card.hidden = true; shown = ''; save({ get_started_hidden: true }); };
     head.append(title, count, close);
+    const progress = el('div', 'gs-progress');
+    progress.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 3; i++) progress.append(el('span', i < doneCount ? 'on' : ''));
     const steps = el('ol', 'gs-steps');
     const prep = el('div', 'gs-body');
     prep.append(el('p', 'gs-note', "[[i18n:ui.gs_preparing]]"));
     steps.append(
       step(1, "[[i18n:ui.gs_cloud_ready]]", ready, !ready, prep),
       step(2, "[[i18n:ui.gs_run_on_cloud]]", running, ready && !running, stepAgents(ready)),
-      step(3, "[[i18n:ui.gs_start_from_terminal]]", started, running && !started, stepTerminal()),
+      step(3, "[[i18n:ui.gs_start_from_terminal]]", started, running && !started, stepTerminal(active)),
     );
-    const phone = el('li', 'gs-step optional');
-    const phoneButton = el('button', 'gs-link', "[[i18n:ui.gs_iphone]]"); phoneButton.type = 'button';
-    phoneButton.onclick = () => document.querySelector('#get-ios-app')?.click();
-    phone.append(el('span', 'gs-mark', ''), el('div', 'gs-main'));
-    phone.lastChild.append(el('div', 'gs-title gs-optional', "[[i18n:ui.gs_optional]]"), phoneButton);
-    steps.append(phone);
-    card.append(head, steps);
-    if (doneCount === 3) {
-      card.append(el('p', 'gs-finished', "[[i18n:ui.gs_detach_hint]]"));
-      if (!finishing) finishing = setTimeout(() => { prefs.done = true; save({ get_started_done: true }); finishing = null; render(); }, 8000);
-    } else if (finishing) { clearTimeout(finishing); finishing = null; }
+    const phone = el('button', 'gs-phone'); phone.type = 'button';
+    phone.onclick = () => document.querySelector('#get-ios-app')?.click();
+    const phoneIcon = el('span', 'gs-phone-icon'); phoneIcon.setAttribute('aria-hidden', 'true');
+    phoneIcon.innerHTML = '<svg viewBox="0 0 16 16"><rect x="4.5" y="1.75" width="7" height="12.5" rx="1.75"/><path d="M7 11.75h2"/></svg>';
+    const chevron = el('span', 'gs-chevron'); chevron.setAttribute('aria-hidden', 'true');
+    chevron.innerHTML = '<svg viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></svg>';
+    phone.append(phoneIcon, el('span', 'gs-phone-title', "[[i18n:ui.gs_iphone]]"), el('span', 'gs-tag', "[[i18n:ui.gs_optional]]"), chevron);
+    card.append(head, progress, steps, phone);
+    if (doneCount === 3) card.append(el('p', 'gs-finished', "[[i18n:ui.gs_detach_hint]]"));
     card.hidden = false;
   }
 
@@ -211,8 +244,12 @@
   window.renderPreferences = value => {
     preferences(value);
     prefs.known = true;
-    prefs.hidden = value.get_started_hidden === true;
-    if (!finishing) prefs.done = value.get_started_done === true;
+    // A value this card saved wins until the preferences echo it back.
+    for (const [name, field] of [['hidden', 'get_started_hidden'], ['done', 'get_started_done']]) {
+      if (field in saving && (value[field] === true) === saving[field]) delete saving[field];
+      if (field in saving) prefs[name] = saving[field];
+      else if (name === 'hidden' || !finishing) prefs[name] = value[field] === true;
+    }
     render();
   };
   window.renderTerminalCoverage = value => {

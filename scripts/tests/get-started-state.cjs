@@ -21,8 +21,9 @@ class El {
 
 function load() {
   const agents = new El('section'); const list = new El('div'); agents.append(list);
-  const sent = []; const timers = [];
+  const sent = []; const timers = []; const clock = { now: 1_000_000 };
   const ctx = {
+    Date: { now: () => clock.now },
     document: { createElement: tag => new El(tag), querySelector: sel => ({ '#agents': agents, '#agent-list': list }[sel] || null) },
     send: action => sent.push(action),
     setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout: () => {},
@@ -35,7 +36,7 @@ function load() {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync('native/macos/UI/get-started.js', 'utf8'), ctx);
   const card = agents.children[0];
-  return { ctx, card, sent, timers, render: () => ctx.renderAgents(ctx.detectedAgents), prefs: v => ctx.renderPreferences(v) };
+  return { ctx, card, sent, timers, clock, render: () => ctx.renderAgents(ctx.detectedAgents), prefs: v => ctx.renderPreferences(v) };
 }
 const codex = { id: 'codex', name: 'Codex CLI', icon: 'codex.svg', installed: true, cloudSupported: true };
 const claude = { id: 'claude', name: 'Claude Code', icon: 'claude.svg', installed: true, cloudSupported: true };
@@ -152,4 +153,48 @@ t('the close button uses the shared close button style', () => {
   const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
   const close = s.card.byClass('gs-close')[0];
   assert.ok(close.className.split(' ').includes('ios-app-close') && close.className.split(' ').includes('icon'));
+});
+
+t('a moment without the session, the active agent or the cloud does not drop a step or rebuild', () => {
+  const s = step3(); s.ctx.lastSessionTerminals = [{ state: 'live', labels: { 'fennec.agent': 'codex' } }]; s.render();
+  const before = s.card.children[0];
+  s.ctx.lastSessionTerminals = []; s.ctx.renderHerdrSessions([]);
+  s.ctx.activeTakeoverAgents.clear(); s.ctx.renderTakeover();
+  s.ctx.fennecPreparationStage = 'checking'; s.ctx.renderPreparation();
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '3 / 3');
+  assert.equal(s.card.children[0], before, 'the card was rebuilt for a moment of missing state');
+  s.timers[0]();
+  assert.equal(s.sent.at(-1), 'settings:{"get_started_done":true}', 'finishing was cancelled');
+});
+
+t('a step undoes itself once its condition stays false', () => {
+  const s = step3(); s.ctx.lastSessionTerminals = [{ state: 'live', labels: { 'fennec.agent': 'codex' } }]; s.render();
+  s.ctx.lastSessionTerminals = []; s.render();
+  s.clock.now += 16_000; s.render();
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '2 / 3');
+});
+
+t('removing the agent from the cloud computer undoes step 2 at once', () => {
+  const s = step3(); s.ctx.takeoverAgents.clear(); s.ctx.activeTakeoverAgents.clear(); s.ctx.takeoverAgents.add('claude'); s.render();
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '1 / 3');
+});
+
+t('a newer terminal check with the same result does not rebuild', () => {
+  const s = step3(); s.ctx.renderTerminalCoverage({ checked_at: 1, agents: { codex: { coverage: 'not_covered' } } });
+  const before = s.card.children[0];
+  s.ctx.renderTerminalCoverage({ checked_at: 2, agents: { codex: { coverage: 'not_covered' } } });
+  assert.equal(s.card.children[0], before);
+});
+
+t('preferences read before a save do not bring a hidden or finished card back', () => {
+  const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
+  s.card.byClass('gs-close')[0].click(); s.prefs({}); assert.equal(s.card.hidden, true);
+  s.prefs({ get_started_hidden: true }); s.prefs({}); assert.equal(s.card.hidden, false, 'an echoed save is no longer forced');
+});
+
+t('the iPhone row opens the iPhone dialog', () => {
+  const s = load(); let opened = false; s.ctx.detectedAgents = [codex];
+  const button = { click: () => { opened = true; } };
+  s.ctx.document.querySelector = sel => (sel === '#get-ios-app' ? button : null);
+  s.prefs({}); s.card.byClass('gs-phone')[0].click(); assert.equal(opened, true);
 });
