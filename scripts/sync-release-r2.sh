@@ -11,8 +11,11 @@
 # (product "computer-use": the disk image and every archive).
 #
 # usage: sync-release-r2.sh TAG [--no-latest]
-# Needs gh, and wrangler logged in to the Runta account (or
-# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID with R2 write access).
+# Needs gh, and either R2's S3 credentials (R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY and CLOUDFLARE_ACCOUNT_ID; an R2 API token limited to
+# the bucket, used with the aws CLI, as CI does) or wrangler logged in to the
+# Runta account. A bucket-scoped token's API token value is refused by the
+# Cloudflare REST API wrangler uses; only its S3 credentials work.
 # Environment: FENNEC_R2_BUCKET (default fennec-releases), WRANGLER (default "npx -y wrangler@4").
 set -euo pipefail
 tag="${1:-}"
@@ -53,6 +56,17 @@ for f in "${files[@]}"; do
   [[ "$f" == SHA256SUMS || "$f" == provenance.json || "$f" == *.sha256 ]] || grep -q "  $f$" checked.sums || { echo "$f is not in SHA256SUMS" >&2; exit 1; }
 done
 
+# put KEY FILE CONTENT_TYPE [CACHE_CONTROL]
+put() {
+  if [[ -n "${R2_ACCESS_KEY_ID:-}" ]]; then
+    [[ -n "${R2_SECRET_ACCESS_KEY:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || { echo 'R2_SECRET_ACCESS_KEY and CLOUDFLARE_ACCOUNT_ID are required with R2_ACCESS_KEY_ID' >&2; exit 1; }
+    AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" AWS_DEFAULT_REGION=auto \
+      aws s3 cp "$2" "s3://$bucket/$1" --endpoint-url "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com" \
+      --content-type "$3" ${4:+--cache-control "$4"} --only-show-errors
+  else
+    $wrangler r2 object put "$bucket/$1" --file "$2" --content-type "$3" ${4:+--cache-control "$4"} --remote >/dev/null
+  fi
+}
 type_of() {
   case "$1" in
     *.dmg) echo application/x-apple-diskimage ;;
@@ -64,11 +78,11 @@ type_of() {
 }
 for f in "${files[@]}"; do
   echo "uploading $product/v$version/$f"
-  $wrangler r2 object put "$bucket/$product/v$version/$f" --file "$f" --content-type "$(type_of "$f")" --remote >/dev/null
+  put "$product/v$version/$f" "$f" "$(type_of "$f")"
 done
 if [[ $set_latest == 1 ]]; then
   jq -n --arg product "$product" --arg version "$version" --arg tag "$tag" --argjson files "$latest_files" \
     '{product:$product, version:$version, tag:$tag, files:$files}' > latest.json
-  $wrangler r2 object put "$bucket/$product/latest.json" --file latest.json --content-type application/json --cache-control no-store --remote >/dev/null
+  put "$product/latest.json" latest.json application/json no-store
   echo "$product/latest.json -> $version"
 fi
