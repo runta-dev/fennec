@@ -32,11 +32,11 @@ export default function Home() {
         <div className="landing-section-heading"><div className="eyebrow">HOW IT WORKS</div><h2 id="benefits-title">Run in the cloud.<br/><span>Keep your way of working.</span></h2></div>
         <article className="benefit-row">
           <div className="benefit-copy"><span className="benefit-number">01 / KEEP GOING</span><h3>Your work keeps running.</h3><p>Give the task a cloud checkout with the files and dependencies it needs. Your agent keeps working there when you close your terminal or your Mac.</p><p className="benefit-detail">A cloud session continues while its computer is running. Any step that needs your Mac waits for it to reconnect.</p></div>
-          <figure className="benefit-proof cloud-proof"><div className="proof-topline"><Cloud size={16}/><span>Execution stays in the cloud</span></div><div className="cloud-proof-flow"><span>Project files</span><ArrowRight size={16}/><span><img src="/icons/codex-color.svg" width="19" height="19" alt=""/>Your agent</span><ArrowRight size={16}/><span>Tests &amp; results</span></div><div className="cloud-proof-local"><Laptop size={16}/><span>Your Mac’s files &amp; tools</span><span>Available when connected</span></div><figcaption>The agent prepares task-relevant files. Your folders are not automatically mirrored.</figcaption></figure>
+          <figure className="benefit-proof cloud-proof"><div className="proof-topline"><Cloud size={16}/><span>Execution stays in the cloud</span></div><div className="cloud-proof-flow"><span>Project files</span><ArrowRight size={16}/><span><img src="/icons/codex-color.svg" width="19" height="19" alt=""/>Your agent</span><ArrowRight size={16}/><span>Tests &amp; results</span></div><div className="cloud-proof-local"><Laptop size={16}/><span>Your Mac’s files &amp; tools</span><span>Available when connected</span></div></figure>
         </article>
         <article className="benefit-row">
           <div className="benefit-copy"><span className="benefit-number">02 / PICK UP THE THREAD</span><h3>Same session. Same context.</h3><p>Detach without stopping the work. Come back through your terminal or a browser terminal, with the session’s conversation and results still in place.</p><p className="benefit-detail">Run <code>fen</code> to choose a live session. No session ID to memorize.</p></div>
-          <figure className="benefit-proof resume-proof"><div className="proof-topline"><Terminal size={16}/><span>A short command to come back</span></div><code><span>›</span> fen</code><div className="resume-session"><img src="/icons/codex-color.svg" width="22" height="22" alt=""/><div><strong>Fix duplicate webhook deliveries</strong><span>Codex · maple-river</span></div><ArrowRight size={16}/></div><figcaption>Example session. Select it to attach and continue.</figcaption></figure>
+          <figure className="benefit-proof resume-proof"><div className="proof-topline"><Terminal size={16}/><span>A short command to come back</span></div><code><span>›</span> fen</code><div className="resume-session"><img src="/icons/codex-color.svg" width="22" height="22" alt=""/><div><strong>Fix duplicate webhook deliveries</strong><span>Codex · maple-river</span></div><ArrowRight size={16}/></div></figure>
         </article>
         <article className="benefit-row">
           <div className="benefit-copy"><span className="benefit-number">03 / STAY IN CONTROL</span><h3>Your Mac’s tools.<br/>Your permission.</h3><p>Your cloud agent can reach local files and tools through the access you choose. Set Ask for approval, Approve for me, or Full access in Fennec.</p><p className="benefit-detail">Local access needs your Mac to be online. You can review activity and manage permissions from the app.</p></div>
@@ -55,7 +55,7 @@ export default function Home() {
           </ul>
           <p className="benefit-detail"><Smartphone size={14}/>To pair, open the Fennec menu bar app, choose Get Fennec iOS App, and scan the code.</p>
         </div>
-        <figure className="mobile-stage" aria-label="Fennec for iPhone, replaying the sessions from the walkthrough above"><MobileShowcase/><figcaption>Example sessions from the walkthrough above.</figcaption></figure>
+        <figure className="mobile-stage" aria-label="Fennec for iPhone, replaying the sessions from the walkthrough above"><MobileShowcase/></figure>
       </section>
 
       <section className="landing-setup" id="get-started" aria-labelledby="setup-title">
