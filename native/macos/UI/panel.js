@@ -186,16 +186,7 @@ window.renderAgents = agents => {
     icon.src = 'icons/' + agent.icon;
     const name = document.createElement('span');
     name.className = 'agent-name';
-    // "ChatGPT / Codex Desktop": the slash is drawn as a hairline.
-    agent.name.split(' / ').forEach((part, index) => {
-      if (index) {
-        const separator = document.createElement('span');
-        separator.className = 'agent-name-separator';
-        separator.textContent = '/';
-        name.append(separator);
-      }
-      name.append(part);
-    });
+    name.textContent = agent.name;
     const state = document.createElement('span');
     state.className = 'detected';
     state.textContent = "[[i18n:ui.this_mac]]";

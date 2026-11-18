@@ -41,10 +41,6 @@ const (
 	// requests are simply waiting for the cloud to come back.
 	chatgptOpenWait     = 45 * time.Second
 	chatgptHeldOpenWait = 15 * time.Minute
-	// A cloud stream refused with an error frame is retried after a growing
-	// pause rather than immediately.
-	chatgptRefusedBackoffMin = 500 * time.Millisecond
-	chatgptRefusedBackoffMax = 10 * time.Second
 )
 
 type chatgptPreference struct {
@@ -382,7 +378,6 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 	var window *terminalstream.CreditWindow
 	var receipt terminalstream.Frame
 	replay := pending
-	refusedBackoff := chatgptRefusedBackoffMin
 	for {
 		opened, transport, earlyInput, err := b.open(operation, max(time.Until(deadline), time.Second))
 		if err != nil {
@@ -431,20 +426,6 @@ func (b *chatgptBridge) serve(ctx context.Context, conn net.Conn, token string) 
 		opened.Close()
 		if !answered || operation.Err() != nil || time.Now().After(deadline) {
 			return unavailable(fmt.Errorf("cloud codex app-server unavailable"))
-		}
-		// The cloud answered and refused (it could not reach its app-server).
-		// Retrying at once resends the whole replay in a tight loop for the
-		// entire held wait, so back off and leave the reason visible.
-		if err == nil && frame.Type == "error" {
-			b.mu.Lock()
-			b.lastErr = "cloud codex app-server refused the connection: " + frame.Message
-			b.mu.Unlock()
-			select {
-			case <-operation.Done():
-				return operation.Err()
-			case <-time.After(refusedBackoff):
-			}
-			refusedBackoff = min(refusedBackoff*2, chatgptRefusedBackoffMax)
 		}
 	}
 	defer session.Close()
