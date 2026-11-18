@@ -96,8 +96,21 @@ func serveControl(arguments []string) error {
 			_ = writePublicJSON(filepath.Join(home, ".config/fennec/diagnostics/launchers.json"), map[string]string{"error": err.Error()})
 		}
 		if app := installedBundleForTrashWatch(os.Args[0], home); app != "" {
-			// Previous bundles kept by updates, once nothing runs from them.
-			go installation.PruneStaging(filepath.Dir(app))
+			// The bundle an update replaced is kept while CLI clients still run
+			// from it: pruned now, and hourly until those clients have exited.
+			go func() {
+				installation.PruneStaging(filepath.Dir(app))
+				ticker := time.NewTicker(time.Hour)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						installation.PruneStaging(filepath.Dir(app))
+					}
+				}
+			}()
 		}
 		if terminalIntegrationWanted(home) {
 			reconcileTerminalIntegrationSoon(home, executable)
