@@ -1,7 +1,8 @@
 # Local agent shims: injection, management and removal
 
 Status: current behavior documented from source `36f0e85` (2026-11-18); the
-redesign below is proposed and not implemented. Update the "Current mechanism"
+redesign below is approved in direction (decisions of 2026-11-18) and not
+implemented. Update the "Current mechanism"
 section when the code changes, and keep the incident record as dated evidence.
 
 ## Contract
@@ -182,6 +183,56 @@ and several accounts on one Mac.
 - The same plan executor serves explicit uninstall, Trash removal and
   repair.
 
+### Stable dispatcher outside the bundle
+
+Today every shim and wrapper embeds the path of the installed `fen`, so moving
+the application, App Translocation, or an update to a different path breaks
+them, and they must be rewritten whenever the application changes.
+
+Install a small dispatcher and the cleanup executable in
+`~/Library/Application Support/com.runta.fennec/bin/`, outside the bundle and
+outside caches and temporary directories, so neither macOS nor cleaning tools
+remove them by accident. Shims, functions and wrappers call only this stable
+path. The dispatcher:
+
+- finds the current application through the path the daemon registered and
+  LaunchServices, so the integration never has to be rewritten on update;
+- runs the original agent locally when the agent is not selected, when the
+  application is gone (and starts cleanup), or when it is running inside a
+  session the cloud computer opened on this Mac (see below);
+- fails visibly, never silently locally, when a selected agent's broker is
+  unreachable: it says why and, on a terminal, offers to run locally;
+- resolves the original by searching `PATH` without Fennec's directories, so a
+  version-manager shim (mise, volta, asdf) receives the call unchanged and
+  still chooses the version.
+
+The application refreshes both executables on each launch and checks them
+against hashes in the manifest.
+
+### Commands the cloud computer runs on this Mac
+
+Cloud agents run local commands through the Mac relay, often as
+non-interactive shells. A selected agent started that way must run on this Mac,
+not be sent back to the cloud computer. The local SSH server sets a marker
+variable for those sessions (as `FENNEC_LAUNCH_MODE` is handled today); the
+dispatcher always runs locally when it is present, and the dispatcher also
+refuses to dispatch when it is already inside a dispatched session.
+
+### Shell code rules
+
+The startup block only sources a Fennec-owned file, guarded by its existence,
+so updates never touch the user's files again. The sourced code must:
+
+- start no process and print nothing at shell startup (budget: under 5 ms);
+- be valid in zsh, bash 3.2 and POSIX `sh`, with fish in its own file;
+- survive the user's options: `set -u` (only `${name-}` expansions), `set -e`,
+  `noclobber`, zsh `KSH_ARRAYS` and similar (`emulate -L zsh` inside
+  functions);
+- never redefine a name the user already defined as an alias or function. In
+  zsh and bash an alias is expanded before any function or `PATH` lookup, so an
+  aliased agent is reported as shadowed, with the alias text, instead of being
+  overridden.
+
 ### Layers
 
 1. **Shell functions (primary, interactive shells).** Define a function per
@@ -195,10 +246,14 @@ and several accounts on one Mac.
    existing user alias or function already claims; report that agent as
    shadowed instead.
 2. **PATH shims (non-interactive and fallback).** Keep the shims directory.
-   For zsh, set `PATH` in `.zshenv`, which every zsh reads, in addition to the
-   interactive block. Register a last-position prompt hook
+   For zsh, set `PATH` in `.zshenv` by default (decision of 2026-11-18). It is
+   intrusive, but every zsh reads it, including the non-interactive shells
+   that cloud agents and scripts use, so local tasks see the same commands as
+   the user's terminal. The `.zshenv` part only prepends the shims directory;
+   functions and hooks stay in the interactive file. Register a last-position prompt hook
    (`precmd_functions`, the end of `PROMPT_COMMAND`, `fish_prompt`) that moves
-   the shims directory back to the front.
+   the shims directory back to the front, and on the first prompt redefines
+   an agent function that a later plugin (an nvm lazy loader) replaced.
 3. **Entry wrappers (shells and tools that bypass both).** Resolve the agent
    the way the user's interactive login shell does (`zsh -ilc 'whence -ap'`,
    `bash -ilc 'type -ap'`, `fish -ilc 'type -a -p'`), and add mise, asdf,
@@ -218,6 +273,10 @@ and several accounts on one Mac.
 5. **Agent-side notice (optional backstop).** Use Claude Code's
    `SessionStart` hook and the equivalent Codex hook, when available, to print
    one line when an agent set to the cloud computer starts locally.
+6. **Diagnosis.** `fen doctor agents` prints, per agent, the user's login
+   shell, the files read, the resolution chain (`type -a`, aliases,
+   functions), each layer's state and the reason it is not covered, with no
+   secrets, so a report needs one command instead of several screenshots.
 
 Installation targets are chosen from the user's real configuration: the login
 shell from `dscl . -read /Users/$USER UserShell`, and `ZDOTDIR` and
@@ -243,6 +302,12 @@ atomically before each change:
   Fennec set it (normally none);
 - whether ChatGPT.app was relaunched with the bridge URL;
 - the cleanup agent and its executable hash.
+
+Installation is a reconcile, not a sequence of edits: compute the desired
+state, compare it with the manifest and the disk, and apply only the
+difference. It runs at daemon start, after a selection change, and on file
+events for the recorded startup files and agent install directories, with
+backoff. Block markers carry a version so later layouts migrate in place.
 
 At daemon start, reconcile the manifest with the disk. Repair drift Fennec
 caused. When the user has removed a block or wrapper themselves, record that
@@ -272,10 +337,11 @@ today.
 
 ### Detection that does not depend on the daemon
 
-Add a second LaunchAgent, `com.runta.fennec.cleanup`, whose program is a small
-cleanup executable copied out of the bundle into
-`~/Library/Application Support/com.runta.fennec/cleanup/`, signed with the same
-Team ID and checked against the hash in the manifest. It runs at load (each
+Add a second LaunchAgent, `com.runta.fennec.cleanup`, whose program is the
+cleanup executable in `~/Library/Application Support/com.runta.fennec/bin/`,
+outside the bundle so moving the application to the Trash does not remove it
+(decision of 2026-11-18), signed with the same Team ID and checked against the
+hash in the manifest. It runs at load (each
 login) and through `WatchPaths` on the installed bundle's location, so a
 bundle trashed while the daemon was stopped, or before a restart, is handled
 at the next event or login. The daemon's existing watcher stays as the fast
@@ -294,8 +360,10 @@ content whose hash matches what Fennec wrote.
    earlier value. If ChatGPT.app is running with the bridge URL in its
    environment, quit it with SIGTERM (the same graceful path as Quit,
    `restartChatGPT`) and reopen it with `open -b com.openai.codex` and no
-   bridge variable. The bridge is already gone at this point, so that
-   instance cannot reach any app-server. Remove `chatgpt.json`'s token.
+   bridge variable. This restart is required (decision of 2026-11-18):
+   restoring the user's environment is part of removal, and the bridge is
+   already gone, so that instance cannot reach any app-server. Remove
+   `chatgpt.json`'s token.
 2. **Dispatch.** Remove `takeover.json` so any launcher that survives runs
    locally.
 3. **Entry wrappers.** Restore each original link (`launcher.UninstallEntry`)
@@ -338,12 +406,17 @@ environment:
 - ChatGPT.app running with and without the bridge URL; a
   `CODEX_APP_SERVER_WS_URL` the user changed after Fennec set it.
 
+## Decisions, 2026-11-18
+
+- Cleanup restarts a running ChatGPT.app without the bridge variable.
+  Restoring the user's environment on removal is required.
+- The zsh `PATH` entry is written to `.zshenv` by default, so the
+  non-interactive shells that cloud agents use for local tasks resolve the
+  same commands. The recursion rule keeps those sessions local.
+- The dispatcher and cleanup executables live outside the bundle in
+  `~/Library/Application Support/com.runta.fennec/bin/`.
+
 ## Open questions
 
-- Restarting ChatGPT.app during cleanup interrupts its windows; it is already
-  disconnected at that point, but confirm whether a notification and a restart
-  at next launch is preferable.
-- Whether to write `.zshenv` by default or only when verification finds
-  non-interactive use.
-- Where the cleanup executable's signature and Gatekeeper behavior hold when
-  it lives outside the bundle; validate on a clean Mac before shipping.
+- The cleanup executable's signature and Gatekeeper behavior outside the
+  bundle must be validated on a clean Mac before shipping.
