@@ -17,6 +17,8 @@ not rebuild the application or rerun historical live benchmarks.
 
 ## Implementation references
 
+- [Deep-link contract](deep-links.md): shared route names, existing pairing,
+  reserved auth callbacks, environment binding, and rollout requirements.
 - [Native credentials](native-agent-credentials.md), [managed Magpie](magpie-runtime.md),
   and [gateway lifetime](cloud-gateway.md).
 - [Transport lifecycle](transport-worker.md), [TUI reattachment](tasks/tui-auto-reconnect.md),
