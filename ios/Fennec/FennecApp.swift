@@ -25,7 +25,19 @@ struct FennecApp: App {
             .tint(Theme.fg)
             .environment(\.locale, Locale(identifier: L10n.language))
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { L10n.preferences.systemLanguages = Locale.preferredLanguages }
+                if phase == .active {
+                    L10n.preferences.systemLanguages = Locale.preferredLanguages
+                    // Back in the foreground: check the connection now, not at the next list.
+                    if let core = app.store.core { Task.detached { core.warm() } }
+                }
+            }
+            .onChange(of: app.auth.status == .signedIn) { _, signedIn in
+                // Signed in (or restored at launch): connect while the home
+                // screen appears, and time the first list from here.
+                guard signedIn, let core = app.store.core else { return }
+                app.store.startedAt = .now
+                app.store.firstListSeconds = nil
+                Task.detached { core.warm() }
             }
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             // QR codes scanned with the system Camera open fennec://pair links.

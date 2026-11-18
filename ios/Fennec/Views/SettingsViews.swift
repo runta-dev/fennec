@@ -111,6 +111,17 @@ struct AccountView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                if app.environment == .integration, let first = store.firstListSeconds {
+                    // Integration only: how long the session list takes, by stage.
+                    ListCard {
+                        ListRow(icon: "stopwatch", title: String(format: "Session list %.1f s after sign-in", first),
+                                subtitle: store.lastListTiming.map { t in
+                                    String(format: "last %.2f s · connect %.2f s · list %.2f s%@", Double(t.total_ms) / 1000,
+                                           Double(t.connect_ms) / 1000, Double(t.command_ms) / 1000, t.reused ? " · reused" : " · new connection")
+                                }, showDivider: false)
+                    }
+                    .accessibilityIdentifier("list-timing")
+                }
                 #if DEBUG
                 ListCard {
                     toggleRow("Debug: Mac online", Binding(get: { store.macOnline }, set: { store.macOnline = $0 }), last: true)

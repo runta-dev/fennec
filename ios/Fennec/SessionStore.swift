@@ -47,6 +47,14 @@ final class SessionStore {
     let core: FennecmobileSessions?
     /// Why the last call to the cloud computer failed; nil once one succeeds.
     var issue: ConnectionIssue?
+    /// The last list read from the cloud computer, shown at once at the next
+    /// launch while a fresh one is read (nil in demo mode).
+    @ObservationIgnored var listCache: URL?
+    /// When this store started, and how long its first fresh list took
+    /// (Integration diagnostics on the Account page).
+    @ObservationIgnored var startedAt = Date.now
+    var firstListSeconds: Double?
+    var lastListTiming: ListTiming?
     /// What each waiting live session asks (LivePromptSheet.swift).
     var livePrompts: [String: LivePrompt] = [:]
     var answeringPrompts: Set<String> = []
@@ -337,7 +345,15 @@ extension SessionStore {
 
 // MARK: Live sessions from the cloud computer
 
-struct SessionSummary: Decodable {
+/// How long the last session list took, by stage (mobile listTiming).
+struct ListTiming: Decodable, Equatable {
+    var connect_ms: Int
+    var command_ms: Int
+    var total_ms: Int
+    var reused: Bool
+}
+
+struct SessionSummary: Codable {
     var address: String
     var session_id: String
     var agent: String
@@ -400,7 +416,27 @@ struct TranscriptCache: Codable {
 extension SessionStore {
     static func live(auth: RuntaAuth) -> SessionStore {
         let directory = URL.applicationSupportDirectory.appending(path: "Fennec").path()
-        return SessionStore(sessions: [], core: FennecmobileNewSessions(auth.core, directory))
+        let core = FennecmobileNewSessions(auth.core, directory)
+        let store = SessionStore(sessions: [], core: core)
+        store.listCache = listCacheURL(auth.environment)
+        // The last list, at once; the fresh one replaces it in place.
+        if let data = store.listCache.flatMap({ try? Data(contentsOf: $0) }),
+           let rows = try? JSONDecoder().decode([SessionSummary].self, from: data), !rows.isEmpty {
+            store.apply(rows)
+            store.loaded = true
+        }
+        // Connect now, before the list is asked for (a no-op when signed out).
+        if let core { Task.detached { core.warm() } }
+        return store
+    }
+
+    static func listCacheURL(_ environment: RuntaEnvironment) -> URL {
+        URL.cachesDirectory.appending(path: "sessions-\(environment.rawValue).json")
+    }
+
+    /// The cached list belongs to the account that signed out.
+    static func clearListCache(_ environment: RuntaEnvironment) {
+        try? FileManager.default.removeItem(at: listCacheURL(environment))
     }
 
     /// Runs a blocking Fennec client call off the main actor and records its error.
@@ -425,6 +461,22 @@ extension SessionStore {
               let rows = try? JSONDecoder().decode([SessionSummary].self, from: data) else { loaded = true; return }
         // A list requested before launch must not erase the newly opened chat.
         guard revision == sessionListRevision else { return }
+        if firstListSeconds == nil { firstListSeconds = Date.now.timeIntervalSince(startedAt) }
+        lastListTiming = (try? JSONDecoder().decode(ListTiming.self, from: Data(core.listTiming().utf8)))
+        if let listCache { try? data.write(to: listCache, options: .atomic) }
+        let previous = apply(rows)
+        loaded = true
+        // Keep each session's log current so the list shows its latest update.
+        // The first read takes the tail of the log; later reads only new lines.
+        for session in sessions where !session.transcriptLoaded || session.state != previous[session.id]?.state || session.state == .working {
+            await loadTranscript(session.id)
+        }
+    }
+
+    /// Replaces the list with these rows, keeping what is known of each
+    /// session already; returns the sessions as they were.
+    @discardableResult
+    func apply(_ rows: [SessionSummary]) -> [String: Session] {
         let previous = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         sessions = rows.compactMap { row in
             guard let agent = AgentKind(launcherID: row.agent) else { return nil }
@@ -442,14 +494,10 @@ extension SessionStore {
             session.address = row.address
             session.activity = row.activity
             session.statusSince = row.status_ms.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
+            if previous[row.session_id] == nil, let since = session.statusSince { session.updatedAt = since }
             return session
         }
-        loaded = true
-        // Keep each session's log current so the list shows its latest update.
-        // The first read takes the tail of the log; later reads only new lines.
-        for session in sessions where !session.transcriptLoaded || session.state != previous[session.id]?.state || session.state == .working {
-            await loadTranscript(session.id)
-        }
+        return previous
     }
 
     /// Reads new lines of the agent's own session log into the conversation.

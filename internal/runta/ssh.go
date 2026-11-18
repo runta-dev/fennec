@@ -146,12 +146,22 @@ func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned boo
 			break
 		}
 	}
+	// A new device key is never attached yet, so the runtime's revision for
+	// attaching it is read while the key is created (one round trip, not two).
+	var runtime Runtime
+	var runtimeErr error
+	runtimeRead := make(chan struct{})
+	readRuntime := func() { runtime, runtimeErr = c.Get(ctx, id); close(runtimeRead) }
+	reading := false
 	if keyID == "" {
+		reading = true
+		go readRuntime()
 		var created struct {
 			Data key `json:"data"`
 		}
 		err = c.request(ctx, "POST", "/v2/ssh-keys", map[string]string{"display_name": "Fennec device", "public_key": public}, "", &created)
 		if err != nil {
+			<-runtimeRead
 			return nil, err
 		}
 		keyID = created.Data.ID
@@ -166,9 +176,12 @@ func (c *Client) prepareSSH(ctx context.Context, id, directory string, owned boo
 		}
 	}
 	if !found {
-		runtime, e := c.Get(ctx, id)
-		if e != nil {
-			return nil, e
+		if !reading {
+			readRuntime()
+		}
+		<-runtimeRead
+		if runtimeErr != nil {
+			return nil, runtimeErr
 		}
 		err = c.request(ctx, "PUT", fmt.Sprintf("/v2/runtimes/%s/ssh-keys/%s?expected_revision=%d", url.PathEscape(id), url.PathEscape(keyID), runtime.Revision), nil, "", nil)
 		if err != nil {

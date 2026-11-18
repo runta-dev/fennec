@@ -155,6 +155,22 @@ final class FennecTests: XCTestCase {
         XCTAssertEqual(other.detail, "session not found")
     }
 
+    func testCachedListAppliesAndKeepsKnownSessions() throws {
+        let json = #"[{"address":"t1","session_id":"cone-leaf","agent":"codex","title":"Fix reconnect","status":"Working","status_ms":1700000000000},{"address":"t2","session_id":"x","agent":"unknown-agent","title":"Skip","status":"Idle"}]"#
+        let rows = try JSONDecoder().decode([SessionSummary].self, from: Data(json.utf8))
+        // What the cache file holds survives a round trip.
+        let again = try JSONDecoder().decode([SessionSummary].self, from: JSONEncoder().encode(rows))
+        let store = SessionStore(sessions: [])
+        store.apply(again)
+        XCTAssertEqual(store.sessions.map(\.id), ["cone-leaf"])
+        XCTAssertEqual(store.session("cone-leaf")?.state, .working)
+        XCTAssertEqual(store.session("cone-leaf")?.updatedAt, Date(timeIntervalSince1970: 1_700_000_000))
+        store.update("cone-leaf") { $0.messages.append(.init(kind: .agent("kept"))) }
+        let previous = store.apply(rows)
+        XCTAssertNotNil(previous["cone-leaf"])
+        XCTAssertEqual(store.session("cone-leaf")?.messages.count, 1)
+    }
+
     func testInitials() {
         XCTAssertEqual(Profile(displayName: "Ada Lovelace", email: "ada@example.com").initials, "AL")
     }

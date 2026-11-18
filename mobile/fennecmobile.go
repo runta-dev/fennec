@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -230,6 +231,20 @@ type Sessions struct {
 	residentMu     sync.Mutex
 	residentClient *ssh.Client
 	transport      *terminalstream.Transport
+	residentBusy   bool
+
+	timingMu sync.Mutex
+	timing   listTiming
+}
+
+// listTiming is how long the last session list took, by stage, for the
+// app's Integration diagnostics.
+type listTiming struct {
+	ConnectMS int64 `json:"connect_ms"`
+	CommandMS int64 `json:"command_ms"`
+	TotalMS   int64 `json:"total_ms"`
+	// Reused: the list ran on an already open connection.
+	Reused bool `json:"reused"`
 }
 
 // Metrics samples the cloud computer: the Mac panel's SystemMetrics as JSON
@@ -271,11 +286,17 @@ func (s *Sessions) runtimeClient() (*runta.Client, string, uint64, error) {
 // findShared selects the runtime the Mac app created (runta.EnsureShared's
 // marker) without creating one from the phone.
 func findShared(ctx context.Context, client *runta.Client) (runta.Runtime, error) {
-	user, err := client.CurrentUser(ctx)
-	if err != nil {
-		return runta.Runtime{}, err
-	}
+	// Who the account is and its runtimes are independent reads: one round
+	// trip to the API, not two.
+	var user string
+	var userErr error
+	done := make(chan struct{})
+	go func() { user, userErr = client.CurrentUser(ctx); close(done) }()
 	runtimes, err := client.List(ctx)
+	<-done
+	if userErr != nil {
+		return runta.Runtime{}, userErr
+	}
 	if err != nil {
 		return runta.Runtime{}, err
 	}
@@ -313,7 +334,22 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 		s.client.Close()
 		s.client = nil
 	}
-	shared, err := findShared(ctx, client)
+	// The cloud computer this phone used last: with its pinned host key the
+	// SSH handshake starts at once, alongside the API checks, which must
+	// still agree before any command runs (runta.ConnectResolved).
+	hint := s.rememberedRuntime()
+	var sharedID string
+	connection, err := client.ConnectResolved(ctx, hint, s.directory, func(ctx context.Context) (string, error) {
+		shared, err := findShared(ctx, client)
+		if err != nil {
+			return "", err
+		}
+		if shared.Status != "running" {
+			return "", cloudStoppedError{shared.Status}
+		}
+		sharedID = shared.ID
+		return shared.ID, nil
+	})
 	if err != nil {
 		var apiErr *runta.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == 401 {
@@ -322,20 +358,79 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 		}
 		return nil, "", err
 	}
-	if shared.Status != "running" {
-		return nil, "", cloudStoppedError{shared.Status}
+	s.client, s.runtimeID, s.token = connection, sharedID, token
+	s.rememberRuntime(sharedID)
+	return connection, sharedID, nil
+}
+
+func (s *Sessions) rememberedRuntime() string {
+	data, err := os.ReadFile(filepath.Join(s.directory, "runtime_id"))
+	if err != nil || len(data) > 128 {
+		return ""
 	}
-	connection, err := client.ConnectOwned(ctx, shared.ID, s.directory)
-	if err != nil {
-		var apiErr *runta.APIError
-		if errors.As(err, &apiErr) && apiErr.Status == 401 {
-			s.auth.manager.RejectCredential(token, epoch)
-			return nil, "", errSessionExpired
+	return strings.TrimSpace(string(data))
+}
+
+func (s *Sessions) rememberRuntime(id string) {
+	if id != "" && id != s.rememberedRuntime() {
+		_ = os.WriteFile(filepath.Join(s.directory, "runtime_id"), []byte(id+"\n"), 0600)
+	}
+}
+
+// Warm connects ahead of the first request (after sign-in, at launch, back
+// in the foreground). A connection that died while the app was suspended is
+// found with a keepalive and replaced now, not by the next list.
+func (s *Sessions) Warm() {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client != nil {
+		alive := make(chan bool, 1)
+		go func() { _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); alive <- err == nil }()
+		select {
+		case ok := <-alive:
+			if ok {
+				s.warmResident(client)
+				return
+			}
+		case <-time.After(3 * time.Second):
 		}
-		return nil, "", err
+		s.drop(client)
 	}
-	s.client, s.runtimeID, s.token = connection, shared.ID, token
-	return connection, shared.ID, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if client, _, err := s.connect(ctx); err == nil {
+		s.warmResident(client)
+	}
+}
+
+// warmResident starts the resident command server in the background. Until it
+// is ready, commands use plain SSH channels (commandstream falls back), so
+// nothing waits for it.
+func (s *Sessions) warmResident(client *ssh.Client) {
+	s.residentMu.Lock()
+	if s.residentBusy || (s.transport != nil && s.residentClient == client) {
+		s.residentMu.Unlock()
+		return
+	}
+	s.residentBusy = true
+	s.residentMu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = s.resident(ctx, client)
+		s.residentMu.Lock()
+		s.residentBusy = false
+		s.residentMu.Unlock()
+	}()
+}
+
+// ListTiming returns the last session list's timing as JSON (listTiming).
+func (s *Sessions) ListTiming() string {
+	s.timingMu.Lock()
+	defer s.timingMu.Unlock()
+	data, _ := json.Marshal(s.timing)
+	return string(data)
 }
 
 func (s *Sessions) drop(client *ssh.Client) {
@@ -354,17 +449,28 @@ func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, s
 	defer cancel()
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
+		s.mu.Lock()
+		reused := s.client != nil
+		s.mu.Unlock()
+		started := time.Now()
 		client, runtimeID, err := s.connect(ctx)
 		if err != nil {
 			return nil, "", err
 		}
+		connected := time.Now()
 		command, err := script(runtimeID)
 		if err != nil {
 			return nil, "", err
 		}
-		if _, err := s.resident(ctx, client); err != nil {
-			return nil, "", err
-		}
+		s.warmResident(client)
+		defer func() {
+			if command == cloudruntime.ListScript {
+				done := time.Now()
+				s.timingMu.Lock()
+				s.timing = listTiming{ConnectMS: connected.Sub(started).Milliseconds(), CommandMS: done.Sub(connected).Milliseconds(), TotalMS: done.Sub(started).Milliseconds(), Reused: reused}
+				s.timingMu.Unlock()
+			}
+		}()
 		session, err := commandstream.NewSession(ctx, client)
 		if err != nil {
 			s.drop(client)

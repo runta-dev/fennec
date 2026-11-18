@@ -224,6 +224,8 @@ final class RuntaAuth {
         status = Self.status(for: snapshot)
         if !isAuthorizing { pairing = false }
         if status == .signedIn, previous != .signedIn { Task { await loadProfile() } }
+        // Signed out (or the key was rejected): the cached list was this account's.
+        if previous == .signedIn, status != .signedIn, status != .restoring { SessionStore.clearListCache(environment) }
     }
 
     nonisolated static func status(for snapshot: AccountSnapshot) -> Status {
