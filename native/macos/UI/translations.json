@@ -38,10 +38,6 @@
       "en-US": "Scan QR code",
       "zh-CN": "扫码登录"
     },
-    "ios.kill_session": {
-      "en-US": "Kill",
-      "zh-CN": "终止"
-    },
     "ios.email_address": {
       "en-US": "Email address",
       "zh-CN": "邮箱地址"

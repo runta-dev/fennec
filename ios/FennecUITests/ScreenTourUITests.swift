@@ -39,6 +39,17 @@ final class ScreenTourUITests: XCTestCase {
         appearance.buttons["System"].tap()
     }
 
+    func testSwipingASessionOffersStop() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US"]
+        app.launch()
+        let row = app.staticTexts["Fix Magpie panel startup"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.swipeLeft()
+        XCTAssertTrue(app.buttons["Stop"].waitForExistence(timeout: 3), "swipe action is not Stop")
+        XCTAssertFalse(app.buttons["Kill"].exists)
+    }
+
     func testAgentMenuCreatesEmptyChatAndKeyboardSendsMessage() {
         let app = XCUIApplication()
         app.launchArguments = ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US"]
