@@ -13,14 +13,14 @@ struct AgentIcon: View {
             .scaledToFit()
             .foregroundStyle(Theme.fg)
             .frame(width: size, height: size)
-            .overlay(alignment: .topTrailing) {
+            .overlay(alignment: .bottomTrailing) {
                 if let state { StatusDot(state: state) }
             }
             .accessibilityLabel(agent.displayName)
     }
 }
 
-/// Dot pinned to the icon's top-right corner, as in the Mac panel.
+/// Dot pinned to the icon's bottom-right corner.
 struct StatusDot: View {
     var state: SessionState
     @State private var dim = false

@@ -4,6 +4,9 @@ import SwiftUI
 /// glass title pill and composer; requests from the agent rise as sheets.
 struct ChatView: View {
     @Environment(SessionStore.self) private var store
+    @Environment(AppModel.self) private var app
+    @Environment(RuntaAuth.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     var sessionID: String
     @State private var draft = ""
@@ -13,9 +16,21 @@ struct ChatView: View {
     @State private var showTerminal = false
     @FocusState private var composerFocused: Bool
 
+    private var draftKey: String {
+        "chatDraft.\(app.environment.rawValue).\(auth.profile?.email ?? "preview").\(sessionID)"
+    }
+
+    private var draftBinding: Binding<String> {
+        Binding(get: { draft }, set: {
+            draft = $0
+            UserDefaults.standard.set($0, forKey: draftKey)
+        })
+    }
+
     var body: some View {
         if let session = store.session(sessionID) {
             content(session)
+                .onAppear { draft = UserDefaults.standard.string(forKey: draftKey) ?? "" }
         } else {
             Text("This session has ended.").foregroundStyle(Theme.fg2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.bg)
@@ -48,6 +63,23 @@ struct ChatView: View {
                                  since: turn.prompt?.time ?? session.turnStarted ?? session.statusSince ?? session.updatedAt,
                                  activity: session.activity)
                     }
+                    if let pending = store.pendingSends[session.id] {
+                        VStack(alignment: .trailing, spacing: 6) {
+                            MessageView(message: pending.message)
+                            Text(pending.status).font(.caption).foregroundStyle(Theme.fg2)
+                            if pending.failed {
+                                Button("Return to draft") {
+                                    if case .user(let text) = pending.message.kind {
+                                        draftBinding.wrappedValue = draft.isEmpty ? text : draft + "\n" + text
+                                    }
+                                    store.pendingSends[session.id] = nil
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .id(pending.message.id)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
+                    }
                     if session.state == .working && turns.isEmpty {
                         WorkingIndicator(since: session.turnStarted ?? session.statusSince ?? session.updatedAt,
                                          activity: session.activity)
@@ -59,12 +91,20 @@ struct ChatView: View {
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.top, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             // Follow the newest message as the content grows (new lines,
             // tables and images settling their heights), unless you have
             // scrolled up to read; scrolling back down resumes following.
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.height }) { _, _ in
                 if followBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, _ in
+                if followBottom || composerFocused { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: store.pendingSends[session.id]?.message.id) {
+                followBottom = true
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onScrollPhaseChange { _, phase, context in
                 guard phase == .idle else { return }
@@ -130,7 +170,11 @@ struct ChatView: View {
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.top, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, _ in
+                if composerFocused, let last = session.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
             .onChange(of: session.messages.count) {
                 if let last = session.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
             }
@@ -168,10 +212,11 @@ struct ChatView: View {
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 36, height: 36)
                 .accessibilityLabel("Attach")
-            TextField("Message \(session.agent.displayName)", text: $draft, axis: .vertical)
+            TextField("Message \(session.agent.displayName)", text: draftBinding, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($composerFocused)
                 .font(.system(size: 16))
+                .accessibilityIdentifier("chat-composer")
             if draft.isEmpty && session.state == .working {
                 Button { } label: {
                     Image(systemName: "stop.fill").font(.system(size: 13))
@@ -184,15 +229,18 @@ struct ChatView: View {
                 Button {
                     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return }
-                    store.send(text, to: session.id)
-                    draft = ""
+                    followBottom = true
+                    draftBinding.wrappedValue = ""
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                        store.send(text, to: session.id)
+                    }
                 } label: {
                     Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)
                         .background(Theme.primary.opacity(draft.isEmpty ? 0.35 : 1), in: Circle())
                 }
-                .disabled(draft.isEmpty)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.pendingSends[session.id] != nil)
                 .accessibilityLabel("Send")
             }
         }

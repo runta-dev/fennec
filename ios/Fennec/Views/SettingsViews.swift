@@ -149,6 +149,7 @@ enum Governance: String, CaseIterable, Identifiable {
 
 /// 14 account.
 struct AccountView: View {
+    @AppStorage("appearance") private var appearance = "system"
     @Environment(RuntaAuth.self) private var auth
     @Environment(AppModel.self) private var app
     @Environment(SessionStore.self) private var store
@@ -178,6 +179,15 @@ struct AccountView: View {
                 }
                 .padding(.horizontal, 2)
                 // Governance and agent settings live on the Mac; here, what the account is using.
+                GroupHeader(title: "Appearance").padding(.horizontal, -18)
+                ListCard {
+                    Picker("Theme", selection: $appearance) {
+                        Text("Follow system").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .padding(16)
+                }
                 CloudComputerCard(metrics: usage.metrics)
                 BillingCard(billing: usage.billing, failed: usage.billingFailed) {
                     if let url = URL(string: auth.core.dashboardURL()) { openURL(url) }

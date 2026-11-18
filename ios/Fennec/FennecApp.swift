@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct FennecApp: App {
     @State private var app = AppModel()
+    @AppStorage("appearance") private var appearance = "system"
     @AppStorage("didFinishConnecting") private var didFinishConnecting = false
 
     var body: some Scene {
@@ -25,6 +26,7 @@ struct FennecApp: App {
             .environment(app.auth)
             .environment(app.store)
             .tint(Theme.fg)
+            .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             // QR codes scanned with the system Camera open fennec://pair links.
             .onOpenURL { url in
                 if url.scheme == "fennec", app.auth.status != .signedIn { app.signIn(pairing: url.absoluteString) }

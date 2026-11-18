@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class FennecTests: XCTestCase {
+    func testPendingSendSurvivesStaleTranscriptAndConfirmsNewEcho() {
+        let store = SessionStore.demo()
+        let now = Date.now
+        let old = TranscriptItem(kind: "user", text: "Continue", time: Int64(now.addingTimeInterval(-60).timeIntervalSince1970 * 1000))
+        let fresh = TranscriptItem(kind: "user", text: "Continue", time: Int64(now.timeIntervalSince1970 * 1000))
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("Continue"), time: now), previousMatches: 1)
+        store.reconcilePendingSend("s1", items: [old])
+        XCTAssertNotNil(store.pendingSends["s1"])
+        store.reconcilePendingSend("s1", items: [old, fresh])
+        XCTAssertNil(store.pendingSends["s1"])
+    }
+
+    func testHistoricalResetDoesNotConfirmPendingSend() {
+        let store = SessionStore.demo()
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("Continue"), time: .now), previousMatches: 0)
+        store.reconcilePendingSend("s1", items: [.init(kind: "user", text: "Continue", time: 1)])
+        XCTAssertNotNil(store.pendingSends["s1"])
+    }
+
     func testGroupsFollowStateOrderAndSkipEmpty() {
         let store = SessionStore.demo()
         XCTAssertEqual(store.groups.map(\.0), [.needsInput, .working, .idle])

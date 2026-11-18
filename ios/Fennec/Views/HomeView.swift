@@ -34,6 +34,7 @@ struct HomeView: View {
                 }
             }
             .background(Theme.bg)
+            .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 4) {
                     if let error = store.loadError { errorBanner(error) }

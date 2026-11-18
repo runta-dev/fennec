@@ -9,6 +9,31 @@ import Observation
 @MainActor
 @Observable
 final class SessionStore {
+    struct PendingSend {
+        var message: ChatMessage
+        var previousMatches: Int
+        var status = "Sending…"
+        var failed = false
+    }
+    var pendingSends: [String: PendingSend] = [:]
+
+    func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
+        items.filter { $0.kind == "user" && $0.text == text }.count
+    }
+
+    func reconcilePendingSend(_ id: String, items: [TranscriptItem]) {
+        guard let pending = pendingSends[id], case .user(let text) = pending.message.kind,
+              matchingPrompts(text, in: items) > pending.previousMatches else { return }
+        // Initial/reset reads may include old identical prompts. Only a new
+        // timestamped echo can confirm an optimistic message in that case.
+        let sentAt = pending.message.time ?? .now
+        guard items.contains(where: {
+            $0.kind == "user" && $0.text == text &&
+            ($0.time.map { Date(timeIntervalSince1970: Double($0) / 1000) >= sentAt.addingTimeInterval(-5) } ?? false)
+        }) else { return }
+        pendingSends[id] = nil
+    }
+
     var sessions: [Session]
     var macOnline: Bool
     var cloudRunning: Bool
@@ -66,7 +91,25 @@ final class SessionStore {
 
     func send(_ text: String, to id: String) {
         if let core, let session = session(id), let address = session.address {
-            Task { await live { try goCall { core.send(address, sessionID: id, text: text, error: $0) } }; await loadTranscript(id) }
+            guard pendingSends[id] == nil else { return }
+            pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now),
+                                           previousMatches: matchingPrompts(text, in: session.transcriptItems))
+            let messageID = pendingSends[id]?.message.id
+            Task {
+                do {
+                    _ = try await Task.detached { try goCall { core.send(address, sessionID: id, text: text, error: $0) } }.value
+                    if pendingSends[id]?.message.id == messageID {
+                        pendingSends[id]?.status = "Sent · waiting for conversation"
+                    }
+                } catch {
+                    // A transport failure does not prove the server rejected the message.
+                    if pendingSends[id]?.message.id == messageID {
+                        pendingSends[id]?.status = "Delivery unconfirmed. Check the conversation before sending again."
+                        pendingSends[id]?.failed = true
+                    }
+                }
+                await loadTranscript(id)
+            }
             return
         }
         update(id) {
@@ -362,6 +405,7 @@ extension SessionStore {
             if chunk.reset { updated.messages = []; updated.transcriptItems = [] }
             for item in chunk.items { Self.append(item, to: &updated) }
             updated.transcriptItems += chunk.items
+            reconcilePendingSend(id, items: updated.transcriptItems)
             updated.transcriptOffset = chunk.offset
             updated.transcriptPath = chunk.path ?? updated.transcriptPath
             updated.transcriptLoaded = true
