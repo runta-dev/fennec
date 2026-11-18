@@ -20,9 +20,14 @@ func TestDeepLinkRoutes(t *testing.T) {
 		"fennec://auth/callback?error=access_denied&error_description=Denied": "auth/callback",
 		"fennec://pair#code=abc&api=https%3A%2F%2Fapi.runta.com":              "pair",
 		"fennec://auth/callback":                                              "", "fennec://auth/callback?code=a&code=b": "",
-		"fennec://auth/callback?code=a&error=denied": "", "fennec://auth/callback?code=a&error_code=bad": "",
-		"fennec://auth/callback?code=a&api=https://evil.example": "",
-		"fennec://auth/callback?code=%GG":                        "", "fennec://auth/callback?code=a#access_token=b": "",
+		"fennec://auth/callback?code=a&error=denied": "",
+		// Extra parameters and a fragment are ignored; only the code is read.
+		"fennec://auth/callback?code=a&sb=":              "auth/callback",
+		"fennec://auth/callback?code=a#sb=":              "auth/callback",
+		"fennec://auth/callback?code=a&error_code=x":     "auth/callback",
+		"fennec://auth/callback?code=a&provider_token=t": "",
+		"fennec://auth/callback?code=a#refresh_token=t":  "",
+		"fennec://auth/callback?code=%GG":                "", "fennec://auth/callback?code=a#access_token=b": "",
 		// Supabase's error redirect repeats the error in a fragment.
 		"fennec://auth/callback?error=server_error&error_code=unexpected_failure&error_description=Unable+to+exchange#error=server_error&sb=": "auth/callback",
 		"fennec://auth/callback?error=access_denied#error=access_denied&sb=":                                                                  "auth/callback",

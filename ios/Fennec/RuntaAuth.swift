@@ -105,7 +105,12 @@ final class RuntaAuth {
     /// The browser came back with something that isn't a sign-in callback:
     /// end the attempt and say so, rather than looking cancelled.
     func rejectCallback(_ url: URL) {
-        failSignIn(url.scheme.map { "unexpected return: \($0)://\(url.host() ?? "")\(url.path())" } ?? "unexpected return")
+        // Parameter names only, never their values (a code or a token).
+        func names(_ part: String?) -> String {
+            (part ?? "").split(separator: "&").map { String($0.split(separator: "=", maxSplits: 1).first ?? "") }.joined(separator: ",")
+        }
+        let shape = "?\(names(url.query))#\(names(url.fragment))"
+        failSignIn(url.scheme.map { "unexpected return: \($0)://\(url.host() ?? "")\(url.path())\(shape)" } ?? "unexpected return")
     }
 
     func cancelSignIn() {

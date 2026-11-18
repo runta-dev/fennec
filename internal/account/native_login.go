@@ -56,26 +56,28 @@ func DeepLinkRoute(raw string) string {
 		if err != nil {
 			return ""
 		}
-		// Supabase repeats an error in a fragment ("#error=…&sb="); only the
-		// query is read. A code callback with a fragment may carry a token
-		// and is refused.
-		if strings.Contains(raw, "#") && (q.Get("code") != "" || q.Get("error") == "") {
+		// Only code, error, error_code and error_description are read; Supabase
+		// may add others ("sb", and a fragment repeating them), which a
+		// returning Google user's redirect has and a new one's hasn't. A
+		// callback carrying a token anywhere is refused: this flow must only
+		// ever receive a PKCE code.
+		fragment, err := url.ParseQuery(u.EscapedFragment())
+		if err != nil {
 			return ""
 		}
-		for k, v := range q {
-			if len(v) != 1 {
-				return ""
+		for _, values := range []url.Values{q, fragment} {
+			for k := range values {
+				if strings.Contains(strings.ToLower(k), "token") {
+					return ""
+				}
 			}
-			switch k {
-			case "code", "error", "error_code", "error_description":
-			default:
+		}
+		for _, k := range []string{"code", "error", "error_code", "error_description"} {
+			if len(q[k]) > 1 {
 				return ""
 			}
 		}
 		if (q.Get("code") == "") == (q.Get("error") == "") {
-			return ""
-		}
-		if q.Get("code") != "" && (q.Has("error_code") || q.Has("error_description")) {
 			return ""
 		}
 		return "auth/callback"
