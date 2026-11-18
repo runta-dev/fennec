@@ -5,8 +5,8 @@ import Security
 
 /// Runta sign-in through the Fennec client's own account package
 /// (internal/account via gomobile): the same device flow, token handling, and
-/// expiry rules as the Mac app. The dashboard offers Apple, Google, GitHub,
-/// and email, and creates the account on first sign-in.
+/// expiry rules as the Mac app. Google, GitHub, and email-code sign-in run in
+/// the system authentication window and create the account on first sign-in.
 @MainActor
 @Observable
 final class RuntaAuth {
@@ -23,6 +23,7 @@ final class RuntaAuth {
 
     let core: FennecmobileAuth
     private var watchTask: Task<Void, Never>?
+    private var appliedRevision: UInt64?
 
     let environment: RuntaEnvironment
 
@@ -86,6 +87,21 @@ final class RuntaAuth {
         }
     }
 
+    func signIn(method: String) {
+        guard !isAuthorizing else { return }
+        pairing = false
+        status = .authorizing(nil)
+        let core = self.core
+        Task.detached {
+            do {
+                let snapshot = try goCall { core.loginMethod(method, error: $0) }
+                await MainActor.run { self.apply(snapshot) }
+            } catch {
+                await MainActor.run { self.status = .failed("Couldn't start sign-in. Try again.") }
+            }
+        }
+    }
+
     func cancelSignIn() {
         let core = self.core
         Task.detached { try? core.cancelLogin() }
@@ -120,6 +136,10 @@ final class RuntaAuth {
     private func apply(_ json: String) {
         guard let data = json.data(using: .utf8),
               let snapshot = try? JSONDecoder().decode(AccountSnapshot.self, from: data) else { return }
+        if let revision = snapshot.revision {
+            if let appliedRevision, revision < appliedRevision { return }
+            appliedRevision = revision
+        }
         let previous = status
         status = Self.status(for: snapshot)
         if !isAuthorizing { pairing = false }
@@ -160,6 +180,7 @@ func goCall(_ body: (NSErrorPointer) -> String) throws -> String {
 /// account.Snapshot as JSON. Tokens never appear in it.
 struct AccountSnapshot: Decodable {
     var status: String
+    var revision: UInt64?
     var verification_url: String?
     var error: String?
 }

@@ -217,14 +217,24 @@ func (m *Manager) Logout(ctx context.Context) error {
 	return nil
 }
 func (m *Manager) Login() Snapshot {
+	state, _ := m.LoginMethod("")
+	return state
+}
+
+// LoginMethod selects a hosted sign-in method without changing the device
+// credential protocol. The dashboard performs PKCE/OTP and organization consent.
+func (m *Manager) LoginMethod(method string) (Snapshot, error) {
+	if method != "" && method != "google" && method != "github" && method != "email" {
+		return m.Snapshot(), errors.New("unsupported sign-in method")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.state.Status == "authorizing" || m.state.Status == "authorized" {
-		return m.state
+		return m.state, nil
 	}
 	ctx, epoch := m.resetLocked("authorizing")
-	go m.authorize(ctx, epoch)
-	return m.state
+	go m.authorizeMethod(ctx, epoch, method)
+	return m.state, nil
 }
 
 // Reauthenticate starts a new device flow even when a cached token left the
@@ -332,6 +342,10 @@ func (m *Manager) post(ctx context.Context, path string, body any, out any) (int
 	return response.StatusCode, json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(out)
 }
 func (m *Manager) authorize(ctx context.Context, epoch uint64) {
+	m.authorizeMethod(ctx, epoch, "")
+}
+
+func (m *Manager) authorizeMethod(ctx context.Context, epoch uint64, method string) {
 	var authorization struct {
 		Data struct {
 			DeviceCode string    `json:"device_code"`
@@ -368,6 +382,12 @@ func (m *Manager) authorize(ctx context.Context, epoch uint64) {
 	}
 	m.state.UserCode = data.UserCode
 	m.state.URL = data.URL
+	if method != "" {
+		query := link.Query()
+		query.Set("method", method)
+		link.RawQuery = query.Encode()
+		m.state.URL = link.String()
+	}
 	m.state.ExpiresAt = expiry
 	m.notifyLocked()
 	m.mu.Unlock()
