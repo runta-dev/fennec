@@ -6,7 +6,7 @@ export const metadata = {
   icons: { icon: '/computer-use-icon.png', apple: '/computer-use-icon.png' },
   title: 'Fennec Computer Use — Let your agent use your Mac.',
   description: 'Fennec Computer Use lets Claude Code, Codex and other MCP agents operate Mac apps and web pages. A notarized Mac app; drag it to Applications.',
-  openGraph: { url: 'https://fennec.runta.com/computer-use/', title: 'Fennec Computer Use', description: 'Let your agent use your Mac: Mac apps and web pages for Claude Code, Codex and other MCP agents.', type: 'website', siteName: 'Fennec' },
+  openGraph: { url: 'https://fennec.runta.com/computer-use/', title: 'Fennec Computer Use', description: 'Let your agent use your Mac: Mac apps and web pages for Claude Code, Codex and other MCP agents.', type: 'website', siteName: 'Fennec', images: [{ url: '/computer-use-icon.png', alt: 'Fennec Computer Use' }] },
 };
 
 // Fennec Computer Use is its own product: its mark (the fox with a pointer
