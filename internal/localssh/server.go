@@ -369,7 +369,9 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			}
 		}()
 		code := 0
-		if e := cmd.Run(); e != nil {
+		runErr := cmd.Run()
+		logRelayExec(command, started, code, runErr, operation.Err() != nil, runCtx.Err())
+		if e := runErr; e != nil {
 			code = 1
 			var exit *exec.ExitError
 			if errors.As(e, &exit) {

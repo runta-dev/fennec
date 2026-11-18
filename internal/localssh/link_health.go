@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -40,6 +41,7 @@ func monitorLink(ctx context.Context, config LinkConfig, device, alias string, e
 	for {
 		health.Fresh = first || round%15 == 0
 		step, cancel := context.WithTimeout(ctx, linkProbeTimeout)
+		probed := time.Now()
 		err := config.Health(step, health)
 		cancel()
 		if err != nil {
@@ -47,6 +49,7 @@ func monitorLink(ctx context.Context, config LinkConfig, device, alias string, e
 				return ctx.Err()
 			}
 			failures++
+			log.Printf("device relay probe failed (%d of %d, fresh=%v, %s): %v", failures, linkUnhealthyAfter, health.Fresh, time.Since(probed).Round(time.Millisecond), err)
 			if first || failures >= linkUnhealthyAfter {
 				return fmt.Errorf("%w: %v", errMacUnreachable, err)
 			}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -67,6 +68,7 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string,
 		defer remote.Close()
 		target, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", local)
 		if err != nil {
+			log.Printf("device relay: local SSH service unreachable: %v", err)
 			return
 		}
 		stopLocal := context.AfterFunc(ctx, func() { target.Close(); remote.Close() })
@@ -84,6 +86,9 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string,
 			for ctx.Err() == nil {
 				remote, err := client.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 				if err != nil {
+					if ctx.Err() == nil {
+						log.Printf("device relay stopping: parking a bridge failed: %v", err)
+					}
 					cancel()
 					return
 				}
@@ -93,6 +98,9 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string,
 				stop()
 				if err != nil {
 					remote.Close()
+					if ctx.Err() == nil {
+						log.Printf("device relay stopping: parked bridge closed before use: %v", err)
+					}
 					cancel()
 					return
 				}
@@ -105,6 +113,7 @@ func serveRelay(ctx context.Context, client *ssh.Client, port int, local string,
 					workers.Add(1)
 					go forward(remote)
 				default:
+					log.Printf("device relay: refused a connection at capacity (%d)", maxRelayConnections)
 					remote.Close() // over capacity: refuse rather than queue
 				}
 			}

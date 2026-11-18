@@ -223,14 +223,18 @@ func serveRelayListeners(ctx context.Context, bridges, agents net.Listener) erro
 		}
 	}()
 	capacity := make(chan struct{}, maxRelayConnections)
+	var sequence uint64
 	for {
 		agent, e := agents.Accept()
 		if e != nil {
 			return e
 		}
+		sequence++
+		id := sequence
 		select {
 		case capacity <- struct{}{}:
 		default:
+			relayLog("conn %d refused: %d connections at capacity", id, maxRelayConnections)
 			agent.Close()
 			continue
 		}
@@ -239,6 +243,7 @@ func serveRelayListeners(ctx context.Context, bridges, agents net.Listener) erro
 			defer workers.Done()
 			defer func() { <-capacity }()
 			defer agent.Close()
+			accepted := time.Now()
 			claim, cancelClaim := context.WithTimeout(ctx, 5*time.Second)
 			defer cancelClaim()
 			var bridge net.Conn
@@ -259,23 +264,34 @@ func serveRelayListeners(ctx context.Context, bridges, agents net.Listener) erro
 				}
 				select {
 				case <-claim.Done():
+					mu.Lock()
+					waiting := len(parked)
+					mu.Unlock()
+					relayLog("conn %d dropped: no Mac bridge within %s (parked %d)", id, time.Since(accepted).Round(time.Millisecond), waiting)
 					return
 				case <-wake:
 				}
 			}
+			claimed := time.Since(accepted)
 			defer bridge.Close()
 			stop := context.AfterFunc(ctx, func() { agent.Close(); bridge.Close() })
 			defer stop()
 			bridge.SetWriteDeadline(time.Now().Add(3 * time.Second))
 			if _, e := bridge.Write([]byte{'F'}); e != nil {
+				relayLog("conn %d dropped: bridge handoff failed after %s: %v", id, claimed.Round(time.Millisecond), e)
 				return
 			}
 			bridge.SetWriteDeadline(time.Time{})
 			done := make(chan struct{})
-			go func() { io.Copy(bridge, agent); bridge.(*net.TCPConn).CloseWrite(); close(done) }()
-			io.Copy(agent, bridge)
+			var up int64
+			go func() { up, _ = io.Copy(bridge, agent); bridge.(*net.TCPConn).CloseWrite(); close(done) }()
+			down, downErr := io.Copy(agent, bridge)
 			agent.(*net.TCPConn).CloseWrite()
 			<-done
+			// Slow claims and errors only: a healthy relay stays quiet.
+			if claimed > time.Second || downErr != nil {
+				relayLog("conn %d ended after %s (claim %s, up %d B, down %d B, err %v)", id, time.Since(accepted).Round(time.Millisecond), claimed.Round(time.Millisecond), up, down, downErr)
+			}
 		}()
 	}
 }
