@@ -17,19 +17,22 @@ import (
 )
 
 var fixtures = map[string]string{
-	"internal/browserterminal/server_test.go": "terminal UTF-8 output",
-	"internal/cli/fen_sessions_test.go":       "Unicode titles and truncation",
-	"internal/cli/ui_copy_test.go":            "locale punctuation and Unicode translation fixtures",
-	"internal/localssh/alias_test.go":         "non-ASCII device aliases",
-	"internal/setup/migrate_test.go":          "credential JSON Unicode round trips",
-	"internal/localization/catalog_test.go":   "translation catalog fixtures",
-	"internal/localization/native_test.go":    "native locale and fallback fixtures",
-	"internal/predict/engine_test.go":         "wide CJK input typed into composers",
-	"internal/predict/keys_test.go":           "UTF-8 key decoding",
-	"internal/predict/wrap_test.go":           "wide-character wrapping",
-	"cmd/check-english/main_test.go":          "language-policy fixtures",
-	"scripts/tests/session-status.cjs":        "Unicode user-authored session titles",
-	"scripts/tests/terminal-bridge.cjs":       "UTF-8 split across terminal frames",
+	"internal/transcript/transcript_test.go":    "multilingual user messages in agent transcripts",
+	"ios/FennecTests/FennecTests.swift":         "multilingual chat preview and Markdown fixtures",
+	"ios/FennecUITests/ScreenTourUITests.swift": "Unicode user-authored session titles in UI screenshots",
+	"internal/browserterminal/server_test.go":   "terminal UTF-8 output",
+	"internal/cli/fen_sessions_test.go":         "Unicode titles and truncation",
+	"internal/cli/ui_copy_test.go":              "locale punctuation and Unicode translation fixtures",
+	"internal/localssh/alias_test.go":           "non-ASCII device aliases",
+	"internal/setup/migrate_test.go":            "credential JSON Unicode round trips",
+	"internal/localization/catalog_test.go":     "translation catalog fixtures",
+	"internal/localization/native_test.go":      "native locale and fallback fixtures",
+	"internal/predict/engine_test.go":           "wide CJK input typed into composers",
+	"internal/predict/keys_test.go":             "UTF-8 key decoding",
+	"internal/predict/wrap_test.go":             "wide-character wrapping",
+	"cmd/check-english/main_test.go":            "language-policy fixtures",
+	"scripts/tests/session-status.cjs":          "Unicode user-authored session titles",
+	"scripts/tests/terminal-bridge.cjs":         "UTF-8 split across terminal frames",
 }
 
 // Only the explicit documentation selector may use a native language label in
@@ -65,7 +68,7 @@ func sourceLanguage(path string, data []byte) error {
 			}
 			return nil
 		}
-		// CJS fixtures may contain Unicode strings, but their code/comments remain English.
+		// CJS and Swift fixtures may contain Unicode strings, but their code/comments remain English.
 		for i := 0; i < len(data); i++ {
 			if bytes.HasPrefix(data[i:], []byte("//")) || bytes.HasPrefix(data[i:], []byte("/*")) {
 				end := len(data)

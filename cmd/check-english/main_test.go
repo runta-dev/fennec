@@ -14,11 +14,13 @@ func TestSourceLanguagePolicy(t *testing.T) {
 	if err := sourceLanguage("native/macos/UI/translations.json", []byte(`{"zh-CN":"中文"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := sourceLanguage("internal/cli/fen_sessions_test.go", []byte("package cli\nvar title = \"中文标题\"\n")); err != nil {
-		t.Fatal(err)
-	}
-	if sourceLanguage("internal/cli/fen_sessions_test.go", []byte("package cli\n// 中文注释\nvar title = \"中文标题\"\n")) == nil {
-		t.Fatal("fixture exception allowed non-English comments")
+	for _, path := range []string{"internal/cli/fen_sessions_test.go", "internal/transcript/transcript_test.go"} {
+		if err := sourceLanguage(path, []byte("package fixture\nvar title = \"中文标题\"\n")); err != nil {
+			t.Fatal(err)
+		}
+		if sourceLanguage(path, []byte("package fixture\n// 中文注释\nvar title = \"中文标题\"\n")) == nil {
+			t.Fatal("fixture exception allowed non-English comments", path)
+		}
 	}
 }
 func TestUnknownMessageReferenceFails(t *testing.T) {
@@ -46,5 +48,17 @@ func TestLocalizedReadmeDoesNotExemptOtherDocumentation(t *testing.T) {
 	}
 	if sourceLanguage("README.md", append(link, []byte("\n其他中文正文")...)) == nil {
 		t.Fatal("selector exemption allowed translated English README prose")
+	}
+}
+
+func TestSwiftUnicodeFixturePolicy(t *testing.T) {
+	const path = "ios/FennecTests/FennecTests.swift"
+	if err := sourceLanguage(path, []byte("let title = \"中文标题\"\n")); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"// 中文注释\n", "/* 中文注释 */\n", "let 中文 = 1\n"} {
+		if sourceLanguage(path, []byte(source)) == nil {
+			t.Fatal("fixture allowed non-English code/comment")
+		}
 	}
 }

@@ -32,7 +32,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -434,24 +433,7 @@ func fetchLicense(ctx context.Context, b chromium.Build, cache string) ([]byte, 
 }
 
 func downloadLicense(ctx context.Context, b chromium.Build) ([]byte, error) {
-	u := "https://chromium.googlesource.com/chromium/src/+/" + b.Commit + "/LICENSE?format=TEXT"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("licence %s: %s", u, resp.Status)
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	text, err := base64.StdEncoding.DecodeString(string(bytes.TrimSpace(raw)))
+	text, err := fetchSource(ctx, b.Commit, "LICENSE", 1<<20)
 	if err != nil {
 		return nil, err
 	}

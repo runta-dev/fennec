@@ -114,23 +114,54 @@ func creditsOnly(ctx context.Context, b chromium.Build, cache, outDir string) er
 // fetchSource reads a file of chromium/src at a commit.
 func fetchSource(ctx context.Context, commit, path string, limit int64) ([]byte, error) {
 	u := credits.ChromiumSrc + "/+/" + commit + "/" + path + "?format=TEXT"
+	return fetchSourceURL(ctx, http.DefaultClient, u, limit, time.Second)
+}
+
+// Retry transient source-host failures without changing the pinned commit or
+// accepting invalid content. Each attempt and the backoff honor cancellation.
+func fetchSourceURL(ctx context.Context, client *http.Client, u string, limit int64, backoff time.Duration) ([]byte, error) {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		var raw []byte
+		var retry bool
+		raw, retry, err = readSource(attemptCtx, client, u, limit)
+		cancel()
+		if err == nil {
+			return base64.StdEncoding.DecodeString(string(bytes.TrimSpace(raw)))
+		}
+		if !retry || attempt == 2 {
+			break
+		}
+		timer := time.NewTimer(backoff * time.Duration(1<<attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, err
+}
+
+func readSource(ctx context.Context, client *http.Client, u string, limit int64) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", u, resp.Status)
+		return nil, resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500, fmt.Errorf("%s: %s", u, resp.Status)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
-	return base64.StdEncoding.DecodeString(string(bytes.TrimSpace(raw)))
+	return raw, false, nil
 }
 
 // frameworkDir is the versioned framework directory of an app.
