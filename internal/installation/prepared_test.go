@@ -180,3 +180,51 @@ func TestPreparedOwnsPrivateSnapshotAndRejectsChangedDestination(t *testing.T) {
 		})
 	}
 }
+
+// Stopping the old UI runs the incoming copy's adapter, and macOS then records
+// that launch on the bundle's metadata. The changed tree is verified again
+// instead of being rejected outright.
+func TestStoppingUIMetadataChangesRequireReverification(t *testing.T) {
+	for _, verifies := range []bool{true, false} {
+		t.Run(map[bool]string{true: "still signed", false: "no longer signed"}[verifies], func(t *testing.T) {
+			root := t.TempDir()
+			source, dest := filepath.Join(root, "source.app"), filepath.Join(root, "installed.app")
+			bundle(t, source, "com.runta.fennec", "new")
+			bundle(t, dest, "com.runta.fennec", "old")
+			ops := operations()
+			checks := 0
+			ops.Verify = func(_ context.Context, path string) error {
+				if filepath.Base(path) != "incoming.app" {
+					return nil // the rolled-back original, verified before reopening
+				}
+				checks++
+				if checks > 1 && !verifies {
+					return errors.New("signature no longer valid")
+				}
+				return nil
+			}
+			ops.StopUI = func(_ context.Context, incoming, _ string) (bool, error) {
+				// Stands in for the launch record macOS attaches to the bundle.
+				return true, os.Chmod(filepath.Join(incoming, "Contents"), 0750)
+			}
+			var reopened string
+			ops.OpenUI = func(_ context.Context, path string) error {
+				reopened = contents(t, path)
+				return nil
+			}
+			result, err := Install(context.Background(), source, dest, true, ops)
+			if checks != 2 {
+				t.Fatalf("changed candidate verified %d times, want 2", checks)
+			}
+			if verifies {
+				if err != nil || contents(t, dest) != "new" || reopened != "new" || contents(t, result.Backup) != "old" {
+					t.Fatalf("result=%+v err=%v installed=%q reopened=%q", result, err, contents(t, dest), reopened)
+				}
+				return
+			}
+			if !errors.Is(err, ErrUnverifiedApplication) || contents(t, dest) != "old" || reopened != "old" {
+				t.Fatalf("unverified candidate: err=%v installed=%q reopened=%q", err, contents(t, dest), reopened)
+			}
+		})
+	}
+}

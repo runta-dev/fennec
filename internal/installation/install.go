@@ -362,8 +362,20 @@ func (p *Prepared) Apply(ctx context.Context) (result Result, err error) {
 				return result, fmt.Errorf("installed application changed during UI shutdown")
 			}
 		}
+		// A standalone installer stops the old UI by running the incoming copy's
+		// verified adapter. macOS records that first launch of a notarized
+		// Developer ID app on the bundle (com.apple.macl, provenance), so its
+		// seal changes even though nothing was tampered with, and every
+		// switch from a development build to a release failed as unverified.
+		// As after Warm, verify the changed tree again rather than fail; a
+		// candidate that no longer verifies is still rejected and the old UI
+		// reopened.
 		if !p.seal.matches(incoming) {
-			return result, ErrUnverifiedApplication
+			seal, err := verifyTree(ctx, incoming, ops.Verify)
+			if err != nil {
+				return result, ErrUnverifiedApplication
+			}
+			p.seal = seal
 		}
 		if err = ops.Publish(destination, backup); err != nil {
 			return result, err
