@@ -325,8 +325,8 @@ main{min-height:0}
 .agent-head.agent-coming-soon{opacity:1;cursor:default;color:var(--muted)}
 .agent-coming-soon .agent-icon{opacity:.45}
 .agent-coming-soon .agent-name{color:var(--muted)}
-/* A real "/" in the ultralight weight: it shares the text baseline and needs no transform (a transformed child moves the row onto its own layer and changes its text antialiasing). */
-.agent-name-separator{font-weight:100;color:var(--muted);margin:0 .28em}
+/* A real "/" in the ultralight weight shares the text baseline without a transform (a transformed child moves the row onto its own layer and changes its antialiasing). SF Pro draws "/" from cap height down past the baseline, so it is raised to sit centred on the capitals. */
+.agent-name-separator{font-weight:100;color:var(--muted);margin:0 .28em;position:relative;top:-.1em}
 .agent-coming-soon .detected{font-size:11px}
 /* Working is activity, not a warning; reserve amber/red for attention/errors. */
 .session-agent-identity>.session-state-dot[data-state=working]{background:#4f9a65;animation:session-working-breathe 2s ease-in-out infinite}
