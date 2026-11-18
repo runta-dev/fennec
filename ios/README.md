@@ -11,7 +11,7 @@ same packages the Mac client uses:
 
 | Feature | Fennec package |
 | --- | --- |
-| Runta sign-in (device flow, token expiry) | `internal/account` |
+| Google, GitHub, email-code sign-in (device flow, token expiry) | `internal/account` |
 | Find the shared cloud computer, provision the device SSH key, connect | `internal/runta` |
 | List, read, send, stop sessions (`fennec-terminal` on the cloud computer) | `internal/runtime` |
 | Session filtering, titles, status labels | `internal/cli.ParseSessions` (the Mac panel's parser) |
@@ -58,6 +58,26 @@ logo) to choose Production or Integration. Each environment keeps its own
 Keychain token and device SSH key, and an INT badge shows when Integration is
 active.
 
+## Sign-in
+
+The scan screen also offers **Continue with Google**, **Continue with GitHub**,
+and **Continue with email**. These open the Runta Dashboard in the system
+authentication window. Google and GitHub select the requested provider; email
+uses a code entered in that window, with a resend countdown and the existing
+Turnstile challenge. A browser already signed in proceeds to device consent.
+
+The user selects an organization and authorizes this iPhone. The existing device
+flow issues an independent Runta credential, stores it in Keychain, and closes
+the window. Supabase sessions and provider tokens never cross into the app.
+Cancel stops polling; the scan flow and the Mac credential remain separate.
+
+Deploy the matching Runta Dashboard and email-code delivery change before this
+app release. The provider callbacks and Supabase Dashboard callback allowlist
+remain the existing HTTPS URLs; this hosted flow does not require a new
+`fennec://` OAuth callback. `fennec://pair` remains the QR handoff route.
+Verify Supabase email OTP expiry/rate limits and Resend delivery in each
+environment. The code is rendered by Runta's email template, not Supabase SMTP.
+
 ## Not built yet
 
 - Live sessions show the agent's terminal screen (like the Mac panel's session
@@ -65,4 +85,4 @@ active.
   sessions, because the cloud listing reports a state (Needs input), not the
   request's content.
 - Lock Screen notifications and Live Activity need APNs from the Runta backend.
-- Native email-link screens (the dashboard handles email for now).
+- Native email-code entry outside the system authentication window.

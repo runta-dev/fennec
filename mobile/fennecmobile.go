@@ -95,6 +95,13 @@ func (a *Auth) Restore() error { return a.manager.Restore(context.Background()) 
 // dashboard page to open.
 func (a *Auth) Login() string { return snapshotJSON(a.manager.Login()) }
 
+// LoginMethod opens Google, GitHub, or email-code sign-in in the system browser.
+// Provider sessions stay in the browser; only the Runta device credential is saved.
+func (a *Auth) LoginMethod(method string) (string, error) {
+	state, err := a.manager.LoginMethod(method)
+	return snapshotJSON(state), err
+}
+
 func (a *Auth) Snapshot() string { return snapshotJSON(a.manager.Snapshot()) }
 
 // WaitForChange blocks until the login state changes or the timeout passes,

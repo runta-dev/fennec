@@ -83,16 +83,29 @@ struct ScanSignInView: View {
                 }
                 .font(.system(size: 14, weight: .medium))
             }
-            Button { auth.signIn() } label: {
-                (Text("No Mac? ").foregroundStyle(.white.opacity(0.7)) + Text("Sign in with browser").fontWeight(.medium))
-                    .font(.system(size: 14))
+            VStack(spacing: 8) {
+                signInButton("Continue with Google", method: "google")
+                signInButton("Continue with GitHub", method: "github")
+                signInButton("Continue with email", method: "email")
+            }.padding(.top, 6)
+            if auth.isAuthorizing {
+                Button("Cancel sign-in") { auth.cancelSignIn() }
+                    .font(.system(size: 14, weight: .medium))
             }
-            .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 20).padding(.bottom, 24)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .padding(.horizontal, 10)
+    }
+
+    private func signInButton(_ title: String, method: String) -> some View {
+        Button(title) { auth.signIn(method: method) }
+            .font(.system(size: 15, weight: .medium))
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .disabled(auth.isAuthorizing)
+            .padding(.horizontal, 16)
     }
 
     private var waitingPanel: some View {
@@ -111,7 +124,7 @@ struct ScanSignInView: View {
     }
 
     private func scanned(_ value: String) {
-        guard !(auth.pairing && auth.isAuthorizing) else { return }
+        guard !auth.isAuthorizing else { return }
         show(app.signIn(pairing: value))
     }
 

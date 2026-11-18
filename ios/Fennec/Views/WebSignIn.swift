@@ -8,23 +8,27 @@ import UIKit
 @MainActor
 final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
+    private var generation = UUID()
 
     /// `onCancel` runs when the user closes the page before signing in.
     func start(_ url: URL, onCancel: @escaping @MainActor () -> Void) {
         finish()
+        let generation = UUID()
+        self.generation = generation
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "fennec") { [weak self] _, error in
             Task { @MainActor in
-                guard self?.session != nil else { return }
+                guard self?.session != nil, self?.generation == generation else { return }
                 self?.session = nil
-                if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
-                    onCancel()
-                }
+                if error != nil { onCancel() }
             }
         }
         session.presentationContextProvider = self
         session.prefersEphemeralWebBrowserSession = false
         self.session = session
-        session.start()
+        if !session.start() {
+            self.session = nil
+            onCancel()
+        }
     }
 
     func finish() {
