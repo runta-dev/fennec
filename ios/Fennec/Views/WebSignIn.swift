@@ -1,25 +1,28 @@
 import AuthenticationServices
+import FennecCore
 import UIKit
 
 /// Opens the Runta device-authorization page in an ASWebAuthenticationSession,
-/// which shares Safari's cookies: if the dashboard is already signed in there,
-/// the user only confirms the device. The device flow has no redirect back to
-/// the app, so the page is closed by `finish()` once the token arrives.
+/// for native OAuth or hosted device authorization. Native OAuth returns its
+/// callback to the Go login state machine. Hosted login closes through `finish()`
+/// once the independent device credential arrives.
 @MainActor
 final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
     private var generation = UUID()
 
     /// `onCancel` runs when the user closes the page before signing in.
-    func start(_ url: URL, onCancel: @escaping @MainActor () -> Void) {
+    func start(_ url: URL, onCallback: @escaping @MainActor (URL) -> Void = { _ in }, onCancel: @escaping @MainActor () -> Void) {
         finish()
         let generation = UUID()
         self.generation = generation
-        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "fennec") { [weak self] _, error in
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "fennec") { [weak self] callback, error in
             Task { @MainActor in
                 guard self?.session != nil, self?.generation == generation else { return }
                 self?.session = nil
                 if error != nil { onCancel() }
+                else if let callback, FennecmobileDeepLinkRoute(callback.absoluteString) == "auth/callback" { onCallback(callback) }
+                else { onCancel() }
             }
         }
         session.presentationContextProvider = self

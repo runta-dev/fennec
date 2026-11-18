@@ -1,4 +1,5 @@
 import SwiftUI
+import FennecCore
 
 @main
 struct FennecApp: App {
@@ -34,7 +35,12 @@ struct FennecApp: App {
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             // QR codes scanned with the system Camera open fennec://pair links.
             .onOpenURL { url in
-                if url.scheme == "fennec", app.auth.status != .signedIn { app.signIn(pairing: url.absoluteString) }
+                switch FennecmobileDeepLinkRoute(url.absoluteString) {
+                case "auth/callback": app.auth.handleCallback(url, epoch: app.auth.epoch)
+                case "pair":
+                    if app.auth.status != .signedIn && !app.auth.isAuthorizing { app.signIn(pairing: url.absoluteString) }
+                default: break
+                }
             }
             .onChange(of: app.auth.status) { _, status in
                 if status == .signedOut { didFinishConnecting = false }

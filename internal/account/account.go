@@ -23,16 +23,18 @@ type Credentials interface {
 var ErrNotFound = errors.New("credential not found")
 
 type Snapshot struct {
-	Revision  uint64    `json:"revision"`
-	Epoch     uint64    `json:"epoch"`
-	Status    string    `json:"status"`
-	UserCode  string    `json:"user_code,omitempty"`
-	URL       string    `json:"verification_url,omitempty"`
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	Error     string    `json:"error,omitempty"`
+	Consent   *LoginConsent `json:"consent,omitempty"`
+	Revision  uint64        `json:"revision"`
+	Epoch     uint64        `json:"epoch"`
+	Status    string        `json:"status"`
+	UserCode  string        `json:"user_code,omitempty"`
+	URL       string        `json:"verification_url,omitempty"`
+	ExpiresAt time.Time     `json:"expires_at,omitempty"`
+	Error     string        `json:"error,omitempty"`
 }
 
 type Manager struct {
+	native        *nativeAttempt
 	mu            sync.Mutex
 	credentialsMu sync.Mutex
 	// Credential operations are serialized with epoch changes to prevent stale
@@ -149,6 +151,7 @@ func (m *Manager) Token() (string, uint64) {
 }
 func (m *Manager) Changes() <-chan struct{} { m.mu.Lock(); defer m.mu.Unlock(); return m.changed }
 func (m *Manager) resetLocked(status string) (context.Context, uint64) {
+	m.native = nil
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -316,6 +319,8 @@ func (m *Manager) fail(epoch uint64, code string) {
 		return
 	}
 	m.state.Status = "signed_out"
+	m.native = nil
+	m.state.Consent = nil
 	m.state.Error = code
 	m.state.UserCode = ""
 	m.state.URL = ""

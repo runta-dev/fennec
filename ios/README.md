@@ -61,20 +61,25 @@ active.
 ## Sign-in
 
 The scan screen also offers **Continue with Google**, **Continue with GitHub**,
-and **Continue with email**. These open the Runta Dashboard in the system
-authentication window. Google and GitHub select the requested provider; email
-uses a code entered in that window, with a resend countdown and the existing
-Turnstile challenge. A browser already signed in proceeds to device consent.
+and **Continue with email**. Google and GitHub open their provider in the system
+authentication window using client-owned PKCE. They return through
+`fennec://auth/callback`; the app registers the Runta session, shows the available
+organizations, and requires explicit device approval. Email uses the Runta
+Dashboard, with code entry, a resend countdown, and the existing Turnstile challenge.
 
 The user selects an organization and authorizes this iPhone. The existing device
 flow issues an independent Runta credential, stores it in Keychain, and closes
-the window. Supabase sessions and provider tokens never cross into the app.
+the window. Native OAuth keeps the temporary Supabase access token in Go memory
+only while registering the session and obtaining device consent. It does not
+persist Supabase access, refresh, or provider tokens.
 Cancel stops polling; the scan flow and the Mac credential remain separate.
 
 Deploy the matching Runta Dashboard and email-code delivery change before this
-app release. The provider callbacks and Supabase Dashboard callback allowlist
-remain the existing HTTPS URLs; this hosted flow does not require a new
-`fennec://` OAuth callback. `fennec://pair` remains the QR handoff route.
+app release. Google/GitHub native login uses existing Runta APIs. Add the exact
+`fennec://auth/callback` URL to each Supabase project's Redirect URLs. Keep the
+provider-console callback set to Supabase's HTTPS callback and preserve the
+Dashboard allowlist. `fennec://pair` remains the QR handoff route. See the
+[shared deep-link contract](../docs/deep-links.md).
 Verify Supabase email OTP expiry/rate limits and Resend delivery in each
 environment. The code is rendered by Runta's email template, not Supabase SMTP.
 

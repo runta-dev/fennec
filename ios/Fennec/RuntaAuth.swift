@@ -24,6 +24,8 @@ final class RuntaAuth {
     let core: FennecmobileAuth
     private var watchTask: Task<Void, Never>?
     private var appliedRevision: UInt64?
+    private(set) var epoch: Int64 = 0
+    private(set) var consent: LoginConsent?
 
     let environment: RuntaEnvironment
 
@@ -91,20 +93,31 @@ final class RuntaAuth {
         guard !isAuthorizing else { return }
         pairing = false
         status = .authorizing(nil)
-        let core = self.core
-        Task.detached {
-            do {
-                let snapshot = try goCall { core.loginMethod(method, error: $0) }
-                await MainActor.run { self.apply(snapshot) }
-            } catch {
-                await MainActor.run { self.status = .failed("Couldn't start sign-in. Try again.") }
+        // These Go entry points create the attempt synchronously and run all
+        // network work in a goroutine, so Cancel cannot overtake its creation.
+        do {
+            let snapshot = try goCall {
+                if method == "google" || method == "github" { return core.nativeLogin(method, error: $0) }
+                return core.loginMethod(method, error: $0)
             }
+            apply(snapshot)
+        } catch {
+            status = .failed("Couldn't start sign-in. Try again.")
         }
     }
 
     func cancelSignIn() {
         let core = self.core
         Task.detached { try? core.cancelLogin() }
+    }
+
+    func handleCallback(_ url: URL, epoch: Int64) {
+        guard isAuthorizing, self.epoch == epoch else { return }
+        _ = core.completeNativeLogin(url.absoluteString, epoch: epoch)
+    }
+
+    func approve(organization: String) {
+        _ = core.approveNativeLogin(organization, epoch: epoch)
     }
 
     func signOut() {
@@ -141,6 +154,8 @@ final class RuntaAuth {
             appliedRevision = revision
         }
         let previous = status
+        epoch = snapshot.epoch ?? 0
+        consent = snapshot.consent
         status = Self.status(for: snapshot)
         if !isAuthorizing { pairing = false }
         if status == .signedIn, previous != .signedIn { Task { await loadProfile() } }
@@ -183,6 +198,19 @@ struct AccountSnapshot: Decodable {
     var revision: UInt64?
     var verification_url: String?
     var error: String?
+    var epoch: Int64?
+    var consent: LoginConsent?
+}
+
+struct LoginConsent: Decodable {
+    struct Organization: Decodable, Identifiable {
+        let id: String
+        let name: String
+    }
+    let client_name: String
+    let access: String
+    let credential_expires_in_days: Int
+    let organizations: [Organization]
 }
 
 /// The Runta session token lives only in the iPhone Keychain.

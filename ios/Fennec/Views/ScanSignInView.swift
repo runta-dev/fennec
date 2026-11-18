@@ -13,6 +13,7 @@ struct ScanSignInView: View {
     @State private var photo: PhotosPickerItem?
     @State private var notice: String?
     @State private var camera = CameraAccess.unknown
+    @State private var organizationID = ""
 
     var body: some View {
         ZStack {
@@ -32,7 +33,8 @@ struct ScanSignInView: View {
                         .transition(.opacity)
                 }
                 Spacer()
-                if auth.pairing && auth.isAuthorizing { waitingPanel } else { scanPanel }
+                if let consent = auth.consent { consentPanel(consent) }
+                else if auth.pairing && auth.isAuthorizing { waitingPanel } else { scanPanel }
             }
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
@@ -40,7 +42,10 @@ struct ScanSignInView: View {
         .task { camera = await CameraAccess.request() }
         .onChange(of: photo) { _, item in Task { await importPhoto(item) } }
         .onChange(of: auth.verificationURL) { _, url in
-            if let url { web.start(url) { auth.cancelSignIn() } } else { web.finish() }
+            if let url {
+                let epoch = auth.epoch
+                web.start(url, onCallback: { auth.handleCallback($0, epoch: epoch) }, onCancel: { auth.cancelSignIn() })
+            } else { web.finish() }
         }
         .onDisappear { web.finish() }
     }
@@ -48,6 +53,28 @@ struct ScanSignInView: View {
     private var failure: String? {
         if case .failed(let message) = auth.status { return message }
         return nil
+    }
+
+    private func consentPanel(_ consent: LoginConsent) -> some View {
+        VStack(spacing: 14) {
+            Text("Authorize this iPhone").font(.headline)
+            Text(consent.client_name).font(.subheadline)
+            Picker("Organization", selection: $organizationID) {
+                Text("Select an organization").tag("")
+                ForEach(consent.organizations) { organization in
+                    Text(organization.name).tag(organization.id)
+                }
+            }
+            Text("\(consent.access) · \(consent.credential_expires_in_days) days")
+                .font(.footnote)
+            Button("Authorize device") { auth.approve(organization: organizationID) }
+                .disabled(!consent.organizations.contains { $0.id == organizationID })
+                .buttonStyle(.borderedProminent)
+            Button("Cancel") { auth.cancelSignIn() }
+        }
+        .padding(24).frame(maxWidth: .infinity)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30))
+        .padding(.horizontal, 10)
     }
 
     private var topBar: some View {

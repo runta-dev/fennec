@@ -1,8 +1,8 @@
 # Fennec deep-link contract
 
-Status: agreed naming convention for future implementation, 2026-11-18.
-Only the existing pairing route is implemented today. This document does not
-activate native OAuth, change Supabase settings, or add universal links.
+Status: shared implementation contract, 2026-11-18.
+Pairing and native Google/GitHub OAuth callbacks are implemented. Hosted completion
+and universal links remain reserved. Supabase settings are managed separately.
 This is the shared contract for Fennec clients and Runta link producers.
 
 ## Routes
@@ -14,13 +14,13 @@ Do not create provider-specific callback routes.
 | Route | Purpose | Status |
 | --- | --- | --- |
 | `fennec://pair#code=<device-code>&api=<encoded-api-origin>` | Existing QR pairing handoff | Implemented; preserve compatibility |
-| `fennec://auth/callback` | Native PKCE authorization-code callback, shared by Google and GitHub | Reserved; not handled today |
+| `fennec://auth/callback` | Native PKCE authorization-code callback, shared by Google and GitHub | Implemented |
 | `fennec://auth/complete?state=<attempt-nonce>` | Resume the existing hosted device authorization attempt | Reserved; not handled today |
 
 Do not add general session, settings, or command routes until their behavior and
 access checks are specified here. Unknown routes must not fall through to pairing.
-The current iOS entry point forwards scheme-matching links to pairing; replace
-that dispatch before enabling either auth route.
+The iOS entry point and system authentication window use the shared Go route
+parser. Pairing cannot interrupt an active login or replace a signed-in account.
 
 ## OAuth callback
 
@@ -47,10 +47,12 @@ change, and successful consumption. Reject duplicates, unsolicited callbacks,
 missing/empty codes, code-plus-error results, and expired attempts. A crash or
 cold launch without a securely retained attempt requires a new login.
 
-A Supabase session alone is not a Runta device credential. Native OAuth must
-specify and implement Runta session registration, organization selection, and
-explicit device authorization before it replaces the hosted flow. Do not ship
-only a callback handler and consider the login complete.
+A Supabase session alone is not a Runta device credential. Native OAuth registers
+the login through `/v1/auth/session`, loads device consent through
+`/v1/auth/device/authorization`, and shows the organizations returned by Runta.
+Explicit approval calls `/v1/auth/device/authorization/approve`. Only the existing
+device-token endpoint can issue the credential saved in Keychain. Temporary
+Supabase access tokens remain in memory and refresh/provider tokens are discarded.
 
 ## Hosted completion
 
