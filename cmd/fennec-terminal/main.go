@@ -12,6 +12,7 @@ import (
 	"fennec/internal/hookbridge"
 	"fennec/internal/localssh"
 	"fennec/internal/magpieweb"
+	"fennec/internal/preview"
 	"fennec/internal/project"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -97,6 +98,9 @@ func run() (int, error) {
 		}
 		defer output.Close()
 		return 0, serveSFTP(ctx, home, input, output)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "preview" {
+		return 0, preview.Command(home, os.Args[2:], os.Stdout)
 	}
 	if len(os.Args) == 3 && os.Args[1] == "receive-project" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -371,6 +375,9 @@ func run() (int, error) {
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
 		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+			if target == terminalstream.SocketPreview {
+				return (preview.Store{Home: home}).Dial(ctx)
+			}
 			if target == terminalstream.SocketMagpieWeb {
 				return panel.Dial(ctx, home)
 			}

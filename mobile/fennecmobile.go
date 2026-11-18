@@ -19,9 +19,11 @@ import (
 
 	"fennec/internal/account"
 	"fennec/internal/cli"
+	"fennec/internal/commandstream"
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/sessionid"
+	"fennec/internal/terminalstream"
 	"fennec/internal/transcript"
 
 	"golang.org/x/crypto/ssh"
@@ -180,13 +182,16 @@ type Sessions struct {
 	auth      *Auth
 	directory string
 
-	mu        sync.Mutex
-	client    *ssh.Client
-	runtimeID string
-	token     string
-	paths     map[string]string    // address/session -> conversation log
-	pathsAt   map[string]time.Time // when each was resolved
-	metrics   cloudruntime.RemoteSampler
+	mu             sync.Mutex
+	client         *ssh.Client
+	runtimeID      string
+	token          string
+	paths          map[string]string    // address/session -> conversation log
+	pathsAt        map[string]time.Time // when each was resolved
+	metrics        cloudruntime.RemoteSampler
+	residentMu     sync.Mutex
+	residentClient *ssh.Client
+	transport      *terminalstream.Transport
 }
 
 // Metrics samples the cloud computer: the Mac panel's SystemMetrics as JSON
@@ -313,7 +318,10 @@ func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, s
 		if err != nil {
 			return nil, "", err
 		}
-		session, err := client.NewSession()
+		if _, err := s.resident(ctx, client); err != nil {
+			return nil, "", err
+		}
+		session, err := commandstream.NewSession(ctx, client)
 		if err != nil {
 			s.drop(client)
 			lastErr = err
@@ -326,16 +334,11 @@ func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, s
 		stop()
 		session.Close()
 		if err != nil {
-			if _, exit := err.(*ssh.ExitError); exit {
-				message := strings.TrimSpace(stderr.String())
-				if message == "" {
-					message = err.Error()
-				}
+			if message := strings.TrimSpace(stderr.String()); message != "" {
 				return nil, "", errors.New(message)
 			}
 			s.drop(client)
-			lastErr = err
-			continue
+			return nil, "", err // Never replay a command whose outcome is unknown.
 		}
 		return output, runtimeID, nil
 	}
@@ -404,6 +407,12 @@ func (s *Sessions) Stop(address, sessionID string) (string, error) {
 }
 
 func (s *Sessions) Close() {
+	s.residentMu.Lock()
+	if s.transport != nil {
+		s.transport.Close()
+		s.transport = nil
+	}
+	s.residentMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.client != nil {

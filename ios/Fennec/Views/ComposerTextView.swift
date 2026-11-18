@@ -9,6 +9,7 @@ struct ComposerTextView: UIViewRepresentable {
     var placeholder: String
     var canSend: Bool
     var onSend: () -> Void
+    var onPasteImage: ((Data) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -26,6 +27,7 @@ struct ComposerTextView: UIViewRepresentable {
         view.accessibilityIdentifier = "chat-composer"
         context.coordinator.textView = view
         view.insertLineBreak = { [weak coordinator = context.coordinator] in coordinator?.insertNewline() }
+        view.pasteImage = { [weak coordinator = context.coordinator] data in coordinator?.parent.onPasteImage?(data) }
         return view
     }
 
@@ -100,6 +102,17 @@ struct ComposerTextView: UIViewRepresentable {
 
 final class ComposerInputView: UITextView {
     var insertLineBreak: (() -> Void)?
+    var pasteImage: ((Data) -> Void)?
+    override func paste(_ sender: Any?) {
+        // Read the clipboard only in response to the user's paste gesture.
+        if let image = UIPasteboard.general.image, let data = image.pngData(), let pasteImage {
+            pasteImage(data)
+        } else { super.paste(sender) }
+    }
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), pasteImage != nil, UIPasteboard.general.hasImages { return true }
+        return super.canPerformAction(action, withSender: sender)
+    }
     override var keyCommands: [UIKeyCommand]? {
         let newline = UIKeyCommand(input: "\r", modifierFlags: .shift, action: #selector(addLineBreak))
         newline.wantsPriorityOverSystemBehavior = true

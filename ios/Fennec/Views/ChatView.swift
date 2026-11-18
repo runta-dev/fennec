@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 /// 06 chat, 07 approval, 08 question, 09 done. Messages scroll under the
 /// glass title pill and composer; requests from the agent rise as sheets.
@@ -16,6 +18,10 @@ struct ChatView: View {
     @State private var showTerminal = false
     @State private var showDeliveryIssue = false
     @State private var composerFocused = false
+    @State private var showFiles = false
+    @State private var showPhotos = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var importingAttachments = false
 
     private var draftKey: String {
         "chatDraft.\(app.environment.rawValue).\(auth.profile?.email ?? "preview").\(sessionID)"
@@ -31,6 +37,35 @@ struct ChatView: View {
     var body: some View {
         if let session = store.session(sessionID) {
             content(session)
+                .environment(\.workspaceSessionID, sessionID)
+                .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                    switch result {
+                    case .success(let urls): importFiles(urls)
+                    case .failure(let error): store.attachmentErrors[sessionID] = error.localizedDescription
+                    }
+                }
+                .photosPicker(isPresented: $showPhotos, selection: $selectedPhotos, maxSelectionCount: 8, matching: .images)
+                .onChange(of: selectedPhotos) { _, photos in
+                    guard !photos.isEmpty else { return }
+                    importingAttachments = true
+                    Task {
+                        defer { selectedPhotos = []; importingAttachments = false }
+                        var attachments: [DraftAttachment] = []
+                        do {
+                            for photo in photos {
+                                guard let data = try await photo.loadTransferable(type: Data.self) else { throw AttachmentError.unavailable }
+                                attachments.append(try await Task.detached { try AttachmentImport.image(data) }.value)
+                            }
+                            try store.addAttachments(attachments, to: sessionID)
+                        } catch {
+                            AttachmentImport.discard(attachments)
+                            store.attachmentErrors[sessionID] = error.localizedDescription
+                        }
+                    }
+                }
+                .alert(L10n.text("ios.attachments"), isPresented: Binding(get: { store.attachmentErrors[sessionID] != nil }, set: { if !$0 { store.attachmentErrors[sessionID] = nil } })) {
+                    Button(L10n.text("ui.close"), role: .cancel) { store.attachmentErrors[sessionID] = nil }
+                } message: { Text(store.attachmentErrors[sessionID] ?? "") }
                 .onAppear {
                     composerFocused = false
                     draft = UserDefaults.standard.string(forKey: draftKey) ?? ""
@@ -209,11 +244,39 @@ struct ChatView: View {
     }
 
     private func composer(_ session: Session) -> some View {
+        VStack(spacing: 6) {
+        if let attachments = store.attachmentDrafts[sessionID], !attachments.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(attachments) { attachment in
+                        HStack(spacing: 6) {
+                            Image(systemName: attachment.isImage ? "photo" : "doc")
+                            Text(attachment.name).lineLimit(1).frame(maxWidth: 160)
+                            Button { store.removeAttachment(attachment, from: sessionID) } label: { Image(systemName: "xmark.circle.fill") }
+                                .accessibilityLabel(L10n.text("ios.remove_attachment"))
+                                .disabled(store.pendingSends[sessionID] != nil)
+                        }
+                        .font(.system(size: 13)).padding(8)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
         HStack(spacing: 8) {
-            Image(systemName: "plus")
+            Menu {
+                Button(L10n.text("ios.choose_photos"), systemImage: "photo") { showPhotos = true }
+                Button(L10n.text("ios.choose_files"), systemImage: "folder") { showFiles = true }
+            } label: {
+                if importingAttachments { ProgressView().frame(width: 36, height: 36) }
+                else { Image(systemName: "plus")
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 36, height: 36)
+                }
+            }
+                .disabled(importingAttachments || store.pendingSends[sessionID] != nil || session.address == nil)
                 .accessibilityLabel(L10n.text("ios.attach"))
+                .accessibilityIdentifier("composer-attach")
             ZStack(alignment: .leading) {
                 if draft.isEmpty {
                     Text(L10n.text("ios.message_agent", values: ["agent": session.agent.displayName]))
@@ -223,10 +286,11 @@ struct ChatView: View {
                 ComposerTextView(text: draftBinding,
                                  focused: Binding(get: { composerFocused }, set: { composerFocused = $0 }),
                                  placeholder: L10n.text("ios.message_agent", values: ["agent": session.agent.displayName]),
-                                 canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.pendingSends[session.id] == nil,
-                                 onSend: { sendMessage(session) })
+                                 canSend: canSend,
+                                 onSend: { sendMessage(session) },
+                                 onPasteImage: { data in importImage(data) })
             }
-            if draft.isEmpty && session.state == .working {
+            if draft.isEmpty && (store.attachmentDrafts[sessionID] ?? []).isEmpty && session.state == .working {
                 Button { } label: {
                     Image(systemName: "stop.fill").font(.system(size: 13))
                         .frame(width: 36, height: 36)
@@ -239,9 +303,9 @@ struct ChatView: View {
                     Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)
-                        .background(Theme.primary.opacity(draft.isEmpty ? 0.35 : 1), in: Circle())
+                        .background(Theme.primary.opacity(canSend ? 1 : 0.35), in: Circle())
                 }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.pendingSends[session.id] != nil)
+                .disabled(!canSend)
                 .accessibilityLabel(L10n.text("ui.send"))
                 .accessibilityIdentifier("composer-send")
             }
@@ -252,15 +316,45 @@ struct ChatView: View {
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+        }
+    }
+
+    private var canSend: Bool {
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(store.attachmentDrafts[sessionID] ?? []).isEmpty)
+            && store.pendingSends[sessionID] == nil && !importingAttachments
+    }
+
+    private func importFiles(_ urls: [URL]) {
+        importingAttachments = true
+        Task {
+            defer { importingAttachments = false }
+            do {
+                let attachments = try await Task.detached { try AttachmentImport.files(urls) }.value
+                try store.addAttachments(attachments, to: sessionID)
+            } catch { store.attachmentErrors[sessionID] = error.localizedDescription }
+        }
+    }
+
+    private func importImage(_ data: Data) {
+        guard store.pendingSends[sessionID] == nil, !importingAttachments else { return }
+        importingAttachments = true
+        Task {
+            defer { importingAttachments = false }
+            do {
+                let attachment = try await Task.detached { try AttachmentImport.image(data) }.value
+                try store.addAttachments([attachment], to: sessionID)
+            } catch { store.attachmentErrors[sessionID] = error.localizedDescription }
+        }
     }
 
     private func sendMessage(_ session: Session) {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, store.pendingSends[session.id] == nil else { return }
+        guard canSend else { return }
         followBottom = true
-        draftBinding.wrappedValue = ""
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
-            store.send(text, to: session.id)
+            if !(store.attachmentDrafts[sessionID] ?? []).isEmpty {
+                store.sendAttachments(text, to: session.id) { if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draftBinding.wrappedValue = "" } }
+            } else { draftBinding.wrappedValue = ""; store.send(text, to: session.id) }
         }
     }
 
@@ -442,7 +536,9 @@ struct MessageView: View {
         case .user(let text):
             VStack(alignment: .trailing, spacing: 6) {
                 if !message.images.isEmpty { PastedImages(images: message.images) }
-                if !text.isEmpty {
+                ForEach(Array(PreviewPart.parse(text).enumerated()), id: \.offset) { _, part in
+                if let ref = part.ref { WorkspaceFileCard(ref: ref) }
+                else if let text = part.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     HStack {
                         Spacer(minLength: 48)
                         UserText(text: text)
@@ -452,12 +548,11 @@ struct MessageView: View {
                             .textSelection(.enabled)
                     }
                 }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         case .agent(let text):
-            MarkdownText(text: text, lineLimit: lineLimit)
-                .font(.system(size: 15.5))
-                .textSelection(.enabled)
+            PreviewMessageText(text: text, lineLimit: lineLimit)
         case .step(let text):
             HStack(spacing: 6) {
                 Text(text)

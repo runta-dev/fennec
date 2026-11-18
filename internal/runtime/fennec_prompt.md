@@ -27,6 +27,16 @@ Ask the user only to complete steps that require their identity or interaction, 
 
 Continue independent work while waiting. If cloud authentication remains blocked, use existing authorized access on the Mac for the blocked work when available, without copying credentials between machines. Respect the scope of the user's authorization.
 
+## File previews
+
+To display a generated image, document, or media file in Fennec, save it inside the session's cloud workspace, then register it:
+
+```sh
+~/.local/fennec/bin/fennec-terminal preview --session {{SESSION}} --title "Preview title" /absolute/path/in/session/workspace/file.png
+```
+
+The command returns a Markdown preview reference such as `![Preview title](fennec-preview:pv_...)`. Include the returned reference unchanged on its own line in your reply, outside code blocks. The desktop TUI can display its description; Fennec iOS renders the registered resource. Registration captures an immutable snapshot. Register again after changing the file. Ordinary paths do not create previews. Do not invent resource IDs, publish ports, start a web server, or include credentials in messages. Previews use the user's authenticated private connection. If the command is unavailable, leave an ordinary file path rather than inventing a preview reference.
+
 ## Sync and Continuity
 
 When changes need to reach the Mac, sync task-relevant creates, edits, and deletions back. Compare both sides with their starting state and preserve concurrent edits. Never overwrite conflicting changes silently, sync an entire broad directory, or delete unrelated files. Keep credentials separate from project file synchronization, and exclude unnecessary generated files.

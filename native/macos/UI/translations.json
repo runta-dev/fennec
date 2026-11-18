@@ -1,5 +1,14 @@
 {
   "messages": {
+    "ios.attachments": {"en-US": "Attachments", "zh-CN": "附件"},
+    "ios.choose_photos": {"en-US": "Photo Library", "zh-CN": "照片图库"},
+    "ios.choose_files": {"en-US": "Choose Files", "zh-CN": "选择文件"},
+    "ios.remove_attachment": {"en-US": "Remove attachment", "zh-CN": "移除附件"},
+    "ios.attachment_too_large": {"en-US": "Choose a file up to 64 MB or an image up to 20 MB.", "zh-CN": "请选择不超过 64 MB 的文件或不超过 20 MB 的图片。"},
+    "ios.attachment_unavailable": {"en-US": "Couldn't open this attachment. Try selecting it again.", "zh-CN": "无法打开此附件，请重新选择。"},
+    "ios.attachment_too_many": {"en-US": "Add up to eight attachments per message.", "zh-CN": "每条消息最多添加八个附件。"},
+    "ios.preview_retry": {"en-US": "Couldn't load the preview. Tap to retry.", "zh-CN": "无法加载预览，轻点重试。"},
+    "ios.preview_file": {"en-US": "Preview {name}", "zh-CN": "预览 {name}"},
     "ios.back": {
       "en-US": "Back",
       "zh-CN": "返回"

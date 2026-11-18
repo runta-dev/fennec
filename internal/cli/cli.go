@@ -17,6 +17,7 @@ import (
 	"fennec/internal/daemon"
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
+	"fennec/internal/preview"
 	"fennec/internal/project"
 	"fennec/internal/runta"
 	"fennec/internal/setup"
@@ -30,6 +31,12 @@ func Run(arguments []string, output io.Writer) error {
 		return nil
 	}
 	switch arguments[0] {
+	case "preview":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		return preview.Command(home, arguments[1:], output)
 	case "transfer-ssh":
 		return transferSSH(arguments[1:], os.Stdin, output, os.Stderr)
 	case "app-restart", "app-restart-worker":

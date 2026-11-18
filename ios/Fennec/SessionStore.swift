@@ -16,6 +16,9 @@ final class SessionStore {
         var delivery = Delivery.sending
     }
     var pendingSends: [String: PendingSend] = [:]
+    var attachmentDrafts: [String: [DraftAttachment]] = [:]
+    var attachmentErrors: [String: String] = [:]
+    @ObservationIgnored var previewDownloads: [String: Task<URL, Error>] = [:]
 
     func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
         items.filter { $0.kind == "user" && $0.text == text }.count
