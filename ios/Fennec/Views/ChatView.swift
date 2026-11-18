@@ -227,8 +227,8 @@ struct ChatView: View {
                 Button { } label: {
                     Image(systemName: "stop.fill").font(.system(size: 13))
                         .frame(width: 36, height: 36)
-                        .foregroundStyle(Theme.onPrimary)
-                        .background(Theme.primary, in: Circle())
+                        .foregroundStyle(.white)
+                        .background(Theme.danger, in: Circle())
                 }
                 .accessibilityLabel(L10n.text("ios.stop_turn"))
             } else {
