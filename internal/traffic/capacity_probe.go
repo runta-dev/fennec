@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
-	"sync/atomic"
 	"time"
 )
 
@@ -37,9 +36,14 @@ func uploadCapacity(ctx context.Context, client *http.Client, cfg CapacityConfig
 	if _, err := rand.Read(payload); err != nil {
 		return 0, err
 	}
-	var wrote atomic.Bool
+	wrote := make(chan error, 1)
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteRequest: func(info httptrace.WroteRequestInfo) { wrote.Store(info.Err == nil) },
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			select {
+			case wrote <- info.Err:
+			default:
+			}
+		},
 	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ProbeTarget, bytes.NewReader(payload))
 	if err != nil {
@@ -62,8 +66,19 @@ func uploadCapacity(ctx context.Context, client *http.Client, cfg CapacityConfig
 	if err != nil {
 		return 0, err
 	}
-	if n > 4096 || !wrote.Load() {
+	if n > 4096 {
 		return 0, errors.New("incomplete capacity upload acknowledgement")
+	}
+	// The transport's write goroutine may report completion after the response
+	// has already been read. Wait for it instead of treating scheduling as a
+	// partial upload; the probe deadline still bounds an early server response.
+	select {
+	case err := <-wrote:
+		if err != nil {
+			return 0, fmt.Errorf("capacity upload: %w", err)
+		}
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
