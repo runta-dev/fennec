@@ -114,10 +114,12 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 			s.metricsMinMiB = rt.Resources.Requests.Memory
 			s.metricsCurMiB = rt.Resources.Current.Memory
 			s.metricsMaxMiB = rt.Resources.Limits.Memory
-			s.metricsVCPUs = int(rt.Resources.Requests.VCPUs)
-			if rt.Resources.Current.VCPUs > 0 {
-				// With dynamic vCPU the visible count can exceed the request.
-				s.metricsVCPUs = int(rt.Resources.Current.VCPUs)
+			// The card shows the machine's ceiling (e.g. 8 vCPU · 16 GiB): with
+			// dynamic vCPU the limit is what a burst can use; fixed runtimes
+			// report no vCPU limit, so fall back to the request.
+			s.metricsVCPUs = int(rt.Resources.Limits.VCPUs)
+			if s.metricsVCPUs <= 0 {
+				s.metricsVCPUs = int(rt.Resources.Requests.VCPUs)
 			}
 			s.metricsAPIMu.Unlock()
 		}

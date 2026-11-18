@@ -1124,7 +1124,7 @@ function drawRuntimeMetrics() {
  const minGiB = Math.max(1, Math.round((payload.memory_min_mib || 4096) / 1024));
  const maxGiB = Math.max(minGiB, Math.round((payload.memory_max_mib || 16384) / 1024));
  card.querySelector('#rt-card-title').textContent = t('[[i18n:ui.cloud_computer]]');
- card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU · ' + (minGiB === maxGiB ? minGiB + ' GiB' : minGiB + '–' + maxGiB + ' GiB');
+ card.querySelector('#rt-card-spec').textContent = vcpus + ' vCPU · ' + maxGiB + ' GiB';
  card.querySelector('#rt-mem-lbl').textContent = t('[[i18n:ui.memory]]');
  card.querySelector('#rt-net-lbl').textContent = t('[[i18n:ui.network]]');
  card.querySelector('#rt-disk-lbl').textContent = t('[[i18n:ui.disk]]');
