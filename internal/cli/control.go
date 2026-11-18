@@ -94,6 +94,9 @@ func serveControl(arguments []string) error {
 		if err := refreshInstalledLaunchers(home, executable); err != nil {
 			_ = writePublicJSON(filepath.Join(home, ".config/fennec/diagnostics/launchers.json"), map[string]string{"error": err.Error()})
 		}
+		if terminalIntegrationWanted(home) {
+			reconcileTerminalIntegrationSoon(home, executable)
+		}
 		controller.Start(ctx)
 		if controller.UpdateState != nil {
 			startControlUpdater(ctx, controller)

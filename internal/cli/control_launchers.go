@@ -26,7 +26,7 @@ func refreshInstalledLaunchers(home, executable string) error {
 		return fmt.Errorf("launcher refresh requires an installed application")
 	}
 	current := filepath.Join(location.Application, "Contents/MacOS/fen")
-	return refreshManagedLaunchers(home, current, agent.ExecutableSearchPath(home), agent.ManagedEntryPaths(home))
+	return refreshManagedLaunchers(home, launcherDispatcher(home, current), agent.ExecutableSearchPath(home), agent.ManagedEntryPaths(home))
 }
 
 func refreshManagedLaunchers(home, executable, searchPath string, entries []string) error {

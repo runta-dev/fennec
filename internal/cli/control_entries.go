@@ -27,6 +27,9 @@ func installManagedEntryAt(ctx context.Context, executable, id string) (string, 
 	if err != nil {
 		return "new_shells", err
 	}
+	if home, err := os.UserHomeDir(); err == nil {
+		executable = launcherDispatcher(home, executable)
+	}
 	if err := launcher.ReconcileEntry(entry, executable, id); err != nil {
 		return "new_shells", err
 	}

@@ -26,6 +26,7 @@ var localData = []string{
 	"Library/Caches/com.runta.fennec", "Library/WebKit/com.runta.fennec",
 	"Library/Application Support/com.runta.fennec", "Library/Saved Application State/com.runta.fennec.savedState",
 	"Library/Preferences/com.runta.fennec.plist", "Library/LaunchAgents/com.runta.fennec.daemon.plist",
+	"Library/LaunchAgents/com.runta.fennec.cleanup.plist", "Library/Logs/Fennec",
 }
 
 func BundleID(app string) (string, error) {
@@ -129,11 +130,11 @@ func DiscoverLocal(home, executable string, entries []string, zdot, xdg string) 
 	for _, relative := range localData {
 		plan.Data = append(plan.Data, filepath.Join(home, relative))
 	}
-	for _, name := range []string{".zshrc", ".bashrc", ".bash_profile", ".bash_login", ".profile"} {
+	for _, name := range []string{".zshenv", ".zshrc", ".bashrc", ".bash_profile", ".bash_login", ".profile"} {
 		plan.ShellFiles = append(plan.ShellFiles, filepath.Join(home, name))
 	}
 	if filepath.IsAbs(zdot) && filepath.Clean(zdot) != filepath.Clean(home) {
-		plan.ShellFiles = append(plan.ShellFiles, filepath.Join(zdot, ".zshrc"))
+		plan.ShellFiles = append(plan.ShellFiles, filepath.Join(zdot, ".zshenv"), filepath.Join(zdot, ".zshrc"))
 	}
 	if xdg == "" {
 		xdg = filepath.Join(home, ".config")

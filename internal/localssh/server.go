@@ -328,6 +328,12 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 		runCtx, cancelRun := context.WithTimeout(operation, 10*time.Minute)
 		defer cancelRun()
 		cmd, effectiveMode := sandbox.Command(runCtx, runPolicy, home, "", command)
+		// The cloud computer runs this command on the Mac: a selected agent it
+		// starts runs here, not back on the cloud computer (launcher.RelayEnv).
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env, relayEnv+"=1")
 		var stderrPreview boundedCapture
 		cmd.Stdin = session
 		cmd.Stdout = session

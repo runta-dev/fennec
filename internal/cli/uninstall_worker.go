@@ -212,9 +212,12 @@ func runUninstallWorker(path string) error {
 					return err
 				}
 			}
+			// The cleanup agent would otherwise act on the removal itself.
+			_ = exec.CommandContext(ctx, "/bin/launchctl", "bootout", cleanupTarget()).Run()
 			return stopUninstallProcesses(ctx, plan.Local.Apps, work.ParentPID)
 		},
-		RestoreCommands: func(context.Context) error {
+		RestoreCommands: func(ctx context.Context) error {
+			restoreCodexDesktop(ctx, home)
 			for _, entry := range plan.Local.Entries {
 				if err := launcher.UninstallEntry(entry); err != nil {
 					return err
@@ -225,6 +228,7 @@ func runUninstallWorker(path string) error {
 					return err
 				}
 			}
+			launcher.RemoveCreatedEmptyShellFiles(home)
 			return nil
 		},
 		DeleteCredentials: func(ctx context.Context) error {

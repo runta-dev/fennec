@@ -406,6 +406,38 @@ environment:
 - ChatGPT.app running with and without the bridge URL; a
   `CODEX_APP_SERVER_WS_URL` the user changed after Fennec set it.
 
+## Implementation status
+
+Implemented (Fennec 0.5.3):
+
+- The stable dispatcher (`launcher.RefreshStable`, `dispatch-stable`), refreshed
+  from the installed application whenever terminal integration is reconciled.
+  It hands every dispatch to the installed application's `fen`, and runs the
+  original agent locally when the application is gone.
+- The relay marker `FENNEC_MAC_RELAY`, set by the local SSH server on every
+  command the cloud computer runs, and `FENNEC_DISPATCHED`, set on an agent run
+  locally so its subprocesses stay local.
+- Shell functions and the prompt hook for zsh, bash and fish
+  (`launcher.ShellIntegration`), the zsh `.zshenv` PATH line, targets chosen
+  from the account's login shell and the login shell's `ZDOTDIR` and
+  `XDG_CONFIG_HOME`, and skipped files with a reason
+  (`launcher.InstallShellTargets`, `ShellFileUnwritable`).
+- Reconciliation independent of cloud readiness: at daemon start when wanted,
+  after a selection change, and from the broker's ready step, never failing
+  the broker. The result is written to
+  `~/.config/fennec/diagnostics/terminal-integration.json`.
+- `fen doctor agents [--json]`.
+- The cleanup agent and one removal sequence shared by the cleanup agent, the
+  daemon's Trash watcher and Uninstall, including Codex Desktop restoration.
+  Startup files Fennec created are removed when emptied.
+
+Not yet implemented: the single manifest (existing records are still
+`shell-files.json`, the new `shell-created.json`, the entry sidecars and
+`chatgpt.json`), recording an earlier `CODEX_APP_SERVER_WS_URL` value, entry
+discovery through the user's shell resolution and version-manager install
+directories, FSEvents-driven reconciliation, coverage in the Agents tab, and
+the agent-side notice.
+
 ## Decisions, 2026-11-18
 
 - Cleanup restarts a running ChatGPT.app without the bridge variable.

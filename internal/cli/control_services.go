@@ -382,6 +382,11 @@ func (s *daemonServices) reconcileSelectionLocked() {
 	s.config.Selected = selected
 	s.config.Agents = active
 	_ = launcher.PublishEnabled(filepath.Join(s.home, ".config/fennec/takeover.json"), selected)
+	if len(selected) > 0 {
+		if executable, err := os.Executable(); err == nil {
+			reconcileTerminalIntegrationOnSelection(s.home, executable, strings.Join(selected, ","))
+		}
+	}
 }
 func (s *daemonServices) runConnector(ctx context.Context, epoch uint64) {
 	delay := time.Second

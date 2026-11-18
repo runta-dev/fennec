@@ -97,14 +97,17 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if runningAsStable(home) {
+			return dispatchStable(home, arguments[1], arguments[2], arguments[3:])
+		}
 		enabled, err := launcher.EnabledAgents(filepath.Join(home, ".config/fennec/takeover.json"))
 		if err != nil {
 			return err
 		}
-		if enabled[arguments[1]] && !launcher.LocalQuery(arguments[3:]) {
+		if enabled[arguments[1]] && !launcher.LocalQuery(arguments[3:]) && !launcher.RunLocally() {
 			return runAgentOriginal(append([]string{arguments[1]}, arguments[3:]...), arguments[2])
 		}
-		return syscall.Exec(arguments[2], append([]string{arguments[2]}, arguments[3:]...), os.Environ())
+		return syscall.Exec(arguments[2], append([]string{arguments[2]}, arguments[3:]...), launcher.LocalEnvironment())
 	case "shell-init":
 		if len(arguments) != 2 {
 			return errors.New("shell-init requires sh, bash, zsh or fish")
@@ -144,14 +147,32 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if runningAsStable(home) {
+			return dispatchStable(home, arguments[1], "", arguments[2:])
+		}
 		enabled, err := launcher.EnabledAgents(filepath.Join(home, ".config/fennec/takeover.json"))
 		if err != nil {
 			return err
 		}
-		if enabled[arguments[1]] && !launcher.LocalQuery(arguments[2:]) {
+		if enabled[arguments[1]] && !launcher.LocalQuery(arguments[2:]) && !launcher.RunLocally() {
 			return runAgent(arguments[1:])
 		}
 		return launcher.ExecLocal(arguments[1], arguments[2:], filepath.Join(home, ".local/share/fennec/shims"))
+	case "dispatch-stable":
+		// Shell functions call the stable dispatcher with the command name.
+		if len(arguments) < 2 || agentForCommand(arguments[1]) == "" {
+			return errors.New("supported agent required")
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		if !runningAsStable(home) {
+			return Run(append([]string{"dispatch-agent", agentForCommand(arguments[1])}, arguments[2:]...), output)
+		}
+		return dispatchStable(home, agentForCommand(arguments[1]), "", arguments[2:])
+	case "cleanup-after-removal":
+		return cleanupAfterRemoval()
 	case "run-agent":
 		return runAgent(arguments[1:])
 	case "launch-broker":

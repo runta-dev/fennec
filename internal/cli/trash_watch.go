@@ -5,7 +5,6 @@ import (
 	"context"
 	"fennec/internal/agent"
 	"fennec/internal/installation"
-	"fennec/internal/launcher"
 	"fennec/internal/uninstall"
 	"os"
 	"os/exec"
@@ -82,43 +81,9 @@ func bundleRemovedOrTrashed(app string, currentExecutable func() string) bool {
 }
 
 func cleanupLocalAfterTrash(home, app string, entries []string, bootout func()) {
-	for _, entry := range entries {
-		_ = launcher.UninstallEntry(entry)
-	}
-	shellCandidates := map[string]bool{}
-	for _, name := range []string{".zshrc", ".bashrc", ".bash_profile", ".bash_login", ".profile", ".config/fish/conf.d/fennec.fish"} {
-		shellCandidates[filepath.Join(home, name)] = true
-	}
-	for _, recorded := range launcher.RecordedShellFiles(home) {
-		shellCandidates[recorded] = true
-	}
-	for path := range shellCandidates {
-		_ = launcher.UninstallShellFile(path)
-	}
-	shimsDir := filepath.Join(home, ".local/share/fennec/shims")
-	if items, err := os.ReadDir(shimsDir); err == nil {
-		for _, item := range items {
-			if item.IsDir() {
-				continue
-			}
-			full := filepath.Join(shimsDir, item.Name())
-			if data, err := os.ReadFile(full); err == nil && strings.HasPrefix(string(data), "#!/bin/sh\n# Fennec managed launcher v1\n") {
-				_ = os.Remove(full)
-			}
-		}
-		_ = os.Remove(shimsDir)
-	}
-	_ = os.Remove(filepath.Join(home, ".local/share/fennec/shell-init.sh"))
-	_ = os.Remove(filepath.Join(home, ".local/share/fennec/shell-files.json"))
-
-	plist := filepath.Join(home, "Library/LaunchAgents", daemonLabel+".plist")
-	expectedDaemon := filepath.Join(app, "Contents/MacOS/fen")
-	if data, err := os.ReadFile(plist); err == nil && bytes.Contains(data, []byte("<string>"+expectedDaemon+"</string>")) {
-		_ = os.Remove(plist)
-		if bootout != nil {
-			bootout()
-		}
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	performRemovalCleanup(ctx, home, app, entries, true, bootout)
 }
 
 func watchInstalledApplication(ctx context.Context, interval time.Duration, home, app string, currentExecutable func() string, entries func(string) []string, bootout func(), onRemoved func()) {

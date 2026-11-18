@@ -61,11 +61,18 @@ func ExecLocal(agent string, args []string, shimDir string) error {
 	}
 	// exec replaces the launcher: terminal, signal behavior, cwd and exit code
 	// remain the original CLI's rather than being reimplemented in a wrapper.
+	return syscall.Exec(original, append([]string{original}, args...), LocalEnvironment())
+}
+
+// LocalEnvironment is this process's environment for an agent run on this
+// Mac, marked as dispatched so the agent's own subprocesses that start an
+// agent stay local instead of reaching the cloud computer.
+func LocalEnvironment() []string {
 	env := []string{}
 	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "FENNEC_LAUNCH_MODE=") {
+		if !strings.HasPrefix(value, "FENNEC_LAUNCH_MODE=") && !strings.HasPrefix(value, DispatchedEnv+"=") {
 			env = append(env, value)
 		}
 	}
-	return syscall.Exec(original, append([]string{original}, args...), env)
+	return append(env, DispatchedEnv+"=1")
 }

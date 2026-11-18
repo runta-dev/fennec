@@ -267,16 +267,9 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		}
 		return launcher.LaunchPlan{RuntimeID: config.RuntimeID, SessionID: intent.RequestID, Agent: intent.Agent, Device: config.Device, Launch: &native, ControlPath: control, StreamPath: streamPath}, nil
 	}, func() error {
-		if err := launcher.InstallShims(filepath.Join(home, ".local/share/fennec/shims"), executable, agent.ExecutableSearchPath(home)); err != nil {
-			return err
-		}
-		shell := os.Getenv("SHELL")
-		if shell == "" && runtime.GOOS == "darwin" {
-			shell = "/bin/zsh"
-		}
-		if err := launcher.InstallShellIntegration(home, shell); err != nil {
-			return fmt.Errorf("shell integration: %w", err)
-		}
+		// Terminal integration is reconciled and reported on its own. A
+		// startup file Fennec can't write must not stop the cloud handoff.
+		reconcileTerminalIntegrationSoon(home, executable)
 		selection := config.Selected
 		if selection == nil {
 			selection = config.Agents

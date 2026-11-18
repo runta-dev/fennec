@@ -123,6 +123,9 @@ func fenCommand(arguments []string, output io.Writer) error {
 	if len(arguments) > 0 && arguments[0] == "install" {
 		return installCommand(arguments[1:], output)
 	}
+	if len(arguments) > 1 && arguments[0] == "doctor" && arguments[1] == "agents" {
+		return fenDoctorAgents(arguments[2:], output)
+	}
 	if len(arguments) > 0 && arguments[0] == "uninstall" {
 		return uninstallCommand(arguments[1:], output)
 	}
