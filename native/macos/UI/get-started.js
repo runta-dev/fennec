@@ -29,6 +29,7 @@
   const lastTrue = {};
   let holdTimer = null;
   let lastActive = [];
+  let preparedBefore = false;
   let coverage = null; // last renderTerminalCoverage reply
   let coverageAsked = 0;
   let coverageKey = '';
@@ -174,7 +175,11 @@
     if (prefs.known && prefs.done && selectionKnown && takeoverAgents.size === 0) { prefs.done = false; save({ get_started_done: false }); }
     if (!signedIn) for (const name of Object.keys(lastTrue)) delete lastTrue[name];
     if (!signedIn || !prefs.known || prefs.hidden || (prefs.done && !finishing)) { card.hidden = true; shown = ''; return; }
-    const ready = held('ready', window.fennecPreparationStage === 'agents_installed');
+    // A cloud computer prepared before counts as ready while Fennec checks it
+    // again after launch, so the agents show at once instead of seconds later.
+    const stage = window.fennecPreparationStage || '';
+    const ready = held('ready', stage === 'agents_installed'
+      || (preparedBefore && !['failed', 'offline', 'disabled', 'credentials_required'].includes(stage)));
     const activeNow = activeAgents();
     // Only an agent that is still selected keeps step 2: removing it is the
     // user's choice, not a refresh.
@@ -239,7 +244,11 @@
     if (typeof original !== 'function') return;
     window[name] = (...args) => { const out = original(...args); render(); return out; };
   };
-  for (const name of ['renderAgents', 'renderTakeover', 'renderHerdrSessions', 'renderPreparation', 'renderRouteResults', 'renderAuthorized', 'renderSignedOut']) after(name);
+  for (const name of ['renderAgents', 'renderTakeover', 'renderHerdrSessions', 'renderRouteResults', 'renderAuthorized', 'renderSignedOut']) after(name);
+  const preparation = window.renderPreparation;
+  if (typeof preparation === 'function') {
+    window.renderPreparation = state => { const out = preparation(state); preparedBefore = state?.prepared_before === 'true'; render(); return out; };
+  }
   const preferences = window.renderPreferences;
   window.renderPreferences = value => {
     preferences(value);

@@ -198,3 +198,13 @@ t('the iPhone row opens the iPhone dialog', () => {
   s.ctx.document.querySelector = sel => (sel === '#get-ios-app' ? button : null);
   s.prefs({}); s.card.byClass('gs-phone')[0].click(); assert.equal(opened, true);
 });
+
+t('a cloud computer prepared before shows the agents at once while it is checked again', () => {
+  const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
+  s.ctx.renderPreparation({ stage: 'connecting', prepared_before: 'true' });
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '1 / 3');
+  assert.equal(s.card.byClass('gs-chip').length, 1);
+  s.ctx.fennecPreparationStage = 'failed'; s.ctx.renderPreparation({ stage: 'failed', prepared_before: 'true' });
+  s.clock.now += 16_000; s.render();
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '0 / 3', 'a failed check must still undo step 1');
+});
