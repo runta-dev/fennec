@@ -26,11 +26,10 @@ struct TerminalPage: View {
             if link.reconnecting {
                 ReconnectingPill().environment(\.colorScheme, .dark)
             } else if let issue = link.ended {
-                VStack(spacing: 12) {
-                    Text(issue.kind == .other && issue.detail.isEmpty ? L10n.text("ios.terminal_closed") : issue.title)
-                        .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
-                    Button(L10n.text("ios.reconnect")) { link.reconnect() }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 180)
-                }
+                // Why the terminal ended (the session stopped, it was signed
+                // out); a dropped link never gets here, it keeps reconnecting.
+                Text(issue.kind == .other && issue.detail.isEmpty ? L10n.text("ios.terminal_closed") : issue.title)
+                    .font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
                 .padding(24)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .environment(\.colorScheme, .dark)
@@ -41,7 +40,7 @@ struct TerminalPage: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .onDisappear { link.close() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { link.focus() }
+            if phase == .active { link.resume(); link.focus() }
         }
     }
 }
@@ -91,18 +90,19 @@ final class TerminalLink {
         }
     }
 
-    func reconnect() {
-        guard let request else { return }
-        attempts = 0
-        terminal?.close()
-        terminal = nil
+    /// Back in the foreground: a link that is waiting to reconnect tries now.
+    func resume() {
+        guard reconnecting, terminal == nil, !connecting, let request else { return }
         connect(core: request.core, address: request.address, sessionID: request.sessionID, cols: size.cols, rows: size.rows)
     }
 
     func write(_ bytes: ArraySlice<UInt8>) { try? terminal?.write(Data(bytes)) }
     func focus() { try? terminal?.focus() }
 
+    /// Leaving the page: the viewer ends and nothing reconnects it.
     func close() {
+        request = nil
+        reconnecting = false
         terminal?.close()
         terminal = nil
     }
@@ -114,18 +114,19 @@ final class TerminalLink {
         stopped(message)
     }
 
-    /// A dropped link reconnects by itself (three tries, a little apart);
-    /// anything else, or a link that stays down, shows why and Reconnect.
+    /// A dropped link reconnects by itself for as long as the page is open,
+    /// 1, 2, 4, 8, then every 10 seconds; anything else shows why it ended.
     private func stopped(_ message: String) {
+        guard let request else { return }
         let issue = ConnectionIssue(message: message)
-        guard issue.kind == .network, attempts < 3, let request else {
+        guard issue.kind == .network else {
             reconnecting = false
             ended = issue
             return
         }
         attempts += 1
         reconnecting = true
-        let delay = Double(attempts)
+        let delay = min(pow(2, Double(attempts - 1)), 10)
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, self.terminal == nil, !self.connecting, self.reconnecting else { return }

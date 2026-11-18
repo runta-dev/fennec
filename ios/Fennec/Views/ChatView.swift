@@ -96,7 +96,6 @@ struct ChatView: View {
                     } else if session.messages.isEmpty, let error = session.transcriptError {
                         VStack(spacing: 12) {
                             ConnectionIssueCard(issue: transcriptIssue(error),
-                                                onRetry: { Task { await store.loadTranscript(session.id) } },
                                                 onSignIn: { auth.signOut() })
                             Button(L10n.text("ios.open_terminal")) { showTerminal = true }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 200)
                         }
@@ -178,7 +177,6 @@ struct ChatView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             ConnectionIssueBanner(issue: store.issue,
-                                  onRetry: { Task { await store.refresh() } },
                                   onSignIn: { auth.signOut() })
                 .padding(.horizontal, 16).padding(.top, 4)
         }

@@ -9,8 +9,7 @@ struct ConnectionIssue: Equatable {
 
     var kind: Kind
     var detail: String
-    /// When this run of failures began; a dropped link that keeps failing
-    /// turns from "Reconnecting…" into "Can't reach your cloud computer".
+    /// When this run of failures began.
     var since: Date
 
     init(message: String, since: Date = .now) {
@@ -29,19 +28,16 @@ struct ConnectionIssue: Equatable {
         self.init(message: (error as NSError).localizedDescription, since: since)
     }
 
-    /// How long a dropped link shows only "Reconnecting…".
-    static let quietPeriod: TimeInterval = 20
-
-    func reconnecting(at date: Date = .now) -> Bool {
-        kind == .network && date.timeIntervalSince(since) < Self.quietPeriod
-    }
+    /// A dropped link only ever shows "Reconnecting…": reconnecting is
+    /// Fennec's job, so there is nothing to explain or press.
+    func reconnecting(at date: Date = .now) -> Bool { kind == .network }
 
     /// Headline for .other, where the context knows better (a conversation).
     var otherTitle: String?
 
     var title: String {
         switch kind {
-        case .network: L10n.text("ios.cant_reach_cloud")
+        case .network: L10n.text("ui.reconnecting")
         case .signedOut: L10n.text("ios.sign_in_expired")
         case .cloudStopped: L10n.text("ios.cloud_stopped")
         case .noComputer: L10n.text("ios.no_cloud_computer")
@@ -51,10 +47,9 @@ struct ConnectionIssue: Equatable {
 
     var subtitle: String? {
         switch kind {
-        case .network: L10n.text("ios.cant_reach_detail")
         case .cloudStopped: L10n.text("ios.cloud_stopped_detail")
         case .noComputer: L10n.text("ios.no_cloud_computer_detail")
-        case .signedOut, .other: nil
+        case .network, .signedOut, .other: nil
         }
     }
 }
@@ -73,11 +68,10 @@ struct ReconnectingPill: View {
     }
 }
 
-/// The issue as a card: plain words, one action, and the raw error folded
-/// under Details for when someone needs it.
+/// The issue as a card: plain words and the raw error folded under Details.
+/// It never offers to reconnect: Fennec keeps trying on its own.
 struct ConnectionIssueCard: View {
     var issue: ConnectionIssue
-    var onRetry: () -> Void
     var onSignIn: () -> Void
     @State private var showDetail = false
 
@@ -95,9 +89,8 @@ struct ConnectionIssueCard: View {
                 Spacer(minLength: 8)
                 if issue.kind == .signedOut {
                     Button(L10n.text("ios.sign_in_again"), action: onSignIn).font(.system(size: 13, weight: .medium))
-                } else if issue.kind != .noComputer {
-                    Button(L10n.text("ui.retry"), action: onRetry).font(.system(size: 13, weight: .medium))
-                        .accessibilityIdentifier("issue-retry")
+                } else if issue.kind == .network {
+                    ProgressView().controlSize(.small)
                 }
             }
             if !issue.detail.isEmpty {
@@ -125,7 +118,6 @@ struct ConnectionIssueCard: View {
 /// Shows nothing, the "Reconnecting…" capsule, or the card, as time passes.
 struct ConnectionIssueBanner: View {
     var issue: ConnectionIssue?
-    var onRetry: () -> Void
     var onSignIn: () -> Void
 
     var body: some View {
@@ -134,7 +126,7 @@ struct ConnectionIssueBanner: View {
                 if issue.reconnecting(at: context.date) {
                     ReconnectingPill().frame(maxWidth: .infinity)
                 } else {
-                    ConnectionIssueCard(issue: issue, onRetry: onRetry, onSignIn: onSignIn)
+                    ConnectionIssueCard(issue: issue, onSignIn: onSignIn)
                 }
             }
         }

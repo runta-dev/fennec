@@ -39,7 +39,6 @@ struct HomeView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 4) {
                     ConnectionIssueBanner(issue: store.issue,
-                                          onRetry: { Task { await store.refresh() } },
                                           onSignIn: { auth.signOut() })
                         .padding(.horizontal, 16)
                     if !store.macOnline { offlineBanner }

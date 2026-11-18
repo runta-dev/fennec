@@ -4,8 +4,6 @@
     "ios.agent_asks": {"en-US": "{agent} is asking", "zh-CN": "{agent} 在询问"},
     "ios.needs_answer": {"en-US": "Waiting for your answer", "zh-CN": "等待你的回答"},
     "ios.answer_failed": {"en-US": "Couldn't send your answer. Try again.", "zh-CN": "回答未能发送，请重试。"},
-    "ios.cant_reach_cloud": {"en-US": "Can't reach your cloud computer", "zh-CN": "无法连接到云端电脑"},
-    "ios.cant_reach_detail": {"en-US": "Check your network. Fennec keeps trying.", "zh-CN": "请检查网络，Fennec 会继续尝试。"},
     "ios.sign_in_expired": {"en-US": "Your sign-in expired", "zh-CN": "登录已过期"},
     "ios.sign_in_again": {"en-US": "Sign in again", "zh-CN": "重新登录"},
     "ios.cloud_stopped": {"en-US": "Your cloud computer is stopped", "zh-CN": "云端电脑已停止"},

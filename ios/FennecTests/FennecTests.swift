@@ -145,7 +145,7 @@ final class FennecTests: XCTestCase {
         XCTAssertEqual(dropped.detail, "read tcp 192.168.1.4:52311: connection reset by peer")
         XCTAssertFalse(dropped.title.contains("tcp"))
         XCTAssertTrue(dropped.reconnecting(at: start.addingTimeInterval(5)))
-        XCTAssertFalse(dropped.reconnecting(at: start.addingTimeInterval(ConnectionIssue.quietPeriod + 1)))
+        XCTAssertTrue(dropped.reconnecting(at: start.addingTimeInterval(3600)))
         XCTAssertEqual(ConnectionIssue(message: "[signed_out] sign in first").kind, .signedOut)
         XCTAssertEqual(ConnectionIssue(message: "[cloud_stopped] the cloud computer is stopped").kind, .cloudStopped)
         XCTAssertEqual(ConnectionIssue(message: "[no_computer] none").kind, .noComputer)
