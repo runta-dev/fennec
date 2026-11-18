@@ -71,8 +71,11 @@ struct ChatView: View {
                     }
                     if let pending = store.pendingSends[session.id] {
                         VStack(alignment: .trailing, spacing: 6) {
-                            MessageView(message: pending.message, showsSent: false)
-                            deliveryIndicator(pending)
+                            MessageView(message: pending.message)
+                            switch pending.delivery {
+                            case .sent: EmptyView()
+                            default: deliveryIndicator(pending)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .id(pending.message.id)
@@ -262,12 +265,22 @@ struct ChatView: View {
     }
 
     private func emptyConversation(_ session: Session) -> some View {
-        VStack(spacing: 12) {
-            AgentIcon(agent: session.agent, size: 36)
-            Text(L10n.text("ios.start_conversation")).font(.system(size: 17, weight: .medium))
+        VStack(spacing: 16) {
+            AgentIcon(agent: session.agent, size: 48)
+                .accessibilityHidden(true)
+            VStack(spacing: 8) {
+                Text(L10n.text("ios.empty_chat_title"))
+                    .font(.system(size: 20, weight: .medium)).foregroundStyle(Theme.fg)
+                Text(L10n.text("ios.empty_chat_detail"))
+                    .font(.system(size: 14)).foregroundStyle(Theme.fg2)
+                    .lineSpacing(4)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
         }
-        .foregroundStyle(Theme.fg2)
-        .frame(maxWidth: .infinity).padding(.vertical, 32)
+        .frame(maxWidth: .infinity).padding(.top, 72).padding(.bottom, 40)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("empty-conversation")
     }
 
     @ViewBuilder
@@ -276,8 +289,7 @@ struct ChatView: View {
             switch pending.delivery {
             case .sending: SendingDash()
             case .sent:
-                Image(systemName: "checkmark").font(.system(size: 10, weight: .medium))
-                    .accessibilityLabel(L10n.text("ios.sent"))
+                EmptyView()
             case .unconfirmed:
                 Button { showDeliveryIssue = true } label: {
                     Image(systemName: "exclamationmark.circle").font(.system(size: 14))
@@ -408,7 +420,6 @@ struct TitlePill: View {
 struct MessageView: View {
     var message: ChatMessage
     var lineLimit: Int? = nil
-    var showsSent = true
 
     var body: some View {
         switch message.kind {
@@ -437,14 +448,9 @@ struct MessageView: View {
                         UserText(text: text)
                             .font(.system(size: 15.5))
                             .padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Theme.bubble, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
+                            .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                             .textSelection(.enabled)
                     }
-                }
-                if showsSent {
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Theme.fg3).frame(width: 28, height: 20)
-                        .accessibilityLabel(L10n.text("ios.sent"))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)

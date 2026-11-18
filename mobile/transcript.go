@@ -105,7 +105,7 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 		}
 	}
 	if path == "" {
-		return "", errors.New("this agent has no conversation log yet")
+		return "", nil
 	}
 	s.mu.Lock()
 	if s.paths == nil {
@@ -202,6 +202,16 @@ func (s *Sessions) Transcript(address, sessionID string, offset int64) (string, 
 	if err != nil {
 		return "", err
 	}
+	return s.readTranscript(address, sessionID, path, offset)
+}
+
+func (s *Sessions) readTranscript(address, sessionID, path string, offset int64) (string, error) {
+	if path == "" {
+		// Some agents create their log only after the first prompt. Keep the
+		// cursor and existing messages while the next poll resolves the log.
+		result, err := json.Marshal(map[string]any{"items": []transcript.Item{}, "offset": offset, "reset": false})
+		return string(result), err
+	}
 	file := shellQuote(path)
 	var command string
 	if offset < 0 {
@@ -211,12 +221,19 @@ func (s *Sessions) Transcript(address, sessionID string, offset int64) (string, 
 		command = fmt.Sprintf(`s=$(stat -c %%s %s) && echo "$s %d" && if [ "$s" -ge %d ]; then tail -c +%d %s | head -c %d | LC_ALL=C awk -v skip=0 %s; fi`,
 			file, offset, offset, offset+1, file, maxTranscriptRead, keepLines)
 	}
+	command = `[ -e ` + file + ` ] || { printf '__FENNEC_TRANSCRIPT_PENDING__\n'; exit 0; }; ` + command
 	raw, err := s.exec(command)
 	if err != nil {
 		s.mu.Lock()
 		delete(s.paths, address+"/"+sessionID) // the agent may have moved to a new log
 		s.mu.Unlock()
 		return "", err
+	}
+	if string(bytes.TrimSpace(raw)) == "__FENNEC_TRANSCRIPT_PENDING__" {
+		s.mu.Lock()
+		delete(s.paths, address+"/"+sessionID)
+		s.mu.Unlock()
+		return s.readTranscript(address, sessionID, "", offset)
 	}
 	size, _, items, position, err := parseKeptLines(raw, offset)
 	if err != nil {

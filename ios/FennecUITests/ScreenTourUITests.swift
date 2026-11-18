@@ -39,31 +39,35 @@ final class ScreenTourUITests: XCTestCase {
         appearance.buttons["System"].tap()
     }
 
-    func testAgentMenuCreatesEmptyChatAndKeyboardSendsMultilineMessage() {
+    func testAgentMenuCreatesEmptyChatAndKeyboardSendsMessage() {
         let app = XCUIApplication()
         app.launchArguments = ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US"]
         app.launch()
         XCTAssertTrue(app.buttons["new-session-menu"].waitForExistence(timeout: 10))
         app.buttons["new-session-menu"].tap()
         app.buttons["create-agent-codex"].tap()
-        XCTAssertTrue(app.staticTexts["Start a conversation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["empty-conversation"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.buttons["Open terminal"].exists)
+        let emptyShot = XCTAttachment(screenshot: app.screenshot())
+        emptyShot.name = "New-Agent-Empty-Conversation"
+        emptyShot.lifetime = .keepAlways
+        add(emptyShot)
         XCTAssertEqual(app.sheets.count, 0)
         let input = app.textViews["chat-composer"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         input.tap()
-        input.typeText("First line")
-        app.buttons["composer-newline"].tap()
-        input.typeText("Second line")
-        XCTAssertEqual(input.value as? String, "First line\nSecond line")
+        input.typeText("First message")
+        XCTAssertEqual(input.value as? String, "First message")
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "Composer-Multiline-Send-Key"
+        shot.name = "Composer-Send-Key"
         shot.lifetime = .keepAlways
         add(shot)
         let send = app.keyboards.buttons.matching(NSPredicate(format: "label == 'Send' OR label == 'send'")).firstMatch
         XCTAssertTrue(send.exists)
         send.tap()
         XCTAssertEqual(input.value as? String, "")
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'First line'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'First message'")).firstMatch.waitForExistence(timeout: 5))
     }
 
     func testSendingWhileWorkingClearsComposer() {

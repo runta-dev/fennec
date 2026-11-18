@@ -1,6 +1,32 @@
 package fennecmobile
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestTranscriptWithoutLogWaitsWithoutResettingHistory(t *testing.T) {
+	for _, offset := range []int64{-1, 8192} {
+		// No connection is needed until the agent creates its first log.
+		raw, err := (&Sessions{}).readTranscript("terminal", "session", "", offset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var chunk struct {
+			Items   []json.RawMessage `json:"items"`
+			Offset  int64             `json:"offset"`
+			Reset   bool              `json:"reset"`
+			Path    *string           `json:"path"`
+			Version *int              `json:"version"`
+		}
+		if err := json.Unmarshal([]byte(raw), &chunk); err != nil {
+			t.Fatal(err)
+		}
+		if chunk.Items == nil || len(chunk.Items) != 0 || chunk.Offset != offset || chunk.Reset || chunk.Path != nil || chunk.Version != nil {
+			t.Fatalf("waiting for a log must preserve the cursor and history: %s", raw)
+		}
+	}
+}
 
 func TestPiSessionsFolder(t *testing.T) {
 	if got := piSessions("@123\npi /root/.pi/agent /root/.fen/fly-ink\n"); got != "/root/.pi/agent/sessions/--root-.fen-fly-ink--" {

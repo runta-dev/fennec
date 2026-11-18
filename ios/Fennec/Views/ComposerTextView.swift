@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// A multiline composer with a real Send key, an explicit line-break action,
-/// and Shift-Return for hardware keyboards. IME composition never submits.
+/// A multiline composer with a Send key and Shift-Return for hardware
+/// keyboards. IME composition never submits.
 struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
@@ -26,17 +26,6 @@ struct ComposerTextView: UIViewRepresentable {
         view.accessibilityIdentifier = "chat-composer"
         context.coordinator.textView = view
         view.insertLineBreak = { [weak coordinator = context.coordinator] in coordinator?.insertNewline() }
-        let toolbar = UIToolbar()
-        toolbar.items = [
-            UIBarButtonItem(image: UIImage(systemName: "return"), style: .plain,
-                            target: context.coordinator, action: #selector(Coordinator.insertNewline)),
-            UIBarButtonItem(systemItem: .flexibleSpace),
-            UIBarButtonItem(image: UIImage(systemName: "keyboard.chevron.compact.down"), style: .plain,
-                            target: context.coordinator, action: #selector(Coordinator.dismissKeyboard))
-        ]
-        toolbar.items?.first?.accessibilityIdentifier = "composer-newline"
-        toolbar.sizeToFit()
-        view.inputAccessoryView = toolbar
         return view
     }
 
@@ -55,12 +44,6 @@ struct ComposerTextView: UIViewRepresentable {
         if view.textColor != foreground { view.textColor = foreground }
         if view.tintColor != foreground { view.tintColor = foreground }
         if view.accessibilityLabel != placeholder { view.accessibilityLabel = placeholder }
-        if let toolbar = view.inputAccessoryView as? UIToolbar {
-            let newline = L10n.text("ios.newline")
-            let dismiss = L10n.text("ios.hide_keyboard")
-            if toolbar.items?.first?.accessibilityLabel != newline { toolbar.items?.first?.accessibilityLabel = newline }
-            if toolbar.items?.last?.accessibilityLabel != dismiss { toolbar.items?.last?.accessibilityLabel = dismiss }
-        }
         if focused, !view.isFirstResponder { view.becomeFirstResponder() }
         if !focused, view.isFirstResponder { view.resignFirstResponder() }
     }
@@ -112,7 +95,6 @@ struct ComposerTextView: UIViewRepresentable {
             insertingLineBreak = false
             textViewDidChange(textView)
         }
-        @objc func dismissKeyboard() { textView?.resignFirstResponder() }
     }
 }
 
