@@ -120,7 +120,7 @@ struct ScanSignInView: View {
             Button { mode = "scan" } label: { loginLabel(L10n.text("ios.scan"), symbol: "qrcode.viewfinder") }
                 .disabled(auth.isAuthorizing)
             Button { mode = "email" } label: {
-                Label(L10n.text("ios.email_signin"), systemImage: "envelope")
+                Text(L10n.text("ios.email_signin"))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.fg2)
                     .frame(minHeight: 44)
