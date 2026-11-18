@@ -81,7 +81,7 @@
     const row = el('li', 'gs-step' + (done ? ' done' : '') + (current ? ' current' : ''));
     const mark = el('span', 'gs-mark', done ? '' : String(n));
     mark.setAttribute('aria-hidden', 'true');
-    if (done) mark.innerHTML = '<svg viewBox="0 0 16 16"><path d="m4.5 8.25 2.25 2.25 4.75-5"/></svg>';
+    if (done) mark.innerHTML = '<svg viewBox="0 0 16 16"><path d="M4 8.1 6.6 10.6 11.6 5.4"/></svg>';
     const main = el('div', 'gs-main');
     const head = el('div', 'gs-title', title);
     main.append(head);
