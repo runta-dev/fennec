@@ -69,7 +69,8 @@ struct ScanSignInView: View {
             if let url {
                 let epoch = auth.epoch
                 web.start(url, onCallback: { auth.handleCallback($0, epoch: epoch) },
-                          onInvalid: { auth.rejectCallback($0) }, onCancel: { auth.cancelSignIn() })
+                          onInvalid: { auth.rejectCallback($0) }, onFailure: { auth.windowFailed($0) },
+                          onCancel: { auth.cancelSignIn() })
             } else { web.finish() }
         }
         .onDisappear { web.finish() }

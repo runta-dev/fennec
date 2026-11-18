@@ -14,7 +14,8 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
     /// `onCancel` runs when the user closes the page before signing in.
     /// `onInvalid` runs when it returns something that isn't a sign-in callback.
     func start(_ url: URL, onCallback: @escaping @MainActor (URL) -> Void = { _ in },
-               onInvalid: (@MainActor (URL) -> Void)? = nil, onCancel: @escaping @MainActor () -> Void) {
+               onInvalid: (@MainActor (URL) -> Void)? = nil, onFailure: (@MainActor (Error) -> Void)? = nil,
+               onCancel: @escaping @MainActor () -> Void) {
         finish()
         let generation = UUID()
         self.generation = generation
@@ -22,7 +23,13 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
             Task { @MainActor in
                 guard self?.session != nil, self?.generation == generation else { return }
                 self?.session = nil
-                if error != nil { onCancel() }
+                // Closing the window is a cancel; any other error is a failure
+                // to show (onFailure), never a silent return to sign-in.
+                if let error {
+                    let closed = (error as NSError).domain == ASWebAuthenticationSessionErrorDomain
+                        && (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue
+                    if closed || onFailure == nil { onCancel() } else { onFailure?(error) }
+                }
                 else if let callback, FennecmobileDeepLinkRoute(callback.absoluteString) == "auth/callback" { onCallback(callback) }
                 else if let callback, let onInvalid { onInvalid(callback) }
                 else { onCancel() }

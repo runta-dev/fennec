@@ -90,7 +90,9 @@ struct ChatView: View {
     private func liveContent(_ session: Session) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                // Lazy: opening a long conversation builds only the turns on
+                // screen, not every turn and its Markdown, before sliding in.
+                LazyVStack(alignment: .leading, spacing: 14) {
                     if !session.transcriptLoaded {
                         ChatSkeleton()
                     } else if session.messages.isEmpty, let error = session.transcriptError {
@@ -108,6 +110,7 @@ struct ChatView: View {
                         TurnView(turn: turn,
                                  since: turn.prompt?.time ?? session.turnStarted ?? session.statusSince ?? session.updatedAt,
                                  activity: session.activity)
+                            .id(turn.id)
                     }
                     if let pending = store.pendingSends[session.id] {
                         VStack(alignment: .trailing, spacing: 6) {

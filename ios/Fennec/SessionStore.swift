@@ -263,12 +263,43 @@ extension SessionStore {
                     messages: [.init(kind: .agent("Drafted notes for v0.9.2"))]),
         ])
         store.sessions.append(wideSession(updatedAt: ago(60 * 70)))
+        store.sessions.append(longSession(updatedAt: ago(60 * 80)))
         return store
     }
 
     /// Wide content drawn the way a live session is (turns from a log), so
     /// tests cover the real conversation view: a many-column table, long
     /// commands, a long path, code and URLs must never widen the page.
+    /// A long history (120 turns of Markdown replies) drawn through the live
+    /// conversation view, for opening speed and scrolling back to the start.
+    static func longSession(updatedAt: Date) -> Session {
+        var session = Session(id: "s9", title: "Long conversation", agent: .claudeCode, model: "Opus 5.5", project: "fennec",
+                              location: .cloud, state: .idle, updatedAt: updatedAt, messages: [])
+        session.address = "tdemo9"
+        session.transcriptLoaded = true
+        var time = Int64(updatedAt.timeIntervalSince1970 * 1000) - 120 * 60_000
+        var items: [TranscriptItem] = []
+        for n in 1...120 {
+            items.append(.init(kind: "user", text: "Question \(n): what changed in step \(n)?", time: time))
+            items.append(.init(kind: "tool", text: "rg -n step\(n) internal", tool: "ran", time: time + 2000))
+            items.append(.init(kind: "agent", text: """
+            Answer \(n). Step **\(n)** changed `internal/step\(n).go`:
+
+            - The retry now waits *\(n) ms* before the second attempt.
+            - Tests cover the [edge case](https://example.com/\(n)).
+
+            | File | Added | Removed |
+            | --- | ---: | ---: |
+            | step\(n).go | \(n) | 1 |
+            """, time: time + 9000))
+            items.append(.init(kind: "end", text: "", time: time + 9500, duration: 9500))
+            time += 60_000
+        }
+        for item in items { append(item, to: &session) }
+        session.transcriptItems = items
+        return session
+    }
+
     static func wideSession(updatedAt: Date) -> Session {
         var session = Session(id: "s8", title: "Compare SSH latency by region", agent: .codex, model: "GPT-5", project: "ops",
                               location: .cloud, state: .idle, updatedAt: updatedAt, messages: [])
@@ -429,9 +460,13 @@ extension SessionStore {
               let address = sessions[index].address else { return }
         transcriptReads.insert(id)
         defer { transcriptReads.remove(id) }
-        if sessions[index].transcriptOffset < 0, sessions[index].messages.isEmpty, let cache = TranscriptCache.load(id) {
+        if sessions[index].transcriptOffset < 0, sessions[index].messages.isEmpty,
+           let found = await Self.restoreCached(id),
+           let index = sessions.firstIndex(where: { $0.id == id }), sessions[index].messages.isEmpty {
+            let cache = found.cache
             var restored = sessions[index]
-            for item in cache.items { Self.append(item, to: &restored) }
+            restored.messages = found.built.messages
+            restored.turnStarted = found.built.turnStarted ?? restored.turnStarted
             restored.transcriptOffset = cache.offset
             restored.transcriptPath = cache.path
             restored.transcriptVersion = cache.version
@@ -439,6 +474,7 @@ extension SessionStore {
             restored.transcriptLoaded = true
             sessions[index] = restored
         }
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let offset = sessions[index].transcriptOffset
         let result = await Task.detached { () -> Result<String, Error> in
             Result { try goCall { core.transcript(address, sessionID: id, offset: offset, error: $0) } }
@@ -481,7 +517,19 @@ extension SessionStore {
         }
     }
 
-    static func append(_ item: TranscriptItem, to session: inout Session) {
+    /// Decodes a session's cached log and builds its messages off the main
+    /// thread (up to 400 items), so opening it doesn't stall.
+    nonisolated static func restoreCached(_ id: String) async -> (cache: TranscriptCache, built: Session)? {
+        await Task.detached {
+            guard let cache = TranscriptCache.load(id) else { return nil }
+            var built = Session(id: id, title: "", agent: .codex, model: "", project: "", location: .cloud,
+                                state: .idle, updatedAt: .now, messages: [])
+            for item in cache.items { append(item, to: &built) }
+            return (cache, built)
+        }.value
+    }
+
+    nonisolated static func append(_ item: TranscriptItem, to session: inout Session) {
         let time = item.time.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
         switch item.kind {
         case "user":

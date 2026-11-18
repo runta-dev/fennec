@@ -117,8 +117,28 @@ final class RuntaAuth {
     }
 
     func handleCallback(_ url: URL, epoch: Int64) {
-        guard isAuthorizing, self.epoch == epoch else { return }
-        _ = core.completeNativeLogin(url.absoluteString, epoch: epoch)
+        guard isAuthorizing, self.epoch == epoch else {
+            failSignIn("callback for an older attempt (\(epoch) ≠ \(self.epoch), \(status))")
+            return
+        }
+        if !core.completeNativeLogin(url.absoluteString, epoch: epoch) {
+            failSignIn("callback not accepted (\(url.query?.split(separator: "&").map { $0.split(separator: "=").first ?? "" }.joined(separator: ",") ?? "no query"))")
+        }
+    }
+
+    /// The sign-in window ended without a callback for a reason other than
+    /// the person closing it; say so instead of looking cancelled.
+    func windowFailed(_ error: Error) {
+        let ns = error as NSError
+        failSignIn("sign-in window: \(ns.domain) \(ns.code)")
+    }
+
+    /// Ends the attempt with "Couldn't finish sign-in" and a detail for 详情.
+    private func failSignIn(_ detail: String) {
+        let core = self.core
+        Task.detached { try? core.cancelLogin() }
+        status = .failed(Self.message(for: "authorization_failed"))
+        failureDetail = detail
     }
 
     private let turnstile = TurnstileTokenProvider()

@@ -14,7 +14,7 @@ struct MarkdownText: View {
             Text(MarkdownBlock.inline(text)).lineLimit(lineLimit)
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(MarkdownBlock.parse(text).enumerated()), id: \.offset) { _, block in
+                ForEach(Array(MarkdownBlock.blocks(text).enumerated()), id: \.offset) { _, block in
                     BlockView(block: block)
                 }
             }
@@ -39,9 +39,26 @@ enum MarkdownBlock: Equatable {
 
     static func == (a: MarkdownBlock, b: MarkdownBlock) -> Bool { String(describing: a) == String(describing: b) }
 
-    static func inline(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+    /// Parsing runs on every redraw (each poll redraws the conversation), so
+    /// results are kept per text; replies don't change once written.
+    @MainActor private static var inlineCache: [String: AttributedString] = [:]
+    @MainActor private static var blockCache: [String: [MarkdownBlock]] = [:]
+
+    @MainActor static func inline(_ text: String) -> AttributedString {
+        if let cached = inlineCache[text] { return cached }
+        let value = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
+        if inlineCache.count > 4000 { inlineCache.removeAll() }
+        inlineCache[text] = value
+        return value
+    }
+
+    @MainActor static func blocks(_ text: String) -> [MarkdownBlock] {
+        if let cached = blockCache[text] { return cached }
+        let value = parse(text)
+        if blockCache.count > 1000 { blockCache.removeAll() }
+        blockCache[text] = value
+        return value
     }
 
     private static let listItem = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/
