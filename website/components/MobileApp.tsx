@@ -1,15 +1,16 @@
 "use client";
 // A browser redraw of the SwiftUI app in ios/Fennec (HomeView, ChatView,
-// Components, Theme) at its native point sizes, dark appearance. It shows the
-// same sessions and timeline as the Mac panel and the recorded terminals.
+// Components, Theme) at its native point sizes, in light or dark like the
+// system, or as chosen in the panel's Appearance. It shows the same sessions
+// and timeline as the Mac panel and the recorded terminals.
 import { Fragment, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Plus, Search } from "lucide-react";
-import { tasks, sessionState, sessionTitle, type Task } from "./demo-scenario";
+import { tasks, sessionState, sessionTitle, type Appearance, type Task } from "./demo-scenario";
 import { clock, conversation, formatElapsed, preview, toolHeadline, updatedAt, type MobileWork } from "./mobile-scenario";
 import "./mobile.css";
 
 type Props = {
-  time: number; stopped: number[];
+  appearance: Appearance; time: number; stopped: number[];
   /** The open conversation, or null for the session list. */
   chat: number | null; tapping: number | null;
   onOpen: (index: number) => void; onBack: () => void;
@@ -17,7 +18,7 @@ type Props = {
 
 const icons: Record<Task["command"], string> = { codex: "codex", claude: "claudecode", pi: "pi" };
 
-export default function MobileApp({ time, stopped, chat, tapping, onOpen, onBack }: Props) {
+export default function MobileApp({ appearance, time, stopped, chat, tapping, onOpen, onBack }: Props) {
   const device = useRef<HTMLDivElement>(null);
   // Keep the last conversation drawn while it slides back out.
   const shown = useRef(chat ?? 0);
@@ -33,7 +34,7 @@ export default function MobileApp({ time, stopped, chat, tapping, onOpen, onBack
     return () => resize.disconnect();
   }, []);
   const sessions = tasks.map((task, index) => ({ task, index })).filter(({ task, index }) => time >= task.start + 1500 && !stopped.includes(index));
-  return <div className="iphone-frame">
+  return <div className="iphone-frame" data-theme={appearance}>
     <div className="iphone" ref={device}>
       <div className="iphone-screen">
         <StatusBar time={time}/>

@@ -28,7 +28,7 @@
       if (action === 'load-billing') { window.renderBilling(billing); window.renderRuntimeMetrics(metrics); }
       if (action === 'audit-list') audit(value.filter);
       if (action === 'audit-clear') { entries = []; audit(); }
-      if (action === 'settings') { prefs = { ...prefs, ...value }; window.renderPreferences(prefs); }
+      if (action === 'settings') { prefs = { ...prefs, ...value }; window.renderPreferences(prefs); if (value.theme) emit('theme', value.theme); }
       if (action === 'toggle-takeover') { selected = selected.includes(raw) ? selected.filter(x => x !== raw) : [...selected, raw]; takeover(); }
       if (action === 'get-agent-account') window.renderNativeAccount({ agent: value.agent, location: value.location, status: 'signed_in', accounts: [{ provider: value.agent === 'claude' ? 'anthropic' : 'openai', email: 'alex@relay.dev', subscription: 'Pro', auth_type: 'oauth' }] });
       if (action === 'get-model') window.renderNativeModels({ agent: value.agent, model: '', models: [{ id: '', name: 'Default' }] });

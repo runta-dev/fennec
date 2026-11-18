@@ -25,7 +25,8 @@ CSS, scripts and custom menus with isolated browser-only sample data. It never
 connects to an account or daemon. See [recording workflow and provenance](demo/README.md).
 Between them, `components/MobileApp.tsx` redraws the SwiftUI iPhone app
 (`ios/Fennec`: session list, conversation, Liquid Glass bars) at its point sizes
-and dark theme colors. It follows the same timeline. Its messages come from the
+with `Theme` light and dark colors. It follows the system appearance until the
+panel's Appearance setting is changed, then matches it. It follows the same timeline. Its messages come from the
 recordings (`components/mobile-scenario.ts`). Keep it aligned with `HomeView`,
 `ChatView` and `Theme` when the app changes.
 

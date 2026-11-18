@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { tasks, sessionState, sessionTitle, type PanelTab } from "./demo-scenario";
+import { tasks, sessionState, sessionTitle, type Appearance, type PanelTab } from "./demo-scenario";
 
 type Props = {
   time: number; tab: PanelTab; onTab: (tab: PanelTab) => void;
   onAttach: (index: number) => void; onInteract: () => void;
+  onTheme: (theme: Appearance) => void;
   stopped: number[]; onStop: (index: number) => void;
 };
 
@@ -20,6 +21,7 @@ export default function FennecPanel(props: Props) {
       const index = tasks.findIndex(t => t.session === value);
       if (action === "ready") setReady(true);
       if (action === "interact") p.onInteract();
+      if (action === "theme" && ["system", "light", "dark"].includes(value)) p.onTheme(value);
       if (action === "tab" && ["agents", "sessions", "governance", "account"].includes(value)) p.onTab((value[0].toUpperCase() + value.slice(1)) as PanelTab);
       if (action === "attach" && index >= 0) p.onAttach(index);
       if (action === "stop" && index >= 0) p.onStop(index);

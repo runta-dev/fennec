@@ -5,7 +5,7 @@ import FennecPanel from "./FennecPanel";
 import RecordedTerminal from "./RecordedTerminal";
 import MobileApp from "./MobileApp";
 import { autoChat } from "./mobile-scenario";
-import { duration, pickerStart, pickerDuration, tasks, sessionState, sessionTitle, type PanelTab } from "./demo-scenario";
+import { duration, pickerStart, pickerDuration, tasks, sessionState, sessionTitle, type Appearance, type PanelTab } from "./demo-scenario";
 import "./demo.css";
 
 export default function Demo() {
@@ -19,6 +19,8 @@ export default function Demo() {
   const [tabOverride, setTabOverride] = useState<number | null>(null);
   const [stopped, setStopped] = useState<number[]>([]);
   const [phoneOverride, setPhoneOverride] = useState<number | "home" | null>(null);
+  // The phone follows the system until the panel's Appearance is changed.
+  const [appearance, setAppearance] = useState<Appearance>("system");
   useEffect(() => {
     const motion = matchMedia("(prefers-reduced-motion: reduce)");
     const onMotion = () => {
@@ -50,6 +52,7 @@ export default function Demo() {
     setTabOverride(null);
     setStopped([]);
     setPhoneOverride(null);
+    setAppearance("system");
     // Remount the isolated native document to reset its own fixture state too.
     setCycle(value => value + 1);
   }, [time]);
@@ -80,8 +83,8 @@ export default function Demo() {
     if (event.key === "Escape") { userPaused.current = true; pause(); }
   }}>
     <div className="workflow-desktop">
-      <div className="fennec-window"><FennecPanel key={cycle} time={time} tab={panel} onTab={value => { pause(); setPanelOverride(value); }} onAttach={attach} onInteract={pause} stopped={stopped} onStop={index => { pause(); setStopped(value => [...value, index]); }} /></div>
-      <div className="phone-window" aria-label="Fennec for iPhone" role="group"><MobileApp time={time} stopped={stopped} chat={phoneChat} tapping={tapping < 0 ? null : tapping} onOpen={attach} onBack={() => { pause(); setPhoneOverride("home"); }}/></div>
+      <div className="fennec-window"><FennecPanel key={cycle} time={time} tab={panel} onTab={value => { pause(); setPanelOverride(value); }} onAttach={attach} onInteract={pause} onTheme={setAppearance} stopped={stopped} onStop={index => { pause(); setStopped(value => [...value, index]); }} /></div>
+      <div className="phone-window" aria-label="Fennec for iPhone" role="group"><MobileApp appearance={appearance} time={time} stopped={stopped} chat={phoneChat} tapping={tapping < 0 ? null : tapping} onOpen={attach} onBack={() => { pause(); setPhoneOverride("home"); }}/></div>
       <div className="herdr-window">
         <aside className="herdr-sidebar">
           <div className="herdr-brand"><div className="mac-dots" aria-hidden="true"><i/><i/><i/></div><PanelLeft size={15}/></div>
