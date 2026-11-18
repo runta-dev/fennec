@@ -32,8 +32,8 @@ struct ChatView: View {
         if let session = store.session(sessionID) {
             content(session)
                 .onAppear {
+                    composerFocused = false
                     draft = UserDefaults.standard.string(forKey: draftKey) ?? ""
-                    if session.messages.isEmpty { composerFocused = true }
                 }
         } else {
             Text(L10n.text("ios.session_ended")).foregroundStyle(Theme.fg2)

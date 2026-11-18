@@ -168,6 +168,9 @@ final class SessionStore {
         var session = Session(id: id, title: "Untitled session", agent: agent, model: "", project: "",
                               location: .cloud, state: .idle, updatedAt: .now, messages: [])
         session.address = launched.address
+        // A newly launched session has no history to wait for. Live reads still
+        // run on the chat page and fill in messages as they arrive.
+        session.transcriptLoaded = true
         sessionListRevision += 1
         sessions.removeAll { $0.id == id }
         sessions.append(session)
