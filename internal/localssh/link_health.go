@@ -22,7 +22,7 @@ var linkProbeInterval = 2 * time.Second
 
 // linkProbeTimeout bounds one probe: ProbeMac's multiplexed attempt, its fresh
 // fallback, stopping the old master and the final multiplexed attempt.
-const linkProbeTimeout = macProbeTimeout + macFreshProbeTimeout + time.Second + macProbeTimeout + time.Second
+const linkProbeTimeout = macProbeTimeout + macFreshProbeTimeout + time.Second + macFreshProbeTimeout + time.Second
 
 // monitorLink runs independently of transport ping/pong. The first full probe
 // publishes reachability; broadcasting additionally requires a stable interval.

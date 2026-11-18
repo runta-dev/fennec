@@ -304,3 +304,44 @@ func TestMonitorLinkToleratesIsolatedProbeFailures(t *testing.T) {
 		t.Fatalf("torn down after %d probes, want %d", calls, len(script))
 	}
 }
+
+func TestProbeMacRebuildUsesColdHandshakeBudget(t *testing.T) {
+	calls := 0
+	err := probeMac(context.Background(), t.TempDir(), LinkHealth{Device: "aabbccdd"}, func(ctx context.Context, args ...string) ([]byte, error) {
+		calls++
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("unbounded SSH operation")
+		}
+		remaining := time.Until(deadline)
+		switch calls {
+		case 1:
+			if remaining > macProbeTimeout {
+				t.Fatal("warm probe deadline widened")
+			}
+			return nil, errors.New("stale master")
+		case 2:
+			if remaining < macFreshProbeTimeout-time.Second || !strings.Contains(strings.Join(args, " "), "ControlMaster=no") {
+				t.Fatal("fresh verification missing")
+			}
+		case 3:
+			if !strings.Contains(strings.Join(args, " "), "-O stop") {
+				t.Fatal("old master was not retired")
+			}
+			return nil, nil
+		case 4:
+			if remaining < macFreshProbeTimeout-time.Second {
+				return nil, fmt.Errorf("cold handshakes exceed warm deadline: %s", remaining)
+			}
+			if strings.Contains(strings.Join(args, " "), "ControlMaster=no") {
+				t.Fatal("replacement master was not checked")
+			}
+		default:
+			t.Fatal("unexpected retry")
+		}
+		return []byte(args[len(args)-1] + "\n"), nil
+	})
+	if err != nil || calls != 4 {
+		t.Fatalf("recovery failed: calls=%d error=%v", calls, err)
+	}
+}

@@ -60,11 +60,21 @@ const (
 // ProbeMac checks the actual user-facing alias, including ProxyCommand and Mac
 // session creation. A nonce cannot be satisfied by the cloud relay's keepalive.
 func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
+	return probeMac(ctx, home, h, func(ctx context.Context, args ...string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, "ssh", args...)
+		cmd.Env = append(os.Environ(), "HOME="+home)
+		// Bound pipe draining even if a failed ProxyCommand retains stdout.
+		cmd.WaitDelay = 200 * time.Millisecond
+		return cmd.Output()
+	})
+}
+
+func probeMac(ctx context.Context, home string, h LinkHealth, run func(context.Context, ...string) ([]byte, error)) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
 	alias := RegisteredAlias(home, h.Device)
-	probe := func(fresh bool) error {
+	probe := func(fresh, rebuilding bool) error {
 		var nonce [16]byte
 		if _, e := rand.Read(nonce[:]); e != nil {
 			return e
@@ -74,7 +84,7 @@ func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
 		// twice (data and health streams): about 3.2 s at 170 ms RTT on an
 		// idle link, so the old shared 4 s bound failed on any jitter.
 		timeout := macProbeTimeout
-		if fresh {
+		if fresh || rebuilding {
 			timeout = macFreshProbeTimeout
 		}
 		step, cancel := context.WithTimeout(ctx, timeout)
@@ -84,11 +94,7 @@ func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
 			args = append(args, "-o", "ControlMaster=no", "-o", "ControlPath=none")
 		}
 		args = append(args, "--", alias, command)
-		cmd := exec.CommandContext(step, "ssh", args...)
-		cmd.Env = append(os.Environ(), "HOME="+home)
-		// Bound pipe draining even if a failed ProxyCommand retains stdout.
-		cmd.WaitDelay = 200 * time.Millisecond
-		out, e := cmd.Output()
+		out, e := run(step, args...)
 		if e != nil {
 			return fmt.Errorf("Mac SSH probe failed: %w", e)
 		}
@@ -97,21 +103,22 @@ func ProbeMac(ctx context.Context, home string, h LinkHealth) error {
 		}
 		return nil
 	}
-	if err := probe(false); err != nil {
-		if freshErr := probe(true); freshErr != nil {
+	if err := probe(false, false); err != nil {
+		if freshErr := probe(true, false); freshErr != nil {
 			return freshErr
 		}
 		// A fresh path works but the old master does not. Stop accepting new clients
 		// on that master, without killing its in-flight sessions.
 		step, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(step, "ssh", "-F", filepath.Join(home, ".ssh/config"), "-o", "BatchMode=yes", "-O", "stop", "--", alias)
-		cmd.WaitDelay = 200 * time.Millisecond
-		_ = cmd.Run()
-		return probe(false)
+		_, _ = run(step, "-F", filepath.Join(home, ".ssh/config"), "-o", "BatchMode=yes", "-O", "stop", "--", alias)
+		// The stopped master cannot serve this attempt: it performs both Mac
+		// SSH handshakes again. Applying the warm budget here falsely reports
+		// an outage immediately after the fresh path proved the Mac reachable.
+		return probe(false, true)
 	}
 	if h.Fresh {
-		return probe(true)
+		return probe(true, false)
 	}
 	return nil
 }
