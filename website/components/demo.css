@@ -1,5 +1,6 @@
 /* Herdr chrome follows the supplied desktop reference. Fennec uses the shipping
-   native/macos/UI/panel.css in an isolated frame. */
+   native/macos/UI/panel.css in an isolated frame. The iPhone between them
+   redraws ios/Fennec (MobileApp.tsx, mobile.css). */
 .demo-wrap:has(.workflow-demo) {
   max-width: 1400px;
   padding: 0 32px;
@@ -11,7 +12,7 @@
 }
 .workflow-desktop {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 380px 284px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -23,6 +24,9 @@
   overflow: hidden;
   background: #f2f2f5;
   box-shadow: 0 5px 20px #00000008;
+}
+.phone-window {
+  min-width: 0;
 }
 .native-panel {
   border: 0;
@@ -270,9 +274,11 @@
 .recorded-screen .xterm-viewport { overflow:hidden!important; }
 .recording-error { color:#92929c; padding:16px; font-size:12px; }
 @keyframes tour-spin { to { transform:rotate(360deg); } }
-@media(min-width:1400px) { .workflow-desktop { grid-template-columns:410px minmax(0,1fr); } .herdr-window { grid-template-columns:170px minmax(0,1fr); } }
-@media(max-width:1150px) { .workflow-desktop { grid-template-columns:350px minmax(0,1fr); } .herdr-window { grid-template-columns:1fr; } .herdr-sidebar { display:none; } }
-@media(max-width:800px) { .demo-wrap:has(.workflow-demo) { padding:0 16px; } .workflow-desktop { grid-template-columns:1fr; gap:16px; } .fennec-window { margin:0; height:350px; max-width:440px; width:100%; justify-self:center; } .herdr-window { height:450px; grid-template-columns:150px minmax(0,1fr); } .herdr-sidebar { display:block; } }
+@media(min-width:1400px) { .workflow-desktop { grid-template-columns:400px 284px minmax(0,1fr); } .herdr-window { grid-template-columns:160px minmax(0,1fr); } }
+@media(max-width:1150px) { .workflow-desktop { grid-template-columns:340px 262px minmax(0,1fr); } .herdr-window { grid-template-columns:1fr; } .herdr-sidebar { display:none; } }
+/* Too narrow for three: the Mac panel and the phone side by side, Herdr below. */
+@media(max-width:1020px) { .workflow-desktop { grid-template-columns:minmax(0,400px) 262px; justify-content:center; } .herdr-window { grid-column:1 / -1; grid-template-columns:154px minmax(0,1fr); } .herdr-sidebar { display:block; } .phone-window { margin-top:6px; } }
+@media(max-width:800px) { .demo-wrap:has(.workflow-demo) { padding:0 16px; } .workflow-desktop { grid-template-columns:1fr; gap:16px; } .fennec-window { margin:0; height:350px; max-width:440px; width:100%; justify-self:center; } .phone-window { margin:0; width:240px; justify-self:center; } .herdr-window { height:450px; grid-template-columns:150px minmax(0,1fr); } .herdr-sidebar { display:block; } }
 @media(max-width:560px) { .herdr-window { grid-template-columns:1fr; height:340px; } .herdr-sidebar { display:none; } .herdr-terminal-heading { padding:0 13px; } .herdr-tabs { gap:2px; padding:0 6px; } .herdr-tabs>button { min-width:40px; padding:0 6px; gap:5px; } .recorded-terminal { padding:12px 4px; } }
 @media(prefers-reduced-motion:reduce) { .workflow-demo * { animation:none!important; scroll-behavior:auto!important; } }
 .workflow-demo[data-playing="false"] .herdr-state { animation-play-state:paused; }

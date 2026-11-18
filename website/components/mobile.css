@@ -1,0 +1,278 @@
+/* iPhone app redraw. Sizes are SwiftUI points on a 402 × 874 pt screen; the
+   whole device is scaled to its column. Colors are ios/Fennec/Theme.swift dark. */
+.iphone-frame {
+  --bg: #0e0d0c; --surface: #1b1918; --surface2: #262321; --line: #2f2b28;
+  --fg: #f4f1ed; --fg2: #a39d96; --fg3: #6f6963;
+  --accent: #f38d25; --working: #5fc081; --bubble: #2a2725;
+  position: relative;
+  min-width: 0;
+}
+.iphone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 424px;
+  height: 896px;
+  padding: 11px;
+  border-radius: 68px;
+  background: linear-gradient(145deg, #4a4744, #1f1d1c 40%, #2c2a28);
+  box-shadow: inset 0 0 0 1.5px #5d5955, inset 0 0 0 5px #121110, 0 18px 40px #00000024, 0 5px 20px #0000000a;
+  transform-origin: top left;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-align: left;
+  color: var(--fg);
+}
+.iphone-screen {
+  position: relative;
+  width: 402px;
+  height: 874px;
+  border-radius: 57px;
+  overflow: hidden;
+  background: var(--bg);
+  isolation: isolate;
+}
+.iphone-island {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  width: 126px;
+  height: 37px;
+  margin-left: -63px;
+  border-radius: 19px;
+  background: #000;
+  z-index: 5;
+}
+.ios-status {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 54px;
+  padding: 19px 34px 0 52px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  z-index: 4;
+  pointer-events: none;
+}
+.ios-status-icons { display: flex; align-items: center; gap: 7px; height: 22px; }
+.ios-status-icons svg { fill: currentColor; }
+.ios-home-indicator {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 139px;
+  height: 5px;
+  margin-left: -69.5px;
+  border-radius: 3px;
+  background: var(--fg);
+  z-index: 4;
+}
+
+/* NavigationStack push: the conversation slides over the list. */
+.ios-layer {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  transition: transform .5s cubic-bezier(.32, .72, 0, 1), filter .5s cubic-bezier(.32, .72, 0, 1);
+}
+.ios-home[data-covered="true"] { transform: translateX(-30%); filter: brightness(.7); }
+.ios-chat { transform: translateX(100%); box-shadow: -8px 0 30px #0000004d; }
+.ios-chat[data-open="true"] { transform: none; }
+
+.ios-scroll { position: absolute; inset: 0; overflow: hidden; }
+/* Scroll edge effect under the glass bars. */
+.ios-scroll::before, .ios-scroll::after { content: ""; position: absolute; left: 0; right: 0; z-index: 1; pointer-events: none; }
+.ios-scroll::before { top: 0; height: 128px; background: linear-gradient(var(--bg) 62%, transparent); }
+.ios-scroll::after { bottom: 0; height: 110px; background: linear-gradient(transparent, var(--bg) 60%); }
+
+.ios-glass {
+  background: #2a2725a6;
+  backdrop-filter: blur(14px) saturate(1.6);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow: inset 0 0.5px 0 #ffffff2e, inset 0 0 0 0.5px #ffffff14, 0 6px 18px #00000059;
+  color: var(--fg);
+}
+.ios-nav {
+  position: absolute;
+  top: 62px;
+  left: 16px;
+  right: 16px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 2;
+}
+.ios-circle {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
+button.ios-circle { cursor: pointer; }
+.ios-initials { font-size: 13px; font-weight: 500; }
+.ios-bottom { position: absolute; left: 0; right: 0; bottom: 34px; z-index: 2; }
+
+/* HomeView */
+.ios-list { padding-top: 112px; }
+.ios-group-header {
+  display: flex;
+  gap: 6px;
+  padding: 14px 18px 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg2);
+}
+.ios-group-header > span { font-weight: 400; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.ios-session-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 9px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s;
+  animation: ios-appear .35s ease-out both;
+}
+.ios-session-row[data-pressed="true"] { background: var(--surface2); }
+.ios-session-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.ios-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ios-row-title { display: flex; align-items: baseline; gap: 8px; }
+.ios-row-title > strong { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ios-row-title > time { font-size: 12.5px; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.ios-row-preview { font-size: 14.5px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ios-search {
+  margin: 0 16px 4px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  border-radius: 25px;
+  font-size: 17px;
+  color: var(--fg2);
+}
+
+/* AgentIcon + StatusDot */
+.ios-agent-icon { position: relative; flex: none; display: inline-block; background: var(--icon) center / contain no-repeat; }
+/* Monochrome marks are template images: they take the foreground color. */
+.ios-agent-pi { background: none; }
+.ios-agent-pi::before { content: ""; position: absolute; inset: 0; background: var(--fg); -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.ios-status-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg3);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.ios-status-dot.working, .ios-pill-dot.working { background: var(--working); }
+.ios-status-dot.working { animation: ios-pulse 1s ease-in-out infinite alternate; }
+
+/* ChatView */
+.ios-messages {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 124px 16px 92px;
+  transition: transform .45s ease-out;
+}
+.ios-messages > * { margin: 0; animation: ios-appear .35s ease-out both; }
+.ios-user { display: flex; justify-content: flex-end; padding-left: 48px; }
+.ios-user > p { margin: 0; padding: 10px 14px; border-radius: 20px; background: var(--bubble); font-size: 15.5px; line-height: 1.3; }
+.ios-turn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--fg2);
+  font-variant-numeric: tabular-nums;
+}
+.ios-step { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--fg2); white-space: nowrap; }
+.ios-step > span { overflow: hidden; text-overflow: ellipsis; }
+.ios-step > svg { flex: none; }
+.ios-activity { font-size: 13.5px; color: var(--fg2); }
+.ios-agent { font-size: 15.5px; line-height: 1.38; }
+.ios-agent > p, .ios-agent > ul { margin: 0 0 10px; }
+.ios-agent > :last-child { margin-bottom: 0; }
+.ios-agent > ul { padding-left: 20px; }
+.ios-agent li + li { margin-top: 4px; }
+.ios-agent strong { font-weight: 600; }
+.ios-agent code { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; font-size: .9em; }
+.ios-agent.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
+
+.ios-title-pill {
+  min-width: 0;
+  max-width: 236px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 0 10px;
+  border-radius: 22px;
+}
+.ios-title-pill > span:last-child { min-width: 0; display: flex; flex-direction: column; }
+.ios-title-pill strong { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ios-title-pill small { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg2); }
+.ios-pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg3); }
+.ios-composer {
+  margin: 0 12px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 26px;
+}
+.ios-composer > svg { width: 36px; flex: none; }
+.ios-composer > span { flex: 1; font-size: 16px; color: var(--fg3); }
+.ios-send {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--fg);
+  color: var(--bg);
+  fill: currentColor;
+}
+.ios-send[data-disabled="true"] { background: #f4f1ed59; }
+
+/* TextShimmer: dim text, a bright band sweeping through every 4 s. */
+.ios-text-shimmer {
+  color: transparent;
+  background: linear-gradient(90deg, #a39d968c 0 40%, #f4f1edbf 46% 52%, #a39d968c 60% 100%) 100% 0 / 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: ios-shimmer 4s linear .6s infinite;
+}
+
+@keyframes ios-shimmer { 0% { background-position: 100% 0; } 25%, 100% { background-position: 0 0; } }
+@keyframes ios-pulse { to { opacity: .45; } }
+@keyframes ios-appear { from { opacity: 0; transform: translateY(8px); } }
+.workflow-demo[data-playing="false"] :is(.ios-text-shimmer, .ios-status-dot) { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .iphone *, .ios-layer, .ios-messages { animation: none !important; transition: none !important; }
+  .ios-text-shimmer { color: var(--fg2); background: none; }
+}
