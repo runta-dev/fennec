@@ -70,11 +70,15 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 						t.Error("wrong provider")
 					}
 					ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
-				case "/auth/v1/otp":
-					if provider != "email" || body["email"] != "person@example.com" || body["create_user"] != true || r.Header.Get("apikey") != "sb_publishable_test" {
-						t.Error("invalid OTP request")
+				case "/v1/auth/login":
+					redirect, _ := body["redirect_to"].(string)
+					binding := strings.TrimPrefix(redirect, "https://"+r.Host+"/auth/callback?login_binding=")
+					if provider != "email" || body["email"] != "person@example.com" || body["turnstile_token"] != "turnstile-token" || len(binding) != 43 || binding == redirect {
+						t.Errorf("invalid Runta email login request: %v", body)
 					}
-					ioJSON(w, "{}")
+					ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
+				case "/auth/v1/otp":
+					t.Error("email login reached Supabase's own mailer")
 				case "/auth/v1/token":
 					exchanges.Add(1)
 					verifier, _ := body["code_verifier"].(string)
@@ -97,7 +101,7 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 					if r.Header.Get("Authorization") != "Bearer supabase-secret" {
 						t.Error("wrong session")
 					}
-					if provider != "email" && body["attempt_id"] != "attempt" {
+					if body["attempt_id"] != "attempt" {
 						t.Error("missing audit attempt")
 					}
 					registered.Store(true)
@@ -127,11 +131,14 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 			store := &memoryCredentials{}
 			m := New(ctx, store, server.URL)
 			m.http = server.Client()
-			cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, PublishableKey: "sb_publishable_test"}
+			cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, DashboardURL: server.URL, PublishableKey: "sb_publishable_test"}
 			var state Snapshot
 			var err error
 			if provider == "email" {
-				state, err = m.LoginEmail("person@example.com", cfg)
+				if _, err = m.LoginEmail("person@example.com", "", cfg); err == nil {
+					t.Fatal("email login started without a verification challenge")
+				}
+				state, err = m.LoginEmail("person@example.com", "turnstile-token", cfg)
 				if err != nil {
 					t.Fatal(err)
 				}

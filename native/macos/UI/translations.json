@@ -61,6 +61,10 @@
       "en-US": "Enter a valid email address.",
       "zh-CN": "请输入有效的邮箱地址。"
     },
+    "ios.verification_failed": {
+      "en-US": "Couldn't verify this device. Try again.",
+      "zh-CN": "无法完成安全验证，请重试。"
+    },
     "ios.empty_chat_title": {
       "en-US": "What would you like to do?",
       "zh-CN": "想从哪里开始？"

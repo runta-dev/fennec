@@ -108,11 +108,25 @@ final class RuntaAuth {
         _ = core.completeNativeLogin(url.absoluteString, epoch: epoch)
     }
 
+    private let turnstile = TurnstileTokenProvider()
+
+    /// Runta sends the code through its own /v1/auth/login, which requires the
+    /// Dashboard's Turnstile token; the provider obtains it without a page.
     func signInEmail(_ email: String) {
         guard !isAuthorizing else { return }
         pairing = false
-        do { apply(try goCall { core.emailLogin(email, error: $0) }) }
-        catch { status = .failed(L10n.text("ios.invalid_email")) }
+        status = .authorizing(nil)
+        Task {
+            let token: String
+            do {
+                token = try await turnstile.token(siteKey: environment.turnstileSiteKey, origin: environment.dashboard, action: "login_magic_link")
+            } catch {
+                status = .failed(L10n.text("ios.verification_failed"))
+                return
+            }
+            do { apply(try goCall { core.emailLogin(email, turnstileToken: token, error: $0) }) }
+            catch { status = .failed(L10n.text("ios.invalid_email")) }
+        }
     }
 
     func verifyEmail(_ code: String) {

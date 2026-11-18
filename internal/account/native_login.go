@@ -19,7 +19,7 @@ import (
 const NativeCallbackURL = "fennec://auth/callback"
 
 // NativeOAuthConfig contains public deployment configuration, never a service key.
-type NativeOAuthConfig struct{ AuthURL, PublishableKey, BackendURL string }
+type NativeOAuthConfig struct{ AuthURL, PublishableKey, BackendURL, DashboardURL string }
 
 type LoginOrganization struct {
 	ID   string `json:"id"`
@@ -31,6 +31,7 @@ type nativeAttempt struct {
 	expires             time.Time
 	callbackUsed        bool
 	email               string
+	turnstileToken      string
 }
 
 // DeepLinkRoute recognizes complete literal routes, never a scheme alone.
@@ -84,17 +85,31 @@ func (m *Manager) LoginNative(provider string, config NativeOAuthConfig) (Snapsh
 	return m.loginNative(provider, config, "")
 }
 
-// LoginEmail starts Supabase email OTP without opening a hosted login page.
-func (m *Manager) LoginEmail(email string, config NativeOAuthConfig) (Snapshot, error) {
+// LoginEmail asks Runta to send a sign-in code without opening a hosted page.
+// Runta's /v1/auth/login, not Supabase's public /otp, sends it: Runta's
+// Turnstile check and rate limit apply, and Resend delivers Runta's message
+// with the code. Supabase's own mailer sends a link without a code.
+func (m *Manager) LoginEmail(email, turnstileToken string, config NativeOAuthConfig) (Snapshot, error) {
 	email = strings.TrimSpace(email)
 	address, err := mail.ParseAddress(email)
 	if err != nil || address.Address != email || len(email) > 254 {
 		return m.Snapshot(), errors.New("invalid email login request")
 	}
-	return m.loginNative("email", config, email)
+	turnstileToken = strings.TrimSpace(turnstileToken)
+	if turnstileToken == "" || len(turnstileToken) > 2048 {
+		return m.Snapshot(), errors.New("verification challenge required")
+	}
+	if u, e := url.Parse(config.DashboardURL); e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return m.Snapshot(), errors.New("invalid auth configuration")
+	}
+	return m.loginNativeWith("email", config, email, turnstileToken)
 }
 
 func (m *Manager) loginNative(provider string, config NativeOAuthConfig, email string) (Snapshot, error) {
+	return m.loginNativeWith(provider, config, email, "")
+}
+
+func (m *Manager) loginNativeWith(provider string, config NativeOAuthConfig, email, turnstileToken string) (Snapshot, error) {
 	for _, origin := range []string{config.AuthURL, config.BackendURL} {
 		u, e := url.Parse(origin)
 		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -113,7 +128,7 @@ func (m *Manager) loginNative(provider string, config NativeOAuthConfig, email s
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	oldCancel := m.cancel
 	m.cancel = func() { cancel(); oldCancel() }
-	a := &nativeAttempt{config: config, expires: time.Now().Add(10 * time.Minute), email: email}
+	a := &nativeAttempt{config: config, expires: time.Now().Add(10 * time.Minute), email: email, turnstileToken: turnstileToken}
 	verifier := make([]byte, 32)
 	if _, e := rand.Read(verifier); e != nil {
 		cancel()
@@ -185,11 +200,16 @@ func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttemp
 	}
 	var err error
 	if provider == "email" {
-		err = m.loginRequest(ctx, "POST", a.config.AuthURL+"/auth/v1/otp", "", a.config.PublishableKey, map[string]any{"email": a.email, "create_user": true}, nil)
+		var redirect string
+		redirect, err = nativeEmailRedirect(a.config.DashboardURL)
+		if err == nil {
+			err = m.nativeRequest(ctx, a, "POST", "/v1/auth/login", "", map[string]string{"email": a.email, "turnstile_token": a.turnstileToken, "redirect_to": redirect}, &start)
+		}
+		a.turnstileToken = ""
 	} else {
 		err = m.nativeRequest(ctx, a, "POST", "/v1/auth/oauth/start", "", map[string]string{"provider": provider}, &start)
 	}
-	if err != nil || (provider != "email" && start.Data.AttemptID == "") {
+	if err != nil || start.Data.AttemptID == "" {
 		m.fail(epoch, "authorization_failed")
 		return
 	}
@@ -353,4 +373,17 @@ func (m *Manager) VerifyEmail(code string, epoch uint64) bool {
 		m.registerNative(ctx, epoch, a, session.AccessToken)
 	}()
 	return true
+}
+
+// nativeEmailRedirect is the Dashboard callback Runta requires for the link it
+// sends beside the code. Its browser binding is the digest of a secret that is
+// discarded here, so the link can't be redeemed in any browser and only the
+// code signs this app in.
+func nativeEmailRedirect(dashboard string) (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(secret)
+	return dashboard + "/auth/callback?login_binding=" + base64.RawURLEncoding.EncodeToString(digest[:]), nil
 }

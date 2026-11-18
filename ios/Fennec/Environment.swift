@@ -12,6 +12,10 @@ enum RuntaEnvironment: String, CaseIterable, Identifiable {
     /// Short badge, as in the Mac panel header. Production shows none.
     var badge: String? { self == .production ? nil : "INT" }
     var keychainAccount: String { self == .production ? "runta" : "runta-\(rawValue)" }
+    /// The Dashboard whose Turnstile widget Runta's email sign-in verifies.
+    var dashboard: URL { URL(string: self == .production ? "https://dashboard.runta.com/" : "https://dashboard.runta.xyz/")! }
+    /// That widget's public site key (VITE_TURNSTILE_SITE_KEY).
+    var turnstileSiteKey: String { self == .production ? "0x4AAAAAAD1uwxBm4YvgaEXY" : "0x4AAAAAAEDMOTzdJjisWYrZ" }
 
     /// The environment of a Runta API origin carried in a pairing QR code.
     init?(api: String) {
