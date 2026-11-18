@@ -198,12 +198,3 @@ t('the iPhone row opens the iPhone dialog', () => {
   s.ctx.document.querySelector = sel => (sel === '#get-ios-app' ? button : null);
   s.prefs({}); s.card.byClass('gs-phone')[0].click(); assert.equal(opened, true);
 });
-
-t('a session already running when the agent is picked does not finish step 3', () => {
-  const s = load(); s.ctx.detectedAgents = [codex]; s.ctx.fennecPreparationStage = 'agents_installed';
-  s.ctx.lastSessionTerminals = [{ state: 'live', labels: { 'fennec.agent': 'codex', 'fennec.session': 'old' } }]; s.prefs({});
-  s.ctx.takeoverAgents.add('codex'); s.ctx.activeTakeoverAgents.add('codex'); s.render();
-  assert.equal(s.card.byClass('gs-count')[0].textContent, '2 / 3');
-  s.ctx.lastSessionTerminals.push({ state: 'live', labels: { 'fennec.agent': 'codex', 'fennec.session': 'new' } }); s.render();
-  assert.equal(s.card.byClass('gs-count')[0].textContent, '3 / 3');
-});

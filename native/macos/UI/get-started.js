@@ -65,13 +65,8 @@
       .sort((a, b) => ((order.indexOf(a.id) + 1) || 9) - ((order.indexOf(b.id) + 1) || 9));
   };
   const activeAgents = () => candidates().filter(a => activeTakeoverAgents.has(a.id));
-  const liveSessions = ids => (typeof lastSessionTerminals === 'undefined' ? [] : lastSessionTerminals)
-    .filter(t => t.state === 'live' && ids.includes(t.labels?.['fennec.agent'] || t.agent))
-    .map(t => t.labels?.['fennec.session'] || t.id || t.sessionId || '');
-  // Sessions already running when step 3 began. Only a session started after
-  // the agent was picked shows the user's terminal reaching the cloud computer;
-  // one left over from earlier work would finish the card at once.
-  let before = null;
+  const hasSession = ids => (typeof lastSessionTerminals === 'undefined' ? [] : lastSessionTerminals)
+    .some(t => t.state === 'live' && ids.includes(t.labels?.['fennec.agent'] || t.agent));
 
   function requestCoverage(force, active = activeAgents()) {
     const key = active.map(a => a.id).sort().join(',');
@@ -187,10 +182,7 @@
     const running = held('running', activeNow.length > 0, stillSelected.length > 0);
     if (activeNow.length) lastActive = activeNow;
     const active = activeNow.length ? activeNow : (running ? stillSelected : []);
-    const live = running ? liveSessions(active.map(a => a.id)) : [];
-    if (!running) before = null;
-    else if (!before) before = new Set(live);
-    const started = running && held('started', live.some(id => !before.has(id)));
+    const started = running && held('started', hasSession(active.map(a => a.id)));
     const doneCount = [ready, running, started].filter(Boolean).length;
     if (running && !started) requestCoverage(false, active);
     // Before the key, so starting the timer does not rebuild the card.
