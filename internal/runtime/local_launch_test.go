@@ -176,7 +176,7 @@ func TestOpenCodeLaunchVersionAndSubcommand(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := strings.TrimPrefix(strings.Join(command, " "), "env FENNEC_GATEWAY_DEPENDENCY=1 ")
+			got := strings.TrimPrefix(strings.Join(command, " "), "env OPENCODE_DISABLE_AUTOUPDATE=1 env FENNEC_GATEWAY_DEPENDENCY=1 ")
 			if strings.Contains(version, "v2") {
 				if got != binary+" run --auto --standalone hello" {
 					t.Fatal(got)
@@ -207,7 +207,7 @@ func TestPiLaunchShowsHardwareCursor(t *testing.T) {
 	if _, err := backend.Launch(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if joined := strings.Join(command, " "); !strings.HasPrefix(joined, "env PI_HARDWARE_CURSOR=1 ") {
+	if joined := strings.Join(command, " "); !strings.HasPrefix(joined, "env PI_SKIP_VERSION_CHECK=1 env PI_HARDWARE_CURSOR=1 ") {
 		t.Fatalf("pi command %q", joined)
 	}
 	script, err := LaunchScriptWithArgs(strings.Repeat("f", 32), "pi", "/tmp", nil)

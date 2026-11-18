@@ -185,7 +185,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	if err != nil {
 		return LocalTerminal{}, err
 	}
-	command := []string{binary}
+	command := append([]string{binary}, agents.NoUpdateArguments(request.Agent)...)
 	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, request.Arguments, request.ClaudeSettings)
 	if err != nil {
 		return LocalTerminal{}, err
@@ -259,6 +259,10 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 		command = []string{filepath.Join(runtime.Home, ".local/fennec/bin/fennec-terminal"), "native-login", request.Agent, request.ID}
+	}
+	// Outermost, so the native-account rewrites above never see it.
+	if env := agents.NoUpdateEnvironment(request.Agent); len(env) > 0 {
+		command = append(append([]string{"env"}, env...), command...)
 	}
 	mark("workspace_prepare")
 	clipboardReady := request.Agent == "kimi" && !request.NativeLogin

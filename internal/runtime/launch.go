@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/base64"
 	"encoding/json"
+	agents "fennec/internal/agentcmd"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -84,7 +85,7 @@ func launchScript(id, agent, cwd string, arguments []string, version string, att
 			return "", fmt.Errorf("invalid or oversized agent arguments")
 		}
 	}
-	command = append(command, arguments...)
+	command = append(append(command, agents.NoUpdateArguments(agent)...), arguments...)
 	request := map[string]any{"id": id, "agent": agent, "cwd": cwd, "command": command, "version": version}
 
 	if attach {

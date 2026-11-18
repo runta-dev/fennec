@@ -105,6 +105,8 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 	case "opencode":
 		env = append(env, "XDG_CONFIG_HOME="+filepath.Join(root, "opencode/config"), "XDG_DATA_HOME="+filepath.Join(root, "opencode/data"), "OPENCODE_CONFIG_DIR="+filepath.Join(root, "opencode/config/opencode"))
 	}
+	// The variable filter above drops GROK_*; restore the pinned-version setting.
+	env = append(env, agents.NoUpdateEnvironment(agent)...)
 	env = ensureDefaultSystemCerts(env)
 	return env, nil
 }

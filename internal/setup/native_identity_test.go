@@ -169,3 +169,19 @@ func TestNativeClaudeOAuthSettingsWithoutSavedFile(t *testing.T) {
 		t.Fatal("settings OAuth was lost or redirected")
 	}
 }
+
+// The variable filter drops inherited GROK_* entries; the pinned-version
+// setting must still reach every native agent.
+func TestNativeAgentEnvironmentDisablesUpdateChecks(t *testing.T) {
+	home := t.TempDir()
+	nativeFixture(t, home, ".local/fennec/native/env.json", `{}`)
+	for agent, want := range map[string]string{"grok": "GROK_DISABLE_AUTOUPDATER=1", "claude": "DISABLE_AUTOUPDATER=1", "pi": "PI_SKIP_VERSION_CHECK=1", "kimi": "KIMI_CODE_NO_AUTO_UPDATE=1"} {
+		env, err := nativeAgentEnvironment(home, agent)
+		if err != nil {
+			t.Fatal(agent, err)
+		}
+		if !strings.Contains("\n"+strings.Join(env, "\n")+"\n", "\n"+want+"\n") {
+			t.Fatalf("%s environment lacks %s", agent, want)
+		}
+	}
+}
