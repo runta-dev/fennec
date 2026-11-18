@@ -99,7 +99,13 @@ func prepareGatewayHome(ctx context.Context, home, gateway string) (string, erro
 	}
 	for name, target := range links {
 		if err := linkShared(filepath.Join(directory, name), target); err != nil {
-			return "", err
+			// Only the account link decides who ChatGPT runs as. Shared
+			// skills, plugins and prompts are a convenience: losing one must
+			// not take ChatGPT's whole app-server offline.
+			if name == "auth.json" {
+				return "", err
+			}
+			fmt.Fprintf(os.Stderr, "fennec: ChatGPT home could not share %s: %v\n", name, err)
 		}
 	}
 	if _, ok := links["auth.json"]; !ok {
@@ -124,12 +130,29 @@ func linkShared(path, target string) error {
 		}
 		return nil
 	}
+	// Codex creates skills/ and plugins/ itself when the shared target did not
+	// exist yet at its first start. rename(2) cannot replace a directory with
+	// a link, so that directory is kept aside instead of blocking the link
+	// forever.
+	if info, err := os.Lstat(path); err == nil && info.IsDir() {
+		aside := path + ".fennec-local"
+		if _, err := os.Lstat(aside); err == nil {
+			aside += "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+		}
+		if err := os.Rename(path, aside); err != nil {
+			return err
+		}
+	}
 	temporary := path + ".fennec-link"
 	os.Remove(temporary)
 	if err := os.Symlink(target, temporary); err != nil {
 		return err
 	}
-	return os.Rename(temporary, path)
+	if err := os.Rename(temporary, path); err != nil {
+		os.Remove(temporary)
+		return err
+	}
+	return nil
 }
 
 // appServerConn reports which mode served the stream.
