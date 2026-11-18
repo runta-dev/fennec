@@ -67,9 +67,11 @@ key="$work/AuthKey_${APPLE_ASC_KEY_ID}.p8"
 printf '%s' "$APPLE_ASC_KEY_BASE64" | base64 --decode > "$key"
 auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$APPLE_ASC_KEY_ID" -authenticationKeyIssuerID "$APPLE_ASC_ISSUER_ID")
 
-# Distribution from the start: automatic signing otherwise asks for a
-# development profile, which needs a registered device.
-signing=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Distribution")
+# Automatic: archive unsigned, then -exportArchive signs for App Store
+# distribution with the API key. Signing the archive itself would ask for a
+# development profile (which needs a registered device), and an identity
+# override on the command line also reaches SwiftPM plugin targets.
+signing=(DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
 profile_name=
 if $manual; then
   password=$(uuidgen)
