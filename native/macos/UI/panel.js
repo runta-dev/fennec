@@ -186,12 +186,14 @@ window.renderAgents = agents => {
     icon.src = 'icons/' + agent.icon;
     const name = document.createElement('span');
     name.className = 'agent-name';
-    // "ChatGPT / Codex Desktop": the slash is drawn as a hairline.
+    // "ChatGPT / Codex Desktop": the slash is a drawn hairline exactly as tall
+    // as the capitals. Any font's "/" glyph rises above the cap line and drops
+    // below the baseline. The hidden "/" keeps the name whole for VoiceOver.
     agent.name.split(' / ').forEach((part, index) => {
       if (index) {
         const separator = document.createElement('span');
         separator.className = 'agent-name-separator';
-        separator.textContent = '/';
+        separator.innerHTML = '<svg viewBox="0 0 10 36" preserveAspectRatio="none" aria-hidden="true"><line x1="10" y1="0" x2="0" y2="36" vector-effect="non-scaling-stroke"/></svg><span class="agent-name-separator-text">/</span>';
         name.append(separator);
       }
       name.append(part);
