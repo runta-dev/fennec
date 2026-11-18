@@ -47,16 +47,17 @@ change, and successful consumption. Reject duplicates, unsolicited callbacks,
 missing/empty codes, code-plus-error results, and expired attempts. A crash or
 cold launch without a securely retained attempt requires a new login.
 
-A Supabase session alone is not a Runta device credential. Native OAuth registers
-the login through `/v1/auth/session`, loads device consent through
-`/v1/auth/device/authorization`, and shows the organizations returned by Runta.
-Explicit approval calls `/v1/auth/device/authorization/approve`. Only the existing
-device-token endpoint can issue the credential saved in Keychain. Temporary
-Supabase access tokens remain in memory and refresh/provider tokens are discarded.
+After Supabase authentication, native login registers the session through
+`/v1/auth/session` and lists `/v1/organizations` using its temporary Bearer
+token. It selects the first organization, matching Dashboard, then creates a
+scoped 30-day key through `/v1/organizations/{id}/api-keys`. Only that key is
+saved in Keychain. There is no native device-authorization or consent step and
+no Runta web page. Temporary Supabase tokens stay in memory; refresh/provider
+tokens are discarded. QR pairing retains its separate existing device flow.
 
 ## Hosted completion
 
-Keep the current device flow as the first rollout. If a return-to-app link is
+This reserved route applies only to hosted device pairing. If a return-to-app link is
 added, use `fennec://auth/complete?state=<attempt-nonce>`. Generate at least 128
 bits of random state in the initiating client. Bind it to that client's pending
 device authorization and environment. Runta must carry that binding through the
@@ -112,13 +113,13 @@ required for native OAuth even with verified links.
 1. Add the shared parser and route dispatch with tests for malformed and unknown
    URLs, duplicate parameters, cross-environment attempts, replay, and cancel.
 2. Implement hosted completion independently; retain polling and QR compatibility.
-3. Implement native PKCE plus the Runta credential/consent flow before enabling
+3. Implement native PKCE plus the automatic Runta API-key flow before enabling
    `auth/callback`. Register the exact Supabase redirect in each environment.
-4. Test Google and GitHub success/refusal, OTP hosted login, cold/warm launch,
+4. Test Google and GitHub success/refusal, native OTP login, cold/warm launch,
    backgrounding, cancellation/retry, expired attempts, and account changes on a
    real device. Confirm that the issued Runta credential can call `/v2/me`.
 
-Email OTP remains manual code entry in the hosted window. It needs no app redirect.
+Email OTP uses native code entry and Supabase OTP verification. It needs no app redirect.
 Keep existing browser-bound email links; native email links require a separate
 flow specification and must not reuse a browser PKCE verifier implicitly.
 

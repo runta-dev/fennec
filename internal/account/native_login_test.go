@@ -51,58 +51,73 @@ func waitNative(t *testing.T, m *Manager, predicate func(Snapshot) bool) Snapsho
 	}
 }
 
-func TestNativePKCEConsentAndCredential(t *testing.T) {
-	for _, provider := range []string{"google", "github"} {
+func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
+	for _, provider := range []string{"google", "github", "email"} {
 		t.Run(provider, func(t *testing.T) {
 			var challenge string
-			var registered, approved atomic.Bool
+			var registered atomic.Bool
 			var exchanges atomic.Int32
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var body map[string]string
+				var body map[string]any
 				if r.Method == "POST" {
-					if e := json.NewDecoder(r.Body).Decode(&body); e != nil {
-						t.Error(e)
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
 					}
 				}
 				switch r.URL.Path {
 				case "/v1/auth/oauth/start":
 					if body["provider"] != provider {
-						t.Error(body)
+						t.Error("wrong provider")
 					}
-					ioJSON(w, `{"data":{"attempt_id":"attempt-1"}}`)
-				case "/v2/auth/device/authorization":
-					ioJSON(w, `{"data":{"device_code":"device-secret","user_code":"ABCD-EFGH"}}`)
+					ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
+				case "/auth/v1/otp":
+					if provider != "email" || body["email"] != "person@example.com" || body["create_user"] != true || r.Header.Get("apikey") != "sb_publishable_test" {
+						t.Error("invalid OTP request")
+					}
+					ioJSON(w, "{}")
 				case "/auth/v1/token":
 					exchanges.Add(1)
-					hash := sha256.Sum256([]byte(body["code_verifier"]))
-					if body["auth_code"] != "test-code" || base64.RawURLEncoding.EncodeToString(hash[:]) != challenge || r.URL.Query().Get("grant_type") != "pkce" || r.Header.Get("apikey") != "sb_publishable_test" {
+					verifier, _ := body["code_verifier"].(string)
+					hash := sha256.Sum256([]byte(verifier))
+					if body["auth_code"] != "test-code" || base64.RawURLEncoding.EncodeToString(hash[:]) != challenge || r.URL.Query().Get("grant_type") != "pkce" {
 						t.Error("invalid PKCE exchange")
 					}
-					ioJSON(w, `{"access_token":"supabase-secret","refresh_token":"unused-refresh-secret"}`)
+					ioJSON(w, `{"access_token":"supabase-secret","refresh_token":"unused-refresh"}`)
+				case "/auth/v1/verify":
+					exchanges.Add(1)
+					if body["email"] != "person@example.com" || body["type"] != "email" {
+						t.Error("invalid OTP verification")
+					}
+					if body["token"] == "000000" {
+						http.Error(w, "invalid", 400)
+						return
+					}
+					ioJSON(w, `{"access_token":"supabase-secret"}`)
 				case "/v1/auth/session":
-					if body["attempt_id"] != "attempt-1" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
-						t.Error("invalid session registration")
+					if r.Header.Get("Authorization") != "Bearer supabase-secret" {
+						t.Error("wrong session")
+					}
+					if provider != "email" && body["attempt_id"] != "attempt" {
+						t.Error("missing audit attempt")
 					}
 					registered.Store(true)
-					ioJSON(w, `{"data":{}}`)
-				case "/v1/auth/device/authorization":
-					if !registered.Load() || r.URL.Query().Get("code") != "ABCD-EFGH" {
-						t.Error("consent before registration")
+					ioJSON(w, "{}")
+				case "/v1/organizations":
+					if !registered.Load() {
+						t.Error("organization before registration")
 					}
-					ioJSON(w, `{"data":{"client_name":"Fennec","access":"Full access","credential_expires_in_days":30,"organizations":[{"id":"org-1","name":"First"},{"id":"org-2","name":"Second"}]}}`)
-				case "/v1/auth/device/authorization/approve":
-					if body["organization_id"] != "org-2" || body["code"] != "ABCD-EFGH" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
-						t.Error("wrong approval")
+					ioJSON(w, `{"data":[{"id":"org-1","name":"First"},{"id":"org-2","name":"Second"}]}`)
+				case "/v1/organizations/org-1/api-keys":
+					if r.Method != "POST" || body["name"] != "Fennec iPhone" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
+						t.Error("invalid key creation")
 					}
-					approved.Store(true)
-					ioJSON(w, `{"data":{}}`)
-				case "/v2/auth/device/token":
-					if !approved.Load() || body["device_code"] != "device-secret" {
-						t.Error("token before consent")
+					scopes, _ := body["scopes"].([]any)
+					if len(scopes) == 0 || body["expires_at"] == nil {
+						t.Error("missing scoped expiry")
 					}
-					ioJSON(w, `{"access_token":"runta-device-secret"}`)
+					ioJSON(w, `{"data":{"plaintext_key":"runta-key","api_key":{"id":"key-id"}}}`)
 				default:
-					t.Errorf("unexpected request %s", r.URL.Path)
+					t.Errorf("unexpected request (device grants and hosted pages are forbidden): %s", r.URL.Path)
 					http.NotFound(w, r)
 				}
 			}))
@@ -112,52 +127,67 @@ func TestNativePKCEConsentAndCredential(t *testing.T) {
 			store := &memoryCredentials{}
 			m := New(ctx, store, server.URL)
 			m.http = server.Client()
-			s, e := m.LoginNative(provider, NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, PublishableKey: "sb_publishable_test"})
-			if e != nil {
-				t.Fatal(e)
-			}
-			s = waitNative(t, m, func(s Snapshot) bool { return s.URL != "" })
-			u, _ := url.Parse(s.URL)
-			q := u.Query()
-			challenge = q.Get("code_challenge")
-			if q.Get("redirect_to") != NativeCallbackURL || q.Get("code_challenge_method") != "s256" || challenge == "" || q.Get("provider") != provider {
-				t.Fatal("invalid authorization URL")
-			}
-			if m.CompleteNative(NativeCallbackURL+"?code=test-code", s.Epoch+1) {
-				t.Fatal("accepted stale generation")
-			}
-			if !m.CompleteNative(NativeCallbackURL+"?code=test-code", s.Epoch) {
-				t.Fatal("rejected callback")
-			}
-			if m.CompleteNative(NativeCallbackURL+"?code=test-code", s.Epoch) {
-				t.Fatal("accepted duplicate callback")
-			}
-			s = waitNative(t, m, func(s Snapshot) bool { return s.Consent != nil })
-			data, _ := json.Marshal(s)
-			for _, secret := range []string{"supabase-secret", "device-secret", "unused-refresh-secret", "test-code"} {
-				if strings.Contains(string(data), secret) {
-					t.Fatal("snapshot contains secret")
+			cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, PublishableKey: "sb_publishable_test"}
+			var state Snapshot
+			var err error
+			if provider == "email" {
+				state, err = m.LoginEmail("person@example.com", cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state = waitNative(t, m, func(s Snapshot) bool { return s.EmailCode })
+				if state.URL != "" || m.CompleteNative(NativeCallbackURL+"?code=wrong", state.Epoch) {
+					t.Fatal("email opened/accepted browser callback")
+				}
+				if m.VerifyEmail("123456", state.Epoch+1) {
+					t.Fatal("stale OTP accepted")
+				}
+				if !m.VerifyEmail("000000", state.Epoch) {
+					t.Fatal("OTP rejected")
+				}
+				state = waitNative(t, m, func(s Snapshot) bool { return s.Error == "invalid_email_code" })
+				if !m.VerifyEmail("123456", state.Epoch) {
+					t.Fatal("retry rejected")
+				}
+			} else {
+				state, err = m.LoginNative(provider, cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state = waitNative(t, m, func(s Snapshot) bool { return s.URL != "" })
+				u, _ := url.Parse(state.URL)
+				q := u.Query()
+				challenge = q.Get("code_challenge")
+				if u.Path != "/auth/v1/authorize" || q.Get("provider") != provider || q.Get("redirect_to") != NativeCallbackURL || q.Get("code_challenge_method") != "s256" {
+					t.Fatal("wrong provider URL")
+				}
+				if m.CompleteNative(NativeCallbackURL+"?code=test-code", state.Epoch+1) {
+					t.Fatal("stale callback accepted")
+				}
+				if !m.CompleteNative(NativeCallbackURL+"?code=test-code", state.Epoch) {
+					t.Fatal("callback rejected")
+				}
+				if m.CompleteNative(NativeCallbackURL+"?code=test-code", state.Epoch) {
+					t.Fatal("duplicate accepted")
 				}
 			}
-			if token, _ := m.Token(); token != "" {
-				t.Fatal("signed in before consent")
+			state = waitNative(t, m, func(s Snapshot) bool { return s.Status == "authorized" })
+			saved, _ := store.Read(ctx)
+			if saved != "runta-key" {
+				t.Fatal("wrong persisted key")
 			}
-			if m.ApproveNative("attacker-org", s.Epoch) {
-				t.Fatal("accepted unknown organization")
+			raw, _ := json.Marshal(state)
+			for _, secret := range []string{"supabase-secret", "runta-key", "unused-refresh", "person@example.com"} {
+				if strings.Contains(string(raw), secret) {
+					t.Fatal("secret in snapshot")
+				}
 			}
-			if m.ApproveNative("org-2", s.Epoch+1) {
-				t.Fatal("accepted stale consent")
+			want := int32(1)
+			if provider == "email" {
+				want = 2
 			}
-			if !m.ApproveNative("org-2", s.Epoch) {
-				t.Fatal("rejected consent")
-			}
-			waitNative(t, m, func(s Snapshot) bool { return s.Status == "authorized" })
-			token, e := store.Read(ctx)
-			if e != nil || token != "runta-device-secret" {
-				t.Fatal("wrong persisted credential")
-			}
-			if exchanges.Load() != 1 {
-				t.Fatal("code redeemed more than once")
+			if exchanges.Load() != want {
+				t.Fatal("wrong exchange count")
 			}
 		})
 	}
@@ -229,7 +259,7 @@ func TestNativeCancelAndRegistrationFailure(t *testing.T) {
 			if scenario != "registration-failed" && exchanges.Load() != 0 {
 				t.Fatal("unexpected code exchange")
 			}
-			if token, _ := m.Token(); token != "" || m.Snapshot().Consent != nil {
+			if token, _ := m.Token(); token != "" {
 				t.Fatal("failed login retained authorization")
 			}
 		})
@@ -285,10 +315,64 @@ func TestNativeLateExchangeCannotReplaceNewAttempt(t *testing.T) {
 	if current.Epoch == old.Epoch || m.CompleteNative(NativeCallbackURL+"?code=old", old.Epoch) {
 		t.Fatal("accepted stale browser generation")
 	}
-	if m.Snapshot().Status != "authorizing" || m.Snapshot().Consent != nil {
+	if m.Snapshot().Status != "authorizing" {
 		t.Fatal("stale exchange replaced pending login")
 	}
 	if token, _ := m.Token(); token != "" {
 		t.Fatal("stale token retained")
+	}
+}
+
+// A failed Keychain write must not leave the newly minted API key active.
+type rejectingNativeCredentials struct{ memoryCredentials }
+
+func (*rejectingNativeCredentials) Write(context.Context, string) error { return context.Canceled }
+
+func TestNativeKeyRevokedWhenStorageFails(t *testing.T) {
+	revoked := make(chan struct{}, 1)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/auth/oauth/start":
+			ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
+		case "/auth/v1/token":
+			ioJSON(w, `{"access_token":"temporary"}`)
+		case "/v1/auth/session":
+			ioJSON(w, `{}`)
+		case "/v1/organizations":
+			ioJSON(w, `{"data":[{"id":"org-1"}]}`)
+		case "/v1/organizations/org-1/api-keys":
+			ioJSON(w, `{"data":{"plaintext_key":"issued-key","api_key":{"id":"key-1"}}}`)
+		case "/v1/organizations/org-1/api-keys/key-1":
+			if r.Method != "DELETE" || r.Header.Get("Authorization") != "Bearer temporary" {
+				t.Error("invalid revocation")
+			}
+			revoked <- struct{}{}
+			ioJSON(w, `{}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m := New(ctx, &rejectingNativeCredentials{}, server.URL)
+	m.http = server.Client()
+	_, err := m.LoginNative("google", NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, PublishableKey: "sb_publishable_test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := waitNative(t, m, func(s Snapshot) bool { return s.URL != "" })
+	if !m.CompleteNative(NativeCallbackURL+"?code=code", state.Epoch) {
+		t.Fatal("callback rejected")
+	}
+	waitNative(t, m, func(s Snapshot) bool { return s.Error == "credential_save_failed" })
+	select {
+	case <-revoked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("issued key was not revoked")
+	}
+	if token, _ := m.Token(); token != "" {
+		t.Fatal("failed credential published")
 	}
 }

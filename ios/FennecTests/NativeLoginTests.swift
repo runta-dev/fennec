@@ -11,11 +11,11 @@ final class NativeLoginTests: XCTestCase {
         }
     }
 
-    func testConsentSnapshotKeepsAppSignedOutUntilDeviceCredentialArrives() throws {
-        let json = #"{"status":"authorizing","epoch":7,"revision":8,"consent":{"client_name":"Fennec iPhone","access":"Full access","credential_expires_in_days":30,"organizations":[{"id":"org-1","name":"Example"}]}}"#
+    func testEmailSnapshotKeepsAppSignedOutUntilAPIKeyArrives() throws {
+        let json = #"{"status":"authorizing","epoch":7,"revision":8,"email_code":true}"#
         let snapshot = try JSONDecoder().decode(AccountSnapshot.self, from: Data(json.utf8))
         XCTAssertEqual(snapshot.epoch, 7)
-        XCTAssertEqual(snapshot.consent?.organizations.first?.id, "org-1")
+        XCTAssertEqual(snapshot.email_code, true)
         XCTAssertEqual(RuntaAuth.status(for: snapshot), .authorizing(nil))
     }
 }

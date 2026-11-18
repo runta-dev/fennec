@@ -1,5 +1,57 @@
 {
   "messages": {
+    "ios.back": {
+      "en-US": "Back",
+      "zh-CN": "返回"
+    },
+    "ios.welcome": {
+      "en-US": "Welcome to Fennec",
+      "zh-CN": "欢迎使用 Fennec"
+    },
+    "ios.email": {
+      "en-US": "Email",
+      "zh-CN": "邮箱"
+    },
+    "ios.scan": {
+      "en-US": "Scan",
+      "zh-CN": "扫码"
+    },
+    "ios.kill_session": {
+      "en-US": "Kill",
+      "zh-CN": "终止"
+    },
+    "ios.email_address": {
+      "en-US": "Email address",
+      "zh-CN": "邮箱地址"
+    },
+    "ios.enter_email_code": {
+      "en-US": "Enter the code from your email.",
+      "zh-CN": "输入邮件中的验证码。"
+    },
+    "ios.verification_code": {
+      "en-US": "Verification code",
+      "zh-CN": "验证码"
+    },
+    "ios.verify_code": {
+      "en-US": "Verify code",
+      "zh-CN": "验证"
+    },
+    "ios.send_code": {
+      "en-US": "Send code",
+      "zh-CN": "发送验证码"
+    },
+    "ios.resend_code": {
+      "en-US": "Resend code",
+      "zh-CN": "重新发送验证码"
+    },
+    "ios.invalid_email_code": {
+      "en-US": "The code could not be verified. Try again.",
+      "zh-CN": "验证码验证失败，请重试。"
+    },
+    "ios.invalid_email": {
+      "en-US": "Enter a valid email address.",
+      "zh-CN": "请输入有效的邮箱地址。"
+    },
     "ios.empty_chat_title": {
       "en-US": "What would you like to do?",
       "zh-CN": "想从哪里开始？"

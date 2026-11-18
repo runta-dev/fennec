@@ -5,8 +5,8 @@ import Security
 
 /// Runta sign-in through the Fennec client's own account package
 /// (internal/account via gomobile): the same device flow, token handling, and
-/// expiry rules as the Mac app. Google, GitHub, and email-code sign-in run in
-/// the system authentication window and create the account on first sign-in.
+/// expiry rules as the Mac app. OAuth uses the system authentication window;
+/// email OTP stays in native fields. The Go client creates the Runta API key.
 @MainActor
 @Observable
 final class RuntaAuth {
@@ -25,7 +25,9 @@ final class RuntaAuth {
     private var watchTask: Task<Void, Never>?
     private var appliedRevision: UInt64?
     private(set) var epoch: Int64 = 0
-    private(set) var consent: LoginConsent?
+    private(set) var emailCode = false
+    private(set) var emailVerifying = false
+    private(set) var emailError = false
 
     let environment: RuntaEnvironment
 
@@ -80,15 +82,6 @@ final class RuntaAuth {
         }
     }
 
-    func signIn() {
-        pairing = false
-        let core = self.core
-        Task.detached {
-            let snapshot = core.login()
-            await MainActor.run { self.apply(snapshot) }
-        }
-    }
-
     func signIn(method: String) {
         guard !isAuthorizing else { return }
         pairing = false
@@ -97,8 +90,7 @@ final class RuntaAuth {
         // network work in a goroutine, so Cancel cannot overtake its creation.
         do {
             let snapshot = try goCall {
-                if method == "google" || method == "github" { return core.nativeLogin(method, error: $0) }
-                return core.loginMethod(method, error: $0)
+                return core.nativeLogin(method, error: $0)
             }
             apply(snapshot)
         } catch {
@@ -116,8 +108,22 @@ final class RuntaAuth {
         _ = core.completeNativeLogin(url.absoluteString, epoch: epoch)
     }
 
-    func approve(organization: String) {
-        _ = core.approveNativeLogin(organization, epoch: epoch)
+    func signInEmail(_ email: String) {
+        guard !isAuthorizing else { return }
+        pairing = false
+        do { apply(try goCall { core.emailLogin(email, error: $0) }) }
+        catch { status = .failed(L10n.text("ios.invalid_email")) }
+    }
+
+    func verifyEmail(_ code: String) {
+        _ = core.verifyEmail(code, epoch: epoch)
+    }
+
+    func restartEmail(_ email: String) {
+        guard emailCode, !emailVerifying else { return }
+        try? core.cancelLogin()
+        apply(core.snapshot())
+        signInEmail(email)
     }
 
     func signOut() {
@@ -155,7 +161,9 @@ final class RuntaAuth {
         }
         let previous = status
         epoch = snapshot.epoch ?? 0
-        consent = snapshot.consent
+        emailCode = snapshot.email_code ?? false
+        emailVerifying = snapshot.email_verifying ?? false
+        emailError = snapshot.error == "invalid_email_code"
         status = Self.status(for: snapshot)
         if !isAuthorizing { pairing = false }
         if status == .signedIn, previous != .signedIn { Task { await loadProfile() } }
@@ -199,18 +207,8 @@ struct AccountSnapshot: Decodable {
     var verification_url: String?
     var error: String?
     var epoch: Int64?
-    var consent: LoginConsent?
-}
-
-struct LoginConsent: Decodable {
-    struct Organization: Decodable, Identifiable {
-        let id: String
-        let name: String
-    }
-    let client_name: String
-    let access: String
-    let credential_expires_in_days: Int
-    let organizations: [Organization]
+    var email_code: Bool?
+    var email_verifying: Bool?
 }
 
 /// The Runta session token lives only in the iPhone Keychain.

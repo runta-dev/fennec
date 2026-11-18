@@ -6,7 +6,6 @@ struct FennecApp: App {
     @State private var app = AppModel()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearance") private var appearance = "system"
-    @AppStorage("didFinishConnecting") private var didFinishConnecting = false
 
     var body: some Scene {
         WindowGroup {
@@ -14,11 +13,7 @@ struct FennecApp: App {
                 if app.auth.status == .restoring && !app.preview {
                     Theme.bg.ignoresSafeArea()
                 } else if app.auth.status == .signedIn || app.preview {
-                    if didFinishConnecting || app.preview {
-                        HomeView()
-                    } else {
-                        ConnectingView { didFinishConnecting = true }
-                    }
+                    HomeView()
                 } else {
                     ScanSignInView()
                 }
@@ -41,9 +36,6 @@ struct FennecApp: App {
                     if app.auth.status != .signedIn && !app.auth.isAuthorizing { app.signIn(pairing: url.absoluteString) }
                 default: break
                 }
-            }
-            .onChange(of: app.auth.status) { _, status in
-                if status == .signedOut { didFinishConnecting = false }
             }
         }
     }

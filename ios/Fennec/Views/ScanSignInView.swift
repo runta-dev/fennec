@@ -3,9 +3,7 @@ import CoreImage
 import PhotosUI
 import SwiftUI
 
-/// 01 scan to sign in. Fennec on the Mac (footer › Get Fennec iOS App) shows a
-/// QR code and opens the Runta dashboard; the user scans here, clicks Authorize
-/// in the Mac's browser, and this iPhone gets a token of its own.
+/// Native sign-in choices, with QR pairing available on demand.
 struct ScanSignInView: View {
     @Environment(RuntaAuth.self) private var auth
     @Environment(AppModel.self) private var app
@@ -13,15 +11,18 @@ struct ScanSignInView: View {
     @State private var photo: PhotosPickerItem?
     @State private var notice: String?
     @State private var camera = CameraAccess.unknown
-    @State private var organizationID = ""
+    @State private var mode = "choices"
+    @State private var email = ""
+    @State private var code = ""
+    @State private var resendAt = Date.distantPast
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            if camera == .granted {
+            (mode == "scan" ? Color.black : Theme.bg).ignoresSafeArea()
+            if mode == "scan", camera == .granted {
                 QRScannerView { scanned($0) }.ignoresSafeArea()
             }
-            Reticle().frame(width: 220, height: 220).offset(y: -40)
+            if mode == "scan" { Reticle().frame(width: 220, height: 220).offset(y: -40) }
             VStack(spacing: 0) {
                 topBar
                 if let notice = notice ?? failure {
@@ -33,13 +34,20 @@ struct ScanSignInView: View {
                         .transition(.opacity)
                 }
                 Spacer()
-                if let consent = auth.consent { consentPanel(consent) }
-                else if auth.pairing && auth.isAuthorizing { waitingPanel } else { scanPanel }
+                if auth.pairing && auth.isAuthorizing { waitingPanel }
+                else if mode == "scan" { scanPanel }
+                else {
+                    Image("fox").resizable().scaledToFit().frame(width: 72, height: 72)
+                    Text(L10n.text("ios.welcome"))
+                        .font(.system(size: 28, weight: .medium)).padding(.top, 20)
+                    Spacer()
+                    if mode == "email" { emailPanel } else { choicesPanel }
+                    Spacer().frame(height: 48)
+                }
             }
-            .foregroundStyle(.white)
-            .environment(\.colorScheme, .dark)
+            .foregroundStyle(mode == "scan" ? .white : Theme.fg)
         }
-        .task { camera = await CameraAccess.request() }
+        .task(id: mode) { if mode == "scan" { camera = await CameraAccess.request() } }
         .onChange(of: photo) { _, item in Task { await importPhoto(item) } }
         .onChange(of: auth.verificationURL) { _, url in
             if let url {
@@ -55,28 +63,6 @@ struct ScanSignInView: View {
         return nil
     }
 
-    private func consentPanel(_ consent: LoginConsent) -> some View {
-        VStack(spacing: 14) {
-            Text(L10n.text("ios.authorize_phone")).font(.headline)
-            Text(consent.client_name).font(.subheadline)
-            Picker(L10n.text("ios.organization"), selection: $organizationID) {
-                Text(L10n.text("ios.select_organization")).tag("")
-                ForEach(consent.organizations) { organization in
-                    Text(organization.name).tag(organization.id)
-                }
-            }
-            Text(L10n.text("ios.credential_access_duration", values: ["access": consent.access, "days": String(consent.credential_expires_in_days)]))
-                .font(.footnote)
-            Button(L10n.text("ios.authorize_device")) { auth.approve(organization: organizationID) }
-                .disabled(!consent.organizations.contains { $0.id == organizationID })
-                .buttonStyle(.borderedProminent)
-            Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }
-        }
-        .padding(24).frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30))
-        .padding(.horizontal, 10)
-    }
-
     private var topBar: some View {
         ZStack {
             HStack(spacing: 8) {
@@ -85,13 +71,19 @@ struct ScanSignInView: View {
                 EnvironmentBadge(environment: app.environment)
             }
             HStack {
+                if mode != "choices" {
+                    Button { auth.cancelSignIn(); mode = "choices"; code = "" } label: {
+                        Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                    }.accessibilityLabel(L10n.text("ios.back"))
+                }
                 Spacer()
-                PhotosPicker(selection: $photo, matching: .images) {
+                if mode == "scan" { PhotosPicker(selection: $photo, matching: .images) {
                     Image(systemName: "photo.on.rectangle").font(.system(size: 17, weight: .medium))
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
                 .accessibilityLabel(L10n.text("ios.choose_photo"))
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -110,11 +102,6 @@ struct ScanSignInView: View {
                 }
                 .font(.system(size: 14, weight: .medium))
             }
-            VStack(spacing: 8) {
-                signInButton(L10n.text("ios.google_signin"), method: "google")
-                signInButton(L10n.text("ios.github_signin"), method: "github")
-                signInButton(L10n.text("ios.email_signin"), method: "email")
-            }.padding(.top, 6)
             if auth.isAuthorizing {
                 Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }
                     .font(.system(size: 14, weight: .medium))
@@ -126,13 +113,70 @@ struct ScanSignInView: View {
         .padding(.horizontal, 10)
     }
 
-    private func signInButton(_ title: String, method: String) -> some View {
-        Button(title) { auth.signIn(method: method) }
-            .font(.system(size: 15, weight: .medium))
-            .frame(maxWidth: .infinity, minHeight: 42)
-            .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-            .disabled(auth.isAuthorizing)
-            .padding(.horizontal, 16)
+    private var choicesPanel: some View {
+        VStack(spacing: 12) {
+            loginButton("Google", asset: "auth-google", method: "google")
+            loginButton("GitHub", asset: "auth-github", method: "github")
+            Button { mode = "email" } label: { loginLabel(L10n.text("ios.email"), symbol: "envelope") }
+                .disabled(auth.isAuthorizing)
+            Button { mode = "scan" } label: { loginLabel(L10n.text("ios.scan"), symbol: "qrcode.viewfinder") }
+                .disabled(auth.isAuthorizing)
+            if auth.isAuthorizing {
+                ProgressView().padding(.top, 8)
+                Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }
+            }
+        }.buttonStyle(.plain).padding(.horizontal, 32)
+    }
+
+    private func loginButton(_ title: String, asset: String, method: String) -> some View {
+        Button { auth.signIn(method: method) } label: {
+            HStack(spacing: 12) {
+                Image(asset).resizable().scaledToFit().frame(width: 22, height: 22)
+                Text(title).font(.system(size: 16, weight: .medium))
+            }.frame(maxWidth: .infinity, minHeight: 54)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        }.disabled(auth.isAuthorizing).accessibilityIdentifier("login-" + method)
+    }
+
+    private func loginLabel(_ title: String, symbol: String) -> some View {
+        Label(title, systemImage: symbol).font(.system(size: 16, weight: .medium))
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var emailPanel: some View {
+        VStack(spacing: 16) {
+            TextField(L10n.text("ios.email_address"), text: $email)
+                .keyboardType(.emailAddress).textContentType(.emailAddress)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .padding(16).background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+                .disabled(auth.isAuthorizing)
+                .accessibilityIdentifier("login-email-address")
+            if auth.emailCode {
+                Text(L10n.text("ios.enter_email_code")).font(.subheadline).foregroundStyle(Theme.fg2)
+                TextField(L10n.text("ios.verification_code"), text: $code)
+                    .keyboardType(.numberPad).textContentType(.oneTimeCode)
+                    .padding(16).background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    .accessibilityIdentifier("login-email-code")
+                if auth.emailError { Text(L10n.text("ios.invalid_email_code")).foregroundStyle(Theme.danger) }
+                Button { auth.verifyEmail(code) } label: { loginLabel(L10n.text("ios.verify_code"), symbol: "arrow.right") }
+                    .disabled(code.count < 6 || auth.emailVerifying)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Button(L10n.text("ios.resend_code")) {
+                        auth.restartEmail(email)
+                        resendAt = .now.addingTimeInterval(60)
+                        code = ""
+                    }.disabled(context.date < resendAt || auth.emailVerifying)
+                }
+            } else {
+                Button {
+                    auth.signInEmail(email)
+                    resendAt = .now.addingTimeInterval(60)
+                } label: { loginLabel(L10n.text("ios.send_code"), symbol: "envelope") }
+                    .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || auth.isAuthorizing)
+            }
+            if auth.isAuthorizing && (!auth.emailCode || auth.emailVerifying) { ProgressView() }
+        }.buttonStyle(.plain).padding(.horizontal, 32)
     }
 
     private var waitingPanel: some View {

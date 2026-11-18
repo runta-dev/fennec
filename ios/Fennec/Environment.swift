@@ -75,7 +75,6 @@ final class AppModel {
         self.environment = environment
         self.auth = auth
         self.store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
-        UserDefaults.standard.set(false, forKey: "didFinishConnecting")
     }
 }
 

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strings"
 	"time"
@@ -24,17 +25,12 @@ type LoginOrganization struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
-type LoginConsent struct {
-	ClientName              string              `json:"client_name"`
-	Access                  string              `json:"access"`
-	CredentialExpiresInDays int                 `json:"credential_expires_in_days"`
-	Organizations           []LoginOrganization `json:"organizations"`
-}
 type nativeAttempt struct {
-	config                                           NativeOAuthConfig
-	verifier, attemptID, deviceCode, userCode, token string
-	expires                                          time.Time
-	callbackUsed, approving                          bool
+	config              NativeOAuthConfig
+	verifier, attemptID string
+	expires             time.Time
+	callbackUsed        bool
+	email               string
 }
 
 // DeepLinkRoute recognizes complete literal routes, never a scheme alone.
@@ -80,11 +76,25 @@ func DeepLinkRoute(raw string) string {
 }
 
 // LoginNative starts a client-owned PKCE flow. Supabase credentials remain in
-// memory until explicit organization consent issues a separate Runta credential.
+// memory while the Dashboard API issues a separate Runta API key.
 func (m *Manager) LoginNative(provider string, config NativeOAuthConfig) (Snapshot, error) {
 	if provider != "google" && provider != "github" {
 		return m.Snapshot(), errors.New("unsupported provider")
 	}
+	return m.loginNative(provider, config, "")
+}
+
+// LoginEmail starts Supabase email OTP without opening a hosted login page.
+func (m *Manager) LoginEmail(email string, config NativeOAuthConfig) (Snapshot, error) {
+	email = strings.TrimSpace(email)
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email || len(email) > 254 {
+		return m.Snapshot(), errors.New("invalid email login request")
+	}
+	return m.loginNative("email", config, email)
+}
+
+func (m *Manager) loginNative(provider string, config NativeOAuthConfig, email string) (Snapshot, error) {
 	for _, origin := range []string{config.AuthURL, config.BackendURL} {
 		u, e := url.Parse(origin)
 		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -103,7 +113,7 @@ func (m *Manager) LoginNative(provider string, config NativeOAuthConfig) (Snapsh
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	oldCancel := m.cancel
 	m.cancel = func() { cancel(); oldCancel() }
-	a := &nativeAttempt{config: config, expires: time.Now().Add(10 * time.Minute)}
+	a := &nativeAttempt{config: config, expires: time.Now().Add(10 * time.Minute), email: email}
 	verifier := make([]byte, 32)
 	if _, e := rand.Read(verifier); e != nil {
 		cancel()
@@ -173,19 +183,13 @@ func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttemp
 			AttemptID string `json:"attempt_id"`
 		} `json:"data"`
 	}
-	if e := m.nativeRequest(ctx, a, "POST", "/v1/auth/oauth/start", "", map[string]string{"provider": provider}, &start); e != nil || start.Data.AttemptID == "" {
-		m.fail(epoch, "authorization_failed")
-		return
+	var err error
+	if provider == "email" {
+		err = m.loginRequest(ctx, "POST", a.config.AuthURL+"/auth/v1/otp", "", a.config.PublishableKey, map[string]any{"email": a.email, "create_user": true}, nil)
+	} else {
+		err = m.nativeRequest(ctx, a, "POST", "/v1/auth/oauth/start", "", map[string]string{"provider": provider}, &start)
 	}
-	var device struct {
-		Data struct {
-			DeviceCode string    `json:"device_code"`
-			UserCode   string    `json:"user_code"`
-			ExpiresAt  time.Time `json:"expires_at"`
-		} `json:"data"`
-	}
-	status, e := m.post(ctx, "authorization", map[string]string{"client_id": "runta_crew", "device_name": "Fennec iPhone", "app_url": m.DashboardURL()}, &device)
-	if e != nil || status < 200 || status >= 300 || device.Data.DeviceCode == "" || device.Data.UserCode == "" {
+	if err != nil || (provider != "email" && start.Data.AttemptID == "") {
 		m.fail(epoch, "authorization_failed")
 		return
 	}
@@ -195,10 +199,11 @@ func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttemp
 		return
 	}
 	a.attemptID = start.Data.AttemptID
-	a.deviceCode = device.Data.DeviceCode
-	a.userCode = device.Data.UserCode
-	if !device.Data.ExpiresAt.IsZero() && device.Data.ExpiresAt.Before(a.expires) {
-		a.expires = device.Data.ExpiresAt
+	if provider == "email" {
+		m.state.EmailCode = true
+		m.state.ExpiresAt = a.expires
+		m.notifyLocked()
+		return
 	}
 	challenge := sha256.Sum256([]byte(a.verifier))
 	q := url.Values{"provider": {provider}, "redirect_to": {NativeCallbackURL}, "code_challenge": {base64.RawURLEncoding.EncodeToString(challenge[:])}, "code_challenge_method": {"s256"}}
@@ -220,7 +225,7 @@ func (m *Manager) CompleteNative(raw string, epoch uint64) bool {
 	q := u.Query()
 	m.mu.Lock()
 	a := m.native
-	if a == nil || m.state.Status != "authorizing" || m.state.Epoch != epoch || a.callbackUsed || time.Now().After(a.expires) || a.deviceCode == "" {
+	if a == nil || a.email != "" || m.state.Status != "authorizing" || m.state.Epoch != epoch || a.callbackUsed || time.Now().After(a.expires) {
 		m.mu.Unlock()
 		return false
 	}
@@ -246,64 +251,106 @@ func (m *Manager) exchangeNative(parent context.Context, epoch uint64, a *native
 		m.fail(epoch, "authorization_failed")
 		return
 	}
-	if e := m.nativeRequest(ctx, a, "POST", "/v1/auth/session", session.AccessToken, map[string]string{"attempt_id": a.attemptID}, nil); e != nil {
-		m.fail(epoch, "authorization_failed")
-		return
-	}
-	var consent struct {
-		Data LoginConsent `json:"data"`
-	}
-	if e := m.nativeRequest(ctx, a, "GET", "/v1/auth/device/authorization?code="+url.QueryEscape(a.userCode), session.AccessToken, nil, &consent); e != nil || len(consent.Data.Organizations) == 0 {
-		m.fail(epoch, "authorization_failed")
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.state.Epoch != epoch || m.native != a || ctx.Err() != nil {
-		return
-	}
-	a.token = session.AccessToken
-	a.verifier = ""
-	m.state.Consent = &consent.Data
-	m.notifyLocked()
+	m.registerNative(ctx, epoch, a, session.AccessToken)
 }
 
-// ApproveNative requires explicit selection from the server's organization list.
-func (m *Manager) ApproveNative(organization string, epoch uint64) bool {
+func (m *Manager) registerNative(ctx context.Context, epoch uint64, a *nativeAttempt, token string) {
+	body := map[string]string{}
+	if a.attemptID != "" {
+		body["attempt_id"] = a.attemptID
+	}
+	if e := m.nativeRequest(ctx, a, "POST", "/v1/auth/session", token, body, nil); e != nil {
+		m.fail(epoch, "authorization_failed")
+		return
+	}
+	var organizations struct {
+		Data []LoginOrganization `json:"data"`
+	}
+	if err := m.nativeRequest(ctx, a, "GET", "/v1/organizations", token, nil, &organizations); err != nil || len(organizations.Data) == 0 || organizations.Data[0].ID == "" {
+		m.fail(epoch, "organization_unavailable")
+		return
+	}
+	// Match Dashboard's default organization; never ask for a separate device grant.
+	path := "/v1/organizations/" + url.PathEscape(organizations.Data[0].ID) + "/api-keys"
+	var created struct {
+		Data struct {
+			Key    string `json:"plaintext_key"`
+			APIKey struct {
+				ID string `json:"id"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	request := map[string]any{"name": "Fennec iPhone", "expires_at": time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339), "scopes": []string{"identity:self:read", "org:read", "billing:read", "runtime:read", "runtime:manage", "events:read", "secrets:read", "secrets:manage", "ai-agent-auth:read", "github:read", "github:manage"}}
+	if err := m.nativeRequest(ctx, a, "POST", path, token, request, &created); err != nil || created.Data.Key == "" {
+		m.fail(epoch, "credential_creation_failed")
+		return
+	}
+	saved := false
+	defer func() {
+		if !saved && created.Data.APIKey.ID != "" {
+			cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = m.nativeRequest(cleanup, a, "DELETE", path+"/"+url.PathEscape(created.Data.APIKey.ID), token, nil, nil)
+		}
+	}()
+	m.credentialsMu.Lock()
+	defer m.credentialsMu.Unlock()
+	m.mu.Lock()
+	valid := m.state.Epoch == epoch && m.native == a && ctx.Err() == nil
+	m.mu.Unlock()
+	if !valid {
+		return
+	}
+	if err := m.credentials.Write(ctx, created.Data.Key); err != nil {
+		m.fail(epoch, "credential_save_failed")
+		return
+	}
+	m.mu.Lock()
+	m.token = created.Data.Key
+	m.native = nil
+	m.state = Snapshot{Epoch: epoch, Status: "authorized"}
+	m.notifyLocked()
+	m.mu.Unlock()
+	saved = true
+}
+
+// VerifyEmail accepts only the active email attempt and never publishes its token.
+func (m *Manager) VerifyEmail(code string, epoch uint64) bool {
+	code = strings.TrimSpace(code)
+	if len(code) < 6 || len(code) > 10 || strings.IndexFunc(code, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return false
+	}
 	m.mu.Lock()
 	a := m.native
-	if a == nil || m.state.Epoch != epoch || m.state.Status != "authorizing" || m.state.Consent == nil || a.approving || time.Now().After(a.expires) {
+	if a == nil || a.email == "" || m.state.Epoch != epoch || m.state.Status != "authorizing" || !m.state.EmailCode || a.callbackUsed || time.Now().After(a.expires) {
 		m.mu.Unlock()
 		return false
 	}
-	valid := false
-	for _, o := range m.state.Consent.Organizations {
-		if o.ID == organization {
-			valid = true
-		}
-	}
-	if !valid {
-		m.mu.Unlock()
-		return false
-	}
-	a.approving = true
-	m.state.Consent = nil
+	a.callbackUsed = true
+	m.state.Error = ""
+	m.state.EmailVerifying = true
 	m.notifyLocked()
-	ctx := m.session
+	parent := m.session
 	m.mu.Unlock()
 	go func() {
-		ctx, cancel := context.WithDeadline(ctx, a.expires)
+		ctx, cancel := context.WithDeadline(parent, a.expires)
 		defer cancel()
-		if e := m.nativeRequest(ctx, a, "POST", "/v1/auth/device/authorization/approve", a.token, map[string]string{"code": a.userCode, "organization_id": organization}, nil); e != nil {
-			m.fail(epoch, "authorization_failed")
+		var session struct {
+			AccessToken string `json:"access_token"`
+		}
+		err := m.loginRequest(ctx, "POST", a.config.AuthURL+"/auth/v1/verify", "", a.config.PublishableKey, map[string]string{"email": a.email, "token": code, "type": "email"}, &session)
+		if err != nil || session.AccessToken == "" {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if m.native == a && m.state.Epoch == epoch && ctx.Err() == nil {
+				a.callbackUsed = false
+				m.state.EmailVerifying = false
+				m.state.Error = "invalid_email_code"
+				m.notifyLocked()
+			}
 			return
 		}
-		m.pollTokenFrom(ctx, epoch, a.deviceCode, 0, 5*time.Second)
-		m.mu.Lock()
-		if m.native == a {
-			m.native = nil
-		}
-		m.mu.Unlock()
+		m.registerNative(ctx, epoch, a, session.AccessToken)
 	}()
 	return true
 }

@@ -23,14 +23,15 @@ type Credentials interface {
 var ErrNotFound = errors.New("credential not found")
 
 type Snapshot struct {
-	Consent   *LoginConsent `json:"consent,omitempty"`
-	Revision  uint64        `json:"revision"`
-	Epoch     uint64        `json:"epoch"`
-	Status    string        `json:"status"`
-	UserCode  string        `json:"user_code,omitempty"`
-	URL       string        `json:"verification_url,omitempty"`
-	ExpiresAt time.Time     `json:"expires_at,omitempty"`
-	Error     string        `json:"error,omitempty"`
+	EmailCode      bool      `json:"email_code,omitempty"`
+	EmailVerifying bool      `json:"email_verifying,omitempty"`
+	Revision       uint64    `json:"revision"`
+	Epoch          uint64    `json:"epoch"`
+	Status         string    `json:"status"`
+	UserCode       string    `json:"user_code,omitempty"`
+	URL            string    `json:"verification_url,omitempty"`
+	ExpiresAt      time.Time `json:"expires_at,omitempty"`
+	Error          string    `json:"error,omitempty"`
 }
 
 type Manager struct {
@@ -320,10 +321,11 @@ func (m *Manager) fail(epoch uint64, code string) {
 	}
 	m.state.Status = "signed_out"
 	m.native = nil
-	m.state.Consent = nil
 	m.state.Error = code
 	m.state.UserCode = ""
 	m.state.URL = ""
+	m.state.EmailCode = false
+	m.state.EmailVerifying = false
 	m.notifyLocked()
 }
 func (m *Manager) post(ctx context.Context, path string, body any, out any) (int, error) {

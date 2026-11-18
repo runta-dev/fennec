@@ -60,28 +60,28 @@ active.
 
 ## Sign-in
 
-The scan screen also offers **Continue with Google**, **Continue with GitHub**,
-and **Continue with email**. Google and GitHub open their provider in the system
-authentication window using client-owned PKCE. They return through
-`fennec://auth/callback`; the app registers the Runta session, shows the available
-organizations, and requires explicit device approval. Email uses the Runta
-Dashboard, with code entry, a resend countdown, and the existing Turnstile challenge.
+The sign-in page offers Google, GitHub, Email, and Scan, each with an icon.
+The camera opens only after selecting Scan. Google and GitHub start Supabase
+OAuth directly in the system authentication window with client-owned PKCE and
+return through `fennec://auth/callback`. Email uses native address and OTP
+fields and Supabase's `/otp` and `/verify` endpoints; configure the Supabase
+email template to include `{{ .Token }}` and production SMTP delivery.
 
-The user selects an organization and authorizes this iPhone. The existing device
-flow issues an independent Runta credential, stores it in Keychain, and closes
-the window. Native OAuth keeps the temporary Supabase access token in Go memory
-only while registering the session and obtaining device consent. It does not
-persist Supabase access, refresh, or provider tokens.
-Cancel stops polling; the scan flow and the Mac credential remain separate.
+After authentication, the Go client registers the session with the Dashboard
+API, chooses the same first organization as Dashboard, and creates a scoped
+30-day API key named Fennec iPhone. No Runta web page, device grant, or extra
+consent screen is presented. Dashboard authentication uses the Supabase Bearer
+session, not a browser cookie. Only the resulting API key is saved in Keychain;
+Supabase tokens stay in memory. Failed storage or a canceled attempt revokes a
+newly issued key when its ID is available. QR pairing keeps its existing Mac
+approval flow and independent credential.
 
-Deploy the matching Runta Dashboard and email-code delivery change before this
-app release. Google/GitHub native login uses existing Runta APIs. Add the exact
-`fennec://auth/callback` URL to each Supabase project's Redirect URLs. Keep the
-provider-console callback set to Supabase's HTTPS callback and preserve the
+Add the exact `fennec://auth/callback` URL to each Supabase project's Redirect
+URLs. Keep the provider-console callback set to Supabase's HTTPS callback and preserve the
 Dashboard allowlist. `fennec://pair` remains the QR handoff route. See the
 [shared deep-link contract](../docs/deep-links.md).
-Verify Supabase email OTP expiry/rate limits and Resend delivery in each
-environment. The code is rendered by Runta's email template, not Supabase SMTP.
+Verify Supabase email OTP expiry, rate limits, SMTP delivery, and the OTP email
+template in each environment.
 
 ## Not built yet
 
@@ -90,4 +90,3 @@ environment. The code is rendered by Runta's email template, not Supabase SMTP.
   sessions, because the cloud listing reports a state (Needs input), not the
   request's content.
 - Lock Screen notifications and Live Activity need APNs from the Runta backend.
-- Native email-code entry outside the system authentication window.
