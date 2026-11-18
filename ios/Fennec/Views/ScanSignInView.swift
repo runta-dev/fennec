@@ -144,8 +144,11 @@ struct ScanSignInView: View {
         }.disabled(auth.isAuthorizing).accessibilityIdentifier("login-" + method)
     }
 
-    private func loginLabel(_ title: String, symbol: String) -> some View {
-        Label(title, systemImage: symbol).font(.system(size: 16, weight: .medium))
+    private func loginLabel(_ title: String, symbol: String? = nil) -> some View {
+        Group {
+            if let symbol { Label(title, systemImage: symbol) }
+            else { Text(title) }
+        }.font(.system(size: 16, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 54)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
     }
@@ -178,7 +181,7 @@ struct ScanSignInView: View {
                 Button {
                     auth.signInEmail(email)
                     resendAt = .now.addingTimeInterval(60)
-                } label: { loginLabel(L10n.text("ios.send_code"), symbol: "envelope") }
+                } label: { loginLabel(L10n.text("ios.send_code")) }
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || auth.isAuthorizing)
             }
             if auth.isAuthorizing && (!auth.emailCode || auth.emailVerifying) { ProgressView() }
