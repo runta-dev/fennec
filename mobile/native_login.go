@@ -36,6 +36,7 @@ func (a *Auth) nativeConfig() (account.NativeOAuthConfig, error) {
 	default:
 		return config, errors.New("native sign-in is unavailable for this environment")
 	}
+	config.KeyName = a.keyName
 	return config, nil
 }
 func DeepLinkRoute(raw string) string { return account.DeepLinkRoute(raw) }

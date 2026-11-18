@@ -36,6 +36,8 @@ final class RuntaAuth {
         var error: NSError?
         // Each environment keeps its own token, like the Mac's per-environment credentials.
         core = FennecmobileNewAuth(environment.rawValue, KeychainTokenStore(account: environment.keychainAccount), &error)!
+        // Sign-in replaces this device's own API key ("Fennec iPhone (ssxd)").
+        core.setDeviceKeyName(DeviceIdentity.keyName)
         let core = self.core
         Task.detached {
             try? core.restore()

@@ -57,6 +57,8 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 			var challenge string
 			var registered atomic.Bool
 			var exchanges atomic.Int32
+			var revoked atomic.Value
+			revoked.Store(&[]string{})
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var body map[string]any
 				if r.Method == "POST" {
@@ -112,14 +114,31 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 					}
 					ioJSON(w, `{"data":[{"id":"org-1","name":"First"},{"id":"org-2","name":"Second"}]}`)
 				case "/v1/organizations/org-1/api-keys":
-					if r.Method != "POST" || body["name"] != "Fennec iPhone" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
-						t.Error("invalid key creation")
+					if r.Method == "GET" {
+						// This device's earlier key and the pre-device-name key go;
+						// another device's key and a revoked one stay.
+						ioJSON(w, `{"data":[{"id":"mine","name":"fennec iphone (ab12)"},{"id":"legacy","name":"Fennec iPhone"},{"id":"other","name":"Fennec iPhone (zz99)"},{"id":"gone","name":"Fennec iPhone (ab12)","revoked_at":"2026-11-18T00:00:00Z"}]}`)
+						return
+					}
+					if r.Method != "POST" || body["name"] != "Fennec iPhone (ab12)" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
+						t.Errorf("invalid key creation: %v", body["name"])
+					}
+					if got := revoked.Load(); got == nil || *got.(*[]string) == nil || strings.Join(*got.(*[]string), ",") != "mine,legacy" {
+						t.Errorf("revoked before creating: %v", got)
 					}
 					scopes, _ := body["scopes"].([]any)
 					if len(scopes) == 0 || body["expires_at"] == nil {
 						t.Error("missing scoped expiry")
 					}
 					ioJSON(w, `{"data":{"plaintext_key":"runta-key","api_key":{"id":"key-id"}}}`)
+				case "/v1/organizations/org-1/api-keys/mine", "/v1/organizations/org-1/api-keys/legacy":
+					if r.Method != "DELETE" || r.Header.Get("Authorization") != "Bearer supabase-secret" {
+						t.Error("invalid key revocation")
+					}
+					ids, _ := revoked.Load().(*[]string)
+					next := append(append([]string{}, *ids...), strings.TrimPrefix(r.URL.Path, "/v1/organizations/org-1/api-keys/"))
+					revoked.Store(&next)
+					ioJSON(w, "{}")
 				default:
 					t.Errorf("unexpected request (device grants and hosted pages are forbidden): %s", r.URL.Path)
 					http.NotFound(w, r)
@@ -131,7 +150,7 @@ func TestNativeAuthenticationCreatesKeyWithoutDeviceConsent(t *testing.T) {
 			store := &memoryCredentials{}
 			m := New(ctx, store, server.URL)
 			m.http = server.Client()
-			cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, DashboardURL: server.URL, PublishableKey: "sb_publishable_test"}
+			cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, DashboardURL: server.URL, PublishableKey: "sb_publishable_test", KeyName: "Fennec iPhone (ab12)"}
 			var state Snapshot
 			var err error
 			if provider == "email" {

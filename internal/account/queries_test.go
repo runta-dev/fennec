@@ -3,12 +3,14 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestBillingAggregationAndPublicProfile(t *testing.T) {
@@ -228,5 +230,45 @@ func TestIdentityIsSharedByProfileAndBilling(t *testing.T) {
 	m.meMu.Unlock()
 	if _, err := m.Profile(ctx); err != nil || identityRequests.Load() != 2 {
 		t.Fatal("identity reused across credentials", err)
+	}
+}
+
+func TestRejectedCredentialIsForgottenWhenAsked(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, forget := range []bool{false, true} {
+		store := &memoryCredentials{token: "revoked-key"}
+		m := New(ctx, store, "")
+		if forget {
+			m.ForgetRejectedCredentials()
+		}
+		_ = m.Restore(ctx)
+		_, token, epoch, ok := m.Session()
+		if !ok {
+			t.Fatal("not restored")
+		}
+		m.RejectCredential(token, epoch)
+		if s := m.Snapshot(); s.Status != "signed_out" || s.Error != "session_expired" {
+			t.Fatalf("state %+v", s)
+		}
+		deadline := time.Now().Add(2 * time.Second)
+		for forget && time.Now().Before(deadline) {
+			if _, err := store.Read(ctx); errors.Is(err, ErrNotFound) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		_, err := store.Read(ctx)
+		if forget != errors.Is(err, ErrNotFound) {
+			t.Fatalf("forget=%v: stored credential error %v", forget, err)
+		}
+		// A relaunch must not come back signed in with the rejected key.
+		if forget {
+			again := New(ctx, store, "")
+			_ = again.Restore(ctx)
+			if _, _, _, ok := again.Session(); ok {
+				t.Fatal("rejected key restored after relaunch")
+			}
+		}
 	}
 }

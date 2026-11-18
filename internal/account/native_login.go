@@ -19,7 +19,15 @@ import (
 const NativeCallbackURL = "fennec://auth/callback"
 
 // NativeOAuthConfig contains public deployment configuration, never a service key.
-type NativeOAuthConfig struct{ AuthURL, PublishableKey, BackendURL, DashboardURL string }
+type NativeOAuthConfig struct {
+	AuthURL, PublishableKey, BackendURL, DashboardURL string
+	// KeyName names this device's Runta API key, e.g. "Fennec iPhone (ssxd)".
+	// Each sign-in revokes the device's earlier key of that name first.
+	KeyName string
+}
+
+// legacyNativeKeyName is what builds before per-device names called the key.
+const legacyNativeKeyName = "Fennec iPhone"
 
 type LoginOrganization struct {
 	ID   string `json:"id"`
@@ -300,7 +308,14 @@ func (m *Manager) registerNative(ctx context.Context, epoch uint64, a *nativeAtt
 			} `json:"api_key"`
 		} `json:"data"`
 	}
-	request := map[string]any{"name": "Fennec iPhone", "expires_at": time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339), "scopes": []string{"identity:self:read", "org:read", "billing:read", "runtime:read", "runtime:manage", "events:read", "secrets:read", "secrets:manage", "ai-agent-auth:read", "github:read", "github:manage"}}
+	keyName := strings.TrimSpace(a.config.KeyName)
+	if keyName == "" {
+		keyName = legacyNativeKeyName
+	}
+	// Names are unique among an organization's active keys, so this device's
+	// key from an earlier sign-in (never revoked, or expired) must go first.
+	m.revokeNativeKeys(ctx, a, path, token, keyName)
+	request := map[string]any{"name": keyName, "expires_at": time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339), "scopes": []string{"identity:self:read", "org:read", "billing:read", "runtime:read", "runtime:manage", "events:read", "secrets:read", "secrets:manage", "ai-agent-auth:read", "github:read", "github:manage"}}
 	if err := m.nativeRequest(ctx, a, "POST", path, token, request, &created); err != nil || created.Data.Key == "" {
 		m.fail(epoch, "credential_creation_failed")
 		return
@@ -386,4 +401,27 @@ func nativeEmailRedirect(dashboard string) (string, error) {
 	}
 	digest := sha256.Sum256(secret)
 	return dashboard + "/auth/callback?login_binding=" + base64.RawURLEncoding.EncodeToString(digest[:]), nil
+}
+
+// revokeNativeKeys revokes this device's active keys from earlier sign-ins
+// (its own name, or the name builds used before per-device names). Failures
+// are left to key creation, which reports the conflict if one remains.
+func (m *Manager) revokeNativeKeys(ctx context.Context, a *nativeAttempt, path, token, keyName string) {
+	var keys struct {
+		Data []struct {
+			ID        string  `json:"id"`
+			Name      string  `json:"name"`
+			RevokedAt *string `json:"revoked_at"`
+		} `json:"data"`
+	}
+	if m.nativeRequest(ctx, a, "GET", path, token, nil, &keys) != nil {
+		return
+	}
+	for _, key := range keys.Data {
+		name := strings.TrimSpace(key.Name)
+		if key.ID == "" || key.RevokedAt != nil || !(strings.EqualFold(name, keyName) || strings.EqualFold(name, legacyNativeKeyName)) {
+			continue
+		}
+		_ = m.nativeRequest(ctx, a, "DELETE", path+"/"+url.PathEscape(key.ID), token, nil, nil)
+	}
 }

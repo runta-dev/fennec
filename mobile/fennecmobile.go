@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -59,6 +60,7 @@ type Auth struct {
 	manager     *account.Manager
 	environment runta.Environment
 	cancel      context.CancelFunc
+	keyName     string
 }
 
 // NewAuth accepts the Mac's environment names ("production", "integration",
@@ -74,8 +76,14 @@ func NewAuth(environment string, store TokenStore) (*Auth, error) {
 		cancel()
 		return nil, err
 	}
+	// A key the server rejects (revoked, expired) signs the phone out for good.
+	manager.ForgetRejectedCredentials()
 	return &Auth{manager: manager, environment: env, cancel: cancel}, nil
 }
+
+// SetDeviceKeyName names the API key this device creates when it signs in,
+// e.g. "Fennec iPhone (ssxd)"; the app derives it from an ID in its Keychain.
+func (a *Auth) SetDeviceKeyName(name string) { a.keyName = name }
 
 // Environment returns {"name","api","dashboard","ssh_host"}.
 func (a *Auth) Environment() string {
@@ -146,7 +154,33 @@ func (a *Auth) CancelLogin() error {
 	return a.manager.CancelAuthorization(context.Background())
 }
 
-func (a *Auth) Logout() error { return a.manager.Logout(context.Background()) }
+// Logout forgets the key on the phone at once, then revokes it on Runta
+// (best effort: an offline phone is signed out all the same, and the key
+// expires on its own).
+func (a *Auth) Logout() error {
+	_, token, _, ok := a.manager.Session()
+	endpoint := a.manager.Endpoint()
+	if err := a.manager.Logout(context.Background()); err != nil {
+		return err
+	}
+	if ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		revokeToken(ctx, endpoint, token)
+	}
+	return nil
+}
+
+func revokeToken(ctx context.Context, endpoint, token string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, strings.TrimRight(endpoint, "/")+"/v2/auth/token", nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+	}
+}
 
 func (a *Auth) DashboardURL() string { return a.manager.DashboardURL() }
 
@@ -288,6 +322,11 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 	}
 	connection, err := client.ConnectOwned(ctx, shared.ID, s.directory)
 	if err != nil {
+		var apiErr *runta.APIError
+		if errors.As(err, &apiErr) && apiErr.Status == 401 {
+			s.auth.manager.RejectCredential(token, epoch)
+			return nil, "", errors.New("your session expired; sign in again")
+		}
 		return nil, "", err
 	}
 	s.client, s.runtimeID, s.token = connection, shared.ID, token

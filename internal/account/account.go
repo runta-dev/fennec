@@ -52,6 +52,10 @@ type Manager struct {
 	changed     chan struct{}
 	revision    uint64
 
+	// forgetRejected also deletes a credential the server rejected (the
+	// iPhone), so it can't come back signed in at the next launch.
+	forgetRejected bool
+
 	// The signed-in identity (/v2/me), shared by profile and billing.
 	meMu    sync.Mutex
 	meCache meEntry
@@ -289,6 +293,29 @@ func (m *Manager) RejectCredential(token string, epoch uint64) {
 	m.resetLocked("signed_out")
 	m.state.Error = "session_expired"
 	m.notifyLocked()
+	if m.forgetRejected {
+		go m.forgetCredential()
+	}
+}
+
+// ForgetRejectedCredentials makes a rejected credential leave storage too.
+func (m *Manager) ForgetRejectedCredentials() {
+	m.mu.Lock()
+	m.forgetRejected = true
+	m.mu.Unlock()
+}
+
+// forgetCredential deletes the stored credential unless a new sign-in has
+// started or finished since it was rejected.
+func (m *Manager) forgetCredential() {
+	m.credentialsMu.Lock()
+	defer m.credentialsMu.Unlock()
+	m.mu.Lock()
+	idle := m.token == "" && m.state.Status == "signed_out"
+	m.mu.Unlock()
+	if idle {
+		_ = m.credentials.Delete(context.Background())
+	}
 }
 
 // CancelAuthorization drains credential writes before stopping an outstanding
