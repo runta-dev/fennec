@@ -120,6 +120,7 @@ struct HomeView: View {
                             .listRowBackground(Theme.bg)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) { store.stop(session.id) } label: { Label(L10n.text("ui.stop"), systemImage: "stop.fill") }
+                                    .tint(Theme.danger)
                                 Button { store.togglePin(session.id) } label: {
                                     Label(session.pinned ? L10n.text("ios.unpin") : L10n.text("ios.pin"), systemImage: session.pinned ? "pin.slash" : "pin")
                                 }
