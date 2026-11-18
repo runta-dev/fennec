@@ -51,9 +51,15 @@ func DeepLinkRoute(raw string) string {
 	if err != nil || u.Scheme != "fennec" || u.User != nil || u.Opaque != "" || u.Port() != "" {
 		return ""
 	}
-	if u.Host == "auth" && u.EscapedPath() == "/callback" && !strings.Contains(raw, "#") {
+	if u.Host == "auth" && u.EscapedPath() == "/callback" {
 		q, err := url.ParseQuery(u.RawQuery)
 		if err != nil {
+			return ""
+		}
+		// Supabase repeats an error in a fragment ("#error=…&sb="); only the
+		// query is read. A code callback with a fragment may carry a token
+		// and is refused.
+		if strings.Contains(raw, "#") && (q.Get("code") != "" || q.Get("error") == "") {
 			return ""
 		}
 		for k, v := range q {
@@ -262,8 +268,16 @@ func (m *Manager) CompleteNative(raw string, epoch uint64) bool {
 	m.notifyLocked()
 	ctx := m.session
 	m.mu.Unlock()
-	if q.Get("error") != "" {
-		m.fail(epoch, "access_denied")
+	if e := q.Get("error"); e != "" {
+		code := "provider_error"
+		if e == "access_denied" {
+			code = "access_denied"
+		}
+		detail := strings.TrimSpace(q.Get("error_description"))
+		if detail == "" {
+			detail = strings.TrimSpace(e + " " + q.Get("error_code"))
+		}
+		m.failDetail(epoch, code, detail)
 		return true
 	}
 	go m.exchangeNative(ctx, epoch, a, q.Get("code"))

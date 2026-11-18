@@ -32,6 +32,9 @@ type Snapshot struct {
 	URL            string    `json:"verification_url,omitempty"`
 	ExpiresAt      time.Time `json:"expires_at,omitempty"`
 	Error          string    `json:"error,omitempty"`
+	// Detail is what the sign-in provider said about Error, when it said
+	// anything (Supabase's error_description); never a token.
+	Detail string `json:"detail,omitempty"`
 }
 
 type Manager struct {
@@ -340,7 +343,12 @@ func (m *Manager) CancelAuthorization(ctx context.Context) error {
 	}
 	return nil
 }
-func (m *Manager) fail(epoch uint64, code string) {
+func (m *Manager) fail(epoch uint64, code string) { m.failDetail(epoch, code, "") }
+
+func (m *Manager) failDetail(epoch uint64, code, detail string) {
+	if len(detail) > 300 {
+		detail = detail[:300]
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.state.Epoch != epoch {
@@ -349,6 +357,7 @@ func (m *Manager) fail(epoch uint64, code string) {
 	m.state.Status = "signed_out"
 	m.native = nil
 	m.state.Error = code
+	m.state.Detail = detail
 	m.state.UserCode = ""
 	m.state.URL = ""
 	m.state.EmailCode = false

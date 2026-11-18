@@ -28,6 +28,8 @@ final class RuntaAuth {
     private(set) var emailCode = false
     private(set) var emailVerifying = false
     private(set) var emailError = false
+    /// What the sign-in provider said about the last failure, shown on tap.
+    private(set) var failureDetail: String?
 
     let environment: RuntaEnvironment
 
@@ -98,6 +100,15 @@ final class RuntaAuth {
         } catch {
             status = .failed("Couldn't start sign-in. Try again.")
         }
+    }
+
+    /// The browser came back with something that isn't a sign-in callback:
+    /// end the attempt and say so, rather than looking cancelled.
+    func rejectCallback(_ url: URL) {
+        let core = self.core
+        Task.detached { try? core.cancelLogin() }
+        status = .failed(Self.message(for: "authorization_failed"))
+        failureDetail = url.scheme.map { "\($0)://\(url.host() ?? "")\(url.path())" }
     }
 
     func cancelSignIn() {
@@ -185,6 +196,7 @@ final class RuntaAuth {
         emailCode = snapshot.email_code ?? false
         emailVerifying = snapshot.email_verifying ?? false
         emailError = snapshot.error == "invalid_email_code"
+        failureDetail = snapshot.detail?.isEmpty == false ? snapshot.detail : nil
         status = Self.status(for: snapshot)
         if !isAuthorizing { pairing = false }
         if status == .signedIn, previous != .signedIn { Task { await loadProfile() } }
@@ -230,6 +242,7 @@ struct AccountSnapshot: Decodable {
     var epoch: Int64?
     var email_code: Bool?
     var email_verifying: Bool?
+    var detail: String?
 }
 
 /// The Runta session token lives only in the iPhone Keychain.

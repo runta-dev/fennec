@@ -15,6 +15,7 @@ struct ScanSignInView: View {
     @State private var email = ""
     @State private var code = ""
     @State private var resendAt = Date.distantPast
+    @State private var showDetail = false
     /// App Review's address was entered: no code was sent (ReviewDemo).
     @State private var reviewCode = false
 
@@ -28,12 +29,25 @@ struct ScanSignInView: View {
             VStack(spacing: 0) {
                 topBar
                 if let notice = notice ?? failure {
-                    Label(notice, systemImage: "exclamationmark.circle")
-                        .font(.system(size: 14, weight: .medium))
-                        .padding(.horizontal, 14).frame(height: 36)
-                        .glassEffect(.regular, in: Capsule())
-                        .padding(.top, 10)
-                        .transition(.opacity)
+                    VStack(spacing: 6) {
+                        Label(notice, systemImage: "exclamationmark.circle")
+                            .font(.system(size: 14, weight: .medium))
+                            .padding(.horizontal, 14).frame(minHeight: 36)
+                            .glassEffect(.regular, in: Capsule())
+                        // What the provider said, for a screenshot; tap to show.
+                        if notice == failure, let detail = auth.failureDetail {
+                            if showDetail {
+                                Text(detail).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.fg3)
+                                    .multilineTextAlignment(.center).textSelection(.enabled).padding(.horizontal, 32)
+                            } else {
+                                Text(L10n.text("ios.error_details")).font(.system(size: 12)).foregroundStyle(Theme.fg3)
+                            }
+                        }
+                    }
+                    .onTapGesture { withAnimation { showDetail.toggle() } }
+                    .accessibilityIdentifier("sign-in-error")
+                    .padding(.top, 10)
+                    .transition(.opacity)
                 }
                 Spacer()
                 if auth.pairing && auth.isAuthorizing { waitingPanel }
@@ -54,7 +68,8 @@ struct ScanSignInView: View {
         .onChange(of: auth.verificationURL) { _, url in
             if let url {
                 let epoch = auth.epoch
-                web.start(url, onCallback: { auth.handleCallback($0, epoch: epoch) }, onCancel: { auth.cancelSignIn() })
+                web.start(url, onCallback: { auth.handleCallback($0, epoch: epoch) },
+                          onInvalid: { auth.rejectCallback($0) }, onCancel: { auth.cancelSignIn() })
             } else { web.finish() }
         }
         .onDisappear { web.finish() }

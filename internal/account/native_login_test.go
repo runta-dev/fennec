@@ -23,7 +23,11 @@ func TestDeepLinkRoutes(t *testing.T) {
 		"fennec://auth/callback?code=a&error=denied": "", "fennec://auth/callback?code=a&error_code=bad": "",
 		"fennec://auth/callback?code=a&api=https://evil.example": "",
 		"fennec://auth/callback?code=%GG":                        "", "fennec://auth/callback?code=a#access_token=b": "",
-		"fennec://auth/callback/?code=a": "", "fennec://auth/%63allback?code=a": "",
+		// Supabase's error redirect repeats the error in a fragment.
+		"fennec://auth/callback?error=server_error&error_code=unexpected_failure&error_description=Unable+to+exchange#error=server_error&sb=": "auth/callback",
+		"fennec://auth/callback?error=access_denied#error=access_denied&sb=":                                                                  "auth/callback",
+		"fennec://auth/callback#error=access_denied":                                                                                          "",
+		"fennec://auth/callback/?code=a":                                                                                                      "", "fennec://auth/%63allback?code=a": "",
 		"fennec://user@auth/callback?code=a": "", "fennec://auth:123/callback?code=a": "",
 		"fennec://pair#code=a&code=b&api=https://api.runta.com": "", "fennec://pair?code=a&api=b": "",
 		"fennec://auth/complete?state=a": "", "https://auth/callback?code=a": "",
@@ -400,5 +404,28 @@ func TestNativeKeyRevokedWhenStorageFails(t *testing.T) {
 	}
 	if token, _ := m.Token(); token != "" {
 		t.Fatal("failed credential published")
+	}
+}
+
+func TestNativeProviderErrorKeepsItsDescription(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
+	}))
+	defer server.Close()
+	m := New(ctx, &memoryCredentials{}, server.URL)
+	m.http = server.Client()
+	cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, DashboardURL: server.URL, PublishableKey: "sb_publishable_test"}
+	if _, err := m.LoginNative("google", cfg); err != nil {
+		t.Fatal(err)
+	}
+	state := waitNative(t, m, func(s Snapshot) bool { return s.URL != "" })
+	callback := NativeCallbackURL + "?error=server_error&error_code=unexpected_failure&error_description=Unable+to+exchange+external+code#error=server_error&sb="
+	if !m.CompleteNative(callback, state.Epoch) {
+		t.Fatal("Supabase error redirect refused")
+	}
+	if s := m.Snapshot(); s.Status != "signed_out" || s.Error != "provider_error" || s.Detail != "Unable to exchange external code" {
+		t.Fatalf("state %+v", s)
 	}
 }

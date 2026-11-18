@@ -12,7 +12,9 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
     private var generation = UUID()
 
     /// `onCancel` runs when the user closes the page before signing in.
-    func start(_ url: URL, onCallback: @escaping @MainActor (URL) -> Void = { _ in }, onCancel: @escaping @MainActor () -> Void) {
+    /// `onInvalid` runs when it returns something that isn't a sign-in callback.
+    func start(_ url: URL, onCallback: @escaping @MainActor (URL) -> Void = { _ in },
+               onInvalid: (@MainActor (URL) -> Void)? = nil, onCancel: @escaping @MainActor () -> Void) {
         finish()
         let generation = UUID()
         self.generation = generation
@@ -22,6 +24,7 @@ final class WebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
                 self?.session = nil
                 if error != nil { onCancel() }
                 else if let callback, FennecmobileDeepLinkRoute(callback.absoluteString) == "auth/callback" { onCallback(callback) }
+                else if let callback, let onInvalid { onInvalid(callback) }
                 else { onCancel() }
             }
         }
