@@ -191,6 +191,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller.Additional["transfer.open"] = services.openTransfer
 	services.chatgpt = newChatGPTBridge(home, services)
+	for method, handler := range services.terminalCoverageHandlers() {
+		controller.Additional[method] = handler
+	}
 	for method, handler := range services.chatgpt.handlers() {
 		controller.Additional[method] = handler
 	}

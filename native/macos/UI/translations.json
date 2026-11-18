@@ -3551,6 +3551,181 @@
       "ko": "네트워크 꺼짐",
       "zh-CN": "离线隔离",
       "zh-TW": "離線隔離"
+    },
+    "ui.gs_get_started": {
+      "en-US": "Get started",
+      "ja": "はじめに",
+      "ko": "시작하기",
+      "zh-CN": "开始使用",
+      "zh-TW": "開始使用"
+    },
+    "ui.gs_hide": {
+      "en-US": "Hide",
+      "ja": "非表示",
+      "ko": "숨기기",
+      "zh-CN": "隐藏",
+      "zh-TW": "隱藏"
+    },
+    "ui.gs_cloud_ready": {
+      "en-US": "Cloud computer ready",
+      "ja": "クラウドコンピュータの準備完了",
+      "ko": "클라우드 컴퓨터 준비 완료",
+      "zh-CN": "云电脑已就绪",
+      "zh-TW": "雲端電腦已就緒"
+    },
+    "ui.gs_preparing": {
+      "en-US": "Fennec is preparing your cloud computer.",
+      "ja": "Fennec がクラウドコンピュータを準備しています。",
+      "ko": "Fennec이 클라우드 컴퓨터를 준비하고 있습니다.",
+      "zh-CN": "Fennec 正在准备你的云电脑。",
+      "zh-TW": "Fennec 正在準備你的雲端電腦。"
+    },
+    "ui.gs_run_on_cloud": {
+      "en-US": "Run an agent on the cloud computer",
+      "ja": "クラウドコンピュータでエージェントを実行",
+      "ko": "클라우드 컴퓨터에서 에이전트 실행",
+      "zh-CN": "在云电脑上运行 agent",
+      "zh-TW": "在雲端電腦上執行 agent"
+    },
+    "ui.gs_pick_an_agent": {
+      "en-US": "Choose an agent installed on this Mac:",
+      "ja": "この Mac にインストール済みのエージェントを選択：",
+      "ko": "이 Mac에 설치된 에이전트를 선택하세요:",
+      "zh-CN": "选择这台 Mac 上已安装的 agent：",
+      "zh-TW": "選擇這台 Mac 上已安裝的 agent："
+    },
+    "ui.gs_install_an_agent": {
+      "en-US": "Install Codex or Claude Code, and Fennec will list it here.",
+      "ja": "Codex または Claude Code をインストールすると、ここに表示されます。",
+      "ko": "Codex 또는 Claude Code를 설치하면 여기에 표시됩니다.",
+      "zh-CN": "安装 Codex 或 Claude Code 后，Fennec 会在这里列出它。",
+      "zh-TW": "安裝 Codex 或 Claude Code 後，Fennec 會在這裡列出它。"
+    },
+    "ui.gs_wait_for_cloud": {
+      "en-US": "Available once the cloud computer is ready",
+      "ja": "クラウドコンピュータの準備ができると使えます",
+      "ko": "클라우드 컴퓨터가 준비되면 사용할 수 있습니다",
+      "zh-CN": "云电脑就绪后可用",
+      "zh-TW": "雲端電腦就緒後可用"
+    },
+    "ui.gs_sign_in": {
+      "en-US": "Sign in",
+      "ja": "サインイン",
+      "ko": "로그인",
+      "zh-CN": "登录",
+      "zh-TW": "登入"
+    },
+    "ui.gs_no_sign_in_to_copy": {
+      "en-US": "This Mac has no sign-in for this agent to copy. Sign in first.",
+      "ja": "この Mac にはコピーできるサインイン情報がありません。先にサインインしてください。",
+      "ko": "이 Mac에는 복사할 로그인 정보가 없습니다. 먼저 로그인하세요.",
+      "zh-CN": "这台 Mac 上没有这个 agent 的登录信息可复制，请先登录。",
+      "zh-TW": "這台 Mac 上沒有這個 agent 的登入資訊可複製，請先登入。"
+    },
+    "ui.gs_connecting": {
+      "en-US": "Connecting…",
+      "ja": "接続中…",
+      "ko": "연결 중…",
+      "zh-CN": "正在连接…",
+      "zh-TW": "正在連線…"
+    },
+    "ui.gs_start_from_terminal": {
+      "en-US": "Start it from your terminal",
+      "ja": "ターミナルから起動",
+      "ko": "터미널에서 시작",
+      "zh-CN": "在终端里启动它",
+      "zh-TW": "在終端機裡啟動它"
+    },
+    "ui.gs_open_new_terminal": {
+      "en-US": "In a new terminal window, run:",
+      "ja": "新しいターミナルウィンドウで実行：",
+      "ko": "새 터미널 창에서 실행하세요:",
+      "zh-CN": "在新的终端窗口中运行：",
+      "zh-TW": "在新的終端機視窗中執行："
+    },
+    "ui.gs_copy": {
+      "en-US": "Copy",
+      "ja": "コピー",
+      "ko": "복사",
+      "zh-CN": "复制",
+      "zh-TW": "複製"
+    },
+    "ui.gs_copied": {
+      "en-US": "Copied",
+      "ja": "コピーしました",
+      "ko": "복사됨",
+      "zh-CN": "已复制",
+      "zh-TW": "已複製"
+    },
+    "ui.gs_checking_terminal": {
+      "en-US": "Checking your terminal…",
+      "ja": "ターミナルを確認しています…",
+      "ko": "터미널을 확인하는 중…",
+      "zh-CN": "正在检查你的终端…",
+      "zh-TW": "正在檢查你的終端機…"
+    },
+    "ui.gs_is_your_alias": {
+      "en-US": "is an alias in your shell, so it runs instead of Fennec. Fennec leaves your aliases as they are.",
+      "ja": "はシェルのエイリアスなので、Fennec の代わりに実行されます。Fennec はエイリアスを変更しません。",
+      "ko": "는 셸의 별칭이므로 Fennec 대신 실행됩니다. Fennec은 별칭을 변경하지 않습니다.",
+      "zh-CN": "是你 shell 里的 alias，会代替 Fennec 运行。Fennec 不会改动你的 alias。",
+      "zh-TW": "是你 shell 裡的 alias，會取代 Fennec 執行。Fennec 不會改動你的 alias。"
+    },
+    "ui.gs_is_your_function": {
+      "en-US": "is a function in your shell, so it runs instead of Fennec. Fennec leaves your functions as they are.",
+      "ja": "はシェルの関数なので、Fennec の代わりに実行されます。Fennec は関数を変更しません。",
+      "ko": "는 셸의 함수이므로 Fennec 대신 실행됩니다. Fennec은 함수를 변경하지 않습니다.",
+      "zh-CN": "是你 shell 里的函数，会代替 Fennec 运行。Fennec 不会改动你的函数。",
+      "zh-TW": "是你 shell 裡的函式，會取代 Fennec 執行。Fennec 不會改動你的函式。"
+    },
+    "ui.gs_still_runs_on_mac": {
+      "en-US": "still runs on this Mac from your terminal.",
+      "ja": "はターミナルからこの Mac で実行されたままです。",
+      "ko": "는 터미널에서 여전히 이 Mac에서 실행됩니다.",
+      "zh-CN": "在你的终端里仍会在这台 Mac 上运行。",
+      "zh-TW": "在你的終端機裡仍會在這台 Mac 上執行。"
+    },
+    "ui.gs_fix": {
+      "en-US": "Fix",
+      "ja": "修正",
+      "ko": "수정",
+      "zh-CN": "修复",
+      "zh-TW": "修復"
+    },
+    "ui.gs_fixing": {
+      "en-US": "Fixing…",
+      "ja": "修正中…",
+      "ko": "수정 중…",
+      "zh-CN": "正在修复…",
+      "zh-TW": "正在修復…"
+    },
+    "ui.gs_add_this_line": {
+      "en-US": "If it still runs on this Mac, add this line to your shell's startup file:",
+      "ja": "まだこの Mac で実行される場合は、シェルの起動ファイルにこの行を追加してください：",
+      "ko": "여전히 이 Mac에서 실행되면 셸 시작 파일에 이 줄을 추가하세요:",
+      "zh-CN": "如果仍在这台 Mac 上运行，请把这一行加到你的 shell 启动文件中：",
+      "zh-TW": "如果仍在這台 Mac 上執行，請把這一行加到你的 shell 啟動檔中："
+    },
+    "ui.gs_optional": {
+      "en-US": "Optional",
+      "ja": "任意",
+      "ko": "선택 사항",
+      "zh-CN": "可选",
+      "zh-TW": "選用"
+    },
+    "ui.gs_iphone": {
+      "en-US": "Get Fennec on your iPhone",
+      "ja": "iPhone で Fennec を使う",
+      "ko": "iPhone에서 Fennec 사용하기",
+      "zh-CN": "在 iPhone 上使用 Fennec",
+      "zh-TW": "在 iPhone 上使用 Fennec"
+    },
+    "ui.gs_detach_hint": {
+      "en-US": "Your agent runs on the cloud computer. Ctrl+C detaches and leaves it running; run fen to come back to it.",
+      "ja": "エージェントはクラウドコンピュータで実行中です。Ctrl+C で切り離しても実行は続きます。fen で戻れます。",
+      "ko": "에이전트가 클라우드 컴퓨터에서 실행 중입니다. Ctrl+C로 분리해도 계속 실행되며, fen으로 돌아올 수 있습니다.",
+      "zh-CN": "你的 agent 正在云电脑上运行。按 Ctrl+C 可以离开，它会继续运行；运行 fen 回到它。",
+      "zh-TW": "你的 agent 正在雲端電腦上執行。按 Ctrl+C 可以離開，它會繼續執行；執行 fen 回到它。"
     }
   },
   "version": 1

@@ -39,6 +39,9 @@ type desktopPreferences struct {
 	Language       string   `json:"language"`
 	Initialized    bool     `json:"initialized"`
 	PredictiveEcho string   `json:"predictive_echo,omitempty"`
+	// The Agents view's Get started card: hidden by the user, or finished.
+	GetStartedHidden bool `json:"get_started_hidden,omitempty"`
+	GetStartedDone   bool `json:"get_started_done,omitempty"`
 }
 
 func effectivePermissionPreset(prefs desktopPreferences) string {
@@ -191,6 +194,8 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			Theme            *string         `json:"theme"`
 			Language         *string         `json:"language"`
 			PredictiveEcho   *string         `json:"predictive_echo"`
+			GetStartedHidden *bool           `json:"get_started_hidden"`
+			GetStartedDone   *bool           `json:"get_started_done"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
@@ -229,6 +234,12 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			} else {
 				next.Environment = resolved.Name
 			}
+		}
+		if request.GetStartedHidden != nil && !importing {
+			next.GetStartedHidden = *request.GetStartedHidden
+		}
+		if request.GetStartedDone != nil && !importing {
+			next.GetStartedDone = *request.GetStartedDone
 		}
 		if request.SSHNoDelay != nil && !importing {
 			next.NoSSHNoDelay = !*request.SSHNoDelay

@@ -1,7 +1,8 @@
 # Get started checklist
 
-Status: design, approved in direction on 2026-11-18 (a checklist, not a forced
-tour). Not implemented.
+Status: implemented for Fennec 0.5.7 (`native/macos/UI/get-started.js`,
+`internal/cli/terminal_coverage.go`), with the differences listed under
+"Implementation" below. The clean-account end-to-end test is pending.
 
 ## Goal
 
@@ -104,3 +105,30 @@ string in English and Simplified Chinese in `translations.json`.
 
 - Should step 2 suggest one agent ("Codex is installed: run it on the cloud
   computer") when only one is installed, instead of a one-chip list?
+
+## Implementation (0.5.7)
+
+- The card is `native/macos/UI/get-started.js`, loaded after `panel.js` and
+  re-rendered after each panel render that changes its inputs. Preferences
+  `get_started_hidden` and `get_started_done` are `settings.set` fields.
+- `terminal.coverage` (`{agents?, force?}`, the selected agents by default)
+  and `terminal.fix` (reconcile, then a forced check) are daemon methods; the
+  panel calls them through the `terminal-coverage` and `terminal-fix` bridge
+  actions and receives `renderTerminalCoverage`. A result is reused for a
+  minute unless forced. An uncovered agent's reply carries the line to add
+  for the user's shell.
+- Differences from the design:
+  - Step 4 is a link to the existing iPhone dialog without a done state. The
+    Mac only starts the device authorization; approval happens in the browser,
+    so Fennec cannot know whether an iPhone finished signing in.
+  - An agent shadowed by the user's alias or function is explained but has no
+    Fix: Fennec never overrides the user's aliases or functions
+    ([agent-shims.md](agent-shims.md)), so Fix could not change the result.
+  - Step 3 is done when a live cloud session of a selected agent exists,
+    whether started from a terminal or from Fennec, not only one started
+    after the selection.
+  - Codex Desktop is not offered in step 2: the steps end in a terminal.
+- Tests: `scripts/tests/get-started-state.cjs` (every state above, run by
+  `make`), `internal/cli/terminal_coverage_test.go` (one agent, the selection
+  default, rate limit, snippet per shell).
+

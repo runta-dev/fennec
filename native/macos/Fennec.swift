@@ -898,6 +898,25 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
             return
         }
+        // Get started card: whether the user's terminal reaches Fennec for the
+        // selected agents, and Fix, which reinstalls the terminal integration.
+        if action == "terminal-coverage" || action == "terminal-coverage-force" || action == "terminal-fix" {
+            let epoch = accountEpoch
+            let method = action == "terminal-fix" ? "terminal.fix" : "terminal.coverage"
+            control.call(method, ["force": action != "terminal-coverage"]) { [weak self] result in
+                guard let self, self.accountEpoch == epoch else { return }
+                if case .success(let value) = result { self.render("renderTerminalCoverage", [value]) }
+                else { self.render("renderTerminalCoverage", [["error": true] as [String:Any]]) }
+            }
+            return
+        }
+        if action.hasPrefix("copy-text:") {
+            let text = String(action.dropFirst(10))
+            guard !text.isEmpty, text.utf8.count <= 2048, !text.contains("\u{0}") else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return
+        }
         if action == "pair-device" {
             let epoch = accountEpoch
             control.call("account.pair_device") { [weak self] result in

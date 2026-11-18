@@ -44,6 +44,7 @@ check-ui:
 	node scripts/tests/preparation-state.cjs
 	node scripts/tests/login-state.cjs
 	node scripts/tests/takeover-state.cjs
+	node scripts/tests/get-started-state.cjs
 	node scripts/tests/fox-motion.cjs
 	node scripts/tests/updater-state.cjs
 	node scripts/tests/browser-paste.cjs
