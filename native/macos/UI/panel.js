@@ -162,6 +162,9 @@ document.addEventListener('click', event => {
 let agentFoldTimer = null;
 let agentLocationTimer = null;
 const renderedLocations = new Map();
+// Where each row's label last said the agent runs, to show a move to the
+// cloud computer as it happens (the row may be folded, unlike the toggle).
+const labelLocations = new Map();
 let pendingAgentRender = false;
 let agentEffortEditing = false;
 const finishEffortEditing=()=>{if(!agentEffortEditing)return;agentEffortEditing=false;requestAnimationFrame(()=>{if(pendingAgentRender&&!modelSaving&&!agentEffortEditing){pendingAgentRender=false;window.renderAgents(detectedAgents);}});};
@@ -297,6 +300,24 @@ window.renderAgents = agents => {
       }
       statusNode.hidden = !statusNode.textContent;
       if(statusNode.textContent==="[[i18n:ui.connecting]]"){statusNode.textContent='';statusNode.hidden=true;if(window.fennecPreparationStage!=='offline')state.classList.add('loading-shimmer');}
+      if(takeoverSelectionKnown){
+       const was=labelLocations.get(agent.id);
+       labelLocations.set(agent.id,enabled);
+       if(was===false&&enabled&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+        // This Mac slides out and Cloud computer in, and the row flashes, so a
+        // pick made elsewhere (Get started) is seen where the agent lives.
+        const from=document.createElement('span');from.className='location-from';from.textContent="[[i18n:ui.this_mac]]";
+        const to=document.createElement('span');to.className='location-to';to.textContent=state.textContent;
+        state.replaceChildren(from,to);state.classList.add('location-move');
+        article.classList.add('moved-to-cloud');
+        if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>article.scrollIntoView?.({behavior:'smooth',block:'nearest'}));
+        clearTimeout(agentLocationTimer);
+        agentLocationTimer=setTimeout(()=>{
+         agentLocationTimer=null;
+         if(pendingAgentRender){pendingAgentRender=false;window.renderAgents(detectedAgents);}
+        },1100);
+       }
+      }
       if (agentMagpie && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
       if(!nativeOnly){
         const row=document.createElement('div');row.className='agent-integration-row';
