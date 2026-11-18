@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -69,7 +70,8 @@ func TestStableMessageIDsSwitchLocalesWithoutChangingUserData(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := `const vm=require('node:vm'),assert=require('node:assert/strict');
-const messages=JSON.parse(process.argv[1]).messages;
+const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const messages=input.catalog.messages;
 class Element {
  constructor(text,attributes={},kind='ui'){this.attributes={...attributes};this.kind=kind;this.nodeType=1;this.node={nodeType:3,parentElement:this,nodeValue:text};this.value='literal [[i18n:ui.settings]] input';}
  get textContent(){return this.node.nodeValue;} set textContent(v){this.node.nodeValue=v;}
@@ -88,7 +90,7 @@ const elements=[label,clonedLabel,dynamic,count,identity,literalIdentity,termina
 const select={value:'',querySelectorAll(){return []}};
 const document={body:{},documentElement:{},querySelector(){return select},createTreeWalker(){let i=0;return{nextNode(){return elements[i++]?.node||null}}},querySelectorAll(s){return s.startsWith('[aria-label]')?[input,identity,literalIdentity]:[status,untitled]}};
 const context=vm.createContext({window:{FennecMessages:messages},document,NodeFilter:{SHOW_TEXT:4},localStorage:{getItem(){return 'en-US'},setItem(){}},MutationObserver:class{observe(){}disconnect(){}}});
-vm.runInContext(process.argv[2],context);
+vm.runInContext(input.source,context);
 for(const [locale,expected] of [['zh-CN','设置'],['zh-TW','設定'],['ja','設定'],['ko','설정'],['en-GB','Settings'],['en-US','Settings']]){
  vm.runInContext('language='+JSON.stringify(locale)+';localize()',context);
  assert.equal(label.textContent,expected);assert.equal(clonedLabel.textContent,expected);assert.equal(count.textContent,'9');assert.equal(identity.textContent,'Settings');
@@ -99,7 +101,16 @@ dynamic.textContent='[[i18n:ui.account]]';vm.runInContext('localize()',context);
 vm.runInContext("language='en-US';localize()",context);assert.equal(dynamic.textContent,'Account');
 assert.equal(vm.runInContext("messageText('installation.install_here','ja')",context),'Install Here');
 process.stdout.write('PASS locale switching, stable IDs, fallback, and user-content preservation');`
-	output, err := exec.Command("node", "-e", script, string(catalog), string(source)).CombinedOutput()
+	payload, err := json.Marshal(struct {
+		Catalog json.RawMessage `json:"catalog"`
+		Source  string          `json:"source"`
+	}{catalog, string(source)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("node", "-e", script)
+	command.Stdin = bytes.NewReader(payload)
+	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("locale switching: %v\n%s", err, output)
 	}
