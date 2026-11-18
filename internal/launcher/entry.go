@@ -50,6 +50,16 @@ func installEntry(path, daemon, agent string) error {
 				return err
 			}
 		}
+		if !old.Moved && (bytes.Equal(current, []byte(old.Wrapper)) || old.PendingWrapper != "" && bytes.Equal(current, []byte(old.PendingWrapper))) {
+			if _, _, _, store := versionStore(old.Target); store {
+				// Wrapped by an earlier Fennec: hand the entry back to the
+				// agent's updater, at its newest installed version.
+				if err := restoreEntry(path); err != nil {
+					return err
+				}
+				return ErrSelfUpdatingEntry
+			}
+		}
 		if bytes.Equal(current, []byte(old.Wrapper)) {
 			if old.Wrapper != entryScript(daemon, agent, old.Target) {
 				return fmt.Errorf("entry points to a different daemon; restore before reinstalling")
@@ -89,6 +99,9 @@ func installEntry(path, daemon, agent string) error {
 	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
+	}
+	if _, _, _, store := versionStore(target); store {
+		return ErrSelfUpdatingEntry
 	}
 	for _, p := range []string{target, daemon} {
 		info, err := os.Stat(p)
@@ -173,7 +186,7 @@ func restoreEntry(path string) error {
 	temp.Close()
 	os.Remove(name)
 	defer os.Remove(name)
-	if err = os.Symlink(record.Link, name); err != nil {
+	if err = os.Symlink(currentLink(record.Link, record.Target), name); err != nil {
 		return err
 	}
 	if err = os.Rename(name, path); err != nil {

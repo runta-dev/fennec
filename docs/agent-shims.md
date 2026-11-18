@@ -161,6 +161,16 @@ Claude Code's native installer and Cursor's installer rewrite a
 `brew upgrade` reinstall the link. Each update silently replaces the entry
 wrapper; `ReconcileEntry` preserves the new link as an external change.
 
+Entries inside a `versions/` store (Claude Code's native installer, Cursor's
+installer) are not wrapped at all. Their updater installs each version beside
+the others and switches by repointing the entry symlink; a wrapper pinned the
+version found at installation, so Claude Code kept downloading versions it
+could not switch to, and removal restored the stale link beside newer ones,
+which Claude Code reported at every start (2026-11-18). Shell functions and
+shims cover these agents. An entry an earlier Fennec wrapped is handed back on
+the next reconcile, and every restore of such an entry points it at the newest
+installed version.
+
 ### Permissions and system
 
 `~/.local/share` or `~/.config` owned by root after `sudo npm i -g`, managed
