@@ -29,6 +29,10 @@ import (
 	crypto "golang.org/x/crypto/ssh"
 )
 
+// Bound the UTF-8 command bytes, leaving room under the SSH packet limit.
+// stdin and file transfers are separate streams and do not share this limit.
+const maxExecCommandBytes = 128 << 10
+
 type Event struct {
 	Kind        string `json:"kind,omitempty"`
 	Type        string `json:"type"`
@@ -242,8 +246,17 @@ func RunWithApproval(ctx context.Context, directory string, input io.Reader, out
 			session.Exit(0)
 			return
 		}
-		if command == "" || len(command) > 8192 || session.Subsystem() != "" {
-			io.WriteString(session.Stderr(), "Fennec supports approved exec requests only.\n")
+		var requestError string
+		switch {
+		case session.Subsystem() != "":
+			requestError = "Fennec: SSH subsystems are not supported by the exec connector.\n"
+		case command == "":
+			requestError = "Fennec: an explicit command is required; interactive shells are not supported.\n"
+		case len(command) > maxExecCommandBytes:
+			requestError = "Fennec: command exceeds 128 KiB (131072 bytes); send the script through stdin or upload it as a file.\n"
+		}
+		if requestError != "" {
+			io.WriteString(session.Stderr(), requestError)
 			session.Exit(126)
 			return
 		}

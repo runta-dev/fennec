@@ -55,8 +55,8 @@ func EncodeDesktopMCP(spec DesktopMCPSpec) (string, error) {
 		return "", err
 	}
 	command := DesktopMCPCommand + " " + base64.RawURLEncoding.EncodeToString(data)
-	if len(command) > 8192 {
-		return "", fmt.Errorf("desktop MCP definition too large")
+	if len(command) > maxExecCommandBytes {
+		return "", fmt.Errorf("desktop MCP command exceeds 128 KiB (131072 bytes)")
 	}
 	return command, nil
 }
