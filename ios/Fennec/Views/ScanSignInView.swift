@@ -57,20 +57,20 @@ struct ScanSignInView: View {
 
     private func consentPanel(_ consent: LoginConsent) -> some View {
         VStack(spacing: 14) {
-            Text("Authorize this iPhone").font(.headline)
+            Text(L10n.text("ios.authorize_phone")).font(.headline)
             Text(consent.client_name).font(.subheadline)
-            Picker("Organization", selection: $organizationID) {
-                Text("Select an organization").tag("")
+            Picker(L10n.text("ios.organization"), selection: $organizationID) {
+                Text(L10n.text("ios.select_organization")).tag("")
                 ForEach(consent.organizations) { organization in
                     Text(organization.name).tag(organization.id)
                 }
             }
-            Text("\(consent.access) · \(consent.credential_expires_in_days) days")
+            Text(L10n.text("ios.credential_access_duration", values: ["access": consent.access, "days": String(consent.credential_expires_in_days)]))
                 .font(.footnote)
-            Button("Authorize device") { auth.approve(organization: organizationID) }
+            Button(L10n.text("ios.authorize_device")) { auth.approve(organization: organizationID) }
                 .disabled(!consent.organizations.contains { $0.id == organizationID })
                 .buttonStyle(.borderedProminent)
-            Button("Cancel") { auth.cancelSignIn() }
+            Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }
         }
         .padding(24).frame(maxWidth: .infinity)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30))

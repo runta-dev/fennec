@@ -1,5 +1,25 @@
 {
   "messages": {
+    "ios.authorize_phone": {
+      "en-US": "Authorize this iPhone",
+      "zh-CN": "授权此 iPhone"
+    },
+    "ios.organization": {
+      "en-US": "Organization",
+      "zh-CN": "组织"
+    },
+    "ios.select_organization": {
+      "en-US": "Select an organization",
+      "zh-CN": "选择组织"
+    },
+    "ios.credential_access_duration": {
+      "en-US": "{access} · {days} days",
+      "zh-CN": "{access} · {days} 天"
+    },
+    "ios.authorize_device": {
+      "en-US": "Authorize device",
+      "zh-CN": "授权设备"
+    },
     "ios.mac_online": {
       "en-US": "Mac is back online",
       "zh-CN": "Mac 已重新上线"
