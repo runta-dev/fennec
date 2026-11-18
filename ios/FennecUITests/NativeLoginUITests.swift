@@ -11,14 +11,14 @@ final class NativeLoginUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         XCTAssertTrue(app.buttons["Continue with Google"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Continue with GitHub"].exists)
-        XCTAssertTrue(app.buttons["Continue with Email"].exists)
+        XCTAssertTrue(app.buttons["Sign in with email"].exists)
         XCTAssertTrue(app.buttons["Scan QR code"].exists)
         XCTAssertFalse(app.buttons["Choose from Photos"].exists)
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "Native-Login-Choices"
         shot.lifetime = .keepAlways
         add(shot)
-        app.buttons["Continue with Email"].tap()
+        app.buttons["Sign in with email"].tap()
         XCTAssertTrue(app.textFields["login-email-address"].exists)
         XCTAssertTrue(app.buttons["Send code"].exists)
         app.buttons["Back"].tap()

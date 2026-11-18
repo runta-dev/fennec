@@ -117,10 +117,16 @@ struct ScanSignInView: View {
         VStack(spacing: 12) {
             loginButton(L10n.text("ios.google_signin"), asset: "auth-google", method: "google")
             loginButton(L10n.text("ios.github_signin"), asset: "auth-github", method: "github")
-            Button { mode = "email" } label: { loginLabel(L10n.text("ios.email_signin"), symbol: "envelope") }
-                .disabled(auth.isAuthorizing)
             Button { mode = "scan" } label: { loginLabel(L10n.text("ios.scan"), symbol: "qrcode.viewfinder") }
                 .disabled(auth.isAuthorizing)
+            Button { mode = "email" } label: {
+                Label(L10n.text("ios.email_signin"), systemImage: "envelope")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.fg2)
+                    .frame(minHeight: 44)
+            }
+            .disabled(auth.isAuthorizing)
+            .padding(.top, 8)
             if auth.isAuthorizing {
                 ProgressView().padding(.top, 8)
                 Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }

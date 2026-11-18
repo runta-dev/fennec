@@ -309,8 +309,8 @@
       "zh-CN": "使用 GitHub 继续"
     },
     "ios.email_signin": {
-      "en-US": "Continue with Email",
-      "zh-CN": "使用邮箱继续"
+      "en-US": "Sign in with email",
+      "zh-CN": "使用邮箱登录"
     },
     "ios.approve_mac": {
       "en-US": "Approve on your Mac",
