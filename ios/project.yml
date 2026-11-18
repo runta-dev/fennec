@@ -40,6 +40,8 @@ targets:
         PRODUCT_NAME: Fennec
         INFOPLIST_KEY_CFBundleDisplayName: Fennec
         INFOPLIST_KEY_NSCameraUsageDescription: Scan the sign-in code shown by Fennec on your Mac.
+        # Only standard HTTPS and SSH: exempt, so uploads skip the export-compliance question.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
