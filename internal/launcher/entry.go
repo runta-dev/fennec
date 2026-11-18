@@ -15,6 +15,15 @@ type entryRecord struct {
 	Target         string `json:"target"`
 	Wrapper        string `json:"wrapper"`
 	PendingWrapper string `json:"pending_wrapper,omitempty"`
+	// Moved marks an entry that was a regular executable (Kimi Code's and
+	// OpenCode's installers write a single binary, not a link). Target is
+	// then a hard link of it beside the entry, MovedName(path).
+	Moved bool `json:"moved,omitempty"`
+}
+
+// MovedName is where a regular-file entry's original stays while wrapped.
+func MovedName(path string) string {
+	return filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".fennec-original")
 }
 
 var errManagedLauncher = errors.New("managed launcher is not an original agent executable")
@@ -47,6 +56,20 @@ func installEntry(path, daemon, agent string) error {
 			}
 			return nil
 		}
+		if old.Moved {
+			// The agent's updater wrote a new binary over the wrapper: the kept
+			// copy is the old version. Drop it and wrap the new one.
+			if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && !bytes.Contains(current[:min(len(current), 128)], []byte("# Fennec managed")) {
+				if err := os.Remove(old.Target); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+				if err := os.Remove(path + ".fennec-original.json"); err != nil {
+					return err
+				}
+				return installMovedEntry(path, daemon, agent)
+			}
+			return fmt.Errorf("entry changed since installation; reconcile before replacing")
+		}
 		link, linkErr := os.Readlink(path)
 		target, targetErr := filepath.EvalSymlinks(path)
 		if linkErr == nil && targetErr == nil && link == old.Link && target == old.Target {
@@ -58,7 +81,10 @@ func installEntry(path, daemon, agent string) error {
 	}
 	link, err := os.Readlink(path)
 	if err != nil {
-		return fmt.Errorf("entry must be a symlink: %w", err)
+		if info, statErr := os.Lstat(path); statErr == nil && info.Mode().IsRegular() && info.Mode()&0111 != 0 {
+			return installMovedEntry(path, daemon, agent)
+		}
+		return fmt.Errorf("entry must be a symlink or an executable: %w", err)
 	}
 	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -120,7 +146,7 @@ func restoreEntry(path string) error {
 		return err
 	}
 	var record entryRecord
-	if json.Unmarshal(data, &record) != nil || record.Link == "" {
+	if json.Unmarshal(data, &record) != nil || (record.Link == "" && !record.Moved) {
 		return fmt.Errorf("invalid entry backup")
 	}
 	current, err := os.ReadFile(path)
@@ -129,6 +155,15 @@ func restoreEntry(path string) error {
 	}
 	if !bytes.Equal(current, []byte(record.Wrapper)) && (record.PendingWrapper == "" || !bytes.Equal(current, []byte(record.PendingWrapper))) {
 		return fmt.Errorf("entry was changed by another installer; preserved")
+	}
+	if record.Moved {
+		if record.Target != MovedName(path) {
+			return fmt.Errorf("invalid entry backup")
+		}
+		if err = os.Rename(record.Target, path); err != nil {
+			return err
+		}
+		return os.Remove(path + ".fennec-original.json")
 	}
 	temp, err := os.CreateTemp(filepath.Dir(path), ".fennec-restore-")
 	if err != nil {
@@ -145,6 +180,82 @@ func restoreEntry(path string) error {
 		return err
 	}
 	return os.Remove(path + ".fennec-original.json")
+}
+
+// installMovedEntry wraps a regular executable. The sidecar is written first;
+// the original is hard-linked beside the entry, then the wrapper replaces the
+// entry atomically, so the command is never missing. An updater that writes
+// through its own executable path updates the kept copy, which the wrapper
+// runs; one that writes the entry path replaces the wrapper, and the next
+// reconcile wraps the new binary.
+func installMovedEntry(path, daemon, agent string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if bytes.Contains(data[:min(len(data), 128)], []byte("# Fennec managed")) {
+		return fmt.Errorf("entry is a Fennec launcher without its record")
+	}
+	for _, p := range []string{daemon} {
+		info, err := os.Stat(p)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+			return fmt.Errorf("entry executable unavailable")
+		}
+	}
+	kept := MovedName(path)
+	if _, err := os.Lstat(kept); err == nil {
+		return fmt.Errorf("%s exists without a Fennec record; preserved", kept)
+	}
+	original, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	script := entryScript(daemon, agent, kept)
+	record, _ := json.Marshal(entryRecord{Target: kept, Wrapper: script, Moved: true})
+	backup, err := os.OpenFile(path+".fennec-original.json", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = backup.Write(record)
+	if err == nil {
+		err = backup.Sync()
+	}
+	if closeErr := backup.Close(); err == nil {
+		err = closeErr
+	}
+	undo := func() { os.Remove(kept); os.Remove(path + ".fennec-original.json") }
+	if err != nil {
+		undo()
+		return err
+	}
+	if err = os.Link(path, kept); err != nil {
+		undo()
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), ".fennec-entry-")
+	if err != nil {
+		undo()
+		return err
+	}
+	defer os.Remove(temp.Name())
+	_, err = temp.WriteString(script)
+	if err == nil {
+		err = temp.Chmod(0755)
+	}
+	temp.Close()
+	if err == nil {
+		if now, statErr := os.Stat(path); statErr != nil || !os.SameFile(now, original) {
+			err = fmt.Errorf("entry changed during installation")
+		}
+	}
+	if err == nil {
+		err = os.Rename(temp.Name(), path)
+	}
+	if err != nil {
+		undo()
+		return err
+	}
+	return nil
 }
 
 // OriginalEntry resolves only an intact managed wrapper, without executing it.
@@ -262,8 +373,13 @@ func writeEntryRecord(path string, record entryRecord) error {
 // upgrades readable and restorable on either side of the atomic rename.
 func ReconcileEntry(path, daemon, agent string) error {
 	return withEntryLock(path, func() error {
-		if err := installEntry(path, daemon, agent); err == nil {
+		installErr := installEntry(path, daemon, agent)
+		if installErr == nil {
 			return nil
+		}
+		if _, err := os.Lstat(path + ".fennec-original.json"); os.IsNotExist(err) {
+			// Nothing to upgrade: the install's own reason is the answer.
+			return installErr
 		}
 		if !Supported[agent] || !filepath.IsAbs(daemon) {
 			return fmt.Errorf("invalid entry reconciliation")
@@ -279,7 +395,7 @@ func ReconcileEntry(path, daemon, agent string) error {
 			return err
 		}
 		var record entryRecord
-		if len(data) > 65536 || json.Unmarshal(data, &record) != nil || record.Link == "" {
+		if len(data) > 65536 || json.Unmarshal(data, &record) != nil || (record.Link == "" && !record.Moved) {
 			return fmt.Errorf("invalid managed backup")
 		}
 		current, err := os.ReadFile(path)

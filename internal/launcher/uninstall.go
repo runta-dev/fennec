@@ -21,7 +21,7 @@ func UninstallEntry(path string) error {
 			return err
 		}
 		var record entryRecord
-		if json.Unmarshal(raw, &record) != nil || record.Link == "" || !strings.HasPrefix(record.Wrapper, "#!/bin/sh\n# Fennec managed entry v1\n") {
+		if json.Unmarshal(raw, &record) != nil || (record.Link == "" && !record.Moved) || !strings.HasPrefix(record.Wrapper, "#!/bin/sh\n# Fennec managed entry v1\n") {
 			return fmt.Errorf("invalid Fennec entry backup; executable preserved")
 		}
 		current, err := os.ReadFile(path)
@@ -33,6 +33,12 @@ func UninstallEntry(path string) error {
 		}
 		if bytes.Contains(current, []byte("# Fennec managed entry v1\n")) {
 			return fmt.Errorf("modified Fennec wrapper requires review; executable preserved")
+		}
+		if record.Moved && record.Target == MovedName(path) {
+			// The updater replaced the wrapper; the kept copy is the old version.
+			if err := os.Remove(record.Target); err != nil && !os.IsNotExist(err) {
+				return err
+			}
 		}
 		return os.Remove(path + ".fennec-original.json")
 	})
@@ -169,7 +175,7 @@ func ValidateUninstallEntry(path string) error {
 		return err
 	}
 	var record entryRecord
-	if json.Unmarshal(raw, &record) != nil || record.Link == "" || !strings.HasPrefix(record.Wrapper, "#!/bin/sh\n# Fennec managed entry v1\n") {
+	if json.Unmarshal(raw, &record) != nil || (record.Link == "" && !record.Moved) || !strings.HasPrefix(record.Wrapper, "#!/bin/sh\n# Fennec managed entry v1\n") {
 		return fmt.Errorf("invalid Fennec entry backup; executable preserved")
 	}
 	current, err := os.ReadFile(path)
