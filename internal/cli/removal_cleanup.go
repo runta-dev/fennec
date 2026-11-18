@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fennec/internal/agent"
+	"fennec/internal/installation"
 	"fennec/internal/launcher"
 	"fennec/internal/uninstall"
 	"fmt"
@@ -119,8 +120,7 @@ func cleanupAfterRemoval() error {
 		if launcher.ApplicationPresent(home) || otherInstalledApplication(home, app) {
 			return false
 		}
-		matches, _ := filepath.Glob(filepath.Join(filepath.Dir(app), ".fennec-update-*", "incoming.app"))
-		return len(matches) == 0
+		return !installation.UpdateInProgress(filepath.Dir(app))
 	}
 	if !removed() {
 		return nil
@@ -207,6 +207,10 @@ func performRemovalCleanup(ctx context.Context, home, app string, entries []stri
 	if data, err := os.ReadFile(plist); err == nil && bytes.Contains(data, []byte("<string>"+expectedDaemon+"</string>")) {
 		_ = os.Remove(plist)
 		daemonRemoved = true
+	}
+	// Previous bundles kept by updates, and interrupted installs.
+	for _, dir := range installation.PruneStaging(filepath.Dir(app)) {
+		cleanupLog(home, "removed "+dir)
 	}
 	if removeSelf {
 		_ = os.RemoveAll(launcher.StableDir(home))

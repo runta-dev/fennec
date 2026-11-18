@@ -360,6 +360,16 @@ Trash, no `.fennec-update-*` replacement is in progress, LaunchServices
 registers no other `com.runta.fennec` bundle, and two observations at least
 two seconds apart agree.
 
+An update keeps the previous bundle in `.fennec-update-*/Fennec.app` for CLI
+clients still running from it, and an interrupted update leaves its
+`incoming.app`. Nothing removed either: one Mac had 289 such directories
+(108 GB) in `/Applications`, and the Nov 15 `incoming.app` made both removal
+paths treat every Trash as an update in progress, so no cleanup ran
+(2026-11-18). Only an `incoming.app` written within ten minutes now counts as an
+update in progress, and `installation.PruneStaging` removes staging
+directories no running process executes from and that were not written in the
+last ten minutes, at daemon start and during removal.
+
 ### Cleanup order
 
 Each step is idempotent, records its result in the manifest, and touches only

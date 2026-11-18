@@ -57,7 +57,7 @@ func pathHasTrashSegment(path string) bool {
 
 func bundleRemovedOrTrashed(app string, currentExecutable func() string) bool {
 	parent := filepath.Dir(app)
-	if matches, _ := filepath.Glob(filepath.Join(parent, ".fennec-update-*", "incoming.app")); len(matches) > 0 {
+	if installation.UpdateInProgress(parent) {
 		return false
 	}
 	if currentExecutable != nil {

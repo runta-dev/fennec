@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Removal after the application is trashed restores the user's startup
@@ -79,5 +80,20 @@ func TestAgentForCommand(t *testing.T) {
 		if got := agentForCommand(command); got != want {
 			t.Errorf("%s: %q, want %q", command, got, want)
 		}
+	}
+}
+
+// A stale incoming.app left by an interrupted update (Nov 15 on a real Mac)
+// made the Trash watcher treat every removal as an update in progress.
+func TestTrashDetectionIgnoresAbandonedUpdate(t *testing.T) {
+	parent := t.TempDir()
+	app := filepath.Join(parent, "Fennec.app")
+	incoming := filepath.Join(parent, ".fennec-update-1/incoming.app")
+	os.MkdirAll(incoming, 0755)
+	old := time.Now().Add(-72 * time.Hour)
+	os.Chtimes(incoming, old, old)
+	os.Chtimes(filepath.Dir(incoming), old, old)
+	if !bundleRemovedOrTrashed(app, nil) {
+		t.Fatal("a removed application was not detected beside an abandoned update")
 	}
 }

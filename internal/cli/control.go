@@ -10,6 +10,7 @@ import (
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
+	"fennec/internal/installation"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
 	"fennec/internal/sandbox"
@@ -93,6 +94,10 @@ func serveControl(arguments []string) error {
 	return control.Serve(ctx, socket, controller.Handlers(), func() {
 		if err := refreshInstalledLaunchers(home, executable); err != nil {
 			_ = writePublicJSON(filepath.Join(home, ".config/fennec/diagnostics/launchers.json"), map[string]string{"error": err.Error()})
+		}
+		if app := installedBundleForTrashWatch(os.Args[0], home); app != "" {
+			// Previous bundles kept by updates, once nothing runs from them.
+			go installation.PruneStaging(filepath.Dir(app))
 		}
 		if terminalIntegrationWanted(home) {
 			reconcileTerminalIntegrationSoon(home, executable)
