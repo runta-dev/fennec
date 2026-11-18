@@ -3,8 +3,7 @@ import WebKit
 
 // Shows the third-party notices bundled in Contents/Resources/licenses. Each
 // document opens in its own window with a WKWebView, whose web content
-// process renders the multi-megabyte Chromium credits page without blocking
-// the menu-bar UI. Only the documents named here can be opened.
+// process renders it without blocking the menu-bar UI. Only the documents named here can be opened.
 final class LicenseViewer: NSObject, WKNavigationDelegate, NSWindowDelegate {
     private struct Document {
         let file: String
@@ -12,8 +11,6 @@ final class LicenseViewer: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
     private static let documents: [String: Document] = [
         "fennec": Document(file: "THIRD_PARTY_NOTICES.md", titleKey: "ui.third_party_notices"),
-        "chromium-credits": Document(file: "Chromium-credits.html", titleKey: "ui.chromium_credits"),
-        "chromium-license": Document(file: "Chromium-LICENSE.txt", titleKey: "ui.chromium_license"),
     ]
     private var windows: [String: NSWindow] = [:]
 

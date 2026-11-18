@@ -1,7 +1,8 @@
 #!/bin/bash
 # Builds the signed, notarized Fennec release: the full ZIP and ULMO DMG for
-# first installs, plus the incremental-update components (core archive,
-# content-addressed Chromium archive, component manifest).
+# first installs, plus the incremental-update components (core archive and
+# component manifest; Fennec.app carries no nested components since Fennec CUA
+# and its Chromium ship separately).
 #
 # --dry-run builds the app and every update archive locally with the local
 # signing identity (FENNEC_SIGN_IDENTITY, default "Fennec Local Development")
@@ -10,13 +11,9 @@
 #
 # Environment:
 #   FENNEC_RELEASE_DIR          output directory (default: release)
-#   FENNEC_CUA_CACHE            signed Chromium cache. Release builds must keep
-#                               it between runs: a re-signed Chromium changes
-#                               its tree digest and every user downloads it
-#                               again (default: ~/Library/Caches/fennec/release-cua-cache)
 #   FENNEC_PREVIOUS_COMPONENTS  previous release's *-components.json; the build
-#                               fails if Chromium's inputs are unchanged but
-#                               its content is not
+#                               fails if a nested component's inputs are
+#                               unchanged but its content is not
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dry_run=0
@@ -68,9 +65,6 @@ if [[ $dry_run == 0 ]]; then
   identity=$(security find-identity -v -p codesigning "$release_keychain" | awk '/"Developer ID Application:/{print $2;exit}')
   [[ "$identity" =~ ^[0-9A-Fa-f]{40}$ ]] || { echo 'Developer ID Application identity missing' >&2; exit 1; }
   export FENNEC_SIGN_KEYCHAIN="$release_keychain"
-  # One signed Chromium per pin, packager and identity, kept across releases
-  # so its bytes (and tree digest) stay put and updates reuse it.
-  export FENNEC_CUA_CACHE="${FENNEC_CUA_CACHE:-$HOME/Library/Caches/fennec/release-cua-cache}"
 else
   identity="${FENNEC_SIGN_IDENTITY:-Fennec Local Development}"
   [[ "$identity" != - ]] || { echo 'A dry run still needs a signing identity' >&2; exit 1; }
@@ -80,8 +74,6 @@ version="${FENNEC_VERSION:-0.3.$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//
 export FENNEC_VERSION="$version" FENNEC_SIGN_IDENTITY="$identity" FENNEC_RELEASE=1
 export FENNEC_BUILD_DIR="$release_work/build" FENNEC_DAEMON_BINARY="$release_work/fennec-daemon"
 if [[ $dry_run == 0 ]]; then
-  ./scripts/restore-release-cua-cache.sh "$identity" "$FENNEC_CUA_CACHE" "$release_work/previous"
-  export FENNEC_PREVIOUS_COMPONENTS="${FENNEC_PREVIOUS_COMPONENTS:-$release_work/previous/components.json}"
 fi
 go build -trimpath -o "$FENNEC_DAEMON_BINARY" .
 ./scripts/build-macos.sh
@@ -105,7 +97,7 @@ if [[ $dry_run == 0 ]]; then
   spctl --assess --type execute --verbose=2 "$app"
 fi
 ditto -c -k --sequesterRsrc --keepParent "$app" "$release_dir/Fennec-$version-macos-arm64.zip"
-# Incremental updates: the stapled app split into core plus the Chromium
+# Incremental updates: the stapled app split into core plus any nested
 # component, then reassembled from those archives and compared with the app.
 previous_components="${FENNEC_PREVIOUS_COMPONENTS:-}"
 # The latest published release is the one users update from. It lives in
@@ -119,7 +111,7 @@ if [[ -z "$previous_components" && $dry_run == 0 ]]; then
     previous_components="$release_work/previous/previous-components.json"
   fi
 fi
-[[ -n "$previous_components" ]] || echo 'No previous component manifest: cannot prove Chromium reuse against the last release' >&2
+[[ -n "$previous_components" ]] || echo 'No previous component manifest: cannot prove nested component reuse against the last release' >&2
 go run ./cmd/release-components package -app "$app" -version "$version" -arch arm64 -out "$release_dir" ${previous_components:+-previous "$previous_components"}
 go run ./cmd/release-components check -app "$app" -version "$version" -arch arm64 -out "$release_dir"
 if [[ $dry_run == 0 ]]; then
@@ -128,8 +120,7 @@ if [[ $dry_run == 0 ]]; then
   ditto "$app" "$release_work/dmg/Fennec.app"
   ln -s /Applications "$release_work/dmg/Applications"
   dmg="$release_dir/Fennec-$version-macos-arm64.dmg"
-  # ULMO (LZMA) keeps the download small now that Fennec.app carries Chromium:
-  # about 153 MB against 217 MB for UDZO. Mounting it needs macOS 10.15 or later.
+  # ULMO (LZMA) keeps the download small. Mounting it needs macOS 10.15 or later.
   hdiutil create -volname Fennec -srcfolder "$release_work/dmg" -format ULMO -ov "$dmg" >/dev/null
   codesign --force --timestamp --keychain "$release_keychain" --sign "$identity" "$dmg"
   notarize "$dmg" "$release_dir/notarization-dmg.json"

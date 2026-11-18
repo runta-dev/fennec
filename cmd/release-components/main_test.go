@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,5 +32,27 @@ func TestComparePreviousRequiresStableChromiumForUnchangedInputs(t *testing.T) {
 	empty, _ := json.Marshal(&updater.ComponentSet{Format: 1})
 	if note, err := comparePrevious(empty, manifest(a, "key-1")); err != nil || !strings.Contains(note, "new") {
 		t.Fatalf("first component release: %q %v", note, err)
+	}
+}
+
+// Fennec.app no longer bundles Chromium: its manifest lists no component and
+// still verifies, so packaging produces a core-only release.
+func TestBundleWithoutChromiumHasNoComponents(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "Fennec.app")
+	if err := os.MkdirAll(filepath.Join(app, "Contents/MacOS"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	set, err := bundleManifest(app, "")
+	if err != nil || len(set.Components) != 0 {
+		t.Fatalf("manifest %+v %v", set, err)
+	}
+	raw, _ := json.Marshal(set)
+	path := filepath.Join(app, filepath.FromSlash(updater.BundleComponentsPath))
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyBundle(app); err != nil {
+		t.Fatalf("verify: %v", err)
 	}
 }

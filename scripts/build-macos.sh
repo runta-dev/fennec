@@ -95,39 +95,12 @@ PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
-# fennec-cua (computer use) and the pinned open-source Chromium it drives,
-# Apple silicon only. cua-package stages and signs Chromium.app once per pin,
-# packager source and identity (its downloads and generated notices stay in
-# the user cache directory, so a warm cache needs no network); reusing the
-# signed app keeps its code hash, and with it the "Fennec Safe Storage"
-# Keychain access, stable across ordinary rebuilds. fennec-cua itself is
-# rebuilt from this checkout every time, like the daemon. Byte-identical
-# Chromium across releases also lets auto-updates reuse the installed copy
-# instead of downloading it, so release builds keep FENNEC_CUA_CACHE between
-# runs (see package-release-macos.sh).
-[ "$(uname -m)" = arm64 ] || { echo 'fennec-cua and its bundled Chromium are built for Apple silicon (arm64) only.' >&2; exit 1; }
-cua_cache="${FENNEC_CUA_CACHE:-$PWD/build/cua-cache}"
-cua_source=$(cd cua && find cmd/cua-package internal/chromium internal/credits -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d ' ' -f 1)
-cua_key=$(printf '%s' "$identity:$cua_source" | shasum -a 256 | cut -d ' ' -f 1)
-cua_stage="$cua_cache/$cua_key"
-if [ ! -f "$cua_stage/MANIFEST.json" ]; then
-  rm -rf "$cua_stage.partial"
-  mkdir -p "$cua_cache"
-  (cd cua && go run ./cmd/cua-package -stage "$cua_stage.partial" -skip-build -identity "$identity" -keychain "$sign_keychain")
-  mv "$cua_stage.partial" "$cua_stage"
-  # One signed Chromium is enough; earlier pins or identities are stale.
-  find "$cua_cache" -mindepth 1 -maxdepth 1 ! -name "$cua_key" -exec rm -rf {} +
-fi
-codesign --verify --deep --strict "$cua_stage/Chromium.app"
-(cd cua && MACOSX_DEPLOYMENT_TARGET=$deployment_target CGO_CFLAGS="-O2 -g -mmacosx-version-min=$deployment_target" CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -trimpath -o "$app/Contents/MacOS/fennec-cua" ./cmd/fennec-cua)
-sign_artifact "$app/Contents/MacOS/fennec-cua"
+# Fennec CUA and the Chromium it drives ship on their own (fennec-cua-v*
+# releases), not inside Fennec.app: Chromium was about 170 MB of the 215 MB
+# bundle. With no nested components, components.json is empty and updates
+# download the full archive, now about the size of the core.
 rm -rf "$app/Contents/Helpers"
-mkdir -p "$app/Contents/Helpers"
-ditto "$cua_stage/Chromium.app" "$app/Contents/Helpers/Chromium.app"
-cp "$cua_stage/licenses/"* "$app/Contents/Resources/licenses/"
-# Sealed by the outer signature: the updater reads which Chromium (by tree
-# digest) this bundle carries and reuses it when a release needs the same one.
-go run ./cmd/release-components bundle -app "$app" -chromium-key "$cua_key"
+go run ./cmd/release-components bundle -app "$app"
 /bin/chmod -R -P a+rX,go-w "$app"
 if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   # Keep the stable helper byte-identical: the daemon satisfies the same

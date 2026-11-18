@@ -91,16 +91,11 @@ local shell/PTY and administrator elevation are not provided.
 The parent closes stdin to stop the service. Do not claim general SSH compatibility.
 
 The bundle contains the Go executable `fen` in `Contents/MacOS`, with `fennec-daemon` as a compatibility symlink.
-It also bundles computer use: `Contents/MacOS/fennec-cua`, built by the packager from
-`cua/` in the same checkout, and the pinned open-source Chromium it drives in
-`Contents/Helpers/Chromium.app`, staged and signed by `cua/cmd/cua-package`. The signed
-Chromium is cached in `build/cua-cache` (keyed by signing identity and packager source;
-the archive and generated notices stay in `~/Library/Caches/fennec/cua`), so a warm
-build adds a few seconds and a new key about 25 seconds. Notices, including
-`THIRD_PARTY_NOTICES.md` and Chromium's credits, go to `Contents/Resources/licenses` and
-are listed under Settings, Licenses. `scripts/verify-macos-package.sh` checks fennec-cua,
-the nested Chromium signature, the notices, and runs `cua-package -smoke` on the bundled
-Chromium. Details: [cua/README.md](cua/README.md), "Inside Fennec.app".
+Fennec CUA and the Chromium it drives are not bundled: they ship as their own
+`fennec-cua-v*` releases, because Chromium was about 170 MB of a 215 MB bundle.
+Notices, including `THIRD_PARTY_NOTICES.md`, go to `Contents/Resources/licenses` and are
+listed under Settings, Licenses. `scripts/verify-macos-package.sh` checks that the bundle
+carries neither `fennec-cua` nor `Contents/Helpers`.
 Cross-build that binary for the Mac architecture on the remote dev machine, then
 set `FENNEC_DAEMON_BINARY` to its local path when running `make macos`.
 `python3 scripts/tests/local-ssh.py` tests deny/allow, stdout, exit status and

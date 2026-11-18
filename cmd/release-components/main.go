@@ -67,8 +67,13 @@ func usage() {
 }
 
 // bundleManifest describes app's nested components as they are on disk.
+// A bundle without Chromium (Fennec no longer ships Fennec CUA) has none.
 func bundleManifest(app, chromiumKey string) (*updater.ComponentSet, error) {
-	tree, err := updater.TreeDigest(filepath.Join(app, filepath.FromSlash(updater.ChromiumComponentPath)))
+	chromium := filepath.Join(app, filepath.FromSlash(updater.ChromiumComponentPath))
+	if _, err := os.Lstat(chromium); os.IsNotExist(err) {
+		return &updater.ComponentSet{Format: updater.ComponentsFormat, Components: []updater.Component{}}, nil
+	}
+	tree, err := updater.TreeDigest(chromium)
 	if err != nil {
 		return nil, fmt.Errorf("chromium component: %w", err)
 	}
@@ -108,8 +113,10 @@ func verifyBundle(app string) (*updater.ComponentSet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", updater.BundleComponentsPath, err)
 	}
-	if _, ok := sealed.Find(updater.ChromiumComponent); !ok {
-		return nil, errors.New("components.json does not list chromium")
+	if _, err := os.Lstat(filepath.Join(app, filepath.FromSlash(updater.ChromiumComponentPath))); err == nil {
+		if _, ok := sealed.Find(updater.ChromiumComponent); !ok {
+			return nil, errors.New("components.json does not list the bundled chromium")
+		}
 	}
 	for _, c := range sealed.Components {
 		got, err := updater.TreeDigest(filepath.Join(app, filepath.FromSlash(c.Path)))

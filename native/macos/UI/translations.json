@@ -1711,20 +1711,6 @@
       "zh-CN": "第三方声明",
       "zh-TW": "第三方聲明"
     },
-    "ui.chromium_credits": {
-      "en-US": "Chromium credits",
-      "ja": "Chromium のクレジット",
-      "ko": "Chromium 크레딧",
-      "zh-CN": "Chromium 致谢",
-      "zh-TW": "Chromium 致謝"
-    },
-    "ui.chromium_license": {
-      "en-US": "Chromium license",
-      "ja": "Chromium のライセンス",
-      "ko": "Chromium 라이선스",
-      "zh-CN": "Chromium 许可证",
-      "zh-TW": "Chromium 授權條款"
-    },
     "ui.light": {
       "en-US": "Light",
       "ja": "ライト",
