@@ -146,6 +146,11 @@ final class RuntaAuth {
         Task.detached { try? core.logout() }
     }
 
+    /// The App Review demo's account, shown without signing in to Runta.
+    func showDemoProfile(_ shown: Bool) {
+        profile = shown ? ReviewDemo.profile : nil
+    }
+
     func loadProfile() async {
         let core = self.core
         let json: String? = await Task.detached { try? goCall { core.profile($0) } }.value

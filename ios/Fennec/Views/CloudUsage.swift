@@ -49,6 +49,17 @@ final class AccountUsage {
         }
     }
 
+    /// Example meters and balance for the demo (ReviewDemo) and previews.
+    func showDemo() {
+        let cpu: [Double] = [8, 12, 31, 18, 9, 22, 41, 27, 14, 11, 19, 24]
+        metrics = Metrics(cpu_percent: 14.2, vcpus: 4, memory_used_bytes: 2.4 * 1_073_741_824, memory_max_mib: 8192,
+                          disk_used_bytes: 18.6 * 1_073_741_824, disk_total_bytes: 64 * 1_073_741_824,
+                          net_rx_bytes: 1.31 * 1_073_741_824, net_tx_bytes: 286 * 1_048_576,
+                          cpu_history: cpu, mem_history: cpu.map { 26 + $0 / 4 })
+        billing = Billing(currency: "USD", balance: 2500, spend: 418)
+        billingFailed = false
+    }
+
     /// Samples every two seconds until the page goes away (the task is cancelled).
     func watchMetrics(_ core: FennecmobileSessions) async {
         while !Task.isCancelled {

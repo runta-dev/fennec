@@ -19,6 +19,8 @@ final class SessionStore {
     var attachmentDrafts: [String: [DraftAttachment]] = [:]
     var attachmentErrors: [String: String] = [:]
     @ObservationIgnored var previewDownloads: [String: Task<URL, Error>] = [:]
+    /// Demo sessions' recorded replies in progress (ReviewDemo.swift).
+    @ObservationIgnored var demoReplies: [String: Task<Void, Never>] = [:]
 
     func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
         items.filter { $0.kind == "user" && $0.text == text }.count
@@ -87,7 +89,7 @@ final class SessionStore {
         return (titles, hits)
     }
 
-    private func update(_ id: String, _ change: (inout Session) -> Void) {
+    func update(_ id: String, _ change: (inout Session) -> Void) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         change(&sessions[index])
         sessions[index].updatedAt = .now
@@ -116,9 +118,16 @@ final class SessionStore {
             return
         }
         update(id) {
-            $0.messages.append(.init(kind: .user(text)))
-            $0.state = .working
+            $0.messages.append(.init(kind: .user(text), time: .now))
+            if $0.title == "Untitled session" { $0.title = Self.demoTitle(text) }
         }
+        playDemoReply(id)
+    }
+
+    /// A demo session's title from its first message, as agents name theirs.
+    static func demoTitle(_ text: String) -> String {
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        return line.count > 48 ? String(line.prefix(47)) + "…" : line
     }
 
     func approve(_ id: String, forSession: Bool) {
@@ -127,24 +136,24 @@ final class SessionStore {
             $0.messages.append(.init(kind: .step(forSession ? "Approved for this session" : "Approved")))
             $0.messages.append(.init(kind: .step("Ran \(approval.command)")))
             $0.approval = nil
-            $0.state = .working
         }
+        playDemoReply(id)
     }
 
     func deny(_ id: String, reason: String?) {
         update(id) {
             $0.approval = nil
             if let reason, !reason.isEmpty { $0.messages.append(.init(kind: .user(reason))) }
-            $0.state = .working
         }
+        playDemoReply(id)
     }
 
     func answer(_ id: String, with option: String) {
         update(id) {
             $0.question = nil
             $0.messages.append(.init(kind: .user(option)))
-            $0.state = .working
         }
+        playDemoReply(id)
     }
 
     func rename(_ id: String, to title: String) { update(id) { $0.title = title } }
@@ -154,6 +163,8 @@ final class SessionStore {
             Task { if await live({ try goCall { core.stop(address, sessionID: id, error: $0) } }) != nil { sessions.removeAll { $0.id == id } } }
             return
         }
+        demoReplies[id]?.cancel()
+        demoReplies[id] = nil
         sessions.removeAll { $0.id == id }
     }
 

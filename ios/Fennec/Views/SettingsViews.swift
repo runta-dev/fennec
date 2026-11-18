@@ -106,7 +106,7 @@ struct AccountView: View {
                     toggleRow(L10n.text("ios.notify_finished"), $notifyFinished, last: true)
                 }
                 ListCard {
-                    Button { auth.signOut() } label: {
+                    Button { if ReviewDemo.enabled { app.exitReviewDemo() } else { auth.signOut() } } label: {
                         ListRow(icon: "rectangle.portrait.and.arrow.right", iconColor: Theme.danger, title: L10n.text("ui.sign_out"), titleColor: Theme.danger, showDivider: false)
                     }
                     .buttonStyle(.plain)
@@ -122,7 +122,7 @@ struct AccountView: View {
         .background(Theme.bg)
         .navigationTitle(L10n.text("ui.account"))
         .navigationBarTitleDisplayMode(.inline)
-        .task { if !app.preview { await usage.loadBilling(auth.core) } }
+        .task { if app.preview { usage.showDemo() } else { await usage.loadBilling(auth.core) } }
         .task {
             guard let core = store.core else { return }
             await usage.watchMetrics(core)

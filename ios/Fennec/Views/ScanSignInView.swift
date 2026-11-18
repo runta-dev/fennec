@@ -15,6 +15,8 @@ struct ScanSignInView: View {
     @State private var email = ""
     @State private var code = ""
     @State private var resendAt = Date.distantPast
+    /// App Review's address was entered: no code was sent (ReviewDemo).
+    @State private var reviewCode = false
 
     var body: some View {
         ZStack {
@@ -72,7 +74,7 @@ struct ScanSignInView: View {
             }
             HStack {
                 if mode != "choices" {
-                    Button { auth.cancelSignIn(); mode = "choices"; code = "" } label: {
+                    Button { auth.cancelSignIn(); mode = "choices"; code = ""; reviewCode = false } label: {
                         Image(systemName: "chevron.left").frame(width: 44, height: 44)
                     }.accessibilityLabel(L10n.text("ios.back"))
                 }
@@ -159,27 +161,30 @@ struct ScanSignInView: View {
                 .keyboardType(.emailAddress).textContentType(.emailAddress)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .padding(16).background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
-                .disabled(auth.isAuthorizing)
+                .disabled(auth.isAuthorizing || reviewCode)
                 .accessibilityIdentifier("login-email-address")
-            if auth.emailCode {
+            if auth.emailCode || reviewCode {
                 Text(L10n.text("ios.enter_email_code")).font(.subheadline).foregroundStyle(Theme.fg2)
                 TextField(L10n.text("ios.verification_code"), text: $code)
                     .keyboardType(.numberPad).textContentType(.oneTimeCode)
                     .padding(16).background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityIdentifier("login-email-code")
                 if auth.emailError { Text(L10n.text("ios.invalid_email_code")).foregroundStyle(Theme.danger) }
-                Button { auth.verifyEmail(code) } label: { loginLabel(L10n.text("ios.verify_code"), symbol: "arrow.right") }
-                    .disabled(code.count < 6 || auth.emailVerifying)
+                Button {
+                    if reviewCode { app.enterReviewDemo() } else { auth.verifyEmail(code) }
+                } label: { loginLabel(L10n.text("ios.verify_code"), symbol: "arrow.right") }
+                    .disabled(!reviewCode && (code.count < 6 || auth.emailVerifying))
+                    .accessibilityIdentifier("login-email-verify")
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Button(L10n.text("ios.resend_code")) {
-                        auth.restartEmail(email)
+                        if !reviewCode { auth.restartEmail(email) }
                         resendAt = .now.addingTimeInterval(60)
                         code = ""
                     }.disabled(context.date < resendAt || auth.emailVerifying)
                 }
             } else {
                 Button {
-                    auth.signInEmail(email)
+                    if ReviewDemo.matches(email) { reviewCode = true } else { auth.signInEmail(email) }
                     resendAt = .now.addingTimeInterval(60)
                 } label: { loginLabel(L10n.text("ios.send_code")) }
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || auth.isAuthorizing)

@@ -41,19 +41,42 @@ final class AppModel {
     private(set) var environment: RuntaEnvironment
     private(set) var auth: RuntaAuth
     private(set) var store: SessionStore
-    let preview: Bool
+    /// Example sessions instead of the cloud computer: the App Review demo
+    /// (ReviewDemo), or `-PreviewSignedIn YES` in Debug builds.
+    private(set) var preview: Bool
 
     init() {
         #if DEBUG
-        preview = UserDefaults.standard.bool(forKey: "PreviewSignedIn")
+        let previewArgument = UserDefaults.standard.bool(forKey: "PreviewSignedIn")
         #else
-        preview = false
+        let previewArgument = false
         #endif
+        let preview = previewArgument || ReviewDemo.enabled
+        self.preview = preview
         let environment = RuntaEnvironment.saved
         let auth = RuntaAuth(environment: environment)
         self.environment = environment
         self.auth = auth
         self.store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
+        if ReviewDemo.enabled { auth.showDemoProfile(true) }
+    }
+
+    /// Opens the App Review demo; it stays on across launches until Sign out.
+    func enterReviewDemo() {
+        ReviewDemo.enabled = true
+        store.core?.close()
+        store = SessionStore.demo()
+        auth.showDemoProfile(true)
+        preview = true
+    }
+
+    /// Sign out from the demo: back to the sign-in page.
+    func exitReviewDemo() {
+        ReviewDemo.enabled = false
+        for task in store.demoReplies.values { task.cancel() }
+        auth.showDemoProfile(false)
+        store = SessionStore.live(auth: auth)
+        preview = false
     }
 
     /// Signs in with a QR code from Fennec on the Mac, switching to the Mac's
@@ -79,6 +102,7 @@ final class AppModel {
         self.environment = environment
         self.auth = auth
         self.store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
+        if ReviewDemo.enabled { auth.showDemoProfile(true) }
     }
 }
 

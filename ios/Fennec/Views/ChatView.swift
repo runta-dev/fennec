@@ -203,6 +203,11 @@ struct ChatView: View {
                     ForEach(session.messages) { message in
                         MessageView(message: message).id(message.id)
                     }
+                    if session.state == .working {
+                        WorkingIndicator(since: session.turnStarted ?? session.statusSince ?? session.updatedAt,
+                                         activity: session.activity)
+                            .id("working")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -292,7 +297,7 @@ struct ChatView: View {
                                  onPasteImage: { data in importImage(data) }, resetRevision: composerResetRevision)
             }
             if draft.isEmpty && (store.attachmentDrafts[sessionID] ?? []).isEmpty && session.state == .working {
-                Button { } label: {
+                Button { store.stopDemoTurn(session.id) } label: {
                     Image(systemName: "stop.fill").font(.system(size: 13))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)

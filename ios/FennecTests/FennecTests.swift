@@ -91,6 +91,36 @@ final class FennecTests: XCTestCase {
         XCTAssertEqual(store.search("stale cached port").messages.map(\.0.id), ["s5"])
     }
 
+    func testReviewEmailMatchesOnlyAppReviewAddress() {
+        XCTAssertTrue(ReviewDemo.matches(" AppReview@Runta.com\n"))
+        XCTAssertFalse(ReviewDemo.matches("appreview@runta.co"))
+        XCTAssertFalse(ReviewDemo.matches("someone@runta.com"))
+    }
+
+    func testDemoSendTitlesSessionAndStopEndsReply() {
+        let store = SessionStore.demo()
+        let id = store.create(agent: .codex, model: "", project: "", location: .cloud, prompt: "").id
+        store.send("Fix duplicate webhook deliveries\nThen run the tests", to: id)
+        XCTAssertEqual(store.session(id)?.title, "Fix duplicate webhook deliveries")
+        XCTAssertEqual(store.session(id)?.state, .working)
+        XCTAssertNotNil(store.demoReplies[id])
+        store.stopDemoTurn(id)
+        XCTAssertEqual(store.session(id)?.state, .idle)
+        XCTAssertNil(store.demoReplies[id])
+    }
+
+    func testDemoReplyPlaysRecordedStepsAndFinishes() async throws {
+        let store = SessionStore.demo()
+        let id = store.create(agent: .pi, model: "", project: "", location: .cloud, prompt: "").id
+        store.send("Add retry tests", to: id)
+        let deadline = Date.now.addingTimeInterval(20)
+        while store.session(id)?.state == .working, Date.now < deadline { try await Task.sleep(for: .milliseconds(200)) }
+        let messages = try XCTUnwrap(store.session(id)?.messages)
+        XCTAssertEqual(store.session(id)?.state, .idle)
+        XCTAssertTrue(messages.contains { if case .tools(let uses) = $0.kind { uses.count > 1 } else { false } })
+        if case .agent(let text)? = messages.last?.kind { XCTAssertTrue(text.contains("ok relay")) } else { XCTFail("expected the closing reply") }
+    }
+
     func testInitials() {
         XCTAssertEqual(Profile(displayName: "Ada Lovelace", email: "ada@example.com").initials, "AL")
     }
