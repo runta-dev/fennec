@@ -14,6 +14,7 @@ import (
 	"fennec/internal/runta"
 	"fennec/internal/sandbox"
 	"fennec/internal/sshcarrier"
+	"fennec/internal/stackdump"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"io"
@@ -71,6 +72,8 @@ func serveControl(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// SIGUSR1 writes every goroutine's stack to logs/ for hangs that log nothing.
+	stackdump.Install(ctx, filepath.Join(home, ".config/fennec/logs"))
 	manager, services, controller := newControlApplication(ctx, home, executable)
 	defer func() { cancel(); services.close() }()
 	// A stop request (launchctl bootout when Fennec is upgraded or restarted)

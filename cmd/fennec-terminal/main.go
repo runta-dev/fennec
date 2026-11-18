@@ -15,6 +15,7 @@ import (
 	"fennec/internal/project"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/stackdump"
 	"fennec/internal/terminalstream"
 	"fennec/internal/trafficbroker"
 	"fmt"
@@ -117,6 +118,7 @@ func run() (int, error) {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
 		if os.Args[1] == "relay-serve" {
+			stackdump.Install(ctx, filepath.Join(home, ".local/fennec/diagnostics"))
 			return 0, localssh.ServeRelay(ctx, home, os.Args[2])
 		}
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -307,6 +309,8 @@ func run() (int, error) {
 		return runtime.Attach(ctx, terminal.Address, request.ID, os.Stdin, os.Stdout, os.Stderr)
 	}
 	if serving {
+		// SIGUSR1 writes every goroutine's stack for hangs that log nothing.
+		stackdump.Install(ctx, filepath.Join(home, ".local/fennec/diagnostics"))
 		cpusched.Interactive(home)
 		terminalstream.FocusSession = cpusched.Focus
 		// Also here: an upgrade keeps the running traffic broker, so only a

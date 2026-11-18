@@ -28,6 +28,10 @@ func DialExistingRelay(ctx context.Context, home, device string) (net.Conn, erro
 	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(state.BridgePort)))
 }
 
+// bridgeIdleLimit bounds how long a parked bridge waits for the cloud relay to
+// claim it before it is closed and reopened. A variable for tests.
+var bridgeIdleLimit = 60 * time.Second
+
 // serveResidentRelay preserves parked-bridge capacity, cancellation and local
 // SSH authentication while carrying bytes through the prioritized resident
 // protocol. A stopped link closes only its streams, never the shared transport.
@@ -91,9 +95,19 @@ func serveResidentRelay(ctx context.Context, dial func(context.Context) (net.Con
 					continue
 				}
 				stop := context.AfterFunc(ctx, func() { remote.Close() })
+				// A parked bridge must not wait forever: if its stream stops
+				// delivering (the cloud's claim never arrives), nothing errors and
+				// the pool drains for good. Recycle idle bridges instead.
+				idle := time.AfterFunc(bridgeIdleLimit, func() { remote.Close() })
 				var marker [1]byte
 				_, err = io.ReadFull(remote, marker[:])
 				stop()
+				if !idle.Stop() {
+					// Expired while idle: replace it at once. Not a failure.
+					remote.Close()
+					delay = 100 * time.Millisecond
+					continue
+				}
 				if err != nil {
 					remote.Close()
 					// One lost idle bridge is not a failure of active streams or
