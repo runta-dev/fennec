@@ -25,6 +25,9 @@
   let checking = false;
   let fixing = false;
   let finishing = null;
+  // What the card last showed. The panel re-renders every few seconds (the
+  // session list), and rebuilding unchanged content made the card flash.
+  let shown = '';
 
   const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; };
   const code = text => el('code', 'gs-code', text);
@@ -152,7 +155,7 @@
     const selectionKnown = typeof takeoverSelectionKnown !== 'undefined' && takeoverSelectionKnown;
     // Finished, then nothing selected any more: the card comes back.
     if (prefs.known && prefs.done && selectionKnown && takeoverAgents.size === 0) { prefs.done = false; save({ get_started_done: false }); }
-    if (!signedIn || !prefs.known || prefs.hidden || (prefs.done && !finishing)) { card.hidden = true; return; }
+    if (!signedIn || !prefs.known || prefs.hidden || (prefs.done && !finishing)) { card.hidden = true; shown = ''; return; }
     const ready = window.fennecPreparationStage === 'agents_installed';
     const active = activeAgents();
     const running = active.length > 0;
@@ -160,14 +163,21 @@
     const doneCount = [ready, running, started].filter(Boolean).length;
     if (running && !started) requestCoverage(false);
 
+    const key = JSON.stringify({
+      ready, doneCount, finishing: !!finishing, checking, fixing, coverage,
+      changing: takeoverChanging, known: selectionKnown,
+      agents: candidates().map(a => [a.id, a.name, a.icon, takeoverAgents.has(a.id), activeTakeoverAgents.has(a.id), routeResults.get(a.id)?.status || '']),
+    });
+    if (key === shown && !card.hidden) return;
+    shown = key;
     card.replaceChildren();
     const head = el('div', 'gs-head');
     const title = el('h2', 'gs-heading', "[[i18n:ui.gs_get_started]]"); title.id = 'get-started-title';
     const count = el('span', 'gs-count', doneCount + ' / 3');
-    const close = el('button', 'gs-close'); close.type = 'button';
+    const close = el('button', 'icon ios-app-close gs-close'); close.type = 'button';
     close.setAttribute('aria-label', "[[i18n:ui.gs_hide]]"); close.title = "[[i18n:ui.gs_hide]]";
     close.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8"/></svg>';
-    close.onclick = () => { prefs.hidden = true; card.hidden = true; save({ get_started_hidden: true }); };
+    close.onclick = () => { prefs.hidden = true; card.hidden = true; shown = ''; save({ get_started_hidden: true }); };
     head.append(title, count, close);
     const steps = el('ol', 'gs-steps');
     const prep = el('div', 'gs-body');

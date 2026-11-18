@@ -138,3 +138,18 @@ t('hiding is saved and kept', () => {
   assert.equal(s.sent.at(-1), 'settings:{"get_started_hidden":true}'); assert.equal(s.card.hidden, true);
   s.prefs({ get_started_hidden: true }); s.render(); assert.equal(s.card.hidden, true);
 });
+
+t('an unchanged card is not rebuilt when the panel re-renders (no flashing)', () => {
+  const s = step3(); s.ctx.renderTerminalCoverage({ agents: { codex: { coverage: 'covered_by_function' } } });
+  const before = s.card.children[0];
+  for (let i = 0; i < 5; i++) s.ctx.renderHerdrSessions([]);
+  assert.equal(s.card.children[0], before, 'the card was rebuilt with nothing changed');
+  s.ctx.lastSessionTerminals = [{ state: 'live', labels: { 'fennec.agent': 'codex' } }]; s.ctx.renderHerdrSessions([]);
+  assert.notEqual(s.card.children[0], before, 'a change was not shown');
+});
+
+t('the close button uses the shared close button style', () => {
+  const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
+  const close = s.card.byClass('gs-close')[0];
+  assert.ok(close.className.split(' ').includes('ios-app-close') && close.className.split(' ').includes('icon'));
+});
