@@ -65,9 +65,9 @@ enum SessionState: String, Codable, CaseIterable {
 
     var label: String {
         switch self {
-        case .needsInput: "Needs input"
-        case .working: "Working"
-        case .idle: "Idle"
+        case .needsInput: L10n.text("ui.needs_input")
+        case .working: L10n.text("ui.working")
+        case .idle: L10n.text("ui.idle")
         }
     }
 }
@@ -87,6 +87,7 @@ struct ChatMessage: Identifiable, Hashable {
         case tools([ToolUse])
         /// The agent summarized its context; shown as a hairline divider.
         case compacted
+        case macOnline
         /// The agent recorded that it stopped: how long it says it worked,
         /// and whether the person stopped it. Not shown; it draws turns.
         case end(duration: TimeInterval?, stopped: Bool)
@@ -105,6 +106,10 @@ extension ChatMessage {
     var isReply: Bool { if case .agent = kind { return true } else { return false } }
     var isUser: Bool { if case .user = kind { return true } else { return false } }
     var isCompaction: Bool { if case .compacted = kind { return true } else { return false } }
+    var isTimelineNotice: Bool {
+        if case .macOnline = kind { return true }
+        return isCompaction
+    }
     var isEnd: Bool { if case .end = kind { return true } else { return false } }
 }
 
@@ -153,19 +158,19 @@ struct ChatTurn: Identifiable {
         for message in messages {
             switch message.kind {
             case .end(let duration, let stopped):
-                guard let index = turns.indices.last, turns[index].prompt?.isCompaction != true else { continue }
+                guard let index = turns.indices.last, turns[index].prompt?.isTimelineNotice != true else { continue }
                 turns[index].ended = true
                 turns[index].stopped = stopped
                 turns[index].reportedDuration += duration ?? 0
                 if let reply = turns[index].work.last, reply.isReply { turns[index].closingReplies.insert(reply.id) }
-            case .compacted:
+            case .compacted, .macOnline:
                 // Its own row between turns; what the agent does next forms the next turn.
                 start(message, prompt: true)
                 turns[turns.count - 1].ended = true
                 afterCompaction = true
             case .user:
                 afterCompaction = false
-                guard let last = turns.last, last.prompt?.isCompaction != true else { start(message, prompt: true); continue }
+                guard let last = turns.last, last.prompt?.isTimelineNotice != true else { start(message, prompt: true); continue }
                 let running = message.steer || (!byPrompt && (recordsStops ? !last.ended : !(last.work.last?.isReply ?? true)))
                 if running {
                     turns[turns.count - 1].work.append(message)

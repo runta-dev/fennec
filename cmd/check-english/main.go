@@ -117,6 +117,7 @@ func sourceLanguage(path string, data []byte) error {
 }
 
 var referencePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`L10n\.text\("([a-zA-Z][a-zA-Z0-9_.]*)"`),
 	regexp.MustCompile(`\[\[i18n:([a-zA-Z][a-zA-Z0-9_.]*)\]\]`),
 	regexp.MustCompile(`data-i18n(?:-(?:aria-label|placeholder|title))?="([a-zA-Z][a-zA-Z0-9_.]*)"`),
 	regexp.MustCompile(`setAttribute\(['"]data-i18n['"],\s*['"]([a-zA-Z][a-zA-Z0-9_.]*)['"]\)`),
@@ -124,7 +125,7 @@ var referencePatterns = []*regexp.Regexp{
 }
 
 func references(path string, data []byte, c localization.Catalog) error {
-	if !strings.HasPrefix(path, "native/macos/") {
+	if !strings.HasPrefix(path, "native/macos/") && !strings.HasPrefix(path, "ios/Fennec/") {
 		return nil
 	}
 	keys := []string{}

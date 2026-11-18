@@ -22,9 +22,13 @@ import (
 	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/sessionid"
+	"fennec/internal/transcript"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// TranscriptEventKind identifies structured device notices in cached or live messages.
+func TranscriptEventKind(text string) string { return transcript.EventKind(text) }
 
 // TokenStore keeps the Runta session token. The app backs it with the Keychain.
 type TokenStore interface {

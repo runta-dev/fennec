@@ -1,5 +1,22 @@
 import SwiftUI
 
+/// A tiny travelling dash; no text or spinner competes with the message.
+struct SendingDash: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.2) / 1.2
+            Capsule().fill(Theme.fg3).frame(width: 8, height: 2)
+                .offset(x: reduceMotion ? 0 : CGFloat(sin(phase * .pi * 2)) * 7)
+                .frame(width: 28, height: 20)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.text("ios.sending"))
+        .accessibilityIdentifier("message-sending")
+    }
+}
+
 /// An agent's own mark with no backing tile. Monochrome marks are template
 /// images, so they follow the foreground color in both themes.
 struct AgentIcon: View {

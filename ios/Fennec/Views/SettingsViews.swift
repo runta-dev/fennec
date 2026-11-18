@@ -1,92 +1,5 @@
 import SwiftUI
 
-/// 12 new session: pick an agent and say what to do. It starts in a new
-/// cloud session ~/.fen/<word>-<word>; no Mac folder, project or model to choose.
-struct NewSessionView: View {
-    @Environment(SessionStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    var opened: (String) -> Void
-    @State private var agent: AgentKind = .codex
-    @State private var prompt = ""
-    @State private var starting = false
-    @State private var failure: String?
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).frame(width: 36, height: 36) }
-                    .glassEffect(.regular.interactive(), in: Circle())
-                    .accessibilityLabel("Close")
-                Spacer()
-                Text("New session").font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Color.clear.frame(width: 36, height: 36)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AgentKind.allCases.filter { store.enabledAgents.contains($0) || $0 == .codex }) { kind in
-                        Button { agent = kind } label: {
-                            HStack(spacing: 7) {
-                                AgentIcon(agent: kind, size: 18)
-                                Text(kind.displayName).font(.system(size: 13, weight: .medium))
-                            }
-                            .padding(.leading, 9).padding(.trailing, 12).frame(height: 34)
-                            .foregroundStyle(agent == kind ? Theme.fg : Theme.fg2)
-                            .background(Theme.surface, in: Capsule())
-                            .selectionOutline(agent == kind, radius: 17)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 1).padding(.vertical, 1)
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask \(agent.displayName)", text: $prompt, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused($focused)
-                    .font(.system(size: 16))
-                    .padding(.vertical, 8)
-                    .onSubmit(start)
-                Button(action: start) {
-                    Group {
-                        if starting { ProgressView().tint(Theme.onPrimary) }
-                        else { Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold)) }
-                    }
-                    .frame(width: 36, height: 36)
-                    .foregroundStyle(Theme.onPrimary)
-                    .background(Theme.primary.opacity(prompt.isEmpty ? 0.35 : 1), in: Circle())
-                }
-                .disabled(prompt.isEmpty || starting)
-                .accessibilityLabel("Start session")
-            }
-            .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-            if let failure {
-                Label(failure, systemImage: "exclamationmark.circle").font(.system(size: 13)).foregroundStyle(Theme.danger)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-        .presentationDetents([.height(failure == nil ? 210 : 240)])
-        .presentationDragIndicator(.hidden)
-        .onAppear { focused = true }
-    }
-
-    private func start() {
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !starting else { return }
-        starting = true
-        failure = nil
-        Task {
-            do { opened(try await store.launch(agent: agent, prompt: text)) }
-            catch { failure = (error as NSError).localizedDescription }
-            starting = false
-        }
-    }
-}
-
 /// 13 agents. Each switch is the Mac's Cloud computer switch.
 struct AgentsView: View {
     @Environment(SessionStore.self) private var store
@@ -99,7 +12,7 @@ struct AgentsView: View {
                         agentRow(agent, last: index == AgentKind.allCases.count - 1)
                     }
                 }
-                GroupHeader(title: "Coming soon").padding(.horizontal, -18)
+                GroupHeader(title: L10n.text("ui.coming_soon")).padding(.horizontal, -18)
                 ListCard {
                     ListRow(title: "Gemini CLI", titleColor: Theme.fg3)
                     ListRow(title: "Copilot CLI", titleColor: Theme.fg3, showDivider: false)
@@ -108,7 +21,7 @@ struct AgentsView: View {
             .padding(16)
         }
         .background(Theme.bg)
-        .navigationTitle("Agents")
+        .navigationTitle(L10n.text("ui.agents"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -121,9 +34,10 @@ struct AgentsView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(agent.displayName).font(.system(size: 15.5))
                     if needsMacLogin {
-                        Text("Sign in on your Mac").font(.caption2Muted).foregroundStyle(Theme.accent)
+                        Text(L10n.text("ios.mac_signin")).font(.caption2Muted).foregroundStyle(Theme.accent)
                     } else if count > 0 {
-                        Text(count == 1 ? "1 session" : "\(count) sessions").font(.caption2Muted).foregroundStyle(Theme.fg3)
+                        Text(count == 1 ? L10n.text("ios.one_session") : L10n.text("ios.session_count", values: ["count": String(count)]))
+                            .font(.caption2Muted).foregroundStyle(Theme.fg3)
                     }
                 }
                 Spacer()
@@ -171,7 +85,7 @@ struct AccountView: View {
                         .environmentSwitchGesture()
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 8) {
-                            Text(auth.profile?.displayName ?? "Runta account").font(.system(size: 16, weight: .medium))
+                            Text(auth.profile?.displayName ?? L10n.text("ios.runta_account")).font(.system(size: 16, weight: .medium))
                             EnvironmentBadge(environment: app.environment)
                         }
                         Text(auth.profile?.email ?? "").font(.system(size: 13)).foregroundStyle(Theme.fg2).lineLimit(1)
@@ -179,28 +93,21 @@ struct AccountView: View {
                 }
                 .padding(.horizontal, 2)
                 // Governance and agent settings live on the Mac; here, what the account is using.
-                GroupHeader(title: "Appearance").padding(.horizontal, -18)
-                ListCard {
-                    Picker("Theme", selection: $appearance) {
-                        Text("Follow system").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .padding(16)
-                }
                 CloudComputerCard(metrics: usage.metrics)
                 BillingCard(billing: usage.billing, failed: usage.billingFailed) {
                     if let url = URL(string: auth.core.dashboardURL()) { openURL(url) }
                 }
-                GroupHeader(title: "Notify me when").padding(.horizontal, -18)
+                systemSettings
+                GroupHeader(title: L10n.text("ios.notify_when")).padding(.horizontal, -18)
+                    .accessibilityIdentifier("notification-settings-heading")
                 ListCard {
-                    toggleRow("An agent needs approval", $notifyApproval)
-                    toggleRow("An agent asks a question", $notifyQuestion)
-                    toggleRow("A session finishes", $notifyFinished, last: true)
+                    toggleRow(L10n.text("ios.notify_approval"), $notifyApproval)
+                    toggleRow(L10n.text("ios.notify_question"), $notifyQuestion)
+                    toggleRow(L10n.text("ios.notify_finished"), $notifyFinished, last: true)
                 }
                 ListCard {
                     Button { auth.signOut() } label: {
-                        ListRow(icon: "rectangle.portrait.and.arrow.right", iconColor: Theme.danger, title: "Sign out", titleColor: Theme.danger, showDivider: false)
+                        ListRow(icon: "rectangle.portrait.and.arrow.right", iconColor: Theme.danger, title: L10n.text("ui.sign_out"), titleColor: Theme.danger, showDivider: false)
                     }
                     .buttonStyle(.plain)
                 }
@@ -213,12 +120,50 @@ struct AccountView: View {
             .padding(16)
         }
         .background(Theme.bg)
-        .navigationTitle("Account")
+        .navigationTitle(L10n.text("ui.account"))
         .navigationBarTitleDisplayMode(.inline)
-        .task { await usage.loadBilling(auth.core) }
+        .task { if !app.preview { await usage.loadBilling(auth.core) } }
         .task {
             guard let core = store.core else { return }
             await usage.watchMetrics(core)
+        }
+    }
+
+    private var systemSettings: some View {
+        @Bindable var language = L10n.preferences
+        return VStack(alignment: .leading, spacing: 8) {
+            GroupHeader(title: L10n.text("ios.system_settings")).padding(.horizontal, -18)
+                .accessibilityIdentifier("system-settings-heading")
+            ListCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label(L10n.text("ui.appearance"), systemImage: "circle.lefthalf.filled")
+                        .font(.system(size: 15.5, weight: .medium))
+                    Picker(L10n.text("ui.appearance"), selection: $appearance) {
+                        Text(L10n.text("ui.system")).tag("system")
+                        Text(L10n.text("ui.light")).tag("light")
+                        Text(L10n.text("ui.dark")).tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("appearance-picker")
+                }
+                .padding(16)
+                Divider().overlay(Theme.line).padding(.leading, 16)
+                HStack(spacing: 12) {
+                    Label(L10n.text("ui.language"), systemImage: "globe")
+                        .font(.system(size: 15.5, weight: .medium))
+                    Spacer(minLength: 8)
+                    Picker(L10n.text("ui.language"), selection: $language.selection) {
+                        Text(L10n.text("ios.follow_system")).tag("system")
+                        Text(L10n.text("ios.language_english", language: "en-US")).tag("en-US")
+                        Text(L10n.text("ios.language_chinese", language: "zh-CN")).tag("zh-CN")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .tint(Theme.fg2)
+                    .accessibilityIdentifier("language-picker")
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            }
         }
     }
 

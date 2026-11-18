@@ -78,7 +78,7 @@ struct CloudComputerCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(systemName: "cloud").foregroundStyle(Theme.fg2)
-                Text("Cloud computer").font(.system(size: 15.5, weight: .medium))
+                Text(L10n.text("ui.cloud_computer")).font(.system(size: 15.5, weight: .medium))
                 Spacer(minLength: 8)
                 if let metrics, let vcpus = metrics.vcpus, vcpus > 0 {
                     Text((metrics.memory_max_mib ?? 0) > 0
@@ -93,11 +93,11 @@ struct CloudComputerCard: View {
             HStack(alignment: .top, spacing: 16) {
                 meter(icon: "cpu", title: "CPU", value: metrics.map { String(format: "%.1f%%", $0.cpu_percent ?? 0) },
                       history: metrics?.cpu_history ?? [])
-                meter(icon: "memorychip", title: "Memory", value: metrics.map { gigabytes($0.memoryBytes) },
+                meter(icon: "memorychip", title: L10n.text("ui.memory"), value: metrics.map { gigabytes($0.memoryBytes) },
                       history: metrics?.mem_history ?? [])
             }
             HStack(spacing: 10) {
-                Label("Network", systemImage: "globe").foregroundStyle(Theme.fg2)
+                Label(L10n.text("ui.network"), systemImage: "globe").foregroundStyle(Theme.fg2)
                 Spacer(minLength: 8)
                 if let metrics {
                     Text("↑ \(traffic(metrics.net_tx_bytes ?? 0))   ↓ \(traffic(metrics.net_rx_bytes ?? 0))").monospacedDigit()
@@ -108,7 +108,7 @@ struct CloudComputerCard: View {
             .font(.system(size: 13.5))
             VStack(spacing: 8) {
                 HStack {
-                    Label("Disk", systemImage: "internaldrive").foregroundStyle(Theme.fg2)
+                    Label(L10n.text("ui.disk"), systemImage: "internaldrive").foregroundStyle(Theme.fg2)
                     Spacer(minLength: 8)
                     if let metrics, let total = metrics.disk_total_bytes, total > 0 {
                         Text("\(gigabytes(metrics.disk_used_bytes ?? 0)) / \(gigabytes(total))").monospacedDigit()
@@ -192,9 +192,9 @@ struct BillingCard: View {
             HStack(spacing: 12) {
                 // The email is already in the page header; this row names the plan.
                 Image(systemName: "creditcard").foregroundStyle(Theme.fg2).frame(width: 20)
-                Text("Billing").font(.system(size: 15.5, weight: .medium))
+                Text(L10n.text("ios.billing")).font(.system(size: 15.5, weight: .medium))
                 Spacer(minLength: 8)
-                Text("Pay as you go").font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.accent)
+                Text(L10n.text("ui.pay_as_you_go")).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.accent)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Theme.accent.opacity(0.12), in: Capsule())
             }
@@ -203,24 +203,24 @@ struct BillingCard: View {
                 Divider().overlay(Theme.line)
                 Button(action: openDashboard) {
                     HStack {
-                        Text("Billing").foregroundStyle(Theme.fg2)
+                        Text(L10n.text("ios.billing")).foregroundStyle(Theme.fg2)
                         Spacer()
-                        Text("Open dashboard").foregroundStyle(Theme.accent)
+                        Text(L10n.text("ios.open_dashboard")).foregroundStyle(Theme.accent)
                         Image(systemName: "arrow.up.right").font(.system(size: 12)).foregroundStyle(Theme.accent)
                     }
                     .font(.system(size: 15)).padding(.horizontal, 16).padding(.vertical, 13)
                 }
                 .buttonStyle(.plain)
             } else {
-                row(icon: "wallet.bifold", title: "Available balance", value: money(billing?.balance))
-                row(icon: "chart.line.uptrend.xyaxis", title: "Last 30 days spend", value: money(billing?.spend))
+                row(icon: "wallet.bifold", title: L10n.text("ui.available_balance"), value: money(billing?.balance))
+                row(icon: "chart.line.uptrend.xyaxis", title: L10n.text("ui.last_30_days_spend"), value: money(billing?.spend))
                 Divider().overlay(Theme.line)
                 HStack(spacing: 0) {
                     usage(icon: "cpu", title: "CPU", value: billing?.cpu)
                     Divider().overlay(Theme.line)
-                    usage(icon: "memorychip", title: "Memory", value: billing?.memory)
+                    usage(icon: "memorychip", title: L10n.text("ui.memory"), value: billing?.memory)
                     Divider().overlay(Theme.line)
-                    usage(icon: "internaldrive", title: "Disk", value: billing?.disk)
+                    usage(icon: "internaldrive", title: L10n.text("ui.disk"), value: billing?.disk)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }

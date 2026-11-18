@@ -14,7 +14,7 @@ struct SearchView: View {
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(Theme.fg2)
-                    TextField("Search", text: $query)
+                    TextField(L10n.text("ios.search"), text: $query)
                         .focused($focused)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -24,7 +24,7 @@ struct SearchView: View {
                 .frame(height: 46)
                 .glassEffect(.regular, in: Capsule())
                 GlassCircleButton(action: { dismiss() }) { Image(systemName: "xmark") }
-                    .accessibilityLabel("Close")
+                    .accessibilityLabel(L10n.text("ui.close"))
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -32,21 +32,21 @@ struct SearchView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !results.sessions.isEmpty {
-                        GroupHeader(title: "Sessions", count: results.sessions.count)
+                        GroupHeader(title: L10n.text("ui.sessions"), count: results.sessions.count)
                         ForEach(results.sessions) { session in
                             Button { open(session.id) } label: { SessionRow(session: session, subtitle: session.project) }
                                 .buttonStyle(.plain)
                         }
                     }
                     if !results.messages.isEmpty {
-                        GroupHeader(title: "Messages", count: results.messages.count)
+                        GroupHeader(title: L10n.text("ios.messages"), count: results.messages.count)
                         ForEach(Array(results.messages.enumerated()), id: \.offset) { _, hit in
                             Button { open(hit.0.id) } label: { MessageHit(session: hit.0, text: hit.1) }
                                 .buttonStyle(.plain)
                         }
                     }
                     if !query.isEmpty && results.sessions.isEmpty && results.messages.isEmpty {
-                        Text("No results for \u{201C}\(query)\u{201D}")
+                        Text(L10n.text("ios.no_results", values: ["query": query]))
                             .font(.rowBody).foregroundStyle(Theme.fg2)
                             .frame(maxWidth: .infinity).padding(.top, 60)
                     }

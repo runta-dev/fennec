@@ -26,7 +26,7 @@ struct TerminalPage: View {
             if let message = link.ended {
                 VStack(spacing: 12) {
                     Text(message).font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
-                    Button("Reconnect") { link.reconnect() }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 180)
+                    Button(L10n.text("ios.reconnect")) { link.reconnect() }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 180)
                 }
                 .padding(24)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))

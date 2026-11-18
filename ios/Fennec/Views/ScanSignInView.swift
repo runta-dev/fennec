@@ -64,7 +64,7 @@ struct ScanSignInView: View {
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
-                .accessibilityLabel("Choose from Photos")
+                .accessibilityLabel(L10n.text("ios.choose_photo"))
             }
         }
         .padding(.horizontal, 16)
@@ -73,23 +73,23 @@ struct ScanSignInView: View {
 
     private var scanPanel: some View {
         VStack(spacing: 10) {
-            Text("Scan from Fennec on your Mac").font(.system(size: 18, weight: .semibold)).lineLimit(1)
-            Label("Get Fennec iOS App", systemImage: "laptopcomputer")
+            Text(L10n.text("ios.scan_mac")).font(.system(size: 18, weight: .semibold)).lineLimit(1)
+            Label(L10n.text("ui.get_fennec_ios_app"), systemImage: "laptopcomputer")
                 .font(.system(size: 13)).padding(.horizontal, 11).frame(height: 28)
                 .background(.white.opacity(0.1), in: Capsule())
             if camera == .denied {
-                Button("Turn on camera in Settings") {
+                Button(L10n.text("ios.camera_settings")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
                 .font(.system(size: 14, weight: .medium))
             }
             VStack(spacing: 8) {
-                signInButton("Continue with Google", method: "google")
-                signInButton("Continue with GitHub", method: "github")
-                signInButton("Continue with email", method: "email")
+                signInButton(L10n.text("ios.google_signin"), method: "google")
+                signInButton(L10n.text("ios.github_signin"), method: "github")
+                signInButton(L10n.text("ios.email_signin"), method: "email")
             }.padding(.top, 6)
             if auth.isAuthorizing {
-                Button("Cancel sign-in") { auth.cancelSignIn() }
+                Button(L10n.text("ui.cancel_sign_in")) { auth.cancelSignIn() }
                     .font(.system(size: 14, weight: .medium))
             }
         }
@@ -111,9 +111,9 @@ struct ScanSignInView: View {
     private var waitingPanel: some View {
         VStack(spacing: 10) {
             ProgressView().tint(Theme.accent)
-            Text("Approve on your Mac").font(.system(size: 18, weight: .semibold))
-            Text("Click Authorize in your browser").font(.system(size: 14)).foregroundStyle(.white.opacity(0.7))
-            Button("Cancel") { auth.cancelSignIn() }
+            Text(L10n.text("ios.approve_mac")).font(.system(size: 18, weight: .semibold))
+            Text(L10n.text("ui.authorize_in_browser")).font(.system(size: 14)).foregroundStyle(.white.opacity(0.7))
+            Button(L10n.text("ui.cloud_cancel")) { auth.cancelSignIn() }
                 .font(.system(size: 14, weight: .medium))
                 .padding(.top, 6)
         }
@@ -132,7 +132,7 @@ struct ScanSignInView: View {
         guard let item, let data = try? await item.loadTransferable(type: Data.self) else { return }
         photo = nil
         guard let code = QRDecoder.firstCode(in: data) else {
-            show("No QR code in that image.")
+            show(L10n.text("ios.no_qr"))
             return
         }
         scanned(code)

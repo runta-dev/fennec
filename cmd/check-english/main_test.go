@@ -25,6 +25,9 @@ func TestSourceLanguagePolicy(t *testing.T) {
 }
 func TestUnknownMessageReferenceFails(t *testing.T) {
 	c := localization.Catalog{Version: 1, Messages: map[string]map[string]string{"ui.retry": {"en-US": "Retry"}}}
+	if references("ios/Fennec/Views/SettingsViews.swift", []byte(`Text(L10n.text("ios.missing"))`), c) == nil {
+		t.Fatal("missing iOS key accepted")
+	}
 	if references("native/macos/UI/panel.js", []byte(`button.textContent='[[i18n:ui.missing]]'`), c) == nil {
 		t.Fatal("missing key accepted")
 	}

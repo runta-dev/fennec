@@ -10,10 +10,10 @@ import Observation
 @Observable
 final class SessionStore {
     struct PendingSend {
+        enum Delivery { case sending, sent, unconfirmed }
         var message: ChatMessage
         var previousMatches: Int
-        var status = "Sending…"
-        var failed = false
+        var delivery = Delivery.sending
     }
     var pendingSends: [String: PendingSend] = [:]
 
@@ -44,6 +44,7 @@ final class SessionStore {
     var loaded = false
     /// Sessions whose log is being read now.
     @ObservationIgnored var transcriptReads: Set<String> = []
+    @ObservationIgnored private var sessionListRevision = 0
 
     init(sessions: [Session], macOnline: Bool = true, cloudRunning: Bool = true,
          enabledAgents: Set<AgentKind> = [.claudeCode, .codex, .grokBuild, .kimiCode, .pi],
@@ -99,13 +100,12 @@ final class SessionStore {
                 do {
                     _ = try await Task.detached { try goCall { core.send(address, sessionID: id, text: text, error: $0) } }.value
                     if pendingSends[id]?.message.id == messageID {
-                        pendingSends[id]?.status = "Sent · waiting for conversation"
+                        pendingSends[id]?.delivery = .sent
                     }
                 } catch {
                     // A transport failure does not prove the server rejected the message.
                     if pendingSends[id]?.message.id == messageID {
-                        pendingSends[id]?.status = "Delivery unconfirmed. Check the conversation before sending again."
-                        pendingSends[id]?.failed = true
+                        pendingSends[id]?.delivery = .unconfirmed
                     }
                 }
                 await loadTranscript(id)
@@ -154,11 +154,10 @@ final class SessionStore {
         sessions.removeAll { $0.id == id }
     }
 
-    /// Starts the agent in a new cloud session (~/.fen/<word>-<word>) and
-    /// sends the first message once it is ready. Returns the session ID.
-    func launch(agent: AgentKind, prompt: String) async throws -> String {
+    /// Creates an empty session. The first message is sent from the chat page.
+    func launch(agent: AgentKind) async throws -> String {
         guard let core else {
-            return create(agent: agent, model: "", project: "", location: .cloud, prompt: prompt).id
+            return create(agent: agent, model: "", project: "", location: .cloud, prompt: "").id
         }
         let json = try await Task.detached { try goCall { core.launch(agent.launcherID, error: $0) } }.value
         struct Launched: Decodable { var address: String; var labels: [String: String]?; var id: String? }
@@ -167,13 +166,11 @@ final class SessionStore {
             throw NSError(domain: "Fennec", code: 1, userInfo: [NSLocalizedDescriptionKey: "Couldn't start the session."])
         }
         var session = Session(id: id, title: "Untitled session", agent: agent, model: "", project: "",
-                              location: .cloud, state: .working, updatedAt: .now, messages: [])
+                              location: .cloud, state: .idle, updatedAt: .now, messages: [])
         session.address = launched.address
+        sessionListRevision += 1
         sessions.removeAll { $0.id == id }
         sessions.append(session)
-        let address = launched.address
-        // Herdr delivers it once the agent is ready and nobody is typing.
-        _ = await live { try goCall { core.send(address, sessionID: id, text: prompt, error: $0) } }
         return id
     }
 
@@ -181,8 +178,8 @@ final class SessionStore {
     func create(agent: AgentKind, model: String, project: String, location: Location, prompt: String) -> Session {
         let session = Session(
             id: UUID().uuidString, title: "Untitled session", agent: agent, model: model,
-            project: project, location: location, state: .working, updatedAt: .now,
-            messages: [.init(kind: .user(prompt))])
+            project: project, location: location, state: prompt.isEmpty ? .idle : .working, updatedAt: .now,
+            messages: prompt.isEmpty ? [] : [.init(kind: .user(prompt))])
         sessions.append(session)
         return session
     }
@@ -330,8 +327,11 @@ extension SessionStore {
 
     func refresh() async {
         guard let core else { return }
+        let revision = sessionListRevision
         guard let json = await live({ try goCall { core.list($0) } }), let data = json.data(using: .utf8),
               let rows = try? JSONDecoder().decode([SessionSummary].self, from: data) else { loaded = true; return }
+        // A list requested before launch must not erase the newly opened chat.
+        guard revision == sessionListRevision else { return }
         let previous = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         sessions = rows.compactMap { row in
             guard let agent = AgentKind(launcherID: row.agent) else { return nil }
@@ -423,6 +423,10 @@ extension SessionStore {
         let time = item.time.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
         switch item.kind {
         case "user":
+            if FennecmobileTranscriptEventKind(item.text) == "mac-online" {
+                session.messages.append(.init(kind: .macOnline, time: time))
+                return
+            }
             let images = (item.images ?? []).compactMap { url -> Data? in
                 guard let comma = url.firstIndex(of: ",") else { return nil }
                 return Data(base64Encoded: String(url[url.index(after: comma)...]))

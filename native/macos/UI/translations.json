@@ -1,5 +1,321 @@
 {
   "messages": {
+    "ios.mac_online": {
+      "en-US": "Mac is back online",
+      "zh-CN": "Mac 已重新上线"
+    },
+    "ios.hide_keyboard": {
+      "en-US": "Hide keyboard",
+      "zh-CN": "收起键盘"
+    },
+    "ios.system_settings": {
+      "en-US": "System settings",
+      "zh-CN": "系统设置"
+    },
+    "ios.follow_system": {
+      "en-US": "Follow system",
+      "zh-CN": "跟随系统"
+    },
+    "ios.language_english": {
+      "en-US": "English",
+      "zh-CN": "英文"
+    },
+    "ios.language_chinese": {
+      "en-US": "Simplified Chinese",
+      "zh-CN": "简体中文"
+    },
+    "ios.notify_when": {
+      "en-US": "Notify me when",
+      "zh-CN": "通知提醒"
+    },
+    "ios.notify_approval": {
+      "en-US": "An agent needs approval",
+      "zh-CN": "Agent 需要审批"
+    },
+    "ios.notify_question": {
+      "en-US": "An agent asks a question",
+      "zh-CN": "Agent 提出问题"
+    },
+    "ios.notify_finished": {
+      "en-US": "A session finishes",
+      "zh-CN": "会话完成"
+    },
+    "ios.runta_account": {
+      "en-US": "Runta account",
+      "zh-CN": "Runta 账户"
+    },
+    "ios.billing": {
+      "en-US": "Billing",
+      "zh-CN": "账单"
+    },
+    "ios.open_dashboard": {
+      "en-US": "Open dashboard",
+      "zh-CN": "打开控制台"
+    },
+    "ios.search": {
+      "en-US": "Search",
+      "zh-CN": "搜索"
+    },
+    "ios.messages": {
+      "en-US": "Messages",
+      "zh-CN": "消息"
+    },
+    "ios.new_session": {
+      "en-US": "New session",
+      "zh-CN": "新建会话"
+    },
+    "ios.no_sessions": {
+      "en-US": "No sessions yet",
+      "zh-CN": "暂无会话"
+    },
+    "ios.session_menu": {
+      "en-US": "Session menu",
+      "zh-CN": "会话菜单"
+    },
+    "ios.pin": {
+      "en-US": "Pin",
+      "zh-CN": "置顶"
+    },
+    "ios.unpin": {
+      "en-US": "Unpin",
+      "zh-CN": "取消置顶"
+    },
+    "ios.mac_offline": {
+      "en-US": "MacBook Pro is offline",
+      "zh-CN": "MacBook Pro 已离线"
+    },
+    "ios.loading_sessions": {
+      "en-US": "Loading sessions",
+      "zh-CN": "正在加载会话"
+    },
+    "ios.me": {
+      "en-US": "Me",
+      "zh-CN": "我"
+    },
+    "ios.session_ended": {
+      "en-US": "This session has ended.",
+      "zh-CN": "此会话已结束。"
+    },
+    "ios.open_terminal": {
+      "en-US": "Open terminal",
+      "zh-CN": "打开终端"
+    },
+    "ios.return_draft": {
+      "en-US": "Return to draft",
+      "zh-CN": "放回草稿"
+    },
+    "ios.attach": {
+      "en-US": "Attach",
+      "zh-CN": "添加附件"
+    },
+    "ios.stop_turn": {
+      "en-US": "Stop turn",
+      "zh-CN": "停止本轮"
+    },
+    "ios.approve": {
+      "en-US": "Approve",
+      "zh-CN": "允许"
+    },
+    "ios.approve_session": {
+      "en-US": "Approve for this session",
+      "zh-CN": "本会话内允许"
+    },
+    "ios.custom_answer": {
+      "en-US": "Type something else",
+      "zh-CN": "输入其他内容"
+    },
+    "ios.compacted": {
+      "en-US": "Conversation compacted",
+      "zh-CN": "会话已压缩"
+    },
+    "ios.cloud": {
+      "en-US": "Cloud",
+      "zh-CN": "云端"
+    },
+    "ios.rename": {
+      "en-US": "Rename",
+      "zh-CN": "重命名"
+    },
+    "ios.pin_top": {
+      "en-US": "Pin to top",
+      "zh-CN": "置顶"
+    },
+    "ios.stop_confirm": {
+      "en-US": "Stop this session?",
+      "zh-CN": "停止此会话？"
+    },
+    "ios.stop_explanation": {
+      "en-US": "This ends the cloud process. Closing the app doesn't stop sessions.",
+      "zh-CN": "这将结束云端进程。关闭 App 不会停止会话。"
+    },
+    "ios.rename_session": {
+      "en-US": "Rename session",
+      "zh-CN": "重命名会话"
+    },
+    "ios.title": {
+      "en-US": "Title",
+      "zh-CN": "标题"
+    },
+    "ios.save": {
+      "en-US": "Save",
+      "zh-CN": "保存"
+    },
+    "ios.loading_conversation": {
+      "en-US": "Loading conversation",
+      "zh-CN": "正在加载会话"
+    },
+    "ios.stopped": {
+      "en-US": "Stopped",
+      "zh-CN": "已停止"
+    },
+    "ios.worked": {
+      "en-US": "Worked",
+      "zh-CN": "已完成"
+    },
+    "ios.hide_steps": {
+      "en-US": "Hides the steps",
+      "zh-CN": "收起步骤"
+    },
+    "ios.show_steps": {
+      "en-US": "Shows the steps",
+      "zh-CN": "展开步骤"
+    },
+    "ios.show_less": {
+      "en-US": "Shows less",
+      "zh-CN": "收起内容"
+    },
+    "ios.show_message": {
+      "en-US": "Shows the whole message",
+      "zh-CN": "展开完整消息"
+    },
+    "ios.mac_signin": {
+      "en-US": "Sign in on your Mac",
+      "zh-CN": "在 Mac 上登录"
+    },
+    "ios.signed_in": {
+      "en-US": "You're signed in",
+      "zh-CN": "登录成功"
+    },
+    "ios.online": {
+      "en-US": "Online",
+      "zh-CN": "在线"
+    },
+    "ios.enable_notifications": {
+      "en-US": "Turn on notifications",
+      "zh-CN": "开启通知"
+    },
+    "ios.reconnect": {
+      "en-US": "Reconnect",
+      "zh-CN": "重新连接"
+    },
+    "ios.choose_photo": {
+      "en-US": "Choose from Photos",
+      "zh-CN": "从照片中选择"
+    },
+    "ios.scan_mac": {
+      "en-US": "Scan from Fennec on your Mac",
+      "zh-CN": "扫描 Mac 上 Fennec 的二维码"
+    },
+    "ios.camera_settings": {
+      "en-US": "Turn on camera in Settings",
+      "zh-CN": "在设置中允许相机访问"
+    },
+    "ios.google_signin": {
+      "en-US": "Continue with Google",
+      "zh-CN": "使用 Google 继续"
+    },
+    "ios.github_signin": {
+      "en-US": "Continue with GitHub",
+      "zh-CN": "使用 GitHub 继续"
+    },
+    "ios.email_signin": {
+      "en-US": "Continue with email",
+      "zh-CN": "使用邮箱继续"
+    },
+    "ios.approve_mac": {
+      "en-US": "Approve on your Mac",
+      "zh-CN": "在 Mac 上授权"
+    },
+    "ios.no_qr": {
+      "en-US": "No QR code in that image.",
+      "zh-CN": "这张图片中没有二维码。"
+    },
+    "ios.create_failed": {
+      "en-US": "Couldn't start the session. Please try again.",
+      "zh-CN": "无法创建会话，请重试。"
+    },
+    "ui.ok": {
+      "en-US": "OK",
+      "zh-CN": "好"
+    },
+    "ios.message_agent": {
+      "en-US": "Message {agent}",
+      "zh-CN": "发送消息给 {agent}"
+    },
+    "ios.allow_command": {
+      "en-US": "Allow {agent} to run this command?",
+      "zh-CN": "允许 {agent} 执行此命令？"
+    },
+    "ios.tell_agent": {
+      "en-US": "Tell {agent} what to do",
+      "zh-CN": "告诉 {agent} 该怎么做"
+    },
+    "ios.files_changed": {
+      "en-US": "{count} files changed",
+      "zh-CN": "已更改 {count} 个文件"
+    },
+    "ios.working_for": {
+      "en-US": "Working for {duration}",
+      "zh-CN": "已工作 {duration}"
+    },
+    "ios.worked_for": {
+      "en-US": "Worked for {duration}",
+      "zh-CN": "工作用时 {duration}"
+    },
+    "ios.stopped_after": {
+      "en-US": "Stopped after {duration}",
+      "zh-CN": "已在 {duration} 后停止"
+    },
+    "ios.no_results": {
+      "en-US": "No results for “{query}”",
+      "zh-CN": "未找到“{query}”的相关结果"
+    },
+    "ios.image_number": {
+      "en-US": "Image {number}",
+      "zh-CN": "图片 {number}"
+    },
+    "ios.session_count": {
+      "en-US": "{count} sessions",
+      "zh-CN": "{count} 个会话"
+    },
+    "ios.one_session": {
+      "en-US": "1 session",
+      "zh-CN": "1 个会话"
+    },
+    "ios.sending": {
+      "en-US": "Sending",
+      "zh-CN": "正在发送"
+    },
+    "ios.sent": {
+      "en-US": "Sent",
+      "zh-CN": "已发送"
+    },
+    "ios.delivery_unconfirmed": {
+      "en-US": "Delivery unconfirmed",
+      "zh-CN": "送达未确认"
+    },
+    "ios.delivery_explanation": {
+      "en-US": "Check the conversation before sending again.",
+      "zh-CN": "再次发送前，请检查会话中是否已收到此消息。"
+    },
+    "ios.newline": {
+      "en-US": "New line",
+      "zh-CN": "换行"
+    },
+    "ios.start_conversation": {
+      "en-US": "Start a conversation",
+      "zh-CN": "开始新会话"
+    },
     "ui.scan_with_fennec": {
       "en-US": "Scan with Fennec",
       "en-GB": "Scan with Fennec",

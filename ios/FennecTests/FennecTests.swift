@@ -3,6 +3,46 @@ import XCTest
 
 @MainActor
 final class FennecTests: XCTestCase {
+    func testNewSessionStartsWithoutAnInitialPrompt() async throws {
+        let store = SessionStore.demo()
+        let id = try await store.launch(agent: .codex)
+        XCTAssertEqual(store.session(id)?.agent, .codex)
+        XCTAssertEqual(store.session(id)?.messages.count, 0)
+        XCTAssertEqual(store.session(id)?.state, .idle)
+    }
+
+    func testLanguageSelectionPersistsAndFollowsSupportedSystemLanguages() {
+        let suite = "FennecLocalizationTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = LanguagePreferences(defaults: defaults)
+        XCTAssertEqual(preferences.selection, "system")
+        preferences.selection = "zh-CN"
+        XCTAssertEqual(LanguagePreferences(defaults: defaults).selection, "zh-CN")
+        XCTAssertEqual(L10n.resolveLanguage("system", preferred: ["zh-Hans-US"]), "zh-CN")
+        XCTAssertEqual(L10n.resolveLanguage("system", preferred: ["de", "en-GB"]), "en-US")
+        XCTAssertEqual(L10n.resolveLanguage("en-US", preferred: ["zh-Hans"]), "en-US")
+        XCTAssertEqual(L10n.text("ios.system_settings", language: "zh-CN"), "系统设置")
+        XCTAssertEqual(L10n.text("ios.message_agent", language: "zh-CN", values: ["agent": "Codex"]), "发送消息给 Codex")
+        XCTAssertEqual(L10n.text("ios.system_settings", language: "unsupported"), "System settings")
+    }
+
+    func testMacOnlineXMLBecomesATimestampedTimelineNotice() {
+        var session = SessionStore.demo().sessions[0]
+        session.messages = []
+        let xml = "<fennec-event type=\"mac-online\" device=\"aabbccdd\" generation=\"abc\">Mac is back online.</fennec-event>"
+        SessionStore.append(.init(kind: "user", text: xml, time: 123000), to: &session)
+        XCTAssertEqual(session.messages.count, 1)
+        XCTAssertEqual(session.messages[0].kind, .macOnline)
+        XCTAssertEqual(session.messages[0].time, Date(timeIntervalSince1970: 123))
+        XCTAssertFalse(session.messages[0].isUser)
+        let turns = ChatTurn.turns(session.messages, working: true)
+        XCTAssertTrue(turns[0].finished)
+        XCTAssertTrue(turns[0].work.isEmpty)
+        SessionStore.append(.init(kind: "user", text: "Explain " + xml), to: &session)
+        XCTAssertTrue(session.messages[1].isUser)
+    }
+
     func testPendingSendSurvivesStaleTranscriptAndConfirmsNewEcho() {
         let store = SessionStore.demo()
         let now = Date.now

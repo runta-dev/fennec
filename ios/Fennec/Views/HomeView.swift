@@ -14,7 +14,8 @@ struct HomeView: View {
     @Environment(AppModel.self) private var app
     @State private var path: [Route] = []
     @State private var showSearch = false
-    @State private var showNew = false
+    @State private var creatingSession = false
+    @State private var creationFailed = false
     @State private var renaming: Session?
     @State private var stopping: Session?
     @State private var menuFor: Session?
@@ -45,17 +46,22 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.account) } label: {
-                        Text(auth.profile?.initials.isEmpty == false ? auth.profile!.initials : "Me")
+                        Text(auth.profile?.initials.isEmpty == false ? auth.profile!.initials : L10n.text("ios.me"))
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .accessibilityLabel("Account")
+                    .accessibilityLabel(L10n.text("ui.account"))
                 }
                 if app.environment.badge != nil {
                     ToolbarItem(placement: .principal) { EnvironmentBadge(environment: app.environment) }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showNew = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("New session")
+                    Menu { agentChoices } label: {
+                        if creatingSession { ProgressView() }
+                        else { Image(systemName: "plus") }
+                    }
+                        .disabled(creatingSession)
+                        .accessibilityLabel(L10n.text("ios.new_session"))
+                        .accessibilityIdentifier("new-session-menu")
                 }
             }
             .navigationDestination(for: Route.self) { route in
@@ -71,11 +77,8 @@ struct HomeView: View {
                     path.append(.chat(id))
                 }
             }
-            .sheet(isPresented: $showNew) {
-                NewSessionView { id in
-                    showNew = false
-                    path.append(.chat(id))
-                }
+            .alert(L10n.text("ios.create_failed"), isPresented: $creationFailed) {
+                Button(L10n.text("ui.ok"), role: .cancel) {}
             }
             .sheet(item: $menuFor) { session in
                 SessionMenu(session: session, onStop: { store.stop(session.id) })
@@ -83,6 +86,26 @@ struct HomeView: View {
             }
         }
         .tint(Theme.fg)
+    }
+
+    @ViewBuilder
+    private var agentChoices: some View {
+        ForEach(AgentKind.allCases.filter { store.enabledAgents.contains($0) || $0 == .codex }) { agent in
+            Button { createSession(agent) } label: {
+                Label { Text(agent.displayName) } icon: { AgentIcon(agent: agent, size: 20) }
+            }
+            .accessibilityIdentifier("create-agent-\(agent.rawValue)")
+        }
+    }
+
+    private func createSession(_ agent: AgentKind) {
+        guard !creatingSession else { return }
+        creatingSession = true
+        Task {
+            defer { creatingSession = false }
+            do { path.append(.chat(try await store.launch(agent: agent))) }
+            catch { creationFailed = true }
+        }
     }
 
     private var list: some View {
@@ -96,14 +119,14 @@ struct HomeView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Theme.bg)
                             .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { store.stop(session.id) } label: { Label("Stop", systemImage: "stop.fill") }
+                                Button(role: .destructive) { store.stop(session.id) } label: { Label(L10n.text("ui.stop"), systemImage: "stop.fill") }
                                 Button { store.togglePin(session.id) } label: {
-                                    Label(session.pinned ? "Unpin" : "Pin", systemImage: session.pinned ? "pin.slash" : "pin")
+                                    Label(session.pinned ? L10n.text("ios.unpin") : L10n.text("ios.pin"), systemImage: session.pinned ? "pin.slash" : "pin")
                                 }
                                 .tint(Theme.accent)
                             }
                             .contextMenu {
-                                Button("Session menu", systemImage: "ellipsis.circle") { menuFor = session }
+                                Button(L10n.text("ios.session_menu"), systemImage: "ellipsis.circle") { menuFor = session }
                             }
                     }
                 } header: {
@@ -127,8 +150,9 @@ struct HomeView: View {
         VStack(spacing: 10) {
             Spacer()
             FoxMark(size: 56)
-            Text("No sessions yet").font(.system(size: 18, weight: .medium)).padding(.top, 6)
-            Button("New session") { showNew = true }
+            Text(L10n.text("ios.no_sessions")).font(.system(size: 18, weight: .medium)).padding(.top, 6)
+            Menu { agentChoices } label: { Text(L10n.text("ios.new_session")) }
+                .disabled(creatingSession)
                 .buttonStyle(PrimaryButtonStyle())
                 .frame(width: 180)
                 .padding(.top, 8)
@@ -151,7 +175,7 @@ struct HomeView: View {
     private var offlineBanner: some View {
         HStack(spacing: 10) {
             Image(systemName: "laptopcomputer").foregroundStyle(Theme.fg3)
-            Text("MacBook Pro is offline").font(.system(size: 14, weight: .medium))
+            Text(L10n.text("ios.mac_offline")).font(.system(size: 14, weight: .medium))
             Spacer()
         }
         .padding(12)
@@ -164,7 +188,7 @@ struct HomeView: View {
         Button { showSearch = true } label: {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                Text("Search")
+                Text(L10n.text("ios.search"))
                 Spacer()
             }
             .font(.system(size: 17))
@@ -242,7 +266,7 @@ struct SessionListSkeleton: View {
         .shimmer()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement()
-        .accessibilityLabel("Loading sessions")
+        .accessibilityLabel(L10n.text("ios.loading_sessions"))
     }
 }
 
@@ -288,25 +312,39 @@ struct Shimmer: ViewModifier {
 /// label that changes every second (the elapsed time) doesn't restart it.
 struct TextShimmer: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var started = Date.now
 
     func body(content: Content) -> some View {
-        if reduceMotion {
+        if reduceMotion || scenePhase != .active {
             content.foregroundStyle(Theme.fg2)
         } else {
-            TimelineView(.animation) { context in
-                let period = 1.6
-                let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
-                let center = -0.3 + t * 1.6 // sweep from just before the start to just past the end
-                content.foregroundStyle(LinearGradient(
-                    stops: [
-                        .init(color: Theme.fg2.opacity(0.55), location: 0),
-                        .init(color: Theme.fg2.opacity(0.55), location: max(0, center - 0.18)),
-                        .init(color: Theme.fg, location: min(max(center, 0), 1)),
-                        .init(color: Theme.fg2.opacity(0.55), location: min(1, center + 0.18)),
-                        .init(color: Theme.fg2.opacity(0.55), location: 1),
-                    ].sorted { $0.location < $1.location },
-                    startPoint: .leading, endPoint: .trailing))
+            // ChatGPT.app's Codex cadencedShimmer: 600 ms lead-in, a 1 s
+            // sweep in 48 steps, repeated every 4 s; mask peaks at 20–30%.
+            TimelineView(.animation(minimumInterval: 1.0 / 48)) { context in
+                let elapsed = context.date.timeIntervalSince(started) - 0.6
+                let phase = max(0, elapsed).truncatingRemainder(dividingBy: 4)
+                let progress = floor(min(phase, 1) * 48) / 48
+                content.foregroundStyle(Theme.fg2.opacity(0.55))
+                    .overlay {
+                        content.foregroundStyle(Theme.fg.opacity(0.75))
+                            .mask {
+                                GeometryReader { geometry in
+                                    LinearGradient(stops: [
+                                        .init(color: .clear, location: 0),
+                                        .init(color: .white, location: 0.2),
+                                        .init(color: .white, location: 0.3),
+                                        .init(color: .clear, location: 0.5),
+                                        .init(color: .clear, location: 1)
+                                    ], startPoint: .leading, endPoint: .trailing)
+                                    .offset(x: geometry.size.width * (-0.5 + 1.75 * progress))
+                                }
+                            }
+                            .opacity(elapsed >= 0 && phase < 1 ? 1 : 0)
+                            .accessibilityHidden(true)
+                    }
             }
+            .onAppear { started = .now }
         }
     }
 }

@@ -21,6 +21,8 @@ targets:
     platform: iOS
     sources:
       - path: Fennec
+      - path: ../native/macos/UI/translations.json
+        buildPhase: resources
     info:
       path: Fennec/Info.plist
       properties:

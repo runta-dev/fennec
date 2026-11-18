@@ -11,25 +11,25 @@ struct ConnectingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             FoxMark(size: 52).padding(.top, 40)
-            Text("You're signed in").font(.system(size: 24, weight: .semibold))
+            Text(L10n.text("ios.signed_in")).font(.system(size: 24, weight: .semibold))
             ListCard {
-                ListRow(icon: "person", title: "Runta account", subtitle: auth.profile?.email) { check(true) }
-                ListRow(icon: "cloud", title: "Cloud computer",
-                        subtitle: store.cloudRunning ? "Running · \(store.sessions.count) live sessions" : "Stopped") { check(store.cloudRunning) }
+                ListRow(icon: "person", title: L10n.text("ios.runta_account"), subtitle: auth.profile?.email) { check(true) }
+                ListRow(icon: "cloud", title: L10n.text("ui.cloud_computer"),
+                        subtitle: store.cloudRunning ? "Running · \(store.sessions.count) live sessions" : L10n.text("ios.stopped")) { check(store.cloudRunning) }
                 if store.macOnline {
-                    ListRow(icon: "laptopcomputer", title: "MacBook Pro", subtitle: "Online") { check(true) }
+                    ListRow(icon: "laptopcomputer", title: "MacBook Pro", subtitle: L10n.text("ios.online")) { check(true) }
                 } else {
-                    ListRow(icon: "laptopcomputer", iconColor: Theme.fg3, title: "MacBook Pro", subtitle: "Offline", titleColor: Theme.fg2) {
+                    ListRow(icon: "laptopcomputer", iconColor: Theme.fg3, title: "MacBook Pro", subtitle: L10n.text("ui.offline"), titleColor: Theme.fg2) {
                         Circle().fill(Theme.fg3).frame(width: 7, height: 7).frame(width: 20)
                     }
                 }
-                ListRow(icon: "apple.terminal", title: "Agents", showDivider: false) {
+                ListRow(icon: "apple.terminal", title: L10n.text("ui.agents"), showDivider: false) {
                     if agentsLoaded { check(true) } else { ProgressView().tint(Theme.accent).frame(width: 20) }
                 }
             }
             Spacer()
-            Button("Continue", action: onContinue).buttonStyle(PrimaryButtonStyle())
-            Button("Turn on notifications") {
+            Button(L10n.text("ui.continue"), action: onContinue).buttonStyle(PrimaryButtonStyle())
+            Button(L10n.text("ios.enable_notifications")) {
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
             }
             .font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.fg2).frame(maxWidth: .infinity)

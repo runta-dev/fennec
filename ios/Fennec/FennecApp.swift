@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct FennecApp: App {
     @State private var app = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("didFinishConnecting") private var didFinishConnecting = false
 
@@ -26,6 +27,10 @@ struct FennecApp: App {
             .environment(app.auth)
             .environment(app.store)
             .tint(Theme.fg)
+            .environment(\.locale, Locale(identifier: L10n.language))
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { L10n.preferences.systemLanguages = Locale.preferredLanguages }
+            }
             .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
             // QR codes scanned with the system Camera open fennec://pair links.
             .onOpenURL { url in

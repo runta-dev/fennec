@@ -14,7 +14,8 @@ struct ChatView: View {
     @State private var denyReason = ""
     @State private var followBottom = true
     @State private var showTerminal = false
-    @FocusState private var composerFocused: Bool
+    @State private var showDeliveryIssue = false
+    @State private var composerFocused = false
 
     private var draftKey: String {
         "chatDraft.\(app.environment.rawValue).\(auth.profile?.email ?? "preview").\(sessionID)"
@@ -30,9 +31,12 @@ struct ChatView: View {
     var body: some View {
         if let session = store.session(sessionID) {
             content(session)
-                .onAppear { draft = UserDefaults.standard.string(forKey: draftKey) ?? "" }
+                .onAppear {
+                    draft = UserDefaults.standard.string(forKey: draftKey) ?? ""
+                    if session.messages.isEmpty { composerFocused = true }
+                }
         } else {
-            Text("This session has ended.").foregroundStyle(Theme.fg2)
+            Text(L10n.text("ios.session_ended")).foregroundStyle(Theme.fg2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.bg)
         }
     }
@@ -53,9 +57,11 @@ struct ChatView: View {
                     } else if session.messages.isEmpty, let error = session.transcriptError {
                         VStack(spacing: 12) {
                             Text(error).font(.system(size: 14)).foregroundStyle(Theme.fg2).multilineTextAlignment(.center)
-                            Button("Open terminal") { showTerminal = true }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 200)
+                            Button(L10n.text("ios.open_terminal")) { showTerminal = true }.buttonStyle(GlassCapsuleButtonStyle()).frame(width: 200)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 80)
+                    } else if session.messages.isEmpty && store.pendingSends[session.id] == nil {
+                        emptyConversation(session)
                     }
                     let turns = ChatTurn.turns(session.messages, working: session.state == .working, byPrompt: session.agent == .claudeCode)
                     ForEach(turns) { turn in
@@ -65,16 +71,8 @@ struct ChatView: View {
                     }
                     if let pending = store.pendingSends[session.id] {
                         VStack(alignment: .trailing, spacing: 6) {
-                            MessageView(message: pending.message)
-                            Text(pending.status).font(.caption).foregroundStyle(Theme.fg2)
-                            if pending.failed {
-                                Button("Return to draft") {
-                                    if case .user(let text) = pending.message.kind {
-                                        draftBinding.wrappedValue = draft.isEmpty ? text : draft + "\n" + text
-                                    }
-                                    store.pendingSends[session.id] = nil
-                                }
-                            }
+                            MessageView(message: pending.message, showsSent: false)
+                            deliveryIndicator(pending)
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .id(pending.message.id)
@@ -129,14 +127,14 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showMenu = true } label: { Image(systemName: "ellipsis") }
-                    .accessibilityLabel("Session menu")
+                    .accessibilityLabel(L10n.text("ios.session_menu"))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer(session) }
         .task(id: session.id) {
             while !Task.isCancelled {
                 // The home list's refresh stops while this page is in front, so
-                // keep Herdr's state current here: it is what ends "Working".
+                // Keep Herdr's state current here: it ends the working indicator.
                 await store.refresh()
                 await store.loadTranscript(session.id)
                 // New lines arrive fast while the agent works; idle logs rarely change.
@@ -162,6 +160,7 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if session.messages.isEmpty { emptyConversation(session) }
                     ForEach(session.messages) { message in
                         MessageView(message: message).id(message.id)
                     }
@@ -185,7 +184,7 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showMenu = true } label: { Image(systemName: "ellipsis") }
-                    .accessibilityLabel("Session menu")
+                    .accessibilityLabel(L10n.text("ios.session_menu"))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -211,12 +210,19 @@ struct ChatView: View {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 36, height: 36)
-                .accessibilityLabel("Attach")
-            TextField("Message \(session.agent.displayName)", text: draftBinding, axis: .vertical)
-                .lineLimit(1...5)
-                .focused($composerFocused)
-                .font(.system(size: 16))
-                .accessibilityIdentifier("chat-composer")
+                .accessibilityLabel(L10n.text("ios.attach"))
+            ZStack(alignment: .leading) {
+                if draft.isEmpty {
+                    Text(L10n.text("ios.message_agent", values: ["agent": session.agent.displayName]))
+                        .font(.system(size: 16)).foregroundStyle(Theme.fg3)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+                ComposerTextView(text: draftBinding,
+                                 focused: Binding(get: { composerFocused }, set: { composerFocused = $0 }),
+                                 placeholder: L10n.text("ios.message_agent", values: ["agent": session.agent.displayName]),
+                                 canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.pendingSends[session.id] == nil,
+                                 onSend: { sendMessage(session) })
+            }
             if draft.isEmpty && session.state == .working {
                 Button { } label: {
                     Image(systemName: "stop.fill").font(.system(size: 13))
@@ -224,24 +230,17 @@ struct ChatView: View {
                         .foregroundStyle(Theme.onPrimary)
                         .background(Theme.primary, in: Circle())
                 }
-                .accessibilityLabel("Stop turn")
+                .accessibilityLabel(L10n.text("ios.stop_turn"))
             } else {
-                Button {
-                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { return }
-                    followBottom = true
-                    draftBinding.wrappedValue = ""
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
-                        store.send(text, to: session.id)
-                    }
-                } label: {
+                Button { sendMessage(session) } label: {
                     Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)
                         .background(Theme.primary.opacity(draft.isEmpty ? 0.35 : 1), in: Circle())
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.pendingSends[session.id] != nil)
-                .accessibilityLabel("Send")
+                .accessibilityLabel(L10n.text("ui.send"))
+                .accessibilityIdentifier("composer-send")
             }
         }
         .padding(.leading, 8)
@@ -252,9 +251,59 @@ struct ChatView: View {
         .padding(.bottom, 6)
     }
 
+    private func sendMessage(_ session: Session) {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, store.pendingSends[session.id] == nil else { return }
+        followBottom = true
+        draftBinding.wrappedValue = ""
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+            store.send(text, to: session.id)
+        }
+    }
+
+    private func emptyConversation(_ session: Session) -> some View {
+        VStack(spacing: 12) {
+            AgentIcon(agent: session.agent, size: 36)
+            Text(L10n.text("ios.start_conversation")).font(.system(size: 17, weight: .medium))
+        }
+        .foregroundStyle(Theme.fg2)
+        .frame(maxWidth: .infinity).padding(.vertical, 32)
+    }
+
+    @ViewBuilder
+    private func deliveryIndicator(_ pending: SessionStore.PendingSend) -> some View {
+        Group {
+            switch pending.delivery {
+            case .sending: SendingDash()
+            case .sent:
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .medium))
+                    .accessibilityLabel(L10n.text("ios.sent"))
+            case .unconfirmed:
+                Button { showDeliveryIssue = true } label: {
+                    Image(systemName: "exclamationmark.circle").font(.system(size: 14))
+                        .foregroundStyle(Theme.danger)
+                        .frame(width: 28, height: 28)
+                }
+                .accessibilityLabel(L10n.text("ios.delivery_unconfirmed"))
+                .alert(L10n.text("ios.delivery_unconfirmed"), isPresented: $showDeliveryIssue) {
+                    Button(L10n.text("ios.return_draft")) {
+                        guard store.pendingSends[sessionID]?.message.id == pending.message.id else { return }
+                        if case .user(let text) = pending.message.kind {
+                            draftBinding.wrappedValue = draft.isEmpty ? text : draft + "\n" + text
+                        }
+                        store.pendingSends[sessionID] = nil
+                    }
+                    Button(L10n.text("ui.close"), role: .cancel) {}
+                } message: { Text(L10n.text("ios.delivery_explanation")) }
+            }
+        }
+        .foregroundStyle(Theme.fg3)
+        .frame(width: 28, height: 20)
+    }
+
     private func approvalSheet(_ session: Session, _ approval: ApprovalRequest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Allow \(session.agent.displayName) to run this command?")
+            Text(L10n.text("ios.allow_command", values: ["agent": session.agent.displayName]))
                 .font(.system(size: 17, weight: .medium))
             HStack(alignment: .top, spacing: 8) {
                 Text("$").foregroundStyle(Theme.fg3)
@@ -271,13 +320,13 @@ struct ChatView: View {
             }
             .font(.system(size: 12, design: .monospaced))
             .foregroundStyle(Theme.fg3)
-            Button("Approve") { store.approve(session.id, forSession: false) }.buttonStyle(PrimaryButtonStyle())
-            Button("Approve for this session") { store.approve(session.id, forSession: true) }.buttonStyle(GlassCapsuleButtonStyle())
+            Button(L10n.text("ios.approve")) { store.approve(session.id, forSession: false) }.buttonStyle(PrimaryButtonStyle())
+            Button(L10n.text("ios.approve_session")) { store.approve(session.id, forSession: true) }.buttonStyle(GlassCapsuleButtonStyle())
             Divider().overlay(Theme.line)
             HStack {
                 Image(systemName: "pencil").foregroundStyle(Theme.fg3)
-                TextField("Tell \(session.agent.displayName) what to do", text: $denyReason)
-                Button("Deny") {
+                TextField(L10n.text("ios.tell_agent", values: ["agent": session.agent.displayName]), text: $denyReason)
+                Button(L10n.text("permission.deny")) {
                     store.deny(session.id, reason: denyReason)
                     denyReason = ""
                 }
@@ -327,7 +376,7 @@ private struct QuestionSheet: View {
             }
             HStack(spacing: 10) {
                 Image(systemName: "pencil").foregroundStyle(Theme.fg3)
-                TextField("Type something else", text: $custom, onEditingChanged: { typing = $0 })
+                TextField(L10n.text("ios.custom_answer"), text: $custom, onEditingChanged: { typing = $0 })
                     .onSubmit { if !custom.isEmpty { answer(custom) } }
             }
             .padding(12)
@@ -359,9 +408,26 @@ struct TitlePill: View {
 struct MessageView: View {
     var message: ChatMessage
     var lineLimit: Int? = nil
+    var showsSent = true
 
     var body: some View {
         switch message.kind {
+        case .macOnline:
+            HStack(spacing: 10) {
+                Image(systemName: "laptopcomputer").font(.system(size: 15))
+                    .foregroundStyle(Theme.working)
+                Text(L10n.text("ios.mac_online")).font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 8)
+                if let time = message.time {
+                    Text(time, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        .font(.system(size: 12)).foregroundStyle(Theme.fg3)
+                }
+            }
+            .foregroundStyle(Theme.fg2)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("mac-online-notice")
         case .user(let text):
             VStack(alignment: .trailing, spacing: 6) {
                 if !message.images.isEmpty { PastedImages(images: message.images) }
@@ -374,6 +440,11 @@ struct MessageView: View {
                             .background(Theme.bubble, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
                             .textSelection(.enabled)
                     }
+                }
+                if showsSent {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.fg3).frame(width: 28, height: 20)
+                        .accessibilityLabel(L10n.text("ios.sent"))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -397,7 +468,7 @@ struct MessageView: View {
         case .compacted:
             HStack(spacing: 10) {
                 Rectangle().fill(Theme.line).frame(height: 1)
-                Text("Conversation compacted").font(.system(size: 12)).foregroundStyle(Theme.fg2).fixedSize()
+                Text(L10n.text("ios.compacted")).font(.system(size: 12)).foregroundStyle(Theme.fg2).fixedSize()
                 Rectangle().fill(Theme.line).frame(height: 1)
             }
             .padding(.vertical, 4)
@@ -414,7 +485,7 @@ private struct ChangesCard: View {
         VStack(spacing: 0) {
             Button { withAnimation { expanded.toggle() } } label: {
                 HStack {
-                    Text("\(files.count) files changed").font(.system(size: 14, weight: .medium))
+                    Text(L10n.text("ios.files_changed", values: ["count": String(files.count)])).font(.system(size: 14, weight: .medium))
                     Text("+\(files.map(\.added).reduce(0, +))").foregroundStyle(Theme.working)
                     Text("−\(files.map(\.removed).reduce(0, +))").foregroundStyle(Theme.danger)
                     Spacer()
@@ -461,38 +532,38 @@ struct SessionMenu: View {
                 AgentIcon(agent: session.agent, size: 36)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(session.title).font(.system(size: 16, weight: .medium)).lineLimit(1)
-                    Text("\(session.agent.displayName) · \(session.model) · \(session.location == .cloud ? "Cloud" : "Mac")")
+                    Text("\(session.agent.displayName) · \(session.model) · \(session.location == .cloud ? L10n.text("ios.cloud") : "Mac")")
                         .font(.system(size: 13)).foregroundStyle(Theme.fg2)
                 }
             }
             .padding(.horizontal, 4)
             ListCard {
-                Button { onOpenTerminal?() } label: { ListRow(icon: "apple.terminal", iconColor: Theme.fg, title: "Open terminal") }
+                Button { onOpenTerminal?() } label: { ListRow(icon: "apple.terminal", iconColor: Theme.fg, title: L10n.text("ios.open_terminal")) }
                     .disabled(onOpenTerminal == nil)
-                Button { newTitle = session.title; renaming = true } label: { ListRow(icon: "pencil", iconColor: Theme.fg, title: "Rename") }
+                Button { newTitle = session.title; renaming = true } label: { ListRow(icon: "pencil", iconColor: Theme.fg, title: L10n.text("ios.rename")) }
                 Button { store.togglePin(session.id); dismiss() } label: {
-                    ListRow(icon: session.pinned ? "pin.slash" : "pin", iconColor: Theme.fg, title: session.pinned ? "Unpin" : "Pin to top", showDivider: false)
+                    ListRow(icon: session.pinned ? "pin.slash" : "pin", iconColor: Theme.fg, title: session.pinned ? L10n.text("ios.unpin") : L10n.text("ios.pin_top"), showDivider: false)
                 }
             }
             .buttonStyle(.plain)
             ListCard {
                 Button { confirmStop = true } label: {
-                    ListRow(icon: "stop.fill", iconColor: Theme.danger, title: "Stop session", titleColor: Theme.danger, showDivider: false)
+                    ListRow(icon: "stop.fill", iconColor: Theme.danger, title: L10n.text("ui.stop_session"), titleColor: Theme.danger, showDivider: false)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 20)
-        .confirmationDialog("Stop this session?", isPresented: $confirmStop, titleVisibility: .visible) {
-            Button("Stop session", role: .destructive) { dismiss(); onStop() }
+        .confirmationDialog(L10n.text("ios.stop_confirm"), isPresented: $confirmStop, titleVisibility: .visible) {
+            Button(L10n.text("ui.stop_session"), role: .destructive) { dismiss(); onStop() }
         } message: {
-            Text("This ends the cloud process. Closing the app doesn't stop sessions.")
+            Text(L10n.text("ios.stop_explanation"))
         }
-        .alert("Rename session", isPresented: $renaming) {
-            TextField("Title", text: $newTitle)
-            Button("Save") { store.rename(session.id, to: newTitle) }
-            Button("Cancel", role: .cancel) {}
+        .alert(L10n.text("ios.rename_session"), isPresented: $renaming) {
+            TextField(L10n.text("ios.title"), text: $newTitle)
+            Button(L10n.text("ios.save")) { store.rename(session.id, to: newTitle) }
+            Button(L10n.text("ui.cloud_cancel"), role: .cancel) {}
         }
     }
 }
@@ -552,7 +623,7 @@ struct WorkingIndicator: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text("Working for \(Self.elapsed(from: since, to: context.date))")
+                    Text(L10n.text("ios.working_for", values: ["duration": Self.elapsed(from: since, to: context.date)]))
                         .font(.system(size: 14, weight: .medium))
                         .monospacedDigit()
                 }
@@ -609,7 +680,7 @@ private struct ChatSkeleton: View {
         }
         .shimmer()
         .padding(.top, 8)
-        .accessibilityLabel("Loading conversation")
+        .accessibilityLabel(L10n.text("ios.loading_conversation"))
     }
 }
 
@@ -671,12 +742,12 @@ private struct TurnView: View {
             HStack(spacing: 6) {
                 if turn.finished {
                     Text(turn.stopped
-                         ? turn.duration.map { "Stopped after \(Self.format($0))" } ?? "Stopped"
-                         : turn.duration.map { "Worked for \(Self.format($0))" } ?? "Worked")
+                         ? turn.duration.map { L10n.text("ios.stopped_after", values: ["duration": Self.format($0)]) } ?? L10n.text("ios.stopped")
+                         : turn.duration.map { L10n.text("ios.worked_for", values: ["duration": Self.format($0)]) } ?? L10n.text("ios.worked"))
                 } else {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         let elapsed = context.date.timeIntervalSince(since)
-                        Text(elapsed < 2 ? "Working" : "Working for \(Self.format(elapsed))").monospacedDigit()
+                        Text(elapsed < 2 ? L10n.text("ui.working") : L10n.text("ios.working_for", values: ["duration": Self.format(elapsed)])).monospacedDigit()
                     }
                     .textShimmer()
                 }
@@ -692,7 +763,7 @@ private struct TurnView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(foldable ? (expanded ? "Hides the steps" : "Shows the steps") : "")
+        .accessibilityHint(foldable ? (expanded ? L10n.text("ios.hide_steps") : L10n.text("ios.show_steps")) : "")
     }
 
     static func format(_ seconds: TimeInterval) -> String {
@@ -717,7 +788,7 @@ private struct PastedImages: View {
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Image \(index + 1)")
+                    .accessibilityLabel(L10n.text("ios.image_number", values: ["number": String(index + 1)]))
                 }
             }
         }
@@ -737,7 +808,7 @@ private struct PastedImages: View {
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
                 .padding(16)
-                .accessibilityLabel("Close")
+                .accessibilityLabel(L10n.text("ui.close"))
             }
             .environment(\.colorScheme, .dark)
         }
@@ -755,6 +826,6 @@ private struct UserText: View {
         Text(text)
             .lineLimit(long && !expanded ? 12 : nil)
             .onTapGesture { if long { withAnimation(.snappy) { expanded.toggle() } } }
-            .accessibilityHint(long ? (expanded ? "Shows less" : "Shows the whole message") : "")
+            .accessibilityHint(long ? (expanded ? L10n.text("ios.show_less") : L10n.text("ios.show_message")) : "")
     }
 }
