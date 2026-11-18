@@ -345,6 +345,19 @@ func (m *Manager) CancelAuthorization(ctx context.Context) error {
 }
 func (m *Manager) fail(epoch uint64, code string) { m.failDetail(epoch, code, "") }
 
+// FailLogin ends the sign-in in progress with code and detail, for failures
+// only the app sees (the sign-in window's error, a callback it can't use).
+// Unlike CancelAuthorization, which reports a plain sign-out, the error stays
+// in the state the app watches, so it is shown rather than overwritten.
+func (m *Manager) FailLogin(code, detail string) {
+	m.mu.Lock()
+	epoch, active := m.state.Epoch, m.state.Status == "authorizing"
+	m.mu.Unlock()
+	if active {
+		m.failDetail(epoch, code, detail)
+	}
+}
+
 func (m *Manager) failDetail(epoch uint64, code, detail string) {
 	if len(detail) > 300 {
 		detail = detail[:300]

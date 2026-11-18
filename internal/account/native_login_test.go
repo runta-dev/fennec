@@ -429,3 +429,31 @@ func TestNativeProviderErrorKeepsItsDescription(t *testing.T) {
 		t.Fatalf("state %+v", s)
 	}
 }
+
+func TestFailLoginKeepsTheErrorInTheWatchedState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ioJSON(w, `{"data":{"attempt_id":"attempt"}}`)
+	}))
+	defer server.Close()
+	m := New(ctx, &memoryCredentials{}, server.URL)
+	m.http = server.Client()
+	cfg := NativeOAuthConfig{AuthURL: server.URL, BackendURL: server.URL, DashboardURL: server.URL, PublishableKey: "sb_publishable_test"}
+	if _, err := m.LoginNative("google", cfg); err != nil {
+		t.Fatal(err)
+	}
+	state := waitNative(t, m, func(s Snapshot) bool { return s.URL != "" })
+	m.FailLogin("authorization_failed", "sign-in window: com.apple.AuthenticationServices.WebAuthenticationSession 2")
+	if s := m.Snapshot(); s.Status != "signed_out" || s.Error != "authorization_failed" || s.Detail == "" || s.Epoch != state.Epoch {
+		t.Fatalf("state %+v", s)
+	}
+	if m.CompleteNative(NativeCallbackURL+"?code=late", state.Epoch) {
+		t.Fatal("a late callback revived the failed attempt")
+	}
+	// Nothing to fail when no sign-in is in progress.
+	m.FailLogin("authorization_failed", "again")
+	if s := m.Snapshot(); s.Detail == "again" {
+		t.Fatal("failed an idle manager")
+	}
+}

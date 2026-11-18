@@ -105,10 +105,7 @@ final class RuntaAuth {
     /// The browser came back with something that isn't a sign-in callback:
     /// end the attempt and say so, rather than looking cancelled.
     func rejectCallback(_ url: URL) {
-        let core = self.core
-        Task.detached { try? core.cancelLogin() }
-        status = .failed(Self.message(for: "authorization_failed"))
-        failureDetail = url.scheme.map { "\($0)://\(url.host() ?? "")\(url.path())" }
+        failSignIn(url.scheme.map { "unexpected return: \($0)://\(url.host() ?? "")\(url.path())" } ?? "unexpected return")
     }
 
     func cancelSignIn() {
@@ -134,9 +131,11 @@ final class RuntaAuth {
     }
 
     /// Ends the attempt with "Couldn't finish sign-in" and a detail for 详情.
+    /// Recorded in the Go account manager, not only here: its next snapshot
+    /// would otherwise replace this with a plain sign-out (that was the
+    /// silence in 0.1.4 and 0.1.5).
     private func failSignIn(_ detail: String) {
-        let core = self.core
-        Task.detached { try? core.cancelLogin() }
+        core.failLogin(detail)
         status = .failed(Self.message(for: "authorization_failed"))
         failureDetail = detail
     }

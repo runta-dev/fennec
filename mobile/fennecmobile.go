@@ -150,6 +150,10 @@ func (a *Auth) Redeem(pairingURL string) (string, error) {
 	return snapshotJSON(a.manager.Redeem(code)), nil
 }
 
+// FailLogin ends the sign-in in progress as authorization_failed, keeping
+// detail for the app's Details.
+func (a *Auth) FailLogin(detail string) { a.manager.FailLogin("authorization_failed", detail) }
+
 func (a *Auth) CancelLogin() error {
 	return a.manager.CancelAuthorization(context.Background())
 }
