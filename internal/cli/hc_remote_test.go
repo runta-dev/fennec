@@ -9,3 +9,11 @@ func TestHCRemoteQuotesArguments(t *testing.T) {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}
 }
+
+// The desktop window runs Contents/MacOS/fen as `hc` (Resources/fennec-hc):
+// it must reach hcCommand, not the public fen client.
+func TestHCIsAPrivateInvocation(t *testing.T) {
+	if PublicInvocation([]string{"hc", "connect"}) {
+		t.Fatal("fen hc must not be routed to the public client")
+	}
+}
