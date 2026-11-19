@@ -440,6 +440,15 @@ impl FennecWindow {
     pub(crate) fn go(&mut self, route: Route, window: &mut Window, cx: &mut Context<Self>) {
         self.menu = None;
         if self.route.as_ref() != Some(&route) {
+            // Only the session on screen streams: every attached terminal shares one
+            // paced connection to the cloud computer, so a busy hidden agent would
+            // delay the echo of what is typed here. Coming back attaches again
+            // (the core repaints the screen and its history).
+            if let Some(Route::Session(old)) = &self.route {
+                if let Some(view) = self.terms.remove(old) {
+                    view.read(cx).detach();
+                }
+            }
             if let Route::Settings(id, _) = &route {
                 self.open_settings(id.clone(), window, cx);
             }
@@ -625,6 +634,19 @@ impl FennecWindow {
     }
 
     fn new_shell(&mut self, session: Session, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_shell_once(session, true, window, cx);
+    }
+
+    /// `retry`: a core left running by an earlier Fennec.app refuses new terminals
+    /// once the app (and its herdr-core) was replaced ("no holder ... is not
+    /// current"); Fennec's own instance is restarted and asked once more.
+    fn new_shell_once(
+        &mut self,
+        session: Session,
+        retry: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.with_local(window, cx, move |this, window, cx| {
             let Some(core) = this.local.clone() else {
                 return;
@@ -646,6 +668,23 @@ impl FennecWindow {
                         )
                     })
                     .await;
+                let stale = matches!(&started, Err(e) if format!("{e:#}").contains("no holder") || format!("{e:#}").contains("is not current"));
+                if stale && retry {
+                    let restarted = cx
+                        .background_spawn(async move {
+                            let program = crate::core_bin::local()?;
+                            crate::spawn::command(program).args(["server", "restart"]).output().ok()
+                        })
+                        .await;
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        if restarted.is_none() {
+                            return this.say(t("try_again"), cx);
+                        }
+                        this.local = None;
+                        this.new_shell_once(session, false, window, cx);
+                    });
+                    return;
+                }
                 let _ = this.update(cx, |this, cx| match started {
                     Ok(address) => {
                         this.shells
