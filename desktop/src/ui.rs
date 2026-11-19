@@ -106,15 +106,27 @@ pub fn project_mark(name: &str, color: &str, size: f32) -> Div {
     let initial: String = name
         .chars()
         .next()
-        .map(|ch| ch.to_uppercase().collect())
+        .map(|ch| ch.to_string())
         .unwrap_or_default();
     div()
         .size(px(size))
         .flex_none()
-        .rounded(px(if size > 24.0 { 8.0 } else { 5.0 }))
+        .rounded(px(if size >= 40.0 {
+            10.0
+        } else if size > 24.0 {
+            8.0
+        } else {
+            5.0
+        }))
         .bg(tint.opacity(0.18))
         .text_color(tint)
-        .text_size(px(size * 0.6))
+        .text_size(px(if size >= 40.0 {
+            19.0
+        } else if size > 24.0 {
+            15.0
+        } else {
+            11.0
+        }))
         .font_weight(FontWeight::MEDIUM)
         .flex()
         .items_center()
@@ -208,7 +220,13 @@ pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
             return div()
                 .size(px(size))
                 .flex_none()
-                .rounded(px(if size > 24.0 { 8.0 } else { 5.0 }))
+                .rounded(px(if size >= 40.0 {
+                    10.0
+                } else if size > 24.0 {
+                    8.0
+                } else {
+                    5.0
+                }))
                 .overflow_hidden()
                 .child(
                     img(std::sync::Arc::new(Image::from_bytes(
