@@ -247,3 +247,8 @@ in `desktop/README.md`. The preview uses isolated fixture data, not account or
 runtime evidence. Live keyboard acceptance used an isolated herdr-core session:
 new-tab selection and immediate typing, Ctrl-J/K traversal, Cmd-B confirmation,
 and Cmd-W closure were exercised through the native UI.
+
+Shell tabs show their actual shell executable (for example zsh or bash),
+and session rows show the active tab's current working directory. The home
+folder is shown as `~`; other folders use their final path component. Live
+foreground-directory events update the label and search without reconnecting.

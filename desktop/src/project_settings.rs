@@ -39,6 +39,7 @@ pub struct State {
     knowledge: Vec<Concept>,
     filter: KnowledgeFilter,
     concept: String,
+    add_worker_open: bool,
     queue: Option<QueueProject>,
 }
 
@@ -1132,6 +1133,7 @@ impl FennecWindow {
                     .text_size(px(12.0))
                     .hover(|s| s.bg(c("f_expanded")))
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        this.settings.add_worker_open = false;
                         this.patch_project(json!({"workers": next}), window, cx)
                     }))
                     .child(ui::icon("plus", 12.0, c("f_muted")))
@@ -1155,7 +1157,51 @@ impl FennecWindow {
                     .px(px(14.0))
                     .py(px(4.0))
                     .children(rows)
-                    .child(h_flex().flex_wrap().gap(px(8.0)).py(px(10.0)).children(add)),
+                    .child(
+                        div()
+                            .relative()
+                            .py(px(10.0))
+                            .child(
+                                h_flex()
+                                    .id("add-worker-menu")
+                                    .h(px(28.0))
+                                    .px(px(9.0))
+                                    .gap(px(7.0))
+                                    .rounded(px(7.0))
+                                    .border_1()
+                                    .border_color(c("f_field"))
+                                    .bg(c("f_card"))
+                                    .text_size(px(12.5))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.settings.add_worker_open =
+                                            !this.settings.add_worker_open;
+                                        cx.notify();
+                                    }))
+                                    .child(t("add_worker"))
+                                    .child(ui::icon("chevron", 13.0, c("f_muted"))),
+                            )
+                            .when(self.settings.add_worker_open, |d| {
+                                d.child(
+                                    v_flex()
+                                        .absolute()
+                                        .top(px(42.0))
+                                        .left(px(0.0))
+                                        .min_w(px(180.0))
+                                        .p(px(5.0))
+                                        .gap(px(2.0))
+                                        .rounded(px(9.0))
+                                        .border_1()
+                                        .border_color(c("f_field"))
+                                        .bg(c("f_card"))
+                                        .shadow_lg()
+                                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                            this.settings.add_worker_open = false;
+                                            cx.notify();
+                                        }))
+                                        .children(add),
+                                )
+                            }),
+                    ),
             )
     }
 }

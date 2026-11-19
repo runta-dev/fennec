@@ -74,6 +74,8 @@ pub struct FennecWindow {
     local: Option<Arc<Core>>,
     /// Local shells by the session they sit beside (`fennec.shell-of`), in order.
     shells: HashMap<String, Vec<String>>,
+    shell_names: HashMap<String, String>,
+    directories: HashMap<String, String>,
     /// The tab shown in each session: a local shell's `local:<address>`, else the agent's.
     tab: HashMap<String, String>,
     pub(crate) _subs: Vec<Subscription>,
@@ -176,6 +178,8 @@ impl FennecWindow {
             settings: Default::default(),
             local: None,
             shells: HashMap::new(),
+            shell_names: HashMap::new(),
+            directories: HashMap::new(),
             tab: HashMap::new(),
             _subs: subs,
             _tasks: Vec::new(),
@@ -348,6 +352,24 @@ impl FennecWindow {
             return;
         };
         let live = events.live();
+        if !crate::core_bin::cloud() {
+            self.shells.clear();
+        }
+        for terminal in live["terminals"].as_array().into_iter().flatten() {
+            if let Some(address) = terminal["address"].as_str() {
+                self.shell_names
+                    .insert(address.to_owned(), sessions::shell_name(terminal));
+                self.directories
+                    .insert(address.to_owned(), sessions::terminal_directory(terminal));
+                if let Some(parent) = terminal["labels"]["fennec.shell-of"].as_str() {
+                    let list = self.shells.entry(parent.to_owned()).or_default();
+                    if !list.iter().any(|a| a == address) {
+                        list.push(address.to_owned());
+                    }
+                }
+            }
+        }
+
         crate::mods::publish_terminals(live["terminals"].clone());
         self.sessions = sessions::from_terminals(
             live["terminals"]
@@ -670,6 +692,10 @@ impl FennecWindow {
                             t["labels"]["fennec.shell-of"].as_str(),
                             t["address"].as_str(),
                         ) {
+                            this.shell_names
+                                .insert(a.to_owned(), sessions::shell_name(t));
+                            this.directories
+                                .insert(a.to_owned(), sessions::terminal_directory(t));
                             let list = this.shells.entry(of.to_owned()).or_default();
                             if !list.iter().any(|x| x == a) {
                                 list.push(a.to_owned());
@@ -739,10 +765,9 @@ impl FennecWindow {
                 }
                 let _ = this.update_in(cx, |this, window, cx| match started {
                     Ok(address) => {
-                        this.shells
-                            .entry(session.name.clone())
-                            .or_default()
-                            .push(address.clone());
+                        let list=this.shells.entry(session.name.clone()).or_default();
+                        if !list.contains(&address){list.push(address.clone());}
+                        this.shell_names.entry(address.clone()).or_insert_with(||sessions::shell_name(&serde_json::Value::Null));
                         this.tab
                             .insert(session.address.clone(), format!("local:{address}"));
                         this.route = Some(Route::Session(session.address.clone()));
@@ -1019,6 +1044,16 @@ impl FennecWindow {
             "terminal.search" => t.update(cx, |t, cx| t.open_search(window, cx)),
             _ => cx.propagate(),
         }
+    }
+
+    fn session_directory(&self, session: &Session) -> String {
+        let tab = self.shown_tab(&session.address);
+        let key = tab.strip_prefix("local:").unwrap_or(&tab);
+        self.directories
+            .get(key)
+            .filter(|p| !p.is_empty())
+            .cloned()
+            .unwrap_or_else(|| session.directory.clone())
     }
 
     fn query(&self, cx: &App) -> String {
@@ -1396,7 +1431,8 @@ impl FennecWindow {
                     s.state == state
                         && (q.is_empty()
                             || s.title.to_lowercase().contains(&q)
-                            || s.name.contains(&q))
+                            || s.name.contains(&q)
+                            || self.session_directory(s).to_lowercase().contains(&q))
                 })
                 .collect();
             if list.is_empty() {
@@ -1437,7 +1473,21 @@ impl FennecWindow {
                                         .child(ui::status_dot(s.state)),
                                 ),
                         )
-                        .child(div().flex_1().min_w_0().truncate().child(s.title.clone()))
+                        .child(div().flex_1().min_w_0().truncate().child({
+                            let tab = self.shown_tab(&s.address);
+                            let key = tab.strip_prefix("local:").unwrap_or(&tab);
+                            let path = self
+                                .directories
+                                .get(key)
+                                .map(String::as_str)
+                                .filter(|p| !p.is_empty())
+                                .unwrap_or(&s.directory);
+                            if path.is_empty() {
+                                s.title.clone()
+                            } else {
+                                sessions::directory_label(path)
+                            }
+                        }))
                         .child(
                             div()
                                 .text_size(px(11.0))
@@ -2168,9 +2218,19 @@ impl FennecWindow {
                 }))
                 .child(ui::icon("term", 14.0, c("f_muted")))
                 .child(if shells.len() > 1 {
-                    format!("{} {}", t("shell"), i + 1)
+                    format!(
+                        "{} {}",
+                        self.shell_names
+                            .get(a)
+                            .cloned()
+                            .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null)),
+                        i + 1
+                    )
                 } else {
-                    t("shell")
+                    self.shell_names
+                        .get(a)
+                        .cloned()
+                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))
                 })
                 .child(
                     div()

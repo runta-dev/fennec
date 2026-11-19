@@ -257,6 +257,7 @@ pub fn icon_button(id: &'static str, name: &str) -> Stateful<Div> {
         .child(
             svg()
                 .path(SharedString::from(format!("icons/{name}.svg")))
+                .text_color(c("f_muted"))
                 .size(px(17.0)),
         )
 }
