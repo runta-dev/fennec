@@ -11,7 +11,8 @@ fn supported(action: &str) -> bool {
         || action.starts_with("space.select:")
         || matches!(
             action,
-            "tab.new"
+            "app.settings"
+                | "tab.new"
                 | "tab.close"
                 | "tab.next"
                 | "tab.prev"
@@ -36,6 +37,7 @@ fn supported(action: &str) -> bool {
 pub fn install(cx: &mut App) {
     let mut global = BTreeMap::<String, String>::from_iter(
         [
+            ("cmd-,", "app.settings"),
             ("cmd-t", "tab.new"),
             ("cmd-w", "tab.close"),
             ("ctrl-tab", "tab.next"),

@@ -1,7 +1,7 @@
 {
   "messages": {
     "desktop.compose_shortcuts": {"en-US":"Enter to send · Shift+Enter for a new line", "zh-CN":"Enter 发送 · Shift+Enter 换行"},
-    "desktop.keyboard_prefix": {"en-US":"s Search · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · b 侧栏 · Esc 取消"},
+    "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
     "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes? Enter to confirm, Esc to cancel", "zh-CN":"关闭其他 Shell 标签及其进程？Enter 确认，Esc 取消"},
     "desktop.terminal": {"en-US": "Terminal", "zh-CN": "终端"},
     "desktop.start_agent": {"en-US": "Start an agent", "zh-CN": "启动 Agent"},

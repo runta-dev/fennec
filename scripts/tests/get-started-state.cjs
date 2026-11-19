@@ -121,16 +121,18 @@ t('a session on the cloud computer finishes the card, which then leaves', () => 
   assert.equal(s.card.byClass('gs-count')[0].textContent, '3 / 3');
   assert.match(s.card.byClass('gs-finished')[0].textContent, /gs_detach_hint/);
   assert.equal(s.card.hidden, false);
+  assert.equal(s.sent.at(-1), 'settings:{"get_started_done":true}', 'completion must be saved before the display timer');
   s.timers[0]();
   assert.equal(s.sent.at(-1), 'settings:{"get_started_done":true}');
   assert.equal(s.card.hidden, true);
 });
 
-t('a finished card returns once nothing is selected for the cloud computer', () => {
+t('a finished card stays complete when cloud selection temporarily disappears', () => {
   const s = load(); s.ctx.detectedAgents = [codex]; s.ctx.fennecPreparationStage = 'agents_installed';
   s.ctx.takeoverAgents.add('codex'); s.prefs({ get_started_done: true }); assert.equal(s.card.hidden, true);
   s.ctx.takeoverAgents.clear(); s.render();
-  assert.equal(s.sent.at(-1), 'settings:{"get_started_done":false}'); assert.equal(s.card.hidden, false);
+  assert.ok(!s.sent.includes('settings:{"get_started_done":false}')); assert.equal(s.card.hidden, true);
+  s.prefs({}); s.ctx.fennecPreparationStage = 'offline'; s.render(); assert.equal(s.card.hidden, true);
 });
 
 t('hiding is saved and kept', () => {
@@ -167,11 +169,12 @@ t('a moment without the session, the active agent or the cloud does not drop a s
   assert.equal(s.sent.at(-1), 'settings:{"get_started_done":true}', 'finishing was cancelled');
 });
 
-t('a step undoes itself once its condition stays false', () => {
+t('completion is retained beyond the transient-state hold interval', () => {
   const s = step3(); s.ctx.lastSessionTerminals = [{ state: 'live', labels: { 'fennec.agent': 'codex' } }]; s.render();
   s.ctx.lastSessionTerminals = []; s.render();
   s.clock.now += 16_000; s.render();
-  assert.equal(s.card.byClass('gs-count')[0].textContent, '2 / 3');
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '3 / 3');
+  assert.equal(s.sent.at(-1), 'settings:{"get_started_done":true}');
 });
 
 t('removing the agent from the cloud computer undoes step 2 at once', () => {
@@ -189,7 +192,7 @@ t('a newer terminal check with the same result does not rebuild', () => {
 t('preferences read before a save do not bring a hidden or finished card back', () => {
   const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
   s.card.byClass('gs-close')[0].click(); s.prefs({}); assert.equal(s.card.hidden, true);
-  s.prefs({ get_started_hidden: true }); s.prefs({}); assert.equal(s.card.hidden, false, 'an echoed save is no longer forced');
+  s.prefs({ get_started_hidden: true }); s.prefs({}); assert.equal(s.card.hidden, true, 'a late snapshot cannot undo a confirmed hide');
 });
 
 t('the iPhone row opens the iPhone dialog', () => {

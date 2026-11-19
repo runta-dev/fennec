@@ -25,7 +25,8 @@ above its agent list until a model source exists and an agent is connected:
 - an × hides the card for good, saved in settings, and the card disappears on
   its own once the required steps hold.
 
-Fennec keeps these rules. It adds one thing Magpie doesn't need: the last step
+Fennec uses live evidence for incomplete steps and preserves completion as a
+first-use milestone. Its last step
 is verified by the user's own terminal, because a cloud selection without
 terminal coverage looks done while `codex` still runs locally (see the
 2026-11-18 incident in [agent-shims.md](agent-shims.md)).
@@ -132,3 +133,12 @@ string in English and Simplified Chinese in `translations.json`.
   `make`), `internal/cli/terminal_coverage_test.go` (one agent, the selection
   default, rate limit, snippet per shell).
 
+
+## Durable completion
+
+All three confirmed steps immediately persist `get_started_done: true`; the
+eight-second success display is presentation only. Completion is one-way,
+including at the Go settings boundary: a stale client cannot clear it by
+sending false. Empty selections, stopped sessions, reconnects and restarts
+do not bring onboarding back. Incomplete steps can still reflect current
+evidence; runtime health belongs to the regular agent and session controls.

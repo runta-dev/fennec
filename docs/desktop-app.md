@@ -238,8 +238,8 @@ selection, and original SVG paths. Later user decisions take precedence:
   changing its dimensions; the send button uses that same out-of-flow area
 - New icon buttons use the menu bar's 28 px hit area and 6 px radius
 - The terminal icon comes verbatim from Herdr, with Herdr's 14/12 px padding
-- A collapsed sidebar has its own 46 px titlebar and restore control, so
-  window controls cannot overlap project headers or terminal tabs
+- A collapsed sidebar merges its restore control and the window controls
+  into the existing header; terminal tabs share one 46 px row
 - Double-clicking titlebar background zooms/restores; controls stop drag events
 
 Native preview instructions and supported Herdr keymap actions are documented

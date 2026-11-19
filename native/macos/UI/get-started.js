@@ -1,7 +1,7 @@
 // Get started (docs/get-started.md): a checklist above the Agents list that
 // ends with the user's own agent running on the cloud computer from their
-// usual terminal. Every tick is computed from current state, never from a
-// click, so a step undoes itself when its condition stops holding. Nothing is
+// usual terminal. Incomplete steps use current evidence; once all steps have
+// succeeded, completion is durable and independent of runtime health. Nothing is
 // required: the card can be hidden, and Fennec works the same without it.
 // It reads panel.js's state (detectedAgents, takeoverAgents,
 // activeTakeoverAgents, routeResults, lastSessionTerminals) and re-renders
@@ -171,10 +171,10 @@
   function render() {
     const signedIn = typeof authorized !== 'undefined' && authorized;
     const selectionKnown = typeof takeoverSelectionKnown !== 'undefined' && takeoverSelectionKnown;
-    // Finished, then nothing selected any more: the card comes back.
-    if (prefs.known && prefs.done && selectionKnown && takeoverAgents.size === 0) { prefs.done = false; save({ get_started_done: false }); }
     if (!signedIn) for (const name of Object.keys(lastTrue)) delete lastTrue[name];
     if (!signedIn || !prefs.known || prefs.hidden || (prefs.done && !finishing)) { card.hidden = true; shown = ''; return; }
+    // Keep the confirmed completion view stable until its short display ends.
+    if (prefs.done && finishing) return;
     // A cloud computer prepared before counts as ready while Fennec checks it
     // again after launch, so the agents show at once instead of seconds later.
     const stage = window.fennecPreparationStage || '';
@@ -192,8 +192,10 @@
     if (running && !started) requestCoverage(false, active);
     // Before the key, so starting the timer does not rebuild the card.
     if (doneCount === 3) {
-      if (!finishing) finishing = setTimeout(() => { prefs.done = true; save({ get_started_done: true }); finishing = null; render(); }, 8000);
-    } else if (finishing) { clearTimeout(finishing); finishing = null; }
+      prefs.done = true;
+      save({ get_started_done: true });
+      if (!finishing) finishing = setTimeout(() => { finishing = null; render(); }, 8000);
+    }
 
     // Only what the card shows: a newer coverage check with the same result
     // (checked_at) or a re-check behind a shown result changes nothing.
@@ -257,7 +259,7 @@
     for (const [name, field] of [['hidden', 'get_started_hidden'], ['done', 'get_started_done']]) {
       if (field in saving && (value[field] === true) === saving[field]) delete saving[field];
       if (field in saving) prefs[name] = saving[field];
-      else if (name === 'hidden' || !finishing) prefs[name] = value[field] === true;
+      else prefs[name] = prefs[name] || value[field] === true;
     }
     render();
   };

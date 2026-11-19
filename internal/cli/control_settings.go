@@ -239,7 +239,8 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			next.GetStartedHidden = *request.GetStartedHidden
 		}
 		if request.GetStartedDone != nil && !importing {
-			next.GetStartedDone = *request.GetStartedDone
+			// Completion records a successful first use, not current cloud readiness.
+			next.GetStartedDone = next.GetStartedDone || *request.GetStartedDone
 		}
 		if request.SSHNoDelay != nil && !importing {
 			next.NoSSHNoDelay = !*request.SSHNoDelay

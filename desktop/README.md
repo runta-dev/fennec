@@ -56,17 +56,20 @@ key-to-action maps. The map is read when the native window starts; it does not
 change Herdr's configuration. Supported actions include new/close/previous/next
 and numbered tabs, previous/next and numbered session groups (`space.*`),
 clipboard/search and `send:` editing keys, sidebar visibility, the session
-search picker, and terminal zoom. Ctrl-B's prefix supports `s` for search and
-`b` for the sidebar; Escape cancels. Close-others asks for confirmation and
+search picker, and terminal zoom. Ctrl-B's prefix supports `s` for search, `.` for Fennec settings and
+`b` for the sidebar; Escape cancels. Settings and Command-comma open the same
+menu bar Preferences page through the app's local URL handler. Close-others asks for confirmation and
 closes other shell tabs while keeping the group's agent anchor.
 
 Fennec does not yet implement Herdr split panes, pane direction/swap/zoom,
 layout switching, space creation/renaming, tab renaming, the command palette,
-or Herdr's settings/help surfaces. Their bindings are ignored, not swallowed
+or Herdr's help surface. Their bindings are ignored, not swallowed
 or silently assigned to different operations. Native macOS app quit/hide
 shortcuts continue to follow the operating system.
 
 A confirmed new tab selects its parent session, records its active tab and
 transfers keyboard focus exactly once. Background board/session refreshes do
-not reclaim focus. Collapsed sidebars retain a dedicated titlebar and restore
-button, and double-clicking a non-control titlebar area zooms/restores the window.
+not reclaim focus. Collapsed sidebars put the restore button and window controls into the existing
+header; terminal tabs stay in that same row. Double-clicking non-control
+titlebar space zooms/restores the window. Re-activating a terminal window
+restores focus to its active terminal, without stealing focus from project editors.

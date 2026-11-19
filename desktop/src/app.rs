@@ -57,7 +57,7 @@ pub struct FennecWindow {
     replying: bool,
     reply: Entity<TextareaState>,
     notice: Option<String>,
-    sidebar: bool,
+    pub(crate) sidebar: bool,
     focus: FocusHandle,
     pending_focus: Option<String>,
     confirmed_session: Option<String>,
@@ -132,6 +132,19 @@ impl FennecWindow {
                 },
             ),
         ];
+        subs.push(cx.observe_window_activation(window, |this, window, cx| {
+            if window.is_window_active()
+                && !this.prefix
+                && this.close_others.is_none()
+                && this.new_project.is_none()
+                && this.menu.is_none()
+            {
+                if let Some(Route::Session(id)) = &this.route {
+                    this.pending_focus = Some(this.shown_tab(id));
+                    cx.notify();
+                }
+            }
+        }));
         subs.push(cx.observe_window_appearance(window, |this, window, cx| {
             if crate::preview::active() && std::env::var("FENNEC_PREVIEW_THEME").is_ok() {
                 return;
@@ -499,6 +512,9 @@ impl FennecWindow {
     }
 
     pub(crate) fn go(&mut self, route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        if let Route::Session(address) = &route {
+            self.pending_focus = Some(self.shown_tab(address));
+        }
         self.menu = None;
         if self.route.as_ref() != Some(&route) {
             // Only the session on screen streams: every attached terminal shares one
@@ -851,6 +867,22 @@ impl FennecWindow {
         self.tab.retain(|_, t| t != &key);
     }
 
+    fn open_app_settings(&self) {
+        if crate::preview::active() {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let app = std::env::var_os("FENNEC_MENU_BAR_APP")
+                .unwrap_or_else(|| "/Applications/Fennec.app".into());
+            let _ = crate::spawn::command("/usr/bin/open")
+                .arg("-a")
+                .arg(app)
+                .arg("fennec://settings")
+                .spawn();
+        }
+    }
+
     fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(Route::Session(id)) = &self.route {
             if let Some(session) = self.sessions.iter().find(|s| &s.address == id).cloned() {
@@ -969,6 +1001,10 @@ impl FennecWindow {
     /// Key bindings the terminal core sends up (keys.rs).
     fn on_shell_action(&mut self, a: &ShellAction, window: &mut Window, cx: &mut Context<Self>) {
         match a.id() {
+            "app.settings" => {
+                self.open_app_settings();
+                return;
+            }
             "tab.new" => {
                 self.new_tab(window, cx);
                 return;
@@ -1643,15 +1679,22 @@ impl FennecWindow {
             )
             .child(div().h(px(1.0)).bg(c("f_line")))
             .child(
-                h_flex()
-                    .h(px(46.0))
-                    .px(px(16.0))
-                    .gap(px(9.0))
-                    .text_size(px(13.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(c("f_muted"))
-                    .child(ui::icon("gear", 17.0, c("f_muted")))
-                    .child(t("settings")),
+                div().px(px(8.0)).pt(px(6.0)).pb(px(10.0)).child(
+                    h_flex()
+                        .id("app-settings")
+                        .h(px(30.0))
+                        .w_full()
+                        .px(px(8.0))
+                        .gap(px(9.0))
+                        .rounded(px(7.0))
+                        .text_size(px(13.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(c("f_muted"))
+                        .hover(|s| s.bg(c("f_line").opacity(0.5)))
+                        .on_click(cx.listener(|this, _, _, _| this.open_app_settings()))
+                        .child(ui::icon("gear", 15.0, c("f_muted")))
+                        .child(t("settings")),
+                ),
             )
     }
 
@@ -1811,6 +1854,15 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    .when(!self.sidebar, |d| {
+                        d.pl(px(84.0))
+                            .child(ui::icon_button("show-sidebar", "sidebar").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.sidebar = true;
+                                    cx.notify();
+                                }),
+                            ))
+                    })
                     .child(ui::project_icon(p, 30.0))
                     .child(
                         v_flex()
@@ -2295,6 +2347,16 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    .when(!self.sidebar, |d| {
+                        d.pl(px(84.0)).h(px(46.0)).child(
+                            ui::icon_button("show-sidebar", "sidebar").on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.sidebar = true;
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                    })
                     .when_some(s.as_ref(), |d, s| {
                         let back = s.address.clone();
                         d.child(
@@ -2444,6 +2506,9 @@ impl Render for FennecWindow {
                             this.sidebar = true;
                             this.search.read(cx).focus_handle(cx).focus(window, cx);
                         }
+                        "." => {
+                            this.open_app_settings();
+                        }
                         "b" => {
                             this.sidebar = !this.sidebar;
                         }
@@ -2499,7 +2564,7 @@ impl Render for FennecWindow {
                     .h_full()
                     .flex()
                     .flex_col()
-                    .when(!self.sidebar, |d| {
+                    .when(!self.sidebar && route.is_none(), |d| {
                         d.child(
                             h_flex()
                                 .id("collapsed-titlebar")

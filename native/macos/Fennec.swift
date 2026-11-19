@@ -61,6 +61,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var outsideMonitor: Any?
     private var popupPresentationID: UUID?
     private var pageLoaded = false
+    private var preferencesRequested = false
     private var localMonitor: Any?
     private var web: WKWebView!
     // The desktop window (projects, requests, session tabs); see DesktopWindow.swift.
@@ -129,7 +130,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        self.connectControl()
 	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
 	        // Fennec opens to its window; the menu bar panel stays one click away.
-	        self.openDesktop()
+	        if self.preferencesRequested { self.showRequestedPreferences() } else { self.openDesktop() }
 	    }
 	}
 
@@ -182,9 +183,23 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
 	    if installationPending{return false}
+        if preferencesRequested { showRequestedPreferences(); return false }
         // Opening Fennec again (Dock, Finder, Spotlight) shows its window.
         openDesktop()
         return false
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: { $0.scheme == "fennec" && $0.host == "settings" }) else { return }
+        preferencesRequested = true
+        showRequestedPreferences()
+    }
+
+    private func showRequestedPreferences() {
+        guard preferencesRequested, pageLoaded, !installationPending else { return }
+        preferencesRequested = false
+        web.evaluateJavaScript("tab('preferences')", completionHandler: nil)
+        showPopupInForeground()
     }
 
     @objc private func toggle() {
@@ -1181,6 +1196,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "0.2.0"
         render("renderAppVersion", ["Fennec " + version])
         importPreferences();lastState = nil; pollState(); refreshAgents(); renderLoginItem()
+        showRequestedPreferences()
     }
 	private func importPreferences() {
 	    guard controlReady else{return}

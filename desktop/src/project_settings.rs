@@ -276,6 +276,15 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    .when(!self.sidebar, |d| {
+                        d.pl(px(84.0))
+                            .child(ui::icon_button("show-sidebar", "sidebar").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.sidebar = true;
+                                    cx.notify();
+                                }),
+                            ))
+                    })
                     .child(
                         div()
                             .id("settings-back")
