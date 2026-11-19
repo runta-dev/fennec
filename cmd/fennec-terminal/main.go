@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/board"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/commandstream"
 	"fennec/internal/cpusched"
@@ -101,6 +102,9 @@ func run() (int, error) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "preview" {
 		return 0, preview.Command(home, os.Args[2:], os.Stdout)
+	}
+	if len(os.Args) >= 2 && (os.Args[1] == "reply" || os.Args[1] == "request") {
+		return 0, board.Command(home, os.Args[1], os.Args[2:], os.Stdin, os.Stdout)
 	}
 	if len(os.Args) == 3 && os.Args[1] == "receive-project" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -377,6 +381,9 @@ func run() (int, error) {
 		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
 			if target == terminalstream.SocketPreview {
 				return (preview.Store{Home: home}).Dial(ctx)
+			}
+			if target == terminalstream.SocketBoard {
+				return (board.Store{Home: home}).Dial(ctx)
 			}
 			if target == terminalstream.SocketMagpieWeb {
 				return panel.Dial(ctx, home)

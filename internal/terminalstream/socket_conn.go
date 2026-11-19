@@ -27,6 +27,9 @@ func (t *Transport) DialSocket(ctx context.Context, target, device string) (net.
 	if target == SocketPreview && !t.Supports(CapabilityPreview) {
 		return nil, fmt.Errorf("update the cloud client to use previews")
 	}
+	if target == SocketBoard && !t.Supports(CapabilityBoard) {
+		return nil, fmt.Errorf("update the cloud client to use projects")
+	}
 	if target == SocketDeviceRelay && !t.Supports(CapabilityDeviceRelay) {
 		return nil, fmt.Errorf("resident device relay unavailable")
 	}

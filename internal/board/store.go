@@ -1,0 +1,624 @@
+// Package board keeps projects, their requests and agent-written knowledge on
+// the cloud computer, under ~/.fen/board. People post requests from Fennec;
+// the Mac daemon hands queued requests to agents (see docs/desktop-app.md);
+// agents answer with `fen reply`.
+package board
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+	"unicode/utf8"
+)
+
+// Request statuses.
+const (
+	Queued   = "queued"
+	Working  = "working"
+	NeedsYou = "you"
+	Resolved = "resolved"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
+	ErrInvalid  = errors.New("invalid")
+	ErrConflict = errors.New("conflict")
+)
+
+// Agents that can work on requests (the cloud runtime's launchable agents).
+var Agents = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}
+
+type Tag struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type Worker struct {
+	Agent string `json:"agent"`
+	Model string `json:"model,omitempty"`
+	On    bool   `json:"on"`
+}
+
+type Project struct {
+	ID          string    `json:"id"`
+	Org         string    `json:"org,omitempty"`
+	Key         string    `json:"key"`
+	Next        int       `json:"next"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Repository  string    `json:"repository,omitempty"`
+	Color       string    `json:"color"`
+	Icon        string    `json:"icon,omitempty"`
+	Tags        []Tag     `json:"tags"`
+	Queue       int       `json:"queue"`
+	Workers     []Worker  `json:"workers"`
+	Created     time.Time `json:"created"`
+}
+
+type Message struct {
+	ID     int       `json:"id"`
+	Author string    `json:"author"`
+	Agent  string    `json:"agent,omitempty"`
+	Body   string    `json:"body"`
+	At     time.Time `json:"at"`
+}
+
+type Request struct {
+	Number  int       `json:"number"`
+	Title   string    `json:"title"`
+	Tag     string    `json:"tag"`
+	Status  string    `json:"status"`
+	Author  string    `json:"author"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	// The agent and session working on it, once a worker has taken it.
+	Agent   string `json:"agent,omitempty"`
+	Session string `json:"session,omitempty"`
+	Votes   int    `json:"votes,omitempty"`
+	// Messages up to this ID have reached Session.
+	Delivered int       `json:"delivered,omitempty"`
+	Messages  []Message `json:"messages,omitempty"`
+}
+
+// Summary is a request without its thread, for lists.
+type Summary struct {
+	Request
+	Replies int      `json:"replies"`
+	Latest  *Message `json:"latest,omitempty"`
+}
+
+type Store struct {
+	Home string
+	Now  func() time.Time
+}
+
+var (
+	projectID  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	projectKey = regexp.MustCompile(`^[A-Z0-9]{1,6}$`)
+	tagID      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,23}$`)
+	color      = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+	repository = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$`)
+	iconData   = regexp.MustCompile(`^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$`)
+	orgID      = regexp.MustCompile(`^[A-Za-z0-9_-]{0,64}$`)
+	sessionRef = regexp.MustCompile(`^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$`)
+)
+
+const (
+	maxIcon  = 256 << 10
+	maxBody  = 64 << 10
+	maxTitle = 200
+)
+
+// DefaultTags are a new project's tags.
+var DefaultTags = []Tag{{"bug", "Bug"}, {"feature", "Feature"}, {"discussion", "Discussion"}}
+
+func (s Store) root() string { return filepath.Join(s.Home, ".fen", "board") }
+func (s Store) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+func (s Store) projectDir(id string) string { return filepath.Join(s.root(), "projects", id) }
+func (s Store) requestPath(id string, n int) string {
+	return filepath.Join(s.projectDir(id), "requests", strconv.Itoa(n)+".json")
+}
+
+// lock serializes writers: the Mac, the iPhone and agents' `fen reply`.
+func (s Store) lock() (func(), error) {
+	if err := os.MkdirAll(s.root(), 0700); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(filepath.Join(s.root(), ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return func() { syscall.Flock(int(file.Fd()), syscall.LOCK_UN); file.Close() }, nil
+}
+
+func writeJSON(path string, value any) error {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	if _, err = temp.Write(append(data, '\n')); err != nil {
+		temp.Close()
+		return err
+	}
+	if err = temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temp.Name(), path)
+}
+
+func readJSON(path string, value any) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, value)
+}
+
+// ---------- projects ----------
+
+func (s Store) Projects() ([]Project, error) {
+	entries, err := os.ReadDir(filepath.Join(s.root(), "projects"))
+	if errors.Is(err, os.ErrNotExist) {
+		return []Project{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	projects := []Project{}
+	for _, entry := range entries {
+		if !entry.IsDir() || !projectID.MatchString(entry.Name()) {
+			continue
+		}
+		if p, err := s.Project(entry.Name()); err == nil {
+			projects = append(projects, p)
+		}
+	}
+	sort.Slice(projects, func(i, j int) bool { return projects[i].Created.Before(projects[j].Created) })
+	return projects, nil
+}
+
+func (s Store) Project(id string) (Project, error) {
+	var p Project
+	if !projectID.MatchString(id) {
+		return p, ErrNotFound
+	}
+	err := readJSON(filepath.Join(s.projectDir(id), "project.json"), &p)
+	return p, err
+}
+
+// KeyFrom makes a request-number prefix from a project name: its first
+// three letters or digits in capitals, or P when it has none.
+func KeyFrom(name string) string {
+	var key []rune
+	for _, r := range strings.ToUpper(name) {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			key = append(key, r)
+			if len(key) == 3 {
+				break
+			}
+		}
+	}
+	if len(key) == 0 {
+		return "P"
+	}
+	return string(key)
+}
+
+func slug(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dash = false
+		} else if !dash && b.Len() > 0 {
+			b.WriteByte('-')
+			dash = true
+		}
+		if b.Len() >= 32 {
+			break
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func validProject(p Project) error {
+	ok := projectID.MatchString(p.ID) && projectKey.MatchString(p.Key) && orgID.MatchString(p.Org) && p.Next >= 1 &&
+		strings.TrimSpace(p.Name) != "" && utf8.RuneCountInString(p.Name) <= 80 && utf8.RuneCountInString(p.Description) <= 300 &&
+		(p.Repository == "" || repository.MatchString(p.Repository)) && color.MatchString(p.Color) &&
+		(p.Icon == "" || (len(p.Icon) <= maxIcon && iconData.MatchString(p.Icon))) &&
+		p.Queue >= 1 && p.Queue <= 10 && len(p.Tags) >= 1 && len(p.Tags) <= 12 && len(p.Workers) >= 1 && len(p.Workers) <= 12
+	if !ok {
+		return ErrInvalid
+	}
+	seen := map[string]bool{}
+	for _, t := range p.Tags {
+		if !tagID.MatchString(t.ID) || seen[t.ID] || strings.TrimSpace(t.Label) == "" || utf8.RuneCountInString(t.Label) > 24 {
+			return ErrInvalid
+		}
+		seen[t.ID] = true
+	}
+	on := 0
+	for _, w := range p.Workers {
+		if !Agents[w.Agent] || utf8.RuneCountInString(w.Model) > 80 || strings.ContainsAny(w.Model, "\x00\r\n") {
+			return ErrInvalid
+		}
+		if w.On {
+			on++
+		}
+	}
+	if on == 0 {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// CreateProject adds a project with default tags, a queue of 3 and the given
+// worker. Its id comes from the name, made unique.
+func (s Store) CreateProject(p Project) (Project, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return p, err
+	}
+	defer unlock()
+	base := slug(p.Name)
+	if base == "" {
+		base = "project"
+	}
+	p.ID = base
+	for i := 2; ; i++ {
+		if _, err := os.Stat(s.projectDir(p.ID)); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		p.ID = fmt.Sprintf("%s-%d", base, i)
+	}
+	if p.Key == "" {
+		p.Key = KeyFrom(p.Name)
+	}
+	if p.Color == "" {
+		p.Color = "#f38d25"
+	}
+	if len(p.Tags) == 0 {
+		p.Tags = append([]Tag(nil), DefaultTags...)
+	}
+	if p.Queue == 0 {
+		p.Queue = 3
+	}
+	if len(p.Workers) == 0 {
+		p.Workers = []Worker{{Agent: "claude", On: true}}
+	}
+	p.Next, p.Created = 1, s.now()
+	if err = validProject(p); err != nil {
+		return p, err
+	}
+	return p, writeJSON(filepath.Join(s.projectDir(p.ID), "project.json"), p)
+}
+
+// UpdateProject applies a partial change. The id, next number and creation
+// time never change.
+func (s Store) UpdateProject(id string, change json.RawMessage) (Project, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Project{}, err
+	}
+	defer unlock()
+	p, err := s.Project(id)
+	if err != nil {
+		return p, err
+	}
+	next := p
+	if err = json.Unmarshal(change, &next); err != nil {
+		return p, ErrInvalid
+	}
+	next.ID, next.Next, next.Created = p.ID, p.Next, p.Created
+	if err = validProject(next); err != nil {
+		return p, err
+	}
+	return next, writeJSON(filepath.Join(s.projectDir(id), "project.json"), next)
+}
+
+// ---------- requests ----------
+
+func (s Store) Requests(project string) ([]Summary, error) {
+	if _, err := s.Project(project); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(s.projectDir(project), "requests"))
+	if errors.Is(err, os.ErrNotExist) {
+		return []Summary{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	list := []Summary{}
+	for _, entry := range entries {
+		n, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json"))
+		if err != nil || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		r, err := s.Request(project, n)
+		if err != nil {
+			continue
+		}
+		list = append(list, summarize(r))
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Updated.After(list[j].Updated) })
+	return list, nil
+}
+
+func summarize(r Request) Summary {
+	sum := Summary{Request: r, Replies: max(0, len(r.Messages)-1)}
+	if len(r.Messages) > 0 {
+		latest := r.Messages[len(r.Messages)-1]
+		if utf8.RuneCountInString(latest.Body) > 240 {
+			latest.Body = string([]rune(latest.Body)[:240])
+		}
+		sum.Latest = &latest
+	}
+	sum.Messages = nil
+	return sum
+}
+
+func (s Store) Request(project string, n int) (Request, error) {
+	var r Request
+	if !projectID.MatchString(project) || n < 1 {
+		return r, ErrNotFound
+	}
+	err := readJSON(s.requestPath(project, n), &r)
+	return r, err
+}
+
+func validText(text string, limit int) bool {
+	return strings.TrimSpace(text) != "" && len(text) <= limit && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
+}
+
+func hasTag(p Project, tag string) bool {
+	for _, t := range p.Tags {
+		if t.ID == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// CreateRequest posts a request; it waits as Queued for a worker.
+func (s Store) CreateRequest(project, author, title, tag, body string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	p, err := s.Project(project)
+	if err != nil {
+		return Request{}, err
+	}
+	title = strings.TrimSpace(title)
+	if tag == "" {
+		tag = p.Tags[0].ID
+	}
+	if !validText(title, maxTitle*4) || utf8.RuneCountInString(title) > maxTitle || strings.ContainsAny(title, "\r\n") ||
+		!validText(author, 80) || !hasTag(p, tag) || (body != "" && !validText(body, maxBody)) {
+		return Request{}, ErrInvalid
+	}
+	if body == "" {
+		body = title
+	}
+	now := s.now()
+	r := Request{Number: p.Next, Title: title, Tag: tag, Status: Queued, Author: author, Created: now, Updated: now,
+		Messages: []Message{{ID: 1, Author: author, Body: body, At: now}}}
+	p.Next++
+	if err = writeJSON(s.requestPath(project, r.Number), r); err != nil {
+		return r, err
+	}
+	return r, writeJSON(filepath.Join(s.projectDir(project), "project.json"), p)
+}
+
+// Reply adds a message. A person's reply puts the request back in the queue
+// for its agent; an agent's reply means it needs the person again.
+func (s Store) Reply(project string, n int, author, agent, body string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if !validText(author, 80) || !validText(body, maxBody) || (agent != "" && !Agents[agent]) || len(r.Messages) >= 2000 {
+		return r, ErrInvalid
+	}
+	now := s.now()
+	id := 1
+	if len(r.Messages) > 0 {
+		id = r.Messages[len(r.Messages)-1].ID + 1
+	}
+	r.Messages = append(r.Messages, Message{ID: id, Author: author, Agent: agent, Body: body, At: now})
+	r.Updated = now
+	if agent != "" {
+		r.Status = NeedsYou
+		r.Agent = agent
+		r.Delivered = id
+	} else {
+		r.Status = Queued
+	}
+	return r, writeJSON(s.requestPath(project, n), r)
+}
+
+// Change sets a request's tag or status (resolve, reopen). Reopening returns
+// it to Needs you; a reply puts it back in the queue.
+func (s Store) Change(project string, n int, tag, status string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	p, err := s.Project(project)
+	if err != nil {
+		return Request{}, err
+	}
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if tag != "" {
+		if !hasTag(p, tag) {
+			return r, ErrInvalid
+		}
+		r.Tag = tag
+	}
+	switch status {
+	case "":
+	case Resolved:
+		r.Status = Resolved
+	case NeedsYou:
+		if r.Status != Resolved {
+			return r, ErrConflict
+		}
+		r.Status = NeedsYou
+	default:
+		return r, ErrInvalid
+	}
+	r.Updated = s.now()
+	return r, writeJSON(s.requestPath(project, n), r)
+}
+
+// Claim gives a queued request to a session. It fails if someone else took
+// it first, so two dispatchers never start two agents for one request.
+func (s Store) Claim(project string, n int, session, agent string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if !sessionRef.MatchString(session) || !Agents[agent] {
+		return r, ErrInvalid
+	}
+	if r.Status != Queued {
+		return r, ErrConflict
+	}
+	r.Status, r.Session, r.Agent = Working, session, agent
+	if len(r.Messages) > 0 {
+		r.Delivered = r.Messages[len(r.Messages)-1].ID
+	}
+	r.Updated = s.now()
+	return r, writeJSON(s.requestPath(project, n), r)
+}
+
+// Release returns a claimed request to the queue when its session could not
+// start (or has gone), so the next pass starts a new one.
+func (s Store) Release(project string, n int, session string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if r.Session != session {
+		return r, ErrConflict
+	}
+	r.Session, r.Delivered = "", 0
+	if r.Status == Working {
+		r.Status = Queued
+	}
+	r.Updated = s.now()
+	return r, writeJSON(s.requestPath(project, n), r)
+}
+
+// QueueProject is one project's slots and waiting requests, oldest first.
+type QueueProject struct {
+	Project string    `json:"project"`
+	Key     string    `json:"key"`
+	Limit   int       `json:"limit"`
+	Working int       `json:"working"`
+	Workers []Worker  `json:"workers"`
+	Queued  []Request `json:"queued"`
+}
+
+// Queue lists every project's waiting requests with their threads, for the
+// dispatcher.
+func (s Store) Queue() ([]QueueProject, error) {
+	projects, err := s.Projects()
+	if err != nil {
+		return nil, err
+	}
+	queue := []QueueProject{}
+	for _, p := range projects {
+		list, err := s.Requests(p.ID)
+		if err != nil {
+			continue
+		}
+		q := QueueProject{Project: p.ID, Key: p.Key, Limit: p.Queue, Workers: p.Workers, Queued: []Request{}}
+		for _, sum := range list {
+			if sum.Status == Working {
+				q.Working++
+			}
+		}
+		for i := len(list) - 1; i >= 0; i-- {
+			if list[i].Status == Queued {
+				if r, err := s.Request(p.ID, list[i].Number); err == nil {
+					q.Queued = append(q.Queued, r)
+				}
+			}
+		}
+		queue = append(queue, q)
+	}
+	return queue, nil
+}
+
+// Find resolves a reference such as FEN-42 to its project and number.
+func (s Store) Find(ref string) (Project, int, error) {
+	dash := strings.LastIndexByte(ref, '-')
+	n, err := strconv.Atoi(ref[dash+1:])
+	if dash < 1 || err != nil || n < 1 {
+		return Project{}, 0, ErrNotFound
+	}
+	key := strings.ToUpper(ref[:dash])
+	projects, err := s.Projects()
+	if err != nil {
+		return Project{}, 0, err
+	}
+	for _, p := range projects {
+		if p.Key == key {
+			if _, err := s.Request(p.ID, n); err == nil {
+				return p, n, nil
+			}
+		}
+	}
+	return Project{}, 0, ErrNotFound
+}

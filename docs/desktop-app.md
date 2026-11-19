@@ -131,17 +131,19 @@ The Mac daemon exposes it to the app as the control method `board.call`
 | `POST /v1/projects/{id}/requests/{n}/messages` | Reply; from a person it re-queues the request |
 | `PATCH /v1/projects/{id}/requests/{n}` | Tag, resolve, reopen |
 | `GET /v1/projects/{id}/knowledge` | Knowledge concepts |
-| `PATCH /v1/projects/{id}/knowledge/{path}` | Mark reviewed, deprecate, restore |
+| `POST /v1/projects/{id}/knowledge/review` | Mark a concept reviewed, deprecate or restore it (`{id, action, person}`) |
 | `GET /v1/queue` | Requests ready to start, with each project's limit and workers |
 | `POST /v1/projects/{id}/requests/{n}/claim` | Assign a queued request to a session (fails if already taken) |
+| `POST /v1/projects/{id}/requests/{n}/release` | Return a claimed request to the queue when its session did not start |
 
 ## The queue
 
 The Mac daemon dispatches. Every few seconds while it is signed in and
 connected it reads `GET /v1/queue`. For each project with fewer *Working*
 requests than its limit it takes the oldest *Queued* request, claims it, and
-starts a session through the ordinary `sessions.launch` path (so credentials,
-models and hooks are prepared exactly as for a session started by hand), with
+starts a session on the cloud computer the way a session started from the
+iPhone is started (no Mac folder, nothing uploaded; the receipt is saved so
+the session shows in Fennec and `fen attach` reaches it), with
 the first enabled worker's agent and model and a first message that carries
 the request. If the request already has a live session (a reply to a request
 the agent worked on), the new messages are sent to that session instead.

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"fennec/internal/agent"
+	"fennec/internal/board"
 	"fennec/internal/daemon"
 	"fennec/internal/launcher"
 	"fennec/internal/localssh"
@@ -37,6 +38,12 @@ func Run(arguments []string, output io.Writer) error {
 			return err
 		}
 		return preview.Command(home, arguments[1:], output)
+	case "reply", "request":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		return board.Command(home, arguments[0], arguments[1:], os.Stdin, output)
 	case "transfer-ssh":
 		return transferSSH(arguments[1:], os.Stdin, output, os.Stderr)
 	case "app-restart", "app-restart-worker":

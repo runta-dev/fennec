@@ -203,6 +203,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installBrowserTerminal(ctx, services, controller)
 	installMagpiePanel(ctx, services, controller, settings)
 	installPreviewServer(ctx, services)
+	installBoard(ctx, services, controller)
 	controller.Settings = func() any {
 		prefs := settings.snapshot().(desktopPreferences)
 		env := runta.ActiveEnvironment(home)

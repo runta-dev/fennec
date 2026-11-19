@@ -79,6 +79,8 @@ const (
 	CapabilityMagpieWeb      = "magpie_web_v1"
 	SocketPreview            = "preview"
 	CapabilityPreview        = "preview_http_v1"
+	SocketBoard              = "board"
+	CapabilityBoard          = "board_http_v1"
 	SocketCommand            = "command"
 	CapabilityCommand        = "command_stream_v1"
 	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that
@@ -101,7 +103,7 @@ func (frame Frame) validateOpen() error {
 		return fmt.Errorf("invalid stream identity")
 	}
 	if frame.Type == "socket" {
-		if (frame.Target == SocketCommand || frame.Target == SocketMagpieWeb || frame.Target == SocketPreview) && frame.Message == "" && frame.Term == "" {
+		if (frame.Target == SocketCommand || frame.Target == SocketMagpieWeb || frame.Target == SocketPreview || frame.Target == SocketBoard) && frame.Message == "" && frame.Term == "" {
 			return nil
 		}
 		if frame.Target == SocketDeviceRelay && regexp.MustCompile(`^[a-f0-9]{8,64}$`).MatchString(frame.Message) && frame.Term == "" {
