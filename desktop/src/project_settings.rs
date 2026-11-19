@@ -368,6 +368,7 @@ impl FennecWindow {
         if crate::preview::active() {
             return;
         }
+        let project = self.settings.project.clone();
         let selected = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -382,14 +383,31 @@ impl FennecWindow {
                 return;
             };
             let path = path.to_string_lossy().into_owned();
+            let target = project.clone();
             let result = cx
                 .background_spawn(async move {
-                    crate::control::call("board.icon", json!({"path":path}))
+                    let value = crate::control::call("board.icon", json!({"path":path}))?;
+                    board::update_project(&target, json!({"icon":value["icon"]}))
                 })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(value) => this.patch_project(json!({"icon": value["icon"]}), window, cx),
-                Err(_) => this.say(t("try_again"), cx),
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(project) => {
+                    if let Some(old) = this.projects.iter_mut().find(|p| p.id == project.id) {
+                        let (open, needs_you) = (old.open, old.needs_you);
+                        *old = Project {
+                            open,
+                            needs_you,
+                            ..project
+                        };
+                    }
+                    cx.notify();
+                }
+                Err(error) => {
+                    tracing::warn!("project icon update failed: {error:#}");
+                    if this.project_id().as_deref() == Some(project.as_str()) {
+                        this.say(t("try_again"), cx);
+                    }
+                }
             });
         }));
     }
