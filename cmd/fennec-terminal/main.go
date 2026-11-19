@@ -103,6 +103,9 @@ func run() (int, error) {
 	if len(os.Args) >= 2 && os.Args[1] == "preview" {
 		return 0, preview.Command(home, os.Args[2:], os.Stdout)
 	}
+	if len(os.Args) == 4 && os.Args[1] == "board-call" {
+		return 0, board.Call(home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
+	}
 	if len(os.Args) >= 2 && (os.Args[1] == "reply" || os.Args[1] == "request") {
 		return 0, board.Command(home, os.Args[1], os.Args[2:], os.Stdin, os.Stdout)
 	}

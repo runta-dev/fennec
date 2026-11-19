@@ -31,10 +31,19 @@ Detection behavior references `internal/agent/agent.go` (Detected/binAt),
 `kimi.go`, `devin.go` and `grok.go`; Fennec uses its own metadata-only detector.
 Auto-updater background staging, non-`.app` payload staging, and quiet header pill interaction in `internal/updater/` and `native/macos/UI/updater.js` are adapted from Magpie's updater design under the MIT license.
 
-## ghostty-web terminal (desktop window)
+## herdr-app (native desktop window)
 
-- `ghostty-web` 0.4.0 (Coder; Ghostty's terminal emulator compiled to WebAssembly), MIT; license: `native/macos/UI/vendor/ghostty-web-LICENSE`.
-- Distributed locally in the app (the WebAssembly is inside the script); no CDN scripts are loaded.
+Source: https://github.com/herdrdev/herdr-app
+Revision: 317e673 (v0.1.16)
+License: Apache-2.0, in `desktop/LICENSE`, with herdr-app's own notices in
+`desktop/THIRD-PARTY-NOTICES` and `desktop/licenses/`.
+
+`desktop/` is Fennec's native desktop window. herdr-app's terminal core
+(libghostty-vt bindings, GPUI terminal view, herdr-core client), its vendored
+GPUI with Herdr's patches, and its bundled fonts are kept unchanged;
+`desktop/UPSTREAM.md` lists them. `desktop/src/settings.rs` contains
+herdr-app code modified for Fennec. Ghostty is pinned as the submodule
+`desktop/vendor/ghostty` (MIT).
 
 ## xterm.js terminal renderer
 

@@ -1,348 +1,59 @@
 import AppKit
-import WebKit
 
-// The desktop window: projects with request boards and the cloud computer's
-// sessions with terminal tabs (docs/desktop-app.md). It is a page (UI/desktop.html)
-// in a title-bar-less window. State and secrets stay in the Go daemon; this
-// class only relays allowed control calls, runs terminal tabs in PTYs, and
-// tells the page about the account and sessions the menu bar app already polls.
-final class DesktopWebView: WKWebView {
-    // Strips of the page that move the window, minus the controls in them,
-    // in page coordinates (origin at the top left).
-    var dragRegions: [NSRect] = []
-    var noDragRegions: [NSRect] = []
-
-    override func mouseDown(with event: NSEvent) {
-        let local = convert(event.locationInWindow, from: nil)
-        let point = NSPoint(x: local.x, y: isFlipped ? local.y : bounds.height - local.y)
-        if dragRegions.contains(where: { $0.contains(point) }) && !noDragRegions.contains(where: { $0.contains(point) }) {
-            if event.clickCount == 2 { window?.performZoom(nil) } else { window?.performDrag(with: event) }
-            return
-        }
-        super.mouseDown(with: event)
-    }
-
-    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
-        // Text actions only; no Reload or Inspect.
-        menu.items.removeAll { ["WKMenuItemIdentifierReload", "WKMenuItemIdentifierInspectElement", "WKMenuItemIdentifierGoBack", "WKMenuItemIdentifierGoForward"].contains($0.identifier?.rawValue ?? "") }
-    }
-}
-
-final class DesktopWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WKNavigationDelegate {
+// The desktop window (docs/desktop-app.md) is its own native program,
+// Contents/MacOS/fennec-desktop (desktop/: GPUI with herdr-app's terminal core).
+// It reads the board and sessions from the daemon itself; this class only starts
+// it, brings it to the front, and stops it when Fennec quits.
+final class DesktopWindow: NSObject {
     private let control: ControlClient
     private let fen: () -> URL
     var openPanel: () -> Void = {}
     var refreshSessions: () -> Void = {}
-    private var window: NSWindow?
-    private var web: DesktopWebView?
-    private var ready = false
-    private var state: [String: Any] = [:]
-    private var terminals: [String: (pty: TerminalPTY, output: TerminalOutputWindow)] = [:]
-    // Control methods the page may call. Everything else stays with the panel.
-    // controlMethod marks them for cmd/check-control-contract.
-    private static let methods: Set<String> = [controlMethod("board.call"), controlMethod("sessions.start"), controlMethod("account.organizations"), controlMethod("sessions.refresh"),
-        controlMethod("settings.set"), controlMethod("login-item.status"), controlMethod("login-item.on"), controlMethod("login-item.off"), controlMethod("account.logout")]
-    private static func controlMethod(_ name: String) -> String { name }
-    private static let session = try! NSRegularExpression(pattern: "^(?:[a-z]{3,12}-[a-z]{3,12}|[a-f0-9]{32})$")
-    private static let key = try! NSRegularExpression(pattern: "^[a-z0-9-]{3,40}:[a-z0-9]{1,12}$")
+    private var process: Process?
+    private var language = ""
 
     init(control: ControlClient, fen: @escaping () -> URL) {
         self.control = control
         self.fen = fen
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(quit), name: NSApplication.willTerminateNotification, object: nil)
     }
 
-    var isVisible: Bool { window?.isVisible == true }
+    var isVisible: Bool { process?.isRunning == true }
 
     func show() {
-        if window == nil { build() }
-        NSApp.setActivationPolicy(.regular)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private func build() {
-        let frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
-        let window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.title = "Fennec"
-        window.minSize = NSSize(width: 900, height: 560)
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.setFrameAutosaveName("FennecDesktop")
-        if !window.setFrameUsingName("FennecDesktop") { window.center() }
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(WeakHandler(self), name: "desktop")
-        let web = DesktopWebView(frame: frame, configuration: configuration)
-        web.navigationDelegate = self
-        web.setValue(false, forKey: "drawsBackground")
-        window.contentView = web
-        let folder = Bundle.main.resourceURL!.appendingPathComponent("UI")
-        web.loadFileURL(folder.appendingPathComponent("desktop.html"), allowingReadAccessTo: folder)
-        self.window = window
-        self.web = web
-        applyTheme(theme)
-        placeLights()
-    }
-
-    // Traffic lights centred on the sidebar's 46 px title row.
-    private func placeLights() {
-        guard let window, !window.styleMask.contains(.fullScreen), let close = window.standardWindowButton(.closeButton),
-              let container = close.superview?.superview else { return }
-        let height: CGFloat = 46
-        container.frame = NSRect(x: 0, y: window.frame.height - height, width: window.frame.width, height: height)
-        for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
-            guard let button = window.standardWindowButton(kind) else { continue }
-            button.setFrameOrigin(NSPoint(x: 16 + CGFloat(index) * 20, y: (height - button.frame.height) / 2))
-        }
-    }
-
-    func windowDidResize(_ notification: Notification) { placeLights() }
-    func windowDidExitFullScreen(_ notification: Notification) { placeLights() }
-
-    func windowWillClose(_ notification: Notification) {
-        for (_, terminal) in terminals { terminal.output.close(); terminal.pty.close() }
-        terminals.removeAll()
-        ready = false
-        web?.configuration.userContentController.removeScriptMessageHandler(forName: "desktop")
-        web = nil
-        window = nil
-        // Back to a menu bar app when the window closes.
-        NSApp.setActivationPolicy(.accessory)
-    }
-
-    // The menu bar app hands over what it learns: account, language, sessions.
-    func update(_ change: [String: Any]) {
-        for (key, value) in change { state[key] = value }
-        if let theme = (change["settings"] as? [String: Any])?["theme"] as? String { applyTheme(theme) }
-        guard ready else { return }
-        call("desktopState", [change])
-    }
-
-    // Appearance follows Settings (system, light, dark); the page follows the window.
-    private var theme = "system"
-    private func applyTheme(_ value: String) {
-        theme = value
-        window?.appearance = value == "dark" ? NSAppearance(named: .darkAqua) : value == "light" ? NSAppearance(named: .aqua) : nil
-    }
-
-    private func call(_ function: String, _ arguments: [Any]) {
-        guard let web, let data = try? JSONSerialization.data(withJSONObject: arguments), let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("window.\(function)(...\(json))", completionHandler: nil)
-    }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        decisionHandler(navigationAction.request.url?.isFileURL == true ? .allow : .cancel)
-    }
-
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        for (_, terminal) in terminals { terminal.output.close(); terminal.pty.close() }
-        terminals.removeAll()
-        ready = false
-        webView.reload()
-    }
-
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let text = message.body as? String, text.utf8.count <= 1 << 20,
-              let data = text.data(using: .utf8),
-              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let action = body["action"] as? String else { return }
-        switch action {
-        case "ready":
-            ready = true
-            call("desktopState", [state])
-        case "rpc":
-            guard let id = body["id"] as? Int, let method = body["method"] as? String else { return }
-            guard Self.methods.contains(method) else { return call("desktopReply", [id, false, ["message": "Not allowed"]]) }
-            control.call(method, body["params"] as? [String: Any] ?? [:]) { [weak self] result in
-                switch result {
-                case .success(let value): self?.call("desktopReply", [id, true, value])
-                case .failure(let error):
-                    let error = error as NSError
-                    self?.call("desktopReply", [id, false, ["message": error.localizedDescription, "code": error.userInfo["FennecCode"] as? String ?? ""]])
-                }
-            }
-        case "drag-regions":
-            let rects = { (value: Any?) -> [NSRect] in
-                (value as? [[Double]] ?? []).compactMap { $0.count == 4 ? NSRect(x: $0[0], y: $0[1], width: $0[2], height: $0[3]) : nil }
-            }
-            web?.dragRegions = rects(body["drag"])
-            web?.noDragRegions = rects(body["exclude"])
-        case "open-url":
-            if let text = body["url"] as? String, text.utf8.count <= 8192, let url = URL(string: text),
-               ["https", "http"].contains(url.scheme ?? ""), url.user == nil, url.password == nil { NSWorkspace.shared.open(url) }
-        case "open-panel":
-            openPanel()
-        case "refresh-sessions":
-            refreshSessions()
-        case "theme":
-            if let value = body["theme"] as? String, ["system", "light", "dark"].contains(value) { applyTheme(value) }
-        default:
-            terminal(action, body)
-        }
-    }
-
-    // ---------- terminal tabs ----------
-
-    private func terminal(_ action: String, _ body: [String: Any]) {
-        guard let key = body["key"] as? String, matches(Self.key, key) else { return }
-        switch action {
-        case "term-open":
-            guard terminals[key] == nil, let kind = body["kind"] as? String,
-                  let cols = body["cols"] as? Int, let rows = body["rows"] as? Int,
-                  (1...500).contains(cols), (1...300).contains(rows) else { return }
-            let executable: URL, arguments: [String], directory: URL?
-            if kind == "agent" {
-                guard let session = body["session"] as? String, matches(Self.session, session) else { return ended(key, failed: true) }
-                executable = fen()
-                arguments = ["fen", "attach", session]
-                directory = nil
-            } else if kind == "shell" {
-                // The user's login shell on this Mac, in the home folder.
-                let shell = ProcessInfo.processInfo.environment["SHELL"].flatMap { FileManager.default.isExecutableFile(atPath: $0) ? $0 : nil } ?? "/bin/zsh"
-                executable = URL(fileURLWithPath: shell)
-                arguments = ["-l"]
-                directory = FileManager.default.homeDirectoryForCurrentUser
-            } else { return }
-            let pty = TerminalPTY(), output = TerminalOutputWindow()
-            terminals[key] = (pty, output)
-            let dark = window?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            let probe = kind == "agent" ? DisplayProbe(dark: dark) : nil
-            do {
-                try pty.start(executable: executable, arguments: arguments, directory: directory, cols: UInt16(cols), rows: UInt16(rows), output: { [weak self] data in
-                    var bytes = data
-                    if let probe, let reply = probe.answer(&bytes) { try? pty.write(reply) }
-                    for offset in stride(from: 0, to: bytes.count, by: 16384) {
-                        let chunk = bytes.subdata(in: offset..<min(offset + 16384, bytes.count))
-                        guard output.reserve(chunk.count) else { return }
-                        DispatchQueue.main.async {
-                            guard let self, self.terminals[key]?.pty === pty else { return }
-                            self.queueOutput(key, chunk)
-                        }
-                    }
-                }, exited: { [weak self] status in
-                    DispatchQueue.main.async {
-                        guard let self, self.terminals[key]?.pty === pty else { return }
-                        self.terminals[key] = nil
-                        self.ended(key, failed: status != 0 && kind == "agent")
-                    }
-                })
-            } catch {
-                terminals[key] = nil
-                ended(key, failed: true)
-            }
-        case "term-input":
-            if let text = body["data"] as? String, text.utf8.count <= 65536 { try? terminals[key]?.pty.write(Data(text.utf8)) }
-        case "term-resize":
-            if let cols = body["cols"] as? Int, let rows = body["rows"] as? Int, (1...500).contains(cols), (1...300).contains(rows) {
-                try? terminals[key]?.pty.resize(cols: UInt16(cols), rows: UInt16(rows))
-            }
-        case "term-credit":
-            if let count = body["bytes"] as? Int { terminals[key]?.output.acknowledge(count) }
-        case "term-close":
-            terminals[key]?.output.close()
-            terminals[key]?.pty.close()
-            terminals[key] = nil
-        default:
+        if let process, process.isRunning {
+            NSRunningApplication(processIdentifier: process.processIdentifier)?.activate()
             return
         }
-    }
-
-    private func ended(_ key: String, failed: Bool) { flushOutput(); call("termEnded", [key, failed]) }
-
-    // Output waiting for the page. Chunks that arrive together reach xterm.js
-    // in one call instead of one JavaScript evaluation each.
-    private var pendingOutput: [String: Data] = [:]
-    private var flushScheduled = false
-    private func queueOutput(_ key: String, _ chunk: Data) {
-        pendingOutput[key, default: Data()].append(chunk)
-        guard !flushScheduled else { return }
-        flushScheduled = true
-        DispatchQueue.main.async { [weak self] in self?.flushOutput() }
-    }
-    private func flushOutput() {
-        flushScheduled = false
-        let pending = pendingOutput
-        pendingOutput.removeAll()
-        for (key, data) in pending where terminals[key] != nil { call("termOutput", [key, data.base64EncodedString()]) }
-    }
-
-    private func matches(_ pattern: NSRegularExpression, _ text: String) -> Bool {
-        pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
-    }
-}
-
-// Agents ask their terminal for its colors (OSC 10/11/12 "?"), and `fen
-// attach` asks for colors, cell size and attributes when it starts and waits
-// only 100 ms (internal/launcher/display.go). Answered by the page, the reply
-// can arrive late and then reaches the agent as typed text ("10;rgb:...").
-// The window answers these itself, at once, with the colors the page uses
-// (herdr's Graphite and Paper), and the page never sees the questions.
-final class DisplayProbe {
-    private static let startup = Data("\u{1b}]10;?\u{1b}\\\u{1b}]11;?\u{1b}\\\u{1b}]12;?\u{1b}\\\u{1b}[16t\u{1b}[c".utf8)
-    private let colors: [UInt8: String]
-    private let lock = NSLock()
-    private var started = false
-    private var carry = Data()
-
-    init(dark: Bool) {
-        let (foreground, background) = dark ? ("d2d2/d4d4/d9d9", "1717/1919/1d1d") : ("2525/2727/2c2c", "ffff/ffff/ffff")
-        colors = [UInt8(ascii: "0"): foreground, UInt8(ascii: "1"): background, UInt8(ascii: "2"): foreground]
-    }
-
-    private func color(_ code: UInt8, _ terminator: Data) -> Data {
-        Data("\u{1b}]1\(Character(UnicodeScalar(code)));rgb:\(colors[code] ?? "")".utf8) + terminator
-    }
-
-    // Removes the questions from output and returns the answers.
-    func answer(_ data: inout Data) -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        var bytes = carry + data
-        carry = Data()
-        var reply = Data()
-        if !started, let range = bytes.range(of: Self.startup) {
-            started = true
-            bytes.removeSubrange(range)
-            reply += color(UInt8(ascii: "0"), Data("\u{1b}\\".utf8)) + color(UInt8(ascii: "1"), Data("\u{1b}\\".utf8)) + color(UInt8(ascii: "2"), Data("\u{1b}\\".utf8))
-            reply += Data("\u{1b}[6;17;8t\u{1b}[?62;22c".utf8)
+        let contents = fen().deletingLastPathComponent().deletingLastPathComponent()
+        let process = Process()
+        process.executableURL = contents.appendingPathComponent("MacOS/fennec-desktop")
+        var environment = ProcessInfo.processInfo.environment
+        // herdr-core for the window's terminals: the cloud computer's, through `fen hc`.
+        environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
+        if !language.isEmpty { environment["FENNEC_LANGUAGE"] = language }
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        process.terminationHandler = { [weak self] ended in
+            DispatchQueue.main.async { if self?.process === ended { self?.process = nil } }
         }
-        // ESC ] 1 {0,1,2} ; ? then BEL or ESC \
-        let marker = Data("\u{1b}]1".utf8)
-        guard bytes.range(of: marker) != nil || bytes.suffix(6).contains(0x1b) else { data = bytes; return reply.isEmpty ? nil : reply }
-        var out = Data(), index = bytes.startIndex
-        while index < bytes.endIndex {
-            if bytes[index] == 0x1b {
-                let rest = bytes[index...]
-                var matched = false
-                for code in [UInt8(ascii: "0"), UInt8(ascii: "1"), UInt8(ascii: "2")] {
-                    for terminator in [Data([0x07]), Data("\u{1b}\\".utf8)] {
-                        let question = marker + Data([code, UInt8(ascii: ";"), UInt8(ascii: "?")]) + terminator
-                        if rest.starts(with: question) {
-                            reply += color(code, terminator); index += question.count; matched = true
-                        } else if rest.count < question.count, question.starts(with: rest) {
-                            // Split across reads: finish it with the next one.
-                            carry = Data(rest); index = bytes.endIndex; matched = true
-                        }
-                        if matched { break }
-                    }
-                    if matched { break }
-                }
-                if matched { continue }
-            }
-            out.append(bytes[index])
-            index += 1
+        do {
+            try process.run()
+            self.process = process
+            refreshSessions()
+        } catch {
+            NSLog("Fennec: cannot open the desktop window: \(error.localizedDescription)")
         }
-        data = out
-        return reply.isEmpty ? nil : reply
     }
-}
 
-// WKUserContentController retains its handlers; this keeps the window free.
-private final class WeakHandler: NSObject, WKScriptMessageHandler {
-    weak var target: WKScriptMessageHandler?
-    init(_ target: WKScriptMessageHandler) { self.target = target }
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        target?.userContentController(controller, didReceive: message)
+    // The menu bar app hands over what it learns; the window asks the daemon
+    // itself, so only the language is kept for the next start.
+    func update(_ change: [String: Any]) {
+        if let language = change["language"] as? String { self.language = language }
+    }
+
+    @objc private func quit() {
+        process?.terminate()
     }
 }

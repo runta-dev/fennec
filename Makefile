@@ -35,7 +35,6 @@ check-ui:
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js
 	node --check native/macos/UI/terminal-links.js
-	node --check native/macos/UI/desktop.js
 	node scripts/tests/terminal-bridge.cjs
 	node scripts/tests/terminal-localization.cjs
 	node scripts/tests/menu-state.cjs

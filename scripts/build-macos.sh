@@ -95,6 +95,15 @@ PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
+# The desktop window: native on GPUI, with herdr-app's terminal core (desktop/,
+# Apache-2.0, see desktop/UPSTREAM.md). Needs Rust and Zig 0.16 (desktop/README.md).
+git submodule update --init --depth 1 desktop/vendor/ghostty
+(cd desktop && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked)
+cp desktop/target/release/fennec-desktop "$app/Contents/MacOS/fennec-desktop"
+sign_artifact "$app/Contents/MacOS/fennec-desktop"
+install -m 755 desktop/fennec-hc "$app/Contents/Resources/fennec-hc"
+cp desktop/LICENSE "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt"
+cp desktop/THIRD-PARTY-NOTICES "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt"
 # Fennec CUA and the Chromium it drives ship on their own (fennec-cua-v*
 # releases), not inside Fennec.app: Chromium was about 170 MB of the 215 MB
 # bundle. With no nested components, components.json is empty and updates

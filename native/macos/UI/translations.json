@@ -79,6 +79,7 @@
     "desktop.resolved": {"en-US": "Resolved", "zh-CN": "已解决"},
     "desktop.restore": {"en-US": "Restore", "zh-CN": "恢复"},
     "desktop.reviewed_by": {"en-US": "Reviewed by", "zh-CN": "审阅人"},
+    "desktop.save_changes": {"en-US": "Save", "zh-CN": "保存"},
     "desktop.search": {"en-US": "Search", "zh-CN": "搜索"},
     "desktop.section_architecture": {"en-US": "Architecture", "zh-CN": "架构"},
     "desktop.section_decisions": {"en-US": "Decisions", "zh-CN": "决策"},

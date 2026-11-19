@@ -1,0 +1,4 @@
+#!/bin/sh
+# herdr-core's `hc` for the desktop window on a Mac: every call runs `hc` on the
+# cloud computer through Fennec (`fen hc ARGS`). Fennec.app sets FENNEC_HC to it.
+exec "$(dirname "$0")/../MacOS/fen" hc "$@"
