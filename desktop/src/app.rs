@@ -57,7 +57,6 @@ pub struct FennecWindow {
     sidebar: bool,
     /// The signed-in person, as requests and replies are signed.
     pub(crate) me: String,
-    cloud_window: Option<std::process::Child>,
     menu: Option<Menu>,
     new_project: Option<NewProject>,
     /// A session asked for and not yet listed: shown once it appears.
@@ -157,7 +156,6 @@ impl FennecWindow {
             notice: None,
             sidebar: true,
             me: std::env::var("USER").unwrap_or_else(|_| "me".into()),
-            cloud_window: None,
             menu: None,
             new_project: None,
             starting: None,
@@ -807,7 +805,7 @@ impl FennecWindow {
         Some(
             div()
                 .absolute()
-                .top(px(178.0 + self.visible_projects().len() as f32 * 30.0))
+                .top(px(150.0 + self.visible_projects().len() as f32 * 30.0))
                 .left(px(120.0))
                 .w(px(230.0))
                 .p(px(5.0))
@@ -1179,32 +1177,6 @@ impl FennecWindow {
                     .min_h_0()
                     .overflow_y_scroll()
                     .px(px(8.0))
-                    .child(
-                        secondary_button(
-                            "workspace",
-                            t(if crate::core_bin::cloud() {
-                                "cloud_computer"
-                            } else {
-                                "this_mac"
-                            }),
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if !crate::core_bin::cloud() {
-                                let running = this
-                                    .cloud_window
-                                    .as_mut()
-                                    .is_some_and(|p| p.try_wait().ok().flatten().is_none());
-                                if !running {
-                                    if let Ok(exe) = std::env::current_exe() {
-                                        this.cloud_window =
-                                            crate::spawn::command(exe).arg("--cloud").spawn().ok();
-                                    }
-                                }
-                            }
-                            cx.notify();
-                        })),
-                    )
                     .child(header(
                         t("projects"),
                         plus("new-project", self.new_project.is_some()).on_click(

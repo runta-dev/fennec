@@ -44,6 +44,10 @@ var fixtures = map[string]string{
 var readmeLanguageLink = regexp.MustCompile(`<a href="docs/README_ZH\.md" lang="zh-CN">[^<\r\n]*</a>`)
 
 func sourceLanguage(path string, data []byte) error {
+	// Vendored upstream source retains its original copy and Unicode tests.
+	if strings.HasPrefix(path, "desktop/vendor/") {
+		return nil
+	}
 	if path == "native/macos/UI/translations.json" || path == "docs/README_ZH.md" || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil
 	}

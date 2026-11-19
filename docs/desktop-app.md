@@ -3,8 +3,9 @@
 The menu bar panel stays the quick way in: sign-in, agents, approvals, usage.
 The desktop window is native Rust/GPUI, using herdr-app's terminal renderer.
 It starts on this Mac's bundled herdr-core, without waiting for sign-in or a
-cloud connection. The cloud-computer action opens a separate remote window
-(`--cloud`); local terminals and projects remain usable while it connects.
+cloud connection. There is no extra workspace switch in the sidebar. The
+optional `--cloud` process mode remains available for remote access without
+blocking local terminals and projects.
 
 The desktop window is where work is organized. Its left column lists
 **Projects** (a request board per project) and **Sessions** (the agents running
