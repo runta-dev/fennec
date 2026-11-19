@@ -16,6 +16,14 @@ final class SessionStore {
         var delivery = Delivery.sending
     }
     var pendingSends: [String: PendingSend] = [:]
+    /// Sessions whose message was delivered but whose agent hasn't been seen
+    /// working yet: they show "Working" at once, without a time.
+    var awaitingWork: [String: Date] = [:]
+
+    /// Whether the session should show that its agent is working on a message.
+    func workingOrStarting(_ session: Session) -> Bool {
+        session.state == .working || awaitingWork[session.id].map { Date.now.timeIntervalSince($0) < 90 } ?? false
+    }
     var attachmentDrafts: [String: [DraftAttachment]] = [:]
     var attachmentErrors: [String: String] = [:]
     @ObservationIgnored var previewDownloads: [String: Task<URL, Error>] = [:]
@@ -118,6 +126,7 @@ final class SessionStore {
                     _ = try await Task.detached { try goCall { core.send(address, sessionID: id, text: text, error: $0) } }.value
                     if pendingSends[id]?.message.id == messageID {
                         pendingSends[id]?.delivery = .sent
+                        awaitingWork[id] = .now
                     }
                 } catch {
                     // A transport failure does not prove the server rejected the message.
@@ -494,6 +503,10 @@ extension SessionStore {
             session.address = row.address
             session.activity = row.activity
             session.statusSince = row.status_ms.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
+            // Seen working, or done after the message: the real state takes over.
+            if let sent = awaitingWork[row.session_id], state == .working || (session.statusSince ?? .distantPast) > sent {
+                awaitingWork[row.session_id] = nil
+            }
             if previous[row.session_id] == nil, let since = session.statusSince { session.updatedAt = since }
             return session
         }

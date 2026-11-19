@@ -107,11 +107,9 @@ struct ChatView: View {
                     } else if session.messages.isEmpty && store.pendingSends[session.id] == nil {
                         emptyConversation(session)
                     }
-                    let turns = ChatTurn.turns(session.messages, working: session.state == .working, byPrompt: session.agent == .claudeCode)
+                    let turns = liveTurns(session)
                     ForEach(turns) { turn in
-                        TurnView(turn: turn,
-                                 since: turn.prompt?.time ?? session.turnStarted ?? session.statusSince ?? session.updatedAt,
-                                 activity: session.activity)
+                        TurnView(turn: turn, since: turnSince(turn, session), activity: session.activity)
                             .id(turn.id)
                     }
                     if let pending = store.pendingSends[session.id] {
@@ -125,6 +123,10 @@ struct ChatView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .id(pending.message.id)
                         .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .identity))
+                        if pending.delivery == .sent {
+                            // Delivered: the agent is starting; its turn header appears now.
+                            StartingHeader().transition(.opacity)
+                        }
                     }
                     if session.state == .working && turns.isEmpty {
                         WorkingIndicator(since: session.turnStarted ?? session.statusSince ?? session.updatedAt,
@@ -141,9 +143,14 @@ struct ChatView: View {
                 .containerRelativeFrame(.horizontal, alignment: .leading)
                 .padding(.vertical, 12)
             }
-            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
+            // Following the newest message keeps the bottom in place as content
+            // grows; reading (or opening a turn) keeps what is on screen in
+            // place, so a turn opening below its header doesn't move the header.
+            .defaultScrollAnchor(followBottom ? .bottom : .top, for: .sizeChanges)
             .scrollDismissesKeyboard(.interactively)
+            .environment(\.readingTurn, { followBottom = false })
             // Follow the newest message as the content grows (new lines,
             // tables and images settling their heights), unless you have
             // scrolled up to read; scrolling back down resumes following.
@@ -158,6 +165,10 @@ struct ChatView: View {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onScrollPhaseChange { _, phase, context in
+                // Your finger on the list stops following at once, so content
+                // settling while you scroll (a preview loading) can't pull the
+                // page back to the newest message.
+                if phase == .interacting { followBottom = false }
                 guard phase == .idle else { return }
                 let geometry = context.geometry
                 followBottom = geometry.visibleRect.maxY >= geometry.contentSize.height - 80
@@ -168,7 +179,7 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: session.messages.count) {
-                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                if followBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
             .onChange(of: session.transcriptLoaded) {
                 proxy.scrollTo("bottom", anchor: .bottom)
@@ -230,6 +241,26 @@ struct ChatView: View {
             })
             .presentationDetents([.height(360)])
         }
+    }
+
+    /// Delivered and in the conversation, but not yet seen working: its turn
+    /// shows "Working" (no time) at once. Before it is in the conversation,
+    /// the header under the pending message does.
+    private func starting(_ session: Session) -> Bool {
+        session.state != .working && store.pendingSends[session.id] == nil && store.workingOrStarting(session)
+    }
+
+    private func liveTurns(_ session: Session) -> [ChatTurn] {
+        let working = session.state == .working || starting(session)
+        return ChatTurn.turns(session.messages, working: working, byPrompt: session.agent == .claudeCode)
+    }
+
+    /// When a turn's time counts from; until the agent is seen working there
+    /// is no time yet (a start in the future reads as plain "Working").
+    private func turnSince(_ turn: ChatTurn, _ session: Session) -> Date {
+        if starting(session) { return .distantFuture }
+        let started: Date? = turn.prompt?.time ?? session.turnStarted ?? session.statusSince
+        return started ?? session.updatedAt
     }
 
     private func transcriptIssue(_ message: String) -> ConnectionIssue {
@@ -780,6 +811,30 @@ private struct ToolStep: View {
 
 /// While the agent works and nothing is in the log yet: the elapsed time
 /// (shimmering) and Herdr's line about what it is doing.
+/// A turn's header while the agent starts on a just-delivered message:
+/// "Working" and the divider, before there is a time to show.
+private struct StartingHeader: View {
+    var body: some View {
+        HStack {
+            Text(L10n.text("ui.working")).textShimmer()
+            Spacer()
+        }
+        .font(.system(size: 14)).foregroundStyle(Theme.fg2)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .accessibilityIdentifier("starting-header")
+    }
+}
+
+private struct ReadingTurnKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
+extension EnvironmentValues {
+    /// Called when a turn is opened or closed, so the list stops following.
+    var readingTurn: () -> Void {
+        get { self[ReadingTurnKey.self] }
+        set { self[ReadingTurnKey.self] = newValue }
+    }
+}
+
 struct WorkingIndicator: View {
     var since: Date
     var activity: String?
@@ -859,6 +914,7 @@ private struct TurnView: View {
     var since: Date
     var activity: String?
     @State private var expanded = false
+    @Environment(\.readingTurn) private var readingTurn
 
     /// While working, only the latest steps show, so a turn stays within one
     /// screen and the newest work is in view; earlier steps fold into the header.
@@ -903,7 +959,12 @@ private struct TurnView: View {
     }
 
     private var header: some View {
-        Button { if foldable { withAnimation(.snappy) { expanded.toggle() } } } label: {
+        Button {
+            guard foldable else { return }
+            // Opening a turn is reading it: keep it where it is on screen.
+            readingTurn()
+            withAnimation(.snappy) { expanded.toggle() }
+        } label: {
             HStack(spacing: 6) {
                 if turn.finished {
                     Text(turn.stopped

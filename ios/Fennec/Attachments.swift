@@ -198,6 +198,7 @@ extension SessionStore {
                     }
                 }.value
                 if pendingSends[id]?.message.id == messageID { pendingSends[id]?.delivery = .sent }
+                awaitingWork[id] = .now
                 attachmentDrafts[id] = []
                 onSent()
                 for attachment in attachments { try? FileManager.default.removeItem(at: attachment.url.deletingLastPathComponent()) }
