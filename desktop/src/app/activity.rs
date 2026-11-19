@@ -177,6 +177,7 @@ impl FennecWindow {
                 let kind = alert["kind"].as_str().unwrap_or("done");
                 h_flex()
                     .id(SharedString::from(format!("agent-notice-{address}")))
+                    .occlude()
                     .px(px(12.0))
                     .py(px(9.0))
                     .gap(px(8.0))
@@ -186,13 +187,17 @@ impl FennecWindow {
                     .border_color(c("border"))
                     .text_size(px(12.0))
                     .text_color(c("foreground"))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.agent_notices.retain(|a| a["address"] != address);
-                        if address != group {
-                            this.tab.insert(group.clone(), format!("local:{address}"));
-                        }
-                        this.go(Route::Session(group.clone()), window, cx);
-                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.agent_notices.retain(|a| a["address"] != address);
+                            if address != group {
+                                this.tab.insert(group.clone(), format!("local:{address}"));
+                            }
+                            this.go(Route::Session(group.clone()), window, cx);
+                        }),
+                    )
                     .child(self.program_icon(&dismiss, "", 14.0))
                     .child(format!(
                         "{} · {}",

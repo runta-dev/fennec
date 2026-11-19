@@ -1627,19 +1627,21 @@ impl FennecWindow {
             if list.is_empty() {
                 continue;
             }
-            groups.push(
-                h_flex()
-                    .px(px(8.0))
-                    .pt(px(7.0))
-                    .pb(px(3.0))
-                    .gap(px(4.0))
-                    .text_size(px(11.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(c("f_muted"))
-                    .child(state.label())
-                    .child(div().opacity(0.7).child(list.len().to_string()))
-                    .into_any_element(),
-            );
+            if state != State::Unknown {
+                groups.push(
+                    h_flex()
+                        .px(px(8.0))
+                        .pt(px(7.0))
+                        .pb(px(3.0))
+                        .gap(px(4.0))
+                        .text_size(px(11.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(c("f_muted"))
+                        .child(state.label())
+                        .child(div().opacity(0.7).child(list.len().to_string()))
+                        .into_any_element(),
+                );
+            }
             for s in list {
                 let selected = route == Some(Route::Session(s.address.clone()));
                 let address = s.address.clone();

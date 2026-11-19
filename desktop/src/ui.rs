@@ -332,22 +332,6 @@ pub fn tag_chip(id: &str, label: &str) -> Div {
 }
 
 /// The 7-on-30 status dot from Fennec for iPhone, here 4 px on a 16 px icon.
-pub fn status_dot(state: crate::sessions::State) -> Div {
-    let color = match state {
-        crate::sessions::State::NeedsYou => c("blocked"),
-        crate::sessions::State::Working => c("working"),
-        crate::sessions::State::Idle => c("idle"),
-        crate::sessions::State::Done => c("done"),
-        crate::sessions::State::Unknown => gpui::transparent_black(),
-    };
-    div()
-        .size(px(4.0))
-        .rounded_full()
-        .bg(color)
-        .border_1()
-        .border_color(c("f_bg"))
-}
-
 pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
     use base64::Engine;
     if let Some(encoded) = project.icon.strip_prefix("data:image/png;base64,") {
