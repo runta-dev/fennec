@@ -205,37 +205,10 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installMagpiePanel(ctx, services, controller, settings)
 	installPreviewServer(ctx, services)
 	installBoard(ctx, services, controller)
+	installDesktopWindowSettings(home, controller)
 	controller.Settings = func() any {
-		prefs := settings.snapshot().(desktopPreferences)
-		env := runta.ActiveEnvironment(home)
-		preset := effectivePermissionPreset(prefs)
-		effSandbox := effectiveSandboxPolicy(home, prefs)
 		auditRes, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
-		customRoots := prefs.SandboxRoots
-		if customRoots == nil {
-			customRoots = []string{}
-		}
-		return map[string]any{
-			"revision":                prefs.Revision,
-			"magpie":                  prefs.Magpie,
-			"no_auto_update":          prefs.NoAutoUpdate,
-			"update_skip":             prefs.UpdateSkip,
-			"environment":             env.Name,
-			"api_endpoint":            env.API,
-			"dashboard_url":           env.Dashboard,
-			"ssh_host":                env.SSHHost,
-			"ssh_nodelay":             !prefs.NoSSHNoDelay,
-			"no_ssh_nodelay":          prefs.NoSSHNoDelay,
-			"permission_mode":         preset,
-			"sandbox_mode":            effSandbox.Mode,
-			"sandbox_network":         effSandbox.Network,
-			"sandbox_roots":           customRoots,
-			"effective_sandbox_roots": effSandbox.WritableRoots,
-			"audit_summary":           auditRes.Summary,
-			"theme":                   prefs.Theme,
-			"language":                prefs.Language,
-			"initialized":             prefs.Initialized,
-		}
+		return desktopSettingsResponse(home, settings.snapshot().(desktopPreferences), auditRes.Summary)
 	}
 	controller.Additional["audit.list"] = func(_ context.Context, raw json.RawMessage) (any, error) {
 		var opts audit.QueryOptions

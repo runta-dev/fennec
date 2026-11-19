@@ -36,6 +36,7 @@ mod settings;
 
 // Fennec.
 mod app;
+mod app_preferences;
 mod preview;
 mod board;
 mod control;

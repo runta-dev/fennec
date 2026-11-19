@@ -4,6 +4,27 @@
 
 use serde_json::Value;
 use std::sync::LazyLock;
+use std::sync::atomic::{AtomicU8, Ordering};
+static OVERRIDE: AtomicU8 = AtomicU8::new(0);
+pub fn set_language(language: &str) {
+    OVERRIDE.store(
+        if language == "system" {
+            0
+        } else if language == "zh-CN" {
+            2
+        } else {
+            1
+        },
+        Ordering::Relaxed,
+    );
+}
+pub fn language() -> &'static str {
+    match OVERRIDE.load(Ordering::Relaxed) {
+        1 => "en-US",
+        2 => "zh-CN",
+        _ => *LANGUAGE,
+    }
+}
 
 static CATALOG: LazyLock<Value> = LazyLock::new(|| {
     serde_json::from_str::<Value>(include_str!("../../native/macos/UI/translations.json"))
@@ -27,7 +48,7 @@ static LANGUAGE: LazyLock<&'static str> = LazyLock::new(|| {
 /// `desktop.<key>` in the current language (English when missing).
 pub fn t(key: &str) -> String {
     let m = &CATALOG[format!("desktop.{key}")];
-    m[*LANGUAGE]
+    m[language()]
         .as_str()
         .or_else(|| m["en-US"].as_str())
         .unwrap_or(key)

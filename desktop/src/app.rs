@@ -19,6 +19,7 @@ use std::time::Duration;
 
 #[derive(Clone, PartialEq)]
 pub(crate) enum Route {
+    AppSettings,
     Project(String),
     Session(String),
     /// A project's settings, on one of its tabs.
@@ -46,16 +47,16 @@ pub struct FennecWindow {
     pub(crate) projects: Vec<Project>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
     thread: Option<Request>,
-    route: Option<Route>,
+    pub(crate) route: Option<Route>,
     open: Option<u64>,
     resolved: bool,
     tag: Option<String>,
-    terms: HashMap<String, Entity<TerminalView>>,
-    search: Entity<InputState>,
-    composer: Entity<TextareaState>,
+    pub(crate) terms: HashMap<String, Entity<TerminalView>>,
+    pub(crate) search: Entity<InputState>,
+    pub(crate) composer: Entity<TextareaState>,
     posting: bool,
     replying: bool,
-    reply: Entity<TextareaState>,
+    pub(crate) reply: Entity<TextareaState>,
     notice: Option<String>,
     pub(crate) sidebar: bool,
     focus: FocusHandle,
@@ -71,6 +72,9 @@ pub struct FennecWindow {
     /// A session asked for and not yet listed: shown once it appears.
     starting: Option<String>,
     pub(crate) settings: crate::project_settings::State,
+    pub(crate) app_preferences: crate::app_preferences::State,
+    creating_local: bool,
+    has_connected: bool,
     /// This Mac's own core (Fennec's instance), for local shell tabs.
     local: Option<Arc<Core>>,
     /// Local shells by the session they sit beside (`fennec.shell-of`), in order.
@@ -149,6 +153,9 @@ impl FennecWindow {
             if crate::preview::active() && std::env::var("FENNEC_PREVIEW_THEME").is_ok() {
                 return;
             }
+            if this.app_preferences.value.theme != "system" {
+                return;
+            }
             let dark = matches!(
                 window.appearance(),
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
@@ -194,6 +201,9 @@ impl FennecWindow {
             new_project: None,
             starting: None,
             settings: Default::default(),
+            app_preferences: crate::app_preferences::State::load(),
+            creating_local: false,
+            has_connected: false,
             local: None,
             shells: HashMap::new(),
             shell_names: HashMap::new(),
@@ -202,6 +212,9 @@ impl FennecWindow {
             _subs: subs,
             _tasks: Vec::new(),
         };
+        if !crate::preview::active() {
+            this.apply_desktop_preferences(window, cx);
+        }
         if crate::preview::active() {
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
             this.core_error = Some(String::new());
@@ -215,12 +228,22 @@ impl FennecWindow {
                             this.local = Some(core);
                         }
                         this.follow_core(window, cx);
+                        this.has_connected = true;
                         if !crate::core_bin::cloud() {
                             if let Some(session) = this.sessions.first() {
+                                if this.route == Some(Route::AppSettings) {
+                                    cx.notify();
+                                    return;
+                                }
                                 this.pending_focus = Some(session.address.clone());
                                 this.route = Some(Route::Session(session.address.clone()));
                             } else {
-                                this.start_session(String::new(), window, cx);
+                                this.start_session_selection(
+                                    String::new(),
+                                    this.route != Some(Route::AppSettings),
+                                    window,
+                                    cx,
+                                );
                             }
                         }
                         cx.notify();
@@ -282,6 +305,7 @@ impl FennecWindow {
         use crate::project_settings::Tab;
         let mut parts = what.splitn(3, ':');
         match (parts.next(), parts.next(), parts.next()) {
+            (Some("app-settings"), _, _) => self.open_app_settings(window, cx),
             (Some("menu"), Some(kind), _) if crate::preview::active() => {
                 self.menu = Some(if kind == "tags" {
                     Menu::RequestTag
@@ -341,16 +365,16 @@ impl FennecWindow {
             }
         };
         self.events = Some(EventLines::new(&snapshot));
-        self.terminals_changed(cx);
+        self.terminals_changed(window, cx);
         let core = core.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             while let Ok(item) = stream.recv().await {
                 let gone = matches!(item, Stream::Closed(_) | Stream::Lost);
-                let ok = this.update(cx, |this, cx| {
+                let ok = this.update_in(cx, |this, window, cx| {
                     if let (Stream::Data(bytes), Some(events)) = (&item, this.events.as_mut()) {
                         core.credit(channel, bytes.len());
                         if events.push(bytes).terminals {
-                            this.terminals_changed(cx);
+                            this.terminals_changed(window, cx);
                         }
                     }
                     if gone {
@@ -365,7 +389,7 @@ impl FennecWindow {
         }));
     }
 
-    fn terminals_changed(&mut self, cx: &mut Context<Self>) {
+    fn terminals_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(events) = self.events.as_ref() else {
             return;
         };
@@ -416,6 +440,9 @@ impl FennecWindow {
             self.starting = None;
             self.pending_focus = Some(s.address.clone());
             self.route = Some(Route::Session(s.address.clone()));
+        }
+        if self.has_connected {
+            self.ensure_local_terminal(window, cx);
         }
         cx.notify();
     }
@@ -511,7 +538,16 @@ impl FennecWindow {
         }));
     }
 
-    pub(crate) fn go(&mut self, route: Route, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn go(&mut self, mut route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        if let Route::Session(address) = &route {
+            if !address.starts_with("local:")
+                && !self.sessions.iter().any(|s| &s.address == address)
+            {
+                if let Some(first) = self.sessions.first() {
+                    route = Route::Session(first.address.clone());
+                }
+            }
+        }
         if let Route::Session(address) = &route {
             self.pending_focus = Some(self.shown_tab(address));
         }
@@ -522,7 +558,8 @@ impl FennecWindow {
             // delay the echo of what is typed here. Coming back attaches again
             // (the core repaints the screen and its history).
             if let Some(Route::Session(old)) = &self.route {
-                if let Some(view) = self.terms.remove(old) {
+                let shown = self.shown_tab(old);
+                if let Some(view) = self.terms.remove(&shown) {
                     view.read(cx).detach();
                 }
             }
@@ -746,7 +783,10 @@ impl FennecWindow {
                     then(this, window, cx);
                     cx.notify();
                 }
-                Err(e) => this.say(format!("{e:#}"), cx),
+                Err(e) => {
+                    this.creating_local = false;
+                    this.say(format!("{e:#}"), cx)
+                }
             });
         }));
     }
@@ -867,24 +907,21 @@ impl FennecWindow {
         self.tab.retain(|_, t| t != &key);
     }
 
-    fn open_app_settings(&self) {
-        if crate::preview::active() {
-            return;
+    fn open_app_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.route != Some(Route::AppSettings) {
+            self.app_preferences.previous = self.route.clone();
         }
-        #[cfg(target_os = "macos")]
-        {
-            let app = std::env::var_os("FENNEC_MENU_BAR_APP")
-                .unwrap_or_else(|| "/Applications/Fennec.app".into());
-            let _ = crate::spawn::command("/usr/bin/open")
-                .arg("-a")
-                .arg(app)
-                .arg("fennec://settings")
-                .spawn();
-        }
+        self.go(Route::AppSettings, window, cx);
+        self.focus.focus(window, cx);
     }
 
     fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(Route::Session(id)) = &self.route {
+        let context = if self.route == Some(Route::AppSettings) {
+            &self.app_preferences.previous
+        } else {
+            &self.route
+        };
+        if let Some(Route::Session(id)) = context {
             if let Some(session) = self.sessions.iter().find(|s| &s.address == id).cloned() {
                 self.new_shell(session, window, cx);
                 return;
@@ -935,51 +972,95 @@ impl FennecWindow {
             cx,
         );
     }
-    fn close_tab_key(&mut self, key: String, cx: &mut Context<Self>) {
-        if let Some(address) = key.strip_prefix("local:") {
-            self.close_shell(address.to_owned(), cx);
-        } else if let Some(core) = self.core.clone() {
-            let address = key.clone();
-            let remote_name = if crate::core_bin::cloud() {
-                self.sessions
-                    .iter()
-                    .find(|s| s.address == key)
-                    .map(|s| s.name.clone())
-            } else {
-                None
-            };
-            self._tasks.push(cx.spawn(async move |this, cx| {
-                let result = cx
-                    .background_spawn(async move {
-                        if let Some(name) = remote_name {
-                            crate::control::call(
-                                "sessions.stop",
-                                serde_json::json!({"session_id":name}),
-                            )
-                        } else {
-                            core.call("terminal.kill", serde_json::json!({"terminal":address}))
-                        }
-                    })
-                    .await;
-                let _ = this.update(cx, |this, cx| {
-                    if result.is_ok() {
-                        this.terms.remove(&key);
-                        this.sessions.retain(|s| s.address != key);
-                        this.route = this
-                            .sessions
-                            .first()
-                            .map(|s| Route::Session(s.address.clone()));
-                    } else {
-                        this.say(t("try_again"), cx);
-                    }
-                    cx.notify();
-                });
-            }));
+    fn adopt_local_terminal(
+        &mut self,
+        record: serde_json::Value,
+        select: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(terminal) = sessions::from_terminals(&[record]).pop() else {
+            return;
+        };
+        let address = terminal.address.clone();
+        if let Some(view) = self.terms.remove(&format!("local:{address}")) {
+            view.read(cx).detach();
         }
-        if let Some(Route::Session(id)) = &self.route {
-            self.pending_focus = Some(self.shown_tab(id));
+        if let Some(tabs) = self.shells.get_mut(&terminal.name) {
+            tabs.retain(|a| a != &address);
+        }
+        self.sessions.retain(|s| s.address != address);
+        self.sessions.push(terminal);
+        if select {
+            self.confirmed_session = Some(address.clone());
+            self.pending_focus = Some(address.clone());
+            self.route = Some(Route::Session(address));
         }
         cx.notify();
+    }
+    fn ensure_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::core_bin::cloud()
+            || crate::preview::active()
+            || !self.sessions.is_empty()
+            || self.creating_local
+        {
+            return;
+        }
+        let select = matches!(self.route, None | Some(Route::Session(_)));
+        let remaining = self
+            .shells
+            .iter()
+            .find_map(|(group, tabs)| tabs.first().map(|address| (group.clone(), address.clone())));
+        if let (Some((group, address)), Some(core)) = (remaining, self.local.clone()) {
+            self.creating_local = true;
+            self._tasks.push(cx.spawn_in(window,async move|this,cx|{
+                let result=cx.background_spawn(async move{core.call("terminal.label",serde_json::json!({"terminal":address,"labels":{"fennec.session":group,"fennec.agent":"shell","fennec.shell-of":""}}))}).await;
+                let _=this.update(cx,|this,cx|{this.creating_local=false;match result{Ok(record)=>this.adopt_local_terminal(record,select&&matches!(this.route,None|Some(Route::Session(_))),cx),Err(e)=>this.say(format!("{e:#}"),cx)}});
+            }));
+        } else {
+            self.start_session_selection(String::new(), select, window, cx);
+        }
+    }
+    fn close_tab_key(&mut self, key: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(address) = key.strip_prefix("local:") {
+            self.close_shell(address.to_owned(), cx);
+            return;
+        }
+        let Some(core) = self.core.clone() else {
+            return;
+        };
+        let address = key.clone();
+        let root = self.sessions.iter().find(|s| s.address == key);
+        let remote_name = if crate::core_bin::cloud() {
+            root.map(|s| s.name.clone())
+        } else {
+            None
+        };
+        let promotion = if crate::core_bin::cloud() {
+            None
+        } else {
+            root.and_then(|s| {
+                self.shells
+                    .get(&s.name)
+                    .and_then(|tabs| tabs.first())
+                    .map(|a| (s.name.clone(), a.clone()))
+            })
+        };
+        self._tasks.push(cx.spawn_in(window,async move|this,cx|{
+            let result=cx.background_spawn(async move{
+                let promoted=if let Some((name,child))=promotion{Some(core.call("terminal.label",serde_json::json!({"terminal":child,"labels":{"fennec.session":name,"fennec.agent":"shell","fennec.shell-of":""}}))?)}else{None};
+                if let Some(name)=remote_name{crate::control::call("sessions.stop",serde_json::json!({"session_id":name}))?;}else{core.call("terminal.kill",serde_json::json!({"terminal":address}))?;}
+                anyhow::Ok(promoted)
+            }).await;
+            let _=this.update_in(cx,|this,window,cx|match result{
+                Ok(promoted)=>{
+                    let select=this.route==Some(Route::Session(key.clone()))||this.route.is_none();
+                    this.terms.remove(&key);this.sessions.retain(|s|s.address!=key);
+                    if let Some(record)=promoted{this.adopt_local_terminal(record,select,cx);}
+                    else if select{this.route=this.sessions.first().map(|s|Route::Session(s.address.clone()));if let Some(Route::Session(id))=&this.route{this.pending_focus=Some(this.shown_tab(id));}}
+                    this.ensure_local_terminal(window,cx);cx.notify();
+                },Err(e)=>this.say(format!("{e:#}"),cx)
+            });
+        }));
     }
     fn step_session(&mut self, delta: isize, window: &mut Window, cx: &mut Context<Self>) {
         if self.sessions.is_empty() {
@@ -1002,7 +1083,7 @@ impl FennecWindow {
     fn on_shell_action(&mut self, a: &ShellAction, window: &mut Window, cx: &mut Context<Self>) {
         match a.id() {
             "app.settings" => {
-                self.open_app_settings();
+                self.open_app_settings(window, cx);
                 return;
             }
             "tab.new" => {
@@ -1019,7 +1100,7 @@ impl FennecWindow {
             }
             "tab.close" => {
                 if let Some(Route::Session(id)) = &self.route {
-                    self.close_tab_key(self.shown_tab(id), cx);
+                    self.close_tab_key(self.shown_tab(id), window, cx);
                 }
                 return;
             }
@@ -1261,6 +1342,15 @@ impl FennecWindow {
     }
 
     fn start_session(&mut self, agent: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.start_session_selection(agent, true, window, cx);
+    }
+    fn start_session_selection(
+        &mut self,
+        agent: String,
+        select: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if crate::preview::active() {
             self.menu = None;
             cx.notify();
@@ -1268,6 +1358,11 @@ impl FennecWindow {
         }
         self.menu = None;
         if !crate::core_bin::cloud() || agent.is_empty() {
+            if self.creating_local {
+                return;
+            }
+            self.creating_local = true;
+            let origin = self.route.clone();
             let display = crate::terminal::initial_display(window);
             self.with_local(window, cx, move |this, window, cx| {
                 let Some(core) = this.local.clone() else { return; };
@@ -1280,24 +1375,29 @@ impl FennecWindow {
                         let name = format!("desktop-{}", sessions::now_ms());
                         core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
-                    let _ = this.update(cx, |this, cx| match started {
-                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key)); cx.notify(); },
+                    let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {
+                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
                         Err(e) => this.say(format!("{e:#}"), cx),
-                    });
+                    }});
                 }));
             });
             return;
         }
+        let origin = self.route.clone();
         self.starting = Some(String::new());
         cx.notify();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let started = cx
                 .background_spawn(async move { board::start_session(&agent) })
                 .await;
-            let _ = this.update(cx, |this, cx| match started {
+            let _ = this.update_in(cx, |this, window, cx| match started {
                 Ok(name) => {
-                    this.starting = Some(name);
-                    this.terminals_changed(cx);
+                    this.starting = if this.route == origin {
+                        Some(name)
+                    } else {
+                        None
+                    };
+                    this.terminals_changed(window, cx);
                 }
                 Err(e) => {
                     this.starting = None;
@@ -1690,8 +1790,17 @@ impl FennecWindow {
                         .text_size(px(13.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(c("f_muted"))
-                        .hover(|s| s.bg(c("f_line").opacity(0.5)))
-                        .on_click(cx.listener(|this, _, _, _| this.open_app_settings()))
+                        .when(route == Some(Route::AppSettings), |d| {
+                            d.bg(c("f_card"))
+                                .shadow(ui::selection_shadow())
+                                .text_color(c("f_text"))
+                        })
+                        .when(route != Some(Route::AppSettings), |d| {
+                            d.hover(|s| s.bg(c("f_line").opacity(0.5)))
+                        })
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_app_settings(window, cx)),
+                        )
                         .child(ui::icon("gear", 15.0, c("f_muted")))
                         .child(t("settings")),
                 ),
@@ -2441,6 +2550,7 @@ impl Render for FennecWindow {
         window.set_rem_size(px(crate::settings::ui_font_size()));
         let route = self.route.clone();
         let main = match &route {
+            Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
             Some(Route::Project(id)) => match self.projects.iter().find(|p| &p.id == id).cloned() {
                 Some(p) => h_flex()
                     .flex_1()
@@ -2486,7 +2596,7 @@ impl Render for FennecWindow {
                     if k.key == "enter" {
                         if let Some(keys) = this.close_others.take() {
                             for key in keys {
-                                this.close_tab_key(key, cx);
+                                this.close_tab_key(key, window, cx);
                             }
                         }
                     } else if k.key == "escape" {
@@ -2507,7 +2617,7 @@ impl Render for FennecWindow {
                             this.search.read(cx).focus_handle(cx).focus(window, cx);
                         }
                         "." => {
-                            this.open_app_settings();
+                            this.open_app_settings(window, cx);
                         }
                         "b" => {
                             this.sidebar = !this.sidebar;

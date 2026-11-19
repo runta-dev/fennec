@@ -57,8 +57,10 @@ change Herdr's configuration. Supported actions include new/close/previous/next
 and numbered tabs, previous/next and numbered session groups (`space.*`),
 clipboard/search and `send:` editing keys, sidebar visibility, the session
 search picker, and terminal zoom. Ctrl-B's prefix supports `s` for search, `.` for Fennec settings and
-`b` for the sidebar; Escape cancels. Settings and Command-comma open the same
-menu bar Preferences page through the app's local URL handler. Close-others asks for confirmation and
+`b` for the sidebar; Escape cancels. Settings and Command-comma open the native app's own settings page. Its theme,
+language, terminal font size and padding are persisted independently in
+`~/.config/fennec/desktop-settings.json` via `desktop.settings.get/set`; changing
+them does not modify menu bar preferences. Close-others asks for confirmation and
 closes other shell tabs while keeping the group's agent anchor.
 
 Fennec does not yet implement Herdr split panes, pane direction/swap/zoom,
@@ -73,3 +75,8 @@ not reclaim focus. Collapsed sidebars put the restore button and window controls
 header; terminal tabs stay in that same row. Double-clicking non-control
 titlebar space zooms/restores the window. Re-activating a terminal window
 restores focus to its active terminal, without stealing focus from project editors.
+
+The local desktop keeps one usable terminal. Closing the final root terminal
+creates a fresh shell; if that group has surviving shell tabs, an existing tab
+is promoted without restarting its process. Replacement launches are coalesced
+and do not steal focus from a project editor or the app settings page.

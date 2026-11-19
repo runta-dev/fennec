@@ -4,6 +4,25 @@
 use gpui::{App, KeyBinding};
 use gpui_shell::action::ShellAction;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
+static ACTIVE: OnceLock<BTreeMap<String, String>> = OnceLock::new();
+pub fn shortcut(action: &str) -> String {
+    ACTIVE
+        .get()
+        .into_iter()
+        .flat_map(|keys| keys.iter())
+        .filter(|(_, v)| v.as_str() == action)
+        .map(|(k, _)| {
+            k.replace("cmd-", "⌘")
+                .replace("ctrl-", "⌃")
+                .replace("alt-", "⌥")
+                .replace("shift-", "⇧")
+                .replace("tab", "⇥")
+                .to_uppercase()
+        })
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
 
 fn supported(action: &str) -> bool {
     action.starts_with("send:")
@@ -74,6 +93,7 @@ pub fn install(cx: &mut App) {
             }
         }
     }
+    let _ = ACTIVE.set(global.clone());
     cx.bind_keys(global.into_iter().map(|(key, action)| {
         KeyBinding::new(&key, ShellAction::new(action), Some("FennecWindow"))
     }));

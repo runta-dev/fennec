@@ -81,7 +81,6 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.runta.fennec</string>
 <key>CFBundleName</key><string>Fennec</string>
-<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>Fennec settings</string><key>CFBundleURLSchemes</key><array><string>fennec</string></array></dict></array>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>$deployment_target</string>

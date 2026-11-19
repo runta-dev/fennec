@@ -1,5 +1,18 @@
 {
   "messages": {
+    "desktop.app_appearance": {"en-US":"Appearance","zh-CN":"外观"},
+    "desktop.app_system": {"en-US":"System","zh-CN":"跟随系统"},
+    "desktop.app_light": {"en-US":"Light","zh-CN":"浅色"},
+    "desktop.app_dark": {"en-US":"Dark","zh-CN":"深色"},
+    "desktop.app_language": {"en-US":"Language","zh-CN":"语言"},
+    "desktop.app_chinese": {"en-US":"Chinese (Simplified)","zh-CN":"简体中文"},
+    "desktop.app_font_size": {"en-US":"Terminal font size","zh-CN":"终端字号"},
+    "desktop.app_padding": {"en-US":"Terminal padding","zh-CN":"终端留白"},
+    "desktop.app_horizontal": {"en-US":"Horizontal","zh-CN":"水平"},
+    "desktop.app_vertical": {"en-US":"Vertical","zh-CN":"垂直"},
+    "desktop.app_shortcuts": {"en-US":"Keyboard shortcuts","zh-CN":"快捷键"},
+    "desktop.app_prev_tab": {"en-US":"Previous tab","zh-CN":"上一个标签"},
+    "desktop.app_next_tab": {"en-US":"Next tab","zh-CN":"下一个标签"},
     "desktop.compose_shortcuts": {"en-US":"Enter to send · Shift+Enter for a new line", "zh-CN":"Enter 发送 · Shift+Enter 换行"},
     "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
     "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes? Enter to confirm, Esc to cancel", "zh-CN":"关闭其他 Shell 标签及其进程？Enter 确认，Esc 取消"},

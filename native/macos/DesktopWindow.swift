@@ -10,7 +10,6 @@ final class DesktopWindow: NSObject {
     var openPanel: () -> Void = {}
     var refreshSessions: () -> Void = {}
     private var process: Process?
-    private var language = ""
 
     init(control: ControlClient, fen: @escaping () -> URL) {
         self.control = control
@@ -34,8 +33,7 @@ final class DesktopWindow: NSObject {
         environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
         // This Mac's own herdr-core (bundled, an isolated instance) for local shell tabs.
         environment["FENNEC_LOCAL_HC"] = contents.appendingPathComponent("Resources/fennec-hc-local").path
-        environment["FENNEC_MENU_BAR_APP"] = contents.deletingLastPathComponent().path
-        if !language.isEmpty { environment["FENNEC_LANGUAGE"] = language }
+        environment["FENNEC_LANGUAGE"] = Locale.preferredLanguages.first ?? "en-US"
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.terminationHandler = { [weak self] ended in
@@ -50,11 +48,8 @@ final class DesktopWindow: NSObject {
         }
     }
 
-    // The menu bar app hands over what it learns; the window asks the daemon
-    // itself, so only the language is kept for the next start.
-    func update(_ change: [String: Any]) {
-        if let language = change["language"] as? String { self.language = language }
-    }
+    // The native window owns its preferences independently of menu bar state.
+    func update(_ change: [String: Any]) {}
 
     @objc private func quit() {
         process?.terminate()
