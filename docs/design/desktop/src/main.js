@@ -547,6 +547,7 @@ document.addEventListener('submit', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing && !e.shiftKey && e.target.matches('[data-editor=new]')) { e.preventDefault(); e.target.closest('form').requestSubmit(); return; }
   if (e.key === 'Enter' && e.metaKey && e.target.closest('.rich')) { e.preventDefault(); e.target.closest('form').requestSubmit(); return; }
   // Markdown shortcuts at the start of a line: "# ", "## ", "- ", "1. ", "> "
   if (e.key !== ' ' || !e.target.closest?.('.rich')) return;

@@ -36,6 +36,7 @@ mod settings;
 
 // Fennec.
 mod app;
+mod preview;
 mod board;
 mod control;
 mod i18n;
@@ -68,12 +69,15 @@ fn main() {
                 cx.window_appearance(),
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
             );
+            let dark = if preview::active() {
+                match std::env::var("FENNEC_PREVIEW_THEME").as_deref() { Ok("dark") => true, Ok("light") => false, _ => dark }
+            } else { dark };
             settings::set_dark(dark);
             let requests = mods::requests();
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::centered(size(px(1280.0), px(820.0)), cx)),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Fennec".into()),
+                    title: Some(if preview::active() { "Fennec design preview" } else { "Fennec" }.into()),
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(16.0), px(17.0))),
                 }),

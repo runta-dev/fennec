@@ -1,6 +1,6 @@
 //! Project settings (docs/desktop-app.md): General, Knowledge, Queue, Agents.
 
-use crate::app::{FennecWindow, Route, primary_button, secondary_button};
+use crate::app::{FennecWindow, Route, secondary_button};
 use crate::board::{self, Concept, Project, QueueProject, Tag, Worker};
 use crate::i18n::{t, tf};
 use crate::ui::{self, c};
@@ -38,6 +38,7 @@ pub struct State {
     tags: Vec<Tag>,
     knowledge: Vec<Concept>,
     filter: KnowledgeFilter,
+    concept: String,
     queue: Option<QueueProject>,
 }
 
@@ -84,7 +85,7 @@ impl FennecWindow {
                                 this.settings.tags.push(Tag { id, label });
                             }
                             input.update(cx, |s, cx| s.set_value("", window, cx));
-                            cx.notify();
+                            this.save_general(window, cx);
                         }
                     }
                 },
@@ -99,6 +100,25 @@ impl FennecWindow {
                 tags: p.tags.clone(),
                 ..Default::default()
             };
+            for input in [
+                &self.settings.name,
+                &self.settings.key,
+                &self.settings.description,
+                &self.settings.repository,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self._subs.push(cx.subscribe_in(
+                    input,
+                    window,
+                    |this, _, event: &InputEvent, window, cx| {
+                        if matches!(event, InputEvent::Blur) {
+                            this.save_general(window, cx);
+                        }
+                    },
+                ));
+            }
         }
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let (knowledge, queue) = cx
@@ -146,6 +166,9 @@ impl FennecWindow {
     }
 
     fn save_general(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            return;
+        }
         let s = &self.settings;
         let value = |i: &Option<Entity<InputState>>| {
             i.as_ref()
@@ -192,41 +215,47 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let tabs = [
-            (Tab::General, t("general")),
-            (Tab::Knowledge, t("knowledge")),
-            (Tab::Queue, t("queue")),
-            (Tab::Agents, t("agents")),
+            (Tab::General, "general", "sliders"),
+            (Tab::Knowledge, "knowledge", "book"),
+            (Tab::Queue, "queue", "layers"),
+            (Tab::Agents, "agents", "bot"),
         ]
-        .map(|(which, label)| {
+        .map(|(which, label, icon)| {
             let id = p.id.clone();
-            div()
+            h_flex()
                 .id(SharedString::from(format!("tab-{which:?}")))
-                .h(px(28.0))
-                .px(px(12.0))
+                .h(px(30.0))
+                .w_full()
+                .px(px(8.0))
+                .gap(px(9.0))
+                .mb(px(1.0))
                 .rounded(px(7.0))
-                .flex()
-                .items_center()
-                .text_size(px(12.5))
+                .text_size(px(13.0))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(if which == tab {
-                    c("f_text")
-                } else {
-                    c("f_muted")
-                })
+                .text_color(c("f_text"))
                 .when(which == tab, |d| {
-                    d.bg(c("f_card")).border_1().border_color(c("f_line"))
+                    d.bg(c("f_card")).shadow(ui::selection_shadow())
                 })
-                .when(which != tab, |d| d.hover(|s| s.bg(c("f_line"))))
+                .when(which != tab, |d| {
+                    d.hover(|s| s.bg(c("f_line").opacity(0.5)))
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.go(Route::Settings(id.clone(), which), window, cx)
                 }))
-                .child(label)
+                .child(ui::icon(icon, 15.0, c("f_muted")))
+                .child(t(label))
         });
         let body = match tab {
             Tab::General => self.general(p, cx).into_any_element(),
             Tab::Knowledge => self.knowledge(p, cx).into_any_element(),
             Tab::Queue => self.queue_tab(p, cx).into_any_element(),
             Tab::Agents => self.agents(p, cx).into_any_element(),
+        };
+        let heading = match tab {
+            Tab::General => "general",
+            Tab::Knowledge => "knowledge",
+            Tab::Queue => "queue",
+            Tab::Agents => "agents",
         };
         let back = p.id.clone();
         v_flex()
@@ -243,10 +272,11 @@ impl FennecWindow {
                     .gap(px(11.0))
                     .border_b_1()
                     .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .child(
                         div()
                             .id("settings-back")
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .size(px(28.0))
                             .rounded(px(6.0))
                             .flex()
@@ -256,38 +286,64 @@ impl FennecWindow {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.go(Route::Project(back.clone()), window, cx)
                             }))
-                            .child(ui::project_mark(&p.name, &p.color, 22.0)),
+                            .child(ui::icon("back", 17.0, c("f_muted"))),
                     )
+                    .child(ui::project_icon(p, 30.0))
                     .child(
-                        div()
-                            .text_size(px(13.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(t("project_settings")),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        h_flex()
-                            .p(px(2.0))
+                        v_flex()
                             .gap(px(2.0))
-                            .rounded(px(9.0))
-                            .bg(c("f_line"))
-                            .children(tabs),
+                            .child(
+                                div()
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(p.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.5))
+                                    .text_color(c("f_muted"))
+                                    .child(t("project_settings")),
+                            ),
                     ),
             )
             .child(
-                div()
-                    .id("settings-body")
+                h_flex()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
+                    .items_stretch()
                     .child(
                         v_flex()
-                            .w_full()
-                            .max_w(px(640.0))
-                            .mx_auto()
-                            .p(px(24.0))
-                            .gap(px(18.0))
-                            .child(body),
+                            .w(px(188.0))
+                            .flex_none()
+                            .px(px(8.0))
+                            .py(px(12.0))
+                            .border_r_1()
+                            .border_color(c("f_line"))
+                            .children(tabs),
+                    )
+                    .child(
+                        div()
+                            .id("settings-body")
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .when(tab != Tab::Knowledge, |d| d.max_w(px(760.0)))
+                                    .px(px(28.0))
+                                    .pt(px(20.0))
+                                    .pb(px(40.0))
+                                    .child(
+                                        div()
+                                            .mb(px(14.0))
+                                            .text_size(px(17.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child(t(heading)),
+                                    )
+                                    .child(body),
+                            ),
                     ),
             )
     }
@@ -296,24 +352,62 @@ impl FennecWindow {
         &self.me
     }
 
+    fn upload_project_icon(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            return;
+        }
+        let selected = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(t("upload_image").into()),
+        });
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(paths))) = selected.await else {
+                return;
+            };
+            let Some(path) = paths.first() else {
+                return;
+            };
+            let path = path.to_string_lossy().into_owned();
+            let result = cx
+                .background_spawn(async move {
+                    crate::control::call("board.icon", json!({"path":path}))
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
+                Ok(value) => this.patch_project(json!({"icon": value["icon"]}), window, cx),
+                Err(_) => this.say(t("try_again"), cx),
+            });
+        }));
+    }
+
     fn general(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
         let s = &self.settings;
         let field = |label: String, hint: Option<String>, input: &Option<Entity<InputState>>| {
-            v_flex()
-                .gap(px(5.0))
+            let compact = hint.is_some();
+            h_flex()
+                .min_h(px(46.0))
+                .py(px(8.0))
+                .gap(px(14.0))
+                .border_t_1()
+                .border_color(c("f_line"))
                 .child(
                     div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(c("f_text"))
+                        .w(px(150.0))
+                        .flex_none()
+                        .text_size(px(13.0))
                         .child(label),
                 )
                 .when_some(input.as_ref(), |d, i| {
                     d.child(
                         div()
-                            .h(px(32.0))
+                            .h(px(30.0))
+                            .when(compact, |d| d.w(px(110.0)).flex_none())
+                            .when(!compact, |d| d.flex_1())
+                            .min_w_0()
                             .px(px(9.0))
-                            .rounded(px(8.0))
+                            .rounded(px(7.0))
                             .border_1()
                             .border_color(c("f_field"))
                             .bg(c("f_card"))
@@ -324,39 +418,73 @@ impl FennecWindow {
                     )
                 })
                 .when_some(hint, |d, h| {
-                    d.child(div().text_size(px(11.5)).text_color(c("f_muted")).child(h))
+                    d.child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(12.0))
+                            .text_color(c("f_muted"))
+                            .child(h),
+                    )
                 })
         };
         let swatches = board::COLORS.iter().map(|color| {
             let on = p.color.eq_ignore_ascii_case(color);
             let value = color.to_string();
+            let tint = crate::settings::parse_hex(color).unwrap_or(c("orange"));
             div()
                 .id(SharedString::from(format!("color-{color}")))
-                .size(px(22.0))
+                .size(px(18.0))
                 .rounded_full()
-                .bg(crate::settings::parse_hex(color).unwrap_or(c("orange")))
-                .border_2()
-                .border_color(if on { c("f_text") } else { transparent_black() })
+                .bg(tint)
+                .when(on, |d| {
+                    d.shadow(vec![BoxShadow {
+                        color: tint,
+                        offset: point(px(0.0), px(0.0)),
+                        blur_radius: px(0.0),
+                        spread_radius: px(3.0),
+                        inset: false,
+                    }])
+                    .border_2()
+                    .border_color(c("f_card"))
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    this.patch_project(json!({"color": value}), window, cx)
+                    this.patch_project(json!({"color":value,"icon":""}), window, cx)
                 }))
         });
         let tags = s.tags.iter().map(|tag| {
             let id = tag.id.clone();
+            let color = if ["bug", "feature", "discussion"].contains(&tag.id.as_str()) {
+                c(&tag.id)
+            } else {
+                c("f_muted")
+            };
             h_flex()
-                .gap(px(4.0))
-                .child(ui::tag_chip(&tag.id, &tag.label))
+                .h(px(24.0))
+                .pl(px(9.0))
+                .pr(px(4.0))
+                .gap(px(3.0))
+                .rounded(px(5.0))
+                .bg(color.opacity(0.12))
+                .text_color(color)
+                .text_size(px(12.0))
+                .child(tag.label.clone())
                 .when(s.tags.len() > 1, |d| {
                     d.child(
                         div()
                             .id(SharedString::from(format!("rm-tag-{}", tag.id)))
+                            .size(px(16.0))
                             .rounded(px(4.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .hover(|s| s.bg(c("f_line")))
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, window, cx| {
                                 this.settings.tags.retain(|t| t.id != id);
-                                cx.notify();
+                                this.save_general(window, cx);
                             }))
-                            .child(ui::icon("close", 12.0, c("f_muted"))),
+                            .child(ui::icon("close", 10.0, color.opacity(0.6))),
                     )
                 })
         });
@@ -366,92 +494,110 @@ impl FennecWindow {
             .map(|k| k.read(cx).value().trim().to_uppercase())
             .filter(|k| !k.is_empty())
             .unwrap_or_else(|| p.key.clone());
+        let card = || {
+            v_flex()
+                .bg(c("f_card"))
+                .border_1()
+                .border_color(c("f_line"))
+                .rounded(px(11.0))
+                .px(px(14.0))
+                .py(px(4.0))
+        };
         v_flex()
-            .gap(px(18.0))
             .child(
-                v_flex()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(t("icon")),
-                    )
+                card()
                     .child(
                         h_flex()
-                            .gap(px(8.0))
-                            .child(ui::project_mark(&p.name, &p.color, 30.0))
-                            .children(swatches),
-                    ),
-            )
-            .child(field(t("name"), None, &s.name))
-            .child(field(
-                t("key"),
-                Some(tf("key_hint", &[("key", &key)])),
-                &s.key,
-            ))
-            .child(field(t("description"), None, &s.description))
-            .child(field(t("repository"), None, &s.repository))
-            .child(
-                v_flex()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(t("tags")),
-                    )
-                    .child(h_flex().flex_wrap().gap(px(8.0)).children(tags))
-                    .when_some(s.new_tag.as_ref(), |d, i| {
-                        d.child(
-                            div()
-                                .h(px(30.0))
-                                .w(px(240.0))
-                                .px(px(9.0))
-                                .rounded(px(8.0))
-                                .border_1()
-                                .border_color(c("f_field"))
-                                .bg(c("f_card"))
-                                .flex()
-                                .items_center()
-                                .text_size(px(12.5))
-                                .child(Input::new(i)),
-                        )
-                    })
-                    .child(
-                        h_flex()
-                            .gap(px(10.0))
+                            .min_h(px(56.0))
+                            .py(px(8.0))
+                            .gap(px(14.0))
                             .child(
                                 div()
-                                    .text_size(px(11.5))
-                                    .text_color(c("f_muted"))
-                                    .child(t("tags_hint")),
+                                    .w(px(150.0))
+                                    .flex_none()
+                                    .text_size(px(13.0))
+                                    .child(t("icon")),
                             )
+                            .child(ui::project_icon(p, 40.0))
+                            .child(h_flex().gap(px(6.0)).children(swatches))
+                            .child(div().flex_1())
                             .child(
-                                div()
-                                    .id("reset-tags")
-                                    .text_size(px(11.5))
-                                    .text_color(c("accent_text"))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.settings.tags = DEFAULT_TAGS
-                                            .iter()
-                                            .map(|(id, label)| Tag {
-                                                id: (*id).into(),
-                                                label: (*label).into(),
-                                            })
-                                            .collect();
-                                        cx.notify();
-                                    }))
-                                    .child(t("reset_tags")),
+                                secondary_button("upload-icon", t("upload_image"), false).on_click(
+                                    cx.listener(|this, _, window, cx| {
+                                        this.upload_project_icon(window, cx)
+                                    }),
+                                ),
                             ),
-                    ),
+                    )
+                    .child(field(t("name"), None, &s.name))
+                    .child(field(
+                        t("key"),
+                        Some(tf("key_hint", &[("key", &key)])),
+                        &s.key,
+                    ))
+                    .child(field(t("description"), None, &s.description))
+                    .child(field(t("repository"), None, &s.repository)),
             )
             .child(
-                h_flex()
-                    .justify_end()
-                    .child(primary_button("save-general", t("save_changes")).on_click(
-                        cx.listener(|this, _, window, cx| this.save_general(window, cx)),
-                    )),
+                div()
+                    .mt(px(22.0))
+                    .mb(px(4.0))
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(t("tags")),
+            )
+            .child(
+                div()
+                    .mb(px(10.0))
+                    .text_size(px(12.0))
+                    .text_color(c("f_muted"))
+                    .child(t("tags_hint")),
+            )
+            .child(
+                card()
+                    .child(
+                        h_flex()
+                            .flex_wrap()
+                            .py(px(12.0))
+                            .gap(px(7.0))
+                            .children(tags)
+                            .when_some(s.new_tag.as_ref(), |d, i| {
+                                d.child(
+                                    div()
+                                        .h(px(26.0))
+                                        .flex_1()
+                                        .min_w(px(150.0))
+                                        .px(px(9.0))
+                                        .rounded(px(7.0))
+                                        .border_1()
+                                        .border_color(c("f_field"))
+                                        .flex()
+                                        .items_center()
+                                        .text_size(px(13.0))
+                                        .child(Input::new(i)),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id("reset-tags")
+                            .py(px(10.0))
+                            .border_t_1()
+                            .border_color(c("f_line"))
+                            .text_size(px(12.0))
+                            .text_color(c("f_muted"))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.settings.tags = DEFAULT_TAGS
+                                    .iter()
+                                    .map(|(id, label)| Tag {
+                                        id: (*id).into(),
+                                        label: (*label).into(),
+                                    })
+                                    .collect();
+                                this.save_general(window, cx);
+                            }))
+                            .child(t("reset_tags")),
+                    ),
             )
     }
 
@@ -509,6 +655,12 @@ impl FennecWindow {
                     .unwrap_or_default()
             }
         };
+        let current = s
+            .knowledge
+            .iter()
+            .filter(|k| show(k))
+            .find(|k| k.id == s.concept)
+            .or_else(|| s.knowledge.iter().find(|k| show(k)));
         let concept = |k: &Concept| {
             let (status, color) = match k.status.as_str() {
                 "deprecated" => (t("k_deprecated"), c("f_muted")),
@@ -523,8 +675,11 @@ impl FennecWindow {
             let (id_review, id_dep) = (k.id.clone(), k.id.clone());
             let deprecated = k.status == "deprecated";
             v_flex()
-                .p(px(13.0))
-                .gap(px(5.0))
+                .px(px(18.0))
+                .py(px(16.0))
+                .flex_1()
+                .min_w_0()
+                .gap(px(12.0))
                 .rounded(px(10.0))
                 .bg(c("f_card"))
                 .border_1()
@@ -536,13 +691,13 @@ impl FennecWindow {
                             div()
                                 .flex_1()
                                 .text_size(px(13.5))
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(FontWeight::MEDIUM)
                                 .child(k.title.clone()),
                         )
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(FontWeight::MEDIUM)
                                 .text_color(color)
                                 .child(status),
                         ),
@@ -578,6 +733,24 @@ impl FennecWindow {
                         ))
                         .when(!k.tags.is_empty(), |d| d.child(k.tags.join(" · "))),
                 )
+                .when(!k.sources.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(c("f_muted"))
+                            .child(k.sources.join(" · ")),
+                    )
+                })
+                .when(!k.body.is_empty(), |d| {
+                    d.child(
+                        gpui_base::text::TextView::markdown(
+                            SharedString::from(format!("knowledge-{}", k.id)),
+                            k.body.clone(),
+                        )
+                        .text_size(px(13.5))
+                        .text_color(c("f_text")),
+                    )
+                })
                 .child(
                     h_flex()
                         .mt(px(4.0))
@@ -636,18 +809,61 @@ impl FennecWindow {
                         }),
                 )
             })
-            .children(sections.iter().map(|(folder, list)| {
-                v_flex()
-                    .gap(px(8.0))
+            .child(
+                h_flex()
+                    .gap(px(14.0))
+                    .items_start()
+                    .min_h(px(420.0))
                     .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(c("f_muted"))
-                            .child(section_name(folder)),
+                        v_flex()
+                            .w(px(240.0))
+                            .flex_none()
+                            .children(sections.iter().map(|(folder, list)| {
+                                v_flex()
+                                    .child(
+                                        div()
+                                            .px(px(10.0))
+                                            .pt(px(10.0))
+                                            .pb(px(3.0))
+                                            .text_size(px(11.0))
+                                            .text_color(c("f_muted"))
+                                            .child(section_name(folder)),
+                                    )
+                                    .children(list.iter().map(|k| {
+                                        let id = k.id.clone();
+                                        let selected = current.is_some_and(|c| c.id == k.id);
+                                        v_flex()
+                                            .id(SharedString::from(format!("concept-{}", k.id)))
+                                            .px(px(10.0))
+                                            .py(px(8.0))
+                                            .gap(px(3.0))
+                                            .rounded(px(8.0))
+                                            .when(selected, |d| {
+                                                d.bg(c("f_card")).shadow(ui::selection_shadow())
+                                            })
+                                            .hover(|s| s.bg(c("f_line").opacity(0.5)))
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.settings.concept = id.clone();
+                                                cx.notify();
+                                            }))
+                                            .child(
+                                                div()
+                                                    .text_size(px(13.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .truncate()
+                                                    .child(k.title.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .text_color(c("f_muted"))
+                                                    .child(k.kind.clone()),
+                                            )
+                                    }))
+                            })),
                     )
-                    .children(list.iter().map(|k| concept(k)))
-            }))
+                    .when_some(current, |d, k| d.child(concept(k))),
+            )
     }
 
     fn queue_tab(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
@@ -696,14 +912,11 @@ impl FennecWindow {
             let (pid, n) = (p.id.clone(), r.number);
             h_flex()
                 .id(SharedString::from(format!("q-{}", r.number)))
-                .h(px(36.0))
-                .px(px(12.0))
+                .h(px(40.0))
+                .px(px(8.0))
                 .gap(px(10.0))
-                .rounded(px(8.0))
-                .bg(c("f_card"))
-                .border_1()
-                .border_color(c("f_line"))
-                .hover(|s| s.border_color(c("f_field")))
+                .rounded(px(7.0))
+                .hover(|s| s.bg(c("f_line").opacity(0.6)))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.go(Route::Project(pid.clone()), window, cx);
                     this.open_request(n, window, cx);
@@ -731,6 +944,12 @@ impl FennecWindow {
             .gap(px(18.0))
             .child(
                 h_flex()
+                    .bg(c("f_card"))
+                    .border_1()
+                    .border_color(c("f_line"))
+                    .rounded(px(11.0))
+                    .px(px(14.0))
+                    .py(px(12.0))
                     .gap(px(12.0))
                     .child(
                         v_flex()
@@ -749,21 +968,34 @@ impl FennecWindow {
                                     .child(t("at_once_hint")),
                             ),
                     )
-                    .child(step("q-less", "−", limit.saturating_sub(1), limit > 1))
                     .child(
-                        div()
-                            .w(px(24.0))
-                            .flex()
-                            .justify_center()
-                            .text_size(px(14.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(limit.to_string()),
-                    )
-                    .child(step("q-more", "+", limit + 1, limit < 10)),
+                        h_flex()
+                            .border_1()
+                            .border_color(c("f_field"))
+                            .rounded(px(8.0))
+                            .overflow_hidden()
+                            .child(step("q-less", "−", limit.saturating_sub(1), limit > 1))
+                            .child(
+                                div()
+                                    .w(px(24.0))
+                                    .flex()
+                                    .justify_center()
+                                    .text_size(px(14.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(limit.to_string()),
+                            )
+                            .child(step("q-more", "+", limit + 1, limit < 10)),
+                    ),
             )
             .child(
                 v_flex()
                     .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(t("now_heading")),
+                    )
                     .child(
                         div()
                             .text_size(px(12.0))
@@ -780,17 +1012,26 @@ impl FennecWindow {
                                 tf("waiting", &[("n", &waiting.len().to_string())])
                             )),
                     )
-                    .when(working.is_empty() && waiting.is_empty(), |d| {
-                        d.child(
-                            div()
-                                .py(px(20.0))
-                                .text_size(px(12.5))
-                                .text_color(c("f_muted"))
-                                .child(t("queue_empty")),
-                        )
-                    })
-                    .children(working.iter().map(|r| row(r, false)))
-                    .children(waiting.iter().map(|r| row(r, true))),
+                    .child(
+                        v_flex()
+                            .bg(c("f_card"))
+                            .border_1()
+                            .border_color(c("f_line"))
+                            .rounded(px(11.0))
+                            .px(px(6.0))
+                            .py(px(4.0))
+                            .when(working.is_empty() && waiting.is_empty(), |d| {
+                                d.child(
+                                    div()
+                                        .py(px(20.0))
+                                        .text_size(px(12.5))
+                                        .text_color(c("f_muted"))
+                                        .child(t("queue_empty")),
+                                )
+                            })
+                            .children(working.iter().map(|r| row(r, false)))
+                            .children(waiting.iter().map(|r| row(r, true))),
+                    ),
             )
     }
 
@@ -801,29 +1042,47 @@ impl FennecWindow {
             let mut next = workers.clone();
             next[i].on = !w.on;
             let locked = w.on && enabled <= 1;
+            let mut removed = workers.clone();
+            removed.remove(i);
             h_flex()
-                .h(px(44.0))
-                .px(px(12.0))
+                .h(px(48.0))
                 .gap(px(10.0))
-                .rounded(px(9.0))
-                .bg(c("f_card"))
-                .border_1()
+                .border_b_1()
                 .border_color(c("f_line"))
-                .child(ui::agent_icon(&w.agent, 18.0))
                 .child(
                     div()
-                        .flex_1()
+                        .opacity(if w.on { 1.0 } else { 0.45 })
+                        .child(ui::agent_icon(&w.agent, 18.0)),
+                )
+                .child(
+                    div()
+                        .w(px(92.0))
+                        .flex_none()
+                        .opacity(if w.on { 1.0 } else { 0.45 })
                         .text_size(px(13.0))
                         .font_weight(FontWeight::MEDIUM)
                         .child(crate::sessions::agent_name(&w.agent).to_owned()),
                 )
-                .child(div().text_size(px(12.0)).text_color(c("f_muted")).child(
-                    if w.model.is_empty() {
-                        t("default_model")
-                    } else {
-                        w.model.clone()
-                    },
-                ))
+                .child(
+                    div()
+                        .w(px(150.0))
+                        .h(px(28.0))
+                        .px(px(9.0))
+                        .rounded(px(7.0))
+                        .border_1()
+                        .border_color(c("f_field"))
+                        .flex()
+                        .items_center()
+                        .opacity(if w.on { 1.0 } else { 0.45 })
+                        .text_size(px(12.5))
+                        .text_color(c("f_text"))
+                        .child(if w.model.is_empty() {
+                            t("default_model")
+                        } else {
+                            w.model.clone()
+                        }),
+                )
+                .child(div().flex_1())
                 .child(
                     switch(SharedString::from(format!("w-{i}")), w.on, !locked).when(
                         !locked,
@@ -833,6 +1092,22 @@ impl FennecWindow {
                             }))
                         },
                     ),
+                )
+                .child(
+                    div()
+                        .id(SharedString::from(format!("worker-remove-{i}")))
+                        .size(px(28.0))
+                        .rounded(px(6.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .opacity(if locked { 0.35 } else { 1.0 })
+                        .when(!locked, |d| {
+                            d.on_click(cx.listener(move |this, _, window, cx| {
+                                this.patch_project(json!({"workers":removed}), window, cx)
+                            }))
+                        })
+                        .child(ui::icon("trash", 17.0, c("f_muted"))),
                 )
         });
         let add = board::AGENTS
@@ -871,8 +1146,17 @@ impl FennecWindow {
                     .text_color(c("f_muted"))
                     .child(t("agents_hint")),
             )
-            .children(rows)
-            .child(h_flex().flex_wrap().gap(px(8.0)).mt(px(6.0)).children(add))
+            .child(
+                v_flex()
+                    .bg(c("f_card"))
+                    .border_1()
+                    .border_color(c("f_line"))
+                    .rounded(px(11.0))
+                    .px(px(14.0))
+                    .py(px(4.0))
+                    .children(rows)
+                    .child(h_flex().flex_wrap().gap(px(8.0)).py(px(10.0)).children(add)),
+            )
     }
 }
 
@@ -884,7 +1168,15 @@ fn switch(id: SharedString, on: bool, enabled: bool) -> Stateful<Div> {
         .h(px(19.0))
         .flex_none()
         .rounded(px(10.0))
-        .bg(if on { c("ok") } else { c("f_field") })
+        .bg(if on {
+            c("orange")
+        } else {
+            if crate::settings::get().dark {
+                rgba(0x4a4a52ff).into()
+            } else {
+                rgba(0xd1d1d8ff).into()
+            }
+        })
         .opacity(if enabled { 1.0 } else { 0.55 })
         .child(
             div()

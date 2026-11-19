@@ -28,6 +28,7 @@ pub(crate) enum Route {
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
     NewSession,
+    RequestTag,
 }
 
 /// The New project dialog's fields.
@@ -52,12 +53,19 @@ pub struct FennecWindow {
     terms: HashMap<String, Entity<TerminalView>>,
     search: Entity<InputState>,
     composer: Entity<TextareaState>,
+    posting: bool,
     reply: Entity<TextareaState>,
     notice: Option<String>,
     sidebar: bool,
+    focus: FocusHandle,
+    pending_focus: Option<String>,
+    confirmed_session: Option<String>,
+    prefix: bool,
+    close_others: Option<Vec<String>>,
     /// The signed-in person, as requests and replies are signed.
     pub(crate) me: String,
     menu: Option<Menu>,
+    menu_anchor: Point<Pixels>,
     new_project: Option<NewProject>,
     /// A session asked for and not yet listed: shown once it appears.
     starting: Option<String>,
@@ -85,7 +93,8 @@ impl FennecWindow {
         });
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(1, 12)
+                .auto_grow(3, 12)
+                .submit_on_enter(true)
                 .placeholder(t("new_request"))
         });
         let reply = cx.new(|cx| {
@@ -103,9 +112,7 @@ impl FennecWindow {
                 &composer,
                 window,
                 |this, _, ev: &InputEvent, window, cx| match ev {
-                    InputEvent::PressEnter {
-                        secondary: true, ..
-                    } => this.post(window, cx),
+                    InputEvent::PressEnter { shift: false, .. } => this.post(window, cx),
                     InputEvent::Change => cx.notify(),
                     _ => {}
                 },
@@ -152,11 +159,18 @@ impl FennecWindow {
             terms: HashMap::new(),
             search,
             composer,
+            posting: false,
             reply,
             notice: None,
             sidebar: true,
+            focus: cx.focus_handle(),
+            pending_focus: None,
+            confirmed_session: None,
+            prefix: false,
+            close_others: None,
             me: std::env::var("USER").unwrap_or_else(|_| "me".into()),
             menu: None,
+            menu_anchor: point(px(120.0), px(150.0)),
             new_project: None,
             starting: None,
             settings: Default::default(),
@@ -166,30 +180,36 @@ impl FennecWindow {
             _subs: subs,
             _tasks: Vec::new(),
         };
-        this._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let connected = cx.background_spawn(async move { Core::connect() }).await;
-            let _ = this.update_in(cx, |this, window, cx| match connected {
-                Ok(core) => {
-                    this.core = Some(core.clone());
-                    if !crate::core_bin::cloud() {
-                        this.local = Some(core);
-                    }
-                    this.follow_core(window, cx);
-                    if !crate::core_bin::cloud() {
-                        if let Some(session) = this.sessions.first() {
-                            this.route = Some(Route::Session(session.address.clone()));
-                        } else {
-                            this.start_session(String::new(), window, cx);
+        if crate::preview::active() {
+            this.sessions = sessions::from_terminals(&crate::preview::terminals());
+            this.core_error = Some(String::new());
+        } else {
+            this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                let connected = cx.background_spawn(async move { Core::connect() }).await;
+                let _ = this.update_in(cx, |this, window, cx| match connected {
+                    Ok(core) => {
+                        this.core = Some(core.clone());
+                        if !crate::core_bin::cloud() {
+                            this.local = Some(core);
                         }
+                        this.follow_core(window, cx);
+                        if !crate::core_bin::cloud() {
+                            if let Some(session) = this.sessions.first() {
+                                this.pending_focus = Some(session.address.clone());
+                                this.route = Some(Route::Session(session.address.clone()));
+                            } else {
+                                this.start_session(String::new(), window, cx);
+                            }
+                        }
+                        cx.notify();
                     }
-                    cx.notify();
-                }
-                Err(e) => {
-                    this.core_error = Some(format!("{e:#}"));
-                    cx.notify();
-                }
-            });
-        }));
+                    Err(e) => {
+                        this.core_error = Some(format!("{e:#}"));
+                        cx.notify();
+                    }
+                });
+            }));
+        }
         if let Some(path) = crate::shot::path() {
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
                 loop {
@@ -240,6 +260,18 @@ impl FennecWindow {
         use crate::project_settings::Tab;
         let mut parts = what.splitn(3, ':');
         match (parts.next(), parts.next(), parts.next()) {
+            (Some("menu"), Some(kind), _) if crate::preview::active() => {
+                self.menu = Some(if kind == "tags" {
+                    Menu::RequestTag
+                } else {
+                    Menu::NewSession
+                });
+                self.menu_anchor = if kind == "tags" {
+                    point(px(498.0), px(158.0))
+                } else {
+                    point(px(120.0), px(230.0))
+                };
+            }
             (Some("project"), Some(id), _) => self.go(Route::Project(id.into()), window, cx),
             (Some("request"), Some(n), _) => {
                 if let Ok(n) = n.parse() {
@@ -324,15 +356,25 @@ impl FennecWindow {
                 .unwrap_or_default(),
         );
         if let Some(Route::Session(a)) = &self.route
+            && self.confirmed_session.as_ref() != Some(a)
+            && !a.starts_with("local:")
             && !self.sessions.iter().any(|s| &s.address == a)
         {
             self.route = None;
+        }
+        if self
+            .confirmed_session
+            .as_ref()
+            .is_some_and(|id| self.sessions.iter().any(|s| &s.address == id))
+        {
+            self.confirmed_session = None;
         }
         // A session opens only when it is picked: attaching resizes its terminal.
         if let Some(name) = self.starting.clone()
             && let Some(s) = self.sessions.iter().find(|s| s.name == name)
         {
             self.starting = None;
+            self.pending_focus = Some(s.address.clone());
             self.route = Some(Route::Session(s.address.clone()));
         }
         cx.notify();
@@ -449,6 +491,9 @@ impl FennecWindow {
                 self.thread = None;
                 self.tag = None;
             }
+            if let Route::Session(address) = &route {
+                self.pending_focus = Some(self.shown_tab(address));
+            }
             self.route = Some(route);
             self.refresh_now(window, cx);
         }
@@ -463,6 +508,13 @@ impl FennecWindow {
     }
 
     fn post(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.posting
+            || self
+                .composer
+                .update(cx, |s, cx| s.marked_text_range(window, cx).is_some())
+        {
+            return;
+        }
         let text = self.composer.read(cx).value().to_string();
         let Some(project) = self.project_id() else {
             return;
@@ -470,19 +522,27 @@ impl FennecWindow {
         if text.trim().is_empty() {
             return;
         }
-        self.composer
-            .update(cx, |s, cx| s.set_value("", window, cx));
+        self.posting = true;
         let me = self.me.clone();
+        let submitted = text.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
                 .background_spawn(async move { board::post(&project, &text, &me) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match posted {
-                Ok(r) => {
-                    this.resolved = false;
-                    this.open_request(r.number, window, cx);
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.posting = false;
+                match posted {
+                    Ok(r) => {
+                        if this.composer.read(cx).value().as_ref() == submitted {
+                            this.composer
+                                .update(cx, |s, cx| s.set_value("", window, cx));
+                        }
+                        this.resolved = false;
+                        this.open_request(r.number, window, cx);
+                    }
+                    Err(e) => this.say(format!("{e:#}"), cx),
                 }
-                Err(e) => this.say(format!("{e:#}"), cx),
+                cx.notify();
             });
         }));
     }
@@ -677,7 +737,7 @@ impl FennecWindow {
                     });
                     return;
                 }
-                let _ = this.update(cx, |this, cx| match started {
+                let _ = this.update_in(cx, |this, window, cx| match started {
                     Ok(address) => {
                         this.shells
                             .entry(session.name.clone())
@@ -685,6 +745,9 @@ impl FennecWindow {
                             .push(address.clone());
                         this.tab
                             .insert(session.address.clone(), format!("local:{address}"));
+                        this.route = Some(Route::Session(session.address.clone()));
+                        this.pending_focus = Some(format!("local:{address}"));
+                        this.focus.focus(window, cx);
                         cx.notify();
                     }
                     Err(e) => this.say(format!("{e:#}"), cx),
@@ -694,19 +757,41 @@ impl FennecWindow {
     }
 
     fn close_shell(&mut self, address: String, cx: &mut Context<Self>) {
-        if let Some(core) = self.local.clone() {
-            let a = address.clone();
-            cx.background_spawn(async move {
-                let _ = core.call("terminal.kill", serde_json::json!({"terminal": a}));
-            })
-            .detach();
-        }
-        self.forget_shell(&address);
-        cx.notify();
+        let Some(core) = self.local.clone() else {
+            return;
+        };
+        let target = address.clone();
+        self._tasks.push(cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    core.call("terminal.kill", serde_json::json!({"terminal":target}))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if result.is_ok() {
+                    this.forget_shell(&address);
+                } else {
+                    this.say(t("try_again"), cx);
+                }
+                cx.notify();
+            });
+        }));
     }
-
     fn forget_shell(&mut self, address: &str) {
         let key = format!("local:{address}");
+        if let Some(Route::Session(id)) = &self.route {
+            if self.shown_tab(id) == key {
+                let keys = self.tab_keys();
+                let index = keys.iter().position(|k| k == &key).unwrap_or(0);
+                let next = keys
+                    .get(index.saturating_sub(1))
+                    .filter(|k| *k != &key)
+                    .cloned()
+                    .unwrap_or_else(|| id.clone());
+                self.tab.insert(id.clone(), next.clone());
+                self.pending_focus = Some(next);
+            }
+        }
         self.terms.remove(&key);
         for list in self.shells.values_mut() {
             list.retain(|a| a != address);
@@ -714,8 +799,213 @@ impl FennecWindow {
         self.tab.retain(|_, t| t != &key);
     }
 
+    fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(Route::Session(id)) = &self.route {
+            if let Some(session) = self.sessions.iter().find(|s| &s.address == id).cloned() {
+                self.new_shell(session, window, cx);
+                return;
+            }
+        }
+        self.start_session(String::new(), window, cx);
+    }
+    fn tab_keys(&self) -> Vec<String> {
+        let Some(Route::Session(id)) = &self.route else {
+            return Vec::new();
+        };
+        let mut keys = vec![id.clone()];
+        if let Some(s) = self.sessions.iter().find(|s| &s.address == id) {
+            keys.extend(
+                self.shells
+                    .get(&s.name)
+                    .into_iter()
+                    .flatten()
+                    .map(|a| format!("local:{a}")),
+            );
+        }
+        keys
+    }
+    fn pick_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(Route::Session(id)) = &self.route else {
+            return;
+        };
+        if let Some(key) = self.tab_keys().get(index) {
+            self.tab.insert(id.clone(), key.clone());
+            self.pending_focus = Some(key.clone());
+            cx.notify();
+        }
+    }
+    fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let Some(Route::Session(id)) = &self.route else {
+            return;
+        };
+        let keys = self.tab_keys();
+        if keys.is_empty() {
+            return;
+        }
+        let current = keys
+            .iter()
+            .position(|k| k == &self.shown_tab(id))
+            .unwrap_or(0);
+        self.pick_tab(
+            (current as isize + delta).rem_euclid(keys.len() as isize) as usize,
+            cx,
+        );
+    }
+    fn close_tab_key(&mut self, key: String, cx: &mut Context<Self>) {
+        if let Some(address) = key.strip_prefix("local:") {
+            self.close_shell(address.to_owned(), cx);
+        } else if let Some(core) = self.core.clone() {
+            let address = key.clone();
+            let remote_name = if crate::core_bin::cloud() {
+                self.sessions
+                    .iter()
+                    .find(|s| s.address == key)
+                    .map(|s| s.name.clone())
+            } else {
+                None
+            };
+            self._tasks.push(cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_spawn(async move {
+                        if let Some(name) = remote_name {
+                            crate::control::call(
+                                "sessions.stop",
+                                serde_json::json!({"session_id":name}),
+                            )
+                        } else {
+                            core.call("terminal.kill", serde_json::json!({"terminal":address}))
+                        }
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    if result.is_ok() {
+                        this.terms.remove(&key);
+                        this.sessions.retain(|s| s.address != key);
+                        this.route = this
+                            .sessions
+                            .first()
+                            .map(|s| Route::Session(s.address.clone()));
+                    } else {
+                        this.say(t("try_again"), cx);
+                    }
+                    cx.notify();
+                });
+            }));
+        }
+        if let Some(Route::Session(id)) = &self.route {
+            self.pending_focus = Some(self.shown_tab(id));
+        }
+        cx.notify();
+    }
+    fn step_session(&mut self, delta: isize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.sessions.is_empty() {
+            return;
+        }
+        let current = self
+            .sessions
+            .iter()
+            .position(|s| self.route == Some(Route::Session(s.address.clone())))
+            .unwrap_or(0);
+        let index = (current as isize + delta).rem_euclid(self.sessions.len() as isize) as usize;
+        self.go(
+            Route::Session(self.sessions[index].address.clone()),
+            window,
+            cx,
+        );
+    }
+
     /// Key bindings the terminal core sends up (keys.rs).
     fn on_shell_action(&mut self, a: &ShellAction, window: &mut Window, cx: &mut Context<Self>) {
+        match a.id() {
+            "tab.new" => {
+                self.new_tab(window, cx);
+                return;
+            }
+            "tab.next" => {
+                self.step_tab(1, cx);
+                return;
+            }
+            "tab.prev" => {
+                self.step_tab(-1, cx);
+                return;
+            }
+            "tab.close" => {
+                if let Some(Route::Session(id)) = &self.route {
+                    self.close_tab_key(self.shown_tab(id), cx);
+                }
+                return;
+            }
+            "space.next" | "agent.next" => {
+                self.step_session(1, window, cx);
+                return;
+            }
+            "space.prev" | "agent.prev" => {
+                self.step_session(-1, window, cx);
+                return;
+            }
+            "layout.toggle:sidebar" => {
+                self.sidebar = !self.sidebar;
+                cx.notify();
+                return;
+            }
+            "mod.open:picker" => {
+                self.sidebar = true;
+                self.search.read(cx).focus_handle(cx).focus(window, cx);
+                cx.notify();
+                return;
+            }
+            "mod.open:tui-prefix" => {
+                self.prefix = true;
+                self.focus.focus(window, cx);
+                cx.notify();
+                return;
+            }
+            "mod.open:tui-close-others" => {
+                if let Some(Route::Session(id)) = &self.route {
+                    let shown = self.shown_tab(id);
+                    self.close_others = Some(
+                        self.tab_keys()
+                            .into_iter()
+                            .skip(1)
+                            .filter(|k| k != &shown)
+                            .collect(),
+                    );
+                    self.focus.focus(window, cx);
+                    cx.notify();
+                }
+                return;
+            }
+            "app.zoom_in" | "app.zoom_out" | "app.zoom_reset" => {
+                let mut settings = (*crate::settings::get()).clone();
+                settings.zoom = match a.id() {
+                    "app.zoom_in" => (settings.zoom + 0.1).min(2.0),
+                    "app.zoom_out" => (settings.zoom - 0.1).max(0.5),
+                    _ => 1.0,
+                };
+                crate::settings::set(settings);
+                cx.notify();
+                return;
+            }
+            _ => {}
+        }
+        if let Some(index) = a
+            .id()
+            .strip_prefix("tab.select:")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            self.pick_tab(index.saturating_sub(1), cx);
+            return;
+        }
+        if let Some(index) = a
+            .id()
+            .strip_prefix("space.select:")
+            .and_then(|n| n.parse::<usize>().ok())
+        {
+            if let Some(s) = self.sessions.get(index.saturating_sub(1)) {
+                self.go(Route::Session(s.address.clone()), window, cx);
+            }
+            return;
+        }
         let Some(t) = self.shown_terminal() else {
             return cx.propagate();
         };
@@ -753,6 +1043,54 @@ impl FennecWindow {
 
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.menu?;
+        if self.menu == Some(Menu::RequestTag) {
+            let p = self
+                .project_id()
+                .and_then(|id| self.projects.iter().find(|p| p.id == id))?;
+            let options = std::iter::once((None, t("all_tags"))).chain(
+                p.tags
+                    .iter()
+                    .map(|tag| (Some(tag.id.clone()), tag.label.clone())),
+            );
+            return Some(
+                div()
+                    .absolute()
+                    .top(self.menu_anchor.y)
+                    .left(self.menu_anchor.x)
+                    .w(px(170.0))
+                    .p(px(5.0))
+                    .rounded(px(9.0))
+                    .bg(c("f_card"))
+                    .border_1()
+                    .border_color(c("f_field"))
+                    .shadow_lg()
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        this.menu = None;
+                        cx.notify();
+                    }))
+                    .occlude()
+                    .children(options.enumerate().map(|(i, (id, label))| {
+                        let selected = self.tag == id;
+                        h_flex()
+                            .id(SharedString::from(format!("tag-option-{i}")))
+                            .h(px(29.0))
+                            .px(px(9.0))
+                            .gap(px(8.0))
+                            .rounded(px(5.0))
+                            .hover(|s| s.bg(c("f_expanded")))
+                            .text_size(px(12.5))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.tag = id.clone();
+                                this.menu = None;
+                                cx.notify();
+                            }))
+                            .child(div().flex_1().child(label))
+                            .when(selected, |d| d.child(ui::icon("check", 13.0, c("orange"))))
+                    }))
+                    .into_any_element(),
+            );
+        }
+
         let item = |id: SharedString| {
             h_flex()
                 .id(id)
@@ -805,8 +1143,8 @@ impl FennecWindow {
         Some(
             div()
                 .absolute()
-                .top(px(150.0 + self.visible_projects().len() as f32 * 30.0))
-                .left(px(120.0))
+                .top(self.menu_anchor.y)
+                .left(self.menu_anchor.x)
                 .w(px(230.0))
                 .p(px(5.0))
                 .rounded(px(9.0))
@@ -814,6 +1152,10 @@ impl FennecWindow {
                 .border_1()
                 .border_color(c("f_field"))
                 .shadow_lg()
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    this.menu = None;
+                    cx.notify();
+                }))
                 .occlude()
                 .children(items)
                 .into_any_element(),
@@ -821,6 +1163,11 @@ impl FennecWindow {
     }
 
     fn start_session(&mut self, agent: String, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            self.menu = None;
+            cx.notify();
+            return;
+        }
         self.menu = None;
         if !crate::core_bin::cloud() || agent.is_empty() {
             let display = crate::terminal::initial_display(window);
@@ -836,7 +1183,7 @@ impl FennecWindow {
                         core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| match started {
-                        Ok(address) => { this.route = Some(Route::Session(if crate::core_bin::cloud() { format!("local:{address}") } else { address })); cx.notify(); },
+                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key)); cx.notify(); },
                         Err(e) => this.say(format!("{e:#}"), cx),
                     });
                 }));
@@ -959,7 +1306,7 @@ impl FennecWindow {
                         .child(
                             div()
                                 .text_size(px(14.0))
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(FontWeight::MEDIUM)
                                 .child(t("new_project")),
                         )
                         .child(field(t("name"), &np.name))
@@ -993,32 +1340,28 @@ impl FennecWindow {
         let route = self.route.clone();
         let header = |label: String, plus: Stateful<Div>| {
             h_flex()
-                .h(px(28.0))
-                .mt(px(10.0))
+                .h(px(41.0))
+                .pt(px(14.0))
+                .pb(px(5.0))
                 .px(px(8.0))
                 .justify_between()
                 .text_size(px(11.5))
-                .font_weight(FontWeight::SEMIBOLD)
+                .font_weight(FontWeight::MEDIUM)
                 .text_color(c("f_muted"))
                 .child(label)
                 .child(plus)
         };
         let plus = |id: &'static str, open: bool| {
-            div()
-                .id(id)
-                .size(px(20.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .justify_center()
+            ui::icon_button(id, "plus")
+                .mr(px(-6.0))
+                .my(px(-3.0))
                 .when(open, |d| d.bg(c("f_line")))
-                .hover(|s| s.bg(c("f_line")))
-                .child(ui::icon("plus", 13.0, c("f_muted")))
         };
         let row = |id: SharedString, selected: bool| {
             h_flex()
                 .id(id)
                 .h(px(30.0))
+                .mb(px(1.0))
                 .px(px(8.0))
                 .gap(px(9.0))
                 .rounded(px(7.0))
@@ -1026,32 +1369,19 @@ impl FennecWindow {
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(c("f_text"))
                 .when(selected, |d| {
-                    d.bg(c("f_card"))
-                        .border_1()
-                        .border_color(c("f_line"))
-                        .shadow(vec![BoxShadow {
-                            color: hsla(0.0, 0.0, 0.0, 0.07),
-                            offset: point(px(0.0), px(1.0)),
-                            blur_radius: px(2.0),
-                            spread_radius: px(0.0),
-                            inset: false,
-                        }])
+                    d.bg(c("f_card")).shadow(ui::selection_shadow())
                 })
-                .when(!selected, |d| {
-                    d.border_1()
-                        .border_color(transparent_black())
-                        .hover(|s| s.bg(c("f_line")))
-                })
+                .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
         };
         let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q)).map(|p| {
             let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
             let id = p.id.clone();
             row(SharedString::from(format!("p-{}", p.id)), selected)
                 .on_click(cx.listener(move |this, _, window, cx| this.go(Route::Project(id.clone()), window, cx)))
-                .child(ui::project_mark(&p.name, &p.color, 18.0))
+                .child(ui::project_icon(p, 18.0))
                 .child(div().flex_1().min_w_0().truncate().child(p.name.clone()))
                 .when(p.needs_you > 0, |d| {
-                    d.child(div().min_w(px(18.0)).h(px(17.0)).px(px(5.0)).rounded(px(9.0)).bg(c("tint")).border_1().border_color(c("orange").opacity(0.3)).text_color(c("accent_text")).text_size(px(10.5)).font_weight(FontWeight::SEMIBOLD).flex().items_center().justify_center().child(p.needs_you.to_string()))
+                    d.child(div().min_w(px(18.0)).h(px(17.0)).px(px(5.0)).rounded(px(9.0)).bg(c("tint")).border_1().border_color(c("orange").opacity(0.3)).text_color(c("accent_text")).text_size(px(10.5)).font_weight(FontWeight::MEDIUM).flex().items_center().justify_center().child(p.needs_you.to_string()))
                 })
         })
             .collect::<Vec<_>>();
@@ -1134,12 +1464,13 @@ impl FennecWindow {
                     .pl(px(84.0))
                     .pr(px(10.0))
                     .gap(px(7.0))
-                    .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .child(org_switcher)
                     .child(div().flex_1())
                     .child(
                         div()
                             .id("hide-sidebar")
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .size(px(26.0))
                             .rounded(px(6.0))
                             .flex()
@@ -1154,25 +1485,33 @@ impl FennecWindow {
                     ),
             )
             .child(
-                div().px(px(10.0)).pb(px(2.0)).child(
+                div().px(px(10.0)).pt(px(2.0)).pb(px(6.0)).child(
                     h_flex()
-                        .h(px(28.0))
+                        .h(px(30.0))
                         .px(px(8.0))
-                        .gap(px(6.0))
+                        .gap(px(7.0))
                         .rounded(px(7.0))
                         .bg(c("f_line"))
-                        .child(ui::icon("search", 13.0, c("f_muted")))
+                        .child(ui::icon("search", 14.0, c("f_muted")))
                         .child(
                             div()
                                 .flex_1()
-                                .text_size(px(12.5))
+                                .min_w_0()
+                                .text_size(px(13.0))
                                 .child(Input::new(&self.search)),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(c("f_muted"))
+                                .child("⌘K"),
                         ),
                 ),
             )
             .child(
                 v_flex()
                     .id("side-scroll")
+                    .py(px(4.0))
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
@@ -1187,7 +1526,8 @@ impl FennecWindow {
                     .child(header(
                         t("sessions"),
                         plus("new-session", self.menu == Some(Menu::NewSession)).on_click(
-                            cx.listener(|this, _, _, cx| {
+                            cx.listener(|this, event: &ClickEvent, _, cx| {
+                                this.menu_anchor = point(px(120.0), event.position().y + px(14.0));
                                 this.menu = if this.menu == Some(Menu::NewSession) {
                                     None
                                 } else {
@@ -1227,13 +1567,13 @@ impl FennecWindow {
             .child(div().h(px(1.0)).bg(c("f_line")))
             .child(
                 h_flex()
-                    .h(px(40.0))
+                    .h(px(46.0))
                     .px(px(16.0))
                     .gap(px(9.0))
                     .text_size(px(13.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(c("f_muted"))
-                    .child(ui::icon("gear", 15.0, c("f_muted")))
+                    .child(ui::icon("gear", 17.0, c("f_muted")))
                     .child(t("settings")),
             )
     }
@@ -1260,7 +1600,7 @@ impl FennecWindow {
         };
         let now = sessions::now_ms();
         let composer_has = !self.composer.read(cx).value().trim().is_empty();
-        let segment = |label: String, on: bool, resolved: bool| {
+        let segment = |label: String, count: usize, on: bool, resolved: bool| {
             div()
                 .id(SharedString::from(format!("seg-{resolved}")))
                 .h(px(24.0))
@@ -1279,35 +1619,16 @@ impl FennecWindow {
                     this.resolved = resolved;
                     cx.notify();
                 }))
+                .gap(px(6.0))
                 .child(label)
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::NORMAL)
+                        .text_color(c("f_muted"))
+                        .child(count.to_string()),
+                )
         };
-        let tags = std::iter::once(None)
-            .chain(p.tags.iter().map(|t| Some(t.clone())))
-            .map(|choice| {
-                let on = self.tag.as_deref() == choice.as_ref().map(|c| c.id.as_str());
-                let (key, label) = choice
-                    .as_ref()
-                    .map(|c| (c.id.clone(), c.label.clone()))
-                    .unwrap_or(("all".into(), t("all_tags")));
-                let pick = choice.map(|c| c.id);
-                div()
-                    .id(SharedString::from(format!("tag-{key}")))
-                    .h(px(24.0))
-                    .px(px(9.0))
-                    .rounded(px(12.0))
-                    .flex()
-                    .items_center()
-                    .text_size(px(12.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(if on { c("f_text") } else { c("f_muted") })
-                    .when(on, |d| d.bg(c("f_line")))
-                    .hover(|s| s.bg(c("f_line")))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.tag = pick.clone();
-                        cx.notify();
-                    }))
-                    .child(label)
-            });
         let cards = shown.iter().map(|r| {
             let selected = self.open == Some(r.number);
             let n = r.number;
@@ -1327,13 +1648,17 @@ impl FennecWindow {
                 .w_full()
                 .px(px(13.0))
                 .py(px(11.0))
-                .mb(px(8.0))
+                .mb(px(4.0))
                 .gap(px(4.0))
                 .rounded(px(10.0))
-                .bg(c("f_card"))
                 .border_1()
-                .border_color(if selected { c("orange") } else { c("f_line") })
-                .when(!selected, |d| d.hover(|s| s.border_color(c("f_field"))))
+                .border_color(if selected {
+                    c("f_field")
+                } else {
+                    transparent_black()
+                })
+                .when(selected, |d| d.bg(c("f_card")))
+                .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
                 .on_click(cx.listener(move |this, _, window, cx| this.open_request(n, window, cx)))
                 .child(
                     h_flex()
@@ -1344,10 +1669,11 @@ impl FennecWindow {
                                 .flex_1()
                                 .min_w_0()
                                 .text_size(px(13.5))
+                                .line_height(relative(1.35))
                                 .font_weight(if r.resolved() {
                                     FontWeight::MEDIUM
                                 } else {
-                                    FontWeight::SEMIBOLD
+                                    FontWeight::MEDIUM
                                 })
                                 .text_color(if r.resolved() {
                                     c("f_muted")
@@ -1391,8 +1717,8 @@ impl FennecWindow {
         });
         v_flex()
             .w(relative(0.42))
-            .max_w(px(480.0))
-            .min_w(px(340.0))
+            .max_w(px(460.0))
+            .min_w_0()
             .h_full()
             .flex_none()
             .bg(c("f_expanded"))
@@ -1407,8 +1733,8 @@ impl FennecWindow {
                     .gap(px(11.0))
                     .border_b_1()
                     .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
-                    .child(ui::project_mark(&p.name, &p.color, 30.0))
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    .child(ui::project_icon(p, 30.0))
                     .child(
                         v_flex()
                             .flex_1()
@@ -1417,7 +1743,7 @@ impl FennecWindow {
                             .child(
                                 div()
                                     .text_size(px(13.5))
-                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .font_weight(FontWeight::MEDIUM)
                                     .text_color(c("f_text"))
                                     .truncate()
                                     .child(p.name.clone()),
@@ -1436,6 +1762,7 @@ impl FennecWindow {
                         let id = p.id.clone();
                         div()
                             .id("project-settings")
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .size(px(28.0))
                             .rounded(px(6.0))
                             .flex()
@@ -1471,25 +1798,35 @@ impl FennecWindow {
                             .border_1()
                             .border_color(
                                 if self.composer.read(cx).focus_handle(cx).is_focused(window) {
-                                    c("orange")
+                                    c("f_text").opacity(0.22)
                                 } else {
                                     c("f_field")
                                 },
                             )
-                            .px(px(4.0))
-                            .py(px(3.0))
+                            .px(px(13.0))
+                            .py(px(9.0))
+                            .min_h(px(42.0))
                             .text_size(px(13.5))
+                            .line_height(relative(1.6))
+                            .pr(px(72.0))
                             .child(Textarea::new(&self.composer))
-                            .when(composer_has, |d| {
-                                d.pb(px(38.0)).child(
-                                    div().absolute().right(px(8.0)).bottom(px(8.0)).child(
-                                        primary_button("post", t("post")).on_click(
-                                            cx.listener(|this, _, window, cx| {
-                                                this.post(window, cx)
-                                            }),
-                                        ),
-                                    ),
+                            .when(!composer_has, |d| {
+                                d.child(
+                                    div()
+                                        .absolute()
+                                        .right(px(10.0))
+                                        .bottom(px(8.0))
+                                        .text_size(px(11.0))
+                                        .text_color(c("f_muted"))
+                                        .child(t("compose_shortcuts")),
                                 )
+                            })
+                            .when(composer_has, |d| {
+                                d.child(div().absolute().right(px(8.0)).bottom(px(8.0)).child(
+                                    primary_button("post", t("post")).on_click(
+                                        cx.listener(|this, _, window, cx| this.post(window, cx)),
+                                    ),
+                                ))
                             }),
                     )
                     .child(
@@ -1502,18 +1839,47 @@ impl FennecWindow {
                                     .p(px(2.0))
                                     .rounded(px(8.0))
                                     .bg(c("f_line"))
+                                    .child(segment(t("open"), open_count, !self.resolved, false))
                                     .child(segment(
-                                        format!("{} {open_count}", t("open")),
-                                        !self.resolved,
-                                        false,
-                                    ))
-                                    .child(segment(
-                                        format!("{} {resolved_count}", t("resolved")),
+                                        t("resolved"),
+                                        resolved_count,
                                         self.resolved,
                                         true,
                                     )),
                             )
-                            .child(h_flex().gap(px(2.0)).children(tags)),
+                            .child(div().flex_1())
+                            .child(
+                                h_flex()
+                                    .id("request-tag")
+                                    .h(px(28.0))
+                                    .px(px(9.0))
+                                    .gap(px(7.0))
+                                    .rounded(px(7.0))
+                                    .border_1()
+                                    .border_color(c("f_field"))
+                                    .bg(c("f_card"))
+                                    .text_size(px(12.0))
+                                    .text_color(c("f_text"))
+                                    .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                                        this.menu_anchor = point(
+                                            event.position().x - px(70.0),
+                                            event.position().y + px(18.0),
+                                        );
+                                        this.menu = if this.menu == Some(Menu::RequestTag) {
+                                            None
+                                        } else {
+                                            Some(Menu::RequestTag)
+                                        };
+                                        cx.notify();
+                                    }))
+                                    .child(
+                                        self.tag
+                                            .as_ref()
+                                            .map(|id| tag_label(id))
+                                            .unwrap_or_else(|| t("all_tags")),
+                                    )
+                                    .child(ui::icon("chevron", 13.0, c("f_muted"))),
+                            ),
                     )
                     .when(shown.is_empty(), |d| {
                         d.child(
@@ -1606,7 +1972,7 @@ impl FennecWindow {
                             .bg(c("orange"))
                             .text_color(white())
                             .text_size(px(14.0))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(FontWeight::MEDIUM)
                             .flex()
                             .items_center()
                             .justify_center()
@@ -1629,7 +1995,7 @@ impl FennecWindow {
                                     .child(
                                         div()
                                             .text_size(px(13.0))
-                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .font_weight(FontWeight::MEDIUM)
                                             .text_color(c("f_text"))
                                             .child(name),
                                     )
@@ -1668,7 +2034,7 @@ impl FennecWindow {
                     .gap(px(8.0))
                     .border_b_1()
                     .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .child(
                         div()
                             .flex_none()
@@ -1680,7 +2046,7 @@ impl FennecWindow {
                         div()
                             .min_w_0()
                             .text_size(px(13.5))
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(FontWeight::MEDIUM)
                             .text_color(c("f_text"))
                             .truncate()
                             .child(r.title.clone()),
@@ -1723,13 +2089,15 @@ impl FennecWindow {
                         .bg(c("f_card"))
                         .border_1()
                         .border_color(if self.reply.read(cx).focus_handle(cx).is_focused(window) {
-                            c("orange")
+                            c("f_text").opacity(0.22)
                         } else {
                             c("f_field")
                         })
-                        .px(px(4.0))
-                        .py(px(3.0))
+                        .px(px(13.0))
+                        .py(px(9.0))
+                        .min_h(px(42.0))
                         .text_size(px(13.5))
+                        .line_height(relative(1.6))
                         .when(reply_has, |d| d.pb(px(38.0)))
                         .child(Textarea::new(&self.reply))
                         .when(reply_has, |d| {
@@ -1755,6 +2123,12 @@ impl FennecWindow {
         let s = self.sessions.iter().find(|s| s.address == address).cloned();
         let shown = self.shown_tab(address);
         let view = self.terminal(&shown, window, cx);
+        if self.pending_focus.as_deref() == Some(&shown) {
+            if let Some(view) = &view {
+                view.read(cx).focus_target(cx).focus(window, cx);
+                self.pending_focus = None;
+            }
+        }
         let shells = s
             .as_ref()
             .and_then(|s| self.shells.get(&s.name))
@@ -1770,6 +2144,7 @@ impl FennecWindow {
         let tab = |id: SharedString, on: bool| {
             h_flex()
                 .id(id)
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .h(px(28.0))
                 .px(px(10.0))
                 .gap(px(7.0))
@@ -1777,14 +2152,8 @@ impl FennecWindow {
                 .text_size(px(12.5))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(if on { c("f_text") } else { c("f_muted") })
-                .when(on, |d| {
-                    d.bg(c("f_card")).border_1().border_color(c("f_line"))
-                })
-                .when(!on, |d| {
-                    d.border_1()
-                        .border_color(transparent_black())
-                        .hover(|s| s.bg(c("f_line")))
-                })
+                .when(on, |d| d.bg(c("f_card")).shadow(ui::selection_ring()))
+                .when(!on, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
         };
         let session_address = address.to_owned();
         let shell_tabs = shells.iter().enumerate().map(|(i, a)| {
@@ -1794,8 +2163,10 @@ impl FennecWindow {
             tab(SharedString::from(format!("shell-{a}")), shown == key)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.tab.insert(show.clone(), open_key.clone());
+                    this.pending_focus = Some(open_key.clone());
                     cx.notify();
                 }))
+                .child(ui::icon("term", 14.0, c("f_muted")))
                 .child(if shells.len() > 1 {
                     format!("{} {}", t("shell"), i + 1)
                 } else {
@@ -1804,6 +2175,10 @@ impl FennecWindow {
                 .child(
                     div()
                         .id(SharedString::from(format!("close-{a}")))
+                        .size(px(16.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
                         .rounded(px(4.0))
                         .hover(|s| s.bg(c("f_line")))
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -1825,17 +2200,18 @@ impl FennecWindow {
                     .h(px(40.0))
                     .flex_none()
                     .px(px(10.0))
-                    .gap(px(4.0))
+                    .gap(px(8.0))
                     .bg(c("f_bg"))
                     .border_b_1()
                     .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .when_some(s.as_ref(), |d, s| {
                         let back = s.address.clone();
                         d.child(
                             tab("agent-tab".into(), agent_on)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.tab.remove(&back);
+                                    this.pending_focus = Some(back.clone());
                                     cx.notify();
                                 }))
                                 .child(ui::agent_icon(&s.agent, 14.0))
@@ -1845,22 +2221,13 @@ impl FennecWindow {
                     .children(shell_tabs)
                     .when(crate::core_bin::local().is_some(), |d| {
                         let session = s.clone();
-                        d.child(
-                            div()
-                                .id("new-tab")
-                                .size(px(26.0))
-                                .rounded(px(6.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .hover(|s| s.bg(c("f_line")))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if let Some(s) = session.clone() {
-                                        this.new_shell(s, window, cx);
-                                    }
-                                }))
-                                .child(ui::icon("plus", 13.0, c("f_muted"))),
-                        )
+                        d.child(ui::icon_button("new-tab", "plus").ml(px(-2.0)).on_click(
+                            cx.listener(move |this, _, window, cx| {
+                                if let Some(s) = session.clone() {
+                                    this.new_shell(s, window, cx);
+                                }
+                            }),
+                        ))
                     })
                     .child(div().flex_1())
                     .when_some(request, |d, (pid, n, title)| {
@@ -1885,7 +2252,7 @@ pub(crate) fn primary_button(id: &'static str, label: String) -> Stateful<Div> {
         .bg(c("f_text"))
         .text_color(c("f_card"))
         .text_size(px(12.0))
-        .font_weight(FontWeight::SEMIBOLD)
+        .font_weight(FontWeight::MEDIUM)
         .flex()
         .items_center()
         .child(label)
@@ -1898,6 +2265,7 @@ pub(crate) fn secondary_button(
 ) -> Stateful<Div> {
     h_flex()
         .id(id)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .h(px(25.0))
         .px(px(9.0))
         .gap(px(5.0))
@@ -1947,17 +2315,60 @@ impl Render for FennecWindow {
         let dialog = self.new_project_dialog(cx);
         h_flex()
             .relative()
+            .track_focus(&self.focus)
+            .key_context("FennecWindow")
             .size_full()
             .font_family(crate::settings::get().ui_font_family.clone())
+            .text_size(px(13.0))
+            .font_weight(FontWeight::NORMAL)
+            .line_height(relative(1.45))
             .bg(c("f_card"))
             .text_color(c("f_text"))
             .on_action(cx.listener(Self::on_shell_action))
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 let k = &e.keystroke;
-                if k.key == "t" && k.modifiers.platform {
-                    this.start_session(String::new(), window, cx);
+                if this.close_others.is_some() {
+                    if k.key == "enter" {
+                        if let Some(keys) = this.close_others.take() {
+                            for key in keys {
+                                this.close_tab_key(key, cx);
+                            }
+                        }
+                    } else if k.key == "escape" {
+                        this.close_others = None;
+                        if let Some(Route::Session(id)) = &this.route {
+                            this.pending_focus = Some(this.shown_tab(id));
+                        }
+                    }
                     cx.stop_propagation();
+                    cx.notify();
+                    return;
+                }
+                if this.prefix {
+                    this.prefix = false;
+                    match k.key.as_str() {
+                        "s" => {
+                            this.sidebar = true;
+                            this.search.read(cx).focus_handle(cx).focus(window, cx);
+                        }
+                        "b" => {
+                            this.sidebar = !this.sidebar;
+                        }
+                        _ => {}
+                    }
+                    if k.key != "s" {
+                        if let Some(Route::Session(id)) = &this.route {
+                            this.pending_focus = Some(this.shown_tab(id));
+                        }
+                    }
+                    cx.stop_propagation();
+                    cx.notify();
+                    return;
+                }
+                if this.menu.is_some() && k.key == "escape" {
+                    this.menu = None;
+                    cx.notify();
                     return;
                 }
                 if this.menu == Some(Menu::NewSession) {
@@ -1996,19 +2407,67 @@ impl Render for FennecWindow {
                     .h_full()
                     .flex()
                     .flex_col()
+                    .when(!self.sidebar, |d| {
+                        d.child(
+                            h_flex()
+                                .id("collapsed-titlebar")
+                                .h(px(46.0))
+                                .flex_none()
+                                .pl(px(84.0))
+                                .pr(px(10.0))
+                                .gap(px(8.0))
+                                .bg(c("f_bg"))
+                                .border_b_1()
+                                .border_color(c("f_line"))
+                                .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                                .child(ui::icon_button("show-sidebar", "sidebar").on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.sidebar = true;
+                                        cx.notify();
+                                    }),
+                                ))
+                                .child(
+                                    div()
+                                        .text_size(px(13.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child("Fennec"),
+                                ),
+                        )
+                    })
                     .child(div().flex_1().min_h_0().flex().child(main))
-                    .child(
-                        div()
-                            .h(px(24.0))
-                            .flex_none()
-                            .px(px(12.0))
-                            .text_size(px(11.0))
-                            .text_color(c("f_muted"))
-                            .child(self.notice.clone().unwrap_or_default()),
-                    ),
+                    .when_some(self.notice.clone(), |d, text| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .bottom(px(2.0))
+                                .left(px(18.0))
+                                .text_size(px(11.0))
+                                .text_color(c("f_muted"))
+                                .child(text),
+                        )
+                    }),
             )
             .when_some(menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
+            .when(self.prefix || self.close_others.is_some(), |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top(px(50.0))
+                        .left(px(270.0))
+                        .p(px(16.0))
+                        .rounded(px(9.0))
+                        .bg(c("f_card"))
+                        .border_1()
+                        .border_color(c("f_line"))
+                        .text_size(px(13.0))
+                        .child(t(if self.prefix {
+                            "keyboard_prefix"
+                        } else {
+                            "close_other_tabs_confirm"
+                        })),
+                )
+            })
     }
 }
 

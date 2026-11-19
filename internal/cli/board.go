@@ -126,6 +126,19 @@ func (b boardClient) call(ctx context.Context, method, path string, body any) (j
 
 func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Controller) {
 	client := boardClient{s: s}
+	c.Additional["board.icon"] = func(_ context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
+		}
+		icon, err := projectIcon(params.Path)
+		if err != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose a PNG or JPEG image"}
+		}
+		return map[string]string{"icon": icon}, nil
+	}
 	for _, method := range []string{"board.call", "board.local.call"} {
 		boardService := boardClient{s: s, local: method == "board.local.call"}
 		c.Additional[method] = func(ctx context.Context, raw json.RawMessage) (any, error) {

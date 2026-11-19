@@ -220,3 +220,30 @@ from the cloud window. Local sessions use the bundled, isolated
 Background board and connection failures never create global error bubbles.
 An explicit failed action uses a reserved inline status line with localized
 copy; raw handshake/transport messages remain out of product UI.
+
+## Native design alignment
+
+`docs/design/desktop/src/style.css` is the chrome reference. The native app
+uses its 252 px sidebar, 46 px titlebar, 58 px project headers, 42%/460 px
+request column, 188 px settings navigation, medium headings, flat row
+selection, and original SVG paths. Later user decisions take precedence:
+
+- Selected request cards have a visible 1 px neutral border and no shadow
+- Status labels use the same 19 px height and 5 px corner radius as tags
+- New/Reply editor focus uses a neutral 22% text-color border, not orange
+- New Request starts at three lines; Enter sends and Shift+Enter inserts a
+  newline, using the input component's submit behavior and IME marked-range
+  guard; empty input is not sent and failed submissions retain the draft
+- The empty New Request editor reserves a lower-right shortcut hint without
+  changing its dimensions; the send button uses that same out-of-flow area
+- New icon buttons use the menu bar's 28 px hit area and 6 px radius
+- The terminal icon comes verbatim from Herdr, with Herdr's 14/12 px padding
+- A collapsed sidebar has its own 46 px titlebar and restore control, so
+  window controls cannot overlap project headers or terminal tabs
+- Double-clicking titlebar background zooms/restores; controls stop drag events
+
+Native preview instructions and supported Herdr keymap actions are documented
+in `desktop/README.md`. The preview uses isolated fixture data, not account or
+runtime evidence. Live keyboard acceptance used an isolated herdr-core session:
+new-tab selection and immediate typing, Ctrl-J/K traversal, Cmd-B confirmation,
+and Cmd-W closure were exercised through the native UI.

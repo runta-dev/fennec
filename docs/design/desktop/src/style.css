@@ -46,7 +46,7 @@ code{font:11.5px ui-monospace,"SF Mono",monospace;background:var(--line);padding
 .new-req{display:flex;align-items:center;gap:7px;width:100%;height:38px;padding:0 13px;border-radius:9px;background:var(--card);border:1px solid var(--field);box-shadow:0 1px 1px #0000000f;color:var(--muted);font-size:13px}
 .new-req:hover{color:var(--text);border-color:var(--orange)}
 .composer,.reply{position:relative;background:var(--card);border:1px solid var(--field);border-radius:10px;box-shadow:0 1px 1px #0000000f;transition:border-color .15s}
-.composer:focus-within,.reply:focus-within{border-color:var(--orange)}
+.composer:focus-within,.reply:focus-within{border-color:color-mix(in srgb,var(--text) 22%,transparent)}
 .composer .rich,.reply .rich{min-height:38px;padding:9px 13px;transition:min-height .2s cubic-bezier(.23,1,.32,1)}
 .composer:focus-within .rich,.composer.has .rich{min-height:96px;padding-bottom:40px}
 .reply .rich{padding-right:70px}.reply.has .rich{padding-bottom:40px;padding-right:13px}
@@ -317,3 +317,14 @@ b,strong,.req-title,.section,.older,.tab.on,.k-doc-h b,.set-body h2,.set-body h3
 .side-search input::placeholder{color:var(--muted)}
 .side-search kbd{font:11px inherit;font-family:inherit;color:var(--muted);opacity:.8}
 .side-search:focus-within kbd{display:none}
+
+/* Status labels share the compact tag geometry. */
+.st{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;font-size:11px;font-weight:500}
+/* New requests start at three lines. */
+.composer .rich{min-height:84px}
+
+.composer:focus-within .rich,.composer.has .rich,.composer .rich{min-height:84px;padding-bottom:9px;padding-right:70px}
+
+.composer:not(.has)::after{content:'Enter to send · Shift+Enter for a new line';position:absolute;right:10px;bottom:8px;color:var(--muted);font-size:11px;pointer-events:none}
+
+.req.sel,.req.sel:hover{border-color:var(--field);box-shadow:none}

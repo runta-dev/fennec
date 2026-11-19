@@ -25,6 +25,7 @@ pub struct Worker {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Project {
+    pub icon: String,
     pub id: String,
     pub org: String,
     pub key: String,
@@ -50,6 +51,7 @@ pub struct Actor {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Concept {
+    pub body: String,
     pub id: String,
     #[serde(rename = "type")]
     pub kind: String,
@@ -121,6 +123,9 @@ fn command() -> Option<String> {
 
 /// One board call. Blocking: run it from a background task.
 pub fn call(method: &str, path: &str, body: Option<Value>) -> Result<Value> {
+    if let Some(result) = crate::preview::call(method, path) {
+        return result;
+    }
     if crate::control::available() {
         return crate::control::call(
             if crate::core_bin::cloud() {

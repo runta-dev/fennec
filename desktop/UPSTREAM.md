@@ -49,3 +49,8 @@ vendor/xim-ctext
 assets/fonts
 distribution/core-version
 ```
+
+The terminal chrome icon in `assets/icons/terminal.svg` is copied verbatim
+from Herdr's `mods/workspace-chrome/terminal.svg` (Apache-2.0). Terminal padding
+is 14 px horizontally and 12 px vertically, matching the installed Herdr
+`layouts/main.json`; the surrounding Fennec chrome follows the desktop design.
