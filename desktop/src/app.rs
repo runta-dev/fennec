@@ -27,7 +27,6 @@ pub(crate) enum Route {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
-    Org,
     NewSession,
 }
 
@@ -58,8 +57,7 @@ pub struct FennecWindow {
     sidebar: bool,
     /// The signed-in person, as requests and replies are signed.
     pub(crate) me: String,
-    orgs: Vec<board::Organization>,
-    org: Option<String>,
+    cloud_window: Option<std::process::Child>,
     menu: Option<Menu>,
     new_project: Option<NewProject>,
     /// A session asked for and not yet listed: shown once it appears.
@@ -158,9 +156,8 @@ impl FennecWindow {
             reply,
             notice: None,
             sidebar: true,
-            me: String::from("me"),
-            orgs: Vec::new(),
-            org: None,
+            me: std::env::var("USER").unwrap_or_else(|_| "me".into()),
+            cloud_window: None,
             menu: None,
             new_project: None,
             starting: None,
@@ -172,28 +169,21 @@ impl FennecWindow {
             _tasks: Vec::new(),
         };
         this._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let (me, orgs) = cx
-                .background_spawn(async move {
-                    (board::person(), board::organizations().unwrap_or_default())
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                this.me = me;
-                this.org = orgs
-                    .iter()
-                    .find(|o| o.current)
-                    .or(orgs.first())
-                    .map(|o| o.id.clone());
-                this.orgs = orgs;
-                cx.notify();
-            });
-        }));
-        this._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let connected = cx.background_spawn(async move { Core::connect() }).await;
             let _ = this.update_in(cx, |this, window, cx| match connected {
                 Ok(core) => {
-                    this.core = Some(core);
+                    this.core = Some(core.clone());
+                    if !crate::core_bin::cloud() {
+                        this.local = Some(core);
+                    }
                     this.follow_core(window, cx);
+                    if !crate::core_bin::cloud() {
+                        if let Some(session) = this.sessions.first() {
+                            this.route = Some(Route::Session(session.address.clone()));
+                        } else {
+                            this.start_session(String::new(), window, cx);
+                        }
+                    }
                     cx.notify();
                 }
                 Err(e) => {
@@ -274,7 +264,8 @@ impl FennecWindow {
     }
 
     pub(crate) fn say(&mut self, text: String, cx: &mut Context<Self>) {
-        self.notice = Some(text);
+        tracing::warn!("desktop action: {text}");
+        self.notice = Some(t("action_failed"));
         cx.notify();
         self._tasks.push(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(5)).await;
@@ -390,7 +381,7 @@ impl FennecWindow {
     ) {
         match projects {
             Ok(p) => self.projects = p,
-            Err(e) if self.projects.is_empty() => self.notice = Some(format!("{e:#}")),
+            Err(e) if self.projects.is_empty() => tracing::debug!("board unavailable: {e:#}"),
             Err(_) => {}
         }
         if let Some((id, Ok(list))) = requests {
@@ -410,16 +401,8 @@ impl FennecWindow {
         cx.notify();
     }
 
-    /// The current organization's projects (all of them before organizations load).
     pub(crate) fn visible_projects(&self) -> Vec<&Project> {
-        self.projects
-            .iter()
-            .filter(|p| {
-                self.org
-                    .as_ref()
-                    .is_none_or(|o| p.org.is_empty() || &p.org == o)
-            })
-            .collect()
+        self.projects.iter().collect()
     }
 
     pub(crate) fn project_id(&self) -> Option<String> {
@@ -756,61 +739,26 @@ impl FennecWindow {
 
     // ---------- organization, new project, new session ----------
 
-    fn org_switcher(&self, cx: &mut Context<Self>) -> AnyElement {
-        let current = self
-            .org
-            .as_ref()
-            .and_then(|id| self.orgs.iter().find(|o| &o.id == id));
-        let Some(org) = current else {
-            return h_flex()
-                .gap(px(7.0))
-                .child(img("fennec.svg").size(px(18.0)).flex_none())
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(c("f_text"))
-                        .child("Fennec"),
-                )
-                .into_any_element();
-        };
+    fn org_switcher(&self, _: &mut Context<Self>) -> AnyElement {
         h_flex()
-            .id("org")
-            .h(px(26.0))
-            .px(px(6.0))
-            .gap(px(6.0))
-            .rounded(px(6.0))
-            .min_w_0()
-            .when(self.menu == Some(Menu::Org), |d| d.bg(c("f_line")))
-            .hover(|s| s.bg(c("f_line")))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.menu = if this.menu == Some(Menu::Org) {
-                    None
-                } else {
-                    Some(Menu::Org)
-                };
-                cx.notify();
-            }))
-            .child(ui::project_mark(&org.name, "#f38d25", 18.0))
+            .gap(px(7.0))
+            .child(img("fennec.svg").size(px(18.0)).flex_none())
             .child(
                 div()
-                    .min_w_0()
-                    .truncate()
                     .text_size(px(13.0))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(FontWeight::MEDIUM)
                     .text_color(c("f_text"))
-                    .child(org.name.clone()),
+                    .child("Fennec"),
             )
-            .child(ui::icon("chevron", 13.0, c("f_muted")))
             .into_any_element()
     }
 
-    /// The open dropdown (organizations, or agents for a new session) under its button.
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let item = |id: SharedString, checked: bool| {
+        self.menu?;
+        let item = |id: SharedString| {
             h_flex()
                 .id(id)
-                .h(px(29.0))
+                .h(px(34.0))
                 .px(px(9.0))
                 .gap(px(8.0))
                 .rounded(px(5.0))
@@ -818,82 +766,50 @@ impl FennecWindow {
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(c("f_text"))
                 .hover(|s| s.bg(c("f_expanded")))
-                .when(checked, |d| d.font_weight(FontWeight::SEMIBOLD))
         };
-        let (top, items): (f32, Vec<AnyElement>) = match self.menu? {
-            Menu::Org => {
-                let mut list: Vec<AnyElement> = self
-                    .orgs
-                    .iter()
-                    .map(|o| {
-                        let id = o.id.clone();
-                        let on = self.org.as_ref() == Some(&o.id);
-                        item(SharedString::from(format!("org-{}", o.id)), on)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.org = Some(id.clone());
-                                this.menu = None;
-                                this.route = this
-                                    .visible_projects()
-                                    .first()
-                                    .map(|p| Route::Project(p.id.clone()));
-                                this.open = None;
-                                this.thread = None;
-                                this.refresh_now(window, cx);
-                            }))
-                            .child(div().flex_1().child(o.name.clone()))
-                            .when(on, |d| d.child(ui::icon("check", 13.0, c("orange"))))
-                            .into_any_element()
-                    })
-                    .collect();
-                list.push(
-                    div()
-                        .h(px(1.0))
-                        .my(px(4.0))
-                        .bg(c("f_line"))
-                        .into_any_element(),
-                );
-                list.push(
-                    item("org-new".into(), false)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.menu = None;
-                            crate::links::open(&crate::links::Target::Url(
-                                "https://dashboard.runta.com".into(),
-                            ));
-                            cx.notify();
-                        }))
-                        .child(t("new_organization"))
-                        .into_any_element(),
-                );
-                (40.0, list)
-            }
-            Menu::NewSession => {
-                let list = board::AGENTS
-                    .iter()
-                    .map(|agent| {
-                        let a = agent.to_string();
-                        item(SharedString::from(format!("agent-{agent}")), false)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.start_session(a.clone(), window, cx)
-                            }))
-                            .child(ui::agent_icon(agent, 15.0))
-                            .child(crate::sessions::agent_name(agent).to_owned())
-                            .into_any_element()
-                    })
-                    .collect();
-                let projects = self.visible_projects().len() as f32;
-                (150.0 + projects * 30.0, list)
-            }
-        };
+        let mut items =
+            vec![
+                item("new-terminal".into())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.start_session(String::new(), window, cx)
+                    }))
+                    .child(ui::icon("term", 15.0, c("f_text")))
+                    .child(div().flex_1().child(t("terminal")))
+                    .child(div().text_color(c("f_muted")).child("⌘T"))
+                    .into_any_element(),
+                div()
+                    .px(px(9.0))
+                    .pt(px(10.0))
+                    .pb(px(5.0))
+                    .text_size(px(11.0))
+                    .text_color(c("f_muted"))
+                    .child(t("start_agent"))
+                    .into_any_element(),
+            ];
+        for (i, agent) in [
+            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let a = agent.to_string();
+            items.push(
+                item(SharedString::from(format!("agent-{agent}")))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.start_session(a.clone(), window, cx)
+                    }))
+                    .child(ui::agent_icon(agent, 15.0))
+                    .child(div().flex_1().child(sessions::agent_name(agent).to_owned()))
+                    .child(div().text_color(c("f_muted")).child((i + 1).to_string()))
+                    .into_any_element(),
+            );
+        }
         Some(
             div()
                 .absolute()
-                .top(px(top))
-                .left(px(if self.menu == Some(Menu::Org) {
-                    80.0
-                } else {
-                    120.0
-                }))
-                .w(px(220.0))
+                .top(px(178.0 + self.visible_projects().len() as f32 * 30.0))
+                .left(px(120.0))
+                .w(px(230.0))
                 .p(px(5.0))
                 .rounded(px(9.0))
                 .bg(c("f_card"))
@@ -908,6 +824,27 @@ impl FennecWindow {
 
     fn start_session(&mut self, agent: String, window: &mut Window, cx: &mut Context<Self>) {
         self.menu = None;
+        if !crate::core_bin::cloud() || agent.is_empty() {
+            let display = crate::terminal::initial_display(window);
+            self.with_local(window, cx, move |this, window, cx| {
+                let Some(core) = this.local.clone() else { return; };
+                this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                    let started = cx.background_spawn(async move {
+                        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+                        let command = if agent == "cursor" { "cursor-agent" } else { &agent };
+                        let argv = if agent.is_empty() { vec![shell, "-l".into()] }
+                            else { vec![shell, "-ilc".into(), format!("exec {command}")] };
+                        let name = format!("desktop-{}", sessions::now_ms());
+                        core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
+                    }).await;
+                    let _ = this.update(cx, |this, cx| match started {
+                        Ok(address) => { this.route = Some(Route::Session(if crate::core_bin::cloud() { format!("local:{address}") } else { address })); cx.notify(); },
+                        Err(e) => this.say(format!("{e:#}"), cx),
+                    });
+                }));
+            });
+            return;
+        }
         self.starting = Some(String::new());
         cx.notify();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
@@ -953,7 +890,7 @@ impl FennecWindow {
         if name.is_empty() {
             return;
         }
-        let org = self.org.clone().unwrap_or_default();
+        let org = String::new();
         let color = board::COLORS[self.projects.len() % board::COLORS.len()];
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let created = cx
@@ -1242,6 +1179,32 @@ impl FennecWindow {
                     .min_h_0()
                     .overflow_y_scroll()
                     .px(px(8.0))
+                    .child(
+                        secondary_button(
+                            "workspace",
+                            t(if crate::core_bin::cloud() {
+                                "cloud_computer"
+                            } else {
+                                "this_mac"
+                            }),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !crate::core_bin::cloud() {
+                                let running = this
+                                    .cloud_window
+                                    .as_mut()
+                                    .is_some_and(|p| p.try_wait().ok().flatten().is_none());
+                                if !running {
+                                    if let Ok(exe) = std::env::current_exe() {
+                                        this.cloud_window =
+                                            crate::spawn::command(exe).arg("--cloud").spawn().ok();
+                                    }
+                                }
+                            }
+                            cx.notify();
+                        })),
+                    )
                     .child(header(
                         t("projects"),
                         plus("new-project", self.new_project.is_some()).on_click(
@@ -1280,7 +1243,11 @@ impl FennecWindow {
                                 .py(px(6.0))
                                 .text_size(px(12.0))
                                 .text_color(c("f_muted"))
-                                .child(t("connecting")),
+                                .child(t(if crate::core_bin::cloud() {
+                                    "connecting"
+                                } else {
+                                    "loading"
+                                })),
                         )
                     })
                     .children(groups),
@@ -2016,6 +1983,29 @@ impl Render for FennecWindow {
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 let k = &e.keystroke;
+                if k.key == "t" && k.modifiers.platform {
+                    this.start_session(String::new(), window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                if this.menu == Some(Menu::NewSession) {
+                    if k.key == "escape" {
+                        this.menu = None;
+                        cx.notify();
+                        return;
+                    }
+                    if let Ok(n) = k.key.parse::<usize>() {
+                        if let Some(agent) = [
+                            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi",
+                        ]
+                        .get(n.wrapping_sub(1))
+                        {
+                            this.start_session((*agent).into(), window, cx);
+                            cx.stop_propagation();
+                            return;
+                        }
+                    }
+                }
                 if k.key == "k"
                     && (k.modifiers.platform
                         || (cfg!(not(target_os = "macos")) && k.modifiers.control))
@@ -2033,30 +2023,20 @@ impl Render for FennecWindow {
                     .min_w_0()
                     .h_full()
                     .flex()
-                    .child(main),
+                    .flex_col()
+                    .child(div().flex_1().min_h_0().flex().child(main))
+                    .child(
+                        div()
+                            .h(px(24.0))
+                            .flex_none()
+                            .px(px(12.0))
+                            .text_size(px(11.0))
+                            .text_color(c("f_muted"))
+                            .child(self.notice.clone().unwrap_or_default()),
+                    ),
             )
             .when_some(menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
-            .when_some(
-                self.core_error.clone().or(self.notice.clone()),
-                |d, text| {
-                    d.child(
-                        div()
-                            .absolute()
-                            .bottom(px(16.0))
-                            .right(px(16.0))
-                            .max_w(px(420.0))
-                            .px(px(12.0))
-                            .py(px(9.0))
-                            .rounded(px(9.0))
-                            .bg(c("f_card"))
-                            .border_1()
-                            .border_color(c("f_field"))
-                            .text_size(px(12.0))
-                            .child(text),
-                    )
-                },
-            )
     }
 }
 

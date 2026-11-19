@@ -27,10 +27,14 @@ import (
 // knowledge) over the daemon's authenticated resident connection, the way
 // previews are reached. See docs/desktop-app.md.
 type boardClient struct {
-	s *daemonServices
+	s     *daemonServices
+	local bool
 }
 
 func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
+	if b.local {
+		return (board.Store{Home: b.s.home}).Dial(ctx)
+	}
 	if _, _, _, ok := b.s.account.Session(); !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in to Fennec"}
 	}
@@ -115,27 +119,30 @@ func (b boardClient) call(ctx context.Context, method, path string, body any) (j
 	case status >= 400 && status < 500:
 		return nil, &control.Fault{Code: "invalid_params", Message: "Check the values and try again"}
 	case status >= 500:
-		return nil, &control.Fault{Code: "board_failed", Message: "The cloud computer could not save this", Retryable: true}
+		return nil, &control.Fault{Code: "board_failed", Message: "Could not save this", Retryable: true}
 	}
 	return data, nil
 }
 
 func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Controller) {
 	client := boardClient{s: s}
-	c.Additional["board.call"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params struct {
-			Method string          `json:"method"`
-			Path   string          `json:"path"`
-			Body   json.RawMessage `json:"body,omitempty"`
+	for _, method := range []string{"board.call", "board.local.call"} {
+		boardService := boardClient{s: s, local: method == "board.local.call"}
+		c.Additional[method] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+			var params struct {
+				Method string          `json:"method"`
+				Path   string          `json:"path"`
+				Body   json.RawMessage `json:"body,omitempty"`
+			}
+			if json.Unmarshal(raw, &params) != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
+			}
+			var body any
+			if len(params.Body) > 0 && string(params.Body) != "null" {
+				body = params.Body
+			}
+			return boardService.call(ctx, params.Method, params.Path, body)
 		}
-		if json.Unmarshal(raw, &params) != nil {
-			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
-		}
-		var body any
-		if len(params.Body) > 0 && string(params.Body) != "null" {
-			body = params.Body
-		}
-		return client.call(ctx, params.Method, params.Path, body)
 	}
 	c.Additional["account.organizations"] = func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return s.account.Organizations(ctx)

@@ -93,6 +93,9 @@ pub fn agent_icon(agent: &str) -> Option<&'static str> {
 }
 
 pub fn agent_name(agent: &str) -> &str {
+    if agent == "shell" {
+        return "Terminal";
+    }
     match agent_icon(agent) {
         Some("claudecode") => "Claude Code",
         Some("codex") => "Codex",

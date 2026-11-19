@@ -1,5 +1,10 @@
 {
   "messages": {
+    "desktop.terminal": {"en-US": "Terminal", "zh-CN": "终端"},
+    "desktop.start_agent": {"en-US": "Start an agent", "zh-CN": "启动 Agent"},
+    "desktop.action_failed": {"en-US": "Could not complete this action, try again", "zh-CN": "未能完成操作，请重试"},
+    "desktop.this_mac": {"en-US": "This Mac · Open cloud computer", "zh-CN": "本机 · 打开云主机"},
+    "desktop.cloud_computer": {"en-US": "Cloud computer", "zh-CN": "云主机"},
     "desktop.account": {"en-US": "Account", "zh-CN": "账户"},
     "desktop.signed_in_as": {"en-US": "Signed in as", "zh-CN": "当前账户"},
     "desktop.usage_and_billing": {"en-US": "Usage and billing", "zh-CN": "用量与账单"},

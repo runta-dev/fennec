@@ -17,6 +17,11 @@ pub fn path() -> PathBuf {
     if let Some(p) = OVERRIDE.with(|o| o.borrow().clone()) {
         return p;
     }
+    if !cloud() {
+        if let Some(local) = local() {
+            return local;
+        }
+    }
     std::env::var_os("FENNEC_HC")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("hc"))
@@ -33,4 +38,9 @@ pub fn using<R>(program: PathBuf, f: impl FnOnce() -> R) -> R {
     let result = f();
     OVERRIDE.with(|o| *o.borrow_mut() = previous);
     result
+}
+
+/// Cloud work is an explicit, separate window; the default needs no network.
+pub fn cloud() -> bool {
+    std::env::args().any(|arg| arg == "--cloud")
 }

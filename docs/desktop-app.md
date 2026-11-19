@@ -1,6 +1,11 @@
 # Fennec for Mac: the desktop window
 
 The menu bar panel stays the quick way in: sign-in, agents, approvals, usage.
+The desktop window is native Rust/GPUI, using herdr-app's terminal renderer.
+It starts on this Mac's bundled herdr-core, without waiting for sign-in or a
+cloud connection. The cloud-computer action opens a separate remote window
+(`--cloud`); local terminals and projects remain usable while it connects.
+
 The desktop window is where work is organized. Its left column lists
 **Projects** (a request board per project) and **Sessions** (the agents running
 on the cloud computer); the right side shows the open project, request or
@@ -19,12 +24,9 @@ open http://127.0.0.1:5188). Screens and routes in the mockup:
 
 ## Layout
 
-**Title bar.** Traffic lights, then the organization switcher (organization
-mark, name, chevron). Its menu lists the user's Runta organizations with a
-check on the current one, then *New organization…* (opens the Runta
-dashboard). Switching organizations shows that organization's projects.
-Sessions belong to the user's cloud computer and are not filtered.
-On the right: hide sidebar.
+**Title bar.** Traffic lights, Fennec, and hide sidebar. Organization switching
+and creation are not exposed; existing organization metadata is retained and
+does not filter projects.
 
 **Search.** A field on its own row under the title bar (`⌘K` focuses it,
 `Esc` clears it). It filters projects, sessions and the open project's
@@ -97,7 +99,12 @@ dropdowns with an orange check, the panel's 32×19 switch.
 
 ## Where the data lives
 
-Projects, requests and knowledge are stored **on the user's cloud computer**,
+In the default local window, projects, requests and knowledge are stored on
+the Mac through `board.local.call`, under `~/.fen/board/`. Local requests are
+a durable backlog; automatic agent dispatch remains a cloud-board feature.
+There is no implicit migration or synchronization between the two stores.
+
+In the explicit cloud window, projects, requests and knowledge stay on the cloud computer,
 under `~/.fen/board/`. Agents there read and reply to requests directly, and
 the iPhone app can show them later over the same channel. Data is one user's;
 sharing a board with teammates needs a Runta backend and is not part of this
@@ -198,3 +205,17 @@ menu bar app's language.
 Team boards shared through Runta; +1 by other people (the count is shown
 when present); the iPhone board; pushing knowledge into project
 repositories.
+
+## Local-first creation
+
+The Sessions `+` menu follows Herdr: **Terminal** (`Command-T`), then
+**Start an agent**, with Claude Code, Codex, Pi, OpenCode, Cursor, Grok and
+Kimi (keys 1–7 while open). A local agent starts its ordinary command in an
+interactive login shell. Menu bar takeover settings remain authoritative;
+no environment flag forces local execution. Terminal opens a local shell even
+from the cloud window. Local sessions use the bundled, isolated
+`HC_SESSION=fennec` core; users do not need an external herdr-core installation.
+
+Background board and connection failures never create global error bubbles.
+An explicit failed action uses a reserved inline status line with localized
+copy; raw handshake/transport messages remain out of product UI.

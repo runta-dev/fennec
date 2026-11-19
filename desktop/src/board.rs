@@ -71,14 +71,6 @@ pub struct QueueProject {
     pub queued: Vec<Request>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct Organization {
-    pub id: String,
-    pub name: String,
-    pub current: bool,
-}
-
 /// The project colors new projects take in turn (the mockup's).
 pub const COLORS: &[&str] = &[
     "#f38d25", "#d97b6f", "#c9a23d", "#5fb08a", "#4fa3b5", "#6f8fd9", "#9a7bd1", "#8a8f98",
@@ -131,7 +123,11 @@ fn command() -> Option<String> {
 pub fn call(method: &str, path: &str, body: Option<Value>) -> Result<Value> {
     if crate::control::available() {
         return crate::control::call(
-            "board.call",
+            if crate::core_bin::cloud() {
+                "board.call"
+            } else {
+                "board.local.call"
+            },
             json!({"method": method, "path": path, "body": body}),
         );
     }
@@ -261,32 +257,6 @@ pub fn queue() -> Result<Vec<QueueProject>> {
 }
 
 // What the window asks the Mac daemon besides the board.
-
-pub fn organizations() -> Result<Vec<Organization>> {
-    if !crate::control::available() {
-        return Ok(Vec::new());
-    }
-    Ok(serde_json::from_value(crate::control::call(
-        "account.organizations",
-        json!({}),
-    )?)?)
-}
-
-/// The signed-in person's name (as the menu bar shows it).
-pub fn person() -> String {
-    let from_profile = || -> Option<String> {
-        let p = crate::control::call("account.profile", json!({})).ok()?;
-        p["display_name"]
-            .as_str()
-            .or(p["email"].as_str())
-            .map(str::to_owned)
-    };
-    crate::control::available()
-        .then(from_profile)
-        .flatten()
-        .or_else(|| std::env::var("USER").ok())
-        .unwrap_or_else(|| "me".into())
-}
 
 /// Starts a session on the cloud computer (no Mac folder); its name.
 pub fn start_session(agent: &str) -> Result<String> {

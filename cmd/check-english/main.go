@@ -17,6 +17,10 @@ import (
 )
 
 var fixtures = map[string]string{
+	"desktop/src/terminal/drag_paths.rs":        "upstream herdr-app multilingual path fixtures",
+	"desktop/src/terminal.rs":                   "upstream herdr-app multilingual shaping fixtures",
+	"desktop/src/vt.rs":                         "upstream herdr-app multilingual terminal fixtures",
+	"desktop/src/links.rs":                      "upstream herdr-app multilingual file URL fixture",
 	"internal/transcript/transcript_test.go":    "multilingual user messages in agent transcripts",
 	"ios/FennecTests/FennecTests.swift":         "multilingual chat preview and Markdown fixtures",
 	"ios/FennecUITests/ScreenTourUITests.swift": "Unicode user-authored session titles in UI screenshots",
