@@ -191,6 +191,32 @@ impl FennecWindow {
             });
         }));
         this.follow_core(window, cx);
+        if let Some(path) = crate::shot::path() {
+            this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(500))
+                        .await;
+                    let Some(what) = crate::shot::request(&path) else {
+                        continue;
+                    };
+                    if this
+                        .update_in(cx, |this, window, cx| this.show(&what, window, cx))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    // Data the view loads (a thread, settings) arrives within a few frames.
+                    cx.background_executor()
+                        .timer(Duration::from_millis(2500))
+                        .await;
+                    let handle = cx.window_handle();
+                    if let Err(e) = crate::shot::save(handle, cx, &path) {
+                        tracing::warn!("screenshot failed: {e:#}");
+                    }
+                }
+            }));
+        }
         this.follow_board(window, cx);
         // Toasts the terminal core asks for (a refused file drop).
         this._tasks.push(cx.spawn_in(window, async move |this, cx| {
@@ -208,6 +234,32 @@ impl FennecWindow {
             }
         }));
         this
+    }
+
+    /// Shows what a screenshot request names (shot.rs).
+    fn show(&mut self, what: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::project_settings::Tab;
+        let mut parts = what.splitn(3, ':');
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some("project"), Some(id), _) => self.go(Route::Project(id.into()), window, cx),
+            (Some("request"), Some(n), _) => {
+                if let Ok(n) = n.parse() {
+                    self.open_request(n, window, cx);
+                }
+            }
+            (Some("session"), Some(a), _) => self.go(Route::Session(a.into()), window, cx),
+            (Some("settings"), Some(id), tab) => {
+                let tab = match tab.unwrap_or_default() {
+                    "knowledge" => Tab::Knowledge,
+                    "queue" => Tab::Queue,
+                    "agents" => Tab::Agents,
+                    _ => Tab::General,
+                };
+                self.go(Route::Settings(id.into(), tab), window, cx);
+            }
+            _ => {}
+        }
+        cx.notify();
     }
 
     pub(crate) fn say(&mut self, text: String, cx: &mut Context<Self>) {

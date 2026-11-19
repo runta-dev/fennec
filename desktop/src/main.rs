@@ -40,6 +40,7 @@ mod board;
 mod control;
 mod i18n;
 mod project_settings;
+mod shot;
 mod sessions;
 mod ui;
 
