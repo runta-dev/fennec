@@ -1414,7 +1414,7 @@ impl FennecWindow {
                 .child(plus)
         };
         let plus = |id: &'static str, open: bool| {
-            ui::icon_button(id, "plus")
+            ui::compact_icon_button(id, "plus")
                 .mr(px(-6.0))
                 .my(px(-3.0))
                 .when(open, |d| d.bg(c("f_line")))
@@ -2311,13 +2311,15 @@ impl FennecWindow {
                     .children(shell_tabs)
                     .when(crate::core_bin::local().is_some(), |d| {
                         let session = s.clone();
-                        d.child(ui::icon_button("new-tab", "plus").ml(px(-2.0)).on_click(
-                            cx.listener(move |this, _, window, cx| {
-                                if let Some(s) = session.clone() {
-                                    this.new_shell(s, window, cx);
-                                }
-                            }),
-                        ))
+                        d.child(
+                            ui::compact_icon_button("new-tab", "plus")
+                                .ml(px(-2.0))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if let Some(s) = session.clone() {
+                                        this.new_shell(s, window, cx);
+                                    }
+                                })),
+                        )
                     })
                     .child(div().flex_1())
                     .when_some(request, |d, (pid, n, title)| {

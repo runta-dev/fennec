@@ -41,7 +41,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("agents/xai.png", include_bytes!("../assets/agents/xai.png")),
     ("icons/search.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m11 11 3 3"/><circle cx="7" cy="7" r="4.5"/></svg>"##),
     ("icons/sidebar.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/></svg>"##),
-    ("icons/plus.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>"##),
+    ("icons/plus.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>"##),
     ("icons/gear.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><g transform="scale(.6667)" stroke-width="2.25"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></g></svg>"##),
     ("icons/chat.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3h7A1.5 1.5 0 0 1 13 4.5v5a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.2V11h0a1 1 0 0 1-1-1Z"/></svg>"##),
     ("icons/check.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></svg>"##),
@@ -255,6 +255,14 @@ pub fn selection_ring() -> Vec<BoxShadow> {
 
 /// The menu bar's .ios-app-close/#settings metrics, reused for chrome actions.
 pub fn icon_button(id: &'static str, name: &str) -> Stateful<Div> {
+    icon_button_sized(id, name, 17.0)
+}
+
+pub fn compact_icon_button(id: &'static str, name: &str) -> Stateful<Div> {
+    icon_button_sized(id, name, 14.0)
+}
+
+fn icon_button_sized(id: &'static str, name: &str, glyph_size: f32) -> Stateful<Div> {
     div()
         .id(id)
         .group("chrome-action")
@@ -272,7 +280,7 @@ pub fn icon_button(id: &'static str, name: &str) -> Stateful<Div> {
                 .path(SharedString::from(format!("icons/{name}.svg")))
                 .text_color(c("f_muted"))
                 .group_hover("chrome-action", |s| s.text_color(c("f_text")))
-                .size(px(17.0)),
+                .size(px(glyph_size)),
         )
 }
 
