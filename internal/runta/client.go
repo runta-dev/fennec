@@ -17,20 +17,23 @@ import (
 	"time"
 )
 
-// Default Fennec runtime shape: 4-8 vCPU, 4-16 GiB memory, 100 GiB disk.
-// SharedRuntimeMaxVCPUs is sent as limits.vcpus; an API that predates dynamic
-// vCPU rejects that field, so creation falls back to a fixed
-// SharedRuntimeVCPUs runtime (see sharedCreateIntents).
+// Default Fennec runtime shape: 2-8 vCPU, 4-16 GiB memory, 100 GiB disk. An
+// idle machine holds 2 vCPU and 4 GiB and bursts with its load up to the
+// limits. SharedRuntimeMaxVCPUs is sent as limits.vcpus; an API that predates
+// dynamic vCPU rejects that field, so creation falls back to a fixed
+// fixedSharedRuntimeVCPUs runtime (see sharedCreateIntents), since a fixed
+// machine cannot burst.
 const (
-	SharedRuntimeVCPUs             = 4
+	SharedRuntimeVCPUs             = 2
 	SharedRuntimeMaxVCPUs          = 8
 	SharedRuntimeBaselineMemoryMiB = 4096
 	SharedRuntimeMaxMemoryMiB      = 16384
 	SharedRuntimeDiskGiB           = 100
 
-	// legacySharedRuntimeVCPUs is the fixed vCPU count of Fennec runtimes
-	// created before the 4-8 vCPU default; memory reconciliation still applies.
-	legacySharedRuntimeVCPUs = 2
+	// fixedSharedRuntimeVCPUs sizes a runtime on an API without dynamic vCPU,
+	// and is the baseline of runtimes created with the earlier 4-8 vCPU
+	// default; memory reconciliation still applies to them.
+	fixedSharedRuntimeVCPUs = 4
 )
 
 type Runtime struct {
@@ -340,12 +343,16 @@ func (c *Client) createShared(ctx context.Context, user, seed string) (Runtime, 
 }
 
 // sharedCreateIntents lists Fennec runtime creation bodies, newest API shape
-// first: dynamic 4-8 vCPU, then fixed 4 vCPU for an API without limits.vcpus,
+// first: dynamic 2-8 vCPU, then fixed 4 vCPU for an API without limits.vcpus,
 // then without disk_gib for an API that cannot size the overlay. Each shape has
 // its own idempotency key because the key digests the body.
 func sharedCreateIntents() []map[string]any {
 	shape := func(dynamicVCPU, disk bool) map[string]any {
-		requests := map[string]any{"vcpus": SharedRuntimeVCPUs, "memory_mib": SharedRuntimeBaselineMemoryMiB}
+		vcpus := fixedSharedRuntimeVCPUs
+		if dynamicVCPU {
+			vcpus = SharedRuntimeVCPUs
+		}
+		requests := map[string]any{"vcpus": vcpus, "memory_mib": SharedRuntimeBaselineMemoryMiB}
 		if disk {
 			requests["disk_gib"] = SharedRuntimeDiskGiB
 		}
@@ -475,12 +482,12 @@ func (c *Client) Resume(ctx context.Context, id string) error {
 // legacy fixed 2c4g or fixed 2c16g machine) to 4 GiB baseline / 16 GiB max
 // dynamic memory scaling so idle memory automatically drops back to 4 GiB.
 // vCPU and disk are left alone: changing them needs a restart or full
-// shutdown, so existing runtimes get the 4-8 vCPU / 100 GiB shape on recreate.
+// shutdown, so existing runtimes get the 2-8 vCPU / 100 GiB shape on recreate.
 func (c *Client) reconcileSharedResources(ctx context.Context, r Runtime, expectedOwner string) Runtime {
 	if r.ID == "" || r.Resources == nil || r.Status == "deleting" || r.Status == "deleted" {
 		return r
 	}
-	if v := r.Resources.Requests.VCPUs; v != SharedRuntimeVCPUs && v != legacySharedRuntimeVCPUs {
+	if v := r.Resources.Requests.VCPUs; v != SharedRuntimeVCPUs && v != fixedSharedRuntimeVCPUs {
 		return r
 	}
 	if r.Resources.Requests.Memory == SharedRuntimeBaselineMemoryMiB && r.Resources.Limits.Memory == SharedRuntimeMaxMemoryMiB {

@@ -69,7 +69,7 @@ func TestCreateStableIdempotency(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if body.Resources.Requests.VCPUs != 4 || body.Resources.Limits.VCPUs != 8 || body.Resources.Requests.Memory != 4096 || body.Resources.Limits.Memory != 16384 || body.Resources.Requests.DiskGiB != 100 {
+		if body.Resources.Requests.VCPUs != 2 || body.Resources.Limits.VCPUs != 8 || body.Resources.Requests.Memory != 4096 || body.Resources.Limits.Memory != 16384 || body.Resources.Requests.DiskGiB != 100 {
 			t.Errorf("wrong default resources: %+v", body.Resources)
 		}
 		keys = append(keys, r.Header.Get("Idempotency-Key"))
