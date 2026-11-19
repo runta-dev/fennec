@@ -137,7 +137,56 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		return client.call(ctx, params.Method, params.Path, body)
 	}
-	go (&boardQueue{s: s, c: c, board: client}).run(ctx)
+	c.Additional["account.organizations"] = func(ctx context.Context, _ json.RawMessage) (any, error) {
+		return s.account.Organizations(ctx)
+	}
+	queue := &boardQueue{s: s, c: c, board: client}
+	// sessions.start opens a session on the cloud computer from the desktop
+	// window's New session: no Mac folder, optionally in a project.
+	c.Additional["sessions.start"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Agent   string `json:"agent"`
+			Model   string `json:"model"`
+			Project string `json:"project"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(raw, &params) != nil || !board.Agents[params.Agent] || len(params.Message) > 16000 || len(params.Model) > 80 || strings.ContainsAny(params.Model, "\x00\r\n") {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid session"}
+		}
+		message := strings.TrimSpace(params.Message)
+		if params.Project != "" {
+			p, err := queue.project(ctx, params.Project)
+			if err != nil {
+				return nil, &control.Fault{Code: "not_found", Message: "Project not found"}
+			}
+			intro := fmt.Sprintf("You are working in the %s project", p.Name)
+			if p.Repository != "" {
+				intro += fmt.Sprintf(" (github.com/%s; use a checkout under ~/repos/%s, cloning it if missing)", p.Repository, p.Repository)
+			}
+			intro += fmt.Sprintf(". What earlier agents learned about it is in ~/.fen/board/projects/%s/knowledge/.", p.ID)
+			if message == "" {
+				message = intro + " Wait for instructions."
+			} else {
+				message = intro + "\n\n" + message
+			}
+		}
+		id, err := sessionid.Allocate(s.home)
+		if err != nil {
+			return nil, err
+		}
+		var arguments []string
+		if message != "" {
+			arguments = launchArguments(board.Worker{Agent: params.Agent, Model: params.Model}, message)
+		} else if params.Model != "" {
+			arguments = launchArguments(board.Worker{Agent: params.Agent, Model: params.Model}, "")
+			arguments = arguments[:len(arguments)-1]
+		}
+		if err = queue.launch(ctx, id, params.Agent, arguments); err != nil {
+			return nil, &control.Fault{Code: "launch_failed", Message: "The session could not start", Retryable: true}
+		}
+		return map[string]string{"session_id": id}, nil
+	}
+	go queue.run(ctx)
 }
 
 // boardQueue hands queued requests to agents: a new session through the
@@ -213,7 +262,7 @@ func (q *boardQueue) liveSessions(ctx context.Context) map[string]bool {
 		return live
 	}
 	for _, terminal := range listing.Terminals {
-		if id := terminal.Labels["fennec.session"]; id != "" && terminal.State != "finished" && terminal.State != "exited" {
+		if id := terminal.Labels["fennec.session"]; id != "" && terminal.State == "live" {
 			live[id] = true
 		}
 	}
@@ -233,13 +282,13 @@ func (q *boardQueue) take(ctx context.Context, project board.QueueProject, reque
 		if text.Len() == 0 {
 			return false
 		}
-		fmt.Fprintf(&text, "Answer with `fen reply %s-%d` when you are done.", project.Key, request.Number)
+		fmt.Fprintf(&text, "Answer with `%s reply %s-%d` when you are done.", boardCommand, project.Key, request.Number)
 		if status, _, err := q.board.do(ctx, http.MethodPost, path+"/claim", map[string]string{"session": request.Session, "agent": request.Agent}); err != nil || status != http.StatusOK {
 			return false
 		}
 		message := text.String()
 		if len(message) > 16000 {
-			message = message[:16000] + fmt.Sprintf("\n\n(Cut short; `fen request %s-%d` has the whole thread.)", project.Key, request.Number)
+			message = message[:16000] + fmt.Sprintf("\n\n(Cut short; `%s request %s-%d` has the whole thread.)", boardCommand, project.Key, request.Number)
 		}
 		params, _ := json.Marshal(controlplane.SessionParams{SessionID: request.Session, Text: message})
 		if _, err := q.c.Handlers()["sessions.send"](ctx, params); err != nil {
@@ -330,6 +379,10 @@ func launchArguments(worker board.Worker, message string) []string {
 	return append(arguments, message)
 }
 
+// boardCommand answers and reads requests on the cloud computer, where the
+// resident binary is installed (there is no `fen` there).
+const boardCommand = "~/.local/fennec/bin/fennec-terminal"
+
 // firstMessage is what a new session for a request is asked to do.
 func firstMessage(p board.Project, request board.Request, agent string) string {
 	ref := fmt.Sprintf("%s-%d", p.Key, request.Number)
@@ -340,8 +393,8 @@ func firstMessage(p board.Project, request board.Request, agent string) string {
 	if p.Repository != "" {
 		fmt.Fprintf(&b, "- The code is github.com/%s. Use a checkout under ~/repos/%s (clone it if missing).\n", p.Repository, p.Repository)
 	}
-	fmt.Fprintf(&b, "- When you have a result, a question, or something for the person to check, answer with `fen reply %s \"...\"` (or `fen reply %s -` with the text on standard input). Replying hands the request back to them; their next reply reaches you here.\n", ref, ref)
-	fmt.Fprintf(&b, "- `fen request %s` prints the whole thread.\n", ref)
+	fmt.Fprintf(&b, "- When you have a result, a question, or something for the person to check, answer with `%s reply %s \"...\"` (or `%s reply %s -` with the text on standard input). Replying hands the request back to them; their next reply reaches you here.\n", boardCommand, ref, boardCommand, ref)
+	fmt.Fprintf(&b, "- `%s request %s` prints the whole thread.\n", boardCommand, ref)
 	fmt.Fprintf(&b, "- Record what a later agent should know about this project (architecture, runbooks, decisions, terms) as OKF concepts: markdown files under ~/.fen/board/projects/%s/knowledge/<section>/<name>.md with YAML front matter (type, title, description, tags, sources: [%s], generated: {by: %s, at: <UTC time>}, status: draft). Keep each to one idea.\n", p.ID, ref, agent)
 	return b.String()
 }

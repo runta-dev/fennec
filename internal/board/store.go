@@ -1,7 +1,7 @@
 // Package board keeps projects, their requests and agent-written knowledge on
 // the cloud computer, under ~/.fen/board. People post requests from Fennec;
 // the Mac daemon hands queued requests to agents (see docs/desktop-app.md);
-// agents answer with `fen reply`.
+// agents answer with `fennec-terminal reply`.
 package board
 
 import (
@@ -132,7 +132,7 @@ func (s Store) requestPath(id string, n int) string {
 	return filepath.Join(s.projectDir(id), "requests", strconv.Itoa(n)+".json")
 }
 
-// lock serializes writers: the Mac, the iPhone and agents' `fen reply`.
+// lock serializes writers: the Mac, the iPhone and agents. `fennec-terminal reply`.
 func (s Store) lock() (func(), error) {
 	if err := os.MkdirAll(s.root(), 0700); err != nil {
 		return nil, err

@@ -333,3 +333,42 @@ func (m *Manager) me(ctx context.Context, token, endpoint string, epoch uint64) 
 	m.meMu.Unlock()
 	return result, nil
 }
+
+// Organization is one of the signed-in user's Runta organizations.
+type Organization struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Current bool   `json:"current"`
+}
+
+// Organizations lists the user's Runta organizations, for the desktop
+// window's organization switcher.
+func (m *Manager) Organizations(parent context.Context) ([]Organization, error) {
+	ctx, token, epoch, done, err := m.queryContext(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	response, err := m.get(ctx, token, strings.TrimRight(strings.TrimSpace(m.Endpoint()), "/")+"/v2/organizations", epoch)
+	if err != nil {
+		return nil, err
+	}
+	rows, _ := response["data"].([]any)
+	organizations := []Organization{}
+	for _, item := range rows {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := row["id"].(string)
+		name, _ := row["name"].(string)
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		if strings.TrimSpace(name) == "" {
+			name, _ = row["slug"].(string)
+		}
+		organizations = append(organizations, Organization{ID: id, Name: name, Current: row["current"] == true})
+	}
+	return organizations, nil
+}

@@ -8,17 +8,18 @@ import (
 	"strings"
 )
 
-// Command runs `fen reply` and `fen request` for agents on the cloud computer.
+// Command runs `fennec-terminal reply` and `fennec-terminal request` for agents
+// on the cloud computer (~/.local/fennec/bin/fennec-terminal).
 //
-//	fen request FEN-42                 print the request and its thread
-//	fen reply FEN-42 "Fixed: …"       answer; the request then needs the person
-//	fen reply FEN-42 -                 read the answer from standard input
+//	fennec-terminal request FEN-42            print the request and its thread
+//	fennec-terminal reply FEN-42 "Fixed: …"  answer; the request then needs the person
+//	fennec-terminal reply FEN-42 -            read the answer from standard input
 func Command(home, name string, args []string, stdin io.Reader, out io.Writer) error {
 	s := Store{Home: home}
 	switch name {
 	case "request":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: fen request KEY-n")
+			return fmt.Errorf("usage: fennec-terminal request KEY-n")
 		}
 		p, n, err := s.Find(args[0])
 		if err != nil {
@@ -35,7 +36,7 @@ func Command(home, name string, args []string, stdin io.Reader, out io.Writer) e
 		flags.SetOutput(io.Discard)
 		agent := flags.String("agent", "", "agent answering (defaults to the request's agent)")
 		if err := flags.Parse(args); err != nil || flags.NArg() != 2 {
-			return fmt.Errorf("usage: fen reply [--agent name] KEY-n message|-")
+			return fmt.Errorf("usage: fennec-terminal reply [--agent name] KEY-n message|-")
 		}
 		p, n, err := s.Find(flags.Arg(0))
 		if err != nil {
@@ -71,7 +72,7 @@ func Command(home, name string, args []string, stdin io.Reader, out io.Writer) e
 }
 
 // Thread is a request as plain text: what an agent is given to work on and
-// what `fen request` prints.
+// what `fennec-terminal request` prints.
 func Thread(p Project, r Request) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s-%d: %s\n", p.Key, r.Number, r.Title)

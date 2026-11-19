@@ -53,7 +53,7 @@ func run() error {
 	for _, method := range schema.Methods {
 		supported[method] = true
 	}
-	pattern := regexp.MustCompile(`\b(?:call|mutate)\("([a-z][a-z0-9.-]+)"`)
+	pattern := regexp.MustCompile(`\b(?:call|mutate|controlMethod)\("([a-z][a-z0-9.-]+)"`)
 	missing := map[string]bool{}
 	for _, path := range os.Args[2:] {
 		data, err := os.ReadFile(path)

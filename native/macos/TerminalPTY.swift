@@ -7,7 +7,7 @@ final class TerminalPTY {
     private var master: FileHandle?
     private var slave: FileHandle?
 
-    func start(executable: URL, arguments: [String], cols: UInt16, rows: UInt16,
+    func start(executable: URL, arguments: [String], directory: URL? = nil, cols: UInt16, rows: UInt16,
                output: @escaping (Data) -> Void, exited: @escaping (Int32) -> Void) throws {
         guard master == nil, cols > 0, rows > 0 else {
             throw NSError(domain: "Fennec.Terminal", code: 1)
@@ -23,6 +23,7 @@ final class TerminalPTY {
         master = reader; slave = terminal
         process.executableURL = executable
         process.arguments = arguments
+        if let directory { process.currentDirectoryURL = directory }
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         process.environment = env

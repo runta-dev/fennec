@@ -12,7 +12,7 @@ func TestBoardLaunchMessage(t *testing.T) {
 	request := board.Request{Number: 42, Title: "Queues overflow", Tag: "bug", Status: board.Working,
 		Messages: []board.Message{{ID: 1, Author: "shiqi", Body: "On iPhone it scrolls sideways."}}}
 	message := firstMessage(p, request, "claude")
-	for _, want := range []string{"FEN-42: Queues overflow", "Tag: Bug", "On iPhone it scrolls sideways.", "~/repos/runta-dev/fennec", "fen reply FEN-42", "projects/fennec/knowledge/", "by: claude"} {
+	for _, want := range []string{"FEN-42: Queues overflow", "Tag: Bug", "On iPhone it scrolls sideways.", "~/repos/runta-dev/fennec", "fennec-terminal reply FEN-42", "projects/fennec/knowledge/", "by: claude"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("first message lacks %q:\n%s", want, message)
 		}

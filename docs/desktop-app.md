@@ -155,8 +155,8 @@ The first message tells the agent the request (`KEY-n`, title, thread),
 the project's repository, and how to answer:
 
 ```sh
-fen reply FEN-42 "Fixed: narrow screens no longer scroll sideways."   # status becomes Needs you
-fen request FEN-42                                                     # read the thread
+~/.local/fennec/bin/fennec-terminal reply FEN-42 "Fixed: narrow screens no longer scroll sideways."   # status becomes Needs you
+~/.local/fennec/bin/fennec-terminal request FEN-42                                                     # read the thread
 ```
 
 Agents record what they learn as OKF concepts in the project's knowledge
@@ -164,6 +164,17 @@ folder (`type` required; `generated.by` set to the agent; `status: draft`).
 People review them in Knowledge.
 
 ## The window and the menu bar
+
+Implementation: `native/macos/DesktopWindow.swift` (window, bridge, terminal
+tabs) and `native/macos/UI/desktop.{html,js,css}` (the page, ported from the
+mockup). The page calls only these control methods, relayed by the window:
+`board.call`, `sessions.start` (a session on the cloud computer with no Mac
+folder, optionally with a project's context and a first message),
+`account.organizations` (the Runta organizations for the switcher) and
+`sessions.refresh`. The menu bar app pushes the account, language and
+session list it already polls. The window has no title bar: the page reports
+which strips drag it, and the traffic lights sit on the sidebar's title row.
+
 
 - The app stays a menu bar app. Opening the window (panel button, menu bar
   right-click *Open Fennec*, or clicking the Dock icon while it is shown) makes

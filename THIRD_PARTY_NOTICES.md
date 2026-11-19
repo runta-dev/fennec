@@ -35,6 +35,8 @@ Auto-updater background staging, non-`.app` payload staging, and quiet header pi
 
 - `@xterm/xterm` 5.5.0, MIT; license: `native/macos/UI/vendor/xterm-LICENSE`.
 - `@xterm/addon-fit` 0.10.0, MIT; license: `native/macos/UI/vendor/addon-fit-LICENSE`.
+- `@xterm/addon-webgl` 0.18.0, MIT; license: `native/macos/UI/vendor/addon-webgl-LICENSE` (desktop window renderer).
+- `@xterm/addon-unicode11` 0.8.0, MIT; license: `native/macos/UI/vendor/addon-unicode11-LICENSE`.
 - Distributed locally in the app; no CDN scripts are loaded.
 
 ## OpenAI Codex
