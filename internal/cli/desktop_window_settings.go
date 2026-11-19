@@ -13,12 +13,13 @@ import (
 )
 
 type desktopWindowPreferences struct {
-	Revision uint64 `json:"revision"`
-	Theme    string `json:"theme"`
-	Language string `json:"language"`
-	FontSize int    `json:"font_size"`
-	PaddingX int    `json:"padding_x"`
-	PaddingY int    `json:"padding_y"`
+	NotificationSounds bool   `json:"notification_sounds"`
+	Revision           uint64 `json:"revision"`
+	Theme              string `json:"theme"`
+	Language           string `json:"language"`
+	FontSize           int    `json:"font_size"`
+	PaddingX           int    `json:"padding_x"`
+	PaddingY           int    `json:"padding_y"`
 }
 type desktopWindowSettings struct {
 	mu    sync.Mutex
@@ -27,8 +28,8 @@ type desktopWindowSettings struct {
 }
 
 func newDesktopWindowSettings(home string) *desktopWindowSettings {
-	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{Theme: "system", Language: "system", FontSize: 14, PaddingX: 14, PaddingY: 12}}
-	var saved desktopWindowPreferences
+	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{NotificationSounds: true, Theme: "system", Language: "system", FontSize: 14, PaddingX: 14, PaddingY: 12}}
+	saved := s.value
 	if data, err := os.ReadFile(s.path); err == nil && json.Unmarshal(data, &saved) == nil && validDesktopWindowPreferences(saved) {
 		s.value = saved
 	}
@@ -44,12 +45,13 @@ func (s *desktopWindowSettings) get() desktopWindowPreferences {
 }
 func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (any, error) {
 	var p struct {
-		ExpectedRevision *uint64 `json:"expected_revision"`
-		Theme            *string `json:"theme"`
-		Language         *string `json:"language"`
-		FontSize         *int    `json:"font_size"`
-		PaddingX         *int    `json:"padding_x"`
-		PaddingY         *int    `json:"padding_y"`
+		NotificationSounds *bool   `json:"notification_sounds"`
+		ExpectedRevision   *uint64 `json:"expected_revision"`
+		Theme              *string `json:"theme"`
+		Language           *string `json:"language"`
+		FontSize           *int    `json:"font_size"`
+		PaddingX           *int    `json:"padding_x"`
+		PaddingY           *int    `json:"padding_y"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -65,6 +67,9 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 		return nil, err
 	}
 	next := s.value
+	if p.NotificationSounds != nil {
+		next.NotificationSounds = *p.NotificationSounds
+	}
 	if p.Theme != nil {
 		next.Theme = *p.Theme
 	}
@@ -107,6 +112,7 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 }
 func installDesktopWindowSettings(home string, c *controlplane.Controller) {
 	s := newDesktopWindowSettings(home)
+	installDesktopActivity(home, c, s)
 	c.Additional["desktop.settings.get"] = func(context.Context, json.RawMessage) (any, error) { return s.get(), nil }
 	c.Additional["desktop.settings.set"] = s.set
 }

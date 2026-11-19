@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Preferences {
+    pub notification_sounds: bool,
     pub revision: u64,
     pub theme: String,
     pub language: String,
@@ -21,6 +22,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            notification_sounds: true,
             revision: 0,
             theme: "system".into(),
             language: "system".into(),
@@ -272,6 +274,24 @@ impl FennecWindow {
                             )
                             .child(
                                 card()
+                                    .child(row(
+                                        t("notification_sounds"),
+                                        h_flex()
+                                            .gap(px(2.0))
+                                            .child(choice(
+                                                "sounds-on",
+                                                t("on"),
+                                                p.notification_sounds,
+                                                json!({"notification_sounds":true}),
+                                            ))
+                                            .child(choice(
+                                                "sounds-off",
+                                                t("off"),
+                                                !p.notification_sounds,
+                                                json!({"notification_sounds":false}),
+                                            ))
+                                            .into_any_element(),
+                                    ))
                                     .child(row(
                                         t("app_appearance"),
                                         h_flex()

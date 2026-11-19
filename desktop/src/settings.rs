@@ -3,7 +3,7 @@
 //! The palettes, the derived chrome colors and the font handling are
 //! herdr-app's (src/settings.rs, Apache-2.0), kept as they are so terminals
 //! draw exactly as in Herdr. Fennec has no settings.json or layouts: the
-//! theme follows the system appearance (Herdr's graphite / paper) with
+//! theme follows the system appearance (Herdr's Ink Dark / Paper) with
 //! Runta orange as the accent.
 
 use crate::vt::Rgb;
@@ -26,15 +26,15 @@ struct Palette {
 
 const DARK_STATUS: Option<[u32; 3]> = Some([0xe5c07b, 0xf0705f, 0x76a8ff]);
 
-const GRAPHITE: Palette = Palette {
-    background: 0x17191d,
-    foreground: 0xd2d4d9,
-    selection: 0x394454,
+const INK: Palette = Palette {
+    background: 0x111720,
+    foreground: 0xcdd6e4,
+    selection: 0x344861,
     cursor: None,
     status: DARK_STATUS,
     ansi: [
-        0x45484f, 0xdc8c95, 0xa6bd91, 0xd8be87, 0x96b2d7, 0xb5a2ce, 0x8cbdc3, 0xd2d4d9, 0x818793,
-        0xf0a5ad, 0xbad5a2, 0xead2a1, 0xb0cbef, 0xcbb7e6, 0xa4d5db, 0xf0f0f2,
+        0x414b5a, 0xe58c9a, 0x89c5aa, 0xd9be82, 0x91b6ee, 0xb9a0e2, 0x85c4d0, 0xcdd6e4, 0x7f91a7,
+        0xf5a5b2, 0xa5dec3, 0xedd39c, 0xaccbfa, 0xd0b7f4, 0xa0dce5, 0xf0f5fc,
     ],
 };
 
@@ -273,7 +273,21 @@ pub fn rgb(s: &str) -> Rgb {
 }
 
 fn theme_for(dark: bool) -> Theme {
-    resolve(if dark { &GRAPHITE } else { &PAPER }, &fennec_colors(dark))
+    let mut theme = resolve(if dark { &INK } else { &PAPER }, &fennec_colors(dark));
+    if dark {
+        for (alias, role) in [
+            ("f_bg", "chrome"),
+            ("f_card", "raised"),
+            ("f_expanded", "popover"),
+            ("f_text", "foreground"),
+            ("f_muted", "muted"),
+            ("f_line", "border"),
+            ("f_field", "input"),
+        ] {
+            theme.insert(alias.into(), theme[role].clone());
+        }
+    }
+    theme
 }
 
 thread_local! {

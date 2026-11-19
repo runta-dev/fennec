@@ -2,6 +2,8 @@
 //! open project (requests beside a thread) or session (herdr-app's terminal)
 //! on the right.
 
+mod activity;
+
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
 use crate::i18n::t;
@@ -40,6 +42,10 @@ struct NewProject {
 }
 
 pub struct FennecWindow {
+    activity_send: Option<async_channel::Sender<(serde_json::Value, Arc<Core>)>>,
+    activity_input: serde_json::Value,
+    activity: serde_json::Value,
+    agent_notices: Vec<serde_json::Value>,
     core: Option<Arc<Core>>,
     core_error: Option<String>,
     events: Option<EventLines>,
@@ -171,6 +177,10 @@ impl FennecWindow {
         // (over SSH from a Mac, a second or more), and sessions appear with it.
         let (core, core_error): (Option<Arc<Core>>, Option<String>) = (None, None);
         let mut this = FennecWindow {
+            activity_send: None,
+            activity_input: serde_json::Value::Null,
+            activity: serde_json::Value::Null,
+            agent_notices: Vec::new(),
             core,
             core_error,
             events: None,
@@ -214,6 +224,7 @@ impl FennecWindow {
         };
         if !crate::preview::active() {
             this.apply_desktop_preferences(window, cx);
+            this.start_activity(window, cx);
         }
         if crate::preview::active() {
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
@@ -371,10 +382,17 @@ impl FennecWindow {
             while let Ok(item) = stream.recv().await {
                 let gone = matches!(item, Stream::Closed(_) | Stream::Lost);
                 let ok = this.update_in(cx, |this, window, cx| {
-                    if let (Stream::Data(bytes), Some(events)) = (&item, this.events.as_mut()) {
+                    if let Stream::Data(bytes) = &item {
                         core.credit(channel, bytes.len());
-                        if events.push(bytes).terminals {
-                            this.terminals_changed(window, cx);
+                        // Preserve intermediate status transitions even within one transport frame.
+                        for line in bytes.split_inclusive(|b| *b == b'\n') {
+                            if this
+                                .events
+                                .as_mut()
+                                .is_some_and(|events| events.push(line).terminals)
+                            {
+                                this.terminals_changed(window, cx);
+                            }
                         }
                     }
                     if gone {
@@ -412,6 +430,7 @@ impl FennecWindow {
             }
         }
 
+        self.queue_activity(window);
         crate::mods::publish_terminals(live["terminals"].clone());
         self.sessions = sessions::from_terminals(
             live["terminals"]
@@ -419,6 +438,7 @@ impl FennecWindow {
                 .map(Vec::as_slice)
                 .unwrap_or_default(),
         );
+        self.apply_activity();
         if let Some(Route::Session(a)) = &self.route
             && self.confirmed_session.as_ref() != Some(a)
             && !a.starts_with("local:")
@@ -1586,7 +1606,13 @@ impl FennecWindow {
         let org_switcher = self.org_switcher(cx);
         let now = sessions::now_ms();
         let mut groups = Vec::new();
-        for state in [State::NeedsYou, State::Working, State::Idle] {
+        for state in [
+            State::NeedsYou,
+            State::Done,
+            State::Working,
+            State::Idle,
+            State::Unknown,
+        ] {
             let list: Vec<&Session> = self
                 .sessions
                 .iter()
@@ -1627,13 +1653,13 @@ impl FennecWindow {
                                 .relative()
                                 .size(px(16.0))
                                 .flex_none()
-                                .child(ui::agent_icon(&s.agent, 16.0))
+                                .child(self.program_icon(&s.address, &s.agent, 16.0))
                                 .child(
                                     div()
                                         .absolute()
                                         .right(px(-1.0))
                                         .bottom(px(-1.0))
-                                        .child(ui::status_dot(s.state)),
+                                        .child(self.group_activity_mark(&s.address)),
                                 ),
                         )
                         .child(div().flex_1().min_w_0().truncate().child({
@@ -2416,12 +2442,17 @@ impl FennecWindow {
                     this.pending_focus = Some(open_key.clone());
                     cx.notify();
                 }))
-                .child(ui::icon("term", 14.0, c("f_muted")))
+                .child(self.program_icon(a, "shell", 14.0))
+                .child(self.activity_mark(a))
                 .child(
-                    self.shell_names
-                        .get(a)
-                        .cloned()
-                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null)),
+                    self.program_name(
+                        a,
+                        &(self
+                            .shell_names
+                            .get(a)
+                            .cloned()
+                            .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))),
+                    ),
                 )
                 .child(
                     div()
@@ -2475,8 +2506,11 @@ impl FennecWindow {
                                     this.pending_focus = Some(back.clone());
                                     cx.notify();
                                 }))
-                                .child(ui::agent_icon(&s.agent, 14.0))
-                                .child(sessions::agent_name(&s.agent).to_owned()),
+                                .child(self.program_icon(&s.address, &s.agent, 14.0))
+                                .child(self.activity_mark(&s.address))
+                                .child(
+                                    self.program_name(&s.address, sessions::agent_name(&s.agent)),
+                                ),
                         )
                     })
                     .children(shell_tabs)
@@ -2714,6 +2748,7 @@ impl Render for FennecWindow {
                         )
                     }),
             )
+            .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
             .when(self.prefix || self.close_others.is_some(), |d| {

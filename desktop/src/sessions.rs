@@ -6,8 +6,10 @@ use serde_json::Value;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum State {
     NeedsYou,
+    Done,
     Working,
     Idle,
+    Unknown,
 }
 
 impl State {
@@ -16,6 +18,8 @@ impl State {
             State::NeedsYou => "needs_you",
             State::Working => "working",
             State::Idle => "idle",
+            State::Done => "done",
+            State::Unknown => "sessions",
         })
     }
 }
@@ -41,21 +45,17 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
         .filter_map(|t| {
             let labels = &t["labels"];
             let name = labels["fennec.session"].as_str()?.to_owned();
-            let agent = labels["fennec.agent"]
+            let agent = t["status"]["app"]
                 .as_str()
+                .filter(|s| !s.is_empty())
                 .map(str::to_owned)
-                .or_else(|| t["status"]["app"].as_str().map(str::to_owned))
-                .unwrap_or_default();
-            let agent = if agent == "shell" {
-                shell_name(t)
-            } else {
-                agent
-            };
+                .unwrap_or_else(|| shell_name(t));
             let directory = terminal_directory(t);
             let state = match t["status"]["state"].as_str().unwrap_or_default() {
-                "blocked" => State::NeedsYou,
+                "blocked" | "error" => State::NeedsYou,
                 "working" => State::Working,
-                _ => State::Idle,
+                "idle" | "done" => State::Idle,
+                _ => State::Unknown,
             };
             // Agents put a spinner or a mark before their title ("✳ Fix login").
             let title = t["title"]

@@ -58,3 +58,18 @@ is 14 px horizontally and 12 px vertically, matching the installed Herdr
 Monochrome Pi, OpenCode, Cursor and xAI SVGs are copied from the installed
 Herdr icon library and tinted with the active text color so they remain visible
 in both appearances; their LobeHub license is in `licenses/LobeHub-icons.txt`.
+
+## Program identity and attention
+
+The Ink Dark palette and derived chrome tokens match the pinned upstream.
+`assets/programs/` copies its `defaults/icons/` and workspace spinner. The program
+catalog and bundled notification audio are copied into `internal/desktopactivity/assets/`.
+The Go adapter follows upstream `programs.rs` resolution and `model.rs` attention
+rules, with native event delivery, shared `herdr.seen` acknowledgements and clickable
+notifications. Shell titles never determine agent identity. The daemon is local;
+recognition does not require cloud availability or model inference.
+
+Desktop notification sounds have their own switch in desktop settings. Optional
+custom files are configured by `~/.config/fennec/desktop-sounds.json` (`done`,
+`blocked`, paths relative to the Fennec configuration directory or absolute).
+Missing or unplayable custom files fall back to the bundled Herdr sounds.
