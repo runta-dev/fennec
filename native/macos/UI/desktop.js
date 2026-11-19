@@ -264,52 +264,49 @@ function sessionView(s) {
 const terminals = new Map();
 const pool = document.createElement('div');
 pool.hidden = true;
+// Terminals are Ghostty's emulator (ghostty-web: the libghostty-vt core that
+// herdr desktop also uses, compiled to WebAssembly) with herdr's defaults:
+// JetBrains Mono 14 at weight 500, line height 1, Graphite/Paper colors.
+const ghostty = window.GhosttyWeb ? GhosttyWeb.init() : Promise.reject(new Error('ghostty-web missing'));
 function terminalFor(key, kind, session) {
   let t = terminals.get(key);
   if (t) return t;
   const el = document.createElement('div');
   el.className = 'term';
-  // Drawn like a native terminal: SF Mono 13 on the GPU (as herdr looks in
-  // Terminal or Ghostty), with Unicode 11 widths for CJK and emoji.
-  const term = new Terminal({ fontSize: 13, lineHeight: 1.15, fontFamily: '"SF Mono", Menlo, Monaco, monospace', fontWeight: '400', fontWeightBold: '600',
-    cursorBlink: true, cursorStyle: 'block', scrollback: 10000, allowProposedApi: true, drawBoldTextInBrightColors: false, macOptionIsMeta: true, theme: termTheme() });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
-  if (window.Unicode11Addon) { term.loadAddon(new Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = '11'; }
-  t = { el, term, fit, open: false, ended: false };
+  t = { el, term: null, fit: null, open: false, ended: false, queued: [] };
   terminals.set(key, t);
   pool.append(el);
-  term.open(el);
-  if (window.WebglAddon) {
-    try {
-      const webgl = new WebglAddon.WebglAddon();
-      // A lost GPU context falls back to the DOM renderer.
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch (_) {}
-  }
-  window.installTerminalLinks?.(term, (url) => post({ action: 'open-url', url }));
-  term.onData((data) => { if (t.open) post({ action: 'term-input', key, data }); });
-  term.onResize(({ cols, rows }) => { if (t.open) post({ action: 'term-resize', key, cols, rows }); });
-  new ResizeObserver(() => { if (el.isConnected && el.offsetWidth) fit.fit(); }).observe(el);
-  requestAnimationFrame(() => {
-    fit.fit();
-    t.open = true;
-    post({ action: 'term-open', key, kind, session, cols: term.cols, rows: term.rows });
-  });
+  ghostty.then(() => {
+    if (terminals.get(key) !== t) return;
+    const term = new GhosttyWeb.Terminal({ fontSize: 14, fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace', cursorBlink: true, cursorStyle: 'block', scrollback: 10000, theme: termTheme() });
+    const fit = new GhosttyWeb.FitAddon();
+    term.loadAddon(fit);
+    term.open(el);
+    t.term = term; t.fit = fit;
+    try { window.installTerminalLinks?.(term, (url) => post({ action: 'open-url', url })); } catch (_) {}
+    term.onData((data) => { if (t.open) post({ action: 'term-input', key, data }); });
+    term.onResize(({ cols, rows }) => { if (t.open) post({ action: 'term-resize', key, cols, rows }); });
+    new ResizeObserver(() => { if (el.isConnected && el.offsetWidth) fit.fit(); }).observe(el);
+    requestAnimationFrame(() => {
+      fit.fit();
+      t.open = true;
+      post({ action: 'term-open', key, kind, session, cols: term.cols, rows: term.rows });
+      if (el.isConnected) term.focus();
+    });
+  }, () => { t.ended = true; });
   return t;
 }
-// Terminal.app's palette, so agents look as they do in a native terminal.
+// herdr's Graphite (dark) and Paper (light) palettes (herdr-app, Apache-2.0).
 const termTheme = () => dark()
-  ? { background: '#1b1c20', foreground: '#e6e6e9', cursor: '#e6e6e9', cursorAccent: '#1b1c20', selectionBackground: '#3f638b',
-    black: '#000000', red: '#ff5f57', green: '#5fc081', yellow: '#e5c07b', blue: '#6aa7ff', magenta: '#c678dd', cyan: '#56b6c2', white: '#d0d0d4',
-    brightBlack: '#7c7c86', brightRed: '#ff7b72', brightGreen: '#7ee2a2', brightYellow: '#f0d58c', brightBlue: '#8cbcff', brightMagenta: '#d7a0e8', brightCyan: '#7fd0da', brightWhite: '#ffffff' }
-  : { background: '#ffffff', foreground: '#1c1c21', cursor: '#1c1c21', cursorAccent: '#ffffff', selectionBackground: '#b4d5fe',
-    black: '#000000', red: '#c91b00', green: '#00a600', yellow: '#a68a00', blue: '#0225c7', magenta: '#ca30c7', cyan: '#00a5b2', white: '#bfbfbf',
-    brightBlack: '#686868', brightRed: '#ff6e67', brightGreen: '#3fb950', brightYellow: '#c9a227', brightBlue: '#4f6ff0', brightMagenta: '#d75fd7', brightCyan: '#19b8c8', brightWhite: '#e6e6e6' };
+  ? { background: '#17191d', foreground: '#d2d4d9', cursor: '#d2d4d9', cursorAccent: '#17191d', selectionBackground: '#394454',
+    black: '#45484f', red: '#dc8c95', green: '#a6bd91', yellow: '#d8be87', blue: '#96b2d7', magenta: '#b5a2ce', cyan: '#8cbdc3', white: '#d2d4d9',
+    brightBlack: '#818793', brightRed: '#f0a5ad', brightGreen: '#bad5a2', brightYellow: '#ead2a1', brightBlue: '#b0cbef', brightMagenta: '#cbb7e6', brightCyan: '#a4d5db', brightWhite: '#f0f0f2' }
+  : { background: '#ffffff', foreground: '#25272c', cursor: '#25272c', cursorAccent: '#ffffff', selectionBackground: '#cfdcf5',
+    black: '#25272c', red: '#c62a2a', green: '#1a7f37', yellow: '#8f5d00', blue: '#1f62d0', magenta: '#7a45c8', cyan: '#0f6f74', white: '#5f6068',
+    brightBlack: '#7b7e87', brightRed: '#d1242f', brightGreen: '#1f883d', brightYellow: '#9a6700', brightBlue: '#0969da', brightMagenta: '#8250df', brightCyan: '#1b7c83', brightWhite: '#111214' };
 window.termOutput = (key, base64) => {
   const t = terminals.get(key);
-  if (!t) return;
+  if (!t?.term) return;
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   t.term.write(bytes, () => post({ action: 'term-credit', key, bytes: bytes.length }));
 };
@@ -317,13 +314,13 @@ window.termEnded = (key, failed) => {
   const t = terminals.get(key);
   if (!t) return;
   t.open = false; t.ended = true;
-  t.term.write(`\r\n\x1b[2m${failed ? T('terminal_failed') : T('terminal_closed')}\x1b[0m\r\n`);
+  t.term?.write(`\r\n\x1b[2m${failed ? T('terminal_failed') : T('terminal_closed')}\x1b[0m\r\n`);
 };
 function closeTerminal(key) {
   const t = terminals.get(key);
   if (!t) return;
   post({ action: 'term-close', key });
-  t.term.dispose(); t.el.remove();
+  t.term?.dispose(); t.el.remove();
   terminals.delete(key);
 }
 function mountTerminal() {
@@ -335,7 +332,7 @@ function mountTerminal() {
   const key = `${s.id}:${tab.id}`;
   const term = terminalFor(key, tab.shell ? 'shell' : 'agent', s.id);
   slot.append(term.el);
-  requestAnimationFrame(() => { term.fit.fit(); term.term.focus(); });
+  requestAnimationFrame(() => { term.fit?.fit(); term.term?.focus(); });
 }
 
 // ---------- settings ----------
@@ -765,7 +762,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { for (const t of terminals.values()) t.term.options.theme = termTheme(); render(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { for (const t of terminals.values()) if (t.term) t.term.options.theme = termTheme(); render(); });
 
 render();
 post({ action: 'ready' });

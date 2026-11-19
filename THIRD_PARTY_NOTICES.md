@@ -31,12 +31,15 @@ Detection behavior references `internal/agent/agent.go` (Detected/binAt),
 `kimi.go`, `devin.go` and `grok.go`; Fennec uses its own metadata-only detector.
 Auto-updater background staging, non-`.app` payload staging, and quiet header pill interaction in `internal/updater/` and `native/macos/UI/updater.js` are adapted from Magpie's updater design under the MIT license.
 
+## ghostty-web terminal (desktop window)
+
+- `ghostty-web` 0.4.0 (Coder; Ghostty's terminal emulator compiled to WebAssembly), MIT; license: `native/macos/UI/vendor/ghostty-web-LICENSE`.
+- Distributed locally in the app (the WebAssembly is inside the script); no CDN scripts are loaded.
+
 ## xterm.js terminal renderer
 
 - `@xterm/xterm` 5.5.0, MIT; license: `native/macos/UI/vendor/xterm-LICENSE`.
 - `@xterm/addon-fit` 0.10.0, MIT; license: `native/macos/UI/vendor/addon-fit-LICENSE`.
-- `@xterm/addon-webgl` 0.18.0, MIT; license: `native/macos/UI/vendor/addon-webgl-LICENSE` (desktop window renderer).
-- `@xterm/addon-unicode11` 0.8.0, MIT; license: `native/macos/UI/vendor/addon-unicode11-LICENSE`.
 - Distributed locally in the app; no CDN scripts are loaded.
 
 ## OpenAI Codex

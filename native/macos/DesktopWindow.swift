@@ -272,37 +272,69 @@ final class DesktopWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, W
     }
 }
 
-// `fen attach` asks its terminal for colors, cell size and attributes when it
-// starts and waits 100 ms (internal/launcher/display.go). Through the page
-// the answer can come later, and then reaches the agent as typed text. The
-// window answers that first query itself, with the colors the page uses,
-// and the page never sees it.
+// Agents ask their terminal for its colors (OSC 10/11/12 "?"), and `fen
+// attach` asks for colors, cell size and attributes when it starts and waits
+// only 100 ms (internal/launcher/display.go). Answered by the page, the reply
+// can arrive late and then reaches the agent as typed text ("10;rgb:...").
+// The window answers these itself, at once, with the colors the page uses
+// (herdr's Graphite and Paper), and the page never sees the questions.
 final class DisplayProbe {
-    private static let query = Data("\u{1b}]10;?\u{1b}\\\u{1b}]11;?\u{1b}\\\u{1b}]12;?\u{1b}\\\u{1b}[16t\u{1b}[c".utf8)
-    private let reply: Data
+    private static let startup = Data("\u{1b}]10;?\u{1b}\\\u{1b}]11;?\u{1b}\\\u{1b}]12;?\u{1b}\\\u{1b}[16t\u{1b}[c".utf8)
+    private let colors: [UInt8: String]
     private let lock = NSLock()
-    private var armed = true
-    private var seen = 0
+    private var started = false
+    private var carry = Data()
 
     init(dark: Bool) {
-        let (foreground, background) = dark ? ("e6e6/e6e6/e9e9", "1b1b/1c1c/2020") : ("1c1c/1c1c/2121", "ffff/ffff/ffff")
-        reply = Data("\u{1b}]10;rgb:\(foreground)\u{1b}\\\u{1b}]11;rgb:\(background)\u{1b}\\\u{1b}]12;rgb:\(foreground)\u{1b}\\\u{1b}[6;15;8t\u{1b}[?62;22c".utf8)
+        let (foreground, background) = dark ? ("d2d2/d4d4/d9d9", "1717/1919/1d1d") : ("2525/2727/2c2c", "ffff/ffff/ffff")
+        colors = [UInt8(ascii: "0"): foreground, UInt8(ascii: "1"): background, UInt8(ascii: "2"): foreground]
     }
 
-    // Removes the query from output and returns the answer, once. Only the
-    // first 64 KiB are looked at.
+    private func color(_ code: UInt8, _ terminator: Data) -> Data {
+        Data("\u{1b}]1\(Character(UnicodeScalar(code)));rgb:\(colors[code] ?? "")".utf8) + terminator
+    }
+
+    // Removes the questions from output and returns the answers.
     func answer(_ data: inout Data) -> Data? {
         lock.lock()
         defer { lock.unlock() }
-        guard armed else { return nil }
-        seen += data.count
-        if let range = data.range(of: Self.query) {
-            armed = false
-            data.removeSubrange(range)
-            return reply
+        var bytes = carry + data
+        carry = Data()
+        var reply = Data()
+        if !started, let range = bytes.range(of: Self.startup) {
+            started = true
+            bytes.removeSubrange(range)
+            reply += color(UInt8(ascii: "0"), Data("\u{1b}\\".utf8)) + color(UInt8(ascii: "1"), Data("\u{1b}\\".utf8)) + color(UInt8(ascii: "2"), Data("\u{1b}\\".utf8))
+            reply += Data("\u{1b}[6;17;8t\u{1b}[?62;22c".utf8)
         }
-        if seen > 65536 { armed = false }
-        return nil
+        // ESC ] 1 {0,1,2} ; ? then BEL or ESC \
+        let marker = Data("\u{1b}]1".utf8)
+        guard bytes.range(of: marker) != nil || bytes.suffix(6).contains(0x1b) else { data = bytes; return reply.isEmpty ? nil : reply }
+        var out = Data(), index = bytes.startIndex
+        while index < bytes.endIndex {
+            if bytes[index] == 0x1b {
+                let rest = bytes[index...]
+                var matched = false
+                for code in [UInt8(ascii: "0"), UInt8(ascii: "1"), UInt8(ascii: "2")] {
+                    for terminator in [Data([0x07]), Data("\u{1b}\\".utf8)] {
+                        let question = marker + Data([code, UInt8(ascii: ";"), UInt8(ascii: "?")]) + terminator
+                        if rest.starts(with: question) {
+                            reply += color(code, terminator); index += question.count; matched = true
+                        } else if rest.count < question.count, question.starts(with: rest) {
+                            // Split across reads: finish it with the next one.
+                            carry = Data(rest); index = bytes.endIndex; matched = true
+                        }
+                        if matched { break }
+                    }
+                    if matched { break }
+                }
+                if matched { continue }
+            }
+            out.append(bytes[index])
+            index += 1
+        }
+        data = out
+        return reply.isEmpty ? nil : reply
     }
 }
 
