@@ -1,0 +1,7 @@
+{
+  "name": "fennec-threads-design",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 127.0.0.1 --port 5188 --strictPort" },
+  "devDependencies": { "vite": "^7.0.0" }
+}

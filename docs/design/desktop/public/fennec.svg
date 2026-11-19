@@ -1,0 +1,10 @@
+<svg class="fennec-mark" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <path d="M5 39V9c0-3 2-4 4-2l23 15L55 7c2-2 4-1 4 2v30L34 57c-1.2.9-2.8.9-4 0Z" fill="#FFD8A1"/>
+  <path class="fox-ear-left" d="m8 6 24 16-12 9Z" fill="#FFB953"/>
+  <path class="fox-ear-right" d="m56 6-24 16 12 9Z" fill="#F7A136"/>
+  <path d="M5 39 30 22c1.2-.8 2.8-.8 4 0l25 17-25 18c-1.2.9-2.8.9-4 0Z" fill="#F38D25"/>
+  <path d="m5 39 27-17v36L30 57Z" fill="#FFA83F"/>
+  <circle class="fox-eye" cx="24" cy="40" r="2.6" fill="#3B332E"/>
+  <circle class="fox-eye" cx="40" cy="40" r="2.6" fill="#3B332E"/>
+  <ellipse cx="32" cy="52" rx="3.2" ry="3.3" fill="#3B332E"/>
+</svg>
