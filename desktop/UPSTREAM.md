@@ -54,3 +54,7 @@ The terminal chrome icon in `assets/icons/terminal.svg` is copied verbatim
 from Herdr's `mods/workspace-chrome/terminal.svg` (Apache-2.0). Terminal padding
 is 14 px horizontally and 12 px vertically, matching the installed Herdr
 `layouts/main.json`; the surrounding Fennec chrome follows the desktop design.
+
+Monochrome Pi, OpenCode, Cursor and xAI SVGs are copied from the installed
+Herdr icon library and tinted with the active text color so they remain visible
+in both appearances; their LobeHub license is in `licenses/LobeHub-icons.txt`.

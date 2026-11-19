@@ -54,6 +54,7 @@ pub struct FennecWindow {
     search: Entity<InputState>,
     composer: Entity<TextareaState>,
     posting: bool,
+    replying: bool,
     reply: Entity<TextareaState>,
     notice: Option<String>,
     sidebar: bool,
@@ -132,6 +133,9 @@ impl FennecWindow {
             ),
         ];
         subs.push(cx.observe_window_appearance(window, |this, window, cx| {
+            if crate::preview::active() && std::env::var("FENNEC_PREVIEW_THEME").is_ok() {
+                return;
+            }
             let dark = matches!(
                 window.appearance(),
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
@@ -162,6 +166,7 @@ impl FennecWindow {
             search,
             composer,
             posting: false,
+            replying: false,
             reply,
             notice: None,
             sidebar: true,
@@ -547,6 +552,7 @@ impl FennecWindow {
         self.posting = true;
         let me = self.me.clone();
         let submitted = text.clone();
+        let submitted_project = project.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
                 .background_spawn(async move { board::post(&project, &text, &me) })
@@ -559,8 +565,10 @@ impl FennecWindow {
                             this.composer
                                 .update(cx, |s, cx| s.set_value("", window, cx));
                         }
-                        this.resolved = false;
-                        this.open_request(r.number, window, cx);
+                        if this.project_id().as_deref() == Some(&submitted_project) {
+                            this.resolved = false;
+                            this.open_request(r.number, window, cx);
+                        }
                     }
                     Err(e) => this.say(format!("{e:#}"), cx),
                 }
@@ -570,6 +578,9 @@ impl FennecWindow {
     }
 
     fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.replying {
+            return;
+        }
         let text = self.reply.read(cx).value().to_string();
         let (Some(project), Some(n)) = (self.project_id(), self.open) else {
             return;
@@ -577,15 +588,28 @@ impl FennecWindow {
         if text.trim().is_empty() {
             return;
         }
-        self.reply.update(cx, |s, cx| s.set_value("", window, cx));
+        self.replying = true;
         let me = self.me.clone();
+        let submitted = text.clone();
+        let origin = project.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let sent = cx
                 .background_spawn(async move { board::reply(&project, n, &text, &me) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match sent {
-                Ok(_) => this.refresh_now(window, cx),
-                Err(e) => this.say(format!("{e:#}"), cx),
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.replying = false;
+                match sent {
+                    Ok(_) => {
+                        if this.reply.read(cx).value().as_ref() == submitted {
+                            this.reply.update(cx, |s, cx| s.set_value("", window, cx));
+                        }
+                        if this.project_id().as_deref() == Some(&origin) && this.open == Some(n) {
+                            this.refresh_now(window, cx);
+                        }
+                    }
+                    Err(e) => this.say(format!("{e:#}"), cx),
+                }
+                cx.notify();
             });
         }));
     }
@@ -712,6 +736,9 @@ impl FennecWindow {
     }
 
     fn new_shell(&mut self, session: Session, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            return;
+        }
         self.new_shell_once(session, true, window, cx);
     }
 
@@ -1843,6 +1870,12 @@ impl FennecWindow {
                         // New Request: one plain box; the first line is the title.
                         div()
                             .relative()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, window, cx| {
+                                    this.composer.read(cx).focus_handle(cx).focus(window, cx)
+                                }),
+                            )
                             .rounded(px(10.0))
                             .bg(c("f_card"))
                             .border_1()
@@ -1855,7 +1888,7 @@ impl FennecWindow {
                             )
                             .px(px(13.0))
                             .py(px(9.0))
-                            .min_h(px(42.0))
+                            .min_h(px(84.0))
                             .text_size(px(13.5))
                             .line_height(relative(1.6))
                             .pr(px(72.0))
@@ -2135,6 +2168,12 @@ impl FennecWindow {
                 div().px(px(18.0)).pb(px(16.0)).child(
                     div()
                         .relative()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, window, cx| {
+                                this.reply.read(cx).focus_handle(cx).focus(window, cx)
+                            }),
+                        )
                         .rounded(px(10.0))
                         .bg(c("f_card"))
                         .border_1()
@@ -2206,7 +2245,7 @@ impl FennecWindow {
                 .when(!on, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
         };
         let session_address = address.to_owned();
-        let shell_tabs = shells.iter().enumerate().map(|(i, a)| {
+        let shell_tabs = shells.iter().map(|a| {
             let key = format!("local:{a}");
             let (show, close) = (session_address.clone(), a.clone());
             let open_key = key.clone();
@@ -2217,21 +2256,12 @@ impl FennecWindow {
                     cx.notify();
                 }))
                 .child(ui::icon("term", 14.0, c("f_muted")))
-                .child(if shells.len() > 1 {
-                    format!(
-                        "{} {}",
-                        self.shell_names
-                            .get(a)
-                            .cloned()
-                            .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null)),
-                        i + 1
-                    )
-                } else {
+                .child(
                     self.shell_names
                         .get(a)
                         .cloned()
-                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))
-                })
+                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null)),
+                )
                 .child(
                     div()
                         .id(SharedString::from(format!("close-{a}")))

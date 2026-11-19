@@ -61,6 +61,7 @@ pub struct Concept {
     pub sources: Vec<String>,
     pub status: String,
     pub generated_by: String,
+    pub generated_at: String,
     pub verified: Vec<Actor>,
 }
 

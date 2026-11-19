@@ -12,6 +12,10 @@ pub fn c(name: &str) -> Hsla {
 pub struct Assets;
 
 const FILES: &[(&str, &[u8])] = &[
+    ("agents/xai.svg", include_bytes!("../assets/agents/xai.svg")),
+    ("agents/cursor.svg", include_bytes!("../assets/agents/cursor.svg")),
+    ("agents/opencode.svg", include_bytes!("../assets/agents/opencode.svg")),
+    ("agents/pi.svg", include_bytes!("../assets/agents/pi.svg")),
     ("icons/trash.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>"##),
     ("icons/sliders.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6M12 5h1M3 11h1M7 11h6"/><circle cx="10.5" cy="5" r="1.5"/><circle cx="5.5" cy="11" r="1.5"/></svg>"##),
     ("icons/bot.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="10" height="8" rx="2"/><path d="M8 2.5V5M6 9h.01M10 9h.01"/></svg>"##),
@@ -74,6 +78,14 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
 pub fn agent_icon(agent: &str, size: f32) -> AnyElement {
     match crate::sessions::agent_icon(agent) {
         Some(name) => {
+            if ["pi", "opencode", "cursor", "xai"].contains(&name) {
+                return svg()
+                    .path(SharedString::from(format!("agents/{name}.svg")))
+                    .size(px(size))
+                    .flex_none()
+                    .text_color(c("f_text"))
+                    .into_any_element();
+            }
             let name = if name == "kimi" && crate::settings::get().dark {
                 "kimi-dark"
             } else {
@@ -245,6 +257,7 @@ pub fn selection_ring() -> Vec<BoxShadow> {
 pub fn icon_button(id: &'static str, name: &str) -> Stateful<Div> {
     div()
         .id(id)
+        .group("chrome-action")
         .size(px(28.0))
         .flex_none()
         .rounded(px(6.0))
@@ -258,6 +271,7 @@ pub fn icon_button(id: &'static str, name: &str) -> Stateful<Div> {
             svg()
                 .path(SharedString::from(format!("icons/{name}.svg")))
                 .text_color(c("f_muted"))
+                .group_hover("chrome-action", |s| s.text_color(c("f_text")))
                 .size(px(17.0)),
         )
 }

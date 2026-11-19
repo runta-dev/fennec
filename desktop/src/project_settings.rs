@@ -40,6 +40,8 @@ pub struct State {
     filter: KnowledgeFilter,
     concept: String,
     add_worker_open: bool,
+    model_menu: Option<usize>,
+    model_input: Option<Entity<InputState>>,
     queue: Option<QueueProject>,
 }
 
@@ -712,36 +714,62 @@ impl FennecWindow {
                     )
                 })
                 .child(
-                    h_flex()
-                        .gap(px(12.0))
-                        .text_size(px(11.5))
-                        .text_color(c("f_muted"))
-                        .when(!k.generated_by.is_empty(), |d| {
-                            d.child(format!(
-                                "{} {}",
-                                t("written_by"),
-                                crate::sessions::agent_name(&k.generated_by)
-                            ))
-                        })
-                        .child(format!(
-                            "{} {}",
-                            t("reviewed_by"),
-                            if reviewed.is_empty() {
-                                t("not_yet")
-                            } else {
-                                reviewed.join(", ")
-                            }
-                        ))
-                        .when(!k.tags.is_empty(), |d| d.child(k.tags.join(" · "))),
+                    v_flex()
+                        .py(px(12.0))
+                        .gap(px(8.0))
+                        .border_t_1()
+                        .border_b_1()
+                        .border_color(c("f_line"))
+                        .children(
+                            [
+                                (
+                                    t("status"),
+                                    match k.status.as_str() {
+                                        "draft" => t("k_draft"),
+                                        "deprecated" => t("k_deprecated"),
+                                        _ => t("k_current"),
+                                    },
+                                ),
+                                (
+                                    t("written_by"),
+                                    format!(
+                                        "{}{}",
+                                        sessions_actor(&k.generated_by),
+                                        if k.generated_at.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!(" · {}", k.generated_at)
+                                        }
+                                    ),
+                                ),
+                                (
+                                    t("reviewed_by"),
+                                    if reviewed.is_empty() {
+                                        t("not_yet")
+                                    } else {
+                                        reviewed.join(", ")
+                                    },
+                                ),
+                                (t("tags"), k.tags.join(" · ")),
+                                (t("based_on"), k.sources.join(" · ")),
+                            ]
+                            .into_iter()
+                            .map(|(label, value)| {
+                                h_flex()
+                                    .gap(px(12.0))
+                                    .items_start()
+                                    .text_size(px(12.5))
+                                    .child(
+                                        div()
+                                            .w(px(96.0))
+                                            .flex_none()
+                                            .text_color(c("f_muted"))
+                                            .child(label),
+                                    )
+                                    .child(div().flex_1().min_w_0().child(value))
+                            }),
+                        ),
                 )
-                .when(!k.sources.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .text_size(px(11.5))
-                            .text_color(c("f_muted"))
-                            .child(k.sources.join(" · ")),
-                    )
-                })
                 .when(!k.body.is_empty(), |d| {
                     d.child(
                         gpui_base::text::TextView::markdown(
@@ -755,6 +783,10 @@ impl FennecWindow {
                 .child(
                     h_flex()
                         .mt(px(4.0))
+                        .pt(px(12.0))
+                        .border_t_1()
+                        .border_color(c("f_line"))
+                        .justify_end()
                         .gap(px(8.0))
                         .when(k.verified.is_empty() && !deprecated, |d| {
                             d.child(
@@ -1036,81 +1068,194 @@ impl FennecWindow {
             )
     }
 
-    fn agents(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
-        let workers = p.workers.clone();
-        let enabled = workers.iter().filter(|w| w.on).count();
-        let rows = workers.iter().enumerate().map(|(i, w)| {
-            let mut next = workers.clone();
-            next[i].on = !w.on;
-            let locked = w.on && enabled <= 1;
-            let mut removed = workers.clone();
-            removed.remove(i);
-            h_flex()
-                .h(px(48.0))
-                .gap(px(10.0))
-                .border_b_1()
-                .border_color(c("f_line"))
+    fn choose_worker_model(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(project) = self.projects.iter().find(|p| p.id == self.settings.project) else {
+            return;
+        };
+        let Some(worker) = project.workers.get(index) else {
+            return;
+        };
+        let value = worker.model.clone();
+        let input = cx.new(|cx| {
+            let mut s = InputState::new(window, cx).placeholder(t("default_model"));
+            s.set_value(value, window, cx);
+            s
+        });
+        self._subs.push(cx.subscribe_in(
+            &input,
+            window,
+            |this, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
+                    this.save_worker_model(false, window, cx);
+                }
+            },
+        ));
+        self.settings.model_input = Some(input.clone());
+        self.settings.model_menu = Some(index);
+        input.read(cx).focus_handle(cx).focus(window, cx);
+        cx.notify();
+    }
+    fn save_worker_model(&mut self, default: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.settings.model_menu.take() else {
+            return;
+        };
+        let Some(project) = self.projects.iter().find(|p| p.id == self.settings.project) else {
+            return;
+        };
+        let mut workers = project.workers.clone();
+        let Some(worker) = workers.get_mut(index) else {
+            return;
+        };
+        worker.model = if default {
+            String::new()
+        } else {
+            self.settings
+                .model_input
+                .as_ref()
+                .map(|i| i.read(cx).value().trim().to_owned())
+                .unwrap_or_default()
+        };
+        self.patch_project(json!({"workers":workers}), window, cx);
+    }
+    fn worker_model_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let index = self.settings.model_menu?;
+        let input = self.settings.model_input.as_ref()?;
+        Some(
+            v_flex()
+                .absolute()
+                .left(px(142.0))
+                .top(px(48.0 * (index + 1) as f32 + 4.0))
+                .w(px(280.0))
+                .p(px(10.0))
+                .gap(px(8.0))
+                .bg(c("f_card"))
+                .rounded(px(9.0))
+                .border_1()
+                .border_color(c("f_field"))
+                .shadow_lg()
+                .occlude()
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    this.settings.model_menu = None;
+                    cx.notify();
+                }))
                 .child(
                     div()
-                        .opacity(if w.on { 1.0 } else { 0.45 })
-                        .child(ui::agent_icon(&w.agent, 18.0)),
-                )
-                .child(
-                    div()
-                        .w(px(92.0))
-                        .flex_none()
-                        .opacity(if w.on { 1.0 } else { 0.45 })
-                        .text_size(px(13.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(crate::sessions::agent_name(&w.agent).to_owned()),
-                )
-                .child(
-                    div()
-                        .w(px(150.0))
-                        .h(px(28.0))
+                        .h(px(30.0))
                         .px(px(9.0))
                         .rounded(px(7.0))
                         .border_1()
                         .border_color(c("f_field"))
                         .flex()
                         .items_center()
-                        .opacity(if w.on { 1.0 } else { 0.45 })
-                        .text_size(px(12.5))
-                        .text_color(c("f_text"))
-                        .child(if w.model.is_empty() {
-                            t("default_model")
-                        } else {
-                            w.model.clone()
-                        }),
-                )
-                .child(div().flex_1())
-                .child(
-                    switch(SharedString::from(format!("w-{i}")), w.on, !locked).when(
-                        !locked,
-                        |d| {
-                            d.on_click(cx.listener(move |this, _, window, cx| {
-                                this.patch_project(json!({"workers": next}), window, cx)
-                            }))
-                        },
-                    ),
+                        .text_size(px(13.0))
+                        .child(Input::new(input)),
                 )
                 .child(
-                    div()
-                        .id(SharedString::from(format!("worker-remove-{i}")))
-                        .size(px(28.0))
-                        .rounded(px(6.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .opacity(if locked { 0.35 } else { 1.0 })
-                        .when(!locked, |d| {
-                            d.on_click(cx.listener(move |this, _, window, cx| {
-                                this.patch_project(json!({"workers":removed}), window, cx)
-                            }))
-                        })
-                        .child(ui::icon("trash", 17.0, c("f_muted"))),
+                    h_flex()
+                        .gap(px(8.0))
+                        .justify_end()
+                        .child(
+                            secondary_button("default-worker-model", t("default_model"), false)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_worker_model(true, window, cx)
+                                })),
+                        )
+                        .child(
+                            secondary_button("save-worker-model", t("save_changes"), false)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_worker_model(false, window, cx)
+                                })),
+                        ),
                 )
-        });
+                .into_any_element(),
+        )
+    }
+
+    fn agents(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
+        let model_menu = self.worker_model_menu(cx);
+        let workers = p.workers.clone();
+        let enabled = workers.iter().filter(|w| w.on).count();
+        let rows =
+            workers.iter().enumerate().map(|(i, w)| {
+                let mut next = workers.clone();
+                next[i].on = !w.on;
+                let locked = w.on && enabled <= 1;
+                let mut removed = workers.clone();
+                removed.remove(i);
+                h_flex()
+                    .h(px(48.0))
+                    .gap(px(10.0))
+                    .border_b_1()
+                    .border_color(c("f_line"))
+                    .child(
+                        div()
+                            .opacity(if w.on { 1.0 } else { 0.45 })
+                            .child(ui::agent_icon(&w.agent, 18.0)),
+                    )
+                    .child(
+                        div()
+                            .w(px(92.0))
+                            .flex_none()
+                            .opacity(if w.on { 1.0 } else { 0.45 })
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(crate::sessions::agent_name(&w.agent).to_owned()),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("worker-model-{i}")))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.choose_worker_model(i, window, cx)
+                            }))
+                            .w(px(150.0))
+                            .h(px(28.0))
+                            .px(px(9.0))
+                            .rounded(px(7.0))
+                            .border_1()
+                            .border_color(c("f_field"))
+                            .flex()
+                            .items_center()
+                            .opacity(if w.on { 1.0 } else { 0.45 })
+                            .text_size(px(12.5))
+                            .justify_between()
+                            .text_color(c("f_text"))
+                            .child(div().flex_1().min_w_0().truncate().child(
+                                if w.model.is_empty() {
+                                    t("default_model")
+                                } else {
+                                    w.model.clone()
+                                },
+                            ))
+                            .child(ui::icon("chevron", 13.0, c("f_muted"))),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        switch(SharedString::from(format!("w-{i}")), w.on, !locked).when(
+                            !locked,
+                            |d| {
+                                d.on_click(cx.listener(move |this, _, window, cx| {
+                                    this.patch_project(json!({"workers": next}), window, cx)
+                                }))
+                            },
+                        ),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("worker-remove-{i}")))
+                            .size(px(28.0))
+                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .opacity(if locked { 0.35 } else { 1.0 })
+                            .when(!locked, |d| {
+                                d.on_click(cx.listener(move |this, _, window, cx| {
+                                    this.patch_project(json!({"workers":removed}), window, cx)
+                                }))
+                            })
+                            .child(ui::icon("trash", 17.0, c("f_muted"))),
+                    )
+            });
         let add = board::AGENTS
             .iter()
             .filter(|a| !workers.iter().any(|w| &w.agent == *a))
@@ -1123,20 +1268,16 @@ impl FennecWindow {
                 });
                 h_flex()
                     .id(SharedString::from(format!("add-{agent}")))
-                    .h(px(28.0))
-                    .px(px(10.0))
-                    .gap(px(6.0))
-                    .rounded(px(7.0))
-                    .border_1()
-                    .border_color(c("f_field"))
-                    .bg(c("f_card"))
-                    .text_size(px(12.0))
+                    .h(px(29.0))
+                    .px(px(9.0))
+                    .gap(px(8.0))
+                    .rounded(px(5.0))
+                    .text_size(px(12.5))
                     .hover(|s| s.bg(c("f_expanded")))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.settings.add_worker_open = false;
                         this.patch_project(json!({"workers": next}), window, cx)
                     }))
-                    .child(ui::icon("plus", 12.0, c("f_muted")))
                     .child(ui::agent_icon(agent, 14.0))
                     .child(crate::sessions::agent_name(agent).to_owned())
             });
@@ -1150,6 +1291,7 @@ impl FennecWindow {
             )
             .child(
                 v_flex()
+                    .relative()
                     .bg(c("f_card"))
                     .border_1()
                     .border_color(c("f_line"))
@@ -1157,6 +1299,7 @@ impl FennecWindow {
                     .px(px(14.0))
                     .py(px(4.0))
                     .children(rows)
+                    .when_some(model_menu, |d, menu| d.child(menu))
                     .child(
                         div()
                             .relative()
@@ -1235,4 +1378,11 @@ fn switch(id: SharedString, on: bool, enabled: bool) -> Stateful<Div> {
                 .shadow_sm(),
         )
         .relative()
+}
+
+fn sessions_actor(value: &str) -> String {
+    if let Some(person) = value.strip_prefix("human:") {
+        return person.to_owned();
+    }
+    crate::sessions::agent_name(value.split('/').next().unwrap_or(value)).to_owned()
 }

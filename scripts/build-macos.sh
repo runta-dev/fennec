@@ -109,6 +109,7 @@ cp desktop/target/release/fennec-desktop "$app/Contents/MacOS/fennec-desktop"
 sign_artifact "$app/Contents/MacOS/fennec-desktop"
 install -m 755 desktop/fennec-hc "$app/Contents/Resources/fennec-hc"
 cp desktop/LICENSE "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt"
+cp desktop/licenses/LobeHub-icons.txt "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt"
 cp desktop/THIRD-PARTY-NOTICES "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt"
 cp desktop/vendor/herdr-core/LICENSE "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"
 # Fennec CUA and the Chromium it drives ship on their own (fennec-cua-v*
