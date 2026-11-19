@@ -77,7 +77,6 @@ pub struct FennecWindow {
 
 impl FennecWindow {
     pub fn new(
-        core: anyhow::Result<Arc<Core>>,
         requests: async_channel::Receiver<crate::mods::Request>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -138,10 +137,9 @@ impl FennecWindow {
                 cx.notify();
             }
         }));
-        let (core, core_error) = match core {
-            Ok(core) => (Some(core), None),
-            Err(e) => (None, Some(format!("{e:#}"))),
-        };
+        // The window shows at once; the cloud computer's core is reached meanwhile
+        // (over SSH from a Mac, a second or more), and sessions appear with it.
+        let (core, core_error): (Option<Arc<Core>>, Option<String>) = (None, None);
         let mut this = FennecWindow {
             core,
             core_error,
@@ -190,7 +188,20 @@ impl FennecWindow {
                 cx.notify();
             });
         }));
-        this.follow_core(window, cx);
+        this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let connected = cx.background_spawn(async move { Core::connect() }).await;
+            let _ = this.update_in(cx, |this, window, cx| match connected {
+                Ok(core) => {
+                    this.core = Some(core);
+                    this.follow_core(window, cx);
+                    cx.notify();
+                }
+                Err(e) => {
+                    this.core_error = Some(format!("{e:#}"));
+                    cx.notify();
+                }
+            });
+        }));
         if let Some(path) = crate::shot::path() {
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
                 loop {
@@ -1260,6 +1271,16 @@ impl FennecWindow {
                                 .text_size(px(13.0))
                                 .text_color(c("f_muted"))
                                 .child(t("starting")),
+                        )
+                    })
+                    .when(self.core.is_none() && self.core_error.is_none(), |d| {
+                        d.child(
+                            div()
+                                .px(px(8.0))
+                                .py(px(6.0))
+                                .text_size(px(12.0))
+                                .text_color(c("f_muted"))
+                                .child(t("connecting")),
                         )
                     })
                     .children(groups),

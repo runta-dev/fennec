@@ -58,7 +58,6 @@ fn main() {
                 .unwrap_or_else(|_| "warn,fennec_desktop=info".into()),
         )
         .init();
-    let core = hc::Core::connect();
     gpui_platform::application()
         .with_assets(ui::Assets)
         .run(move |cx| {
@@ -85,7 +84,7 @@ fn main() {
                 ..Default::default()
             };
             cx.open_window(options, |window, cx| {
-                cx.new(|cx| app::FennecWindow::new(core, requests, window, cx))
+                cx.new(|cx| app::FennecWindow::new(requests, window, cx))
             })
             .expect("cannot open the Fennec window");
             cx.activate(true);
