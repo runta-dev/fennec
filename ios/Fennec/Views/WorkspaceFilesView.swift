@@ -26,55 +26,71 @@ struct WorkspaceFileCard: View {
     @State private var file: WorkspaceFile?
     @State private var localURL: URL?
     @State private var previewURL: URL?
+    @State private var webURL: URL?
     @State private var showShare = false
     @State private var thumbnail: UIImage?
     @State private var loading = false
     @State private var failed = false
 
+    /// Images and web pages show what they look like; other files their name.
+    private var visual: Bool { file?.kind == "image" || file?.isWebPage == true }
+
     var body: some View {
         Button {
             Task {
                 await load(download: true)
-                if let localURL {
-                    if file?.kind == "download" { showShare = true }
-                    else { previewURL = localURL }
-                }
+                guard let localURL else { return }
+                if file?.isWebPage == true { webURL = localURL }
+                else if file?.kind == "download" { showShare = true }
+                else { previewURL = localURL }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                if file?.kind == "image" {
-                    Group {
-                        if let thumbnail { Image(uiImage: thumbnail).resizable().scaledToFit() }
-                        else { ZStack { Theme.surface; if loading { ProgressView() } else { Image(systemName: "photo") } } }
+            VStack(spacing: 8) {
+                if visual {
+                    ZStack {
+                        Theme.surface2
+                        if let thumbnail {
+                            if file?.isWebPage == true {
+                                // The top of the page, as it is laid out.
+                                Image(uiImage: thumbnail).resizable().scaledToFill()
+                                    .frame(maxHeight: .infinity, alignment: .top)
+                            } else {
+                                Image(uiImage: thumbnail).resizable().scaledToFit()
+                            }
+                        } else if loading {
+                            ProgressView()
+                        }
                     }
-                    .frame(maxWidth: .infinity).frame(height: 180)
+                    .frame(maxWidth: .infinity).frame(height: file?.isWebPage == true ? 220 : 180)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                HStack(spacing: 8) {
-                    Image(systemName: symbol)
-                    Text(file?.title ?? L10n.text("ios.attachments")).lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    if loading && file?.kind != "image" { ProgressView() }
-                    else { Image(systemName: failed ? "arrow.clockwise" : "arrow.up.right") }
-                }
-                .font(.system(size: 13)).foregroundStyle(Theme.fg2)
+                Text(caption)
+                    .font(.system(size: 13)).foregroundStyle(Theme.fg2)
+                    .lineLimit(2).multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) { if loading && !visual { ProgressView().controlSize(.small) } }
                 if failed { Text(L10n.text("ios.preview_retry")).font(.caption).foregroundStyle(Theme.fg2) }
             }
             .padding(10)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.line))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .disabled(loading)
-        .accessibilityLabel(L10n.text("ios.preview_file", values: ["name": file?.title ?? L10n.text("ios.attachments")]))
+        .accessibilityLabel(L10n.text("ios.preview_file", values: ["name": caption]))
         .accessibilityIdentifier("workspace-file-preview")
         .task(id: ref) { await load(download: false) }
         .quickLookPreview($previewURL)
+        .fullScreenCover(isPresented: Binding(get: { webURL != nil }, set: { if !$0 { webURL = nil } })) {
+            if let webURL { WebPagePreview(url: webURL, title: caption) { self.webURL = nil } }
+        }
         .sheet(isPresented: $showShare) { if let localURL { AttachmentShareSheet(url: localURL) } }
     }
 
-    private var symbol: String {
-        switch file?.kind { case "image": "photo"; case "video": "play.rectangle"; case "audio": "waveform"; default: "doc" }
+    private var caption: String {
+        guard let file else { return L10n.text("ios.attachments") }
+        return file.title.isEmpty ? file.name : file.title
     }
 
     private func load(download: Bool) async {
@@ -84,16 +100,20 @@ struct WorkspaceFileCard: View {
         do {
             if file == nil { file = try await store.previewMetadata(ref, sessionID: sessionID) }
             guard let file else { return }
-            if localURL == nil && (download || file.kind == "image") {
+            let visual = file.kind == "image" || file.isWebPage
+            if localURL == nil && (download || visual) {
                 let url = try await store.preview(file, sessionID: sessionID)
-                let image = await Task.detached { () -> UIImage? in
-                    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                          let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                            kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 720] as CFDictionary) else { return nil }
-                    return UIImage(cgImage: image)
-                }.value
                 localURL = url
-                thumbnail = image
+                if file.isWebPage {
+                    thumbnail = await WebPageSnapshot.render(url)
+                } else if file.kind == "image" {
+                    thumbnail = await Task.detached { () -> UIImage? in
+                        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 720] as CFDictionary) else { return nil }
+                        return UIImage(cgImage: image)
+                    }.value
+                }
             }
             failed = false
         } catch { failed = true }

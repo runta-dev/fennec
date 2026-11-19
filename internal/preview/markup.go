@@ -74,7 +74,9 @@ func Parse(text string) []Part {
 	return parts
 }
 
-var marker = regexp.MustCompile(`^!\[(?:\\.|[^\]\\])*\]\(fennec-preview:(pv_[a-f0-9]{32})\)$`)
+// marker is the reference on its own line: the link Markup prints (to the
+// Mac's preview server), or the older image form with fennec-preview:.
+var marker = regexp.MustCompile(`^(?:!\[(?:\\.|[^\]\\])*\]\(fennec-preview:|!?\[(?:\\.|[^\]\\])*\]\(http://(?:localhost|127\.0\.0\.1):47823/p/[a-z0-9-]{3,40}/)(pv_[a-f0-9]{32})\)$`)
 
 func parseMarker(value string) string {
 	if len(value) > 2048 {

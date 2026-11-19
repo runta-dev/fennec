@@ -7,25 +7,45 @@ fen preview --session dreamy-meadow --title "Sales chart" ~/.fen/dreamy-meadow/c
 ```
 
 The resident binary also accepts `fennec-terminal preview` with the same arguments.
-The command snapshots the bytes and prints a Markdown image reference:
+The command snapshots the bytes and prints a Markdown link:
 
 ```md
-![Sales chart](fennec-preview:pv_0123456789abcdef0123456789abcdef)
+[Sales chart](http://localhost:47823/p/dreamy-meadow/pv_0123456789abcdef0123456789abcdef)
 ```
+
+Every client can use it. In a terminal (Codex, Claude Code, Pi, Kimi, OpenCode,
+the Fennec panel) it is a link that opens in the browser on the Mac. Fennec iOS
+recognizes it and shows the file inline. The older image form
+`![title](fennec-preview:pv_…)` is still recognized by the app.
 
 Include the actual returned reference on its own line, outside code blocks. Do not
 invent IDs. Ordinary paths, XML tags, web URLs and incomplete references are not
 preview instructions. A reference is scoped to its session. Register a changed
 file again to obtain a new snapshot; duplicate registrations reuse the same ID.
 
-## Desktop compatibility
+## On the Mac
 
-Conversation text remains unchanged. iOS interprets the custom image destination;
-terminal Markdown renderers can retain the image description as ordinary text.
-Verified renderers: Codex 0.169.1 (source), Pi TUI 1.5.2 (actual rendered output),
-and Kimi 2.6.3 (bundled source). Claude and OpenCode have not been verified; clients
-without this behavior may display the full Markdown syntax. There is no promise
-that every desktop client hides the destination. Raw XML is intentionally avoided.
+The Fennec daemon serves previews on `127.0.0.1:47823` (`preview.Desktop`,
+started with the daemon). A request for `/p/<session>/<ref>` goes to the cloud
+computer's private preview handler over the daemon's authenticated resident
+connection, the same channel the app uses: no port is opened on the cloud
+computer and nothing is cached on the Mac. While the cloud computer is not
+connected the page says so; reloading retries.
+
+Only this Mac's browser is served. The Host must be the loopback origin (no DNS
+rebinding); requests from other web pages (`Sec-Fetch-Site: cross-site`, a
+foreign `Origin`) are refused. A reference (128 bits) acts as the capability;
+another program running as the same user who knows it can read the file, as it
+could read the workspace over the resident connection. Web pages are served
+with a sandbox CSP: an opaque origin, inline scripts and styles, images from
+`data:`/`https:`, and no requests back to this server or the Mac.
+
+A snapshot is one file. A page that loads files beside it (`chart.png`,
+`data.csv`) needs them inlined, or registered and linked separately.
+
+When port 47823 is taken (another user's Fennec on the same Mac) the daemon
+retries every 30 seconds; links then reach the other daemon, which has no such
+reference and answers 404.
 
 ## Transport and storage
 
@@ -47,7 +67,9 @@ and SHA-256. Snapshots currently persist until explicitly removed; automatic
 retention/quota management is not implemented.
 
 Raster images render inline. PDFs, supported plain text and audio/video can open
-in native previews. HTML, SVG and unknown content are export-only. HTTP responses
+in native previews. HTML (kind `web`) shows a snapshot of its top and opens in a
+sandboxed, non-persistent web view that can't navigate away. SVG and unknown
+content are export-only. HTTP responses
 forbid caching and sniffing, apply a sandbox CSP, and reject browser origins.
 
 ## iOS attachments and rollout

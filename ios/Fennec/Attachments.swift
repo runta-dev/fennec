@@ -17,7 +17,11 @@ struct WorkspaceFile: Decodable, Hashable, Identifiable {
     var name: String
     var title: String
     var kind: String
+    /// Missing from older cloud computers.
+    var mime: String?
     var id: String { ref }
+    /// An HTML page; older cloud computers call it "download".
+    var isWebPage: Bool { kind == "web" || mime?.hasPrefix("text/html") == true }
 }
 
 struct UploadedAttachment: Decodable, Hashable {
@@ -179,7 +183,7 @@ extension SessionStore {
                         }
                     }
                     paths.append(uploaded.path)
-                    paths.append("![Attachment](fennec-preview:\(uploaded.preview.ref))")
+                    paths.append(FennecmobilePreviewMarkup(id, uploaded.preview.ref, uploaded.preview.title.isEmpty ? uploaded.preview.name : uploaded.preview.title))
                 }
                 let prompt = ([text].filter { !$0.isEmpty } + paths).joined(separator: "\n")
                 pendingSends[id]?.message.kind = .user(prompt)

@@ -45,6 +45,6 @@ func Command(home string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(out, Markup(metadata.Ref, metadata.Title))
+	_, err = fmt.Fprintln(out, Markup(*session, metadata.Ref, metadata.Title))
 	return err
 }

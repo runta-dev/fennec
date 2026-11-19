@@ -4,6 +4,7 @@
 package preview
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -151,6 +152,16 @@ func (s Store) Register(session, source, title string) (Metadata, error) {
 	if info.Size() > MaxBytes {
 		return Metadata{}, ErrTooLarge
 	}
+	if isPage(source) {
+		page, err := io.ReadAll(io.LimitReader(file, MaxBytes+1))
+		if err != nil {
+			return Metadata{}, err
+		}
+		if int64(len(page)) != info.Size() {
+			return Metadata{}, errors.New("file changed during registration")
+		}
+		return s.snapshot(session, filepath.Base(source), title, bytes.NewReader(inlinePage(workspace, source, page)))
+	}
 	metadata, err := s.snapshot(session, filepath.Base(source), title, file)
 	if err == nil && metadata.Size != info.Size() {
 		return Metadata{}, errors.New("file changed during registration")
@@ -198,6 +209,10 @@ func (s Store) snapshot(session, name, title string, source io.Reader) (Metadata
 		return Metadata{}, readErr
 	}
 	mime := http.DetectContentType(header[:count])
+	// A .html file is a page even when it doesn't start like one.
+	if isPage(name) && strings.HasPrefix(mime, "text/") {
+		mime = "text/html; charset=utf-8"
+	}
 	identity := sha256.Sum256([]byte(session + "\x00" + name + "\x00" + title + "\x00" + digest))
 	metadata := Metadata{Ref: "pv_" + hex.EncodeToString(identity[:16]), Name: name, Title: title, MIME: mime, Kind: mediaKind(mime, name), Size: n, SHA256: digest, CreatedAt: time.Now().UTC()}
 	if err = file.Sync(); err != nil {
@@ -242,7 +257,11 @@ func mediaKind(mime, name string) string {
 			return "document"
 		}
 	}
-	// HTML, SVG and unknown content are downloadable, never embedded as active content.
+	// A web page opens in a sandboxed viewer (no network, no shared origin).
+	if strings.HasPrefix(mime, "text/html") {
+		return "web"
+	}
+	// SVG and unknown content are downloadable, never embedded as active content.
 	return "download"
 }
 func (s Store) Metadata(session, ref string) (Metadata, error) {
@@ -356,7 +375,18 @@ func (s Store) UploadFile(session, id, name string, source io.Reader) (Upload, e
 	return result, nil
 }
 
-func Markup(ref, title string) string {
+// Markup is the reference an agent puts in its reply: an ordinary Markdown
+// link to the preview on the Mac (Fennec serves it on DesktopPort), so any
+// terminal shows a link to open, and Fennec iOS shows the preview inline.
+func Markup(session, ref, title string) string {
 	title = strings.NewReplacer("\\", "\\\\", "[", "\\[", "]", "\\]", "*", "\\*", "_", "\\_", "`", "\\`").Replace(title)
-	return fmt.Sprintf(`![%s](fennec-preview:%s)`, title, ref)
+	return fmt.Sprintf(`[%s](%s)`, title, DesktopURL(session, ref))
+}
+
+// DesktopPort is where Fennec on the Mac serves previews from the cloud
+// computer, on loopback only.
+const DesktopPort = 47823
+
+func DesktopURL(session, ref string) string {
+	return fmt.Sprintf("http://localhost:%d/p/%s/%s", DesktopPort, session, ref)
 }

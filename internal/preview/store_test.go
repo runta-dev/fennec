@@ -3,6 +3,7 @@ package preview
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -120,7 +121,7 @@ func TestUploadsIdempotentBoundedAndPrivate(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(workspace, "evil.html"), []byte("<html><script>alert(1)</script>"), 0600)
 	html, err := store.Register("amber-cedar", "evil.html", "")
-	if err != nil || html.Kind != "download" {
+	if err != nil || html.Kind != "web" {
 		t.Fatal(html, err)
 	}
 }
@@ -197,5 +198,40 @@ func TestHTTPOverPrivatePipeAndUpload(t *testing.T) {
 	response.Body.Close()
 	if err != nil || string(data) != "private bytes" {
 		t.Fatal(string(data), err)
+	}
+}
+
+// A page's local files are embedded, so its snapshot shows the chart and
+// downloads the CSV; nothing outside the workspace is read.
+func TestPageSnapshotEmbedsItsLocalFiles(t *testing.T) {
+	store, workspace := fixture(t)
+	os.MkdirAll(filepath.Join(workspace, "sar"), 0700)
+	os.WriteFile(filepath.Join(workspace, "sar", "chart.png"), []byte("\x89PNG\r\n\x1a\nchart"), 0600)
+	os.WriteFile(filepath.Join(workspace, "sar", "traffic.csv"), []byte("t,rx\n1,2\n"), 0600)
+	outside := filepath.Join(filepath.Dir(workspace), "secret.txt")
+	os.WriteFile(outside, []byte("secret"), 0600)
+	os.Symlink(outside, filepath.Join(workspace, "sar", "link.txt"))
+	page := `<img src="chart.png?v=1"><a href='traffic.csv'>CSV</a><img src="https://example.com/x.png">` +
+		`<a href="#top">top</a><img src="../../secret.txt"><img src="/etc/passwd"><a href="link.txt">l</a><img src="missing.png">`
+	os.WriteFile(filepath.Join(workspace, "sar", "index.html"), []byte(page), 0600)
+	m, err := store.Register("amber-cedar", "sar/index.html", "Report")
+	if err != nil || m.Kind != "web" {
+		t.Fatal(m, err)
+	}
+	file, _, err := store.Open("amber-cedar", m.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(file)
+	file.Close()
+	got := string(data)
+	for _, want := range []string{`src="data:image/png;base64,`, `href="data:text/csv`, `download="traffic.csv"`,
+		`src="https://example.com/x.png"`, `href="#top"`, `src="../../secret.txt"`, `src="/etc/passwd"`, `href="link.txt"`, `src="missing.png"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, base64.StdEncoding.EncodeToString([]byte("secret"))) {
+		t.Fatal("read a file outside the workspace")
 	}
 }

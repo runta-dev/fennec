@@ -198,3 +198,7 @@ func (s *Sessions) UploadFile(address, sessionID, uploadID, localPath, name stri
 	data, err := json.Marshal(result)
 	return string(data), err
 }
+
+// PreviewMarkup is the reference to put in a message for a registered file:
+// a link that opens on the Mac from any terminal, shown inline by the app.
+func PreviewMarkup(session, ref, title string) string { return preview.Markup(session, ref, title) }
