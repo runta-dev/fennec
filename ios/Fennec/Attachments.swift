@@ -84,7 +84,7 @@ enum AttachmentImport {
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 4096
+                kCGImageSourceThumbnailMaxPixelSize: 2048
               ] as CFDictionary), let png = UIImage(cgImage: image).pngData() else { throw AttachmentError.unavailable }
         guard png.count <= 20 * 1024 * 1024 else { throw AttachmentError.tooLarge }
         let filename = URL(fileURLWithPath: name).lastPathComponent + ".png"

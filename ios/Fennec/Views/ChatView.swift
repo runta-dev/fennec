@@ -15,6 +15,8 @@ struct ChatView: View {
     @State private var showMenu = false
     @State private var denyReason = ""
     @State private var followBottom = true
+    /// Space after the newest message, above the composer.
+    static let tailSpace: CGFloat = 40
     @State private var showTerminal = false
     @State private var showDeliveryIssue = false
     @State private var composerFocused = false
@@ -129,7 +131,10 @@ struct ChatView: View {
                                          activity: session.activity)
                             .id("working")
                     }
-                    Color.clear.frame(height: 1).id("bottom")
+                    // Room between the newest message and the composer, so
+                    // the end of a reply isn't read at the screen's edge. It
+                    // is part of the content: scrolled up, it is gone.
+                    Color.clear.frame(height: ChatView.tailSpace).id("bottom")
                 }
                 .padding(.horizontal, 16)
                 // Never wider than the screen: wide content scrolls in its own block.
@@ -246,6 +251,7 @@ struct ChatView: View {
                                          activity: session.activity)
                             .id("working")
                     }
+                    Color.clear.frame(height: ChatView.tailSpace).id("bottom")
                 }
                 .padding(.horizontal, 16)
                 // Never wider than the screen: wide content scrolls in its own block.
@@ -256,10 +262,10 @@ struct ChatView: View {
             .defaultScrollAnchor(.top, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, _ in
-                if composerFocused, let last = session.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                if composerFocused { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: session.messages.count) {
-                if let last = session.messages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
         .background(Theme.bg)
@@ -958,7 +964,7 @@ private struct PastedImages: View {
                 Color.black.ignoresSafeArea()
                 TabView(selection: Binding(get: { shown ?? 0 }, set: { shown = $0 })) {
                     ForEach(Array(thumbnails.enumerated()), id: \.offset) { index, image in
-                        Image(uiImage: image).resizable().scaledToFit().tag(index)
+                        ZoomableImage(image: image).tag(index)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: thumbnails.count > 1 ? .automatic : .never))
@@ -971,6 +977,40 @@ private struct PastedImages: View {
             }
             .environment(\.colorScheme, .dark)
         }
+    }
+}
+
+/// A full-screen image: pinch or double-tap to zoom, drag to look around.
+private struct ZoomableImage: View {
+    var image: UIImage
+    @State private var scale: CGFloat = 1
+    @State private var settled: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var dragged: CGSize = .zero
+
+    var body: some View {
+        Image(uiImage: image).resizable().scaledToFit()
+            .scaleEffect(scale)
+            .offset(offset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(MagnifyGesture()
+                .onChanged { scale = min(max(settled * $0.magnification, 1), 5) }
+                .onEnded { _ in settled = scale; if scale == 1 { reset() } })
+            // Panning only while zoomed, so swiping between images still works.
+            .simultaneousGesture(scale > 1 ? DragGesture()
+                .onChanged { offset = CGSize(width: dragged.width + $0.translation.width, height: dragged.height + $0.translation.height) }
+                .onEnded { _ in dragged = offset } : nil)
+            .onTapGesture(count: 2) {
+                withAnimation(.snappy) {
+                    if scale > 1 { reset() } else { scale = 2.5; settled = 2.5 }
+                }
+            }
+            .accessibilityAddTraits(.isImage)
+    }
+
+    private func reset() {
+        scale = 1; settled = 1; offset = .zero; dragged = .zero
     }
 }
 

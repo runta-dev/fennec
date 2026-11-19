@@ -28,6 +28,9 @@ import (
 
 const (
 	maxTranscriptRead = 2 << 20 // bytes of new lines per read
+	// A single line can outgrow a read: a message with a pasted screenshot
+	// carries it as base64. Such a line is read again whole, up to this.
+	maxTranscriptLine = 32 << 20
 	// How far back the first read looks. Only the lines it keeps are sent.
 	initialTranscriptWindow = 16 << 20
 	pathTTL                 = 10 * time.Second
@@ -213,6 +216,10 @@ func (s *Sessions) Transcript(address, sessionID string, offset int64) (out0 str
 }
 
 func (s *Sessions) readTranscript(address, sessionID, path string, offset int64) (string, error) {
+	return s.readTranscriptLimit(address, sessionID, path, offset, maxTranscriptRead)
+}
+
+func (s *Sessions) readTranscriptLimit(address, sessionID, path string, offset, limit int64) (string, error) {
 	if path == "" {
 		// Some agents create their log only after the first prompt. Keep the
 		// cursor and existing messages while the next poll resolves the log.
@@ -226,7 +233,7 @@ func (s *Sessions) readTranscript(address, sessionID, path string, offset int64)
 			file, initialTranscriptWindow, initialTranscriptWindow, file, keepLines)
 	} else {
 		command = fmt.Sprintf(`s=$(stat -c %%s %s) && echo "$s %d" && if [ "$s" -ge %d ]; then tail -c +%d %s | head -c %d | LC_ALL=C awk -v skip=0 %s; fi`,
-			file, offset, offset, offset+1, file, maxTranscriptRead, keepLines)
+			file, offset, offset, offset+1, file, limit, keepLines)
 	}
 	command = `[ -e ` + file + ` ] || { printf '__FENNEC_TRANSCRIPT_PENDING__\n'; exit 0; }; ` + command
 	raw, err := s.read(command)
@@ -242,9 +249,14 @@ func (s *Sessions) readTranscript(address, sessionID, path string, offset int64)
 		s.mu.Unlock()
 		return s.readTranscript(address, sessionID, "", offset)
 	}
-	size, _, items, position, err := parseKeptLines(raw, offset)
+	size, _, items, position, err := parseKeptLines(raw, offset, limit)
 	if err != nil {
 		return "", err
+	}
+	// The next line alone is longer than this read: read it whole rather
+	// than skip it (it may be a message with images).
+	if offset >= 0 && position == offset && size-offset > limit && limit < maxTranscriptLine {
+		return s.readTranscriptLimit(address, sessionID, path, offset, maxTranscriptLine)
 	}
 	if offset >= 0 && size < offset {
 		return s.Transcript(address, sessionID, -1) // the log was replaced or truncated
@@ -263,14 +275,14 @@ const keepLines = `'{ n = length($0) + 1; if (!(NR == 1 && skip) && ($0 !~ /"typ
 // parseKeptLines reads keepLines' output after a "<size> <start>" header and
 // returns the items and the offset to read from next. A last line without a
 // newline is still being written: it is left for the next read.
-func parseKeptLines(raw []byte, offset int64) (size, start int64, items []transcript.Item, position int64, err error) {
+func parseKeptLines(raw []byte, offset, limit int64) (size, start int64, items []transcript.Item, position int64, err error) {
 	header, rest, _ := bytes.Cut(raw, []byte("\n"))
 	if _, err = fmt.Sscanf(string(header), "%d %d", &size, &start); err != nil {
 		return 0, 0, nil, 0, errors.New("unreadable conversation log")
 	}
 	available := size - start
-	if offset >= 0 && available > maxTranscriptRead {
-		available = maxTranscriptRead
+	if offset >= 0 && available > limit {
+		available = limit
 	}
 	type kept struct {
 		at   int64
@@ -301,7 +313,7 @@ func parseKeptLines(raw []byte, offset int64) (size, start int64, items []transc
 		if len(lines) > 0 && lines[len(lines)-1].at == consumed {
 			lines = lines[:len(lines)-1]
 		}
-		if consumed == 0 && available >= maxTranscriptRead {
+		if consumed == 0 && available >= limit && limit >= maxTranscriptLine {
 			consumed = available // one line longer than a read: step over it
 		}
 	}
