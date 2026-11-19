@@ -14,8 +14,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // hcRemote runs herdr-core's `hc` with these arguments on the cloud computer.
@@ -125,13 +128,59 @@ func (s *daemonServices) openHC(_ context.Context, raw json.RawMessage) (any, er
 		os.Remove(path)
 		return nil, err
 	}
-	go serveHC(life, listener.(*net.UnixListener), path, runta.NewClient(s.home, token), runtimeID, filepath.Join(s.home, ".config", "fennec", "cloud"), hcRemote(params.Args))
+	go serveHC(life, listener.(*net.UnixListener), path, func(ctx context.Context, fresh bool) (*ssh.Client, error) {
+		return hcClient(ctx, runta.NewClient(s.home, token), runtimeID+"\x00"+token, runtimeID, filepath.Join(s.home, ".config", "fennec", "cloud"), fresh)
+	}, hcRemote(params.Args))
 	return hcOffer{Socket: path}, nil
 }
 
 // serveHC accepts the one connection the offer is for, unclaimed offers
 // expiring after ten seconds, and relays it to `hc` on the cloud computer.
-func serveHC(life context.Context, listener *net.UnixListener, path string, api *runta.Client, runtimeID, cloud, command string) {
+// One SSH connection to the cloud computer serves every hc command: each is a
+// channel on it, so a window's terminals and file drops skip the handshake
+// (two to three seconds). A new account, cloud computer or a dead connection
+// dials again.
+var hcSSH struct {
+	mu     sync.Mutex
+	key    string
+	client *ssh.Client
+}
+
+func hcClient(ctx context.Context, api *runta.Client, key, runtimeID, cloud string, fresh bool) (*ssh.Client, error) {
+	hcSSH.mu.Lock()
+	defer hcSSH.mu.Unlock()
+	if hcSSH.client != nil && (fresh || hcSSH.key != key) {
+		hcSSH.client.Close()
+		hcSSH.client = nil
+	}
+	if hcSSH.client != nil {
+		return hcSSH.client, nil
+	}
+	client, err := api.Connect(ctx, runtimeID, cloud)
+	if err != nil {
+		return nil, err
+	}
+	// The cached connection outlives the request that dialed it; keepalives
+	// find a dead one so the next command dials again.
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			if _, _, err := client.SendRequest("keepalive@fennec", true, nil); err != nil {
+				client.Close()
+				hcSSH.mu.Lock()
+				if hcSSH.client == client {
+					hcSSH.client = nil
+				}
+				hcSSH.mu.Unlock()
+				return
+			}
+		}
+	}()
+	hcSSH.key, hcSSH.client = key, client
+	return client, nil
+}
+
+func serveHC(life context.Context, listener *net.UnixListener, path string, dial func(context.Context, bool) (*ssh.Client, error), command string) {
 	defer os.Remove(path)
 	listener.SetDeadline(time.Now().Add(10 * time.Second))
 	conn, err := listener.Accept()
@@ -144,14 +193,19 @@ func serveHC(life context.Context, listener *net.UnixListener, path string, api 
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
-	client, err := api.Connect(ctx, runtimeID, cloud)
+	client, err := dial(ctx, false)
 	if err != nil {
 		return
 	}
-	defer client.Close()
 	session, err := client.NewSession()
 	if err != nil {
-		return
+		// A cached connection the cloud computer dropped: dial once more.
+		if client, err = dial(ctx, true); err != nil {
+			return
+		}
+		if session, err = client.NewSession(); err != nil {
+			return
+		}
 	}
 	defer session.Close()
 	stdin, err := session.StdinPipe()

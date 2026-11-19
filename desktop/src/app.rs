@@ -71,6 +71,11 @@ pub struct FennecWindow {
     shells: HashMap<String, Vec<String>>,
     /// The tab shown in each session: a local shell's `local:<address>`, else the agent's.
     tab: HashMap<String, String>,
+    /// Each session's `fen attach` on this Mac's core (`fennec.attach-of`), by
+    /// session name: the agent tab. Fennec's own client carries the session (local
+    /// echo prediction, conflated frames, image paste), as in any terminal.
+    attaches: HashMap<String, String>,
+    attaching: std::collections::HashSet<String>,
     pub(crate) _subs: Vec<Subscription>,
     pub(crate) _tasks: Vec<Task<()>>,
 }
@@ -168,6 +173,8 @@ impl FennecWindow {
             local: None,
             shells: HashMap::new(),
             tab: HashMap::new(),
+            attaches: HashMap::new(),
+            attaching: Default::default(),
             _subs: subs,
             _tasks: Vec::new(),
         };
@@ -188,20 +195,7 @@ impl FennecWindow {
                 cx.notify();
             });
         }));
-        this._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let connected = cx.background_spawn(async move { Core::connect() }).await;
-            let _ = this.update_in(cx, |this, window, cx| match connected {
-                Ok(core) => {
-                    this.core = Some(core);
-                    this.follow_core(window, cx);
-                    cx.notify();
-                }
-                Err(e) => {
-                    this.core_error = Some(format!("{e:#}"));
-                    cx.notify();
-                }
-            });
-        }));
+        this.connect_core(window, cx);
         if let Some(path) = crate::shot::path() {
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
                 loop {
@@ -285,6 +279,46 @@ impl FennecWindow {
         }));
     }
 
+    /// Reaches the cloud computer's core, again and again until it answers
+    /// (Fennec may still be starting, the Mac may be offline): Sessions says
+    /// "connecting" meanwhile, and the error shows only once it persists. Open
+    /// terminals attach again on the new connection, as herdr-app's do.
+    fn connect_core(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.core = None;
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let mut wait = Duration::from_secs(1);
+            for attempt in 1.. {
+                let connected = cx.background_spawn(async move { Core::connect() }).await;
+                let stop = this.update_in(cx, |this, window, cx| match connected {
+                    Ok(core) => {
+                        this.core = Some(core.clone());
+                        this.core_error = None;
+                        for (key, view) in &this.terms {
+                            if !key.starts_with("local:") {
+                                view.update(cx, |v, cx| v.reattach(core.clone(), cx));
+                            }
+                        }
+                        this.follow_core(window, cx);
+                        cx.notify();
+                        true
+                    }
+                    Err(e) => {
+                        if attempt >= 4 {
+                            this.core_error = Some(format!("{e:#}"));
+                        }
+                        cx.notify();
+                        false
+                    }
+                });
+                if stop.unwrap_or(true) {
+                    break;
+                }
+                cx.background_executor().timer(wait).await;
+                wait = (wait * 2).min(Duration::from_secs(15));
+            }
+        }));
+    }
+
     /// The cloud computer's terminals, live: which ones are Fennec sessions.
     fn follow_core(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(core) = self.core.clone() else {
@@ -292,10 +326,7 @@ impl FennecWindow {
         };
         let (channel, stream, snapshot) = match core.subscribe() {
             Ok(s) => s,
-            Err(e) => {
-                self.core_error = Some(format!("{e:#}"));
-                return;
-            }
+            Err(_) => return self.connect_core(window, cx),
         };
         self.events = Some(EventLines::new(&snapshot));
         self.terminals_changed(cx);
@@ -310,12 +341,13 @@ impl FennecWindow {
                             this.terminals_changed(cx);
                         }
                     }
-                    if gone {
-                        this.core_error = Some(t("terminal_closed"));
-                        cx.notify();
-                    }
                 });
-                if ok.is_err() || gone {
+                if ok.is_err() {
+                    break;
+                }
+                if gone {
+                    // The connection dropped (sleep, network, Fennec restarting): reconnect.
+                    let _ = this.update_in(cx, |this, window, cx| this.connect_core(window, cx));
                     break;
                 }
             }
@@ -589,7 +621,7 @@ impl FennecWindow {
         self.tab
             .get(session)
             .cloned()
-            .unwrap_or_else(|| session.to_owned())
+            .unwrap_or_else(|| self.agent_tab(session))
     }
 
     fn shown_terminal(&self) -> Option<Entity<TerminalView>> {
@@ -625,6 +657,13 @@ impl FennecWindow {
             let _ = this.update_in(cx, |this, window, cx| match connected {
                 Ok((core, listed)) => {
                     for t in listed["terminals"].as_array().into_iter().flatten() {
+                        if let (Some(of), Some(a), true) = (
+                            t["labels"]["fennec.attach-of"].as_str(),
+                            t["address"].as_str(),
+                            t["state"] == "live",
+                        ) {
+                            this.attaches.insert(of.to_owned(), a.to_owned());
+                        }
                         if let (Some(of), Some(a)) = (
                             t["labels"]["fennec.shell-of"].as_str(),
                             t["address"].as_str(),
@@ -724,9 +763,78 @@ impl FennecWindow {
         cx.notify();
     }
 
+    /// The agent tab's terminal key: the session's `fen attach` on this Mac, or
+    /// (without a local core, as on the cloud computer itself) the agent's own
+    /// terminal there.
+    fn agent_tab(&self, session: &str) -> String {
+        if crate::core_bin::local().is_none() {
+            return session.to_owned();
+        }
+        let name = self
+            .sessions
+            .iter()
+            .find(|s| s.address == session)
+            .map(|s| s.name.as_str())
+            .unwrap_or_default();
+        self.attaches
+            .get(name)
+            .map(|a| format!("local:{a}"))
+            .unwrap_or_default()
+    }
+
+    /// Starts `fen attach <session>` on this Mac's core once per session.
+    fn ensure_attach(&mut self, session: &Session, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::core_bin::local().is_none()
+            || self.attaches.contains_key(&session.name)
+            || !self.attaching.insert(session.name.clone())
+        {
+            return;
+        }
+        let session = session.clone();
+        self.with_local(window, cx, move |this, window, cx| {
+            if this.attaches.contains_key(&session.name) {
+                this.attaching.remove(&session.name);
+                return;
+            }
+            let Some(core) = this.local.clone() else {
+                this.attaching.remove(&session.name);
+                return;
+            };
+            let display = crate::terminal::initial_display(window);
+            let name = session.name.clone();
+            this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                let started = cx
+                    .background_spawn(async move {
+                        let fen = std::env::var("FENNEC_FEN").unwrap_or_else(|_| "fen".into());
+                        let home = std::env::var("HOME").ok();
+                        core.run(
+                            vec![fen, "attach".into(), name.clone()],
+                            home,
+                            serde_json::json!({"fennec.attach-of": name}),
+                            None,
+                            None,
+                            display,
+                        )
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    this.attaching.remove(&session.name);
+                    match started {
+                        Ok(address) => {
+                            this.attaches.insert(session.name.clone(), address);
+                        }
+                        Err(e) => this.say(format!("{e:#}"), cx),
+                    }
+                    cx.notify();
+                });
+            }));
+        });
+    }
+
     fn forget_shell(&mut self, address: &str) {
         let key = format!("local:{address}");
         self.terms.remove(&key);
+        self.attaches.retain(|_, a| a != address);
         for list in self.shells.values_mut() {
             list.retain(|a| a != address);
         }
@@ -1814,8 +1922,15 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let s = self.sessions.iter().find(|s| s.address == address).cloned();
+        if let Some(session) = self.sessions.iter().find(|s| s.address == address).cloned() {
+            self.ensure_attach(&session, window, cx);
+        }
         let shown = self.shown_tab(address);
-        let view = self.terminal(&shown, window, cx);
+        let view = if shown.is_empty() {
+            None
+        } else {
+            self.terminal(&shown, window, cx)
+        };
         let shells = s
             .as_ref()
             .and_then(|s| self.shells.get(&s.name))
@@ -1874,7 +1989,7 @@ impl FennecWindow {
                         .child(ui::icon("close", 11.0, c("f_muted"))),
                 )
         });
-        let agent_on = shown == address;
+        let agent_on = shown == self.agent_tab(address);
         v_flex()
             .flex_1()
             .min_w_0()

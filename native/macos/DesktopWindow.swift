@@ -34,6 +34,8 @@ final class DesktopWindow: NSObject {
         environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
         // This Mac's own herdr-core (bundled, an isolated instance) for local shell tabs.
         environment["FENNEC_LOCAL_HC"] = contents.appendingPathComponent("Resources/fennec-hc-local").path
+        // Sessions open as `fen attach <session>` in that core, Fennec's own client.
+        environment["FENNEC_FEN"] = contents.appendingPathComponent("MacOS/fen").path
         if !language.isEmpty { environment["FENNEC_LANGUAGE"] = language }
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
