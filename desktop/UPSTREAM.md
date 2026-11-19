@@ -19,7 +19,7 @@ says so. Every other Fennec file is new.
 
 ## Kept verbatim
 
-Never edit these here: fix them upstream, or take herdr-app's fix with
+Never edit or reformat these here (`scripts/fmt` formats Fennec's own files only): fix them upstream, or take herdr-app's fix with
 `scripts/herdr-core update <herdr-app checkout>`. `scripts/herdr-core check
 <checkout>` lists any that differ.
 

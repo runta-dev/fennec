@@ -29,8 +29,8 @@ mod win32_keys;
 
 // What the terminal core asks of the app, answered by Fennec.
 mod core_bin;
-mod mirror;
 mod keys;
+mod mirror;
 mod mods;
 mod settings;
 
@@ -52,31 +52,48 @@ pub(crate) fn test_tmp() -> std::path::PathBuf {
 
 fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("FENNEC_DESKTOP_LOG").unwrap_or_else(|_| "warn,fennec_desktop=info".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_env("FENNEC_DESKTOP_LOG")
+                .unwrap_or_else(|_| "warn,fennec_desktop=info".into()),
+        )
         .init();
     let core = hc::Core::connect();
-    gpui_platform::application().with_assets(ui::Assets).run(move |cx| {
-        gpui_base::init(cx);
-        settings::load_bundled_fonts(cx);
-        keys::install(cx);
-        let dark = matches!(cx.window_appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
-        settings::set_dark(dark);
-        let requests = mods::requests();
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::centered(size(px(1280.0), px(820.0)), cx)),
-            titlebar: Some(TitlebarOptions {
-                title: Some("Fennec".into()),
-                appears_transparent: true,
-                traffic_light_position: Some(point(px(16.0), px(17.0))),
-            }),
-            app_owns_titlebar_drag: cfg!(target_os = "macos"),
-            window_decorations: Some(WindowDecorations::Client),
-            app_id: Some("fennec-desktop".into()),
-            window_min_size: Some(size(px(900.0), px(560.0))),
-            ..Default::default()
-        };
-        cx.open_window(options, |window, cx| cx.new(|cx| app::FennecWindow::new(core, requests, window, cx)))
+    gpui_platform::application()
+        .with_assets(ui::Assets)
+        .run(move |cx| {
+            gpui_base::init(cx);
+            settings::load_bundled_fonts(cx);
+            keys::install(cx);
+            let dark = matches!(
+                cx.window_appearance(),
+                WindowAppearance::Dark | WindowAppearance::VibrantDark
+            );
+            settings::set_dark(dark);
+            let requests = mods::requests();
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::centered(size(px(1280.0), px(820.0)), cx)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Fennec".into()),
+                    appears_transparent: true,
+                    traffic_light_position: Some(point(px(16.0), px(17.0))),
+                }),
+                app_owns_titlebar_drag: cfg!(target_os = "macos"),
+                window_decorations: Some(WindowDecorations::Client),
+                app_id: Some("fennec-desktop".into()),
+                window_min_size: Some(size(px(900.0), px(560.0))),
+                ..Default::default()
+            };
+            cx.open_window(options, |window, cx| {
+                cx.new(|cx| app::FennecWindow::new(core, requests, window, cx))
+            })
             .expect("cannot open the Fennec window");
-        cx.activate(true);
-    });
+            cx.activate(true);
+            // The window is the program: closing it ends it (the menu bar app starts it again).
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+        });
 }

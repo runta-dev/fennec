@@ -37,8 +37,8 @@ project.
 **Sessions.** Grouped *Needs you*, *Working*, *Idle*. Each row shows the agent
 icon (the same icons as Fennec for iPhone) with its status dot at the bottom
 right, sized as on iPhone (7 pt on a 30 pt icon, so 4 px on the 16 px icon
-here), the title and age. `+` opens *New session*: project, agent (limited to
-the project's enabled workers), model and an optional first message.
+here), the title and age. `+` opens a menu of agents, as on iPhone: picking one
+starts a session on the cloud computer and shows it.
 
 Rows are flat: selected = card fill with a hairline; hover = a faint fill; 1 px
 between rows. Typography is medium weight (500) throughout.
@@ -165,15 +165,18 @@ People review them in Knowledge.
 
 ## The window and the menu bar
 
-Implementation: `native/macos/DesktopWindow.swift` (window, bridge, terminal
-tabs) and `native/macos/UI/desktop.{html,js,css}` (the page, ported from the
-mockup). The page calls only these control methods, relayed by the window:
+Implementation: the window is a native program, [`desktop/`](../desktop/)
+(`Contents/MacOS/fennec-desktop`), built on GPUI with the Herdr desktop app's
+terminal core kept unchanged ([`desktop/UPSTREAM.md`](../desktop/UPSTREAM.md),
+Apache-2.0). `native/macos/DesktopWindow.swift` only starts it, brings it to
+the front and stops it with Fennec. The window calls the daemon directly:
 `board.call`, `sessions.start` (a session on the cloud computer with no Mac
-folder, optionally with a project's context and a first message),
-`account.organizations` (the Runta organizations for the switcher) and
-`sessions.refresh`. The menu bar app pushes the account, language and
-session list it already polls. The window has no title bar: the page reports
-which strips drag it, and the traffic lights sit on the sidebar's title row.
+folder), `account.organizations` (the switcher) and `account.profile` (who
+signs requests and replies). Its terminals are herdr-core terminal views on
+the cloud computer's core, reached through `fen hc connect` (control method
+`hc.open`: a command stream over the resident connection). Copy comes from the
+panel's catalog (`desktop.*` in `native/macos/UI/translations.json`), in the
+menu bar app's language.
 
 
 - The app stays a menu bar app. Opening the window (panel button, menu bar
@@ -183,8 +186,9 @@ which strips drag it, and the traffic lights sit on the sidebar's title row.
 - The panel and the window share the daemon: sessions, approvals and sign-in
   state are the same in both. Approvals still appear from the menu bar.
 - Agent icons are the iPhone app's (`ios/Fennec/Assets.xcassets/agent-*`).
-- Terminal tabs use the panel's terminal (xterm.js) and `fen attach`; local
-  shells run the user's login shell in a PTY on the Mac.
+- Session terminals are herdr-app's terminal views (libghostty-vt, drawn by
+  GPUI) attached to the cloud computer's herdr-core, so they look and behave as
+  in Herdr. Local shell tabs are not in this version.
 
 ## Not in this version
 

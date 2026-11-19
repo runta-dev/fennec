@@ -76,7 +76,11 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder(t("search")));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t("search"))
+                .clean_on_escape()
+        });
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 12)
@@ -1703,6 +1707,18 @@ impl Render for FennecWindow {
             .bg(c("f_card"))
             .text_color(c("f_text"))
             .on_action(cx.listener(Self::on_shell_action))
+            // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
+            .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
+                let k = &e.keystroke;
+                if k.key == "k"
+                    && (k.modifiers.platform
+                        || (cfg!(not(target_os = "macos")) && k.modifiers.control))
+                {
+                    this.sidebar = true;
+                    this.search.read(cx).focus_handle(cx).focus(window, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .when(self.sidebar, |d| d.child(self.sidebar(cx)))
             .child(
                 div()
