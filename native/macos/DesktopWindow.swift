@@ -32,6 +32,8 @@ final class DesktopWindow: NSObject {
         var environment = ProcessInfo.processInfo.environment
         // herdr-core for the window's terminals: the cloud computer's, through `fen hc`.
         environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
+        // This Mac's own herdr-core (bundled, an isolated instance) for local shell tabs.
+        environment["FENNEC_LOCAL_HC"] = contents.appendingPathComponent("Resources/fennec-hc-local").path
         if !language.isEmpty { environment["FENNEC_LANGUAGE"] = language }
         process.environment = environment
         process.standardInput = FileHandle.nullDevice

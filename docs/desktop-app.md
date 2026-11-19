@@ -188,7 +188,10 @@ menu bar app's language.
 - Agent icons are the iPhone app's (`ios/Fennec/Assets.xcassets/agent-*`).
 - Session terminals are herdr-app's terminal views (libghostty-vt, drawn by
   GPUI) attached to the cloud computer's herdr-core, so they look and behave as
-  in Herdr. Local shell tabs are not in this version.
+  in Herdr. Local shell tabs are terminal views on herdr-core bundled in
+  Fennec.app (`Contents/MacOS/hc`), run as Fennec's own instance
+  (`HC_SESSION=fennec`) apart from a Herdr app's; shells outlive the window and
+  come back as tabs.
 
 ## Not in this version
 

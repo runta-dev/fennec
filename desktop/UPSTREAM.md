@@ -12,6 +12,8 @@ small modules the terminal core calls (`src/settings.rs`, `src/mods.rs`,
 - License: [LICENSE](LICENSE) (Apache-2.0), with herdr-app's
   [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES) and [licenses/](licenses/).
 - Ghostty: submodule `vendor/ghostty` at the commit herdr-app pins.
+- herdr-core: submodule `vendor/herdr-core` at v0.1.21 (Apache-2.0), built
+  unchanged and bundled in Fennec.app for local shell tabs.
 
 `src/settings.rs` carries herdr-app's palettes, color derivation and font handling,
 modified for Fennec (system appearance, no settings.json, Fennec's colors); its header

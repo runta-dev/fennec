@@ -28,4 +28,7 @@ libfontconfig-dev libfreetype-dev` (herdr-app's CI list).
 - **Board:** the daemon's `board.call` on a Mac; `fennec-terminal board-call
   METHOD PATH` on the cloud computer (`FENNEC_BOARD_CMD` overrides the program).
 
-Sessions are the core's terminals labeled `fennec.session`.
+Sessions are the core's terminals labeled `fennec.session`. Local shell tabs
+run on this Mac's herdr-core (`FENNEC_LOCAL_HC`; Fennec.app bundles herdr-core,
+`vendor/herdr-core` at v0.1.21, as `Contents/MacOS/hc` with `HC_SESSION=fennec`),
+labeled `fennec.shell-of=<session>`.

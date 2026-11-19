@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fennec's own herdr-core on this Mac, for the desktop window's local shell
+# tabs: an isolated instance (HC_SESSION=fennec), apart from any Herdr app's.
+HC_SESSION=fennec exec "$(dirname "$0")/../MacOS/hc" "$@"

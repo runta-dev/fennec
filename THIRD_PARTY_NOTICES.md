@@ -45,6 +45,11 @@ GPUI with Herdr's patches, and its bundled fonts are kept unchanged;
 herdr-app code modified for Fennec. Ghostty is pinned as the submodule
 `desktop/vendor/ghostty` (MIT).
 
+herdr-core (https://github.com/herdrdev/herdr-core, v0.1.21, Apache-2.0) is
+built unchanged from the submodule `desktop/vendor/herdr-core` and bundled as
+`Contents/MacOS/hc` for the desktop window's local shells; its license ships
+as `herdr-core-Apache-2.0.txt`.
+
 ## xterm.js terminal renderer
 
 - `@xterm/xterm` 5.5.0, MIT; license: `native/macos/UI/vendor/xterm-LICENSE`.

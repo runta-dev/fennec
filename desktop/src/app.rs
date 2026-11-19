@@ -65,6 +65,12 @@ pub struct FennecWindow {
     /// A session asked for and not yet listed: shown once it appears.
     starting: Option<String>,
     pub(crate) settings: crate::project_settings::State,
+    /// This Mac's own core (Fennec's instance), for local shell tabs.
+    local: Option<Arc<Core>>,
+    /// Local shells by the session they sit beside (`fennec.shell-of`), in order.
+    shells: HashMap<String, Vec<String>>,
+    /// The tab shown in each session: a local shell's `local:<address>`, else the agent's.
+    tab: HashMap<String, String>,
     pub(crate) _subs: Vec<Subscription>,
     pub(crate) _tasks: Vec<Task<()>>,
 }
@@ -161,6 +167,9 @@ impl FennecWindow {
             new_project: None,
             starting: None,
             settings: Default::default(),
+            local: None,
+            shells: HashMap::new(),
+            tab: HashMap::new(),
             _subs: subs,
             _tasks: Vec::new(),
         };
@@ -461,22 +470,26 @@ impl FennecWindow {
         }));
     }
 
+    /// The terminal view of a cloud terminal, or of a local shell (`local:<address>`).
     fn terminal(
         &mut self,
-        address: &str,
+        key: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Entity<TerminalView>> {
-        if let Some(t) = self.terms.get(address) {
+        if let Some(t) = self.terms.get(key) {
             return Some(t.clone());
         }
-        let core = self.core.clone()?;
-        let addr = address.to_owned();
-        let view = cx.new(|cx| TerminalView::attach(core, addr.clone(), (120, 40), cx));
+        let (core, address) = match key.strip_prefix("local:") {
+            Some(a) => (self.local.clone()?, a.to_owned()),
+            None => (self.core.clone()?, key.to_owned()),
+        };
+        let addr = key.to_owned();
+        let view = cx.new(|cx| TerminalView::attach(core, address, (120, 40), cx));
         let sub = cx.subscribe_in(
             &view,
             window,
-            move |this, _, ev: &TerminalEvent, window, cx| match ev {
+            move |this, _, ev: &TerminalEvent, _, cx| match ev {
                 TerminalEvent::Link(click) => {
                     if let Some(target @ crate::links::Target::Url(_)) = &click.native {
                         crate::links::open(target);
@@ -485,24 +498,137 @@ impl FennecWindow {
                 TerminalEvent::Notice { title, body } => this.say(format!("{title}: {body}"), cx),
                 TerminalEvent::Ended => {
                     this.terms.remove(&addr);
+                    if let Some(a) = addr.strip_prefix("local:") {
+                        this.forget_shell(a);
+                    }
                     cx.notify();
                 }
                 TerminalEvent::TitleChanged => cx.notify(),
-                _ => {
-                    let _ = window;
-                }
+                _ => {}
             },
         );
         self._subs.push(sub);
-        self.terms.insert(address.to_owned(), view.clone());
+        self.terms.insert(key.to_owned(), view.clone());
         Some(view)
+    }
+
+    /// The key of the tab shown in a session (its agent's address, or `local:<shell>`).
+    fn shown_tab(&self, session: &str) -> String {
+        self.tab
+            .get(session)
+            .cloned()
+            .unwrap_or_else(|| session.to_owned())
     }
 
     fn shown_terminal(&self) -> Option<Entity<TerminalView>> {
         match &self.route {
-            Some(Route::Session(a)) => self.terms.get(a).cloned(),
+            Some(Route::Session(a)) => self.terms.get(&self.shown_tab(a)).cloned(),
             _ => None,
         }
+    }
+
+    // ---------- local shells ----------
+
+    /// Connects to this Mac's core once, and finds the shells left from before.
+    fn with_local(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        if self.local.is_some() {
+            return then(self, window, cx);
+        }
+        let Some(program) = crate::core_bin::local() else {
+            return;
+        };
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let connected = cx
+                .background_spawn(async move {
+                    let core = crate::core_bin::using(program, Core::connect)?;
+                    let listed = core.call("terminal.list", serde_json::json!({}))?;
+                    anyhow::Ok((core, listed))
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| match connected {
+                Ok((core, listed)) => {
+                    for t in listed["terminals"].as_array().into_iter().flatten() {
+                        if let (Some(of), Some(a)) = (
+                            t["labels"]["fennec.shell-of"].as_str(),
+                            t["address"].as_str(),
+                        ) {
+                            let list = this.shells.entry(of.to_owned()).or_default();
+                            if !list.iter().any(|x| x == a) {
+                                list.push(a.to_owned());
+                            }
+                        }
+                    }
+                    this.local = Some(core);
+                    then(this, window, cx);
+                    cx.notify();
+                }
+                Err(e) => this.say(format!("{e:#}"), cx),
+            });
+        }));
+    }
+
+    fn new_shell(&mut self, session: Session, window: &mut Window, cx: &mut Context<Self>) {
+        self.with_local(window, cx, move |this, window, cx| {
+            let Some(core) = this.local.clone() else {
+                return;
+            };
+            let display = crate::terminal::initial_display(window);
+            let name = session.name.clone();
+            this._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                let started = cx
+                    .background_spawn(async move {
+                        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+                        let home = std::env::var("HOME").ok();
+                        core.run(
+                            vec![shell, "-l".into()],
+                            home,
+                            serde_json::json!({"fennec.shell-of": name}),
+                            None,
+                            None,
+                            display,
+                        )
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| match started {
+                    Ok(address) => {
+                        this.shells
+                            .entry(session.name.clone())
+                            .or_default()
+                            .push(address.clone());
+                        this.tab
+                            .insert(session.address.clone(), format!("local:{address}"));
+                        cx.notify();
+                    }
+                    Err(e) => this.say(format!("{e:#}"), cx),
+                });
+            }));
+        });
+    }
+
+    fn close_shell(&mut self, address: String, cx: &mut Context<Self>) {
+        if let Some(core) = self.local.clone() {
+            let a = address.clone();
+            cx.background_spawn(async move {
+                let _ = core.call("terminal.kill", serde_json::json!({"terminal": a}));
+            })
+            .detach();
+        }
+        self.forget_shell(&address);
+        cx.notify();
+    }
+
+    fn forget_shell(&mut self, address: &str) {
+        let key = format!("local:{address}");
+        self.terms.remove(&key);
+        for list in self.shells.values_mut() {
+            list.retain(|a| a != address);
+        }
+        self.tab.retain(|_, t| t != &key);
     }
 
     /// Key bindings the terminal core sends up (keys.rs).
@@ -1576,7 +1702,13 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let s = self.sessions.iter().find(|s| s.address == address).cloned();
-        let view = self.terminal(address, window, cx);
+        let shown = self.shown_tab(address);
+        let view = self.terminal(&shown, window, cx);
+        let shells = s
+            .as_ref()
+            .and_then(|s| self.shells.get(&s.name))
+            .cloned()
+            .unwrap_or_default();
         let request = s.as_ref().and_then(|s| {
             self.requests.iter().find_map(|(pid, list)| {
                 list.iter()
@@ -1584,6 +1716,53 @@ impl FennecWindow {
                     .map(|r| (pid.clone(), r.number, r.title.clone()))
             })
         });
+        let tab = |id: SharedString, on: bool| {
+            h_flex()
+                .id(id)
+                .h(px(28.0))
+                .px(px(10.0))
+                .gap(px(7.0))
+                .rounded(px(7.0))
+                .text_size(px(12.5))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(if on { c("f_text") } else { c("f_muted") })
+                .when(on, |d| {
+                    d.bg(c("f_card")).border_1().border_color(c("f_line"))
+                })
+                .when(!on, |d| {
+                    d.border_1()
+                        .border_color(transparent_black())
+                        .hover(|s| s.bg(c("f_line")))
+                })
+        };
+        let session_address = address.to_owned();
+        let shell_tabs = shells.iter().enumerate().map(|(i, a)| {
+            let key = format!("local:{a}");
+            let (show, close) = (session_address.clone(), a.clone());
+            let open_key = key.clone();
+            tab(SharedString::from(format!("shell-{a}")), shown == key)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.tab.insert(show.clone(), open_key.clone());
+                    cx.notify();
+                }))
+                .child(if shells.len() > 1 {
+                    format!("{} {}", t("shell"), i + 1)
+                } else {
+                    t("shell")
+                })
+                .child(
+                    div()
+                        .id(SharedString::from(format!("close-{a}")))
+                        .rounded(px(4.0))
+                        .hover(|s| s.bg(c("f_line")))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.close_shell(close.clone(), cx);
+                        }))
+                        .child(ui::icon("close", 11.0, c("f_muted"))),
+                )
+        });
+        let agent_on = shown == address;
         v_flex()
             .flex_1()
             .min_w_0()
@@ -1595,26 +1774,41 @@ impl FennecWindow {
                     .h(px(40.0))
                     .flex_none()
                     .px(px(10.0))
-                    .gap(px(8.0))
+                    .gap(px(4.0))
                     .bg(c("f_bg"))
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
                     .when_some(s.as_ref(), |d, s| {
+                        let back = s.address.clone();
                         d.child(
-                            h_flex()
-                                .h(px(28.0))
-                                .px(px(10.0))
-                                .gap(px(7.0))
-                                .rounded(px(7.0))
-                                .bg(c("f_card"))
-                                .border_1()
-                                .border_color(c("f_line"))
-                                .text_size(px(12.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(c("f_text"))
+                            tab("agent-tab".into(), agent_on)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.tab.remove(&back);
+                                    cx.notify();
+                                }))
                                 .child(ui::agent_icon(&s.agent, 14.0))
                                 .child(sessions::agent_name(&s.agent).to_owned()),
+                        )
+                    })
+                    .children(shell_tabs)
+                    .when(crate::core_bin::local().is_some(), |d| {
+                        let session = s.clone();
+                        d.child(
+                            div()
+                                .id("new-tab")
+                                .size(px(26.0))
+                                .rounded(px(6.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .hover(|s| s.bg(c("f_line")))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if let Some(s) = session.clone() {
+                                        this.new_shell(s, window, cx);
+                                    }
+                                }))
+                                .child(ui::icon("plus", 13.0, c("f_muted"))),
                         )
                     })
                     .child(div().flex_1())
