@@ -4,17 +4,25 @@ use serde_json::{Value, json};
 
 impl FennecWindow {
     pub(super) fn start_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (send, receive) = async_channel::unbounded::<(Value, Arc<Core>)>();
+        let (send, receive) = async_channel::unbounded::<(Value, Option<Arc<Core>>)>();
         self.activity_send = Some(send);
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let mut previous = Value::Null;
             while let Ok((mut input, core)) = receive.recv().await {
                 input["previous"] = previous.clone();
                 let result = cx.background_spawn(async move {
+                    let records = input["terminals"].clone();
+                    let runtime = input["cloud_runtime"].clone();
                     let mut result = crate::control::call("desktop.activity.update", input)?;
                     let writes = result["seen"].as_object().cloned().unwrap_or_default();
                     for (addr, turn) in writes {
-                        if core.call("terminal.label", json!({"terminal": addr, "labels": {"herdr.seen": turn.to_string()}})).is_err() {
+                        let failed = if let Some(address) = addr.strip_prefix("cloud:") {
+                            let session = records.as_array().into_iter().flatten().find(|r| r["address"] == addr).map(|r| r["labels"]["fennec.session"].clone()).unwrap_or_default();
+                            crate::control::call("desktop.session.seen", json!({"address":address,"turn":turn,"session_id":session,"expected_runtime_id":runtime})).is_err()
+                        } else {
+                            core.as_ref().is_none_or(|source| source.call("terminal.label", json!({"terminal":addr,"labels":{"herdr.seen":turn.to_string()}})).is_err())
+                        };
+                        if failed {
                             result["previous"][&addr]["looked"] = Value::Null;
                             result["previous"][&addr]["written"] = Value::Null;
                             result["retry"] = json!(true);
@@ -83,19 +91,46 @@ impl FennecWindow {
         } else {
             String::new()
         };
-        let (Some(events), Some(core), Some(send)) =
-            (&mut self.events, &self.core, &self.activity_send)
-        else {
+        let Some(send) = &self.activity_send else {
             return;
         };
-        let (observed, resynced) = events.take_seen();
-        let input = json!({"terminals": events.live_for(&core.hello, &Value::Null)["terminals"], "looking": looking,
-            "observed_seen": observed, "resynced": resynced});
+        let mut observed = HashMap::new();
+        let mut resynced = false;
+        if let Some(events) = &mut self.events {
+            let (seen, reset) = events.take_seen();
+            observed.extend(seen);
+            resynced |= reset;
+        }
+        let mut quiet = Vec::new();
+        if let Some(events) = &mut self.cloud_events {
+            let (seen, reset) = events.take_seen();
+            observed.extend(seen.into_iter().map(|(a, t)| (format!("cloud:{a}"), t)));
+            resynced |= reset;
+            if reset {
+                quiet.push("cloud:");
+            }
+        }
+        for terminal in self.cloud_listing["terminals"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if let (Some(address), Some(seen)) = (
+                terminal["address"].as_str(),
+                terminal["labels"]["herdr.seen"]
+                    .as_str()
+                    .and_then(|s| s.parse::<u64>().ok()),
+            ) {
+                observed.insert(format!("cloud:{address}"), seen);
+            }
+        }
+        let input = json!({"terminals": self.terminal_records(), "looking": looking,
+            "observed_seen": observed, "resynced": resynced, "quiet_prefixes": quiet, "cloud_runtime": self.cloud_listing["runtime_id"]});
         if input == self.activity_input {
             return;
         }
         self.activity_input = input.clone();
-        let _ = send.try_send((input, core.clone()));
+        let _ = send.try_send((input, self.core.clone()));
     }
 
     pub(super) fn apply_activity(&mut self) {

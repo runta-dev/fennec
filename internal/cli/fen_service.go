@@ -423,12 +423,14 @@ func (channel *terminalChannel) cachedListing(refresh bool) json.RawMessage {
 	service.mu.Lock()
 	raw := append(json.RawMessage{}, service.listing...)
 	refreshing := service.refreshing || len(service.refresh) > 0
+	runtimeID := service.runtimeID
 	service.mu.Unlock()
 	listing := map[string]json.RawMessage{}
 	loaded := len(raw) > 0 && json.Unmarshal(raw, &listing) == nil && listing != nil
 	if !loaded {
 		listing = map[string]json.RawMessage{"terminals": json.RawMessage("[]")}
 	}
+	listing["runtime_id"], _ = json.Marshal(runtimeID)
 	listing["loaded"], _ = json.Marshal(loaded)
 	listing["refreshing"], _ = json.Marshal(refreshing)
 	result, _ := json.Marshal(listing)

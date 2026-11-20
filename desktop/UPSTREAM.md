@@ -84,3 +84,12 @@ login shell, including when an existing core was started by a noninteractive
 process. Agent routing still follows the menubar preference. Uploaded project
 artwork is clipped by the image renderer itself, using the same corner radius
 as the surrounding project mark.
+
+Cloud sessions are fetched independently through the Go daemon's cached
+`sessions.list` endpoint. Local sessions stay first without section headings;
+cloud agents have attention sections. Cloud terminal views run the installed
+`fen attach <session>` inside a local core PTY, using the CLI's resident transport,
+input prediction, image paste and reconnection path. Switching away terminates
+only that local attach process, never the cloud agent. Core metadata writes use
+scoped resident commands and validate the Fennec session label before changing
+`herdr.seen`; terminal IDs from different sources have separate UI identities.

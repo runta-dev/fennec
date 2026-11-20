@@ -12,18 +12,6 @@ pub enum State {
     Unknown,
 }
 
-impl State {
-    pub fn label(self) -> String {
-        crate::i18n::t(match self {
-            State::NeedsYou => "needs_you",
-            State::Working => "working",
-            State::Idle => "idle",
-            State::Done => "done",
-            State::Unknown => "sessions",
-        })
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Session {
     /// herdr-core's address of the agent's terminal.
@@ -36,6 +24,16 @@ pub struct Session {
     pub state: State,
     /// When the status last changed, in ms since the epoch.
     pub since_ms: u64,
+}
+
+impl Session {
+    pub fn group_key(&self) -> String {
+        if self.address.starts_with("cloud:") {
+            format!("cloud:{}", self.name)
+        } else {
+            self.name.clone()
+        }
+    }
 }
 
 pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
@@ -65,7 +63,14 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                         .trim()
                 })
                 .filter(|s| !s.is_empty())
-                .map(str::to_owned)
+                .map(|s| {
+                    let pipe = format!(" | {name}");
+                    let dot = format!(" · {name}");
+                    s.strip_suffix(&pipe)
+                        .or_else(|| s.strip_suffix(&dot))
+                        .unwrap_or(s)
+                        .to_owned()
+                })
                 .unwrap_or_else(|| name.clone());
             Some(Session {
                 address: t["address"].as_str()?.to_owned(),

@@ -3,6 +3,7 @@
 //! on the right.
 
 mod activity;
+mod cloud;
 mod context_menu;
 
 use crate::board::{self, Project, Request};
@@ -43,10 +44,16 @@ struct NewProject {
 }
 
 pub struct FennecWindow {
-    activity_send: Option<async_channel::Sender<(serde_json::Value, Arc<Core>)>>,
+    activity_send: Option<async_channel::Sender<(serde_json::Value, Option<Arc<Core>>)>>,
     activity_input: serde_json::Value,
     activity: serde_json::Value,
     agent_notices: Vec<serde_json::Value>,
+    cloud_listing: serde_json::Value,
+    cloud_generation: u64,
+    cloud_views: HashMap<String, String>,
+    cloud_attach_pending: std::collections::HashSet<String>,
+    cloud_attach_failed: std::collections::HashSet<String>,
+    cloud_events: Option<EventLines>,
     core: Option<Arc<Core>>,
     core_error: Option<String>,
     events: Option<EventLines>,
@@ -184,6 +191,12 @@ impl FennecWindow {
             activity_input: serde_json::Value::Null,
             activity: serde_json::Value::Null,
             agent_notices: Vec::new(),
+            cloud_listing: serde_json::Value::Null,
+            cloud_generation: 0,
+            cloud_views: HashMap::new(),
+            cloud_attach_pending: Default::default(),
+            cloud_attach_failed: Default::default(),
+            cloud_events: None,
             core,
             core_error,
             events: None,
@@ -229,6 +242,7 @@ impl FennecWindow {
         if !crate::preview::active() {
             this.apply_desktop_preferences(window, cx);
             this.start_activity(window, cx);
+            this.follow_cloud(window, cx);
         }
         if crate::preview::active() {
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
@@ -245,7 +259,11 @@ impl FennecWindow {
                         this.follow_core(window, cx);
                         this.has_connected = true;
                         if !crate::core_bin::cloud() {
-                            if let Some(session) = this.sessions.first() {
+                            if let Some(session) = this
+                                .sessions
+                                .iter()
+                                .find(|s| !s.address.starts_with("cloud:"))
+                            {
                                 if this.route == Some(Route::AppSettings) {
                                     cx.notify();
                                     return;
@@ -412,10 +430,7 @@ impl FennecWindow {
     }
 
     fn terminals_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(events) = self.events.as_ref() else {
-            return;
-        };
-        let live = events.live();
+        let live = serde_json::json!({"terminals": self.terminal_records()});
         if !crate::core_bin::cloud() {
             self.shells.clear();
         }
@@ -425,7 +440,9 @@ impl FennecWindow {
                     .insert(address.to_owned(), sessions::shell_name(terminal));
                 self.directories
                     .insert(address.to_owned(), sessions::terminal_directory(terminal));
-                if let Some(parent) = terminal["labels"]["fennec.shell-of"].as_str() {
+                if !address.starts_with("cloud:")
+                    && let Some(parent) = terminal["labels"]["fennec.shell-of"].as_str()
+                {
                     let list = self.shells.entry(parent.to_owned()).or_default();
                     if !list.iter().any(|a| a == address) {
                         list.push(address.to_owned());
@@ -574,6 +591,7 @@ impl FennecWindow {
             }
         }
         if let Route::Session(address) = &route {
+            self.cloud_attach_failed.remove(address);
             self.pending_focus = Some(self.shown_tab(address));
         }
         self.menu = None;
@@ -584,6 +602,9 @@ impl FennecWindow {
             // (the core repaints the screen and its history).
             if let Some(Route::Session(old)) = &self.route {
                 let shown = self.shown_tab(old);
+                if shown.starts_with("cloud:") {
+                    self.detach_cloud_view(&shown, cx);
+                }
                 if let Some(view) = self.terms.remove(&shown) {
                     view.read(cx).detach();
                 }
@@ -717,9 +738,14 @@ impl FennecWindow {
         if let Some(t) = self.terms.get(key) {
             return Some(t.clone());
         }
-        let (core, address) = match key.strip_prefix("local:") {
-            Some(a) => (self.local.clone()?, a.to_owned()),
-            None => (self.core.clone()?, key.to_owned()),
+        let (core, address) = if let Some(a) = key.strip_prefix("cloud:") {
+            let _ = a;
+            self.ensure_cloud_view(key, window, cx);
+            (self.local.clone()?, self.cloud_views.get(key)?.clone())
+        } else if let Some(a) = key.strip_prefix("local:") {
+            (self.local.clone()?, a.to_owned())
+        } else {
+            (self.core.clone()?, key.to_owned())
         };
         let addr = key.to_owned();
         let view = cx.new(|cx| TerminalView::attach(core, address, (120, 40), cx));
@@ -735,6 +761,10 @@ impl FennecWindow {
                 TerminalEvent::Notice { title, body } => this.say(format!("{title}: {body}"), cx),
                 TerminalEvent::Ended => {
                     this.terms.remove(&addr);
+                    if addr.starts_with("cloud:") {
+                        this.cloud_views.remove(&addr);
+                        this.cloud_attach_failed.insert(addr.clone());
+                    }
                     if let Some(a) = addr.strip_prefix("local:") {
                         this.forget_shell(a);
                     }
@@ -838,7 +868,7 @@ impl FennecWindow {
                 return;
             };
             let display = crate::terminal::initial_display(window);
-            let name = session.name.clone();
+            let name = session.group_key();
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
                 let started = cx
                     .background_spawn(async move {
@@ -873,11 +903,10 @@ impl FennecWindow {
                 }
                 let _ = this.update_in(cx, |this, window, cx| match started {
                     Ok(address) => {
-                        let list=this.shells.entry(session.name.clone()).or_default();
+                        let list=this.shells.entry(session.group_key()).or_default();
                         if !list.contains(&address){list.push(address.clone());}
                         this.shell_names.entry(address.clone()).or_insert_with(||sessions::shell_name(&serde_json::Value::Null));
-                        this.tab
-                            .insert(session.address.clone(), format!("local:{address}"));
+                        this.set_shown_tab(session.address.clone(), format!("local:{address}"), cx);
                         this.route = Some(Route::Session(session.address.clone()));
                         this.pending_focus = Some(format!("local:{address}"));
                         this.focus.focus(window, cx);
@@ -962,7 +991,7 @@ impl FennecWindow {
         if let Some(s) = self.sessions.iter().find(|s| &s.address == id) {
             keys.extend(
                 self.shells
-                    .get(&s.name)
+                    .get(&s.group_key())
                     .into_iter()
                     .flatten()
                     .map(|a| format!("local:{a}")),
@@ -975,7 +1004,7 @@ impl FennecWindow {
             return;
         };
         if let Some(key) = self.tab_keys().get(index) {
-            self.tab.insert(id.clone(), key.clone());
+            self.set_shown_tab(id.clone(), key.clone(), cx);
             self.pending_focus = Some(key.clone());
             cx.notify();
         }
@@ -1010,7 +1039,7 @@ impl FennecWindow {
         if let Some(view) = self.terms.remove(&format!("local:{address}")) {
             view.read(cx).detach();
         }
-        if let Some(tabs) = self.shells.get_mut(&terminal.name) {
+        if let Some(tabs) = self.shells.get_mut(&terminal.group_key()) {
             tabs.retain(|a| a != &address);
         }
         self.sessions.retain(|s| s.address != address);
@@ -1025,15 +1054,20 @@ impl FennecWindow {
     fn ensure_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if crate::core_bin::cloud()
             || crate::preview::active()
-            || !self.sessions.is_empty()
+            || self
+                .sessions
+                .iter()
+                .any(|s| !s.address.starts_with("cloud:"))
             || self.creating_local
         {
             return;
         }
-        let select = matches!(self.route, None | Some(Route::Session(_)));
+        let select = self.route.is_none()
+            || matches!(&self.route, Some(Route::Session(id)) if !id.starts_with("cloud:"));
         let remaining = self
             .shells
             .iter()
+            .filter(|(group, _)| !group.starts_with("cloud:"))
             .find_map(|(group, tabs)| tabs.first().map(|address| (group.clone(), address.clone())));
         if let (Some((group, address)), Some(core)) = (remaining, self.local.clone()) {
             self.creating_local = true;
@@ -1050,22 +1084,27 @@ impl FennecWindow {
             self.close_shell(address.to_owned(), cx);
             return;
         }
+        if key.starts_with("cloud:") {
+            self.close_cloud_session(key, window, cx);
+            return;
+        }
+        let remote = crate::core_bin::cloud();
         let Some(core) = self.core.clone() else {
             return;
         };
         let address = key.clone();
         let root = self.sessions.iter().find(|s| s.address == key);
-        let remote_name = if crate::core_bin::cloud() {
+        let remote_name = if remote {
             root.map(|s| s.name.clone())
         } else {
             None
         };
-        let promotion = if crate::core_bin::cloud() {
+        let promotion = if remote {
             None
         } else {
             root.and_then(|s| {
                 self.shells
-                    .get(&s.name)
+                    .get(&s.group_key())
                     .and_then(|tabs| tabs.first())
                     .map(|a| (s.name.clone(), a.clone()))
             })
@@ -1406,7 +1445,7 @@ impl FennecWindow {
                         core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {
-                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
+                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {if let Some(Route::Session(old)) = this.route.clone() {let shown=this.shown_tab(&old);if shown.starts_with("cloud:"){this.detach_cloud_view(&shown,cx);}} this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
                         Err(e) => this.say(format!("{e:#}"), cx),
                     }});
                 }));
@@ -1616,97 +1655,119 @@ impl FennecWindow {
         let org_switcher = self.org_switcher(cx);
         let now = sessions::now_ms();
         let mut groups = Vec::new();
-        for state in [
-            State::NeedsYou,
-            State::Done,
-            State::Working,
-            State::Idle,
-            State::Unknown,
-        ] {
-            let list: Vec<&Session> = self
-                .sessions
-                .iter()
-                .filter(|s| {
-                    s.state == state
-                        && (q.is_empty()
-                            || s.title.to_lowercase().contains(&q)
-                            || s.name.contains(&q)
-                            || self.session_directory(s).to_lowercase().contains(&q))
-                })
-                .collect();
-            if list.is_empty() {
-                continue;
-            }
-            if state != State::Unknown {
+        let mut list: Vec<&Session> = self
+            .sessions
+            .iter()
+            .filter(|s| {
+                q.is_empty()
+                    || s.title.to_lowercase().contains(&q)
+                    || s.name.contains(&q)
+                    || self.session_directory(s).to_lowercase().contains(&q)
+            })
+            .collect();
+        // Keep local work first, independently of attention state.
+        list.sort_by_key(|s| {
+            (
+                s.address.starts_with("cloud:"),
+                if s.address.starts_with("cloud:") {
+                    s.state
+                } else {
+                    State::Unknown
+                },
+            )
+        });
+        let mut cloud_section = None;
+        for s in list {
+            let cloud = s.address.starts_with("cloud:");
+            if cloud && cloud_section != Some(s.state) {
+                cloud_section = Some(s.state);
+                let (label, color) = match s.state {
+                    State::NeedsYou => ("needs_you", "blocked"),
+                    State::Working => ("working", "working"),
+                    State::Done => ("done", "done"),
+                    _ => ("idle", "f_muted"),
+                };
+                let count = self
+                    .sessions
+                    .iter()
+                    .filter(|row| {
+                        row.address.starts_with("cloud:")
+                            && row.state == s.state
+                            && (q.is_empty()
+                                || row.title.to_lowercase().contains(&q)
+                                || row.name.contains(&q)
+                                || self.session_directory(row).to_lowercase().contains(&q))
+                    })
+                    .count();
                 groups.push(
                     h_flex()
                         .px(px(8.0))
-                        .pt(px(7.0))
-                        .pb(px(3.0))
-                        .gap(px(4.0))
-                        .text_size(px(11.0))
+                        .pt(px(10.0))
+                        .pb(px(4.0))
+                        .gap(px(6.0))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(c("f_muted"))
-                        .child(state.label())
-                        .child(div().opacity(0.7).child(list.len().to_string()))
+                        .child(div().text_color(c(color)).child(t(label)))
+                        .child(div().text_color(c("f_muted")).child(count.to_string()))
                         .into_any_element(),
                 );
             }
-            for s in list {
-                let selected = route == Some(Route::Session(s.address.clone()));
-                let address = s.address.clone();
-                groups.push(
-                    self.context_row(
-                        row(SharedString::from(format!("s-{}", s.address)), selected),
-                        context_menu::Target::Terminal {
-                            session: s.address.clone(),
-                            tab: self.shown_tab(&s.address),
-                        },
-                        cx,
-                    )
-                    .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                        if !event.is_right_click() && !event.modifiers().control {
-                            this.go(Route::Session(address.clone()), window, cx);
-                        }
-                    }))
-                    .child(
-                        div()
-                            .relative()
-                            .size(px(16.0))
-                            .flex_none()
-                            .child(self.program_icon(&s.address, &s.agent, 16.0))
-                            .child(
-                                div()
-                                    .absolute()
-                                    .right(px(-1.0))
-                                    .bottom(px(-1.0))
-                                    .child(self.group_activity_mark(&s.address)),
-                            ),
-                    )
-                    .child(div().flex_1().min_w_0().truncate().child({
-                        let tab = self.shown_tab(&s.address);
-                        let key = tab.strip_prefix("local:").unwrap_or(&tab);
-                        let path = self
-                            .directories
-                            .get(key)
-                            .map(String::as_str)
-                            .filter(|p| !p.is_empty())
-                            .unwrap_or(&s.directory);
-                        if path.is_empty() {
-                            s.title.clone()
-                        } else {
-                            sessions::directory_label(path)
-                        }
-                    }))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(c("f_muted"))
-                            .child(sessions::age(s.since_ms, now)),
-                    )
-                    .into_any_element(),
-                );
-            }
+            let selected = route == Some(Route::Session(s.address.clone()));
+            let address = s.address.clone();
+            groups.push(
+                self.context_row(
+                    row(SharedString::from(format!("s-{}", s.address)), selected),
+                    context_menu::Target::Terminal {
+                        session: s.address.clone(),
+                        tab: self.shown_tab(&s.address),
+                    },
+                    cx,
+                )
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if !event.is_right_click() && !event.modifiers().control {
+                        this.go(Route::Session(address.clone()), window, cx);
+                    }
+                }))
+                .child(
+                    div()
+                        .relative()
+                        .size(px(16.0))
+                        .flex_none()
+                        .child(self.program_icon(&s.address, &s.agent, 16.0))
+                        .child(
+                            div()
+                                .absolute()
+                                .right(px(-1.0))
+                                .bottom(px(-1.0))
+                                .when(!cloud, |d| d.child(self.group_activity_mark(&s.address))),
+                        ),
+                )
+                .child(div().flex_1().min_w_0().truncate().child({
+                    let tab = self.shown_tab(&s.address);
+                    let key = tab.strip_prefix("local:").unwrap_or(&tab);
+                    let path = self
+                        .directories
+                        .get(key)
+                        .map(String::as_str)
+                        .filter(|p| !p.is_empty())
+                        .unwrap_or(&s.directory);
+                    if (s.address.starts_with("cloud:") && !tab.starts_with("local:"))
+                        || path.is_empty()
+                    {
+                        s.title.clone()
+                    } else {
+                        sessions::directory_label(path)
+                    }
+                }))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(c("f_muted"))
+                        .child(sessions::age(s.since_ms, now)),
+                )
+                .when(cloud, |d| d.child(self.group_activity_mark(&s.address)))
+                .into_any_element(),
+            );
         }
         v_flex()
             .w(px(252.0))
@@ -2420,6 +2481,8 @@ impl FennecWindow {
         let s = self.sessions.iter().find(|s| s.address == address).cloned();
         let shown = self.shown_tab(address);
         let view = self.terminal(&shown, window, cx);
+        let cloud_failed = self.cloud_attach_failed.contains(&shown);
+        let connecting_cloud = shown.starts_with("cloud:") && view.is_none() && !cloud_failed;
         if self.pending_focus.as_deref() == Some(&shown) {
             if let Some(view) = &view {
                 view.read(cx).focus_target(cx).focus(window, cx);
@@ -2428,7 +2491,7 @@ impl FennecWindow {
         }
         let shells = s
             .as_ref()
-            .and_then(|s| self.shells.get(&s.name))
+            .and_then(|s| self.shells.get(&s.group_key()))
             .cloned()
             .unwrap_or_default();
         let request = s.as_ref().and_then(|s| {
@@ -2469,7 +2532,7 @@ impl FennecWindow {
                 if event.is_right_click() || event.modifiers().control {
                     return;
                 }
-                this.tab.insert(show.clone(), open_key.clone());
+                this.set_shown_tab(show.clone(), open_key.clone(), cx);
                 this.pending_focus = Some(open_key.clone());
                 cx.notify();
             }))
@@ -2543,7 +2606,7 @@ impl FennecWindow {
                                 if event.is_right_click() || event.modifiers().control {
                                     return;
                                 }
-                                this.tab.remove(&back);
+                                this.set_shown_tab(back.clone(), back.clone(), cx);
                                 this.pending_focus = Some(back.clone());
                                 cx.notify();
                             }))
@@ -2575,7 +2638,40 @@ impl FennecWindow {
                         ))
                     }),
             )
-            .child(div().flex_1().min_h_0().when_some(view, |d, v| d.child(v)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .when(connecting_cloud, |d| {
+                        d.flex().items_center().justify_center().child(
+                            svg()
+                                .path("programs/activity-spinner.svg")
+                                .size(px(18.0))
+                                .text_color(c("muted"))
+                                .with_animation(
+                                    "cloud-connecting",
+                                    Animation::new(Duration::from_millis(900)).repeat(),
+                                    |icon, delta| {
+                                        icon.with_transformation(Transformation::rotate(
+                                            percentage(delta),
+                                        ))
+                                    },
+                                ),
+                        )
+                    })
+                    .when(cloud_failed, |d| {
+                        let key = shown.clone();
+                        d.flex().items_center().justify_center().child(
+                            secondary_button("retry-cloud-attach", t("try_again"), false).on_click(
+                                cx.listener(move |this, _, _, cx| {
+                                    this.cloud_attach_failed.remove(&key);
+                                    cx.notify();
+                                }),
+                            ),
+                        )
+                    })
+                    .when_some(view, |d, v| d.child(v)),
+            )
     }
 }
 

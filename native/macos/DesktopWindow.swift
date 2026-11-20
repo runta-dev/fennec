@@ -30,6 +30,7 @@ final class DesktopWindow: NSObject {
         process.executableURL = contents.appendingPathComponent("MacOS/fennec-desktop")
         var environment = ProcessInfo.processInfo.environment
         // herdr-core for the window's terminals: the cloud computer's, through `fen hc`.
+        environment["FENNEC_CLI"] = contents.appendingPathComponent("MacOS/fen").path
         environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
         // This Mac's own herdr-core (bundled, an isolated instance) for local shell tabs.
         environment["FENNEC_LOCAL_HC"] = contents.appendingPathComponent("Resources/fennec-hc-local").path

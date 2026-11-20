@@ -143,3 +143,37 @@ func TestNewBlockedAgentAndReconnect(t *testing.T) {
 		t.Fatal(again)
 	}
 }
+
+func TestLocalAndCloudIdentitiesStaySeparate(t *testing.T) {
+	local := terminal("t1", "idle")
+	local.Labels["fennec.session"] = "same-name"
+	remote := terminal("cloud:t1", "working")
+	remote.Source = "cloud"
+	remote.Labels["fennec.session"] = "same-name"
+	localTab := terminal("t2", "blocked")
+	localTab.Labels = map[string]string{"fennec.shell-of": "same-name"}
+	remoteTab := terminal("cloud:t2", "idle")
+	remoteTab.Source = "cloud"
+	remoteTab.Labels = map[string]string{"fennec.shell-of": "same-name"}
+	attached := terminal("t3", "")
+	attached.Labels = map[string]string{"fennec.shell-of": "cloud:same-name"}
+	attached.DesktopGroup = "cloud:t1"
+	out := Update(Input{Terminals: []Terminal{local, remote, localTab, remoteTab, attached}})
+	if len(out.Terminals) != 5 || out.Terminals["t2"].Group != "t1" || out.Terminals["cloud:t2"].Group != "cloud:t1" || out.Terminals["t3"].Group != "cloud:t1" {
+		t.Fatalf("source identity crossed: %+v", out)
+	}
+	if out.Terminals["t1"].GroupState != "blocked" || out.Terminals["cloud:t1"].GroupState != "working" {
+		t.Fatal("attention leaked between sources")
+	}
+}
+func TestCloudInitialSnapshotDoesNotReplayNotifications(t *testing.T) {
+	local := terminal("t1", "working")
+	previous := Update(Input{Terminals: []Terminal{local}}).Previous
+	local.Status.State = "blocked"
+	remote := terminal("cloud:t1", "blocked")
+	remote.Source = "cloud"
+	out := Update(Input{Terminals: []Terminal{local, remote}, Previous: previous, QuietPrefixes: []string{"cloud:"}})
+	if len(out.Alerts) != 1 || out.Alerts[0].Address != "t1" {
+		t.Fatalf("cloud initialization affected alerts: %+v", out.Alerts)
+	}
+}

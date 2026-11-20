@@ -162,7 +162,7 @@ impl FennecWindow {
                 cx,
             ),
             Some(Action::OpenTerminal(session, tab)) => {
-                self.tab.insert(session.clone(), tab);
+                self.set_shown_tab(session.clone(), tab, cx);
                 self.go(Route::Session(session), window, cx);
             }
             Some(Action::NewTab(id)) => {

@@ -3,15 +3,18 @@ package desktopactivity
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 )
 
 type Terminal struct {
-	Address    string            `json:"address"`
-	State      string            `json:"state"`
-	Parent     string            `json:"parent"`
-	Labels     map[string]string `json:"labels"`
-	Argv       []string          `json:"argv"`
-	Foreground struct {
+	Source       string            `json:"source"`
+	DesktopGroup string            `json:"desktop_group"`
+	Address      string            `json:"address"`
+	State        string            `json:"state"`
+	Parent       string            `json:"parent"`
+	Labels       map[string]string `json:"labels"`
+	Argv         []string          `json:"argv"`
+	Foreground   struct {
 		Argv []string `json:"argv"`
 	} `json:"foreground"`
 	Status struct {
@@ -27,11 +30,12 @@ type Memory struct {
 	Looked  *uint64 `json:"looked,omitempty"`
 }
 type Input struct {
-	ObservedSeen map[string]uint64 `json:"observed_seen"`
-	Resynced     bool              `json:"resynced"`
-	Terminals    []Terminal        `json:"terminals"`
-	Looking      string            `json:"looking"`
-	Previous     map[string]Memory `json:"previous"`
+	QuietPrefixes []string          `json:"quiet_prefixes"`
+	ObservedSeen  map[string]uint64 `json:"observed_seen"`
+	Resynced      bool              `json:"resynced"`
+	Terminals     []Terminal        `json:"terminals"`
+	Looking       string            `json:"looking"`
+	Previous      map[string]Memory `json:"previous"`
 }
 type Presentation struct {
 	GroupState string  `json:"group_state"`
@@ -76,11 +80,16 @@ func Update(in Input) Output {
 		if t.State == "live" {
 			records[t.Address] = t
 			if n := t.Labels["fennec.session"]; n != "" {
-				sessions[n] = t.Address
+				sessions[t.Source+"\x00"+n] = t.Address
 			}
 		}
 	}
 	group := func(t Terminal) string {
+		if t.DesktopGroup != "" {
+			if _, ok := records[t.DesktopGroup]; ok {
+				return t.DesktopGroup
+			}
+		}
 		visited := map[string]bool{}
 		for t.Parent != "" && !visited[t.Address] {
 			visited[t.Address] = true
@@ -93,7 +102,7 @@ func Update(in Input) Output {
 		if t.Labels["fennec.session"] != "" {
 			return t.Address
 		}
-		return sessions[t.Labels["fennec.shell-of"]]
+		return sessions[t.Source+"\x00"+t.Labels["fennec.shell-of"]]
 	}
 	for addr, t := range records {
 		g := group(t)
@@ -159,7 +168,14 @@ func Update(in Input) Output {
 		p := Resolve(t.Status.App, argv)
 		out.Terminals[addr] = Presentation{Program: p, State: state, Group: g, GroupState: state}
 		out.Previous[addr] = m
-		if in.Previous != nil && t.Parent == "" {
+		quiet := false
+		for _, prefix := range in.QuietPrefixes {
+			if strings.HasPrefix(addr, prefix) {
+				quiet = true
+				break
+			}
+		}
+		if !quiet && in.Previous != nil && t.Parent == "" {
 			kind := ""
 			if blocked(word) && !blocked(old.Word) {
 				kind = "blocked"

@@ -40,7 +40,7 @@ pub fn using<R>(program: PathBuf, f: impl FnOnce() -> R) -> R {
     result
 }
 
-/// Cloud work is an explicit, separate window; the default needs no network.
+/// Legacy cloud-only mode; the default uses local PTYs and fen attach for cloud sessions.
 pub fn cloud() -> bool {
     std::env::args().any(|arg| arg == "--cloud")
 }

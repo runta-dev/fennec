@@ -191,6 +191,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller.Additional["transfer.open"] = services.openTransfer
 	controller.Additional["hc.open"] = services.openHC
+	controller.Additional["desktop.session.seen"] = services.desktopSessionSeen
 	services.chatgpt = newChatGPTBridge(home, services)
 	for method, handler := range services.terminalCoverageHandlers() {
 		controller.Additional[method] = handler
