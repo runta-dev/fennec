@@ -14,7 +14,7 @@ use crate::terminal::{TerminalEvent, TerminalView};
 use crate::ui::{self, c};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_base::input::{Input, InputEvent, InputState, TextareaState};
+use gpui_base::input::{Input, InputEditorStyle, InputEvent, InputState, TextareaState};
 use gpui_base::{Textarea, h_flex, v_flex};
 use gpui_shell::action::ShellAction;
 use std::collections::HashMap;
@@ -37,6 +37,9 @@ struct SidebarRow<'a> {
     tab: Option<String>,
     state: State,
     since_ms: u64,
+    /// An agent's row (or any cloud session's) is grouped by its state; a plain
+    /// local shell or ssh session stays at the top under its directory.
+    agent: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1683,6 +1686,7 @@ impl FennecWindow {
                 tab: None,
                 state: s.state,
                 since_ms: s.since_ms,
+                agent: s.address.starts_with("cloud:") || !agents.is_empty(),
             }];
         }
         agents
@@ -1702,6 +1706,7 @@ impl FennecWindow {
                     state: activity::state(self.activity[address]["state"].as_str().unwrap_or_default()),
                     since_ms,
                     tab: Some(key),
+                    agent: true,
                 }
             })
             .collect()
@@ -1770,23 +1775,14 @@ impl FennecWindow {
             })
             .flat_map(|s| self.sidebar_rows(s))
             .collect();
-        // Keep local work first, independently of attention state.
-        list.sort_by_key(|r| {
-            (
-                r.session.address.starts_with("cloud:"),
-                if r.session.address.starts_with("cloud:") {
-                    r.state
-                } else {
-                    State::Unknown
-                },
-            )
-        });
-        let mut cloud_section = None;
+        // Plain shells first; agents, local or cloud, are grouped by state below them.
+        list.sort_by_key(|r| (r.agent, if r.agent { r.state } else { State::Unknown }));
+        let mut section = None;
         for (i, r) in list.iter().enumerate() {
             let s = r.session;
-            let cloud = s.address.starts_with("cloud:");
-            if cloud && cloud_section != Some(r.state) {
-                cloud_section = Some(r.state);
+            let grouped = r.agent;
+            if grouped && section != Some(r.state) {
+                section = Some(r.state);
                 let (label, color) = match r.state {
                     State::NeedsYou => ("needs_you", "blocked"),
                     State::Working => ("working", "working"),
@@ -1795,7 +1791,7 @@ impl FennecWindow {
                 };
                 let count = list[i..]
                     .iter()
-                    .take_while(|o| o.session.address.starts_with("cloud:") && o.state == r.state)
+                    .take_while(|o| o.agent && o.state == r.state)
                     .count();
                 groups.push(
                     h_flex()
@@ -1861,7 +1857,7 @@ impl FennecWindow {
                                 .absolute()
                                 .right(px(-1.0))
                                 .bottom(px(-1.0))
-                                .when(!cloud, |d| d.child(mark(self))),
+                                .when(!grouped, |d| d.child(mark(self))),
                         ),
                 )
                 .child(div().flex_1().min_w_0().truncate().child({
@@ -1872,7 +1868,7 @@ impl FennecWindow {
                         .map(String::as_str)
                         .filter(|p| !p.is_empty())
                         .unwrap_or(&s.directory);
-                    if (cloud && (split || !tab.starts_with("local:")))
+                    if (grouped && (split || !tab.starts_with("local:")))
                         || path.is_empty()
                     {
                         s.title.clone()
@@ -1886,7 +1882,7 @@ impl FennecWindow {
                         .text_color(c("f_muted"))
                         .child(sessions::age(r.since_ms, now)),
                 )
-                .when(cloud, |d| d.child(mark(self)))
+                .when(grouped, |d| d.child(mark(self)))
                 .into_any_element(),
             );
         }
@@ -2800,10 +2796,29 @@ pub(crate) fn secondary_button(
         .child(label.into())
 }
 
+impl FennecWindow {
+    /// gpui-kit inputs fall back to its own theme, not the app palette, so the
+    /// caret and text would stay dark on a dark card. Re-applied each frame to
+    /// follow theme switches.
+    fn sync_input_styles(&mut self, cx: &mut Context<Self>) {
+        let style = InputEditorStyle {
+            foreground: c("f_text"),
+            muted_foreground: c("f_muted"),
+            selection: c("selection"),
+            caret: c("f_text"),
+            ..InputEditorStyle::default()
+        };
+        self.search.update(cx, |s, _| s.set_editor_style(style.clone()));
+        self.composer.update(cx, |s, _| s.set_editor_style(style.clone()));
+        self.reply.update(cx, |s, _| s.set_editor_style(style));
+    }
+}
+
 impl Render for FennecWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::terminal::next_frame();
         window.set_rem_size(px(crate::settings::ui_font_size()));
+        self.sync_input_styles(cx);
         self.step_sidebar(window, cx);
         let route = self.route.clone();
         let main = match &route {
