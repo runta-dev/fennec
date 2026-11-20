@@ -30,6 +30,17 @@ pub(crate) enum Route {
     Settings(String, crate::project_settings::Tab),
 }
 
+/// One sidebar row: a session, or one of the agents a session runs.
+struct SidebarRow<'a> {
+    session: &'a Session,
+    /// The tab key of this row's agent when the session is split into its agents.
+    tab: Option<String>,
+    state: State,
+    since_ms: u64,
+    /// The agent's position in the session's tab bar.
+    index: usize,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
     NewSession,
@@ -246,6 +257,9 @@ impl FennecWindow {
         }
         if crate::preview::active() {
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
+            this.shells = crate::preview::shells();
+            this.activity = crate::preview::activity();
+            this.apply_activity();
             this.core_error = Some(String::new());
         } else {
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
@@ -1599,6 +1613,56 @@ impl FennecWindow {
 
     // ---------- sidebar ----------
 
+    /// A session's sidebar rows: one for the session, or, when it runs several
+    /// agents (its own terminal and agent tabs), one per agent with that agent's state.
+    fn sidebar_rows<'a>(&self, s: &'a Session) -> Vec<SidebarRow<'a>> {
+        let keys = std::iter::once(s.address.clone()).chain(
+            self.shells
+                .get(&s.group_key())
+                .into_iter()
+                .flatten()
+                .map(|a| format!("local:{a}")),
+        );
+        let agents: Vec<(usize, String)> = keys
+            .enumerate()
+            .filter(|(_, key)| {
+                let p = &self.activity[key.strip_prefix("local:").unwrap_or(key)];
+                p["program"]["agent"] == true
+                    || p["state"].as_str().is_some_and(|w| !w.is_empty())
+            })
+            .collect();
+        if agents.len() < 2 {
+            return vec![SidebarRow {
+                session: s,
+                tab: None,
+                state: s.state,
+                since_ms: s.since_ms,
+                index: 0,
+            }];
+        }
+        agents
+            .into_iter()
+            .map(|(index, key)| {
+                let address = key.strip_prefix("local:").unwrap_or(&key);
+                let since_ms = if key == s.address {
+                    s.since_ms
+                } else {
+                    self.events
+                        .as_ref()
+                        .and_then(|e| e.status_ms(address))
+                        .unwrap_or(s.since_ms)
+                };
+                SidebarRow {
+                    session: s,
+                    state: activity::state(self.activity[address]["state"].as_str().unwrap_or_default()),
+                    since_ms,
+                    index,
+                    tab: Some(key),
+                }
+            })
+            .collect()
+    }
+
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let q = self.query(cx);
         let route = self.route.clone();
@@ -1652,7 +1716,7 @@ impl FennecWindow {
         let org_switcher = self.org_switcher(cx);
         let now = sessions::now_ms();
         let mut groups = Vec::new();
-        let mut list: Vec<&Session> = self
+        let mut list: Vec<SidebarRow> = self
             .sessions
             .iter()
             .filter(|s| {
@@ -1661,40 +1725,34 @@ impl FennecWindow {
                     || s.name.contains(&q)
                     || self.session_directory(s).to_lowercase().contains(&q)
             })
+            .flat_map(|s| self.sidebar_rows(s))
             .collect();
         // Keep local work first, independently of attention state.
-        list.sort_by_key(|s| {
+        list.sort_by_key(|r| {
             (
-                s.address.starts_with("cloud:"),
-                if s.address.starts_with("cloud:") {
-                    s.state
+                r.session.address.starts_with("cloud:"),
+                if r.session.address.starts_with("cloud:") {
+                    r.state
                 } else {
                     State::Unknown
                 },
             )
         });
         let mut cloud_section = None;
-        for s in list {
+        for (i, r) in list.iter().enumerate() {
+            let s = r.session;
             let cloud = s.address.starts_with("cloud:");
-            if cloud && cloud_section != Some(s.state) {
-                cloud_section = Some(s.state);
-                let (label, color) = match s.state {
+            if cloud && cloud_section != Some(r.state) {
+                cloud_section = Some(r.state);
+                let (label, color) = match r.state {
                     State::NeedsYou => ("needs_you", "blocked"),
                     State::Working => ("working", "working"),
                     State::Done => ("done", "done"),
                     _ => ("idle", "f_muted"),
                 };
-                let count = self
-                    .sessions
+                let count = list[i..]
                     .iter()
-                    .filter(|row| {
-                        row.address.starts_with("cloud:")
-                            && row.state == s.state
-                            && (q.is_empty()
-                                || row.title.to_lowercase().contains(&q)
-                                || row.name.contains(&q)
-                                || self.session_directory(row).to_lowercase().contains(&q))
-                    })
+                    .take_while(|o| o.session.address.starts_with("cloud:") && o.state == r.state)
                     .count();
                 groups.push(
                     h_flex()
@@ -1709,19 +1767,39 @@ impl FennecWindow {
                         .into_any_element(),
                 );
             }
-            let selected = route == Some(Route::Session(s.address.clone()));
+            // A row for one of several agents opens that agent's tab and shows its own state.
+            let split = r.tab.is_some();
+            let tab = r.tab.clone().unwrap_or_else(|| self.shown_tab(&s.address));
+            let activity = tab.strip_prefix("local:").unwrap_or(&tab).to_owned();
+            let selected = route == Some(Route::Session(s.address.clone()))
+                && (!split || self.shown_tab(&s.address) == tab);
             let address = s.address.clone();
+            let open = r.tab.clone();
+            let mark = |this: &Self| {
+                if split {
+                    this.activity_mark(&activity)
+                } else {
+                    this.group_activity_mark(&s.address)
+                }
+            };
+            let id = match &r.tab {
+                Some(tab) => format!("s-{}-{tab}", s.address),
+                None => format!("s-{}", s.address),
+            };
             groups.push(
                 self.context_row(
-                    row(SharedString::from(format!("s-{}", s.address)), selected),
+                    row(SharedString::from(id), selected),
                     context_menu::Target::Terminal {
                         session: s.address.clone(),
-                        tab: self.shown_tab(&s.address),
+                        tab: tab.clone(),
                     },
                     cx,
                 )
                 .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                     if !event.is_right_click() && !event.modifiers().control {
+                        if let Some(tab) = &open {
+                            this.set_shown_tab(address.clone(), tab.clone(), cx);
+                        }
                         this.go(Route::Session(address.clone()), window, cx);
                     }
                 }))
@@ -1730,17 +1808,20 @@ impl FennecWindow {
                         .relative()
                         .size(px(16.0))
                         .flex_none()
-                        .child(self.program_icon(&s.address, &s.agent, 16.0))
+                        .child(self.program_icon(
+                            if split { &activity } else { &s.address },
+                            &s.agent,
+                            16.0,
+                        ))
                         .child(
                             div()
                                 .absolute()
                                 .right(px(-1.0))
                                 .bottom(px(-1.0))
-                                .when(!cloud, |d| d.child(self.group_activity_mark(&s.address))),
+                                .when(!cloud, |d| d.child(mark(self))),
                         ),
                 )
                 .child(div().flex_1().min_w_0().truncate().child({
-                    let tab = self.shown_tab(&s.address);
                     let key = tab.strip_prefix("local:").unwrap_or(&tab);
                     let path = self
                         .directories
@@ -1748,7 +1829,7 @@ impl FennecWindow {
                         .map(String::as_str)
                         .filter(|p| !p.is_empty())
                         .unwrap_or(&s.directory);
-                    if (s.address.starts_with("cloud:") && !tab.starts_with("local:"))
+                    if (cloud && (split || !tab.starts_with("local:")))
                         || path.is_empty()
                     {
                         s.title.clone()
@@ -1756,13 +1837,22 @@ impl FennecWindow {
                         sessions::directory_label(path)
                     }
                 }))
+                // Several agents of one session share its title: their tab numbers tell them apart.
+                .when(split, |d| {
+                    d.child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(c("f_muted"))
+                            .child(format!("#{}", r.index + 1)),
+                    )
+                })
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
-                        .child(sessions::age(s.since_ms, now)),
+                        .child(sessions::age(r.since_ms, now)),
                 )
-                .when(cloud, |d| d.child(self.group_activity_mark(&s.address)))
+                .when(cloud, |d| d.child(mark(self)))
                 .into_any_element(),
             );
         }

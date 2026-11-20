@@ -258,7 +258,7 @@ impl FennecWindow {
             .into_any_element()
     }
 }
-fn state(word: &str) -> State {
+pub(super) fn state(word: &str) -> State {
     match word {
         "blocked" => State::NeedsYou,
         "done" => State::Done,

@@ -18,6 +18,17 @@ pub fn terminals() -> Vec<Value> {
         .cloned()
         .unwrap_or_default()
 }
+/// Optional per-terminal activity presentations, as `desktop.activity.update` returns them.
+pub fn activity() -> Value {
+    FIXTURE.as_ref().map(|f| f["activity"].clone()).unwrap_or_default()
+}
+/// Optional extra tabs per session group: `{"<group>": ["<terminal address>", ...]}`.
+pub fn shells() -> std::collections::HashMap<String, Vec<String>> {
+    FIXTURE
+        .as_ref()
+        .and_then(|f| serde_json::from_value(f["shells"].clone()).ok())
+        .unwrap_or_default()
+}
 pub fn call(method: &str, path: &str) -> Option<anyhow::Result<Value>> {
     let fixture = FIXTURE.as_ref()?;
     Some(if method != "GET" {

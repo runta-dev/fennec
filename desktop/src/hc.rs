@@ -71,6 +71,12 @@ impl EventLines {
         *high = (*high).max(seen);
     }
 
+    /// When a terminal's status last changed, in ms since the epoch.
+    pub fn status_ms(&self, address: &str) -> Option<u64> {
+        let t = self.terminals.iter().find(|t| t["address"] == address)?;
+        t["status_ms"].as_u64().or_else(|| t["created_ms"].as_u64())
+    }
+
     /// The live terminals, as `terminal.list` puts them.
     pub fn live(&self) -> Value {
         let live: Vec<&Value> = self.terminals.iter().filter(|t| t["state"] == "live").collect();

@@ -1,0 +1,111 @@
+{
+  "responses": {},
+  "terminals": [
+    {
+      "address": "cloud:w1",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "w1"
+      },
+      "state": "live",
+      "status": {
+        "app": "claude",
+        "state": "working"
+      },
+      "status_ms": 1795143246000,
+      "title": "Refactor sidebar",
+      "cwd": "/Users/me"
+    },
+    {
+      "address": "cloud:w2",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "w2"
+      },
+      "state": "live",
+      "status": {
+        "app": "claude",
+        "state": "idle"
+      },
+      "status_ms": 1795071246000,
+      "title": "Website social graph"
+    },
+    {
+      "address": "cloud:w3",
+      "labels": {
+        "fennec.agent": "codex",
+        "fennec.session": "w3"
+      },
+      "state": "live",
+      "status": {
+        "app": "codex",
+        "state": "working"
+      },
+      "status_ms": 1795142946000,
+      "title": "Fix login"
+    }
+  ],
+  "shells": {
+    "cloud:w1": [
+      "t2",
+      "t3"
+    ]
+  },
+  "activity": {
+    "cloud:w1": {
+      "state": "working",
+      "group_state": "working",
+      "group": "cloud:w1",
+      "program": {
+        "name": "Claude Code",
+        "icon": "icons/claude.svg",
+        "tint": false,
+        "agent": true
+      }
+    },
+    "t2": {
+      "state": "blocked",
+      "group_state": "blocked",
+      "group": "cloud:w1",
+      "program": {
+        "name": "Codex",
+        "icon": "icons/codex.svg",
+        "tint": false,
+        "agent": true
+      }
+    },
+    "t3": {
+      "state": "",
+      "group_state": "",
+      "group": "cloud:w1",
+      "program": {
+        "name": "zsh",
+        "icon": "icons/shell.svg",
+        "tint": true,
+        "shell": true
+      }
+    },
+    "cloud:w2": {
+      "state": "idle",
+      "group_state": "idle",
+      "group": "cloud:w2",
+      "program": {
+        "name": "Claude Code",
+        "icon": "icons/claude.svg",
+        "tint": false,
+        "agent": true
+      }
+    },
+    "cloud:w3": {
+      "state": "working",
+      "group_state": "working",
+      "group": "cloud:w3",
+      "program": {
+        "name": "Codex",
+        "icon": "icons/codex.svg",
+        "tint": false,
+        "agent": true
+      }
+    }
+  }
+}
