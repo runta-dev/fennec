@@ -353,6 +353,7 @@ impl FennecWindow {
         let mut parts = what.splitn(3, ':');
         match (parts.next(), parts.next(), parts.next()) {
             (Some("app-settings"), _, _) => self.open_app_settings(window, cx),
+            (Some("sidebar"), Some(state), _) => self.sidebar = state != "hidden",
             (Some("menu"), Some(kind), _) if crate::preview::active() => {
                 self.menu = Some(if kind == "tags" {
                     Menu::RequestTag
@@ -1284,17 +1285,19 @@ impl FennecWindow {
 
     // ---------- organization, new project, new session ----------
 
-    fn org_switcher(&self, _: &mut Context<Self>) -> AnyElement {
-        h_flex()
-            .gap(px(7.0))
-            .child(img("fennec.svg").size(px(18.0)).flex_none())
-            .child(
-                div()
-                    .text_size(px(13.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(c("f_text"))
-                    .child("Fennec"),
-            )
+    /// The sidebar toggle sits beside the traffic lights at the same place
+    /// whether the sidebar is shown or hidden; title rows leave room for it.
+    fn sidebar_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .absolute()
+            .left(px(SIDEBAR_TOGGLE_LEFT))
+            .top(px(10.0))
+            .child(ui::icon_button("sidebar-toggle", "sidebar").size(px(26.0)).on_click(
+                cx.listener(|this, _, _, cx| {
+                    this.sidebar = !this.sidebar;
+                    cx.notify();
+                }),
+            ))
             .into_any_element()
     }
 
@@ -1713,7 +1716,6 @@ impl FennecWindow {
                 })
         })
             .collect::<Vec<_>>();
-        let org_switcher = self.org_switcher(cx);
         let now = sessions::now_ms();
         let mut groups = Vec::new();
         let mut list: Vec<SidebarRow> = self
@@ -1872,25 +1874,7 @@ impl FennecWindow {
                     .pl(px(84.0))
                     .pr(px(10.0))
                     .gap(px(7.0))
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .child(org_switcher)
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .id("hide-sidebar")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .size(px(26.0))
-                            .rounded(px(6.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .hover(|s| s.bg(c("f_line")))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.sidebar = false;
-                                cx.notify();
-                            }))
-                            .child(ui::icon("sidebar", 15.0, c("f_muted"))),
-                    ),
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
             )
             .child(
                 div().px(px(10.0)).pt(px(2.0)).pb(px(6.0)).child(
@@ -2158,15 +2142,7 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .when(!self.sidebar, |d| {
-                        d.pl(px(84.0))
-                            .child(ui::icon_button("show-sidebar", "sidebar").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.sidebar = true;
-                                    cx.notify();
-                                }),
-                            ))
-                    })
+                    .when(!self.sidebar, |d| d.pl(px(SIDEBAR_TOGGLE_LEFT)).child(toggle_room()))
                     .child(ui::project_icon(p, 30.0))
                     .child(
                         v_flex()
@@ -2669,14 +2645,7 @@ impl FennecWindow {
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .when(!self.sidebar, |d| {
-                        d.pl(px(84.0)).h(px(46.0)).child(
-                            ui::icon_button("show-sidebar", "sidebar").on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.sidebar = true;
-                                    cx.notify();
-                                },
-                            )),
-                        )
+                        d.pl(px(SIDEBAR_TOGGLE_LEFT)).h(px(46.0)).child(toggle_room())
                     })
                     .when_some(s.as_ref(), |d, s| {
                         let back = s.address.clone();
@@ -2940,25 +2909,11 @@ impl Render for FennecWindow {
                                 .id("collapsed-titlebar")
                                 .h(px(46.0))
                                 .flex_none()
-                                .pl(px(84.0))
                                 .pr(px(10.0))
-                                .gap(px(8.0))
                                 .bg(c("f_bg"))
                                 .border_b_1()
                                 .border_color(c("f_line"))
-                                .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                                .child(ui::icon_button("show-sidebar", "sidebar").on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.sidebar = true;
-                                        cx.notify();
-                                    }),
-                                ))
-                                .child(
-                                    div()
-                                        .text_size(px(13.0))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .child("Fennec"),
-                                ),
+                                .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
                         )
                     })
                     .child(div().flex_1().min_h_0().flex().child(main))
@@ -2974,6 +2929,7 @@ impl Render for FennecWindow {
                         )
                     }),
             )
+            .child(self.sidebar_toggle(cx))
             .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
@@ -2998,6 +2954,14 @@ impl Render for FennecWindow {
                 )
             })
     }
+}
+
+/// Where the sidebar toggle starts: just right of the traffic lights.
+pub(crate) const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
+
+/// Room a title row keeps for the sidebar toggle drawn over it.
+pub(crate) fn toggle_room() -> Div {
+    div().w(px(26.0)).flex_none()
 }
 
 fn empty() -> AnyElement {
