@@ -1,6 +1,6 @@
 // Package board keeps projects, their requests and agent-written knowledge on
 // the cloud computer, under ~/.fen/board. People post requests from Fennec;
-// the Mac daemon hands queued requests to agents (see docs/desktop-app.md);
+// the Mac daemon hands queued requests to agents (through the board API);
 // agents answer with `fennec-terminal reply`.
 package board
 

@@ -63,17 +63,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var pageLoaded = false
     private var localMonitor: Any?
     private var web: WKWebView!
-    // The desktop window (projects, requests, session tabs); see DesktopWindow.swift.
-    private lazy var desktop: DesktopWindow = {
-        let window = DesktopWindow(control: control) { [unowned self] in
-            URL(fileURLWithPath: self.installedApplicationPath).appendingPathComponent("Contents/MacOS/fen")
-        }
-        window.openPanel = { [weak self] in self?.showPopupInForeground() }
-        window.refreshSessions = { [weak self] in self?.loadRuntimes() }
-        return window
-    }()
-    private var desktopAccountName = ""
-    private var lastDesktopSettings: [String:Any]?
     private var authorized = false
     // The page learns the sign-in state once after every load, signed in or not,
     // so it never guesses from its own default.
@@ -129,8 +118,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        self.installationPending=false
 	        self.connectControl()
 	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
-	        // Fennec opens to its window; the menu bar panel stays one click away.
-	        self.openDesktop()
 	    }
 	}
 
@@ -171,20 +158,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
         editItem.submenu = edit
         menu.addItem(editItem)
-        // The desktop window closes and minimizes with the usual shortcuts.
-        let windowItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
-        let window = NSMenu(title: "Window")
-        window.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
-        window.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
-        windowItem.submenu = window
-        menu.addItem(windowItem)
         NSApp.mainMenu = menu
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
 	    if installationPending{return false}
-        // Opening Fennec again (Dock, Finder, Spotlight) shows its window.
-        openDesktop()
+        showPopupInForeground()
         return false
     }
 
@@ -208,22 +187,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         presentPopup(request, remaining: 40)
     }
 
-    @objc private func openDesktop() {
-        popupPresentationID = nil
-        popup.orderOut(nil)
-        pushDesktopState()
-        desktop.show()
-    }
-
-    // What the desktop window shows that the menu bar app already knows.
-    private func pushDesktopState() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        var state: [String:Any] = ["language": nativeLanguage, "dashboard": activeDashboardURL, "account": ["signedIn": authorized, "name": desktopAccountName], "version": version, "agents": Array(takeoverAgents).sorted()]
-        if let settings = lastDesktopSettings { state["settings"] = settings }
-        if let data = lastSessionsData, let terminals = try? JSONSerialization.jsonObject(with: data) { state["sessions"] = terminals }
-        desktop.update(state)
-    }
-
     @objc private func statusItemClicked() {
 	    if installationPending{NSApp.activate(ignoringOtherApps:true);return}
         if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
@@ -241,10 +204,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 updateItem.target = self
                 menu.addItem(updateItem)
             }
-            menu.addItem(.separator())
-            let open = NSMenuItem(title: L10n.text("ui.open_fennec_window", language: nativeLanguage), action: #selector(openDesktop), keyEquivalent: "")
-            open.target = self
-            menu.addItem(open)
             menu.addItem(.separator())
             for (title, action) in [("Restart", #selector(restartApp)), ("Exit", #selector(quitApp))] {
                 let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -741,9 +700,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    }
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
 	        render("renderPreferences",[preferences])
-	        let shared=["theme":preferences["theme"] ?? "system","language":preferences["language"] ?? nativeLanguage,"permission_mode":preferences["permission_mode"] ?? "ask"]
-	        if lastDesktopSettings.map({NSDictionary(dictionary:$0) != NSDictionary(dictionary:shared)}) ?? true {lastDesktopSettings=shared;desktop.update(["settings":shared])}
-	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil;desktop.update(["language":language])}
+	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil}
 	    }
         if visibleRefreshTab == "governance" {
             loadAuditLog()
@@ -762,8 +719,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if authorizationKnown, isAuthorized != authorized || !authorizationRendered {
             authorizationRendered = true
             authorized = isAuthorized
-            if !authorized { profileLoaded = false; lastSessionsData = nil; desktopAccountName = "" }
-            desktop.update(["account": ["signedIn": authorized, "name": desktopAccountName]])
+            if !authorized { profileLoaded = false; lastSessionsData = nil }
             render(authorized ? "renderAuthorized" : "renderSignedOut")
             if authorized, online { loadProfile(); loadMetrics() }
             if authorized, pendingInteractiveLogin {
@@ -813,7 +769,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         render("renderPreparation", [preparationState])
         let services = state["services"] as? [String:Any] ?? [:]
         let selected = Set(services["selected"] as? [String] ?? [])
-        if selected != takeoverAgents { desktop.update(["agents": Array(selected).sorted()]) }
         takeoverAgents = selected
         let ready = services["broker_ready"] as? Bool == true
         let sessionServiceBecameReady = ready && !sessionServiceReady
@@ -836,8 +791,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             guard let self, self.accountEpoch == epoch, case .success(let value) = result, let profile = value as? [String:Any] else { return }
             self.profileLoaded = true
             let name = profile["display_name"] as? String ?? profile["email"] as? String
-            self.desktopAccountName = name ?? ""
-            self.desktop.update(["account": ["signedIn": self.authorized, "name": self.desktopAccountName]])
             self.render("renderProfile", [name ?? "", name == nil])
         }
     }
@@ -868,7 +821,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             let data = try? JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])
             guard data != self.lastSessionsData else { return }
             self.lastSessionsData = data
-            self.desktop.update(["sessions": rows])
             self.render("renderSessionSnapshot", [rows])
         }
     }

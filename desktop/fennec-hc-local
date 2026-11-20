@@ -1,6 +1,0 @@
-#!/bin/sh
-# Fennec's own herdr-core on this Mac, for the desktop window's local shell
-# tabs: an isolated instance (HC_SESSION=fennec), apart from any Herdr app's.
-# GUI terminals advertise truecolor; do not seed their core from automation's NO_COLOR.
-unset NO_COLOR
-HC_SESSION=fennec exec "$(dirname "$0")/../MacOS/hc" "$@"

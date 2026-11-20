@@ -1,8 +1,0 @@
-#!/bin/sh
-# Formats Fennec's own Rust files. Never run rustfmt on src/main.rs or
-# crates/gpui-shell-native: rustfmt follows their `mod` declarations into the
-# files kept verbatim from herdr-app (UPSTREAM.md).
-set -eu
-cd "$(dirname "$0")/.."
-rustfmt --edition 2024 src/app.rs src/board.rs src/control.rs src/core_bin.rs src/i18n.rs src/keys.rs \
-  src/mirror.rs src/mods.rs src/project_settings.rs src/sessions.rs src/settings.rs src/ui.rs

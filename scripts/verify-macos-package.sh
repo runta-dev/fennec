@@ -20,6 +20,8 @@ for arch in amd64 arm64; do
   [[ -s "$app/Contents/Resources/fennec-terminal-linux-$arch" ]]
   file "$app/Contents/Resources/fennec-terminal-linux-$arch" | grep -q ELF
 done
+[[ ! -e "$app/Contents/MacOS/fennec-desktop" && ! -e "$app/Contents/MacOS/hc" ]]
+[[ ! -e "$app/Contents/Resources/fennec-hc" && ! -e "$app/Contents/Resources/fennec-hc-local" ]]
 [[ -s "$app/Contents/Resources/UI/index.html" ]]
 [[ -s "$app/Contents/Resources/UI/translations.json" ]]
 [[ -s "$app/Contents/Resources/UI/locale-data.js" ]]

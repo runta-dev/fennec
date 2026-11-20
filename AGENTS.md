@@ -2,6 +2,8 @@
 
 ## Commit and push workflow
 
+- Fennec Desktop development belongs on `feat/fennec-desktop`. Commit and push Desktop work there; keep its native window, design assets, and packaging out of `main`, which ships the menubar app and CLI.
+
 - The user's standing preference is to commit and push task changes promptly after appropriate validation, at meaningful milestones and before reporting completion. Do not wait for a separate request to push completed work.
 - During the current rapid-development cycle, make all changes directly on `main` and push to `origin/main` by default. Do not create a feature branch or wait for a separate merge/push request unless the user explicitly asks for a different workflow.
 - Refresh `origin/main` before editing and again before pushing, integrate concurrent upstream commits without overwriting other work, and verify the remote commit matches the local commit after pushing. Include only task-relevant changes and preserve concurrent work; use ordinary fast-forward pushes.

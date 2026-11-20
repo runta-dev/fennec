@@ -25,7 +25,7 @@ import (
 
 // boardClient reaches the cloud computer's board (projects, requests,
 // knowledge) over the daemon's authenticated resident connection, the way
-// previews are reached. See docs/desktop-app.md.
+// previews are reached.
 type boardClient struct {
 	s     *daemonServices
 	local bool
