@@ -150,8 +150,6 @@ impl FennecWindow {
             h_flex()
                 .min_h(px(48.0))
                 .gap(px(14.0))
-                .border_b_1()
-                .border_color(c("f_line"))
                 .child(div().flex_1().text_size(px(13.0)).child(label))
                 .child(control)
         };
@@ -203,7 +201,8 @@ impl FennecWindow {
                         .child("+"),
                 )
         };
-        let card = || {
+        // Dividers go between rows only, so a card never ends in a stray line.
+        let card = |rows: Vec<Div>| {
             v_flex()
                 .px(px(14.0))
                 .py(px(4.0))
@@ -211,6 +210,9 @@ impl FennecWindow {
                 .rounded(px(11.0))
                 .border_1()
                 .border_color(c("f_line"))
+                .children(rows.into_iter().enumerate().map(|(i, r)| {
+                    r.when(i > 0, |r| r.border_t_1().border_color(c("f_line")))
+                }))
         };
         v_flex()
             .flex_1()
@@ -265,8 +267,8 @@ impl FennecWindow {
                                     .child(t("general")),
                             )
                             .child(
-                                card()
-                                    .child(row(
+                                card(vec![
+                                    row(
                                         t("notification_sounds"),
                                         h_flex()
                                             .gap(px(2.0))
@@ -283,8 +285,8 @@ impl FennecWindow {
                                                 json!({"notification_sounds":false}),
                                             ))
                                             .into_any_element(),
-                                    ))
-                                    .child(row(
+                                    ),
+                                    row(
                                         t("app_appearance"),
                                         h_flex()
                                             .p(px(2.0))
@@ -310,8 +312,8 @@ impl FennecWindow {
                                                 json!({"theme":"dark"}),
                                             ))
                                             .into_any_element(),
-                                    ))
-                                    .child(row(
+                                    ),
+                                    row(
                                         t("app_language"),
                                         h_flex()
                                             .gap(px(2.0))
@@ -334,11 +336,12 @@ impl FennecWindow {
                                                 json!({"language":"zh-CN"}),
                                             ))
                                             .into_any_element(),
-                                    ))
-                                    .child(row(
+                                    ),
+                                    row(
                                         t("app_font_size"),
                                         stepper("font_size", p.font_size, 8, 32).into_any_element(),
-                                    )),
+                                    ),
+                                ]),
                             )
                             .child(
                                 div()
@@ -348,15 +351,16 @@ impl FennecWindow {
                                     .child(t("app_padding")),
                             )
                             .child(
-                                card()
-                                    .child(row(
+                                card(vec![
+                                    row(
                                         t("app_horizontal"),
                                         stepper("padding_x", p.padding_x, 0, 32).into_any_element(),
-                                    ))
-                                    .child(row(
+                                    ),
+                                    row(
                                         t("app_vertical"),
                                         stepper("padding_y", p.padding_y, 0, 32).into_any_element(),
-                                    )),
+                                    ),
+                                ]),
                             )
                             .child(
                                 div()
@@ -366,7 +370,7 @@ impl FennecWindow {
                                     .child(t("app_shortcuts")),
                             )
                             .child(
-                                card().children(
+                                card(
                                     [
                                         ("tab.new", "new_tab"),
                                         ("tab.close", "close_tab"),
@@ -385,7 +389,8 @@ impl FennecWindow {
                                                 .child(crate::keys::shortcut(action))
                                                 .into_any_element(),
                                         )
-                                    }),
+                                    })
+                                    .collect(),
                                 ),
                             ),
                     ),
