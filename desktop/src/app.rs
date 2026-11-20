@@ -3,6 +3,7 @@
 //! on the right.
 
 mod activity;
+mod context_menu;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -73,6 +74,7 @@ pub struct FennecWindow {
     /// The signed-in person, as requests and replies are signed.
     pub(crate) me: String,
     menu: Option<Menu>,
+    context_menu: Option<context_menu::ContextMenu>,
     menu_anchor: Point<Pixels>,
     new_project: Option<NewProject>,
     /// A session asked for and not yet listed: shown once it appears.
@@ -148,6 +150,7 @@ impl FennecWindow {
                 && this.close_others.is_none()
                 && this.new_project.is_none()
                 && this.menu.is_none()
+                && this.context_menu.is_none()
             {
                 if let Some(Route::Session(id)) = &this.route {
                     this.pending_focus = Some(this.shown_tab(id));
@@ -207,6 +210,7 @@ impl FennecWindow {
             close_others: None,
             me: std::env::var("USER").unwrap_or_else(|_| "me".into()),
             menu: None,
+            context_menu: None,
             menu_anchor: point(px(120.0), px(150.0)),
             new_project: None,
             starting: None,
@@ -559,6 +563,7 @@ impl FennecWindow {
     }
 
     pub(crate) fn go(&mut self, mut route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        self.context_menu = None;
         if let Route::Session(address) = &route {
             if !address.starts_with("local:")
                 && !self.sessions.iter().any(|s| &s.address == address)
@@ -1101,6 +1106,9 @@ impl FennecWindow {
 
     /// Key bindings the terminal core sends up (keys.rs).
     fn on_shell_action(&mut self, a: &ShellAction, window: &mut Window, cx: &mut Context<Self>) {
+        if self.context_menu.is_some() {
+            return;
+        }
         match a.id() {
             "app.settings" => {
                 self.open_app_settings(window, cx);
@@ -1594,8 +1602,8 @@ impl FennecWindow {
         let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q)).map(|p| {
             let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
             let id = p.id.clone();
-            row(SharedString::from(format!("p-{}", p.id)), selected)
-                .on_click(cx.listener(move |this, _, window, cx| this.go(Route::Project(id.clone()), window, cx)))
+            self.context_row(row(SharedString::from(format!("p-{}", p.id)), selected), context_menu::Target::Project(p.id.clone()), cx)
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| { if !event.is_right_click() && !event.modifiers().control { this.go(Route::Project(id.clone()), window, cx); } }))
                 .child(ui::project_icon(p, 18.0))
                 .child(div().flex_1().min_w_0().truncate().child(p.name.clone()))
                 .when(p.needs_you > 0, |d| {
@@ -1646,46 +1654,55 @@ impl FennecWindow {
                 let selected = route == Some(Route::Session(s.address.clone()));
                 let address = s.address.clone();
                 groups.push(
-                    row(SharedString::from(format!("s-{}", s.address)), selected)
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.go(Route::Session(address.clone()), window, cx)
-                        }))
-                        .child(
-                            div()
-                                .relative()
-                                .size(px(16.0))
-                                .flex_none()
-                                .child(self.program_icon(&s.address, &s.agent, 16.0))
-                                .child(
-                                    div()
-                                        .absolute()
-                                        .right(px(-1.0))
-                                        .bottom(px(-1.0))
-                                        .child(self.group_activity_mark(&s.address)),
-                                ),
-                        )
-                        .child(div().flex_1().min_w_0().truncate().child({
-                            let tab = self.shown_tab(&s.address);
-                            let key = tab.strip_prefix("local:").unwrap_or(&tab);
-                            let path = self
-                                .directories
-                                .get(key)
-                                .map(String::as_str)
-                                .filter(|p| !p.is_empty())
-                                .unwrap_or(&s.directory);
-                            if path.is_empty() {
-                                s.title.clone()
-                            } else {
-                                sessions::directory_label(path)
-                            }
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(c("f_muted"))
-                                .child(sessions::age(s.since_ms, now)),
-                        )
-                        .into_any_element(),
+                    self.context_row(
+                        row(SharedString::from(format!("s-{}", s.address)), selected),
+                        context_menu::Target::Terminal {
+                            session: s.address.clone(),
+                            tab: self.shown_tab(&s.address),
+                        },
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                        if !event.is_right_click() && !event.modifiers().control {
+                            this.go(Route::Session(address.clone()), window, cx);
+                        }
+                    }))
+                    .child(
+                        div()
+                            .relative()
+                            .size(px(16.0))
+                            .flex_none()
+                            .child(self.program_icon(&s.address, &s.agent, 16.0))
+                            .child(
+                                div()
+                                    .absolute()
+                                    .right(px(-1.0))
+                                    .bottom(px(-1.0))
+                                    .child(self.group_activity_mark(&s.address)),
+                            ),
+                    )
+                    .child(div().flex_1().min_w_0().truncate().child({
+                        let tab = self.shown_tab(&s.address);
+                        let key = tab.strip_prefix("local:").unwrap_or(&tab);
+                        let path = self
+                            .directories
+                            .get(key)
+                            .map(String::as_str)
+                            .filter(|p| !p.is_empty())
+                            .unwrap_or(&s.directory);
+                        if path.is_empty() {
+                            s.title.clone()
+                        } else {
+                            sessions::directory_label(path)
+                        }
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(c("f_muted"))
+                            .child(sessions::age(s.since_ms, now)),
+                    )
+                    .into_any_element(),
                 );
             }
         }
@@ -2438,39 +2455,49 @@ impl FennecWindow {
             let key = format!("local:{a}");
             let (show, close) = (session_address.clone(), a.clone());
             let open_key = key.clone();
-            tab(SharedString::from(format!("shell-{a}")), shown == key)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.tab.insert(show.clone(), open_key.clone());
-                    this.pending_focus = Some(open_key.clone());
-                    cx.notify();
-                }))
-                .child(self.program_icon(a, "shell", 14.0))
-                .child(self.activity_mark(a))
-                .child(
-                    self.program_name(
-                        a,
-                        &(self
-                            .shell_names
-                            .get(a)
-                            .cloned()
-                            .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))),
-                    ),
-                )
-                .child(
-                    div()
-                        .id(SharedString::from(format!("close-{a}")))
-                        .size(px(16.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(4.0))
-                        .hover(|s| s.bg(c("f_line")))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.close_shell(close.clone(), cx);
-                        }))
-                        .child(ui::icon("close", 11.0, c("f_muted"))),
-                )
+            self.context_row(
+                tab(SharedString::from(format!("shell-{a}")), shown == key),
+                context_menu::Target::Terminal {
+                    session: session_address.clone(),
+                    tab: key.clone(),
+                },
+                cx,
+            )
+            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                if event.is_right_click() || event.modifiers().control {
+                    return;
+                }
+                this.tab.insert(show.clone(), open_key.clone());
+                this.pending_focus = Some(open_key.clone());
+                cx.notify();
+            }))
+            .child(self.program_icon(a, "shell", 14.0))
+            .child(self.activity_mark(a))
+            .child(
+                self.program_name(
+                    a,
+                    &(self
+                        .shell_names
+                        .get(a)
+                        .cloned()
+                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))),
+                ),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("close-{a}")))
+                    .size(px(16.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.0))
+                    .hover(|s| s.bg(c("f_line")))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.close_shell(close.clone(), cx);
+                    }))
+                    .child(ui::icon("close", 11.0, c("f_muted"))),
+            )
         });
         let agent_on = shown == address;
         v_flex()
@@ -2502,17 +2529,25 @@ impl FennecWindow {
                     .when_some(s.as_ref(), |d, s| {
                         let back = s.address.clone();
                         d.child(
-                            tab("agent-tab".into(), agent_on)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.tab.remove(&back);
-                                    this.pending_focus = Some(back.clone());
-                                    cx.notify();
-                                }))
-                                .child(self.program_icon(&s.address, &s.agent, 14.0))
-                                .child(self.activity_mark(&s.address))
-                                .child(
-                                    self.program_name(&s.address, sessions::agent_name(&s.agent)),
-                                ),
+                            self.context_row(
+                                tab("agent-tab".into(), agent_on),
+                                context_menu::Target::Terminal {
+                                    session: s.address.clone(),
+                                    tab: s.address.clone(),
+                                },
+                                cx,
+                            )
+                            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+                                if event.is_right_click() || event.modifiers().control {
+                                    return;
+                                }
+                                this.tab.remove(&back);
+                                this.pending_focus = Some(back.clone());
+                                cx.notify();
+                            }))
+                            .child(self.program_icon(&s.address, &s.agent, 14.0))
+                            .child(self.activity_mark(&s.address))
+                            .child(self.program_name(&s.address, sessions::agent_name(&s.agent))),
                         )
                     })
                     .children(shell_tabs)
@@ -2612,6 +2647,7 @@ impl Render for FennecWindow {
             None => empty(),
         };
         let menu = self.menu(cx);
+        let context_menu = self.context_menu_view(window, cx);
         let dialog = self.new_project_dialog(cx);
         h_flex()
             .relative()
@@ -2627,6 +2663,9 @@ impl Render for FennecWindow {
             .on_action(cx.listener(Self::on_shell_action))
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
+                if this.context_key(&e.keystroke.key, window, cx) {
+                    return;
+                }
                 let k = &e.keystroke;
                 if this.close_others.is_some() {
                     if k.key == "enter" {
@@ -2752,6 +2791,7 @@ impl Render for FennecWindow {
             )
             .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
+            .when_some(context_menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
             .when(self.prefix || self.close_others.is_some(), |d| {
                 d.child(

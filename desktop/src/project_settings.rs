@@ -52,6 +52,13 @@ const DEFAULT_TAGS: &[(&str, &str)] = &[
 ];
 
 impl FennecWindow {
+    pub(crate) fn focus_project_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(input) = &self.settings.name {
+            input.read(cx).focus_handle(cx).focus(window, cx);
+            input.update(cx, |input, cx| input.select_all(window, cx));
+        }
+    }
+
     /// Fills the forms from the project and loads its knowledge and queue.
     pub(crate) fn open_settings(
         &mut self,

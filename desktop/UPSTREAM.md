@@ -73,3 +73,8 @@ Desktop notification sounds have their own switch in desktop settings. Optional
 custom files are configured by `~/.config/fennec/desktop-sounds.json` (`done`,
 `blocked`, paths relative to the Fennec configuration directory or absolute).
 Missing or unplayable custom files fall back to the bundled Herdr sounds.
+
+The context menus use Herdr's 31 px rows, 14 px icons, 5 px padding and theme
+roles. `assets/icons/context-rename.svg` is its workspace-chrome `square-pen.svg`.
+Projects, sessions and terminal tabs accept right-click or Control-click; menu
+items retain the clicked target independently of the current selection.

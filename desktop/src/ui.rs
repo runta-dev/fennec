@@ -12,6 +12,7 @@ pub fn c(name: &str) -> Hsla {
 pub struct Assets;
 
 const FILES: &[(&str, &[u8])] = &[
+    ("icons/context-rename.svg", include_bytes!("../assets/icons/context-rename.svg")),
     ("programs/activity-spinner.svg", include_bytes!("../assets/programs/activity-spinner.svg")),
     ("programs/LICENSE-LobeHub.txt", include_bytes!("../assets/programs/LICENSE-LobeHub.txt")),
     ("programs/LICENSE-Lucide.txt", include_bytes!("../assets/programs/LICENSE-Lucide.txt")),
