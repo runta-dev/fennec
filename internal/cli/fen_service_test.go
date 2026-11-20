@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fennec/internal/launcher"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFenResumeReceiptStaysWithinCurrentRuntime(t *testing.T) {
@@ -114,5 +116,70 @@ func TestFenAttachNewLoginReceiptBeforeListRefresh(t *testing.T) {
 	reply := service.handle(context.Background(), fenServiceRequest{Operation: "attach", SessionID: receipt.SessionID})
 	if reply.Error != "" || reply.Plan == nil || reply.Plan.SessionID != receipt.SessionID {
 		t.Fatal("new login required an unrelated list refresh", reply.Error)
+	}
+}
+
+func TestSessionSnapshotDistinguishesLoadingFromConfirmedEmpty(t *testing.T) {
+	service := &fenSessionService{refresh: make(chan struct{}, 1)}
+	channel := &terminalChannel{service: service}
+	decode := func(raw json.RawMessage) map[string]any {
+		t.Helper()
+		var v map[string]any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	first := decode(channel.cachedListing(true))
+	if first["loaded"] != false || first["refreshing"] != true {
+		t.Fatalf("initial snapshot: %v", first)
+	}
+	channel.cachedListing(true)
+	if len(service.refresh) != 1 {
+		t.Fatal("background refresh requests did not coalesce")
+	}
+	<-service.refresh
+	service.listing = json.RawMessage(`{"terminals":[],"gateway":{"status":"ready"}}`)
+	empty := decode(channel.cachedListing(false))
+	if empty["loaded"] != true || empty["refreshing"] != false || empty["gateway"].(map[string]any)["status"] != "ready" {
+		t.Fatalf("confirmed empty snapshot: %v", empty)
+	}
+}
+
+func TestSessionSnapshotReturnsExistingRowsDuringBlockedRefresh(t *testing.T) {
+	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	service := &fenSessionService{refresh: make(chan struct{}, 1), listing: json.RawMessage(`{"terminals":[{"address":"t1","state":"live"}]}`)}
+	service.list = func(context.Context) ([]byte, error) { close(started); <-release; return nil, errors.New("offline") }
+	channel := &terminalChannel{service: service}
+	go func() { defer close(done); service.update(context.Background()) }()
+	<-started
+	result := make(chan json.RawMessage, 1)
+	go func() { result <- channel.cachedListing(true) }()
+	select {
+	case raw := <-result:
+		var listing struct {
+			Loaded, Refreshing bool
+			Terminals          []struct{ Address string }
+		}
+		if err := json.Unmarshal(raw, &listing); err != nil {
+			t.Fatal(err)
+		}
+		if !listing.Loaded || !listing.Refreshing || len(listing.Terminals) != 1 || listing.Terminals[0].Address != "t1" {
+			t.Fatalf("cached rows lost: %s", raw)
+		}
+	case <-time.After(time.Second):
+		close(release)
+		<-done
+		t.Fatal("snapshot waited for remote refresh")
+	}
+	close(release)
+	<-done
+	var listing struct {
+		Loaded    bool
+		Terminals []struct{ Address string }
+	}
+	raw := channel.cachedListing(false)
+	if json.Unmarshal(raw, &listing) != nil || !listing.Loaded || len(listing.Terminals) != 1 {
+		t.Fatalf("failed refresh erased cached rows: %s", raw)
 	}
 }

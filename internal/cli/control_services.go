@@ -619,9 +619,7 @@ func (s *daemonServices) snapshot() any {
 	}
 	state := map[string]any{"broker_ready": s.brokerReady, "selection_known": s.config.RuntimeID != "", "selected": selected, "active": active, "connector": status, "approvals": approvals, "coverage": coverage}
 	state["prepared_before"] = s.preparedBefore()
-	if s.channel != nil {
-		state["sessions"] = s.channel.cachedListing(false)
-	}
+	// Session lists are fetched independently through sessions.list.
 	return state
 }
 func (s *daemonServices) decide(ctx context.Context, raw json.RawMessage) (any, error) {

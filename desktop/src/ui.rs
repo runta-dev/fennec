@@ -332,7 +332,7 @@ pub fn tag_chip(id: &str, label: &str) -> Div {
         .child(label.to_owned())
 }
 
-/// The 7-on-30 status dot from Fennec for iPhone, here 4 px on a 16 px icon.
+/// Project artwork uses the image renderer's rounded clip, including uploaded photos.
 pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
     use base64::Engine;
     if let Some(encoded) = project.icon.strip_prefix("data:image/png;base64,") {
@@ -353,7 +353,15 @@ pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
                         ImageFormat::Png,
                         bytes,
                     )))
-                    .size(px(size)),
+                    .size(px(size))
+                    .rounded(px(if size >= 40.0 {
+                        10.0
+                    } else if size > 24.0 {
+                        8.0
+                    } else {
+                        5.0
+                    }))
+                    .object_fit(ObjectFit::Cover),
                 )
                 .into_any_element();
         }

@@ -412,7 +412,7 @@ func (channel *terminalChannel) cachedListing(refresh bool) json.RawMessage {
 	service := channel.service
 	channel.mu.Unlock()
 	if service == nil {
-		return json.RawMessage(`{"terminals":[]}`)
+		return json.RawMessage(`{"terminals":[],"loaded":false,"refreshing":false}`)
 	}
 	if refresh {
 		select {
@@ -421,9 +421,16 @@ func (channel *terminalChannel) cachedListing(refresh bool) json.RawMessage {
 		}
 	}
 	service.mu.Lock()
-	defer service.mu.Unlock()
-	if len(service.listing) == 0 {
-		return json.RawMessage(`{"terminals":[]}`)
+	raw := append(json.RawMessage{}, service.listing...)
+	refreshing := service.refreshing || len(service.refresh) > 0
+	service.mu.Unlock()
+	listing := map[string]json.RawMessage{}
+	loaded := len(raw) > 0 && json.Unmarshal(raw, &listing) == nil && listing != nil
+	if !loaded {
+		listing = map[string]json.RawMessage{"terminals": json.RawMessage("[]")}
 	}
-	return append(json.RawMessage{}, service.listing...)
+	listing["loaded"], _ = json.Marshal(loaded)
+	listing["refreshing"], _ = json.Marshal(refreshing)
+	result, _ := json.Marshal(listing)
+	return result
 }

@@ -3,6 +3,7 @@ package launcher
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,5 +31,37 @@ func TestResolverFailsClosedWithoutOriginal(t *testing.T) {
 	}
 	if _, err := ResolveOriginal("bash", "/bin", "/shims", "/self"); err == nil {
 		t.Fatal("unsupported CLI accepted")
+	}
+}
+
+func TestDesktopAgentColorEnvironment(t *testing.T) {
+	cases := []struct {
+		name, session            string
+		interactive, wantNoColor bool
+	}{
+		{"desktop", "fennec", true, false},
+		{"desktop pipe", "fennec", false, true},
+		{"other terminal", "herdr", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source := []string{"HC_SESSION=" + tc.session, "NO_COLOR=1", "COLORTERM=truecolor", "FENNEC_LAUNCH_MODE=cloud", DispatchedEnv + "=old", "PATH=/test/bin"}
+			result := localEnvironment(source, tc.interactive)
+			got := map[string]string{}
+			for _, v := range result {
+				k, val, _ := strings.Cut(v, "=")
+				got[k] = val
+			}
+			_, hasNoColor := got["NO_COLOR"]
+			if hasNoColor != tc.wantNoColor {
+				t.Fatalf("NO_COLOR present=%v; want %v", hasNoColor, tc.wantNoColor)
+			}
+			if got[DispatchedEnv] != "1" || got["PATH"] != "/test/bin" || got["COLORTERM"] != "truecolor" {
+				t.Fatalf("agent environment changed: %v", got)
+			}
+			if _, ok := got["FENNEC_LAUNCH_MODE"]; ok {
+				t.Fatal("inherited launch mode retained")
+			}
+		})
 	}
 }

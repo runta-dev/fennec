@@ -78,3 +78,9 @@ The context menus use Herdr's 31 px rows, 14 px icons, 5 px padding and theme
 roles. `assets/icons/context-rename.svg` is its workspace-chrome `square-pen.svg`.
 Projects, sessions and terminal tabs accept right-click or Control-click; menu
 items retain the clicked target independently of the current selection.
+
+Local graphical shells clear inherited `NO_COLOR` before entering the user's
+login shell, including when an existing core was started by a noninteractive
+process. Agent routing still follows the menubar preference. Uploaded project
+artwork is clipped by the image renderer itself, using the same corner radius
+as the surrounding project mark.

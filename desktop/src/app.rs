@@ -845,7 +845,7 @@ impl FennecWindow {
                         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
                         let home = std::env::var("HOME").ok();
                         core.run(
-                            vec![shell, "-l".into()],
+                            vec!["/usr/bin/env".into(), "-u".into(), "NO_COLOR".into(), shell, "-l".into()],
                             home,
                             serde_json::json!({"fennec.shell-of": name}),
                             None,
@@ -1401,6 +1401,8 @@ impl FennecWindow {
                         let argv = if agent.is_empty() { vec![shell, "-l".into()] }
                             else { vec![shell, "-ilc".into(), format!("exec {command}")] };
                         let name = format!("desktop-{}", sessions::now_ms());
+                        // A long-lived core can retain NO_COLOR from a noninteractive launcher.
+                        let argv = [vec!["/usr/bin/env".into(), "-u".into(), "NO_COLOR".into()], argv].concat();
                         core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {

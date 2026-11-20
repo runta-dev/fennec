@@ -5,6 +5,7 @@ import (
 	"errors"
 	agents "fennec/internal/agentcmd"
 	"fmt"
+	"golang.org/x/term"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,11 +69,27 @@ func ExecLocal(agent string, args []string, shimDir string) error {
 // Mac, marked as dispatched so the agent's own subprocesses that start an
 // agent stay local instead of reaching the cloud computer.
 func LocalEnvironment() []string {
-	env := []string{}
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "FENNEC_LAUNCH_MODE=") && !strings.HasPrefix(value, DispatchedEnv+"=") {
-			env = append(env, value)
+	return localEnvironment(os.Environ(), term.IsTerminal(int(os.Stdout.Fd())))
+}
+
+func localEnvironment(source []string, interactive bool) []string {
+	// Existing Desktop shells may predate the GUI launch environment fix. Repair
+	// agent color without changing the routing decision or noninteractive output.
+	desktop := false
+	for _, value := range source {
+		if value == "HC_SESSION=fennec" {
+			desktop = true
 		}
+	}
+	env := make([]string, 0, len(source)+1)
+	for _, value := range source {
+		if strings.HasPrefix(value, "FENNEC_LAUNCH_MODE=") || strings.HasPrefix(value, DispatchedEnv+"=") {
+			continue
+		}
+		if desktop && interactive && strings.HasPrefix(value, "NO_COLOR=") {
+			continue
+		}
+		env = append(env, value)
 	}
 	return append(env, DispatchedEnv+"=1")
 }

@@ -642,6 +642,7 @@ window.renderProfile = (name, fallback = false) => {
   }
 };
 window.renderSignedOut = () => {
+  window.resetSessionList?.();
   currentProfileName = '';
   window.resetAgentLogin?.();
   authorized = false;
@@ -1277,6 +1278,41 @@ window.renderGatewayState = value => {
  const retry=notice.querySelector('button');retry.hidden=status!=='failed';
  retry.onclick=()=>send('retry-runtime');
 };
+let sessionRenderGeneration=0;
+let sessionListLoaded=false;
+window.resetSessionList=()=>{
+ sessionRenderGeneration++;
+ sessionListLoaded=false;
+ lastSessionTerminals=[];
+ confirmedStoppedSessions.clear();
+ visibleSessionCount=0;
+ document.querySelector('#session-count').textContent='0';
+ document.querySelector('#runtime-list').replaceChildren();
+};
+window.renderSessionListLoading=loading=>{
+ const list=document.querySelector('#runtime-list');
+ list.setAttribute('aria-busy',String(!!loading&&!sessionListLoaded));
+ if(!loading||sessionListLoaded)return;
+ if(list.querySelector('.session-list-skeleton'))return;
+ const placeholder=document.createElement('div');placeholder.className='session-list-skeleton';placeholder.setAttribute('aria-hidden','true');
+ for(let i=0;i<3;i++){
+  const row=document.createElement('div');row.className='session-loading-row';
+  const icon=document.createElement('span');icon.className='setting-skeleton session-loading-icon';
+  const title=document.createElement('span');title.className='setting-skeleton session-loading-title';
+  row.append(icon,title);placeholder.append(row);
+ }
+ list.replaceChildren(placeholder);
+ document.querySelector('#runtime-message').hidden=true;
+};
+window.renderSessionSnapshot=terminals=>{
+ const generation=++sessionRenderGeneration;
+ requestAnimationFrame(()=>{
+  if(generation!==sessionRenderGeneration||!authorized)return;
+  sessionListLoaded=true;
+  window.renderHerdrSessions(terminals);
+  window.renderSessionListLoading(false);
+ });
+};
 let lastSessionTerminals=[];
 const confirmedStoppedSessions=new Set();
 window.renderSessionStopped = sessionID => {
@@ -1284,6 +1320,7 @@ window.renderSessionStopped = sessionID => {
  window.renderHerdrSessions(lastSessionTerminals);
 };
 window.renderHerdrSessions = terminals => {
+ sessionListLoaded=true;
  lastSessionTerminals=terminals.filter(terminal=>!confirmedStoppedSessions.has(terminal.labels?.['fennec.session']));
  terminals=lastSessionTerminals;
  const labels={working:"[[i18n:ui.working]]",blocked:"[[i18n:ui.needs_input]]",idle:"[[i18n:ui.idle]]",error:"[[i18n:ui.errored]]"};

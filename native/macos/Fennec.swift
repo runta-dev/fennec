@@ -85,6 +85,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var preparationState: [String:String] = [:]
     private var takeoverAgents = Set<String>()
     private var loadingRuntimes = false
+    private var lastSessionsPoll = Date.distantPast
     private var loadingBilling = false
     private var loadingMetrics = false
     private var lastMetricsPoll = Date.distantPast
@@ -711,6 +712,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func pollState() {
         guard controlReady,!stateLoading else { return }
+        if popup.isVisible, authorized, (visibleRefreshTab == "sessions" || lastSessionsData == nil), Date().timeIntervalSince(lastSessionsPoll) >= 2.0 { loadRuntimes() }
         if popup.isVisible, authorized, isOnline, visibleRefreshTab == "account", Date().timeIntervalSince(lastMetricsPoll) >= 1.0 {
             loadMetrics()
         }
@@ -749,7 +751,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let account = state["account"] as? [String:Any] ?? [:]
         let epoch = account["epoch"] as? Int ?? 0
         let epochChanged = epoch != accountEpoch
-        if epoch != accountEpoch { accountEpoch = epoch; profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews") }
+        if epoch != accountEpoch { accountEpoch = epoch; lastSessionsData = nil; render("resetSessionList"); profileLoaded = false; openedLoginURL = nil; launchRequests.removeAll(); closeTerminal(); render("resetAgentLogin");render("resetNativeAccountViews") }
         let online = state["online"] as? Bool ?? true
         let reconnected = online && !isOnline
         isOnline = online
@@ -814,20 +816,13 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if selected != takeoverAgents { desktop.update(["agents": Array(selected).sorted()]) }
         takeoverAgents = selected
         let ready = services["broker_ready"] as? Bool == true
+        let sessionServiceBecameReady = ready && !sessionServiceReady
 	    sessionServiceReady=ready
+        if sessionServiceBecameReady, authorized { loadRuntimes() }
         if reconnected, authorized, ready { loadRuntimes() }
         if reconnected, authorized, visibleRefreshTab == "account" { loadBilling(); loadMetrics() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
-        if let listing = services["sessions"] as? [String:Any], let terminals = listing["terminals"] as? [[String:Any]] {
-            render("renderGatewayState", [listing["gateway"] ?? ["status":"unknown"]])
-            let nextData = try? JSONSerialization.data(withJSONObject: terminals, options: [.sortedKeys])
-            if nextData != lastSessionsData {
-                lastSessionsData = nextData
-                desktop.update(["sessions": terminals])
-                render("renderHerdrSessions", [terminals])
-            }
-        }
         if let upd = state["update"] as? [String:Any] {
             updateState = upd
             render("renderUpdateState", [upd])
@@ -855,14 +850,26 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         }
     }
     private func loadRuntimes() {
-        guard authorized,isOnline,sessionServiceReady,!loadingRuntimes else { return }
-        loadingRuntimes = true; renderRefreshActivity()
+        guard authorized,sessionServiceReady,!loadingRuntimes else { return }
+        loadingRuntimes = true
+        lastSessionsPoll = Date()
+        render("renderSessionListLoading", [true])
         let epoch = accountEpoch
-        control.call("sessions.refresh") { [weak self] result in
-            guard let self else { return }; self.loadingRuntimes = false; self.renderRefreshActivity()
+        // A cache snapshot queues a coalesced background refresh without waiting
+        // for cloud I/O. The next independent poll receives the confirmed list.
+        control.call("sessions.list") { [weak self] result in
+            guard let self else { return }
+            self.loadingRuntimes = false
             guard self.accountEpoch == epoch else { return }
-            if case .success(let value) = result, let listing = value as? [String:Any], let rows = listing["terminals"] { self.render("renderHerdrSessions", [rows]); self.render("renderGatewayState", [listing["gateway"] ?? ["status":"unknown"]]) }
-            else if self.isOnline { self.render("renderSessionRefreshError") }
+            guard case .success(let value) = result, let listing = value as? [String:Any] else { return }
+            guard listing["loaded"] as? Bool != false, let rows = listing["terminals"] as? [[String:Any]] else { return }
+            self.render("renderSessionListLoading", [false])
+            self.render("renderGatewayState", [listing["gateway"] ?? ["status":"unknown"]])
+            let data = try? JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])
+            guard data != self.lastSessionsData else { return }
+            self.lastSessionsData = data
+            self.desktop.update(["sessions": rows])
+            self.render("renderSessionSnapshot", [rows])
         }
     }
     private func loadBilling() {
@@ -1004,7 +1011,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
-        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; renderRefreshActivity(); return }
+        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; if visibleRefreshTab == "sessions" { loadRuntimes() }; renderRefreshActivity(); return }
         if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else if visibleRefreshTab == "governance" { loadAuditLog() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
