@@ -82,6 +82,10 @@ pub struct FennecWindow {
     pub(crate) reply: Entity<TextareaState>,
     notice: Option<String>,
     pub(crate) sidebar: bool,
+    /// How far the sidebar is shown (0 hidden, 1 shown) in this frame.
+    sidebar_shown: f32,
+    /// The running sidebar animation: the target, the starting amount, and when it started.
+    sidebar_motion: Option<(bool, f32, std::time::Instant)>,
     focus: FocusHandle,
     pending_focus: Option<String>,
     confirmed_session: Option<String>,
@@ -225,6 +229,8 @@ impl FennecWindow {
             reply,
             notice: None,
             sidebar: true,
+            sidebar_shown: 1.0,
+            sidebar_motion: None,
             focus: cx.focus_handle(),
             pending_focus: None,
             confirmed_session: None,
@@ -1283,6 +1289,46 @@ impl FennecWindow {
 
     // ---------- organization, new project, new session ----------
 
+    /// Advances the sidebar's slide toward `self.sidebar`, wherever that was
+    /// changed, and keeps frames coming until it settles.
+    fn step_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let target = if self.sidebar { 1.0 } else { 0.0 };
+        if self.sidebar_motion.is_none_or(|(to, _, _)| to != self.sidebar)
+            && self.sidebar_shown != target
+        {
+            self.sidebar_motion = Some((self.sidebar, self.sidebar_shown, std::time::Instant::now()));
+            // Animation frames can pause (a hidden window); one late redraw still lands the slide.
+            cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(Duration::from_secs_f32(SIDEBAR_SLIDE_SECONDS + 0.05))
+                    .await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            })
+            .detach();
+        }
+        let Some((_, from, start)) = self.sidebar_motion else {
+            return;
+        };
+        let t = (start.elapsed().as_secs_f32() / SIDEBAR_SLIDE_SECONDS).min(1.0);
+        // Ease out (cubic): quick to respond, gentle to land.
+        let eased = 1.0 - (1.0 - t).powi(3);
+        self.sidebar_shown = from + (target - from) * eased;
+        if t < 1.0 {
+            window.request_animation_frame();
+        } else {
+            self.sidebar_shown = target;
+            self.sidebar_motion = None;
+        }
+    }
+
+    /// The left inset of a title row whose own inset is `base`: while the
+    /// sidebar is hidden it clears the traffic lights and the toggle, and it
+    /// moves with the sidebar's slide.
+    pub(crate) fn title_inset(&self, base: f32, gap: f32) -> Pixels {
+        let collapsed = SIDEBAR_TOGGLE_LEFT + SIDEBAR_TOGGLE_SIZE + gap;
+        px(base + (collapsed - base) * (1.0 - self.sidebar_shown))
+    }
+
     /// The sidebar toggle sits beside the traffic lights at the same place
     /// whether the sidebar is shown or hidden; title rows leave room for it.
     fn sidebar_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1290,7 +1336,7 @@ impl FennecWindow {
             .absolute()
             .left(px(SIDEBAR_TOGGLE_LEFT))
             .top(px(10.0))
-            .child(ui::icon_button("sidebar-toggle", "sidebar").size(px(26.0)).on_click(
+            .child(ui::icon_button("sidebar-toggle", "sidebar").size(px(SIDEBAR_TOGGLE_SIZE)).on_click(
                 cx.listener(|this, _, _, cx| {
                     this.sidebar = !this.sidebar;
                     cx.notify();
@@ -1845,7 +1891,7 @@ impl FennecWindow {
             );
         }
         v_flex()
-            .w(px(252.0))
+            .w(px(SIDEBAR_WIDTH))
             .h_full()
             .flex_none()
             .bg(c("f_bg"))
@@ -2128,7 +2174,7 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .when(!self.sidebar, |d| d.pl(px(SIDEBAR_TOGGLE_LEFT)).child(toggle_room()))
+                    .pl(self.title_inset(18.0, 11.0))
                     .child(ui::project_icon(p, 30.0))
                     .child(
                         v_flex()
@@ -2622,17 +2668,16 @@ impl FennecWindow {
             .child(
                 h_flex()
                     .id("tabs")
-                    .h(px(40.0))
+                    // Taller while the sidebar is hidden, to hold the traffic lights.
+                    .h(px(40.0 + 6.0 * (1.0 - self.sidebar_shown)))
                     .flex_none()
                     .px(px(10.0))
+                    .pl(self.title_inset(10.0, 8.0))
                     .gap(px(8.0))
                     .bg(c("f_bg"))
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .when(!self.sidebar, |d| {
-                        d.pl(px(SIDEBAR_TOGGLE_LEFT)).h(px(46.0)).child(toggle_room())
-                    })
                     .when_some(s.as_ref(), |d, s| {
                         let back = s.address.clone();
                         d.child(
@@ -2759,6 +2804,7 @@ impl Render for FennecWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::terminal::next_frame();
         window.set_rem_size(px(crate::settings::ui_font_size()));
+        self.step_sidebar(window, cx);
         let route = self.route.clone();
         let main = match &route {
             Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
@@ -2880,7 +2926,24 @@ impl Render for FennecWindow {
                     cx.stop_propagation();
                 }
             }))
-            .when(self.sidebar, |d| d.child(self.sidebar(cx)))
+            // The sidebar slides in from the left edge: its column widens while
+            // the sidebar itself, still full width, moves into view.
+            .when(self.sidebar_shown > 0.0, |d| {
+                let shown = self.sidebar_shown;
+                d.child(
+                    div()
+                        .w(px(SIDEBAR_WIDTH * shown))
+                        .h_full()
+                        .flex_none()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .h_full()
+                                .ml(px(-SIDEBAR_WIDTH * (1.0 - shown)))
+                                .child(self.sidebar(cx)),
+                        ),
+                )
+            })
             .child(
                 div()
                     .relative()
@@ -2889,11 +2952,12 @@ impl Render for FennecWindow {
                     .h_full()
                     .flex()
                     .flex_col()
-                    .when(!self.sidebar && route.is_none(), |d| {
+                    .when(self.sidebar_shown < 1.0 && route.is_none(), |d| {
                         d.child(
                             h_flex()
                                 .id("collapsed-titlebar")
-                                .h(px(46.0))
+                                .h(px(46.0 * (1.0 - self.sidebar_shown)))
+                                .overflow_hidden()
                                 .flex_none()
                                 .pr(px(10.0))
                                 .bg(c("f_bg"))
@@ -2943,12 +3007,10 @@ impl Render for FennecWindow {
 }
 
 /// Where the sidebar toggle starts: just right of the traffic lights.
-pub(crate) const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
-
-/// Room a title row keeps for the sidebar toggle drawn over it.
-pub(crate) fn toggle_room() -> Div {
-    div().w(px(26.0)).flex_none()
-}
+const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
+const SIDEBAR_TOGGLE_SIZE: f32 = 26.0;
+const SIDEBAR_WIDTH: f32 = 252.0;
+const SIDEBAR_SLIDE_SECONDS: f32 = 0.22;
 
 fn empty() -> AnyElement {
     div().flex_1().h_full().bg(c("f_card")).into_any_element()

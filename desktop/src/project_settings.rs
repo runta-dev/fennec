@@ -283,10 +283,7 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .when(!self.sidebar, |d| {
-                        d.pl(px(crate::app::SIDEBAR_TOGGLE_LEFT))
-                            .child(crate::app::toggle_room())
-                    })
+                    .pl(self.title_inset(18.0, 11.0))
                     .child(
                         div()
                             .id("settings-back")
