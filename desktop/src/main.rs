@@ -40,6 +40,7 @@ mod app_preferences;
 mod preview;
 mod board;
 mod control;
+mod dispatch_env;
 mod i18n;
 mod project_settings;
 mod shot;
@@ -54,6 +55,9 @@ pub(crate) fn test_tmp() -> std::path::PathBuf {
 }
 
 fn main() {
+    // Before any thread or terminal core exists: shells opened here must hand
+    // `claude`, `codex`, ... to the cloud computer like any other shell.
+    dispatch_env::clear();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("FENNEC_DESKTOP_LOG")

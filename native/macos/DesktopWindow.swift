@@ -29,6 +29,12 @@ final class DesktopWindow: NSObject {
         let process = Process()
         process.executableURL = contents.appendingPathComponent("MacOS/fennec-desktop")
         var environment = ProcessInfo.processInfo.environment
+        // Markers of a launch by a dispatched agent or the cloud relay
+        // (launcher.DispatchedEnv, launcher.RelayEnv) describe whatever started
+        // Fennec, not the window's shells; inherited, they would make every
+        // claude/codex shim in a shell tab run locally instead of in the cloud.
+        environment["FENNEC_DISPATCHED"] = nil
+        environment["FENNEC_MAC_RELAY"] = nil
         // herdr-core for the window's terminals: the cloud computer's, through `fen hc`.
         environment["FENNEC_CLI"] = contents.appendingPathComponent("MacOS/fen").path
         environment["FENNEC_HC"] = contents.appendingPathComponent("Resources/fennec-hc").path
