@@ -2161,7 +2161,7 @@ impl FennecWindow {
             .min_w_0()
             .h_full()
             .flex_none()
-            .bg(c("f_expanded"))
+            .bg(c("background"))
             .border_r_1()
             .border_color(c("f_line"))
             .child(
@@ -2352,7 +2352,7 @@ impl FennecWindow {
             return v_flex()
                 .flex_1()
                 .h_full()
-                .bg(c("f_card"))
+                .bg(c("background"))
                 .items_center()
                 .justify_center()
                 .child(ui::icon("chat", 32.0, c("f_muted").opacity(0.5)))
@@ -2471,7 +2471,7 @@ impl FennecWindow {
             .flex_1()
             .min_w_0()
             .h_full()
-            .bg(c("f_card"))
+            .bg(c("background"))
             .child(
                 h_flex()
                     .id("thread-head")
@@ -3013,5 +3013,5 @@ const SIDEBAR_WIDTH: f32 = 252.0;
 const SIDEBAR_SLIDE_SECONDS: f32 = 0.22;
 
 fn empty() -> AnyElement {
-    div().flex_1().h_full().bg(c("f_card")).into_any_element()
+    div().flex_1().h_full().bg(c("background")).into_any_element()
 }

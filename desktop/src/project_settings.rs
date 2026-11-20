@@ -272,7 +272,7 @@ impl FennecWindow {
             .flex_1()
             .min_w_0()
             .h_full()
-            .bg(c("f_expanded"))
+            .bg(c("background"))
             .child(
                 h_flex()
                     .id("settings-head")
