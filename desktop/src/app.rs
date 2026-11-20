@@ -602,9 +602,6 @@ impl FennecWindow {
             // (the core repaints the screen and its history).
             if let Some(Route::Session(old)) = &self.route {
                 let shown = self.shown_tab(old);
-                if shown.starts_with("cloud:") {
-                    self.detach_cloud_view(&shown, cx);
-                }
                 if let Some(view) = self.terms.remove(&shown) {
                     view.read(cx).detach();
                 }
@@ -1445,7 +1442,7 @@ impl FennecWindow {
                         core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {
-                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {if let Some(Route::Session(old)) = this.route.clone() {let shown=this.shown_tab(&old);if shown.starts_with("cloud:"){this.detach_cloud_view(&shown,cx);}} this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
+                        Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
                         Err(e) => this.say(format!("{e:#}"), cx),
                     }});
                 }));

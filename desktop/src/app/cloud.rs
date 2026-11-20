@@ -6,7 +6,9 @@ impl FennecWindow {
     pub(super) fn set_shown_tab(&mut self, session: String, tab: String, cx: &mut Context<Self>) {
         let old = self.shown_tab(&session);
         if old != tab && old.starts_with("cloud:") {
-            self.detach_cloud_view(&old, cx);
+            if let Some(view) = self.terms.remove(&old) {
+                view.read(cx).detach();
+            }
         }
         self.tab.insert(session, tab.clone());
         self.pending_focus = Some(tab);
@@ -158,7 +160,7 @@ impl FennecWindow {
                         }
                         this.cloud_views.insert(key.clone(), address);
                         let selected = matches!(&this.route, Some(Route::Session(id)) if this.shown_tab(id) == key);
-                        if selected { this.pending_focus = Some(key.clone()); } else { this.detach_cloud_view(&key, cx); }
+                        if selected { this.pending_focus = Some(key.clone()); }
                     }
                     Err(error) => { tracing::warn!("cloud attach view: {error:#}"); this.cloud_attach_failed.insert(key.clone()); }
                 }
