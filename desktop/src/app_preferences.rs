@@ -27,8 +27,8 @@ impl Default for Preferences {
             theme: "system".into(),
             language: "system".into(),
             font_size: 14,
-            padding_x: 14,
-            padding_y: 12,
+            padding_x: 0,
+            padding_y: 0,
         }
     }
 }

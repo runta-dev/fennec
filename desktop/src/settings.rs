@@ -237,7 +237,7 @@ impl Default for Settings {
             zoom: 1.0,
             dark: true,
             pane_scrollbars: true,
-            terminal_padding: [14.0, 12.0],
+            terminal_padding: [0.0, 0.0],
             terminal_opacity: 1.0,
             clipboard_write: true,
             copy_on_select: true,
