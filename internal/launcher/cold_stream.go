@@ -21,6 +21,7 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	if connection == nil || !connection.Ready(ctx, plan) || plan.Launch == nil || plan.Launch.ID != intent.RequestID || plan.Launch.Agent != intent.Agent {
 		return fmt.Errorf("cold launch identity was not verified")
 	}
+	defer markAttached(intent.RequestID)()
 	if err := plan.Launch.Validate(); err != nil {
 		return err
 	}

@@ -53,6 +53,7 @@ func (err StreamLostError) Error() string {
 }
 
 func ExecuteStream(plan LaunchPlan, intent LaunchIntent, home string, ready func(), recovery ...StreamRecovery) error {
+	defer markAttached(intent.RequestID)()
 	if len(recovery) > 0 {
 		return executeRecoveringStream(plan, intent, home, ready, nil, recovery[0])
 	}

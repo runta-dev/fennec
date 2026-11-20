@@ -1366,9 +1366,12 @@ impl FennecWindow {
     /// The sidebar's session rows in order: plain shells first, then agents,
     /// local or cloud, grouped by state.
     fn session_list<'a>(&'a self, q: &str) -> Vec<SidebarRow<'a>> {
+        // A cloud session a local terminal already shows is listed once, as that terminal.
+        let shown_locally = self.shown_locally();
         let mut list: Vec<SidebarRow> = self
             .sessions
             .iter()
+            .filter(|s| !(s.address.starts_with("cloud:") && shown_locally.contains(&s.name)))
             .filter(|s| {
                 q.is_empty()
                     || s.title.to_lowercase().contains(q)
