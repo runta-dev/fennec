@@ -37,8 +37,6 @@ struct SidebarRow<'a> {
     tab: Option<String>,
     state: State,
     since_ms: u64,
-    /// The agent's position in the session's tab bar.
-    index: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -1626,9 +1624,8 @@ impl FennecWindow {
                 .flatten()
                 .map(|a| format!("local:{a}")),
         );
-        let agents: Vec<(usize, String)> = keys
-            .enumerate()
-            .filter(|(_, key)| {
+        let agents: Vec<String> = keys
+            .filter(|key| {
                 let p = &self.activity[key.strip_prefix("local:").unwrap_or(key)];
                 p["program"]["agent"] == true
                     || p["state"].as_str().is_some_and(|w| !w.is_empty())
@@ -1640,12 +1637,11 @@ impl FennecWindow {
                 tab: None,
                 state: s.state,
                 since_ms: s.since_ms,
-                index: 0,
             }];
         }
         agents
             .into_iter()
-            .map(|(index, key)| {
+            .map(|key| {
                 let address = key.strip_prefix("local:").unwrap_or(&key);
                 let since_ms = if key == s.address {
                     s.since_ms
@@ -1659,7 +1655,6 @@ impl FennecWindow {
                     session: s,
                     state: activity::state(self.activity[address]["state"].as_str().unwrap_or_default()),
                     since_ms,
-                    index,
                     tab: Some(key),
                 }
             })
@@ -1839,15 +1834,6 @@ impl FennecWindow {
                         sessions::directory_label(path)
                     }
                 }))
-                // Several agents of one session share its title: their tab numbers tell them apart.
-                .when(split, |d| {
-                    d.child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(c("f_muted"))
-                            .child(format!("#{}", r.index + 1)),
-                    )
-                })
                 .child(
                     div()
                         .text_size(px(11.0))
