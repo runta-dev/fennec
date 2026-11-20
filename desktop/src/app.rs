@@ -2695,7 +2695,14 @@ impl FennecWindow {
                             }))
                             .child(self.program_icon(&s.address, &s.agent, 14.0))
                             .child(self.activity_mark(&s.address))
-                            .child(self.program_name(&s.address, sessions::agent_name(&s.agent))),
+                            // An agent's tab carries the session's title, like its sidebar row.
+                            .child(div().max_w(px(260.0)).truncate().child(
+                                if sessions::agent_icon(&s.agent).is_none() || s.title.trim().is_empty() {
+                                    self.program_name(&s.address, sessions::agent_name(&s.agent))
+                                } else {
+                                    s.title.clone()
+                                },
+                            )),
                         )
                     })
                     .children(shell_tabs)
