@@ -2618,6 +2618,10 @@ impl FennecWindow {
         let s = self.sessions.iter().find(|s| s.address == address).cloned();
         let shown = self.shown_tab(address);
         let view = self.terminal(&shown, window, cx);
+        // The terminal schedules output paints only while marked in this frame.
+        if let Some(view) = &view {
+            view.read(cx).mark_shown();
+        }
         let cloud_failed = self.cloud_attach_failed.contains(&shown);
         let connecting_cloud = shown.starts_with("cloud:") && view.is_none() && !cloud_failed;
         if self.pending_focus.as_deref() == Some(&shown) {
