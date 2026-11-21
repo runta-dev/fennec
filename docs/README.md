@@ -17,6 +17,9 @@ not rebuild the application or rerun historical live benchmarks.
 
 ## Implementation references
 
+- [Queues design](queues.md): Request/Run/session identity, cloud-primary and
+  local-backup scheduling, replication, recovery and acceptance requirements.
+
 - [Deep-link contract](deep-links.md): shared route names, existing pairing,
   reserved auth callbacks, environment binding, and rollout requirements.
 - [Native credentials](native-agent-credentials.md), [managed Magpie](magpie-runtime.md),
