@@ -15,6 +15,12 @@ git submodule update --init --depth 1 desktop/vendor/ghostty
 cd desktop && cargo build --release
 ```
 
+Run the desktop suite with `cargo test --locked`. GPUI's test support is a
+development-only dependency. The unchanged upstream terminal tests use Fennec's
+default key bindings without personal overrides and a test-only extract of
+Herdr's Edit-menu adapter; those menu tests do not validate the native shell's
+production menus.
+
 Linux also needs `pkg-config clang libclang-dev libxcb1-dev libxkbcommon-dev
 libxkbcommon-x11-dev libwayland-dev libvulkan-dev mesa-vulkan-drivers
 libfontconfig-dev libfreetype-dev` (herdr-app's CI list).

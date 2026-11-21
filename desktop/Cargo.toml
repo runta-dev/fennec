@@ -40,6 +40,9 @@ regex = "1"
 notify = "7"
 sha2 = "0.10"
 
+[dev-dependencies]
+gpui = { package = "gpui-pre", version = "=0.3.8", features = ["test-support"] }
+
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpui_linux = { package = "gpui-pre-linux", version = "=0.3.8", features = ["render-to-image"] }

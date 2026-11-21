@@ -53,30 +53,30 @@ fn supported(action: &str) -> bool {
                 | "terminal.select_all"
         )
 }
-pub fn install(cx: &mut App) {
-    let mut global = BTreeMap::<String, String>::from_iter(
-        [
-            ("cmd-,", "app.settings"),
-            ("cmd-t", "tab.new"),
-            ("cmd-w", "tab.close"),
-            ("ctrl-tab", "tab.next"),
-            ("ctrl-shift-tab", "tab.prev"),
-            ("cmd-shift-]", "tab.next"),
-            ("cmd-shift-[", "tab.prev"),
-            ("cmd-p", "mod.open:picker"),
-        ]
-        .map(|(k, v)| (k.into(), v.into())),
-    );
-    let mut terminal = BTreeMap::<String, String>::from_iter(
-        [
-            ("cmd-c", "terminal.copy"),
-            ("cmd-v", "terminal.paste"),
-            ("ctrl-v", "terminal.paste_image"),
-            ("cmd-f", "terminal.search"),
-            ("cmd-a", "terminal.select_all"),
-        ]
-        .map(|(k, v)| (k.into(), v.into())),
-    );
+pub const DEFAULTS: &str = r#"{
+    "global": {
+        "cmd-,": "app.settings", "cmd-t": "tab.new", "cmd-w": "tab.close",
+        "ctrl-tab": "tab.next", "ctrl-shift-tab": "tab.prev",
+        "cmd-shift-]": "tab.next", "cmd-shift-[": "tab.prev", "cmd-p": "mod.open:picker"
+    },
+    "terminal": {
+        "cmd-c": "terminal.copy", "cmd-v": "terminal.paste",
+        "ctrl-v": "terminal.paste_image", "cmd-f": "terminal.search", "cmd-a": "terminal.select_all"
+    }
+}"#;
+
+#[derive(serde::Deserialize)]
+pub struct Bindings {
+    global: BTreeMap<String, String>,
+    terminal: BTreeMap<String, String>,
+}
+
+pub fn parse(source: &str) -> serde_json::Result<Bindings> {
+    serde_json::from_str(source)
+}
+
+pub fn install_user(cx: &mut App) {
+    let Bindings { mut global, mut terminal } = parse(DEFAULTS).expect("shipped keys parse");
     if let Some(home) = std::env::var_os("HOME") {
         let path = std::path::PathBuf::from(home).join(".config/fennec/desktop-keys.json");
         if let Ok(bytes) = std::fs::read(path) {
@@ -93,6 +93,13 @@ pub fn install(cx: &mut App) {
             }
         }
     }
+    install(Bindings { global, terminal }, cx);
+}
+
+// Keep the upstream terminal tests on the same defaults and binding path as
+// production, without reading the user's overrides in those tests.
+pub fn install(bindings: Bindings, cx: &mut App) {
+    let Bindings { global, terminal } = bindings;
     let _ = ACTIVE.set(global.clone());
     cx.bind_keys(global.into_iter().map(|(key, action)| {
         KeyBinding::new(&key, ShellAction::new(action), Some("FennecWindow"))

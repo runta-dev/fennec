@@ -10,6 +10,10 @@
 // Fennec doesn't have (mods, benchmarks), hence the dead_code allowance.
 #[allow(dead_code)]
 mod bench;
+// The unchanged upstream terminal suite also exercises Herdr's edit-menu adapter.
+#[cfg(test)]
+#[path = "upstream_test_menu.rs"]
+mod macos;
 #[allow(dead_code)]
 mod hc;
 #[allow(dead_code)]
@@ -69,7 +73,7 @@ fn main() {
         .run(move |cx| {
             gpui_base::init(cx);
             settings::load_bundled_fonts(cx);
-            keys::install(cx);
+            keys::install_user(cx);
             let dark = matches!(
                 cx.window_appearance(),
                 WindowAppearance::Dark | WindowAppearance::VibrantDark
