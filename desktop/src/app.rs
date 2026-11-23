@@ -167,7 +167,7 @@ impl FennecWindow {
         });
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(3, 12)
+                .auto_grow(2, 12)
                 .submit_on_enter(true)
                 .placeholder(t("new_request"))
         });
@@ -2193,6 +2193,7 @@ impl FennecWindow {
                 .unwrap_or_else(|| id.to_owned())
         };
         let now = sessions::now_ms();
+        let image_status = self.request_image_status(&p.id);
         let composer_has = !self.composer.read(cx).value().trim().is_empty()
             || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
         let segment = |label: String, count: usize, on: bool, resolved: bool| {
@@ -2467,13 +2468,14 @@ impl FennecWindow {
                             )
                             .px(px(13.0))
                             .py(px(9.0))
+                            .pb(px(34.0))
                             .min_h(px(84.0))
                             .text_size(px(13.5))
                             .line_height(relative(1.6))
-                            .pr(px(72.0))
                             .child(div().w_full().flex_none().child(Textarea::new(&self.composer)))
                             .when_some(self.draft_images(&p.id,cx),|d,images|d.child(images))
-                            .when(!composer_has, |d| {
+                            .when_some(image_status, |d, key| d.child(div().absolute().left(px(13.0)).right(px(80.0)).bottom(px(8.0)).h(px(16.0)).truncate().text_size(px(11.0)).text_color(c("f_muted")).child(t(key))))
+                            .when(!composer_has && image_status.is_none(), |d| {
                                 d.child(
                                     div()
                                         .absolute()

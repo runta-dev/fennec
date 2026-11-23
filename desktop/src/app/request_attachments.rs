@@ -80,6 +80,14 @@ fn thumbnail(image: &board::Attachment, size: f32) -> AnyElement {
 }
 
 impl FennecWindow {
+    pub(super) fn request_image_status(&self, project: &str) -> Option<&'static str> {
+        if self.request_images.busy.contains(project) {
+            Some("request_image_adding")
+        } else {
+            self.request_images.errors.get(project).copied()
+        }
+    }
+
     pub(super) fn paste_request_image(
         &mut self,
         window: &mut Window,
@@ -193,9 +201,7 @@ impl FennecWindow {
             .get(project)
             .cloned()
             .unwrap_or_default();
-        let busy = self.request_images.busy.contains(project);
-        let error = self.request_images.errors.get(project).copied();
-        if images.is_empty() && !busy && error.is_none() {
+        if images.is_empty() {
             return None;
         }
         Some(
@@ -204,7 +210,6 @@ impl FennecWindow {
                 .flex_none()
                 .mt(px(8.0))
                 .gap(px(6.0))
-                .pb(px(22.0))
                 .child(
                     h_flex()
                         .gap(px(8.0))
@@ -253,24 +258,6 @@ impl FennecWindow {
                                 )
                         })),
                 )
-                .when(busy, |d| {
-                    d.child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(c("f_muted"))
-                            .child(t("request_image_adding")),
-                    )
-                })
-                .when_some(error, |d, key| {
-                    d.child(
-                        div()
-                            .h(px(16.0))
-                            .truncate()
-                            .text_size(px(11.0))
-                            .text_color(c("f_muted"))
-                            .child(t(key)),
-                    )
-                })
                 .into_any_element(),
         )
     }
