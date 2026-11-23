@@ -32,6 +32,8 @@ pub(super) struct Layout {
     #[serde(skip)]
     pub hover: Option<(String, String)>,
     #[serde(skip)]
+    drag_slots: Option<DragSlots>,
+    #[serde(skip)]
     pub hover_group: Option<(String, std::time::Instant)>,
     #[serde(skip)]
     pub motion: row_motion::RowMotion,
@@ -53,6 +55,27 @@ struct Descriptor {
     id: String,
     key: String,
     group: String,
+}
+
+struct DragSlots {
+    root: String,
+    drag: String,
+    keys: Vec<String>,
+    width: f32,
+}
+
+fn preview_keys(mut keys: Vec<String>, hover: &Option<(String, String)>) -> Vec<String> {
+    if let Some((drag, before)) = hover {
+        if (before.is_empty() || keys.contains(before)) && drag != before {
+            keys.retain(|key| key != drag);
+            let at = keys
+                .iter()
+                .position(|key| key == before)
+                .unwrap_or(keys.len());
+            keys.insert(at, drag.clone());
+        }
+    }
+    keys
 }
 #[derive(Clone)]
 pub(super) struct TabDrag {
@@ -369,6 +392,52 @@ impl FennecWindow {
             title: self.terminal_title(key, "Terminal"),
         }
     }
+    fn hover_tab_slot(
+        &mut self,
+        root: &str,
+        event: &DragMoveEvent<TabDrag>,
+        cx: &mut Context<Self>,
+    ) {
+        if !event.bounds.contains(&event.event.position) {
+            return;
+        }
+        let drag = event.drag(cx).key.clone();
+        let keys = self.group_tabs(root);
+        if self
+            .layout
+            .drag_slots
+            .as_ref()
+            .is_none_or(|s| s.root != root || s.drag != drag || s.keys != keys)
+        {
+            let width = self
+                .layout
+                .scroll
+                .bounds_for_item(0)
+                .map(|b| f32::from(b.size.width))
+                .unwrap_or(196.0);
+            self.layout.drag_slots = Some(DragSlots {
+                root: root.to_owned(),
+                drag: drag.clone(),
+                keys: keys.clone(),
+                width,
+            });
+        }
+        let slots = self.layout.drag_slots.as_ref().unwrap();
+        // Hit testing uses the committed strip slots, never the animated tabs.
+        let x =
+            f32::from(event.event.position.x - event.bounds.left() - self.layout.scroll.offset().x);
+        let index = (x.max(0.0) / (slots.width + 6.0)).floor() as usize;
+        let remaining: Vec<_> = keys.iter().filter(|key| *key != &drag).collect();
+        let before = remaining
+            .get(index)
+            .map(|key| (*key).clone())
+            .unwrap_or_default();
+        let next = Some((drag, before));
+        if self.layout.hover != next {
+            self.layout.hover = next;
+            cx.notify();
+        }
+    }
     pub(super) fn tab_strip(&self, root: &str, cx: &Context<Self>) -> AnyElement {
         let active = self.shown_tab(root);
         let group = self
@@ -376,16 +445,17 @@ impl FennecWindow {
             .map(|g| g.id.clone())
             .unwrap_or_default();
         let keys = self.group_tabs(root);
-        let mut preview = keys.clone();
-        if let Some((drag, before)) = &self.layout.hover {
-            if preview.contains(before) && drag != before {
-                preview.retain(|k| k != drag);
-                if let Some(at) = preview.iter().position(|k| k == before) {
-                    preview.insert(at, drag.clone());
-                }
-            }
-        }
+        let hover = self
+            .layout
+            .drag_slots
+            .as_ref()
+            .filter(|slots| slots.root == root)
+            .and(self.layout.hover.clone());
+        let preview = preview_keys(keys.clone(), &hover);
         let end_group = group.clone();
+        let hover_root = root.to_owned();
+        let drop_root = root.to_owned();
+        let drop_group = group.clone();
         let strip = h_flex()
             .id("session-tab-strip")
             .debug_selector(|| "session-tab-strip".into())
@@ -394,13 +464,30 @@ impl FennecWindow {
             .min_w_0()
             .overflow_x_scroll()
             .gap(px(6.0))
+            .on_drag_move::<TabDrag>(cx.listener(
+                move |this, event: &DragMoveEvent<TabDrag>, _, cx| {
+                    this.hover_tab_slot(&hover_root, event, cx);
+                },
+            ))
+            .on_drop(cx.listener(move |this, drag: &TabDrag, _, cx| {
+                cx.stop_propagation();
+                if this
+                    .layout
+                    .drag_slots
+                    .as_ref()
+                    .is_some_and(|slots| slots.root == drop_root && slots.drag == drag.key)
+                {
+                    if let Some((key, before)) = this.layout.hover.clone() {
+                        if key == drag.key {
+                            this.move_tab(drag, drop_group.clone(), before, cx);
+                        }
+                    }
+                }
+            }))
             .children(preview.iter().enumerate().map(|(index, key)| {
                 let show = root.to_owned();
                 let open = key.clone();
                 let close = key.clone();
-                let target = group.clone();
-                let before = key.clone();
-                let hover_key = key.clone();
                 let title = self.terminal_title(key, "Terminal");
                 let offset = self.layout.motion.offset(
                     key,
@@ -443,23 +530,6 @@ impl FennecWindow {
                     cx.new(|_| drag.clone())
                 })
                 .drag_over::<TabDrag>(|style, _, _, _| style.border_color(c("orange")))
-                .on_drag_move::<TabDrag>(cx.listener(
-                    move |this, event: &DragMoveEvent<TabDrag>, _, cx| {
-                        if !event.bounds.contains(&event.event.position) {
-                            return;
-                        }
-                        let drag = event.drag(cx).key.clone();
-                        let next = Some((drag, hover_key.clone()));
-                        if this.layout.hover != next {
-                            this.layout.hover = next;
-                            cx.notify();
-                        }
-                    },
-                ))
-                .on_drop(cx.listener(move |this, drag: &TabDrag, _, cx| {
-                    cx.stop_propagation();
-                    this.move_tab(drag, target.clone(), before.clone(), cx)
-                }))
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     if !event.is_right_click() && !event.modifiers().control {
                         this.set_shown_tab(show.clone(), open.clone(), cx);
@@ -535,6 +605,7 @@ impl FennecWindow {
         }
         if !cx.has_active_drag() {
             self.layout.hover = None;
+            self.layout.drag_slots = None;
             self.layout.hover_group = None;
         }
         if let Some((root, since)) = &self.layout.hover_group {
@@ -553,20 +624,19 @@ impl FennecWindow {
             window.viewport_size().width + self.layout.scroll.bounds().size.width,
             keys.len(),
         );
-        if self.layout.scroll_selection.as_ref() != Some(&selected) {
+        if !cx.has_active_drag() && self.layout.scroll_selection.as_ref() != Some(&selected) {
             if let Some(index) = keys.iter().position(|key| key == &self.layout.displayed) {
                 self.layout.scroll.scroll_to_item(index);
             }
             self.layout.scroll_selection = Some(selected);
         }
-        if let Some((drag, before)) = &self.layout.hover {
-            if keys.contains(before) && drag != before {
-                keys.retain(|k| k != drag);
-                if let Some(at) = keys.iter().position(|k| k == before) {
-                    keys.insert(at, drag.clone());
-                }
-            }
-        }
+        let hover = self
+            .layout
+            .drag_slots
+            .as_ref()
+            .filter(|slots| self.route == Some(Route::Session(slots.root.clone())))
+            .and(self.layout.hover.clone());
+        keys = preview_keys(keys, &hover);
         let width = self
             .layout
             .scroll
@@ -580,7 +650,6 @@ impl FennecWindow {
             .collect();
         if self.layout.motion.update(&positions, "", now) {
             window.request_animation_frame();
-            cx.notify();
         }
     }
 }
@@ -792,5 +861,68 @@ mod tests {
             plus.right() <= px(900.0),
             "plus remains reachable on narrow windows"
         );
+    }
+
+    #[gpui::test]
+    fn holding_drag_over_first_and_second_slots_does_not_oscillate(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        app.update(cx, |app, cx| {
+            app.layout.groups[0].tabs.push("c".into());
+            app.layout.groups.truncate(1);
+            app.apply_layout();
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let start = cx.debug_bounds("tab-c").unwrap().center();
+        let first = cx.debug_bounds("tab-a").unwrap().center();
+        let second = cx.debug_bounds("tab-local:b").unwrap().center();
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            start + point(px(12.0), px(0.0)),
+            Some(MouseButton::Left),
+            Modifiers::default(),
+        );
+        for (position, before) in [(first, "a"), (second, "local:b"), (first, "a")] {
+            for _ in 0..24 {
+                cx.simulate_mouse_move(position, Some(MouseButton::Left), Modifiers::default());
+                // Settle the visual displacement before the next event. The
+                // pointer must still target the same committed slot afterwards.
+                app.update(cx, |app, cx| {
+                    app.layout.motion = Default::default();
+                    cx.notify();
+                });
+                cx.run_until_parked();
+                app.read_with(cx, |app, _| {
+                    assert_eq!(
+                        app.layout.hover,
+                        Some(("c".into(), before.into())),
+                        "stationary pointer must keep its slot"
+                    )
+                });
+            }
+        }
+        cx.simulate_mouse_up(first, MouseButton::Left, Modifiers::default());
+        app.read_with(cx, |app, _| {
+            let request = app.layout.pending.as_ref().unwrap();
+            assert_eq!(request["tab"], "c");
+            assert_eq!(request["before"], "a");
+        });
+    }
+
+    #[gpui::test]
+    fn first_tab_can_land_in_second_slot(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        app.update(cx, |app, cx| {
+            app.layout.groups[0].tabs.push("c".into());
+            app.layout.groups.truncate(1);
+            app.apply_layout();
+            cx.notify();
+        });
+        drag(cx, "tab-a", "tab-local:b");
+        app.read_with(cx, |app, _| {
+            let request = app.layout.pending.as_ref().unwrap();
+            assert_eq!(request["tab"], "a");
+            assert_eq!(request["before"], "c");
+        });
     }
 }
