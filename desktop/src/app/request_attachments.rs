@@ -62,13 +62,6 @@ fn import_image(mut bytes: Vec<u8>) -> anyhow::Result<board::Attachment> {
     result
 }
 
-fn thumbnail_size(image: &board::Attachment, max_width: f32, max_height: f32) -> (f32, f32) {
-    let width = image.width.max(1) as f32;
-    let height = image.height.max(1) as f32;
-    let scale = (max_width / width).min(max_height / height).min(1.0);
-    (width * scale, height * scale)
-}
-
 fn thumbnail(image: &board::Attachment, width: f32, height: f32) -> AnyElement {
     if let Some(data) = image
         .thumbnail
@@ -78,7 +71,7 @@ fn thumbnail(image: &board::Attachment, width: f32, height: f32) -> AnyElement {
         return img(Arc::new(Image::from_bytes(ImageFormat::Jpeg, data)))
             .w(px(width))
             .h(px(height))
-            .object_fit(ObjectFit::Contain)
+            .object_fit(ObjectFit::Cover)
             .into_any_element();
     }
     div()
@@ -227,12 +220,12 @@ impl FennecWindow {
                             let project = project.to_owned();
                             let remove = image.id.clone();
                             let open = image.id.clone();
-                            let (width, height) = thumbnail_size(&image, 128.0, 80.0);
+                            let (width, height) = (80.0, 80.0);
                             div()
                                 .id(SharedString::from(format!("draft-image-{}", image.id)))
                                 .relative()
-                                .w(px(width + 26.0))
-                                .h(px(height.max(20.0)))
+                                .w(px(width))
+                                .h(px(height))
                                 .flex_none()
                                 .rounded(px(6.0))
                                 .border_1()
@@ -244,7 +237,7 @@ impl FennecWindow {
                                 }))
                                 .child(thumbnail(&image, width, height))
                                 .child(
-                                    div().absolute().top(px(0.0)).right(px(0.0)).child(
+                                    div().absolute().top(px(3.0)).right(px(3.0)).child(
                                         div()
                                             .id(SharedString::from(format!(
                                                 "remove-image-{}",
@@ -255,10 +248,13 @@ impl FennecWindow {
                                             .justify_center()
                                             .size(px(20.0))
                                             .rounded(px(4.0))
-                                            .text_size(px(14.0))
-                                            .text_color(c("f_muted"))
+                                            .bg(c("f_card"))
+                                            .hover(|s| s.bg(c("f_line")))
+                                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                                cx.stop_propagation()
+                                            })
                                             .cursor_pointer()
-                                            .child("×")
+                                            .child(ui::icon("close", 10.0, c("f_muted")))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 cx.stop_propagation();
                                                 if let Some(images) =
@@ -289,7 +285,7 @@ impl FennecWindow {
             .mt(px(6.0))
             .children(images.iter().map(|image| {
                 let id = image.id.clone();
-                let (width, height) = thumbnail_size(image, 128.0, 96.0);
+                let (width, height) = (96.0, 96.0);
                 div()
                     .id(SharedString::from(format!("request-image-{key}-{id}")))
                     .w(px(width))
