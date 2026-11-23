@@ -319,7 +319,8 @@ window.renderAgents = agents => {
        }
       }
       if (agentMagpie && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
-      if(!nativeOnly){
+      // The per-agent switch mirrors the Settings preference; only surface it once Magpie is enabled there.
+      if(agentMagpie){
         const row=document.createElement('div');row.className='agent-integration-row';
         const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
         const label=document.createElement('span');label.textContent='Magpie';
