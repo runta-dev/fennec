@@ -41,6 +41,14 @@ func SendRequest(ctx context.Context, store board.Store, query func(context.Cont
 				seen[uid] = true
 			}
 		}
+		// A failed launch/turn does not prove its images reached the agent.
+		// An explicit retry must retain those inputs, including legacy runs.
+		if len(request.Runs) > 1 {
+			previous := request.Runs[len(request.Runs)-2]
+			if previous.State != board.NeedsYou && previous.State != board.Resolved {
+				after, seen = 0, map[string]bool{}
+			}
+		}
 		messages := []board.Message{}
 		for _, m := range request.Messages {
 			if len(seen) > 0 && !seen[m.UID] || len(seen) == 0 && m.ID > after {

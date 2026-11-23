@@ -1,11 +1,14 @@
 package queuescheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fennec/internal/board"
 	r "fennec/internal/runtime"
+	"image"
+	"image/png"
 	"testing"
 )
 
@@ -73,5 +76,30 @@ func TestLostTextReceiptStaysUnknownEvenWhenTerminalIsLive(t *testing.T) {
 	}
 	if _, err := store.Reconcile(p.ID, req.Number, req.Session, "live"); !errors.Is(err, board.ErrConflict) {
 		t.Fatal("live process falsely proved input delivery", err)
+	}
+}
+
+func TestRetryAfterRejectedLaunchRetainsImages(t *testing.T) {
+	store := board.Store{Home: t.TempDir()}
+	var data bytes.Buffer
+	png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	attachment, err := store.SaveAttachment(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := board.Request{Session: "calm-fox", Delivered: 1, Messages: []board.Message{{ID: 1, UID: "picture", Attachments: []board.Attachment{attachment}}}, Runs: []board.Run{{State: "not_started", InputUIDs: []string{"picture"}}, {State: "starting", InputAfter: 1}}}
+	puts := 0
+	query := func(_ context.Context, method string, _ any) (json.RawMessage, error) {
+		if method == "terminal.put" {
+			puts++
+			return json.Marshal(map[string]any{"path": "/tmp/image.png", "bytes": attachment.Size})
+		}
+		return json.RawMessage(`{"started":true}`), nil
+	}
+	if err = SendRequest(context.Background(), store, query, "t1", request, "retry"); err != nil {
+		t.Fatal(err)
+	}
+	if puts != 1 {
+		t.Fatal("retry dropped original image")
 	}
 }
