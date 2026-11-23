@@ -6,7 +6,7 @@ use crate::i18n::{t, tf};
 use crate::ui::{self, c};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_base::input::{Input, InputEvent, InputState};
+use gpui_base::input::{Input, InputEditorStyle, InputEvent, InputState};
 use gpui_base::{h_flex, v_flex};
 use serde_json::json;
 
@@ -50,6 +50,24 @@ const DEFAULT_TAGS: &[(&str, &str)] = &[
     ("feature", "Feature"),
     ("discussion", "Discussion"),
 ];
+
+impl State {
+    pub(crate) fn sync_input_styles(&self, style: &InputEditorStyle, cx: &mut App) {
+        for input in [
+            &self.name,
+            &self.key,
+            &self.description,
+            &self.repository,
+            &self.new_tag,
+            &self.model_input,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            input.update(cx, |s, _| s.set_editor_style(style.clone()));
+        }
+    }
+}
 
 impl FennecWindow {
     pub(crate) fn focus_project_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {

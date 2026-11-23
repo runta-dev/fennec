@@ -3122,7 +3122,14 @@ impl FennecWindow {
             .update(cx, |s, _| s.set_editor_style(style.clone()));
         self.composer
             .update(cx, |s, _| s.set_editor_style(style.clone()));
-        self.reply.update(cx, |s, _| s.set_editor_style(style));
+        self.reply
+            .update(cx, |s, _| s.set_editor_style(style.clone()));
+        self.settings.sync_input_styles(&style, cx);
+        if let Some(project) = &self.new_project {
+            for input in [&project.name, &project.description, &project.repository] {
+                input.update(cx, |s, _| s.set_editor_style(style.clone()));
+            }
+        }
     }
 }
 
