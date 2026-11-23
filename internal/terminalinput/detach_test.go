@@ -56,6 +56,17 @@ func TestStringControlsPreservePasteAndBoundBuffer(t *testing.T) {
 	}
 }
 
+func TestDetachInterruptsUnfinishedStringControl(t *testing.T) {
+	for _, key := range []byte{3, 4, 28} {
+		var d Decoder
+		d.Feed([]byte("\x1b]10;rgb:"))
+		out, detached := d.Feed([]byte{key})
+		if !detached || !bytes.Equal(out, []byte{28}) {
+			t.Fatal("unfinished reply swallowed detach", key, out)
+		}
+	}
+}
+
 func TestDetachKeysNeverReachAgent(t *testing.T) {
 	for _, key := range []byte{3, 4, 28} {
 		data, yes := Detach([]byte{'a', key, 'z'})

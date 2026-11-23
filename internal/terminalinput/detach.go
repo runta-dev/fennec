@@ -36,6 +36,9 @@ func (d *Decoder) Feed(data []byte) ([]byte, bool) {
 		if stringControl(data[i:]) {
 			end := i + 2
 			for end < len(data) {
+				if !d.pasted && (data[end] == 3 || data[end] == 4 || data[end] == 28) {
+					return append(out, 28), true
+				}
 				if data[end] == 7 {
 					end++
 					break
