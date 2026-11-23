@@ -1861,7 +1861,7 @@ impl FennecWindow {
             .collect()
     }
 
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let q = self.query(cx);
         let route = self.route.clone();
         let header = |label: String, plus: Stateful<Div>| {
@@ -1914,6 +1914,13 @@ impl FennecWindow {
         let now = sessions::now_ms();
         let mut groups = Vec::new();
         let list = self.session_list(&q);
+        let mut age_font = window.text_style().font();
+        age_font.weight = FontWeight::MEDIUM;
+        let age_width = list.iter().map(|row| {
+            let age = sessions::age(row.since_ms, now);
+            let run = TextRun {len:age.len(),font:age_font.clone(),..Default::default()};
+            window.text_system().shape_line(age.into(),px(11.0),&[run],None).width()
+        }).fold(px(0.0), |width,next|width.max(next));
         let moved = |key: &str| px(self.row_motion.offset(key, self.row_frame));
         let mut section = None;
         for (i, r) in list.iter().enumerate() {
@@ -2036,10 +2043,10 @@ impl FennecWindow {
                             .w(px(12.0)).flex_none().justify_center().child(mark(self))))
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
-                        .child(div()
-                            .flex_none()
-                            .debug_selector(|| format!("session-age-{}", row_key(r)))
-                            .child(sessions::age(r.since_ms, now))),
+                        .child(h_flex().w(age_width).flex_none().justify_end()
+                            .child(div()
+                                .debug_selector(|| format!("session-age-{}", row_key(r)))
+                                .child(sessions::age(r.since_ms, now)))),
                 )
                 .with_animation(SharedString::from(format!("row-enter-{}",row_key(r))), Animation::new(Duration::from_millis(220)).with_easing(|t|1.0-(1.0-t).powi(3)), |row,t|row.opacity(0.5+0.5*t))
                 .into_any_element(),
@@ -3177,7 +3184,7 @@ impl Render for FennecWindow {
                             div()
                                 .h_full()
                                 .ml(px(-SIDEBAR_WIDTH * (1.0 - shown)))
-                                .child(self.sidebar(cx)),
+                                .child(self.sidebar(window, cx)),
                         ),
                 )
             })

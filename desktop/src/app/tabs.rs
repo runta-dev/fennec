@@ -1083,9 +1083,15 @@ mod tests {
         let hours=cx.debug_bounds("session-age-s-c").unwrap();
         assert_eq!(short.right(),long.right(),"3m and 16m must align geometrically");
         assert_eq!(short.right(),hours.right(),"minute and hour rows must align");
+        let reference=cx.debug_bounds("session-spinner-s-a-a").unwrap();
+        let mut closest=px(100.0);
         for (id,age) in [("session-spinner-s-a-a",short),("session-spinner-s-a-local:b",long),("session-spinner-s-c",hours)] {
             let spinner=cx.debug_bounds(id).unwrap();
-            assert_eq!(age.left()-spinner.right(),px(6.0),"activity-to-age spacing must not depend on text length");
+            assert_eq!(spinner.right(),reference.right(),"activity indicators must share a column");
+            let gap=age.left()-spinner.right();
+            assert!(gap>=px(5.5),"time must not overlap the activity indicator");
+            closest=closest.min(gap);
         }
+        assert!(closest<=px(6.5),"the widest age must leave only the intended six-pixel gap");
     }
 }
