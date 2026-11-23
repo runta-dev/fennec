@@ -15,12 +15,14 @@ type Local struct {
 	server       *http.Server
 	address, key string
 	transport    *http.Transport
+	callback     *callbackBridge
 }
 
 func (s *Local) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.server != nil {
+		s.callback.close()
 		s.server.Close()
 		s.transport.CloseIdleConnections()
 		s.server = nil
@@ -48,9 +50,16 @@ func (s *Local) URL(ctx context.Context, dial func(context.Context) (net.Conn, e
 		target, _ := url.Parse("http://magpie")
 		transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) { return dial(ctx) }, IdleConnTimeout: 30 * time.Second}
 		s.transport = transport
+		bridge := &callbackBridge{origin: origin, transport: transport, valid: func() bool { return ctx.Err() == nil && valid() }}
+		s.callback = bridge
 		proxy := httputil.NewSingleHostReverseProxy(target)
 		proxy.Transport = transport
-		proxy.ModifyResponse = preparePanelResponse
+		proxy.ModifyResponse = func(r *http.Response) error {
+			if err := bridge.observe(r); err != nil {
+				return err
+			}
+			return preparePanelResponse(r)
+		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			http.Error(w, "Magpie control panel is reconnecting. Reload to try again.", 502)
 		}
@@ -64,6 +73,12 @@ func (s *Local) URL(ctx context.Context, dial func(context.Context) (net.Conn, e
 				w.Header().Set("Cache-Control", "no-store")
 				http.SetCookie(w, &http.Cookie{Name: "fennec_magpie", Value: key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 				http.Redirect(w, r, "/?view=agents", http.StatusSeeOther)
+				return
+			}
+			// Cross-site OAuth navigation omits the Strict panel cookie. The
+			// short-lived state binds this route to an observed sign-in only.
+			if r.URL.Path == "/auth/callback" {
+				bridge.complete(w, r)
 				return
 			}
 			cookie, err := r.Cookie("fennec_magpie")
