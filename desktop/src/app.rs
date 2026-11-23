@@ -2027,13 +2027,18 @@ impl FennecWindow {
                         sessions::directory_label(path)
                     }
                 }))
+                .when(grouped, |d| d.child(
+                    h_flex().w(px(12.0)).flex_none().justify_center().child(mark(self))
+                ))
                 .child(
                     div()
+                        .min_w(px(30.0))
+                        .flex_none()
+                        .text_right()
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
                         .child(sessions::age(r.since_ms, now)),
                 )
-                .when(grouped, |d| d.child(mark(self)))
                 .with_animation(SharedString::from(format!("row-enter-{}",row_key(r))), Animation::new(Duration::from_millis(220)).with_easing(|t|1.0-(1.0-t).powi(3)), |row,t|row.opacity(0.5+0.5*t))
                 .into_any_element(),
             );
