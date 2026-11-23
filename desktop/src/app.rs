@@ -2783,10 +2783,8 @@ impl FennecWindow {
                     .get(&reply_key)
                     .is_some_and(|images| !images.is_empty()));
         let resolved = r.resolved();
-        let session_route = self
-            .sessions
-            .iter()
-            .find(|s| r.runs.iter().any(|run| run.session == s.name) || s.name == r.session)
+        let session_route = r
+            .active_session(&self.sessions)
             .map(|s| s.address.clone());
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "failed");
         v_flex()
@@ -2871,7 +2869,7 @@ impl FennecWindow {
             )
             .child(
                 div().px(px(18.0)).pb(px(16.0)).child(
-                    div()
+                    v_flex()
                         .relative()
                         .on_mouse_down(
                             MouseButton::Left,
@@ -2893,16 +2891,7 @@ impl FennecWindow {
                         .text_size(px(13.5))
                         .line_height(relative(1.6))
                         .pb(px(38.0))
-                        .child(Textarea::new(&self.reply))
-                        .child(
-                            div()
-                                .absolute()
-                                .left(px(13.0))
-                                .bottom(px(10.0))
-                                .text_size(px(10.0))
-                                .text_color(c("f_muted"))
-                                .child(t("followup_hint")),
-                        )
+                        .child(div().w_full().min_h(px(24.0)).child(Textarea::new(&self.reply)))
                         .when_some(self.draft_images(&reply_key, cx), |d, images| {
                             d.child(images)
                         })

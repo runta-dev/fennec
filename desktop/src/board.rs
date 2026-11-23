@@ -138,6 +138,38 @@ impl Request {
     pub fn resolved(&self) -> bool {
         self.status == "resolved"
     }
+
+    pub fn active_session<'a>(
+        &self,
+        sessions: &'a [crate::sessions::Session],
+    ) -> Option<&'a crate::sessions::Session> {
+        self.runs
+            .iter()
+            .rev()
+            .find_map(|run| sessions.iter().find(|s| s.name == run.session))
+            .or_else(|| sessions.iter().find(|s| s.name == self.session))
+    }
+}
+
+#[cfg(test)]
+mod thread_tests {
+    #[test]
+    fn thread_link_prefers_latest_active_conversation_over_sidebar_order() {
+        let request: super::Request = serde_json::from_value(
+            serde_json::json!({"runs":[{"session":"older"},{"session":"latest"}]}),
+        )
+        .unwrap();
+        let sessions = crate::sessions::from_terminals(&[
+            serde_json::json!({"address":"t1","state":"live","labels":{"fennec.session":"older"}}),
+            serde_json::json!({"address":"t2","state":"live","labels":{"fennec.session":"latest"}}),
+        ]);
+        assert_eq!(request.active_session(&sessions).unwrap().address, "t2");
+        assert_eq!(
+            request.active_session(&sessions[..1]).unwrap().address,
+            "t1"
+        );
+        assert!(request.active_session(&[]).is_none());
+    }
 }
 
 fn command() -> Option<String> {

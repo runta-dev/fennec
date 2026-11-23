@@ -1,7 +1,6 @@
 {
   "messages": {
     "desktop.view_thread": {"en-GB":"Open thread","en-US":"Open thread","zh-CN":"打开讨论"},
-    "desktop.followup_hint": {"en-GB":"Markdown and images · Replies are queued","en-US":"Markdown and images · Replies are queued","zh-CN":"支持 Markdown 和图片 · 回复将加入队列"},
     "desktop.request_image_not_ready": {"en-GB":"The image is still syncing","en-US":"The image is still syncing","zh-CN":"图片仍在同步"},
     "desktop.request_image_limit": {"en-GB":"Up to 8 images per request","en-US":"Up to 8 images per request","zh-CN":"每个请求最多 8 张图片"},
     "desktop.request_image_error": {"en-GB":"Use a PNG or JPEG image up to 8 MB","en-US":"Use a PNG or JPEG image up to 8 MB","zh-CN":"请使用不超过 8 MB 的 PNG 或 JPEG 图片"},
@@ -241,9 +240,9 @@
     "desktop.remove": {"en-US": "Remove", "zh-CN": "移除"},
     "desktop.reopen": {"en-US": "Reopen", "zh-CN": "重新打开"},
     "desktop.reply": {
-      "en-GB": "Comment",
-      "en-US": "Comment",
-      "zh-CN": "评论"
+      "en-GB": "Reply",
+      "en-US": "Reply",
+      "zh-CN": "回复"
     },
     "desktop.repository": {"en-US": "Repository", "zh-CN": "仓库"},
     "desktop.reset_tags": {"en-US": "Reset to Bug, Feature, Discussion", "zh-CN": "恢复为 Bug、Feature、Discussion"},
@@ -266,9 +265,9 @@
     "desktop.section_glossary": {"en-US": "Glossary", "zh-CN": "术语"},
     "desktop.section_runbooks": {"en-US": "Runbooks", "zh-CN": "操作手册"},
     "desktop.send": {
-      "en-GB": "Comment",
-      "en-US": "Comment",
-      "zh-CN": "评论"
+      "en-GB": "Send",
+      "en-US": "Send",
+      "zh-CN": "发送"
     },
     "desktop.session_ended": {"en-US": "This session has ended", "zh-CN": "这个会话已结束"},
     "desktop.sessions": {"en-US": "Sessions", "zh-CN": "会话"},
