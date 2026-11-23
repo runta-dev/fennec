@@ -74,3 +74,31 @@ func TestLostImageSubmitReplyNeverResubmits(t *testing.T) {
 		t.Fatal("ambiguous input was resent")
 	}
 }
+
+func TestLocalImageRunDoesNotWaitForCloudBlobCopy(t *testing.T) {
+	local := board.Store{Home: t.TempDir(), Role: "local"}
+	cloud := board.Store{Home: t.TempDir(), Role: "cloud"}
+	var data bytes.Buffer
+	png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 8, 8)))
+	attachment, err := local.SaveAttachment(data.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := local.CreateProject(board.Project{Name: "Local images", Queue: 1})
+	if _, err = local.CreateRequestWithAttachments(p.ID, "me", "Inspect", "", "", []board.Attachment{attachment}); err != nil {
+		t.Fatal(err)
+	}
+	local.SetPrimary(true)
+	local.SetRouting(board.Routing{Locations: map[string]string{"claude": "local"}})
+	syncStores(t, local, cloud)
+	if cloud.HasAttachment(attachment) {
+		t.Fatal("fixture unexpectedly copied the blob")
+	}
+	cloudExecutor, localExecutor := &executorFixture{}, &executorFixture{}
+	step(t, Scheduler{Store: cloud, Executor: cloudExecutor})
+	syncStores(t, cloud, local)
+	step(t, Scheduler{Store: local, Executor: localExecutor})
+	if localExecutor.starts != 1 || cloudExecutor.starts != 0 {
+		t.Fatal("local execution waited for the non-executing replica")
+	}
+}
