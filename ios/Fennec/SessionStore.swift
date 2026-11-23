@@ -14,6 +14,36 @@ final class SessionStore {
         var message: ChatMessage
         var previousMatches: Int
         var delivery = Delivery.sending
+        /// Where the session log ended when the message was sent: a matching
+        /// prompt on a line at or after it was written after the send. This
+        /// needs no clock, unlike comparing the log's timestamps with this
+        /// phone's (a cloud computer's clock can run behind it).
+        var logPath: String?
+        var logEnd: Int64 = -1
+        /// The log had not been created yet (Codex writes it on the first
+        /// prompt), so any matching prompt in it is this one.
+        var logMissing = false
+
+        init(message: ChatMessage, previousMatches: Int) {
+            self.message = message
+            self.previousMatches = previousMatches
+        }
+
+        init(message: ChatMessage, session: Session) {
+            self.message = message
+            previousMatches = 0
+            rebase(on: session)
+        }
+
+        /// Records what the session log holds now, before the message is sent.
+        mutating func rebase(on session: Session) {
+            if case .user(let text) = message.kind {
+                previousMatches = SessionStore.matchingPrompts(text, in: session.transcriptItems)
+            }
+            logPath = session.transcriptPath
+            logEnd = session.transcriptPath == nil ? -1 : session.transcriptOffset
+            logMissing = session.transcriptLoaded && session.transcriptPath == nil && session.transcriptItems.isEmpty
+        }
     }
     var pendingSends: [String: PendingSend] = [:]
     /// Sessions whose message was delivered but whose agent hasn't been seen
@@ -30,19 +60,51 @@ final class SessionStore {
     /// Demo sessions' recorded replies in progress (ReviewDemo.swift).
     @ObservationIgnored var demoReplies: [String: Task<Void, Never>] = [:]
 
-    func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
-        items.filter { $0.kind == "user" && $0.text == text }.count
+    /// A prompt as the session log parser shows it (transcript.userItem):
+    /// spaces within each line collapsed, runs of blank lines kept to one,
+    /// ends trimmed. Comparing raw text left "a  b" pending forever.
+    nonisolated static func promptKey(_ text: String) -> String {
+        var lines: [String] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let joined = line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if joined.isEmpty, lines.last?.isEmpty == true { continue }
+            lines.append(joined)
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func reconcilePendingSend(_ id: String, items: [TranscriptItem]) {
+    nonisolated static func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
+        let key = promptKey(text)
+        return items.filter { $0.kind == "user" && promptKey($0.text) == key }.count
+    }
+
+    func matchingPrompts(_ text: String, in items: [TranscriptItem]) -> Int {
+        Self.matchingPrompts(text, in: items)
+    }
+
+    /// Drops the optimistic copy of a sent message once the session log shows it.
+    /// `path` is the log the items came from.
+    func reconcilePendingSend(_ id: String, items: [TranscriptItem], path: String? = nil) {
         guard let pending = pendingSends[id], case .user(let text) = pending.message.kind,
               matchingPrompts(text, in: items) > pending.previousMatches else { return }
-        // Initial/reset reads may include old identical prompts. Only a new
-        // timestamped echo can confirm an optimistic message in that case.
+        let key = Self.promptKey(text)
+        let echoes = items.filter { $0.kind == "user" && Self.promptKey($0.text) == key }
+        // Reset reads may include old identical prompts, so a higher count alone
+        // proves nothing. The echo is new when it sits past where the log ended
+        // at the send, or when there was no log yet.
+        if let path, path == pending.logPath, pending.logEnd >= 0,
+           echoes.contains(where: { ($0.id ?? -1) >= pending.logEnd * 16 }) {
+            pendingSends[id] = nil
+            return
+        }
+        if pending.logMissing, path != nil {
+            pendingSends[id] = nil
+            return
+        }
+        // Otherwise (another log, or none read yet) fall back to its timestamp.
         let sentAt = pending.message.time ?? .now
-        guard items.contains(where: {
-            $0.kind == "user" && $0.text == text &&
-            ($0.time.map { Date(timeIntervalSince1970: Double($0) / 1000) >= sentAt.addingTimeInterval(-5) } ?? false)
+        guard echoes.contains(where: {
+            $0.time.map { Date(timeIntervalSince1970: Double($0) / 1000) >= sentAt.addingTimeInterval(-5) } ?? false
         }) else { return }
         pendingSends[id] = nil
     }
@@ -118,8 +180,7 @@ final class SessionStore {
     func send(_ text: String, to id: String) {
         if let core, let session = session(id), let address = session.address {
             guard pendingSends[id] == nil else { return }
-            pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now),
-                                           previousMatches: matchingPrompts(text, in: session.transcriptItems))
+            pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now), session: session)
             let messageID = pendingSends[id]?.message.id
             Task {
                 do {
@@ -374,6 +435,8 @@ struct SessionSummary: Codable {
 
 /// transcript.Item from internal/transcript.
 struct TranscriptItem: Codable, Hashable {
+    /// Stable across reads of one log: the line's byte offset × 16 + its index.
+    var id: Int64? = nil
     var kind: String
     var text: String
     var tool: String?
@@ -564,7 +627,7 @@ extension SessionStore {
             if chunk.reset { updated.messages = []; updated.transcriptItems = [] }
             for item in chunk.items { Self.append(item, to: &updated) }
             updated.transcriptItems += chunk.items
-            reconcilePendingSend(id, items: updated.transcriptItems)
+            reconcilePendingSend(id, items: updated.transcriptItems, path: chunk.path ?? updated.transcriptPath)
             updated.transcriptOffset = chunk.offset
             updated.transcriptPath = chunk.path ?? updated.transcriptPath
             updated.transcriptLoaded = true

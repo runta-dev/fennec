@@ -62,6 +62,58 @@ final class FennecTests: XCTestCase {
         XCTAssertNotNil(store.pendingSends["s1"])
     }
 
+    func testPendingSendConfirmsEchoPastLogEndDespiteClockSkew() {
+        // The cloud computer's clock runs 60 s behind this phone: the echo's
+        // timestamp predates the send, but it sits past where the log ended.
+        let store = SessionStore.demo()
+        var session = store.session("s1")!
+        session.transcriptPath = "/log.jsonl"
+        session.transcriptOffset = 1000
+        session.transcriptLoaded = true
+        session.transcriptItems = [.init(id: 100 * 16, kind: "user", text: "Who are you", time: 1)]
+        let skewed = Int64(Date.now.addingTimeInterval(-60).timeIntervalSince1970 * 1000)
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("Who are you"), time: .now), session: session)
+        XCTAssertEqual(store.pendingSends["s1"]?.previousMatches, 1)
+        let echo = TranscriptItem(id: 1200 * 16, kind: "user", text: "Who are you", time: skewed)
+        store.reconcilePendingSend("s1", items: session.transcriptItems + [echo], path: "/log.jsonl")
+        XCTAssertNil(store.pendingSends["s1"])
+    }
+
+    func testPendingSendIgnoresOldEchoBeforeLogEnd() {
+        let store = SessionStore.demo()
+        var session = store.session("s1")!
+        session.transcriptPath = "/log.jsonl"
+        session.transcriptOffset = 1000
+        session.transcriptLoaded = true
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("Continue"), time: .now), session: session)
+        // A reset read brings back an older identical prompt from before the send.
+        store.reconcilePendingSend("s1", items: [.init(id: 500 * 16, kind: "user", text: "Continue", time: 1)], path: "/log.jsonl")
+        XCTAssertNotNil(store.pendingSends["s1"])
+    }
+
+    func testFirstPromptConfirmsWhenLogIsCreated() {
+        let store = SessionStore.demo()
+        var session = store.session("s1")!
+        session.transcriptPath = nil
+        session.transcriptItems = []
+        session.transcriptLoaded = true
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("Who are you"), time: .now), session: session)
+        let echo = TranscriptItem(id: 0, kind: "user", text: "Who are you", time: 1)
+        store.reconcilePendingSend("s1", items: [echo], path: nil)
+        XCTAssertNotNil(store.pendingSends["s1"])
+        store.reconcilePendingSend("s1", items: [echo], path: "/rollout.jsonl")
+        XCTAssertNil(store.pendingSends["s1"])
+    }
+
+    func testPendingSendMatchesPromptWithCollapsedSpaces() {
+        XCTAssertEqual(SessionStore.promptKey("  a   b \n\n\n c  "), "a b\n\nc")
+        let store = SessionStore.demo()
+        let now = Date.now
+        store.pendingSends["s1"] = .init(message: .init(kind: .user("fix   this"), time: now), previousMatches: 0)
+        store.reconcilePendingSend("s1", items: [.init(kind: "user", text: "fix this", time: Int64(now.timeIntervalSince1970 * 1000))])
+        XCTAssertNil(store.pendingSends["s1"])
+    }
+
     func testGroupsFollowStateOrderAndSkipEmpty() {
         let store = SessionStore.demo()
         XCTAssertEqual(store.groups.map(\.0), [.needsInput, .working, .idle])
