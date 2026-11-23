@@ -15,6 +15,9 @@ struct ChatView: View {
     @State private var showMenu = false
     @State private var denyReason = ""
     @State private var followBottom = true
+    /// Scroll facts read while pinning a turn's header; not observed, so
+    /// scrolling doesn't redraw the conversation.
+    @State private var scrollFacts = ScrollFacts()
     /// Space after the newest message, above the composer.
     static let tailSpace: CGFloat = 40
     @State private var showTerminal = false
@@ -151,13 +154,29 @@ struct ChatView: View {
             .defaultScrollAnchor(followBottom ? .bottom : .top, for: .sizeChanges)
             .scrollDismissesKeyboard(.interactively)
             .environment(\.readingTurn, { followBottom = false })
+            .environment(\.keepTurnHeader, { id, y, height in
+                // Your finger wins: never pull the page while you scroll.
+                guard scrollFacts.phase == .idle else { return false }
+                // Put the header's top at `y` on screen: an anchor's point in
+                // the header lines up with the same point of the visible area
+                // (inside the title pill and composer insets).
+                let insets = scrollFacts.insets
+                let room = scrollFacts.containerHeight - insets.top - insets.bottom - height
+                guard room > 1 else { return false }
+                proxy.scrollTo(id, anchor: UnitPoint(x: 0, y: (y - insets.top) / room))
+                return true
+            })
             // Follow the newest message as the content grows (new lines,
             // tables and images settling their heights), unless you have
             // scrolled up to read; scrolling back down resumes following.
+            .onScrollGeometryChange(for: EdgeInsets.self, of: { $0.contentInsets }) { _, insets in
+                scrollFacts.insets = insets
+            }
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.height }) { _, _ in
                 if followBottom { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, _ in
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, height in
+                scrollFacts.containerHeight = height
                 if followBottom || composerFocused { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: store.pendingSends[session.id]?.message.id) {
@@ -165,6 +184,7 @@ struct ChatView: View {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onScrollPhaseChange { _, phase, context in
+                scrollFacts.phase = phase
                 // Your finger on the list stops following at once, so content
                 // settling while you scroll (a preview loading) can't pull the
                 // page back to the newest message.
@@ -827,11 +847,49 @@ private struct StartingHeader: View {
 }
 
 private struct ReadingTurnKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
+private struct KeepTurnHeaderKey: EnvironmentKey {
+    static let defaultValue: (AnyHashable, CGFloat, CGFloat) -> Bool = { _, _, _ in false }
+}
 extension EnvironmentValues {
     /// Called when a turn is opened or closed, so the list stops following.
     var readingTurn: () -> Void {
         get { self[ReadingTurnKey.self] }
         set { self[ReadingTurnKey.self] = newValue }
+    }
+    /// Scrolls so the header with this id has its top at the given y on
+    /// screen (header height last). False when it can't: you are scrolling.
+    var keepTurnHeader: (AnyHashable, CGFloat, CGFloat) -> Bool {
+        get { self[KeepTurnHeaderKey.self] }
+        set { self[KeepTurnHeaderKey.self] = newValue }
+    }
+}
+
+/// What the conversation's scroll view last reported. A plain class: written
+/// on every scroll, read only when a turn opens, never redraws anything.
+private final class ScrollFacts {
+    var phase: ScrollPhase = .idle
+    var containerHeight: CGFloat = 0
+    var insets = EdgeInsets()
+}
+
+/// Where a turn's header was on screen when it was tapped, kept for a moment
+/// while the opened (or closed) turn settles. Not observed, like ScrollFacts.
+private final class HeaderPin {
+    var frame: CGRect = .zero
+    var target: CGFloat?
+    /// The y last asked of the scroll view. Wherever the header lands
+    /// instead, the next ask is off by that much the other way, so a header
+    /// pushed by settling content, or a scroll that lands a little off,
+    /// comes back to its place in a step or two.
+    var asked: CGFloat = 0
+    var corrections = 0
+    var until: Date = .distantPast
+
+    func start() {
+        target = frame.minY
+        asked = frame.minY
+        corrections = 0
+        until = .now.addingTimeInterval(0.8)
     }
 }
 
@@ -914,7 +972,11 @@ private struct TurnView: View {
     var since: Date
     var activity: String?
     @State private var expanded = false
+    @State private var pin = HeaderPin()
     @Environment(\.readingTurn) private var readingTurn
+    @Environment(\.keepTurnHeader) private var keepTurnHeader
+
+    private var headerID: String { "turn-header-\(turn.id.uuidString)" }
 
     /// While working, only the latest steps show, so a turn stays within one
     /// screen and the newest work is in view; earlier steps fold into the header.
@@ -963,7 +1025,12 @@ private struct TurnView: View {
             guard foldable else { return }
             // Opening a turn is reading it: keep it where it is on screen.
             readingTurn()
-            withAnimation(.snappy) { expanded.toggle() }
+            // The header stays where you tapped it while the turn opens or
+            // closes and its messages settle their heights. No layout
+            // animation: a lazy list animating a large height change keeps
+            // re-estimating the turns around it, and the whole page jumps.
+            pin.start()
+            expanded.toggle()
         } label: {
             HStack(spacing: 6) {
                 if turn.finished {
@@ -981,6 +1048,7 @@ private struct TurnView: View {
                 if foldable {
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .animation(.snappy, value: expanded)
                 }
             }
             .font(.system(size: 14)).foregroundStyle(Theme.fg2)
@@ -989,6 +1057,17 @@ private struct TurnView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .id(headerID)
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .scrollView) }) { frame in
+            pin.frame = frame
+            guard let target = pin.target else { return }
+            guard Date.now < pin.until, pin.corrections < 6 else { pin.target = nil; return }
+            let off = frame.minY - target
+            guard abs(off) > 0.5 else { return }
+            pin.asked -= off
+            pin.corrections += 1
+            if !keepTurnHeader(headerID, pin.asked, frame.height) { pin.target = nil }
+        }
         .accessibilityHint(foldable ? (expanded ? L10n.text("ios.hide_steps") : L10n.text("ios.show_steps")) : "")
     }
 
