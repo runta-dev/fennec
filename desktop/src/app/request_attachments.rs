@@ -62,19 +62,28 @@ fn import_image(mut bytes: Vec<u8>) -> anyhow::Result<board::Attachment> {
     result
 }
 
-fn thumbnail(image: &board::Attachment, size: f32) -> AnyElement {
+fn thumbnail_size(image: &board::Attachment, max_width: f32, max_height: f32) -> (f32, f32) {
+    let width = image.width.max(1) as f32;
+    let height = image.height.max(1) as f32;
+    let scale = (max_width / width).min(max_height / height).min(1.0);
+    (width * scale, height * scale)
+}
+
+fn thumbnail(image: &board::Attachment, width: f32, height: f32) -> AnyElement {
     if let Some(data) = image
         .thumbnail
         .strip_prefix("data:image/jpeg;base64,")
         .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
     {
         return img(Arc::new(Image::from_bytes(ImageFormat::Jpeg, data)))
-            .size(px(size))
+            .w(px(width))
+            .h(px(height))
             .object_fit(ObjectFit::Contain)
             .into_any_element();
     }
     div()
-        .size(px(size))
+        .w(px(width))
+        .h(px(height))
         .child(t("request_image"))
         .into_any_element()
 }
@@ -218,10 +227,12 @@ impl FennecWindow {
                             let project = project.to_owned();
                             let remove = image.id.clone();
                             let open = image.id.clone();
+                            let (width, height) = thumbnail_size(&image, 128.0, 80.0);
                             div()
                                 .id(SharedString::from(format!("draft-image-{}", image.id)))
                                 .relative()
-                                .size(px(64.0))
+                                .w(px(width + 26.0))
+                                .h(px(height.max(20.0)))
                                 .flex_none()
                                 .rounded(px(6.0))
                                 .border_1()
@@ -231,19 +242,24 @@ impl FennecWindow {
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.open_request_image(open.clone(), window, cx)
                                 }))
-                                .child(thumbnail(&image, 64.0))
+                                .child(thumbnail(&image, width, height))
                                 .child(
                                     div().absolute().top(px(0.0)).right(px(0.0)).child(
-                                        secondary_button(
-                                            SharedString::from(format!(
+                                        div()
+                                            .id(SharedString::from(format!(
                                                 "remove-image-{}",
                                                 image.id
-                                            )),
-                                            "×",
-                                            false,
-                                        )
-                                        .on_click(
-                                            cx.listener(move |this, _, _, cx| {
+                                            )))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .size(px(20.0))
+                                            .rounded(px(4.0))
+                                            .text_size(px(14.0))
+                                            .text_color(c("f_muted"))
+                                            .cursor_pointer()
+                                            .child("×")
+                                            .on_click(cx.listener(move |this, _, _, cx| {
                                                 cx.stop_propagation();
                                                 if let Some(images) =
                                                     this.request_images.by_queue.get_mut(&project)
@@ -252,8 +268,7 @@ impl FennecWindow {
                                                 }
                                                 this.request_images.errors.remove(&project);
                                                 cx.notify();
-                                            }),
-                                        ),
+                                            })),
                                     ),
                                 )
                         })),
@@ -274,14 +289,17 @@ impl FennecWindow {
             .mt(px(6.0))
             .children(images.iter().map(|image| {
                 let id = image.id.clone();
+                let (width, height) = thumbnail_size(image, 128.0, 96.0);
                 div()
                     .id(SharedString::from(format!("request-image-{key}-{id}")))
-                    .size(px(96.0))
+                    .w(px(width))
+                    .h(px(height))
+                    .flex_none()
                     .rounded(px(6.0))
                     .border_1()
                     .border_color(c("f_line"))
                     .overflow_hidden()
-                    .child(thumbnail(image, 96.0))
+                    .child(thumbnail(image, width, height))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_request_image(id.clone(), window, cx)
                     }))
