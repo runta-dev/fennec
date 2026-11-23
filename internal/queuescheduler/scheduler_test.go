@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fennec/internal/board"
+	"fennec/internal/runtime"
 	"testing"
 )
 
@@ -170,5 +171,43 @@ func TestRestartFinishesClaimedButNeverSentRun(t *testing.T) {
 	step(t, Scheduler{Store: store, Executor: executor})
 	if executor.starts != 1 {
 		t.Fatal("duplicate recovery", executor.starts)
+	}
+}
+
+func TestRejectedStartIsRetryableButLostReceiptStaysUnknown(t *testing.T) {
+	for _, missing := range []bool{true, false} {
+		store := board.Store{Home: t.TempDir(), Role: "cloud"}
+		p, err := store.CreateProject(board.Project{Name: "Work", Queue: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, err := store.CreateRequest(p.ID, "me", "Build", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := store.ClaimAt(p.ID, request.Number, "test-run", "claude", "cloud")
+		if err != nil {
+			t.Fatal(err)
+		}
+		failure := errors.New("lost spawn receipt")
+		if missing {
+			failure = runtime.ErrAgentExecutableMissing
+		}
+		s := Scheduler{Store: store}
+		if err := s.startFailed(p.ID, request.Number, claimed.Session, failure); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := store.Request(p.ID, request.Number)
+		want := board.Unknown
+		if missing {
+			want = board.Failed
+		}
+		if got.Status != want {
+			t.Fatal(got.Status, want)
+		}
+		_, err = store.Continue(p.ID, request.Number, "me", "")
+		if missing && err != nil || !missing && !errors.Is(err, board.ErrConflict) {
+			t.Fatal(err)
+		}
 	}
 }

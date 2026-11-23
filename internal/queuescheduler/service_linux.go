@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // EnsureService owns only the queue scheduler. Agent sessions remain owned by
@@ -26,7 +27,7 @@ func EnsureService(ctx context.Context, home string) error {
 	if err != nil {
 		return err
 	}
-	unit := []byte(fmt.Sprintf("[Unit]\nDescription=Fennec queue scheduler\nAfter=network.target\n[Service]\nType=simple\nKillMode=process\nEnvironment=HOME=%s\nExecStart=%s queue-service run\nRestart=on-failure\nRestartSec=3\n[Install]\nWantedBy=default.target\n", strconv.Quote(home), strconv.Quote(binary)))
+	unit := queueServiceUnit(home, binary)
 	path := filepath.Join(dir, name)
 	old, _ := os.ReadFile(path)
 	changed := !bytes.Equal(old, unit)
@@ -57,4 +58,14 @@ func EnsureService(ctx context.Context, home string) error {
 		return nil
 	}
 	return run("start", name)
+}
+
+func queueServiceUnit(home, binary string) []byte {
+	path := strings.Join([]string{
+		filepath.Join(home, ".local/fennec/node/bin"),
+		filepath.Join(home, ".local/fennec/agents/bin"),
+		filepath.Join(home, ".local/bin"),
+		"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin",
+	}, ":")
+	return []byte(fmt.Sprintf("[Unit]\nDescription=Fennec queue scheduler\nAfter=network.target\n[Service]\nType=simple\nKillMode=process\nEnvironment=HOME=%s\nEnvironment=%s\nExecStart=%s queue-service run\nRestart=on-failure\nRestartSec=3\n[Install]\nWantedBy=default.target\n", strconv.Quote(home), strconv.Quote("PATH="+path), strconv.Quote(binary)))
 }

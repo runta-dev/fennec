@@ -233,6 +233,12 @@ func (s Store) Reconcile(project string, n int, session, state string) (Request,
 		return r, ErrConflict
 	}
 	switch state {
+	case "not_started":
+		// Only a pre-launch rejection proves this. An absent session in a
+		// listing or a lost spawn receipt must never use this transition.
+		r.Status = Failed
+		r.Failure = "The agent could not start"
+		recordRun(&r, Failed, s.now())
 	case "live":
 		if len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
 			return r, ErrConflict

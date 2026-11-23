@@ -84,6 +84,8 @@ func (request LocalLaunch) Validate() error {
 	return nil
 }
 
+var ErrAgentExecutableMissing = errors.New("cloud agent executable missing")
+
 func NewLocalRuntime(home string) *LocalRuntime {
 	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Query: herdrQuery(home), Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
 		step, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -179,7 +181,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		}
 	}
 	if err != nil {
-		return LocalTerminal{}, fmt.Errorf("cloud agent executable missing")
+		return LocalTerminal{}, ErrAgentExecutableMissing
 	}
 	cwd, err := prepareSessionWorkspace(runtime.Home, request)
 	if err != nil {

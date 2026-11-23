@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fennec/internal/board"
+	r "fennec/internal/runtime"
 	"fmt"
 	"time"
 )
@@ -27,6 +28,15 @@ func (s Scheduler) report(err error) {
 	if err != nil && !errors.Is(err, board.ErrConflict) && s.OnError != nil {
 		s.OnError(err)
 	}
+}
+
+func (s Scheduler) startFailed(project string, number int, session string, err error) error {
+	if errors.Is(err, r.ErrAgentExecutableMissing) {
+		_, err = s.Store.Reconcile(project, number, session, "not_started")
+		return err
+	}
+	_, err = s.Store.Fail(project, number, session)
+	return err
 }
 func (s Scheduler) Run(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
@@ -79,7 +89,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 				cancel()
 				if e != nil {
 					s.report(e)
-					_, e = s.Store.Fail(p.ID, r.Number, r.Session)
+					e = s.startFailed(p.ID, r.Number, r.Session, e)
 				} else {
 					_, e = s.Store.Reconcile(p.ID, r.Number, r.Session, "live")
 				}
@@ -150,7 +160,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 			cancel()
 			if err != nil {
 				s.report(err)
-				_, err = s.Store.Fail(p.ID, claimed.Number, id)
+				err = s.startFailed(p.ID, claimed.Number, id, err)
 				s.report(err)
 				continue
 			}
