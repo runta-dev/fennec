@@ -2027,17 +2027,17 @@ impl FennecWindow {
                         sessions::directory_label(path)
                     }
                 }))
-                .when(grouped, |d| d.child(
-                    h_flex().w(px(12.0)).flex_none().justify_center().child(mark(self))
-                ))
                 .child(
                     h_flex()
-                        .w(px(36.0))
                         .flex_none()
-                        .justify_end()
+                        .gap(px(6.0))
+                        .when(grouped, |d| d.child(h_flex()
+                            .debug_selector(|| format!("session-spinner-{}", row_key(r)))
+                            .w(px(12.0)).flex_none().justify_center().child(mark(self))))
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
                         .child(div()
+                            .flex_none()
                             .debug_selector(|| format!("session-age-{}", row_key(r)))
                             .child(sessions::age(r.since_ms, now))),
                 )

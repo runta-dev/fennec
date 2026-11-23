@@ -1083,5 +1083,9 @@ mod tests {
         let hours=cx.debug_bounds("session-age-s-c").unwrap();
         assert_eq!(short.right(),long.right(),"3m and 16m must align geometrically");
         assert_eq!(short.right(),hours.right(),"minute and hour rows must align");
+        for (id,age) in [("session-spinner-s-a-a",short),("session-spinner-s-a-local:b",long),("session-spinner-s-c",hours)] {
+            let spinner=cx.debug_bounds(id).unwrap();
+            assert_eq!(age.left()-spinner.right(),px(6.0),"activity-to-age spacing must not depend on text length");
+        }
     }
 }
