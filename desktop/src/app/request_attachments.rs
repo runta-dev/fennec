@@ -72,6 +72,7 @@ fn thumbnail(image: &board::Attachment, width: f32, height: f32) -> AnyElement {
             .w(px(width))
             .h(px(height))
             .object_fit(ObjectFit::Cover)
+            .rounded(px(10.0))
             .into_any_element();
     }
     div()
@@ -228,7 +229,7 @@ impl FennecWindow {
                                 .w(px(width))
                                 .h(px(height))
                                 .flex_none()
-                                .rounded(px(6.0))
+                                .rounded(px(10.0))
                                 .border_1()
                                 .border_color(c("f_line"))
                                 .cursor_pointer()
@@ -238,7 +239,7 @@ impl FennecWindow {
                                 .child(
                                     div()
                                         .size(px(width))
-                                        .rounded(px(6.0))
+                                        .rounded(px(10.0))
                                         .overflow_hidden()
                                         .child(thumbnail(&image, width, height)),
                                 )
@@ -256,8 +257,6 @@ impl FennecWindow {
                                             .invisible()
                                             .group_hover("request-attachment", |s| s.visible())
                                             .rounded_full()
-                                            .border_2()
-                                            .border_color(c("f_card"))
                                             .bg(c("f_text"))
                                             .hover(|s| s.bg(c("f_muted")))
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
@@ -301,7 +300,7 @@ impl FennecWindow {
                     .w(px(width))
                     .h(px(height))
                     .flex_none()
-                    .rounded(px(6.0))
+                    .rounded(px(10.0))
                     .border_1()
                     .border_color(c("f_line"))
                     .overflow_hidden()
