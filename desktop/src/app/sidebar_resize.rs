@@ -27,6 +27,11 @@ impl FennecWindow {
     pub(super) fn sidebar_resize_handle(&self, cx: &Context<Self>) -> impl IntoElement {
         resize_handle("sidebar-resize", Axis::Horizontal)
             .inside(HandleEdge::Trailing)
+            // The sidebar already paints its themed hairline. Reuse only the
+            // handle's hit area and cursor, without a second default-theme line.
+            .with_appearance(std::rc::Rc::new(|_, _, _| {
+                Some(div().size_full().into_any_element())
+            }))
             .debug_selector(|| "sidebar-resize".into())
             .on_drag(SidebarDrag, |drag, _, _, cx| cx.new(|_| drag.clone()))
             .on_mouse_down(
