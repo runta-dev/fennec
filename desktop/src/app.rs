@@ -6,6 +6,8 @@ mod activity;
 mod cloud;
 mod context_menu;
 mod row_motion;
+mod tab_close;
+mod tabs;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -138,6 +140,7 @@ pub struct FennecWindow {
     directories: HashMap<String, String>,
     /// The tab shown in each session: a local shell's `local:<address>`, else the agent's.
     tab: HashMap<String, String>,
+    layout: tabs::Layout,
     pub(crate) _subs: Vec<Subscription>,
     pub(crate) _tasks: Vec<Task<()>>,
 }
@@ -147,6 +150,15 @@ impl FennecWindow {
         requests: async_channel::Receiver<crate::mods::Request>,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Self {
+        Self::build(requests, window, cx, true)
+    }
+
+    fn build(
+        requests: async_channel::Receiver<crate::mods::Request>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        connect: bool,
     ) -> Self {
         let search = cx.new(|cx| {
             InputState::new(window, cx)
@@ -273,7 +285,7 @@ impl FennecWindow {
             new_project: None,
             starting: None,
             settings: Default::default(),
-            app_preferences: crate::app_preferences::State::load(),
+            app_preferences: if connect {crate::app_preferences::State::load()} else {Default::default()},
             creating_local: false,
             has_connected: false,
             local: None,
@@ -281,12 +293,14 @@ impl FennecWindow {
             shell_names: HashMap::new(),
             directories: HashMap::new(),
             tab: HashMap::new(),
+            layout: tabs::Layout::default(),
             _subs: subs,
             _tasks: Vec::new(),
         };
-        if !crate::preview::active() {
+        if connect && !crate::preview::active() {
             this.apply_desktop_preferences(window, cx);
             this.start_activity(window, cx);
+            this.start_layout(window, cx);
             this.follow_cloud(window, cx);
         }
         if crate::preview::active() {
@@ -295,7 +309,7 @@ impl FennecWindow {
             this.activity = crate::preview::activity();
             this.apply_activity();
             this.core_error = Some(String::new());
-        } else {
+        } else if connect {
             this._tasks.push(cx.spawn_in(window, async move |this, cx| {
                 let connected = cx.background_spawn(async move { Core::connect() }).await;
                 let _ = this.update_in(cx, |this, window, cx| match connected {
@@ -362,7 +376,7 @@ impl FennecWindow {
                 }
             }));
         }
-        this.follow_board(window, cx);
+        if connect {this.follow_board(window, cx);}
         // Toasts the terminal core asks for (a refused file drop).
         this._tasks.push(cx.spawn_in(window, async move |this, cx| {
             while let Ok(crate::mods::Request::OpenOverlay { spec, id: _ }) = requests.recv().await
@@ -509,6 +523,8 @@ impl FennecWindow {
                 .unwrap_or_default(),
         );
         self.apply_activity();
+        self.layout_snapshot();
+        self.apply_layout();
         if let Some(Route::Session(a)) = &self.route
             && self.confirmed_session.as_ref() != Some(a)
             && !a.starts_with("local:")
@@ -634,6 +650,9 @@ impl FennecWindow {
     }
 
     pub(crate) fn go(&mut self, mut route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_others = None;
+        self.prefix = false;
+        self.layout.intent += 1;
         self.context_menu = None;
         if let Route::Session(address) = &route {
             if !address.starts_with("local:")
@@ -983,6 +1002,9 @@ impl FennecWindow {
                 }
                 let _ = this.update_in(cx, |this, window, cx| match started {
                     Ok(address) => {
+                        if let Some(group) = this.layout_group(&session.address) {
+                            this.layout.pending = Some(serde_json::json!({"operation":"move","tab":format!("local:{address}"),"target":group.id}));
+                        }
                         let list=this.shells.entry(session.group_key()).or_default();
                         if !list.contains(&address){list.push(address.clone());}
                         this.shell_names.entry(address.clone()).or_insert_with(||sessions::shell_name(&serde_json::Value::Null));
@@ -1067,17 +1089,7 @@ impl FennecWindow {
         let Some(Route::Session(id)) = &self.route else {
             return Vec::new();
         };
-        let mut keys = vec![id.clone()];
-        if let Some(s) = self.sessions.iter().find(|s| &s.address == id) {
-            keys.extend(
-                self.shells
-                    .get(&s.group_key())
-                    .into_iter()
-                    .flatten()
-                    .map(|a| format!("local:{a}")),
-            );
-        }
-        keys
+        self.group_tabs(id)
     }
     fn pick_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(Route::Session(id)) = &self.route else {
@@ -1173,13 +1185,13 @@ impl FennecWindow {
             return;
         };
         let address = key.clone();
-        let root = self.sessions.iter().find(|s| s.address == key);
+        let root = self.layout.members.get(&key).or_else(|| self.sessions.iter().find(|s| s.address == key));
         let remote_name = if remote {
             root.map(|s| s.name.clone())
         } else {
             None
         };
-        let promotion = if remote {
+        let promotion = if remote || !self.layout.groups.is_empty() {
             None
         } else {
             root.and_then(|s| {
@@ -1277,18 +1289,7 @@ impl FennecWindow {
                 return;
             }
             "mod.open:tui-close-others" => {
-                if let Some(Route::Session(id)) = &self.route {
-                    let shown = self.shown_tab(id);
-                    self.close_others = Some(
-                        self.tab_keys()
-                            .into_iter()
-                            .skip(1)
-                            .filter(|k| k != &shown)
-                            .collect(),
-                    );
-                    self.focus.focus(window, cx);
-                    cx.notify();
-                }
+                self.confirm_close_other_tabs(window, cx);
                 return;
             }
             "app.zoom_in" | "app.zoom_out" | "app.zoom_reset" => {
@@ -1428,7 +1429,7 @@ impl FennecWindow {
         let mut list: Vec<SidebarRow> = self
             .sessions
             .iter()
-            .filter(|s| !(s.address.starts_with("cloud:") && shown_locally.contains(&s.name)))
+            .filter(|s| self.layout_group(&s.address).is_some_and(|g|g.custom) || !(s.address.starts_with("cloud:") && shown_locally.contains(&s.name)))
             .flat_map(|s| self.sidebar_rows(s))
             .filter(|r| {
                 let s = r.session;
@@ -1819,13 +1820,21 @@ impl FennecWindow {
     /// A session's sidebar rows: one for the session, or, when it runs several
     /// agents (its own terminal and agent tabs), one per agent with that agent's state.
     fn sidebar_rows<'a>(&self, s: &'a Session) -> Vec<SidebarRow<'a>> {
-        let keys = std::iter::once(s.address.clone()).chain(
-            self.shells
-                .get(&s.group_key())
-                .into_iter()
-                .flatten()
-                .map(|a| format!("local:{a}")),
-        );
+        let keys = self.group_tabs(&s.address).into_iter();
+        if let Some(group) = self.layout_group(&s.address).filter(|g| g.custom) {
+            return group.tabs.iter().map(|key| {
+                let address = key.strip_prefix("local:").unwrap_or(key);
+                let member = self.layout.members.get(key).unwrap_or(s);
+                let observed = &self.activity[address];
+                SidebarRow {
+                    session: s,
+                    tab: Some(key.clone()),
+                    state: observed["state"].as_str().map(activity::state).unwrap_or(member.state),
+                    since_ms: self.events.as_ref().and_then(|e| e.status_ms(address)).unwrap_or(member.since_ms),
+                    agent: key.starts_with("cloud:") || observed["program"]["agent"] == true || observed["state"].as_str().is_some_and(|w| !w.is_empty()),
+                }
+            }).collect();
+        }
         let agents: Vec<String> = keys
             .filter(|key| {
                 let p = &self.activity[key.strip_prefix("local:").unwrap_or(key)];
@@ -1956,6 +1965,9 @@ impl FennecWindow {
                 && (!split || self.shown_tab(&s.address) == tab);
             let address = s.address.clone();
             let open = r.tab.clone();
+            let drop_group = self.layout_group(&s.address).map(|g| g.id.clone()).unwrap_or_default();
+            let custom = self.layout_group(&s.address).is_some_and(|g| g.custom);
+            let hover_root = s.address.clone();
             let mark = |this: &Self| {
                 if split {
                     this.activity_mark(&activity)
@@ -1967,13 +1979,28 @@ impl FennecWindow {
             let offset = moved(&id);
             groups.push(
                 self.context_row(
-                    row(SharedString::from(id), selected).relative().top(offset),
+                    row(SharedString::from(id), selected).relative().top(offset).debug_selector(||format!("session-row-{}",tab)),
                     context_menu::Target::Terminal {
                         session: s.address.clone(),
                         tab: tab.clone(),
                     },
                     cx,
                 )
+                .on_drag(self.drag_tab(&tab), |drag,_,_,cx|cx.new(|_|drag.clone()))
+                .drag_over::<tabs::TabDrag>(|s,_,_,_|s.bg(c("f_line")))
+                .on_drag_move::<tabs::TabDrag>(cx.listener(move |this,event:&DragMoveEvent<tabs::TabDrag>,_,cx| {
+                    if event.bounds.contains(&event.event.position) {
+                        if this.layout.hover_group.as_ref().is_none_or(|(root,_)|root!=&hover_root) {
+                            this.layout.hover_group=Some((hover_root.clone(),std::time::Instant::now()));cx.notify();
+                        }
+                    } else if this.layout.hover_group.as_ref().is_some_and(|(root,_)|root==&hover_root) {
+                        this.layout.hover_group=None;
+                    }
+                }))
+                .on_drop(cx.listener(move |this,drag:&tabs::TabDrag,_,cx| {
+                    cx.stop_propagation();
+                    this.move_tab(drag,drop_group.clone(),String::new(),cx);
+                }))
                 .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                     if !event.is_right_click() && !event.modifiers().control {
                         if let Some(tab) = &open {
@@ -1988,7 +2015,7 @@ impl FennecWindow {
                         .size(px(16.0))
                         .flex_none()
                         .child(self.program_icon(
-                            if split { &activity } else { &s.address },
+                            if split || custom { &activity } else { &s.address },
                             &s.agent,
                             16.0,
                         ))
@@ -2008,7 +2035,7 @@ impl FennecWindow {
                         .map(String::as_str)
                         .filter(|p| !p.is_empty())
                         .unwrap_or(&s.directory);
-                    if (grouped && (split || !tab.starts_with("local:"))) || path.is_empty() {
+                    if custom || (grouped && (split || !tab.starts_with("local:"))) || path.is_empty() {
                         self.terminal_title(&tab, &s.title)
                     } else {
                         sessions::directory_label(path)
@@ -2021,6 +2048,7 @@ impl FennecWindow {
                         .child(sessions::age(r.since_ms, now)),
                 )
                 .when(grouped, |d| d.child(mark(self)))
+                .with_animation(SharedString::from(format!("row-enter-{}",row_key(r))), Animation::new(Duration::from_millis(220)).with_easing(|t|1.0-(1.0-t).powi(3)), |row,t|row.opacity(0.5+0.5*t))
                 .into_any_element(),
             );
         }
@@ -2120,7 +2148,14 @@ impl FennecWindow {
                                 })),
                         )
                     })
-                    .children(groups),
+                    .children(groups)
+                    .child(div().id("detach-tab-area").debug_selector(||"detach-tab-area".into()).min_h(px(56.0)).w_full().flex_1().rounded(px(7.0))
+                        .drag_over::<tabs::TabDrag>(|s,_,_,_|s.bg(c("f_line")))
+                        .on_drop(cx.listener(|this,drag:&tabs::TabDrag,_,cx| {
+                            cx.stop_propagation();this.move_tab(drag,String::new(),String::new(),cx);
+                        }))
+                        .when(cx.has_active_drag(), |d| d.child(div().p(px(10.0)).text_size(px(11.0)).text_color(c("f_muted")).child(t("tabs_drop_split")))))
+                    .when_some(self.layout.error.as_ref(), |d,error| d.child(div().p(px(8.0)).text_size(px(11.0)).text_color(c("f_muted")).child(error.clone()))),
             )
             .child(div().h(px(1.0)).bg(c("f_line")))
             .child(
@@ -2876,11 +2911,6 @@ impl FennecWindow {
                 self.pending_focus = None;
             }
         }
-        let shells = s
-            .as_ref()
-            .and_then(|s| self.shells.get(&s.group_key()))
-            .cloned()
-            .unwrap_or_default();
         let request = s.as_ref().and_then(|s| {
             self.requests.iter().find_map(|(pid, list)| {
                 list.iter()
@@ -2888,70 +2918,6 @@ impl FennecWindow {
                     .map(|r| (pid.clone(), r.number, r.title.clone()))
             })
         });
-        let tab = |id: SharedString, on: bool| {
-            h_flex()
-                .id(id)
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .h(px(28.0))
-                .px(px(10.0))
-                .gap(px(7.0))
-                .rounded(px(7.0))
-                .text_size(px(12.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(if on { c("f_text") } else { c("f_muted") })
-                .when(on, |d| d.bg(c("f_card")).shadow(ui::selection_ring()))
-                .when(!on, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
-        };
-        let session_address = address.to_owned();
-        let shell_tabs = shells.iter().map(|a| {
-            let key = format!("local:{a}");
-            let (show, close) = (session_address.clone(), a.clone());
-            let open_key = key.clone();
-            self.context_row(
-                tab(SharedString::from(format!("shell-{a}")), shown == key),
-                context_menu::Target::Terminal {
-                    session: session_address.clone(),
-                    tab: key.clone(),
-                },
-                cx,
-            )
-            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-                if event.is_right_click() || event.modifiers().control {
-                    return;
-                }
-                this.set_shown_tab(show.clone(), open_key.clone(), cx);
-                this.pending_focus = Some(open_key.clone());
-                cx.notify();
-            }))
-            .child(self.program_icon(a, "shell", 14.0))
-            .child(self.activity_mark(a))
-            .child(
-                div().max_w(px(260.0)).truncate().child(self.terminal_title(
-                    a,
-                    &(self
-                        .shell_names
-                        .get(a)
-                        .cloned()
-                        .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))),
-                )),
-            )
-            .child(
-                div()
-                    .id(SharedString::from(format!("close-{a}")))
-                    .size(px(16.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.0))
-                    .hover(|s| s.bg(c("f_line")))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.close_shell(close.clone(), cx);
-                    }))
-                    .child(ui::icon("close", 11.0, c("f_muted"))),
-            )
-        });
-        let agent_on = shown == address;
         v_flex()
             .flex_1()
             .min_w_0()
@@ -2970,45 +2936,7 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .when_some(s.as_ref(), |d, s| {
-                        let back = s.address.clone();
-                        d.child(
-                            self.context_row(
-                                tab("agent-tab".into(), agent_on),
-                                context_menu::Target::Terminal {
-                                    session: s.address.clone(),
-                                    tab: s.address.clone(),
-                                },
-                                cx,
-                            )
-                            .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-                                if event.is_right_click() || event.modifiers().control {
-                                    return;
-                                }
-                                this.set_shown_tab(back.clone(), back.clone(), cx);
-                                this.pending_focus = Some(back.clone());
-                                cx.notify();
-                            }))
-                            .child(self.program_icon(&s.address, &s.agent, 14.0))
-                            .child(self.activity_mark(&s.address))
-                            // An agent's tab carries the session's title, like its sidebar row.
-                            .child(
-                                div().max_w(px(260.0)).truncate().child(
-                                    if sessions::agent_icon(&s.agent).is_none()
-                                        || s.title.trim().is_empty()
-                                    {
-                                        self.program_name(
-                                            &s.address,
-                                            sessions::agent_name(&s.agent),
-                                        )
-                                    } else {
-                                        s.title.clone()
-                                    },
-                                ),
-                            ),
-                        )
-                    })
-                    .children(shell_tabs)
+                    .child(self.tab_strip(address, cx))
                     .when(crate::core_bin::local().is_some(), |d| {
                         let session = s.clone();
                         d.child(
@@ -3063,6 +2991,7 @@ impl FennecWindow {
                             ),
                         )
                     })
+                    .opacity(self.layout.content_opacity.max(0.85))
                     .when_some(view, |d, v| d.child(v)),
             )
     }
@@ -3140,6 +3069,7 @@ impl Render for FennecWindow {
         self.sync_input_styles(cx);
         self.step_sidebar(window, cx);
         self.step_rows(window, cx);
+        self.step_tabs(window, cx);
         let route = self.route.clone();
         let main = match &route {
             Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
@@ -3188,19 +3118,9 @@ impl Render for FennecWindow {
                     return;
                 }
                 let k = &e.keystroke;
-                if this.close_others.is_some() {
-                    if k.key == "enter" {
-                        if let Some(keys) = this.close_others.take() {
-                            for key in keys {
-                                this.close_tab_key(key, window, cx);
-                            }
-                        }
-                    } else if k.key == "escape" {
-                        this.close_others = None;
-                        if let Some(Route::Session(id)) = &this.route {
-                            this.pending_focus = Some(this.shown_tab(id));
-                        }
-                    }
+                if k.key == "escape" && cx.has_active_drag() {
+                    cx.stop_active_drag(window);
+                    this.layout.hover = None;
                     cx.stop_propagation();
                     cx.notify();
                     return;
@@ -3319,7 +3239,7 @@ impl Render for FennecWindow {
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
-            .when(self.prefix || self.close_others.is_some(), |d| {
+            .when(self.prefix, |d| {
                 d.child(
                     div()
                         .absolute()
@@ -3331,11 +3251,7 @@ impl Render for FennecWindow {
                         .border_1()
                         .border_color(c("f_line"))
                         .text_size(px(13.0))
-                        .child(t(if self.prefix {
-                            "keyboard_prefix"
-                        } else {
-                            "close_other_tabs_confirm"
-                        })),
+                        .child(t("keyboard_prefix")),
                 )
             })
     }

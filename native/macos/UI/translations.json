@@ -1,5 +1,8 @@
 {
   "messages": {
+    "desktop.tabs_drop_split": {"en-US": "Drop here to split into a separate session", "zh-CN": "拖到此处拆成独立会话"},
+    "desktop.tabs_save_failed": {"en-US": "Could not save tab layout, try moving the tab again", "zh-CN": "未能保存标签布局，请重新拖动"},
+    "desktop.tabs_split": {"en-US": "Move to a separate session", "zh-CN": "拆成独立会话"},
     "desktop.delete_queue": {"en-GB":"Delete queue","en-US":"Delete queue","zh-CN":"删除队列"},
     "desktop.delete_queue_title": {"en-GB":"Delete “{name}”?","en-US":"Delete “{name}”?","zh-CN":"删除“{name}”？"},
     "desktop.delete_queue_detail": {"en-GB":"This removes the queue and its requests from your devices. Existing sessions and repository files are kept.","en-US":"This removes the queue and its requests from your devices. Existing sessions and repository files are kept.","zh-CN":"这会从你的设备中移除队列及其请求。现有会话和仓库文件会保留。"},
@@ -105,7 +108,8 @@
     "desktop.app_next_tab": {"en-US":"Next tab","zh-CN":"下一个标签"},
     "desktop.compose_shortcuts": {"en-US":"Enter to send · Shift+Enter for a new line", "zh-CN":"Enter 发送 · Shift+Enter 换行"},
     "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
-    "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes? Enter to confirm, Esc to cancel", "zh-CN":"关闭其他 Shell 标签及其进程？Enter 确认，Esc 取消"},
+    "desktop.close_other_tabs_action": {"en-US":"Close other tabs", "zh-CN":"关闭其他标签页"},
+    "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes?", "zh-CN":"关闭其他 Shell 标签及其进程？"},
     "desktop.terminal": {"en-US": "Terminal", "zh-CN": "终端"},
     "desktop.start_agent": {"en-US": "Start an agent", "zh-CN": "启动 Agent"},
     "desktop.action_failed": {"en-US": "Could not complete this action, try again", "zh-CN": "未能完成操作，请重试"},

@@ -252,3 +252,30 @@ Shell tabs show their actual shell executable (for example zsh or bash),
 and session rows show the active tab's current working directory. The home
 folder is shown as `~`; other folders use their final path component. Live
 foreground-directory events update the label and search without reconnecting.
+
+## Moving agent tabs
+
+Drag an agent row from the sidebar onto the tab strip to join that group.
+Drop onto a tab to insert before it, or onto the trailing slot to append.
+Tabs can be reordered with the same gesture. Drop a tab into the blank area
+below the sidebar sessions to split it into a separate session; the tab's
+context menu also offers **Move to a separate session**. Escape or an invalid
+drop leaves placement unchanged. Hovering over a sidebar row for 450 ms opens
+its group while dragging. Each agent retains its own sidebar row, title,
+search result and live state even when its terminal shares a tab group.
+
+The local daemon owns `desktop.layout` and atomically saves stable identities,
+order and selected tabs in `~/.config/fennec/desktop-layout.json`. A cloud
+identity includes the runtime; a local identity includes the terminal creation
+time. Transiently missing members stay saved for reconnect. Mutations carry
+an expected revision, and the window applies confirmed placement without
+starting, killing or renaming the underlying agents. Existing terminal view
+keys survive regrouping. Close applies only to the chosen tab, including the
+first tab of a group. A late move response cannot override newer navigation.
+
+Tab and sidebar displacement share a 280 ms cubic ease-out that can reverse
+from its current drawn position. Rows enter over 220 ms; selected terminal
+content fades in over 160 ms. The drag preview tracks the pointer directly.
+GPUI mouse-event tests cover sidebar-to-strip merge, strip reordering,
+sidebar split, invalid drops and Escape. Store tests cover restart, stale
+revisions, source isolation, repeated splits and temporary disconnection.

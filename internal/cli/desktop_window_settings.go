@@ -111,6 +111,7 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 	return next, nil
 }
 func installDesktopWindowSettings(home string, c *controlplane.Controller) {
+	installDesktopLayout(home, c)
 	s := newDesktopWindowSettings(home)
 	installDesktopActivity(home, c, s)
 	c.Additional["desktop.settings.get"] = func(context.Context, json.RawMessage) (any, error) { return s.get(), nil }

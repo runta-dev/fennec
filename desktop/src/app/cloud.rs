@@ -4,6 +4,9 @@ use serde_json::{Value, json};
 
 impl FennecWindow {
     pub(super) fn set_shown_tab(&mut self, session: String, tab: String, cx: &mut Context<Self>) {
+        self.close_others = None;
+        self.prefix = false;
+        self.layout.intent += 1;
         let old = self.shown_tab(&session);
         if old != tab && old.starts_with("cloud:") {
             if let Some(view) = self.terms.remove(&old) {
@@ -11,6 +14,9 @@ impl FennecWindow {
             }
         }
         self.tab.insert(session, tab.clone());
+        if !self.layout.groups.is_empty() {
+            self.layout.selection = Some(tab.clone());
+        }
         self.pending_focus = Some(tab);
         cx.notify();
     }
@@ -108,7 +114,7 @@ impl FennecWindow {
         }
         let (Some(core), Some(session)) = (
             self.local.clone(),
-            self.sessions.iter().find(|s| s.address == key).cloned(),
+            self.layout.members.get(key).cloned().or_else(|| self.sessions.iter().find(|s| s.address == key).cloned()),
         ) else {
             return;
         };
@@ -191,7 +197,7 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(session) = self.sessions.iter().find(|s| s.address == key).cloned() else {
+        let Some(session) = self.layout.members.get(&key).cloned().or_else(|| self.sessions.iter().find(|s| s.address == key).cloned()) else {
             return;
         };
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
@@ -315,6 +321,15 @@ impl FennecWindow {
             }
         }
         local.extend(cloud);
+        for group in &self.layout.groups {
+            if let Some(root) = group.tabs.iter().find(|key| local.iter().any(|r| r["address"].as_str() == Some(key.strip_prefix("local:").unwrap_or(key)))) {
+                for record in &mut local {
+                    if group.tabs.iter().any(|k| record["address"].as_str() == Some(k.strip_prefix("local:").unwrap_or(k))) {
+                        record["desktop_group"] = json!(root.strip_prefix("local:").unwrap_or(root));
+                    }
+                }
+            }
+        }
         local
     }
 }

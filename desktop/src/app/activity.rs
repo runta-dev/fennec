@@ -135,7 +135,7 @@ impl FennecWindow {
 
     pub(super) fn apply_activity(&mut self) {
         for s in &mut self.sessions {
-            let p = &self.activity[&s.address];
+            let p = &self.activity[s.address.strip_prefix("local:").unwrap_or(&s.address)];
             if let Some(name) = p["program"]["name"].as_str() {
                 s.agent = name.to_owned();
             }

@@ -16,6 +16,7 @@ enum Action {
     NewTab(String),
     CopyDirectory(String),
     CloseTab(String),
+    SplitTab(String),
 }
 struct Item {
     label: &'static str,
@@ -93,6 +94,9 @@ impl FennecWindow {
                     });
                 }
                 let address = tab.strip_prefix("local:").unwrap_or(&tab);
+                if self.group_tabs(&session).len()>1 {
+                    items.push(Item{label:"tabs_split",icon:"layers",action:Action::SplitTab(tab.clone())});
+                }
                 let directory = self
                     .directories
                     .get(address)
@@ -177,6 +181,10 @@ impl FennecWindow {
             }
             Some(Action::CloseTab(key)) if !crate::preview::active() => {
                 self.close_tab_key(key, window, cx)
+            }
+            Some(Action::SplitTab(key)) => {
+                let drag=self.drag_tab(&key);
+                self.move_tab(&drag,String::new(),String::new(),cx);
             }
             _ => {}
         }
