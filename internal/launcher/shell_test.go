@@ -48,12 +48,13 @@ func TestShellInitPromotesExistingShimWithoutChangingOtherEntries(t *testing.T) 
 			continue
 		}
 		t.Run(shell, func(t *testing.T) {
+			home := t.TempDir()
 			script, err := ShellInit(shell, directory)
 			if err != nil {
 				t.Fatal(err)
 			}
 			command := exec.Command(binary, "-c", script+script+"printf '%s' \"$PATH\"")
-			command.Env = append(os.Environ(), "PATH=/usr/bin::"+directory+":/bin:"+directory+":")
+			command.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR="+home, "BASH_ENV=", "ENV=", "PATH=/usr/bin::"+directory+":/bin:"+directory+":")
 			output, err := command.Output()
 			if err != nil {
 				t.Fatal(err)

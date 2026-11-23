@@ -12,12 +12,21 @@ func TestRestoredSelectionReconcilesEntriesWithoutBrokerRestart(t *testing.T) {
 	defer cancel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
+	var integrations atomic.Int32
 	s := &daemonServices{home: t.TempDir(), ctx: ctx, epoch: 1, selected: map[string]bool{"codex": true}, ready: map[string]bool{}, coverage: map[string]string{}, entryQueue: make(chan string, 8), entryPending: map[string]bool{}, brokerRunning: true, brokerReady: true, config: brokerConfiguration{RuntimeID: "owned"}}
 	s.entryInstaller = func(context.Context, string) (string, error) {
 		calls.Add(1)
 		close(entered)
 		<-release
 		return "entry_and_new_shells", nil
+	}
+	// Selection must request integration, but this entry-worker test must not
+	// spawn a background reconcile that discovers real host agent executables.
+	s.integrationReconciler = func(home, executable, selection string) {
+		if home != s.home || executable == "" || selection != "codex" {
+			t.Errorf("unexpected integration target")
+		}
+		integrations.Add(1)
 	}
 	done := make(chan struct{})
 	go func() { defer close(done); s.runEntryRepair(ctx, 1) }()
@@ -29,6 +38,9 @@ func TestRestoredSelectionReconcilesEntriesWithoutBrokerRestart(t *testing.T) {
 	<-entered
 	if calls.Load() != 1 {
 		t.Fatal("duplicate entry repair")
+	}
+	if integrations.Load() != 8 {
+		t.Fatal("selection did not request integration", integrations.Load())
 	}
 	close(release)
 	deadline := time.Now().Add(time.Second)

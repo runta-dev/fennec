@@ -14,6 +14,9 @@ func TestRemoveShellBlockPreservesUnrelatedConfiguration(t *testing.T) {
 		if err := os.WriteFile(path, []byte(original), 0640); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chmod(path, 0640); err != nil {
+			t.Fatal(err)
+		}
 		if err := appendShellSource(path, filepath.Join(home, ".local/share/fennec/shell-init.sh")); err != nil {
 			t.Fatal(err)
 		}

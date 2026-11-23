@@ -4,13 +4,19 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestMarkAttachedLabelsOwnTerminalAndClears(t *testing.T) {
-	socket := filepath.Join(t.TempDir(), "core.sock")
+	dir, err := os.MkdirTemp("/tmp", "fn-label-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "core.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)

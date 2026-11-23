@@ -29,6 +29,7 @@ func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); retur
 
 func reviewer(t *testing.T, outcome string, unavailable bool) *guardian.Reviewer {
 	t.Helper()
+	t.Setenv("CODEX_HOME", "")
 	r := &guardian.Reviewer{Home: t.TempDir()}
 	if unavailable {
 		// No local Codex sign-in: the reviewer reports unavailable.
@@ -107,7 +108,9 @@ func TestUserIsAskedForAskModeUnavailableReviewAndTrippedBreaker(t *testing.T) {
 		events := &lockedBuffer{}
 		b := build(events)
 		done := make(chan approvalOutcome, 1)
-		go func() { done <- b.authorize(context.Background(), request("git push")) }()
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		go func() { done <- b.authorize(ctx, request("git push")) }()
 		prompt := waitForPrompt(t, events)
 		if prompt.Reason != "needed" || prompt.Command != "git push" {
 			t.Fatalf("%s: prompt must carry the command and justification: %+v", name, prompt)
@@ -116,6 +119,7 @@ func TestUserIsAskedForAskModeUnavailableReviewAndTrippedBreaker(t *testing.T) {
 		if got := <-done; !got.Allowed || got.Decision != "user_approved" {
 			t.Fatalf("%s: user approval: %+v", name, got)
 		}
+		cancel()
 		if name == "circuit breaker" && b.breakerTripped("SHA256:device") {
 			t.Fatal("a user decision resets the breaker")
 		}

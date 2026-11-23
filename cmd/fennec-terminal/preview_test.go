@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -35,7 +36,13 @@ func TestPreviewEntryPointChild(t *testing.T) {
 }
 
 func TestPreviewRegisteredByAgentLoadsOverResidentHTTP(t *testing.T) {
-	home := t.TempDir()
+	// This service opens a Unix socket. macOS's default test temp directory
+	// plus the test name exceeds sockaddr_un's path limit.
+	home, err := os.MkdirTemp("/tmp", "fn-preview-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	workspace := filepath.Join(home, ".fen", "amber-cedar")
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		t.Fatal(err)
@@ -54,6 +61,9 @@ func TestPreviewRegisteredByAgentLoadsOverResidentHTTP(t *testing.T) {
 	register.Env = append(os.Environ(), "HOME="+home, "FENNEC_PREVIEW_CHILD=1", "FENNEC_PREVIEW_MODE=register")
 	raw, err := register.Output()
 	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("preview registration: %v: %s", err, exit.Stderr)
+		}
 		t.Fatal(err)
 	}
 	parts := preview.Parse(strings.TrimSpace(string(raw)))
@@ -62,13 +72,16 @@ func TestPreviewRegisteredByAgentLoadsOverResidentHTTP(t *testing.T) {
 	}
 	command := exec.CommandContext(ctx, executable, "-test.run=^TestPreviewEntryPointChild$")
 	command.Env = append(os.Environ(), "HOME="+home, "FENNEC_PREVIEW_CHILD=1", "FENNEC_PREVIEW_MODE=serve")
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
 	resident, err := terminalstream.Start(command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resident.Close()
 	if err = resident.Ready(ctx); err != nil {
-		t.Fatal(err)
+		resident.Close()
+		t.Fatalf("preview resident service: %v: %s", err, stderr.String())
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return resident.DialSocket(ctx, terminalstream.SocketPreview, "")

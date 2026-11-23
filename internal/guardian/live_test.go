@@ -16,6 +16,7 @@ func TestLiveResponsesRequest(t *testing.T) {
 	if os.Getenv("FENNEC_LIVE_REVIEW") != "1" {
 		t.Skip("set FENNEC_LIVE_REVIEW=1 to call the real Responses API")
 	}
+	t.Setenv("CODEX_HOME", inheritedCodexHome)
 	home, _ := os.UserHomeDir()
 	auth, err := loadCodexAuth(home)
 	if err != nil {

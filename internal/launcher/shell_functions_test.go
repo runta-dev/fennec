@@ -137,6 +137,10 @@ func TestShellTargetsRemoveToTheOriginalBytes(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(home, name), []byte(original), 0640); err != nil {
 			t.Fatal(err)
 		}
+		// Set the fixture mode explicitly instead of inheriting the runner's umask.
+		if err := os.Chmod(filepath.Join(home, name), 0640); err != nil {
+			t.Fatal(err)
+		}
 	}
 	InstallShellTargets(ShellTargets{Home: home, Shell: path, Dispatcher: dispatcher})
 	for _, file := range RecordedShellFiles(home) {

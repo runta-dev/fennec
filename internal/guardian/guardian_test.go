@@ -103,7 +103,7 @@ func TestReviewSendsCodexGuardianRequest(t *testing.T) {
 	}
 	for header, want := range map[string]string{"Authorization": "Bearer " + token, "chatgpt-account-id": "acct-1", "x-codex-guardian": "reviewer", "x-openai-subagent": "guardian", "Accept": "text/event-stream", "originator": "fennec"} {
 		if req.Header.Get(header) != want {
-			t.Fatalf("header %s = %q", header, req.Header.Get(header))
+			t.Fatalf("header %s differs from fixture", header)
 		}
 	}
 	if req.Header.Get("session-id") == "" || req.Header.Get("thread-id") == "" {
@@ -210,7 +210,7 @@ func TestUnauthorizedRefreshesTokensLikeCodex(t *testing.T) {
 	fresh := jwtExpiring(time.Now().Add(2 * time.Hour))
 	f.refresh = func(w http.ResponseWriter, body map[string]string) {
 		if body["grant_type"] != "refresh_token" || body["refresh_token"] != "rt-1" || body["client_id"] != refreshClientID || body["refresh_reason"] != "unauthorized_recovery" {
-			t.Errorf("refresh body %v", body)
+			t.Error("refresh request fields differ from fixture")
 		}
 		fmt.Fprintf(w, `{"access_token":%q,"refresh_token":"rt-2"}`, fresh)
 	}
@@ -232,7 +232,7 @@ func TestUnauthorizedRefreshesTokensLikeCodex(t *testing.T) {
 	json.Unmarshal(data, &doc)
 	tokens := doc["tokens"].(map[string]any)
 	if tokens["access_token"] != fresh || tokens["refresh_token"] != "rt-2" || tokens["account_id"] != "acct-1" || doc["keep"] != "me" || doc["last_refresh"] == "2026-11-10T15:14:17.641248Z" {
-		t.Fatalf("auth.json not updated like Codex: %s", data)
+		t.Fatal("auth.json did not preserve fixture fields while updating the grant")
 	}
 	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
 		t.Fatalf("auth.json permissions %v", info.Mode().Perm())

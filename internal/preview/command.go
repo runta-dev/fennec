@@ -29,7 +29,13 @@ func Command(home string, args []string, out io.Writer) error {
 		return err
 	}
 	if *session == "" {
-		relative, err := filepath.Rel(filepath.Join(home, ".fen"), cwd)
+		// Getwd returns the physical directory on macOS, while HOME may use
+		// an alias such as /var rather than /private/var.
+		root, err := filepath.EvalSymlinks(filepath.Join(home, ".fen"))
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, cwd)
 		if err != nil || !filepath.IsLocal(relative) {
 			return fmt.Errorf("specify --session for the file's workspace")
 		}

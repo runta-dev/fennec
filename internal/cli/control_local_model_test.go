@@ -26,6 +26,11 @@ func main(){a:=os.Args[1:];if len(a)<2||a[0]!="codex"||a[1]!="model"{os.Exit(2)}
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", fixture)
+	// The native-config fast path respects CODEX_HOME before the supplied home.
+	// Do not let the invoking agent's environment select a real config/gateway.
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("FENNEC_MAGPIE_FIXTURE_FILE", modelFile)
 	newDesktopSettingsWithMagpie(home, func() bool { return true })
 	// No Runta account, channel or controller: a local choice must stay local.
@@ -44,6 +49,9 @@ func main(){a:=os.Args[1:];if len(a)<2||a[0]!="codex"||a[1]!="model"{os.Exit(2)}
 	data, _ := os.ReadFile(modelFile)
 	if string(data) != "provider/new" {
 		t.Fatal("local setting not changed")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "config.toml")); !os.IsNotExist(err) {
+		t.Fatal("CLI fallback unexpectedly wrote native configuration", err)
 	}
 	if _, err = handler(context.Background(), json.RawMessage(`{"agent":"codex","model":"--unsafe/model","location":"local"}`)); err == nil {
 		t.Fatal("option-like model accepted")

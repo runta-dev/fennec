@@ -81,6 +81,7 @@ type daemonServices struct {
 	entryQueue                                 chan string
 	entryPending                               map[string]bool
 	entryInstaller                             func(context.Context, string) (string, error)
+	integrationReconciler                      func(string, string, string)
 	trustWait                                  chan bool
 	permissions                                *localssh.Broker
 	hookLeases                                 map[string]hookLease
@@ -93,7 +94,7 @@ func newDaemonServices(home string, account *account.Manager, monitors ...*conne
 	if len(monitors) > 0 {
 		network = monitors[0]
 	}
-	return &daemonServices{network: network, home: home, account: account, entryInstaller: func(ctx context.Context, id string) (string, error) {
+	return &daemonServices{network: network, home: home, account: account, integrationReconciler: reconcileTerminalIntegrationOnSelection, entryInstaller: func(ctx context.Context, id string) (string, error) {
 		return installManagedEntryAt(ctx, executable, id)
 	}}
 }
@@ -383,8 +384,8 @@ func (s *daemonServices) reconcileSelectionLocked() {
 	s.config.Agents = active
 	_ = launcher.PublishEnabled(filepath.Join(s.home, ".config/fennec/takeover.json"), selected)
 	if len(selected) > 0 {
-		if executable, err := os.Executable(); err == nil {
-			reconcileTerminalIntegrationOnSelection(s.home, executable, strings.Join(selected, ","))
+		if executable, err := os.Executable(); err == nil && s.integrationReconciler != nil {
+			s.integrationReconciler(s.home, executable, strings.Join(selected, ","))
 		}
 	}
 }
