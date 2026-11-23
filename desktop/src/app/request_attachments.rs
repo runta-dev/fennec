@@ -99,12 +99,19 @@ impl FennecWindow {
         if crate::preview::active() {
             return false;
         }
-        if !self.composer.read(cx).focus_handle(cx).is_focused(window) {
+        let reply = self.reply.read(cx).focus_handle(cx).is_focused(window);
+        if !reply && !self.composer.read(cx).focus_handle(cx).is_focused(window) {
             return false;
         }
-        let Some(project) = self.project_id() else {
+        let Some(mut project) = self.project_id() else {
             return false;
         };
+        if reply {
+            let Some(number) = self.open else {
+                return false;
+            };
+            project = format!("reply:{project}:{number}");
+        }
         let Some(clipboard) = cx.read_from_clipboard() else {
             return false;
         };

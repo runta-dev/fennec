@@ -7,12 +7,47 @@ import (
 )
 
 type Run struct {
-	ID       string     `json:"id"`
-	Session  string     `json:"session"`
-	Location string     `json:"location"`
-	State    string     `json:"state"`
-	Started  time.Time  `json:"started"`
-	Finished *time.Time `json:"finished,omitempty"`
+	ID         string     `json:"id"`
+	Agent      string     `json:"agent,omitempty"`
+	InputAfter int        `json:"input_after,omitempty"`
+	InputUIDs  []string   `json:"input_uids,omitempty"`
+	Session    string     `json:"session"`
+	Location   string     `json:"location"`
+	State      string     `json:"state"`
+	Started    time.Time  `json:"started"`
+	Finished   *time.Time `json:"finished,omitempty"`
+}
+
+// ExecutionSession is independent of the run token used to fence late replies.
+func (r Request) ExecutionSession() string {
+	if len(r.Runs) > 0 {
+		return r.Runs[len(r.Runs)-1].Session
+	}
+	return r.Session
+}
+
+func (s Store) BindSession(project string, n int, run, session string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return err
+	}
+	if !sessionRef.MatchString(session) {
+		return ErrInvalid
+	}
+	if r.Session != run || len(r.Runs) == 0 {
+		return ErrConflict
+	}
+	if r.Runs[len(r.Runs)-1].Session == session {
+		return nil
+	}
+	r.Runs[len(r.Runs)-1].Session = session
+	r.Updated = s.now()
+	return s.commit(s.requestPath(project, n), r)
 }
 
 func recordRun(r *Request, state string, now time.Time) {
@@ -51,6 +86,9 @@ func sortRequests(list []Summary, order []int) {
 			return group(a.Status) < group(b.Status)
 		}
 		if a.Status == Queued {
+			if (len(a.Runs) > 0) != (len(b.Runs) > 0) {
+				return len(a.Runs) > 0
+			}
 			ar, br := rank[a.Number], rank[b.Number]
 			if ar != br {
 				if ar == 0 {
@@ -128,9 +166,15 @@ func (s Store) Move(project string, n, before int) (Project, error) {
 	return p, s.commit(filepath.Join(s.projectDir(project), "project.json"), p)
 }
 
-// Continue enqueues an explicit user instruction, including a retry with no
-// new text. Running and completed requests must not be scheduled twice.
+// Continue retains the CLI's explicit empty-retry operation. The forum uses
+// FollowUp with text and/or images.
 func (s Store) Continue(project string, n int, author, body string) (Request, error) {
+	return s.FollowUp(project, n, author, body, nil)
+}
+
+// FollowUp persists input before scheduling it. Input arriving during a turn
+// stays pending until that turn releases its slot.
+func (s Store) FollowUp(project string, n int, author, body string, attachments []Attachment) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -140,19 +184,27 @@ func (s Store) Continue(project string, n int, author, body string) (Request, er
 	if err != nil {
 		return r, err
 	}
-	if r.Status != NeedsYou && r.Status != Failed {
+	if r.Status == Unknown && body == "" && len(attachments) == 0 {
 		return r, ErrConflict
 	}
 	if !validText(author, 80) || (body != "" && !validText(body, maxBody)) || len(r.Messages) >= 2000 {
 		return r, ErrInvalid
 	}
+	images, err := s.validateAttachments(attachments)
+	if err != nil {
+		return r, err
+	}
 	now := s.now()
-	if body != "" {
+	if body != "" || len(images) > 0 {
 		id := len(r.Messages) + 1
-		r.Messages = append(r.Messages, Message{UID: randomID(), ID: id, Author: author, Body: body, At: now})
+		r.Messages = append(r.Messages, Message{UID: randomID(), FollowUp: true, ID: id, Author: author, Body: body, Attachments: images, At: now})
+	}
+	if r.Status == Working || r.Status == Unknown {
+		r.Updated = now
+		return r, s.commit(s.requestPath(project, n), r)
 	}
 	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
-	r.Session, r.RunLocation, r.Agent, r.Offer = "", "", "", nil
+	r.Session, r.RunLocation, r.Offer = "", "", nil
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
@@ -187,16 +239,31 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 		return r, ErrInvalid
 	}
 	now := s.now()
+	pending := r.HasPendingFollowUp()
 	id := len(r.Messages) + 1
 	r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
-	r.Status, r.Updated, r.Delivered = outcome, now, id
+	r.Status, r.Updated = outcome, now
+	if !pending {
+		r.Delivered = id
+	}
 	recordRun(&r, outcome, now)
+	if pending {
+		r.Status, r.QueuedAt, r.Offer = Queued, now, nil
+	}
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
 // Fail retains the session identity after an uncertain mutation. Only an
 // explicit retry may inspect and reuse it; a lost receipt never auto-launches.
 func (s Store) Fail(project string, n int, session string) (Request, error) {
+	return s.fail(project, n, session, false)
+}
+
+func (s Store) FailInput(project string, n int, session string) (Request, error) {
+	return s.fail(project, n, session, true)
+}
+
+func (s Store) fail(project string, n int, session string, input bool) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -211,7 +278,7 @@ func (s Store) Fail(project string, n int, session string) (Request, error) {
 	}
 	r.Status, r.Failure, r.Updated = Unknown, "Execution could not be confirmed", s.now()
 	recordRun(&r, Unknown, r.Updated)
-	if len(RequestAttachments(r)) > 0 {
+	if input || len(RequestAttachments(r)) > 0 {
 		recordRun(&r, "input_unknown", r.Updated)
 	}
 	return r, s.commit(s.requestPath(project, n), r)
@@ -239,6 +306,9 @@ func (s Store) Reconcile(project string, n int, session, state string) (Request,
 		r.Status = Failed
 		r.Failure = "The agent could not start"
 		recordRun(&r, Failed, s.now())
+		if len(r.Runs) > 0 {
+			r.Runs[len(r.Runs)-1].State = "not_started"
+		}
 	case "live":
 		if len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
 			return r, ErrConflict

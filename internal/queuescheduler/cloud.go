@@ -20,10 +20,7 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 		return nil, err
 	}
 	var list struct {
-		Terminals []struct {
-			State  string            `json:"state"`
-			Labels map[string]string `json:"labels"`
-		} `json:"terminals"`
+		Terminals []r.LocalTerminal `json:"terminals"`
 	}
 	if json.Unmarshal(raw, &list) != nil {
 		return nil, fmt.Errorf("invalid terminal listing")
@@ -35,28 +32,9 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	return out, nil
 }
 func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt string) error {
-	args := []string{}
-	for _, w := range p.Workers {
-		if w.Agent == request.Agent && w.Model != "" && (w.Agent == "claude" || w.Agent == "codex") {
-			args = append(args, "--model", w.Model)
-			break
-		}
-	}
-	hasImages := len(board.RequestAttachments(request)) > 0
-	if !hasImages {
-		args = append(args, prompt)
-	}
-	device := c.Device
-	if device == "" {
-		device = c.Store.Routing().Device
-	}
-	terminal, err := c.Runtime.Launch(ctx, r.LocalLaunch{ID: request.Session, Agent: request.Agent, Device: device, LocalDirectory: "/", Arguments: args})
+	terminal, err := c.Runtime.ThreadSession(ctx, c.Store, p.ID, request.Number)
 	if err != nil {
 		return err
 	}
-	_, err = c.Runtime.Query(ctx, "terminal.label", map[string]any{"terminal": terminal.Address, "labels": map[string]string{"fennec.queue": p.ID, "fennec.request": fmt.Sprint(request.Number), "fennec.run": request.Session}})
-	if err == nil && hasImages {
-		return PasteRequestImages(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt)
-	}
-	return err
+	return SendRequest(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt)
 }

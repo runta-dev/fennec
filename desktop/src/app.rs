@@ -108,6 +108,8 @@ pub struct FennecWindow {
     posting: bool,
     replying: bool,
     pub(crate) reply: Entity<TextareaState>,
+    pub(crate) reply_drafts: HashMap<String, String>,
+    opening_thread_session: bool,
     notice: Option<String>,
     pub(crate) sidebar: bool,
     /// How far the sidebar is shown (0 hidden, 1 shown) in this frame.
@@ -268,6 +270,8 @@ impl FennecWindow {
             posting: false,
             replying: false,
             reply,
+            reply_drafts: HashMap::new(),
+		    opening_thread_session: false,
             notice: None,
             sidebar: true,
             sidebar_shown: 1.0,
@@ -674,6 +678,7 @@ impl FennecWindow {
         }
         self.menu = None;
         if self.route.as_ref() != Some(&route) {
+            self.save_reply_draft(cx);
             // Only the session on screen streams: every attached terminal shares one
             // paced connection to the cloud computer, so a busy hidden agent would
             // delay the echo of what is typed here. Coming back attaches again
@@ -702,10 +707,26 @@ impl FennecWindow {
     }
 
     pub(crate) fn open_request(&mut self, n: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_reply_draft(cx);
         self.open = Some(n);
+        let draft = self
+            .project_id()
+            .and_then(|p| self.reply_drafts.get(&format!("reply:{p}:{n}")).cloned())
+            .unwrap_or_default();
+        self.reply
+            .update(cx, |s, cx| s.set_value(draft, window, cx));
         self.thread = None;
         self.refresh_now(window, cx);
         cx.notify();
+    }
+
+    fn save_reply_draft(&mut self, cx: &Context<Self>) {
+        if let (Some(project), Some(n)) = (self.project_id(), self.open) {
+            self.reply_drafts.insert(
+                format!("reply:{project}:{n}"),
+                self.reply.read(cx).value().to_string(),
+            );
+        }
     }
 
     fn post(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -756,10 +777,57 @@ impl FennecWindow {
     }
 
     fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.submit_reply(false, window, cx);
+        self.submit_reply(window, cx);
     }
 
-    fn submit_reply(&mut self, resume: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_thread_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.opening_thread_session {
+            return;
+        }
+        let (Some(project), Some(number)) = (self.project_id(), self.open) else {
+            return;
+        };
+        self.opening_thread_session = true;
+        let origin = project.clone();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    crate::control::call(
+                        "board.session",
+                        serde_json::json!({"project":project,"number":number}),
+                    )
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.opening_thread_session = false;
+                match result {
+                    Ok(result) => {
+                        let mut record = result["terminal"].clone();
+                        if let Some(address) = record["address"].as_str().map(str::to_owned) {
+                            let address =
+                                if crate::core_bin::cloud() || result["location"] == "local" {
+                                    address
+                                } else {
+                                    format!("cloud:{address}")
+                                };
+                            record["address"] = serde_json::json!(address);
+                            this.adopt_local_terminal(record, false, cx);
+                            if this.project_id().as_deref() == Some(&origin)
+                                && this.open == Some(number)
+                            {
+                                this.go(Route::Session(address), window, cx);
+                            }
+                            this.refresh_now(window, cx);
+                        }
+                    }
+                    Err(e) => this.say(format!("{e:#}"), cx),
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    fn submit_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.replying {
             return;
         }
@@ -767,28 +835,46 @@ impl FennecWindow {
         let (Some(project), Some(n)) = (self.project_id(), self.open) else {
             return;
         };
-        if text.trim().is_empty() && !resume {
+        let key = format!("reply:{project}:{n}");
+        let images = self
+            .request_images
+            .by_queue
+            .get(&key)
+            .cloned()
+            .unwrap_or_default();
+        if self.request_images.busy.contains(&key) || (text.trim().is_empty() && images.is_empty())
+        {
             return;
         }
         self.replying = true;
         let me = self.me.clone();
         let submitted = text.clone();
+        let submitted_images: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
         let origin = project.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let sent = cx
                 .background_spawn(async move {
-                    if resume {
-                        board::continue_request(&project, n, &text, &me)
-                    } else {
-                        board::reply(&project, n, &text, &me)
-                    }
+                    board::continue_request(&project, n, &text, &me, &images)
                 })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.replying = false;
                 match sent {
                     Ok(_) => {
-                        if this.reply.read(cx).value().as_ref() == submitted {
+                        if let Some(images) = this.request_images.by_queue.get_mut(&key) {
+                            images.retain(|image| !submitted_images.contains(&image.id));
+                        }
+                        if this
+                            .reply_drafts
+                            .get(&key)
+                            .is_some_and(|draft| draft == &submitted)
+                        {
+                            this.reply_drafts.remove(&key);
+                        }
+                        if this.project_id().as_deref() == Some(&origin)
+                            && this.open == Some(n)
+                            && this.reply.read(cx).value().as_ref() == submitted
+                        {
                             this.reply.update(cx, |s, cx| s.set_value("", window, cx));
                         }
                         if this.project_id().as_deref() == Some(&origin) && this.open == Some(n) {
@@ -2680,65 +2766,29 @@ impl FennecWindow {
                                 .text_size(px(13.5))
                                 .text_color(c("f_text")),
                             )
-                            .when(!m.attachments.is_empty(),|d|d.child(self.stored_images(&m.attachments,m.id,cx))),
+                            .when(!m.attachments.is_empty(), |d| {
+                                d.child(self.stored_images(&m.attachments, m.id, cx))
+                            }),
                     )
                     .into_any_element(),
             );
         }
-        let reply_has = !self.reply.read(cx).value().trim().is_empty();
+        let reply_key = format!("reply:{}:{}", p.id, r.number);
+        let reply_has = !self.replying
+            && !self.request_images.busy.contains(&reply_key)
+            && (!self.reply.read(cx).value().trim().is_empty()
+                || self
+                    .request_images
+                    .by_queue
+                    .get(&reply_key)
+                    .is_some_and(|images| !images.is_empty()));
         let resolved = r.resolved();
-        let can_continue = matches!(r.status.as_str(), "you" | "failed");
-        let retry = r.status == "failed";
         let session_route = self
             .sessions
             .iter()
-            .find(|s| s.name == r.session)
+            .find(|s| r.runs.iter().any(|run| run.session == s.name) || s.name == r.session)
             .map(|s| s.address.clone());
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "failed");
-        for (index, run) in r.runs.iter().enumerate() {
-            let route = self
-                .sessions
-                .iter()
-                .find(|s| s.name == run.session)
-                .map(|s| s.address.clone());
-            let label = format!(
-                "{} {} · {}",
-                t("run"),
-                index + 1,
-                t(if run.location == "cloud" {
-                    "run_cloud"
-                } else {
-                    "run_local"
-                })
-            );
-            items.push(
-                h_flex()
-                    .py(px(6.0))
-                    .gap(px(8.0))
-                    .text_size(px(11.0))
-                    .text_color(c("f_muted"))
-                    .child(label)
-                    .child(ui::status_pill(match run.state.as_str() {
-                        "running" | "starting" => "working",
-                        other => other,
-                    }))
-                    .when_some(route, |d, address| {
-                        d.child(
-                            secondary_button(
-                                SharedString::from(format!("run-{}", run.id)),
-                                t("view_session"),
-                                false,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.go(Route::Session(address.clone()), window, cx)
-                                },
-                            )),
-                        )
-                    })
-                    .into_any_element(),
-            );
-        }
         v_flex()
             .flex_1()
             .min_w_0()
@@ -2772,6 +2822,14 @@ impl FennecWindow {
                     )
                     .child(ui::tag_chip(&r.tag, &tag))
                     .child(ui::status_pill(&r.status))
+                    .when(session_route.is_none() && !r.runs.is_empty(), |d| {
+                        d.child(
+                            secondary_button("resume-thread-session", t("view_session"), false)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_thread_session(window, cx)
+                                })),
+                        )
+                    })
                     .when_some(session_route, |d, address| {
                         d.child(
                             secondary_button("request-session", t("view_session"), false).on_click(
@@ -2837,28 +2895,31 @@ impl FennecWindow {
                         .pb(px(38.0))
                         .child(Textarea::new(&self.reply))
                         .child(
+                            div()
+                                .absolute()
+                                .left(px(13.0))
+                                .bottom(px(10.0))
+                                .text_size(px(10.0))
+                                .text_color(c("f_muted"))
+                                .child(t("followup_hint")),
+                        )
+                        .when_some(self.draft_images(&reply_key, cx), |d, images| {
+                            d.child(images)
+                        })
+                        .when_some(self.request_image_status(&reply_key), |d, status| {
+                            d.child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(c("f_muted"))
+                                    .child(t(status)),
+                            )
+                        })
+                        .child(
                             h_flex()
                                 .absolute()
                                 .right(px(8.0))
                                 .bottom(px(8.0))
                                 .gap(px(8.0))
-                                .when(can_continue, |d| {
-                                    d.child(
-                                        primary_button(
-                                            "continue-request",
-                                            if retry {
-                                                t("retry_request")
-                                            } else {
-                                                t("continue_request")
-                                            },
-                                        )
-                                        .on_click(
-                                            cx.listener(|this, _, window, cx| {
-                                                this.submit_reply(true, window, cx)
-                                            }),
-                                        ),
-                                    )
-                                })
                                 .when(reply_has, |d| {
                                     d.child(primary_button("send", t("send")).on_click(
                                         cx.listener(|this, _, window, cx| {
@@ -2896,11 +2957,20 @@ impl FennecWindow {
             }
         }
         let request = s.as_ref().and_then(|s| {
-            self.requests.iter().find_map(|(pid, list)| {
-                list.iter()
-                    .find(|r| r.session == s.name)
-                    .map(|r| (pid.clone(), r.number, r.title.clone()))
-            })
+            self.requests
+                .iter()
+                .find_map(|(pid, list)| {
+                    list.iter()
+                        .find(|r| {
+                            r.session == s.name || r.runs.iter().any(|run| run.session == s.name)
+                        })
+                        .map(|r| (pid.clone(), r.number, r.title.clone()))
+                })
+                .or_else(|| {
+                    s.request
+                        .filter(|_| !s.queue.is_empty())
+                        .map(|n| (s.queue.clone(), n, t("view_thread")))
+                })
         });
         v_flex()
             .flex_1()

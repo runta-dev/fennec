@@ -82,6 +82,7 @@ const (
 	SocketBoard              = "board"
 	CapabilityBoard          = "board_http_v1"
 	CapabilityBoardImages    = "board_images_v1"
+	CapabilityThreadSession  = "thread_session_v1"
 	SocketCommand            = "command"
 	CapabilityCommand        = "command_stream_v1"
 	// CapabilityCodexAppServerEarlyInput: the service holds client bytes that

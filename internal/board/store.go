@@ -70,6 +70,7 @@ type Project struct {
 }
 
 type Message struct {
+	FollowUp    bool         `json:"follow_up,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 	UID         string       `json:"uid,omitempty"`
 	RunID       string       `json:"run_id,omitempty"`
@@ -663,7 +664,11 @@ func (s Store) ClaimAt(project string, n int, session, agent, location string) (
 	}
 	r.Status, r.Session, r.Agent = Working, session, agent
 	r.RunLocation = location
-	r.Runs = append(r.Runs, Run{ID: session, Session: session, Location: location, State: "starting", Started: s.now()})
+	inputs := []string{}
+	for _, m := range r.Messages {
+		inputs = append(inputs, m.UID)
+	}
+	r.Runs = append(r.Runs, Run{ID: session, Agent: agent, InputUIDs: inputs, InputAfter: r.Delivered, Session: session, Location: location, State: "starting", Started: s.now()})
 	if len(r.Messages) > 0 {
 		r.Delivered = r.Messages[len(r.Messages)-1].ID
 	}

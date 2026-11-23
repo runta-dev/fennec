@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,14 +14,42 @@ import (
 	"fennec/internal/board"
 )
 
+var ErrInputUnconfirmed = errors.New("input delivery was not confirmed")
+
 // PasteRequestImages uses the same herdr-core terminal.put path as Desktop's
 // hc put, followed by its mode-aware bracketed paste/submit operation. Agent
 // CLI flags and the user's system clipboard are never involved.
 func PasteRequestImages(ctx context.Context, store board.Store, query func(context.Context, string, any) (json.RawMessage, error), terminal string, request board.Request, prompt string) error {
-	images := board.RequestAttachments(request)
-	if len(images) == 0 {
+	if len(board.RequestAttachments(request)) == 0 {
 		return nil
 	}
+	return SendRequest(ctx, store, query, terminal, request, prompt)
+}
+
+// SendRequest journals both text and images, so reconnects cannot submit twice.
+func SendRequest(ctx context.Context, store board.Store, query func(context.Context, string, any) (json.RawMessage, error), terminal string, request board.Request, prompt string) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %v", ErrInputUnconfirmed, err)
+		}
+	}()
+	if len(request.Runs) > 0 {
+		after := request.Runs[len(request.Runs)-1].InputAfter
+		seen := map[string]bool{}
+		for _, run := range request.Runs[:len(request.Runs)-1] {
+			for _, uid := range run.InputUIDs {
+				seen[uid] = true
+			}
+		}
+		messages := []board.Message{}
+		for _, m := range request.Messages {
+			if len(seen) > 0 && !seen[m.UID] || len(seen) == 0 && m.ID > after {
+				messages = append(messages, m)
+			}
+		}
+		request.Messages = messages
+	}
+	images := board.RequestAttachments(request)
 	root := filepath.Join(store.Home, ".fen/board/deliveries")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return err
@@ -71,8 +100,15 @@ func PasteRequestImages(ctx context.Context, store board.Store, query func(conte
 		return err
 	}
 	text := strings.Join(paths, " ") + " \n\n" + prompt
-	if _, err = query(ctx, "terminal.send", map[string]any{"terminal": terminal, "text": text, "force": false}); err != nil {
+	raw, err := query(ctx, "terminal.send", map[string]any{"terminal": terminal, "text": text, "force": false})
+	if err != nil {
 		return err
+	}
+	var receipt struct {
+		Started *bool `json:"started"`
+	}
+	if json.Unmarshal(raw, &receipt) != nil || receipt.Started != nil && !*receipt.Started {
+		return fmt.Errorf("input was not confirmed as started")
 	}
 	return os.WriteFile(marker, []byte("done"), 0600)
 }

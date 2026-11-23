@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -194,6 +195,58 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		return s.account.Organizations(ctx)
 	}
 	queue := &boardQueue{s: s, c: c, board: client}
+	c.Additional["board.session"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Project string `json:"project"`
+			Number  int    `json:"number"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, board.ErrInvalid
+		}
+		op := r.LocalOperation{Kind: "thread_session", Project: params.Project, RequestNumber: params.Number}
+		if err := op.Validate(); err != nil {
+			return nil, err
+		}
+		localStore := board.Store{Home: s.home, Role: "local"}
+		if request, err := localStore.Request(params.Project, params.Number); err == nil && len(request.Runs) > 0 && request.Runs[len(request.Runs)-1].Location == "local" {
+			exe, err := os.Executable()
+			if err != nil {
+				return nil, err
+			}
+			s.mu.Lock()
+			core := s.boardCore
+			s.mu.Unlock()
+			if core == nil {
+				return nil, &control.Fault{Code: "not_ready", Message: "Session service is starting", Retryable: true}
+			}
+			terminal, err := (queueMacExecutor{home: s.home, exe: exe, core: core}).threadSession(ctx, params.Project, params.Number)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"terminal": terminal, "location": "local"}, nil
+		}
+		s.mu.Lock()
+		channel := s.channel
+		s.mu.Unlock()
+		if channel == nil {
+			return nil, &control.Fault{Code: "not_ready", Message: "Connecting to the cloud computer", Retryable: true}
+		}
+		transport, err := channel.get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := transport.Ready(ctx); err != nil {
+			return nil, err
+		}
+		if !transport.Supports(terminalstream.CapabilityThreadSession) {
+			return nil, &control.Fault{Code: "not_ready", Message: "The cloud computer is updating", Retryable: true}
+		}
+		rawTerminal, err := transport.Operate(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"terminal": json.RawMessage(rawTerminal), "location": "cloud"}, nil
+	}
 	// sessions.start opens a session on the cloud computer from the desktop
 	// window's New session: no Mac folder, optionally in a project.
 	c.Additional["sessions.start"] = func(ctx context.Context, raw json.RawMessage) (any, error) {

@@ -21,6 +21,8 @@ pub struct Session {
     pub agent: String,
     pub title: String,
     pub directory: String,
+    pub queue: String,
+    pub request: Option<u64>,
     pub state: State,
     /// When the status last changed, in ms since the epoch.
     pub since_ms: u64,
@@ -78,6 +80,13 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                 agent,
                 title,
                 directory,
+                queue: labels["fennec.queue"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                request: labels["fennec.request"]
+                    .as_str()
+                    .and_then(|n| n.parse().ok()),
                 state,
                 since_ms: t["status_ms"]
                     .as_u64()
@@ -211,15 +220,24 @@ pub fn directory_label(path: &str) -> String {
 /// Child tabs have their own OSC title even though they share a sidebar group.
 pub fn agent_terminal_title(terminal: &Value) -> Option<String> {
     agent_icon(terminal["status"]["app"].as_str()?)?;
-    let title = terminal["title"].as_str()?.trim_start_matches(
-        |c: char| !c.is_alphanumeric() && !"~/(".contains(c),
-    ).trim();
+    let title = terminal["title"]
+        .as_str()?
+        .trim_start_matches(|c: char| !c.is_alphanumeric() && !"~/(".contains(c))
+        .trim();
     let directory = terminal_directory(terminal);
-    let cwd = std::path::Path::new(&directory).file_name().and_then(|s| s.to_str());
+    let cwd = std::path::Path::new(&directory)
+        .file_name()
+        .and_then(|s| s.to_str());
     let mut title = title;
-    for suffix in [terminal["labels"]["fennec.session"].as_str(), cwd].into_iter().flatten().filter(|s| !s.is_empty()) {
+    for suffix in [terminal["labels"]["fennec.session"].as_str(), cwd]
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+    {
         for separator in [" | ", " · "] {
-            if let Some(clean) = title.strip_suffix(&format!("{separator}{suffix}")) { title = clean; }
+            if let Some(clean) = title.strip_suffix(&format!("{separator}{suffix}")) {
+                title = clean;
+            }
         }
     }
     (!title.is_empty()).then(|| title.to_owned())
@@ -235,7 +253,10 @@ mod title_tests {
         let mut child = json!({"status":{"app":"codex"},"title":"⠙ Fix login | repo", "cwd":"/work/repo", "labels":{"fennec.shell-of":"parent"}});
         assert_eq!(agent_terminal_title(&child).as_deref(), Some("Fix login"));
         child["title"] = json!("Review changes | repo");
-        assert_eq!(agent_terminal_title(&child).as_deref(), Some("Review changes"));
+        assert_eq!(
+            agent_terminal_title(&child).as_deref(),
+            Some("Review changes")
+        );
         child["status"]["app"] = json!("zsh");
         assert_eq!(agent_terminal_title(&child), None);
     }

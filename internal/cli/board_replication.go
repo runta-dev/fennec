@@ -23,6 +23,9 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 		return
 	}
 	core := &boardLocalCore{lifetime: ctx}
+	s.mu.Lock()
+	s.boardCore = core
+	s.mu.Unlock()
 	exe, _ := os.Executable()
 	executor := queueMacExecutor{core: core, home: s.home, exe: exe}
 	scheduler := queuescheduler.Scheduler{Store: store, Executor: executor, Command: shellArgument(exe) + " queue", OnError: func(err error) { log.Printf("queue execution: %v", err) }}
@@ -232,53 +235,10 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	return out, nil
 }
-func (e queueMacExecutor) Start(ctx context.Context, p board.Project, r board.Request, prompt string) error {
-	// The persisted marker distinguishes a never-sent run from an uncertain
-	// terminal.run. An uncertain request is inspected, never sent a second time.
-	root := filepath.Join(e.home, ".fen/board/launches")
-	if err := os.MkdirAll(root, 0700); err != nil {
-		return err
-	}
-	marker, err := os.OpenFile(filepath.Join(root, r.Session+".json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("local launch needs reconciliation: %w", err)
-	}
-	raw, _ := json.Marshal(map[string]string{"run": r.Session, "queue": p.ID})
-	_, err = marker.Write(raw)
-	if err == nil {
-		err = marker.Sync()
-	}
-	marker.Close()
+func (e queueMacExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt string) error {
+	terminal, err := e.threadSession(ctx, p.ID, request.Number)
 	if err != nil {
 		return err
 	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
-	argv := []string{shell, "-lc", `exec "$@"`, "fennec-queue", e.exe, "local-agent", r.Agent}
-	worker := board.Worker{Agent: r.Agent}
-	for _, w := range p.Workers {
-		if w.Agent == r.Agent {
-			worker = w
-			break
-		}
-	}
-	arguments := launchArguments(worker, prompt)
-	hasImages := len(board.RequestAttachments(r)) > 0
-	if hasImages {
-		arguments = arguments[:len(arguments)-1]
-	}
-	argv = append(argv, arguments...)
-	receipt, err := e.core.call(ctx, "terminal.run", map[string]any{"argv": argv, "cwd": e.home, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": map[string]string{"fennec.session": r.Session, "fennec.agent": r.Agent, "fennec.queue": p.ID, "fennec.request": fmt.Sprint(r.Number), "fennec.run": r.Session}, "size": map[string]int{"cols": 120, "rows": 40}})
-	if err == nil && hasImages {
-		var terminal struct {
-			Address string `json:"address"`
-		}
-		if json.Unmarshal(receipt, &terminal) != nil || terminal.Address == "" {
-			return fmt.Errorf("terminal launch was not confirmed")
-		}
-		return queuescheduler.PasteRequestImages(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, r, prompt)
-	}
-	return err
+	return queuescheduler.SendRequest(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, request, prompt)
 }

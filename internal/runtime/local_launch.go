@@ -26,6 +26,7 @@ type LocalLaunch struct {
 	NativeLogin    bool                        `json:"native_login,omitempty"`
 	Hooks          []hookbridge.Binding        `json:"hooks,omitempty"`
 	ID             string                      `json:"id"`
+	ResumeFrom     string                      `json:"resume_from,omitempty"`
 	Agent          string                      `json:"agent"`
 	LocalDirectory string                      `json:"local_directory"`
 	Device         string                      `json:"device"`
@@ -54,6 +55,9 @@ type LocalRuntime struct {
 }
 
 func (request LocalLaunch) Validate() error {
+	if request.ResumeFrom != "" && (!sessionIDPattern.MatchString(request.ResumeFrom) || request.ResumeFrom == request.ID) {
+		return fmt.Errorf("invalid resume identity")
+	}
 	if err := hookbridge.ValidateClaudeSettings(request.Agent, request.Arguments, request.ClaudeSettings); err != nil {
 		return err
 	}
@@ -188,7 +192,14 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		return LocalTerminal{}, err
 	}
 	command := append([]string{binary}, agents.NoUpdateArguments(request.Agent)...)
-	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, request.Arguments, request.ClaudeSettings)
+	inputArguments := request.Arguments
+	if request.ResumeFrom != "" {
+		inputArguments, cwd, err = runtime.resumeArguments(request, binary)
+		if err != nil {
+			return LocalTerminal{}, err
+		}
+	}
+	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, inputArguments, request.ClaudeSettings)
 	if err != nil {
 		return LocalTerminal{}, err
 	}

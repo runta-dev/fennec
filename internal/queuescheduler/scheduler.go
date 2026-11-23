@@ -9,6 +9,7 @@ import (
 	"fennec/internal/board"
 	r "fennec/internal/runtime"
 	"fmt"
+	"sort"
 	"time"
 )
 
@@ -31,6 +32,10 @@ func (s Scheduler) report(err error) {
 }
 
 func (s Scheduler) startFailed(project string, number int, session string, err error) error {
+	if errors.Is(err, ErrInputUnconfirmed) {
+		_, err = s.Store.FailInput(project, number, session)
+		return err
+	}
 	if errors.Is(err, r.ErrAgentExecutableMissing) {
 		_, err = s.Store.Reconcile(project, number, session, "not_started")
 		return err
@@ -57,10 +62,22 @@ func (s Scheduler) Step(ctx context.Context) error {
 	if err := s.Store.Recover(); err != nil {
 		return err
 	}
+	if err := s.Store.QueuePendingFollowUps(); err != nil {
+		return err
+	}
 	queues, err := s.Store.Queue()
 	if err != nil {
 		return err
 	}
+	hasFollowUp := func(q board.QueueProject) bool {
+		for _, r := range q.Queued {
+			if len(r.Runs) > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	sort.SliceStable(queues, func(i, j int) bool { return hasFollowUp(queues[i]) && !hasFollowUp(queues[j]) })
 	var states map[string]string
 	// A failed listing is never treated as an empty authoritative snapshot.
 	listed, err := s.Executor.List(ctx)
@@ -78,8 +95,8 @@ func (s Scheduler) Step(ctx context.Context) error {
 			if r.RunLocation != s.Store.Role {
 				continue
 			}
-			state := states[r.Session]
-			if state == "" && r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting" {
+			state := states[r.ExecutionSession()]
+			if r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting" {
 				p, e := s.Store.Project(q.Project)
 				if e != nil {
 					return e
@@ -128,6 +145,20 @@ func (s Scheduler) Step(ctx context.Context) error {
 			s.report(s.Store.TransferIdle(p.ID, target))
 		}
 		for _, request := range q.Queued {
+			worker := worker
+			for _, w := range q.Workers {
+				if w.On && w.Agent == request.Agent {
+					worker = w
+					break
+				}
+			}
+			target := routing.Locations[worker.Agent]
+			if target == "" {
+				target = "local"
+			}
+			if target != s.Store.Role && (s.Store.Role == "cloud" || control.Primary) {
+				s.report(s.Store.TransferIdle(p.ID, target))
+			}
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}

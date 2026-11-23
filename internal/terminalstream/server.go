@@ -133,7 +133,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "connector_health", "mac_online", "magpie_credentials_sync", "preparation_health")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay, CapabilityCommand, CapabilityMagpieWeb, CapabilityPreview, CapabilityBoard, CapabilityBoardImages)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay, CapabilityCommand, CapabilityMagpieWeb, CapabilityPreview, CapabilityBoard, CapabilityBoardImages, CapabilityThreadSession)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err

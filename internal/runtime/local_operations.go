@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/board"
 	"fennec/internal/gateway"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
@@ -30,9 +31,17 @@ type LocalOperation struct {
 	Address           string                       `json:"address,omitempty"`
 	SessionID         string                       `json:"session_id,omitempty"`
 	Text              string                       `json:"text,omitempty"`
+	Project           string                       `json:"project,omitempty"`
+	RequestNumber     int                          `json:"request_number,omitempty"`
 }
 
 func (o LocalOperation) Validate() error {
+	if o.Kind == "thread_session" {
+		if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`).MatchString(o.Project) || o.RequestNumber < 1 {
+			return fmt.Errorf("invalid thread")
+		}
+		return nil
+	}
 	if o.Kind == "connector_health" || o.Kind == "mac_online" {
 		if o.Health == nil {
 			return fmt.Errorf("health identity required")
@@ -123,6 +132,13 @@ func (o LocalOperation) Validate() error {
 func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.RawMessage, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
+	}
+	if o.Kind == "thread_session" {
+		terminal, err := r.ThreadSession(ctx, board.Store{Home: r.Home, Role: "cloud"}, o.Project, o.RequestNumber)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(terminal)
 	}
 	if o.Kind == "connector_health" || o.Kind == "mac_online" {
 		if err := localssh.ProbeMac(ctx, r.Home, *o.Health); err != nil {

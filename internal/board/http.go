@@ -166,9 +166,12 @@ func (s Store) Handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/continue", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Author, Body string }
+		var body struct {
+			Author, Body string
+			Attachments  []Attachment
+		}
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
-			value, err := s.Continue(r.PathValue("id"), n, body.Author, body.Body)
+			value, err := s.FollowUp(r.PathValue("id"), n, body.Author, body.Body, body.Attachments)
 			reply(w, value, err)
 		}
 	})

@@ -237,19 +237,17 @@ pub fn post(
     )?)?)
 }
 
-pub fn reply(project: &str, n: u64, text: &str, author: &str) -> Result<Value> {
-    call(
-        "POST",
-        &format!("/v1/projects/{project}/requests/{n}/messages"),
-        Some(json!({"body": text.trim(), "author": author})),
-    )
-}
-
-pub fn continue_request(project: &str, n: u64, text: &str, author: &str) -> Result<Value> {
+pub fn continue_request(
+    project: &str,
+    n: u64,
+    text: &str,
+    author: &str,
+    images: &[Attachment],
+) -> Result<Value> {
     call(
         "POST",
         &format!("/v1/projects/{project}/requests/{n}/continue"),
-        Some(json!({"body":text.trim(),"author":author})),
+        Some(json!({"body":text.trim(),"author":author,"attachments":images})),
     )
 }
 

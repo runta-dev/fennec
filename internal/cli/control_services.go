@@ -33,6 +33,7 @@ import (
 // daemonServices owns the account-scoped processes. UI clients never own these
 // contexts, pipes, credentials, preferences or reconnect timers.
 type daemonServices struct {
+	boardCore                                  *boardLocalCore
 	auditStore                                 *audit.Store
 	sandboxPolicy                              func() sandbox.Policy
 	network                                    *connectivity.Monitor
