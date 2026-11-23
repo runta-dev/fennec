@@ -66,3 +66,33 @@ func TestQueueOrderPauseAndSlots(t *testing.T) {
 		t.Fatal(q)
 	}
 }
+
+func TestAgentResultAwaitsUserReview(t *testing.T) {
+	s := testStore(t)
+	p, _ := s.CreateProject(Project{Name: "Review", Queue: 1})
+	if _, err := s.CreateRequest(p.ID, "me", "Fix it", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(p.ID, 1, "calm-fox", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Complete(p.ID, 1, "calm-fox", "codex", "Fixed", Resolved)
+	if err != nil || r.Status != Review || r.Runs[0].State != Resolved {
+		t.Fatal("agent result skipped review", r.Status, err)
+	}
+	if r, err = s.Complete(p.ID, 1, "calm-fox", "codex", "Fixed", Resolved); err != nil || r.Status != Review {
+		t.Fatal("duplicate completion", r.Status, err)
+	}
+	if r, err = s.FollowUp(p.ID, 1, "me", "Not quite", nil); err != nil || r.Status != Queued {
+		t.Fatal("reply did not send it back", r.Status, err)
+	}
+	if _, err := s.Claim(p.ID, 1, "calm-fox", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Complete(p.ID, 1, "calm-fox", "codex", "Fixed again", Resolved); err != nil {
+		t.Fatal(err)
+	}
+	if r, err = s.Change(p.ID, 1, "", Resolved); err != nil || r.Status != Resolved {
+		t.Fatal("mark done from review", r.Status, err)
+	}
+}

@@ -306,6 +306,12 @@ pub fn status_pill(status: &str) -> Div {
             c("tint"),
             c("orange").opacity(0.35),
         ),
+        "review" => (
+            crate::i18n::t("review"),
+            c("accent_text"),
+            c("tint"),
+            c("orange").opacity(0.35),
+        ),
         "working" => (
             crate::i18n::t("working"),
             c("ok"),

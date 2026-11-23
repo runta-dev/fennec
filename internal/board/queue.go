@@ -72,12 +72,14 @@ func sortRequests(list []Summary, order []int) {
 			return 0
 		case Failed:
 			return 1
-		case Working:
+		case Review:
 			return 2
-		case Queued:
+		case Working:
 			return 3
-		default:
+		case Queued:
 			return 4
+		default:
+			return 5
 		}
 	}
 	sort.SliceStable(list, func(i, j int) bool {
@@ -222,7 +224,12 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	if r.Session != session || r.Agent != agent {
 		return r, ErrConflict
 	}
-	if r.Status == outcome {
+	// An agent cannot mark a request done; its finished work awaits review.
+	status := outcome
+	if outcome == Resolved {
+		status = Review
+	}
+	if r.Status == status {
 		for _, m := range r.Messages {
 			if m.RunID == session && m.Agent == agent && m.Body == body {
 				return r, nil
@@ -242,7 +249,7 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	pending := r.HasPendingFollowUp()
 	id := len(r.Messages) + 1
 	r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
-	r.Status, r.Updated = outcome, now
+	r.Status, r.Updated = status, now
 	if !pending {
 		r.Delivered = id
 	}

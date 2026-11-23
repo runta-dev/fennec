@@ -72,7 +72,7 @@ func (s Store) Handler() http.Handler {
 				if sum.Status != Resolved {
 					item.Open++
 				}
-				if sum.Status == NeedsYou {
+				if sum.Status == NeedsYou || sum.Status == Review {
 					item.NeedsYou++
 				}
 			}

@@ -42,14 +42,14 @@ func TestFollowUpDuringExecutionKeepsSlotThenTakesPriority(t *testing.T) {
 		t.Fatal("accepted stale completion", err)
 	}
 	r, err = s.Complete(p.ID, a.Number, "green-leaf", "claude", "Done", Resolved)
-	if err != nil || r.Status != Resolved {
+	if err != nil || r.Status != Review {
 		t.Fatal("input scheduled twice", r, err)
 	}
 	if err = s.QueuePendingFollowUps(); err != nil {
 		t.Fatal(err)
 	}
 	r, _ = s.Request(p.ID, a.Number)
-	if r.Status != Resolved {
+	if r.Status != Review {
 		t.Fatal("requeued consumed follow-up")
 	}
 }

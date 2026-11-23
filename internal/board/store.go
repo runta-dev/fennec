@@ -24,6 +24,9 @@ const (
 	Queued   = "queued"
 	Working  = "working"
 	NeedsYou = "you"
+	// Review: the agent reported its work finished. Only the user's mark
+	// done moves it to Resolved; a reply sends it back to the agent.
+	Review   = "review"
 	Resolved = "resolved"
 	Failed   = "failed"
 	Unknown  = "unknown"
@@ -598,7 +601,7 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 	switch status {
 	case "":
 	case Resolved:
-		if r.Status != NeedsYou && r.Status != Failed && r.Status != Resolved {
+		if r.Status != NeedsYou && r.Status != Review && r.Status != Failed && r.Status != Resolved {
 			return r, ErrConflict
 		}
 		r.Status = Resolved

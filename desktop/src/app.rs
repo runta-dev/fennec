@@ -2263,10 +2263,11 @@ impl FennecWindow {
         let group = |status: &str| match status {
             "you" => 0,
             "failed" => 1,
-            "unknown" => 2,
-            "working" => 3,
-            "queued" => 4,
-            _ => 5,
+            "review" => 2,
+            "unknown" => 3,
+            "working" => 4,
+            "queued" => 5,
+            _ => 6,
         };
         shown.sort_by_key(|r| group(&r.status));
         let open_count = all.iter().filter(|r| !r.resolved()).count();
@@ -2444,6 +2445,7 @@ impl FennecWindow {
                             .text_color(c("f_muted"))
                             .child(t(match r.status.as_str() {
                                 "you" => "needs_you",
+                                "review" => "review",
                                 "working" => "working",
                                 "queued" => "queued",
                                 "failed" => "failed",
@@ -2786,7 +2788,7 @@ impl FennecWindow {
         let session_route = r
             .active_session(&self.sessions)
             .map(|s| s.address.clone());
-        let can_resolve = resolved || matches!(r.status.as_str(), "you" | "failed");
+        let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
         v_flex()
             .flex_1()
             .min_w_0()

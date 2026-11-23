@@ -34,7 +34,7 @@ func (s Store) QueuePendingFollowUps() error {
 			return err
 		}
 		for _, item := range list {
-			if item.Status != NeedsYou && item.Status != Failed && item.Status != Resolved {
+			if item.Status != NeedsYou && item.Status != Review && item.Status != Failed && item.Status != Resolved {
 				continue
 			}
 			r, err := s.Request(p.ID, item.Number)
