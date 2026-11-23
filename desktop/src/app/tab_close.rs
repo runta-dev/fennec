@@ -2,6 +2,42 @@
 use super::*;
 
 impl FennecWindow {
+    pub(super) fn tab_closed(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let selected = match &self.route {
+            Some(Route::Session(root)) => Some(self.shown_tab(root)),
+            _ => None,
+        };
+        // Keep the global key context alive while the focused pane is removed.
+        if selected.as_deref() == Some(key) {
+            self.focus.focus(window, cx);
+        }
+        self.layout.intent += 1;
+        if let Some(address) = key.strip_prefix("cloud:") {
+            if let Some(events) = &mut self.cloud_events {
+                events.forget_terminal(address);
+            }
+            if let Some(rows) = self.cloud_listing["terminals"].as_array_mut() {
+                rows.retain(|row| row["address"] != address);
+            }
+        } else {
+            let address = key.strip_prefix("local:").unwrap_or(key);
+            if let Some(events) = &mut self.events {
+                events.forget_terminal(address);
+            }
+            for tabs in self.shells.values_mut() {
+                tabs.retain(|tab| tab != address);
+            }
+        }
+        self.terms.remove(key);
+        if self.layout.selection.as_deref() == Some(key) {
+            self.layout.selection = None;
+        }
+        self.layout.snapshot = serde_json::Value::Null;
+        self.terminals_changed(window, cx);
+        self.tab.retain(|root, tab| root != key && tab != key);
+        cx.notify();
+    }
+
     pub(super) fn confirm_close_other_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.close_others.is_some() {
             return;

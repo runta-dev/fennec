@@ -83,6 +83,11 @@ impl EventLines {
         json!({ "terminals": live })
     }
 
+    /// Apply a confirmed close immediately, before its stream notification arrives.
+    pub fn forget_terminal(&mut self, address: &str) {
+        self.terminals.retain(|terminal| terminal["address"] != address);
+    }
+
     /// Parent references from cores may still use host names. All app
     /// consumers need the same addresses as the terminal records themselves.
     pub fn live_for(&self, hello: &Value, machines: &Value) -> Value {

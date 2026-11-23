@@ -493,6 +493,7 @@ impl FennecWindow {
     }
 
     fn terminals_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let previously_shown = match &self.route {Some(Route::Session(root))=>Some(self.shown_tab(root)),_=>None};
         let live = serde_json::json!({"terminals": self.terminal_records()});
         if !crate::core_bin::cloud() {
             self.shells.clear();
@@ -525,6 +526,9 @@ impl FennecWindow {
         self.apply_activity();
         self.layout_snapshot();
         self.apply_layout();
+        if previously_shown.as_ref().is_some_and(|key| !self.layout.members.contains_key(key)) {
+            self.focus.focus(window, cx);
+        }
         if let Some(Route::Session(a)) = &self.route
             && self.confirmed_session.as_ref() != Some(a)
             && !a.starts_with("local:")
@@ -851,7 +855,7 @@ impl FennecWindow {
         let sub = cx.subscribe_in(
             &view,
             window,
-            move |this, _, ev: &TerminalEvent, _, cx| match ev {
+            move |this, _, ev: &TerminalEvent, window, cx| match ev {
                 TerminalEvent::Link(click) => {
                     if let Some(target @ crate::links::Target::Url(_)) = &click.native {
                         crate::links::open(target);
@@ -859,13 +863,15 @@ impl FennecWindow {
                 }
                 TerminalEvent::Notice { title, body } => this.say(format!("{title}: {body}"), cx),
                 TerminalEvent::Ended => {
-                    this.terms.remove(&addr);
                     if addr.starts_with("cloud:") {
+                        if matches!(&this.route,Some(Route::Session(root)) if this.shown_tab(root)==addr) {
+                            this.focus.focus(window, cx);
+                        }
+                        this.terms.remove(&addr);
                         this.cloud_views.remove(&addr);
                         this.cloud_attach_failed.insert(addr.clone());
-                    }
-                    if let Some(a) = addr.strip_prefix("local:") {
-                        this.forget_shell(a);
+                    } else {
+                        this.tab_closed(&addr, window, cx);
                     }
                     cx.notify();
                 }
@@ -1020,20 +1026,20 @@ impl FennecWindow {
         });
     }
 
-    fn close_shell(&mut self, address: String, cx: &mut Context<Self>) {
+    fn close_shell(&mut self, address: String, window: &mut Window, cx: &mut Context<Self>) {
         let Some(core) = self.local.clone() else {
             return;
         };
         let target = address.clone();
-        self._tasks.push(cx.spawn(async move |this, cx| {
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
                     core.call("terminal.kill", serde_json::json!({"terminal":target}))
                 })
                 .await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 if result.is_ok() {
-                    this.forget_shell(&address);
+                    this.tab_closed(&format!("local:{address}"), window, cx);
                 } else {
                     this.say(t("try_again"), cx);
                 }
@@ -1041,28 +1047,6 @@ impl FennecWindow {
             });
         }));
     }
-    fn forget_shell(&mut self, address: &str) {
-        let key = format!("local:{address}");
-        if let Some(Route::Session(id)) = &self.route {
-            if self.shown_tab(id) == key {
-                let keys = self.tab_keys();
-                let index = keys.iter().position(|k| k == &key).unwrap_or(0);
-                let next = keys
-                    .get(index.saturating_sub(1))
-                    .filter(|k| *k != &key)
-                    .cloned()
-                    .unwrap_or_else(|| id.clone());
-                self.tab.insert(id.clone(), next.clone());
-                self.pending_focus = Some(next);
-            }
-        }
-        self.terms.remove(&key);
-        for list in self.shells.values_mut() {
-            list.retain(|a| a != address);
-        }
-        self.tab.retain(|_, t| t != &key);
-    }
-
     fn open_app_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.route != Some(Route::AppSettings) {
             self.app_preferences.previous = self.route.clone();
@@ -1172,8 +1156,11 @@ impl FennecWindow {
         }
     }
     fn close_tab_key(&mut self, key: String, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(&self.route,Some(Route::Session(root)) if self.shown_tab(root)==key) {
+            self.focus.focus(window, cx);
+        }
         if let Some(address) = key.strip_prefix("local:") {
-            self.close_shell(address.to_owned(), cx);
+            self.close_shell(address.to_owned(), window, cx);
             return;
         }
         if key.starts_with("cloud:") {
@@ -1210,9 +1197,8 @@ impl FennecWindow {
             let _=this.update_in(cx,|this,window,cx|match result{
                 Ok(promoted)=>{
                     let select=this.route==Some(Route::Session(key.clone()))||this.route.is_none();
-                    this.terms.remove(&key);this.sessions.retain(|s|s.address!=key);
+                    this.tab_closed(&key,window,cx);
                     if let Some(record)=promoted{this.adopt_local_terminal(record,select,cx);}
-                    else if select{this.route=this.sessions.first().map(|s|Route::Session(s.address.clone()));if let Some(Route::Session(id))=&this.route{this.pending_focus=Some(this.shown_tab(id));}}
                     this.ensure_local_terminal(window,cx);cx.notify();
                 },Err(e)=>this.say(format!("{e:#}"),cx)
             });

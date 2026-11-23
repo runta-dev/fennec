@@ -102,10 +102,12 @@ impl Render for TabDrag {
 
 impl FennecWindow {
     pub(super) fn layout_group(&self, root: &str) -> Option<&Group> {
-        self.layout
-            .groups
-            .iter()
-            .find(|g| g.tabs.first().is_some_and(|k| k == root))
+        self.layout.groups.iter().find(|g| {
+            g.tabs
+                .iter()
+                .find(|key| self.layout.members.contains_key(*key))
+                .is_some_and(|k| k == root)
+        })
     }
     pub(super) fn group_tabs(&self, root: &str) -> Vec<String> {
         if let Some(group) = self.layout_group(root) {
@@ -219,7 +221,7 @@ impl FennecWindow {
             let Some(mut session) = self.layout.members.get(root).cloned() else {
                 continue;
             };
-            let active = self
+            let mut active = self
                 .tab
                 .get(root)
                 .filter(|k| group.tabs.contains(k) && self.layout.members.contains_key(*k))
@@ -231,6 +233,22 @@ impl FennecWindow {
                         root.clone()
                     }
                 });
+            if let Some(current) = selected.as_ref().filter(|key| group.tabs.contains(key) && self.layout.members.contains_key(*key)) {
+                active = current.clone();
+            }
+            if let Some(closed) = selected
+                .as_ref()
+                .filter(|key| group.tabs.contains(key) && !self.layout.members.contains_key(*key))
+            {
+                let index = group.tabs.iter().position(|key| key == closed).unwrap_or(0);
+                if let Some(next) = group.tabs[index + 1..]
+                    .iter()
+                    .chain(group.tabs[..index].iter().rev())
+                    .find(|key| self.layout.members.contains_key(*key))
+                {
+                    active = next.clone();
+                }
+            }
             self.tab.insert(root.clone(), active.clone());
             if group.custom {
                 session.title = self.terminal_title(&active, &session.title);
@@ -271,6 +289,13 @@ impl FennecWindow {
                     .sessions
                     .first()
                     .map(|s| Route::Session(s.address.clone()));
+            }
+        }
+        if let Some(Route::Session(root)) = &self.route {
+            let next = self.shown_tab(root);
+            if selected.as_ref().is_some_and(|old| old != &next) {
+                self.pending_focus = Some(next.clone());
+                self.layout.selection = Some(next);
             }
         }
     }
@@ -657,6 +682,7 @@ impl FennecWindow {
 #[cfg(test)]
 mod tests {
     use super::{EventLines, FennecWindow, Group, Route, json, sessions};
+    use gpui::AppContext;
     use gpui::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 
     fn window(cx: &mut TestAppContext) -> (Entity<FennecWindow>, &mut VisualTestContext) {
@@ -924,5 +950,118 @@ mod tests {
             assert_eq!(request["tab"], "a");
             assert_eq!(request["before"], "c");
         });
+    }
+
+    fn focus_fixture(app: &Entity<FennecWindow>, cx: &mut VisualTestContext, selected: &str) {
+        use gpui_shell::action::ShellAction;
+        cx.update(|_, cx| {
+            cx.bind_keys([
+                gpui::KeyBinding::new("cmd-w", ShellAction::new("tab.close"), Some("FennecWindow")),
+                gpui::KeyBinding::new(
+                    "ctrl-w",
+                    ShellAction::new("tab.close"),
+                    Some("FennecWindow"),
+                ),
+                gpui::KeyBinding::new("cmd-j", ShellAction::new("tab.prev"), Some("FennecWindow")),
+                gpui::KeyBinding::new("ctrl-k", ShellAction::new("tab.next"), Some("FennecWindow")),
+            ])
+        });
+        app.update(cx, |app, cx| {
+            let (core, _) = crate::hc::answering();
+            app.core = Some(core.clone());
+            app.local = Some(core);
+            app.layout.groups[0].tabs.push("c".into());
+            app.layout.groups.truncate(1);
+            app.layout.groups[0].custom = true;
+            app.apply_layout();
+            for key in ["a", "local:b", "c"] {
+                let view = cx.new(|cx| {
+                    crate::terminal::TerminalView::attach(
+                        crate::hc::offline(),
+                        key.into(),
+                        (40, 8),
+                        cx,
+                    )
+                });
+                app.terms.insert(key.into(), view);
+            }
+            app.set_shown_tab("a".into(), selected.into(), cx);
+        });
+        cx.run_until_parked();
+    }
+    fn assert_terminal_focus(app: &Entity<FennecWindow>, cx: &mut VisualTestContext, key: &str) {
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let app = app.read(cx);
+            let Some(Route::Session(root)) = &app.route else {
+                panic!("session route missing")
+            };
+            assert_eq!(app.shown_tab(root), key);
+            assert!(
+                app.terms[key].read(cx).focus_target(cx).is_focused(window),
+                "{key} must own keyboard focus"
+            );
+        });
+    }
+    #[gpui::test]
+    async fn close_shortcuts_transfer_focus_and_keep_tab_navigation_working(
+        cx: &mut TestAppContext,
+    ) {
+        let (app, cx) = window(cx);
+        focus_fixture(&app, cx, "local:b");
+        assert_terminal_focus(&app, cx, "local:b");
+        cx.simulate_keystrokes("cmd-w");
+        cx.condition(&app, |app, _| !app.layout.members.contains_key("local:b"))
+            .await;
+        assert_terminal_focus(&app, cx, "c");
+        cx.simulate_keystrokes("cmd-j");
+        assert_terminal_focus(&app, cx, "a");
+        cx.simulate_keystrokes("ctrl-k");
+        assert_terminal_focus(&app, cx, "c");
+        cx.simulate_keystrokes("ctrl-w");
+        cx.condition(&app, |app, _| !app.layout.members.contains_key("c"))
+            .await;
+        assert_terminal_focus(&app, cx, "a");
+    }
+    #[gpui::test]
+    async fn closing_first_tab_keeps_remaining_group_and_focus(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        focus_fixture(&app, cx, "a");
+        cx.simulate_keystrokes("cmd-w");
+        cx.condition(&app, |app, _| !app.layout.members.contains_key("a"))
+            .await;
+        assert_terminal_focus(&app, cx, "local:b");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.group_tabs("local:b"), vec!["local:b", "c"])
+        });
+        cx.simulate_keystrokes("ctrl-k");
+        assert_terminal_focus(&app, cx, "c");
+    }
+    #[gpui::test]
+    fn closing_background_anchor_does_not_steal_active_terminal_focus(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        focus_fixture(&app, cx, "c");
+        assert_terminal_focus(&app, cx, "c");
+        cx.update(|window, cx| app.update(cx, |app, cx| app.tab_closed("a", window, cx)));
+        assert_terminal_focus(&app, cx, "c");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.group_tabs("local:b"), vec!["local:b", "c"])
+        });
+    }
+    #[gpui::test]
+    fn finish_event_before_close_reply_still_hands_off_focus(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        focus_fixture(&app, cx, "local:b");
+        cx.update(|window, cx| {
+            app.update(cx, |app, cx| {
+                app.events.as_mut().unwrap().forget_terminal("b");
+                app.terminals_changed(window, cx);
+            })
+        });
+        assert_terminal_focus(&app, cx, "c");
+        cx.update(|window, cx| app.update(cx, |app, cx| app.tab_closed("local:b", window, cx)));
+        assert_terminal_focus(&app, cx, "c");
+        cx.simulate_keystrokes("cmd-j");
+        assert_terminal_focus(&app, cx, "a");
     }
 }

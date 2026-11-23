@@ -209,6 +209,7 @@ impl FennecWindow {
             let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(_) => {
                     this.cloud_generation += 1;
+                    this.tab_closed(&key, window, cx);
                     this.detach_cloud_view(&key, cx);
                     let mut listing = this.cloud_listing.clone();
                     if let Some(rows) = listing["terminals"].as_array_mut() {
