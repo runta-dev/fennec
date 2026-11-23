@@ -927,6 +927,7 @@ impl FennecWindow {
 
     fn queue_tab(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
         let limit = p.queue.max(1);
+        let paused = p.paused;
         let working: Vec<board::Request> = self
             .requests
             .get(&p.id)
@@ -1001,6 +1002,33 @@ impl FennecWindow {
         };
         v_flex()
             .gap(px(18.0))
+            .child(
+                h_flex()
+                    .gap(px(12.0))
+                    .child(
+                        secondary_button(
+                            "queue-pause",
+                            if paused {
+                                t("resume_queue")
+                            } else {
+                                t("pause_queue")
+                            },
+                            false,
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.patch_project(json!({"paused": !paused}), window, cx)
+                            },
+                        )),
+                    )
+                    .child(div().text_size(px(11.5)).text_color(c("f_muted")).child(
+                        match p.sync_status.as_str() {
+                            "offline" => t("queue_offline"),
+                            "pending" => t("queue_pending"),
+                            _ => String::new(),
+                        },
+                    )),
+            )
             .child(
                 h_flex()
                     .bg(c("f_card"))

@@ -801,26 +801,6 @@ impl FennecWindow {
         }));
     }
 
-    fn pause_queue(
-        &mut self,
-        project: String,
-        paused: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let result = cx
-                .background_spawn(async move {
-                    board::update_project(&project, serde_json::json!({"paused":paused}))
-                })
-                .await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
-                Ok(_) => this.refresh_now(window, cx),
-                Err(e) => this.say(format!("{e:#}"), cx),
-            });
-        }));
-    }
-
     /// The terminal view of a cloud terminal, or of a local shell (`local:<address>`).
     fn terminal(
         &mut self,
@@ -2223,8 +2203,6 @@ impl FennecWindow {
                         .child(count.to_string()),
                 )
         };
-        let pause_project = p.id.clone();
-        let paused = p.paused;
         let cards = shown.iter().enumerate().map(|(index, r)| {
             let selected = self.open == Some(r.number);
             let n = r.number;
@@ -2435,43 +2413,6 @@ impl FennecWindow {
                                 )
                             }))
                             .child(ui::icon("gear", 15.0, c("f_muted")))
-                    }),
-            )
-            .child(
-                h_flex()
-                    .px(px(18.0))
-                    .py(px(6.0))
-                    .gap(px(8.0))
-                    .child(
-                        secondary_button(
-                            "pause-queue",
-                            if paused {
-                                t("resume_queue")
-                            } else {
-                                t("pause_queue")
-                            },
-                            false,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.pause_queue(pause_project.clone(), !paused, window, cx)
-                            },
-                        )),
-                    )
-                    .child(div().text_size(px(11.0)).text_color(c("f_muted")).child(
-                        crate::i18n::tf("concurrency_limit", &[("n", &p.queue.to_string())]),
-                    )),
-            )
-            .child(
-                div()
-                    .h(px(20.0))
-                    .px(px(18.0))
-                    .text_size(px(11.0))
-                    .text_color(c("f_muted"))
-                    .child(match p.sync_status.as_str() {
-                        "offline" => t("queue_offline"),
-                        "pending" => t("queue_pending"),
-                        _ => String::new(),
                     }),
             )
             .child(

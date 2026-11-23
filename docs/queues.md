@@ -91,7 +91,9 @@ execution location. UI content remains available while its freshness is unknown.
 ## Interaction
 
 The queue shows Needs you, Running and Queued groups, plus Failed and Done.
-Waiting requests support drag ordering and Run next. Queue pause prevents new
+Waiting requests support drag ordering and Run next. Pause/resume and concurrency
+controls live only in Queue settings > Execution, not on the request-list page.
+Queue pause prevents new
 assignments, not current execution; stopping a run remains a separate session
 operation. Comment appends without scheduling. Continue explicitly enqueues
 another run. Needs you releases a slot but preserves the old session and result.
