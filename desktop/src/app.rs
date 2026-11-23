@@ -176,6 +176,7 @@ impl FennecWindow {
         let reply = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 8)
+                .submit_on_enter(true)
                 .placeholder(t("reply"))
         });
         let mut subs = vec![
@@ -197,9 +198,7 @@ impl FennecWindow {
                 &reply,
                 window,
                 |this, _, ev: &InputEvent, window, cx| match ev {
-                    InputEvent::PressEnter {
-                        secondary: true, ..
-                    } => this.send_reply(window, cx),
+                    InputEvent::PressEnter { shift: false, .. } => this.send_reply(window, cx),
                     InputEvent::Change => cx.notify(),
                     _ => {}
                 },
