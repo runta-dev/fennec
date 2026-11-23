@@ -1095,6 +1095,31 @@ mod tests {
         assert!(closest<=px(6.5),"the widest age must leave only the intended six-pixel gap");
     }
 
+    #[gpui::test]
+    fn sidebar_rows_never_overlap_during_repeated_state_changes(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        for state in ["done", "working", "idle", "working", "done", "working"] {
+            cx.update(|_, cx| app.update(cx, |app, cx| {
+                app.activity["a"]["state"] = json!(state);
+                app.activity["a"]["group_state"] = json!(state);
+                app.sessions.reverse();
+                app.apply_activity();
+                cx.notify();
+            }));
+            cx.run_until_parked();
+            let mut bounds = ["session-row-a", "session-row-local:b", "session-row-c"]
+                .map(|id| cx.debug_bounds(id).expect("visible session row"));
+            bounds.sort_by(|a, b| a.top().partial_cmp(&b.top()).unwrap());
+            for pair in bounds.windows(2) {
+                assert!(pair[0].bottom() <= pair[1].top(), "rows overlap after {state}");
+            }
+            let before = app.read_with(cx, |app, _| app.session_list("").iter().map(super::super::row_key).collect::<Vec<_>>());
+            cx.update(|_, cx| app.update(cx, |app, _| app.sessions.reverse()));
+            let after = app.read_with(cx, |app, _| app.session_list("").iter().map(super::super::row_key).collect::<Vec<_>>());
+            assert_eq!(before, after, "snapshot order must not reshuffle peers");
+        }
+    }
+
     fn resize_sidebar(cx: &mut VisualTestContext, delta: f32) {
         cx.run_until_parked();
         let bounds=cx.debug_bounds("sidebar-column").unwrap();

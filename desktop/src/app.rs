@@ -113,10 +113,6 @@ pub struct FennecWindow {
     /// The running sidebar animation: the target, the starting amount, and when it started.
     sidebar_motion: Option<(bool, f32, std::time::Instant)>,
     pub(crate) sidebar_resize: sidebar_resize::State,
-    /// Session rows easing to a new place after their state moved them.
-    row_motion: row_motion::RowMotion,
-    /// The instant this frame's row positions are drawn at.
-    row_frame: std::time::Instant,
     focus: FocusHandle,
     pending_focus: Option<String>,
     confirmed_session: Option<String>,
@@ -274,8 +270,6 @@ impl FennecWindow {
             sidebar_shown: 1.0,
             sidebar_motion: None,
             sidebar_resize: Default::default(),
-            row_motion: Default::default(),
-            row_frame: std::time::Instant::now(),
             focus: cx.focus_handle(),
             pending_focus: None,
             confirmed_session: None,
@@ -1378,38 +1372,6 @@ impl FennecWindow {
         }
     }
 
-    /// Starts a glide for each session row (and state header) whose place in
-    /// the sidebar changed since the last frame, and keeps frames coming while
-    /// any is moving.
-    fn step_rows(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let query = self.query(cx);
-        let mut layout = Vec::new();
-        let mut y = 0.0;
-        let mut section = None;
-        for r in self.session_list(&query) {
-            if r.agent && section != Some(r.state) {
-                section = Some(r.state);
-                layout.push((format!("g-{}", state_label(r.state).0), y));
-                y += GROUP_HEADER_HEIGHT;
-            }
-            layout.push((row_key(&r), y));
-            y += ROW_HEIGHT + ROW_GAP;
-        }
-        let now = std::time::Instant::now();
-        self.row_frame = now;
-        if self.row_motion.update(&layout, &query, now) {
-            window.request_animation_frame();
-            // Animation frames can pause (a hidden window); one late redraw still lands the rows.
-            cx.spawn(async move |this, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_secs_f32(row_motion::SECONDS + 0.05))
-                    .await;
-                let _ = this.update(cx, |_, cx| cx.notify());
-            })
-            .detach();
-        }
-    }
-
     /// The sidebar's session rows in order: plain shells first, then agents,
     /// local or cloud, grouped by state.
     fn session_list<'a>(&'a self, q: &str) -> Vec<SidebarRow<'a>> {
@@ -1429,7 +1391,14 @@ impl FennecWindow {
                     || self.session_directory(s).to_lowercase().contains(q)
             })
             .collect();
-        list.sort_by_key(|r| (r.agent, if r.agent { r.state } else { State::Unknown }));
+        // Activity timestamps and snapshot order change independently of the
+        // visible group. Keep peers stable rather than shuffling every poll.
+        list.sort_by(|a, b| {
+            (a.agent, if a.agent { a.state } else { State::Unknown })
+                .cmp(&(b.agent, if b.agent { b.state } else { State::Unknown }))
+                .then_with(|| a.session.address.cmp(&b.session.address))
+                .then_with(|| a.tab.cmp(&b.tab))
+        });
         list
     }
 
@@ -1924,7 +1893,6 @@ impl FennecWindow {
             let run = TextRun {len:age.len(),font:age_font.clone(),..Default::default()};
             window.text_system().shape_line(age.into(),px(11.0),&[run],None).width()
         }).fold(px(0.0), |width,next|width.max(next));
-        let moved = |key: &str| px(self.row_motion.offset(key, self.row_frame));
         let mut section = None;
         for (i, r) in list.iter().enumerate() {
             let s = r.session;
@@ -1938,9 +1906,8 @@ impl FennecWindow {
                     .count();
                 groups.push(
                     h_flex()
-                        .relative()
-                        .top(moved(&format!("g-{label}")))
                         .h(px(GROUP_HEADER_HEIGHT))
+                        .flex_none()
                         .line_height(px(18.0))
                         .px(px(8.0))
                         .pt(px(10.0))
@@ -1972,10 +1939,9 @@ impl FennecWindow {
                 }
             };
             let id = row_key(r);
-            let offset = moved(&id);
             groups.push(
                 self.context_row(
-                    row(SharedString::from(id), selected).relative().top(offset).debug_selector(||format!("session-row-{}",tab)),
+                    row(SharedString::from(id), selected).flex_none().debug_selector(||format!("session-row-{}",tab)),
                     context_menu::Target::Terminal {
                         session: s.address.clone(),
                         tab: tab.clone(),
@@ -2051,7 +2017,6 @@ impl FennecWindow {
                                 .debug_selector(|| format!("session-age-{}", row_key(r)))
                                 .child(sessions::age(r.since_ms, now)))),
                 )
-                .with_animation(SharedString::from(format!("row-enter-{}",row_key(r))), Animation::new(Duration::from_millis(220)).with_easing(|t|1.0-(1.0-t).powi(3)), |row,t|row.opacity(0.5+0.5*t))
                 .into_any_element(),
             );
         }
@@ -3061,7 +3026,6 @@ impl Render for FennecWindow {
         self.sync_input_styles(cx);
         self.step_sidebar(window, cx);
         let sidebar_width=self.sidebar_width(window);
-        self.step_rows(window, cx);
         self.step_tabs(window, cx);
         let route = self.route.clone();
         let main = match &route {

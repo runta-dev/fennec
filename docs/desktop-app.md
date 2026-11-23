@@ -273,8 +273,9 @@ starting, killing or renaming the underlying agents. Existing terminal view
 keys survive regrouping. Close applies only to the chosen tab, including the
 first tab of a group. A late move response cannot override newer navigation.
 
-Tab and sidebar displacement share a 280 ms cubic ease-out that can reverse
-from its current drawn position. Rows enter over 220 ms; selected terminal
+Tab displacement uses a 280 ms cubic ease-out that can reverse
+from its current drawn position. Sidebar state groups reflow immediately,
+with stable ordering within each group and no overlapping row animations; selected terminal
 content fades in over 160 ms. The drag preview tracks the pointer directly.
 GPUI mouse-event tests cover sidebar-to-strip merge, strip reordering,
 sidebar split, invalid drops and Escape. Store tests cover restart, stale
