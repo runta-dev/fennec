@@ -320,7 +320,17 @@ impl FennecWindow {
                         }
                     }
                     Err(_) => {
-                        this.notice = Some(t("request_image_not_ready"));
+                        let message = t("request_image_not_ready");
+                        this.notice = Some(message.clone());
+                        this._tasks.push(cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(Duration::from_secs(5)).await;
+                            let _ = this.update(cx, |this, cx| {
+                                if this.notice.as_deref() == Some(message.as_str()) {
+                                    this.notice = None;
+                                    cx.notify();
+                                }
+                            });
+                        }));
                     }
                 }
                 cx.notify();
