@@ -19,6 +19,9 @@ impl FennecWindow {
             .filter(|key| key != &shown)
             .collect();
         if targets.is_empty() {
+            self.prefix = false;
+            self.pending_focus = Some(shown);
+            cx.notify();
             return;
         }
         self.prefix = false;
@@ -37,9 +40,13 @@ impl FennecWindow {
                 if confirmed {
                     // Do not act on replacement tabs or a different group if
                     // a session disappeared while the native prompt was open.
-                    let current = this.tab_keys();
+                    let current: Vec<_> = this.tab_keys().into_iter().skip(1).collect();
+                    let selected = match &this.route {
+                        Some(Route::Session(root)) => Some(this.shown_tab(root)),
+                        _ => None,
+                    };
                     for key in targets {
-                        if current.contains(&key) {
+                        if current.contains(&key) && selected.as_ref() != Some(&key) {
                             this.close_tab_key(key, window, cx);
                         }
                     }
