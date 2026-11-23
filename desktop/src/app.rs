@@ -2937,18 +2937,6 @@ impl FennecWindow {
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .child(self.tab_strip(address, cx))
-                    .when(crate::core_bin::local().is_some(), |d| {
-                        let session = s.clone();
-                        d.child(
-                            ui::compact_icon_button("new-tab", "plus")
-                                .ml(px(-2.0))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if let Some(s) = session.clone() {
-                                        this.new_shell(s, window, cx);
-                                    }
-                                })),
-                        )
-                    })
                     .child(div().flex_1())
                     .when_some(request, |d, (pid, n, title)| {
                         d.child(secondary_button("goto-request", title, false).on_click(

@@ -36,6 +36,10 @@ pub(super) struct Layout {
     #[serde(skip)]
     pub motion: row_motion::RowMotion,
     #[serde(skip)]
+    pub scroll: ScrollHandle,
+    #[serde(skip)]
+    pub scroll_selection: Option<(String, Pixels, usize)>,
+    #[serde(skip)]
     pub frame: Option<std::time::Instant>,
     #[serde(skip)]
     pub displayed: String,
@@ -382,9 +386,11 @@ impl FennecWindow {
             }
         }
         let end_group = group.clone();
-        h_flex()
+        let strip = h_flex()
             .id("session-tab-strip")
-            .flex_1()
+            .debug_selector(|| "session-tab-strip".into())
+            .flex_initial()
+            .track_scroll(&self.layout.scroll)
             .min_w_0()
             .overflow_x_scroll()
             .gap(px(6.0))
@@ -407,10 +413,11 @@ impl FennecWindow {
                         .relative()
                         .left(px(offset))
                         .w(px(196.0))
+                        .min_w(px(96.0))
                         .h(px(28.0))
                         .px(px(9.0))
                         .gap(px(6.0))
-                        .flex_none()
+                        .flex_initial()
                         .rounded(px(7.0))
                         .bg(if &active == key {
                             c("f_card")
@@ -478,30 +485,32 @@ impl FennecWindow {
                         }))
                         .child(ui::icon("close", 10.0, c("f_muted"))),
                 )
-            }))
-            .child(
-                div()
-                    .id("tab-append")
-                    .debug_selector(|| "tab-append".into())
-                    .w(px(28.0))
-                    .h(px(28.0))
-                    .flex_none()
-                    .rounded(px(5.0))
-                    .drag_over::<TabDrag>(|s, _, _, _| s.bg(c("f_line")))
-                    .on_drag_move::<TabDrag>(cx.listener(
-                        |this, event: &DragMoveEvent<TabDrag>, _, cx| {
-                            if event.bounds.contains(&event.event.position)
-                                && this.layout.hover.take().is_some()
+            }));
+        let parent = root.to_owned();
+        h_flex()
+            .flex_initial()
+            .min_w_0()
+            .gap(px(6.0))
+            .child(strip)
+            .when(crate::core_bin::local().is_some() || cfg!(test), |d| {
+                d.child(
+                    ui::compact_icon_button("new-tab", "plus")
+                        .debug_selector(|| "tab-append".into())
+                        .flex_none()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if let Some(session) =
+                                this.sessions.iter().find(|s| s.address == parent).cloned()
                             {
-                                cx.notify();
+                                this.new_shell(session, window, cx);
                             }
-                        },
-                    ))
-                    .on_drop(cx.listener(move |this, drag: &TabDrag, _, cx| {
-                        cx.stop_propagation();
-                        this.move_tab(drag, end_group.clone(), String::new(), cx)
-                    })),
-            )
+                        }))
+                        .drag_over::<TabDrag>(|style, _, _, _| style.bg(c("f_line")))
+                        .on_drop(cx.listener(move |this, drag: &TabDrag, _, cx| {
+                            cx.stop_propagation();
+                            this.move_tab(drag, end_group.clone(), String::new(), cx);
+                        })),
+                )
+            })
             .into_any_element()
     }
     pub(super) fn step_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -539,6 +548,17 @@ impl FennecWindow {
             }
         }
         let mut keys = self.tab_keys();
+        let selected = (
+            self.layout.displayed.clone(),
+            window.viewport_size().width + self.layout.scroll.bounds().size.width,
+            keys.len(),
+        );
+        if self.layout.scroll_selection.as_ref() != Some(&selected) {
+            if let Some(index) = keys.iter().position(|key| key == &self.layout.displayed) {
+                self.layout.scroll.scroll_to_item(index);
+            }
+            self.layout.scroll_selection = Some(selected);
+        }
         if let Some((drag, before)) = &self.layout.hover {
             if keys.contains(before) && drag != before {
                 keys.retain(|k| k != drag);
@@ -547,10 +567,16 @@ impl FennecWindow {
                 }
             }
         }
+        let width = self
+            .layout
+            .scroll
+            .bounds_for_item(0)
+            .map(|bounds| f32::from(bounds.size.width))
+            .unwrap_or(196.0);
         let positions: Vec<_> = keys
             .iter()
             .enumerate()
-            .map(|(i, k)| (k.clone(), i as f32 * 202.0))
+            .map(|(i, k)| (k.clone(), i as f32 * (width + 6.0)))
             .collect();
         if self.layout.motion.update(&positions, "", now) {
             window.request_animation_frame();
@@ -715,5 +741,56 @@ mod tests {
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].tab.as_deref(), Some("local:b"));
         });
+    }
+
+    #[gpui::test]
+    fn plus_follows_tabs_and_tabs_shrink_before_scrolling(cx: &mut TestAppContext) {
+        let (app, cx) = window(cx);
+        cx.simulate_resize(gpui::size(px(1440.0), px(820.0)));
+        cx.run_until_parked();
+        let last = cx.debug_bounds("tab-local:b").unwrap();
+        let plus = cx.debug_bounds("tab-append").unwrap();
+        assert!(
+            (plus.left() - last.right()) <= px(10.0),
+            "plus must follow the last tab: {last:?} {plus:?}"
+        );
+        let wide = cx.debug_bounds("tab-a").unwrap().size.width;
+        app.update(cx, |app, cx| {
+            let template = app.layout.members["a"].clone();
+            for index in 0..6 {
+                let key = format!("extra{index}");
+                let mut member = template.clone();
+                member.address = key.clone();
+                app.layout.members.insert(key.clone(), member);
+                app.layout.groups[0].tabs.push(key);
+            }
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let shrunk = cx.debug_bounds("tab-a").unwrap().size.width;
+        assert!(
+            shrunk < wide && shrunk >= px(96.0),
+            "tabs must adapt: wide={wide:?}, shrunk={shrunk:?}"
+        );
+        let last = cx.debug_bounds("tab-extra5").unwrap();
+        let plus = cx.debug_bounds("tab-append").unwrap();
+        assert!(last.right() <= plus.left() && plus.right() <= px(1440.0));
+        cx.simulate_resize(gpui::size(px(900.0), px(600.0)));
+        cx.run_until_parked();
+        app.update(cx, |app, cx| {
+            app.set_shown_tab("a".into(), "extra5".into(), cx)
+        });
+        cx.run_until_parked();
+        let last = cx.debug_bounds("tab-extra5").unwrap();
+        let strip = cx.debug_bounds("session-tab-strip").unwrap();
+        let plus = cx.debug_bounds("tab-append").unwrap();
+        assert!(
+            last.right() <= strip.right() + px(1.0),
+            "selected tab must scroll into view: {last:?} {strip:?}"
+        );
+        assert!(
+            plus.right() <= px(900.0),
+            "plus remains reachable on narrow windows"
+        );
     }
 }
