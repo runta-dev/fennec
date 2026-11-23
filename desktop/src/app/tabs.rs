@@ -1064,4 +1064,24 @@ mod tests {
         cx.simulate_keystrokes("cmd-j");
         assert_terminal_focus(&app, cx, "a");
     }
+
+    #[gpui::test]
+    fn session_age_text_boxes_share_the_same_right_edge(cx: &mut TestAppContext) {
+        let (app,cx)=window(cx);
+        cx.update(|window,cx|app.update(cx,|app,cx| {
+            let mut snapshot=app.events.as_ref().unwrap().live();
+            let now=sessions::now_ms();
+            for (record,minutes) in snapshot["terminals"].as_array_mut().unwrap().iter_mut().zip([3,16,120]) {
+                record["status_ms"]=json!(now-minutes*60_000);
+            }
+            app.events=Some(EventLines::new(&snapshot));
+            app.terminals_changed(window,cx);
+        }));
+        cx.run_until_parked();
+        let short=cx.debug_bounds("session-age-s-a-a").unwrap();
+        let long=cx.debug_bounds("session-age-s-a-local:b").unwrap();
+        let hours=cx.debug_bounds("session-age-s-c").unwrap();
+        assert_eq!(short.right(),long.right(),"3m and 16m must align geometrically");
+        assert_eq!(short.right(),hours.right(),"minute and hour rows must align");
+    }
 }

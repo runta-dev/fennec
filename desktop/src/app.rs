@@ -2031,13 +2031,15 @@ impl FennecWindow {
                     h_flex().w(px(12.0)).flex_none().justify_center().child(mark(self))
                 ))
                 .child(
-                    div()
-                        .min_w(px(30.0))
+                    h_flex()
+                        .w(px(36.0))
                         .flex_none()
-                        .text_right()
+                        .justify_end()
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
-                        .child(sessions::age(r.since_ms, now)),
+                        .child(div()
+                            .debug_selector(|| format!("session-age-{}", row_key(r)))
+                            .child(sessions::age(r.since_ms, now))),
                 )
                 .with_animation(SharedString::from(format!("row-enter-{}",row_key(r))), Animation::new(Duration::from_millis(220)).with_easing(|t|1.0-(1.0-t).powi(3)), |row,t|row.opacity(0.5+0.5*t))
                 .into_any_element(),
