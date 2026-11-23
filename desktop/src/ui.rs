@@ -9,6 +9,23 @@ pub fn c(name: &str) -> Hsla {
     crate::settings::color(name)
 }
 
+/// Keep rich-text surfaces in sync with Fennec's palette on every render.
+pub fn markdown_style() -> gpui_base::text::TextViewStyle {
+    gpui_base::text::TextViewStyle::default()
+        .with_dark(crate::settings::get().dark)
+        .with_foreground(c("f_text"))
+        .with_muted_foreground(c("f_muted"))
+        .with_link(c("accent_text"))
+        .with_border(c("f_line"))
+        .with_selection(c("f_text").opacity(0.2))
+        .with_code_background(c("f_line"))
+        .with_inline_code(HighlightStyle {
+            color: Some(c("f_text")),
+            background_color: Some(c("f_line")),
+            ..Default::default()
+        })
+}
+
 pub struct Assets;
 
 const FILES: &[(&str, &[u8])] = &[

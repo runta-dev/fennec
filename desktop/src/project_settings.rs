@@ -820,6 +820,7 @@ impl FennecWindow {
                             SharedString::from(format!("knowledge-{}", k.id)),
                             k.body.clone(),
                         )
+                        .style(ui::markdown_style())
                         .text_size(px(13.5))
                         .text_color(c("f_text")),
                     )
