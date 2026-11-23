@@ -121,6 +121,9 @@ func (s Scheduler) Step(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			if !s.Store.AttachmentsReady(request) {
+				continue
+			}
 			if target != s.Store.Role {
 				if s.Store.Role == "cloud" && target == "local" && control.Primary {
 					s.report(s.Store.Propose(p.ID, request.Number, worker.Agent, control.Epoch))

@@ -126,6 +126,39 @@ func (b boardClient) call(ctx context.Context, method, path string, body any) (j
 
 func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Controller) {
 	client := boardClient{s: s}
+	c.Additional["board.attachment.url"] = func(_ context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
+		}
+		url, err := (board.Store{Home: s.home, Role: "local"}).AttachmentURL(params.ID)
+		if err != nil {
+			return nil, &control.Fault{Code: "not_ready", Message: "The image is still syncing", Retryable: true}
+		}
+		return map[string]string{"url": url}, nil
+	}
+	imageImports := make(chan struct{}, 2)
+	c.Additional["board.attachment.import"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		select {
+		case imageImports <- struct{}{}:
+			defer func() { <-imageImports }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		var params struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(raw, &params) != nil || !filepath.IsAbs(params.Path) {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
+		}
+		attachment, err := (board.Store{Home: s.home, Role: "local"}).ImportAttachment(params.Path)
+		if err != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Use a PNG or JPEG image up to 8 MB"}
+		}
+		return attachment, nil
+	}
 	c.Additional["board.icon"] = func(_ context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
 			Path string `json:"path"`

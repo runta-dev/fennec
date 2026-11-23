@@ -7,12 +7,16 @@ import (
 )
 
 type SyncReport struct {
-	Seen map[string]uint64 `json:"seen"`
-	At   time.Time         `json:"at"`
+	Seen          map[string]uint64 `json:"seen"`
+	At            time.Time         `json:"at"`
+	PendingImages bool              `json:"pending_images,omitempty"`
 }
 
 func (s Store) RecordSync(seen map[string]uint64) error {
-	return writeJSON(filepath.Join(s.root(), "sync-status.json"), SyncReport{seen, s.now()})
+	return s.RecordImageSync(seen, false)
+}
+func (s Store) RecordImageSync(seen map[string]uint64, pending bool) error {
+	return writeJSON(filepath.Join(s.root(), "sync-status.json"), SyncReport{Seen: seen, At: s.now(), PendingImages: pending})
 }
 func (s Store) SyncStatus() string {
 	if s.Role == "cloud" {
@@ -26,7 +30,7 @@ func (s Store) SyncStatus() string {
 	if err != nil {
 		return "offline"
 	}
-	if state.Seen[state.ID] > report.Seen[state.ID] {
+	if report.PendingImages || state.Seen[state.ID] > report.Seen[state.ID] {
 		return "pending"
 	}
 	return "synced"

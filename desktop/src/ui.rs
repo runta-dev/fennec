@@ -294,7 +294,7 @@ pub fn status_pill(status: &str) -> Div {
             gpui::transparent_black(),
             c("f_field"),
         ),
-        "unknown" => (
+        "unknown" | "input_unknown" => (
             crate::i18n::t("unknown"),
             c("f_muted"),
             gpui::transparent_black(),

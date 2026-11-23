@@ -1,5 +1,11 @@
 {
   "messages": {
+    "desktop.request_image_not_ready": {"en-GB":"The image is still syncing","en-US":"The image is still syncing","zh-CN":"图片仍在同步"},
+    "desktop.request_image_limit": {"en-GB":"Up to 8 images per request","en-US":"Up to 8 images per request","zh-CN":"每个请求最多 8 张图片"},
+    "desktop.request_image_error": {"en-GB":"Use a PNG or JPEG image up to 8 MB","en-US":"Use a PNG or JPEG image up to 8 MB","zh-CN":"请使用不超过 8 MB 的 PNG 或 JPEG 图片"},
+    "desktop.request_image_adding": {"en-GB":"Adding image…","en-US":"Adding image…","zh-CN":"正在添加图片…"},
+    "desktop.image_request": {"en-GB":"Image request","en-US":"Image request","zh-CN":"图片请求"},
+    "desktop.request_image": {"en-GB":"Image","en-US":"Image","zh-CN":"图片"},
     "desktop.tabs_drop_split": {"en-US": "Drop here to split into a separate session", "zh-CN": "拖到此处拆成独立会话"},
     "desktop.tabs_save_failed": {"en-US": "Could not save tab layout, try moving the tab again", "zh-CN": "未能保存标签布局，请重新拖动"},
     "desktop.tabs_split": {"en-US": "Move to a separate session", "zh-CN": "拆成独立会话"},
@@ -106,7 +112,7 @@
     "desktop.app_shortcuts": {"en-US":"Keyboard shortcuts","zh-CN":"快捷键"},
     "desktop.app_prev_tab": {"en-US":"Previous tab","zh-CN":"上一个标签"},
     "desktop.app_next_tab": {"en-US":"Next tab","zh-CN":"下一个标签"},
-    "desktop.compose_shortcuts": {"en-US":"Enter to send · Shift+Enter for a new line", "zh-CN":"Enter 发送 · Shift+Enter 换行"},
+    "desktop.compose_shortcuts": {"en-US":"↵ Send · ⇧↵ New line", "zh-CN":"↵ 发送 · ⇧↵ 换行"},
     "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
     "desktop.close_other_tabs_action": {"en-US":"Close other tabs", "zh-CN":"关闭其他标签页"},
     "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes?", "zh-CN":"关闭其他 Shell 标签及其进程？"},

@@ -8,6 +8,7 @@ import (
 	"fennec/internal/board"
 	"fennec/internal/queuescheduler"
 	"fennec/internal/runta"
+	"fennec/internal/terminalstream"
 	"fmt"
 	"log"
 	"os"
@@ -46,6 +47,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			s.mu.Lock()
 			ready := s.channel != nil && s.brokerReady
+			channel := s.channel
 			s.mu.Unlock()
 			if err := store.SetRouting(queueRouting(s, store)); err != nil {
 				continue
@@ -58,6 +60,19 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				continue
 			}
 			step, cancel := context.WithTimeout(lifecycle, 8*time.Second)
+			// Old peers would drop image fields and start an incomplete request.
+			// Wait for the matching cloud service before publishing any new records.
+			transport, transportErr := channel.get(step)
+			if transportErr == nil {
+				transportErr = transport.Ready(step)
+			}
+			if transportErr != nil || !transport.Supports(terminalstream.CapabilityBoardImages) {
+				if last.IsZero() || time.Since(last) > 10*time.Second {
+					_ = store.SetPrimary(false)
+				}
+				cancel()
+				continue
+			}
 			if current != epoch || identity == "" {
 				api := runta.Client{Endpoint: s.account.Endpoint(), Token: token}
 				owner, err := api.CurrentUser(step)
@@ -91,16 +106,21 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 						err = fmt.Errorf("invalid queue sync reply")
 					} else {
 						caughtUp = caughtUp && !incoming.More
-						_, err = store.Sync(incoming)
+						var local board.Exchange
+						local, err = store.Sync(incoming)
 						if err == nil {
 							peerSeen = incoming.Seen
+							// Metadata may arrive before its blobs. Executors leave
+							// such requests queued until every original is present.
+							last = time.Now()
+							_ = store.RecordImageSync(peerSeen, len(incoming.Missing) > 0 || len(local.Missing) > 0)
+							err = syncQueueAttachments(step, boardClient{s: s}, store, incoming.Missing, local.Missing)
 						}
 					}
 				}
 			}
 			if err == nil {
 				last = time.Now()
-				_ = store.RecordSync(peerSeen)
 				if caughtUp {
 					err = store.SetPrimary(true)
 				}
@@ -110,6 +130,35 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			cancel()
 		}
 	}()
+}
+
+func syncQueueAttachments(ctx context.Context, remote boardClient, local board.Store, push, pull []board.MissingAttachment) error {
+	for _, missing := range push {
+		chunk, err := local.ReadAttachmentChunk(missing.Attachment.ID, missing.Offset)
+		if err != nil {
+			continue
+		}
+		if _, err = remote.call(ctx, "POST", "/v1/attachments/"+chunk.Attachment.ID, chunk); err != nil {
+			return err
+		}
+	}
+	for _, missing := range pull {
+		raw, err := remote.call(ctx, "GET", fmt.Sprintf("/v1/attachments/%s/%d", missing.Attachment.ID, missing.Offset), nil)
+		if err != nil {
+			return err
+		}
+		var chunk board.AttachmentChunk
+		if json.Unmarshal(raw, &chunk) != nil {
+			return fmt.Errorf("invalid attachment chunk")
+		}
+		if chunk.Attachment.ID != missing.Attachment.ID || chunk.Offset != missing.Offset {
+			return fmt.Errorf("attachment identity mismatch")
+		}
+		if err = local.WriteAttachmentChunk(chunk); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func queueRouting(s *daemonServices, store board.Store) board.Routing {
@@ -215,7 +264,21 @@ func (e queueMacExecutor) Start(ctx context.Context, p board.Project, r board.Re
 			break
 		}
 	}
-	argv = append(argv, launchArguments(worker, prompt)...)
-	_, err = e.core.call(ctx, "terminal.run", map[string]any{"argv": argv, "cwd": e.home, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": map[string]string{"fennec.session": r.Session, "fennec.agent": r.Agent, "fennec.queue": p.ID, "fennec.request": fmt.Sprint(r.Number), "fennec.run": r.Session}, "size": map[string]int{"cols": 120, "rows": 40}})
+	arguments := launchArguments(worker, prompt)
+	hasImages := len(board.RequestAttachments(r)) > 0
+	if hasImages {
+		arguments = arguments[:len(arguments)-1]
+	}
+	argv = append(argv, arguments...)
+	receipt, err := e.core.call(ctx, "terminal.run", map[string]any{"argv": argv, "cwd": e.home, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": map[string]string{"fennec.session": r.Session, "fennec.agent": r.Agent, "fennec.queue": p.ID, "fennec.request": fmt.Sprint(r.Number), "fennec.run": r.Session}, "size": map[string]int{"cols": 120, "rows": 40}})
+	if err == nil && hasImages {
+		var terminal struct {
+			Address string `json:"address"`
+		}
+		if json.Unmarshal(receipt, &terminal) != nil || terminal.Address == "" {
+			return fmt.Errorf("terminal launch was not confirmed")
+		}
+		return queuescheduler.PasteRequestImages(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, r, prompt)
+	}
 	return err
 }

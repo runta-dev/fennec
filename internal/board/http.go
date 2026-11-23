@@ -107,11 +107,33 @@ func (s Store) Handler() http.Handler {
 		reply(w, list, err)
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Author, Title, Tag, Body string }
+		var body struct {
+			Author, Title, Tag, Body string
+			Attachments              []Attachment `json:"attachments"`
+		}
 		if decode(w, r, &body) {
-			req, err := s.CreateRequest(r.PathValue("id"), body.Author, body.Title, body.Tag, body.Body)
+			req, err := s.CreateRequestWithAttachments(r.PathValue("id"), body.Author, body.Title, body.Tag, body.Body, body.Attachments)
 			reply(w, req, err)
 		}
+	})
+	mux.HandleFunc("GET /v1/attachments/{id}/{offset}", func(w http.ResponseWriter, r *http.Request) {
+		offset, err := strconv.ParseInt(r.PathValue("offset"), 10, 64)
+		if err != nil {
+			writeError(w, ErrInvalid)
+			return
+		}
+		chunk, err := s.ReadAttachmentChunk(r.PathValue("id"), offset)
+		reply(w, chunk, err)
+	})
+	mux.HandleFunc("POST /v1/attachments/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, AttachmentChunkBytes*2)
+		var chunk AttachmentChunk
+		if json.NewDecoder(r.Body).Decode(&chunk) != nil || chunk.Attachment.ID != r.PathValue("id") {
+			writeError(w, ErrInvalid)
+			return
+		}
+		err := s.WriteAttachmentChunk(chunk)
+		reply(w, map[string]bool{"saved": err == nil}, err)
 	})
 	mux.HandleFunc("GET /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
 		if n, ok := number(w, r); ok {

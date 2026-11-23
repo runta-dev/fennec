@@ -89,6 +89,19 @@ pub struct Message {
     pub agent: String,
     pub body: String,
     pub at: String,
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub media_type: String,
+    pub size: u64,
+    pub width: u32,
+    pub height: u32,
+    pub thumbnail: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -203,11 +216,20 @@ pub fn request(project: &str, n: u64) -> Result<Request> {
 
 /// A new request: its first line is the title; with more lines the whole
 /// text is its first message.
-pub fn post(project: &str, text: &str, author: &str) -> Result<Request> {
+pub fn post(
+    project: &str,
+    text: &str,
+    author: &str,
+    attachments: &[Attachment],
+) -> Result<Request> {
     let text = text.trim();
     let (title, rest) = text.split_once('\n').unwrap_or((text, ""));
-    let title: String = title.trim().chars().take(200).collect();
-    let body = json!({"title": title, "body": if rest.trim().is_empty() { "" } else { text }, "author": author});
+    let title: String = if title.trim().is_empty() {
+        crate::i18n::t("image_request")
+    } else {
+        title.trim().chars().take(200).collect()
+    };
+    let body = json!({"title": title, "body": if rest.trim().is_empty() { "" } else { text }, "author": author, "attachments":attachments});
     Ok(serde_json::from_value(call(
         "POST",
         &format!("/v1/projects/{project}/requests"),

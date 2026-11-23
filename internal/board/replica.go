@@ -31,9 +31,10 @@ type ReplicaState struct {
 	Seen   map[string]uint64 `json:"seen"`
 }
 type Exchange struct {
-	Seen   map[string]uint64 `json:"seen"`
-	Events []Mutation        `json:"events"`
-	More   bool              `json:"more,omitempty"`
+	Missing []MissingAttachment `json:"missing,omitempty"`
+	Seen    map[string]uint64   `json:"seen"`
+	Events  []Mutation          `json:"events"`
+	More    bool                `json:"more,omitempty"`
 }
 
 func randomID() string {
@@ -391,7 +392,7 @@ func (s Store) Sync(in Exchange) (Exchange, error) {
 			return Exchange{}, err
 		}
 	}
-	out := Exchange{Seen: state.Seen}
+	out := Exchange{Seen: state.Seen, Missing: s.MissingAttachments()}
 	batchBytes := 0
 	for _, event := range state.Events {
 		if event.Clock > in.Seen[event.Origin] {

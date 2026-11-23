@@ -11,6 +11,13 @@ static FIXTURE: LazyLock<Option<Value>> = LazyLock::new(|| {
 pub fn active() -> bool {
     FIXTURE.is_some()
 }
+
+pub fn request_images() -> std::collections::HashMap<String, Vec<crate::board::Attachment>> {
+    FIXTURE
+        .as_ref()
+        .and_then(|f| serde_json::from_value(f["request_images"].clone()).ok())
+        .unwrap_or_default()
+}
 pub fn terminals() -> Vec<Value> {
     FIXTURE
         .as_ref()
@@ -20,7 +27,10 @@ pub fn terminals() -> Vec<Value> {
 }
 /// Optional per-terminal activity presentations, as `desktop.activity.update` returns them.
 pub fn activity() -> Value {
-    FIXTURE.as_ref().map(|f| f["activity"].clone()).unwrap_or_default()
+    FIXTURE
+        .as_ref()
+        .map(|f| f["activity"].clone())
+        .unwrap_or_default()
 }
 /// Optional extra tabs per session group: `{"<group>": ["<terminal address>", ...]}`.
 pub fn shells() -> std::collections::HashMap<String, Vec<String>> {

@@ -70,13 +70,14 @@ type Project struct {
 }
 
 type Message struct {
-	UID    string    `json:"uid,omitempty"`
-	RunID  string    `json:"run_id,omitempty"`
-	ID     int       `json:"id"`
-	Author string    `json:"author"`
-	Agent  string    `json:"agent,omitempty"`
-	Body   string    `json:"body"`
-	At     time.Time `json:"at"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	UID         string       `json:"uid,omitempty"`
+	RunID       string       `json:"run_id,omitempty"`
+	ID          int          `json:"id"`
+	Author      string       `json:"author"`
+	Agent       string       `json:"agent,omitempty"`
+	Body        string       `json:"body"`
+	At          time.Time    `json:"at"`
 }
 
 type Request struct {
@@ -477,11 +478,19 @@ func hasTag(p Project, tag string) bool {
 
 // CreateRequest posts a request; it waits as Queued for a worker.
 func (s Store) CreateRequest(project, author, title, tag, body string) (Request, error) {
+	return s.CreateRequestWithAttachments(project, author, title, tag, body, nil)
+}
+
+func (s Store) CreateRequestWithAttachments(project, author, title, tag, body string, images []Attachment) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
 	}
 	defer unlock()
+	attachments, err := s.validateAttachments(images)
+	if err != nil {
+		return Request{}, err
+	}
 	p, err := s.Project(project)
 	if err != nil {
 		return Request{}, err
@@ -517,7 +526,7 @@ func (s Store) CreateRequest(project, author, title, tag, body string) (Request,
 		}
 	}
 	r := Request{Number: p.Next, Title: title, Tag: tag, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
-		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now}}}
+		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
 	p.Next++
 	if err = s.commit(s.requestPath(project, r.Number), r); err != nil {
 		return r, err
@@ -624,6 +633,9 @@ func (s Store) ClaimAt(project string, n int, session, agent, location string) (
 		return r, ErrInvalid
 	}
 	if r.Status != Queued {
+		return r, ErrConflict
+	}
+	if len(r.Messages) == 0 || !s.AttachmentsReady(r) {
 		return r, ErrConflict
 	}
 	p, err := s.Project(project)

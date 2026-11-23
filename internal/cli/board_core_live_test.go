@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fennec/internal/board"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"os/exec"
@@ -45,6 +48,15 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 	executor := queueMacExecutor{core: core, home: home, exe: exe}
 	p := board.Project{ID: "fixture", Workers: []board.Worker{{Agent: "codex", On: true}}}
 	r := board.Request{Number: 1, Session: "0123456789abcdef0123456789abcdef", Agent: "codex"}
+	var picture bytes.Buffer
+	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	attachment, err := (board.Store{Home: home}).SaveAttachment(picture.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Messages = []board.Message{{Attachments: []board.Attachment{attachment}}}
 	if err := executor.Start(ctx, p, r, "No inference: subprocess fixture"); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +79,20 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 	terminal := listing.Terminals[0]
 	if terminal.Labels["fennec.run"] != r.Session || terminal.Labels["fennec.queue"] != p.ID || terminal.Labels["fennec.request"] != "1" {
 		t.Fatal(terminal.Labels)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		screen, err := core.call(ctx, "terminal.read", map[string]any{"terminal": terminal.Address, "lines": 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(screen, []byte("No inference: subprocess fixture")) && bytes.Contains(screen, []byte("image.png")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("image path and request did not reach the actual terminal")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if err := executor.Start(ctx, p, r, "duplicate"); err == nil {
 		t.Fatal("repeated terminal.run")

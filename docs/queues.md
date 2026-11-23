@@ -100,6 +100,29 @@ another run. Needs you releases a slot but preserves the old session and result.
 The former Queue settings tab becomes Execution. Knowledge is shared queue
 context. Creation asks for purpose, default agent and optional repository.
 
+## Request images
+
+New Request accepts clipboard images and copied PNG/JPEG files. The composer
+shows removable thumbnails, permits an image-only request, and opens the
+original image when a thumbnail is clicked. Text paste remains unchanged.
+Native TIFF/BMP clipboard representations are converted to PNG in the UI, as
+in the existing terminal clipboard adapter. Each request allows eight images,
+up to 8 MiB each, matching herdr-core's `terminal.put` limit.
+
+Go validates images and keeps content-addressed originals in private board
+storage. The operation log carries references and small thumbnails; originals
+transfer in resumable, checksummed chunks over the existing resident channel.
+Requests cannot be claimed while an original is missing on their execution
+endpoint. Draft images are not replicated until attached to a posted request.
+
+Image-bearing runs start their normal herdr-core TUI without a CLI task prompt.
+They use `terminal.put` (the same operation behind `hc put`) to stage the images,
+then `terminal.send` for mode-aware paste and submission of their paths and the
+request. There are no new agent-specific image flags and no background writes
+to the user's clipboard. A durable input marker prevents resubmission after a
+lost reply; a live process alone cannot confirm that ambiguous image input.
+Agent-facing request reads omit thumbnail base64 from text context.
+
 ## Acceptance gates
 
 Use isolated test homes and fake executors for fault tests, then real disposable

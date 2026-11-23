@@ -42,7 +42,10 @@ func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board
 			break
 		}
 	}
-	args = append(args, prompt)
+	hasImages := len(board.RequestAttachments(request)) > 0
+	if !hasImages {
+		args = append(args, prompt)
+	}
 	device := c.Device
 	if device == "" {
 		device = c.Store.Routing().Device
@@ -52,5 +55,8 @@ func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board
 		return err
 	}
 	_, err = c.Runtime.Query(ctx, "terminal.label", map[string]any{"terminal": terminal.Address, "labels": map[string]string{"fennec.queue": p.ID, "fennec.request": fmt.Sprint(request.Number), "fennec.run": request.Session}})
+	if err == nil && hasImages {
+		return PasteRequestImages(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt)
+	}
 	return err
 }

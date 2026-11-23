@@ -54,5 +54,9 @@ func fenQueueCommand(args []string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(output).Encode(raw)
+	var request board.Request
+	if json.Unmarshal(raw, &request) != nil || request.Number < 1 {
+		return fmt.Errorf("invalid request reply")
+	}
+	return json.NewEncoder(output).Encode(board.RequestForAgent(request))
 }

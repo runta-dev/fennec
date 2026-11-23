@@ -6,6 +6,7 @@ mod activity;
 mod cloud;
 mod context_menu;
 mod row_motion;
+mod request_attachments;
 mod sidebar_resize;
 mod tab_close;
 mod tabs;
@@ -103,6 +104,7 @@ pub struct FennecWindow {
     pub(crate) terms: HashMap<String, Entity<TerminalView>>,
     pub(crate) search: Entity<InputState>,
     pub(crate) composer: Entity<TextareaState>,
+    request_images: request_attachments::Drafts,
     posting: bool,
     replying: bool,
     pub(crate) reply: Entity<TextareaState>,
@@ -262,6 +264,7 @@ impl FennecWindow {
             terms: HashMap::new(),
             search,
             composer,
+            request_images: Default::default(),
             posting: false,
             replying: false,
             reply,
@@ -301,6 +304,7 @@ impl FennecWindow {
             this.follow_cloud(window, cx);
         }
         if crate::preview::active() {
+            this.request_images.by_queue=crate::preview::request_images();
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
             this.shells = crate::preview::shells();
             this.activity = crate::preview::activity();
@@ -716,21 +720,25 @@ impl FennecWindow {
         let Some(project) = self.project_id() else {
             return;
         };
-        if text.trim().is_empty() {
+        let images=self.request_images.by_queue.get(&project).cloned().unwrap_or_default();
+        if self.request_images.busy.contains(&project)||(text.trim().is_empty()&&images.is_empty()) {
             return;
         }
         self.posting = true;
         let me = self.me.clone();
         let submitted = text.clone();
         let submitted_project = project.clone();
+        let submitted_images:Vec<String>=images.iter().map(|image|image.id.clone()).collect();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
-                .background_spawn(async move { board::post(&project, &text, &me) })
+                .background_spawn(async move { board::post(&project, &text, &me, &images) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.posting = false;
                 match posted {
                     Ok(r) => {
+                        this.request_images.errors.remove(&submitted_project);
+                        if let Some(images)=this.request_images.by_queue.get_mut(&submitted_project){images.retain(|image|!submitted_images.contains(&image.id));}
                         if this.composer.read(cx).value().as_ref() == submitted {
                             this.composer
                                 .update(cx, |s, cx| s.set_value("", window, cx));
@@ -2185,7 +2193,8 @@ impl FennecWindow {
                 .unwrap_or_else(|| id.to_owned())
         };
         let now = sessions::now_ms();
-        let composer_has = !self.composer.read(cx).value().trim().is_empty();
+        let composer_has = !self.composer.read(cx).value().trim().is_empty()
+            || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
         let segment = |label: String, count: usize, on: bool, resolved: bool| {
             div()
                 .id(SharedString::from(format!("seg-{resolved}")))
@@ -2436,7 +2445,9 @@ impl FennecWindow {
                     .p(px(14.0))
                     .child(
                         // New Request: one plain box; the first line is the title.
-                        div()
+                        v_flex()
+                            .flex_none()
+                            .w_full()
                             .relative()
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -2460,7 +2471,8 @@ impl FennecWindow {
                             .text_size(px(13.5))
                             .line_height(relative(1.6))
                             .pr(px(72.0))
-                            .child(Textarea::new(&self.composer))
+                            .child(div().w_full().flex_none().child(Textarea::new(&self.composer)))
+                            .when_some(self.draft_images(&p.id,cx),|d,images|d.child(images))
                             .when(!composer_has, |d| {
                                 d.child(
                                     div()
@@ -2665,7 +2677,8 @@ impl FennecWindow {
                                 .style(ui::markdown_style())
                                 .text_size(px(13.5))
                                 .text_color(c("f_text")),
-                            ),
+                            )
+                            .when(!m.attachments.is_empty(),|d|d.child(self.stored_images(&m.attachments,m.id,cx))),
                     )
                     .into_any_element(),
             );
@@ -3069,6 +3082,12 @@ impl Render for FennecWindow {
             .bg(c("f_card"))
             .text_color(c("f_text"))
             .on_action(cx.listener(Self::on_shell_action))
+            .capture_action(cx.listener(|this,_:&gpui_base::input::Paste,window,cx|{
+                if this.paste_request_image(window,cx){cx.stop_propagation();}
+            }))
+            .capture_action(cx.listener(|this,action:&ShellAction,window,cx|{
+                if matches!(action.id(),"terminal.paste"|"terminal.paste_image")&&this.paste_request_image(window,cx){cx.stop_propagation();}
+            }))
             .on_drag_move::<sidebar_resize::SidebarDrag>(cx.listener(Self::drag_sidebar))
             .on_drop(cx.listener(|this,_:&sidebar_resize::SidebarDrag,window,cx|this.finish_sidebar_resize(window,cx)))
             .capture_any_mouse_up(cx.listener(|this,event:&MouseUpEvent,window,cx| {

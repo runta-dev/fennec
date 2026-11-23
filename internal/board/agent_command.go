@@ -21,7 +21,7 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(out).Encode(r)
+		return json.NewEncoder(out).Encode(RequestForAgent(r))
 	}
 	if args[0] != "reply" || len(args) != 6 {
 		return ErrInvalid
@@ -34,5 +34,5 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(out).Encode(r)
+	return json.NewEncoder(out).Encode(RequestForAgent(r))
 }

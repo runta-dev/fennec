@@ -211,6 +211,9 @@ func (s Store) Fail(project string, n int, session string) (Request, error) {
 	}
 	r.Status, r.Failure, r.Updated = Unknown, "Execution could not be confirmed", s.now()
 	recordRun(&r, Unknown, r.Updated)
+	if len(RequestAttachments(r)) > 0 {
+		recordRun(&r, "input_unknown", r.Updated)
+	}
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
@@ -231,6 +234,9 @@ func (s Store) Reconcile(project string, n int, session, state string) (Request,
 	}
 	switch state {
 	case "live":
+		if len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
+			return r, ErrConflict
+		}
 		r.Status = Working
 		r.Failure = ""
 		recordRun(&r, "running", s.now())
