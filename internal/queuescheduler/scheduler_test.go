@@ -23,7 +23,7 @@ func (e *executorFixture) List(context.Context) ([]Session, error) {
 }
 func (e *executorFixture) Start(_ context.Context, _ board.Project, r board.Request, _ string) error {
 	e.starts++
-	e.sessions = append(e.sessions, Session{r.Session, "live"})
+	e.sessions = append(e.sessions, Session{ID: r.Session, State: "live"})
 	if e.lost {
 		return errors.New("receipt lost")
 	}
@@ -209,5 +209,38 @@ func TestRejectedStartIsRetryableButLostReceiptStaysUnknown(t *testing.T) {
 		if missing && err != nil || !missing && !errors.Is(err, board.ErrConflict) {
 			t.Fatal(err)
 		}
+	}
+}
+func TestThreadTakesTheSessionTitleOnceTheAgentNamesIt(t *testing.T) {
+	local := board.Store{Home: t.TempDir(), Role: "local"}
+	cloud := board.Store{Home: t.TempDir(), Role: "cloud"}
+	p, _ := local.CreateProject(board.Project{Name: "Titles", Queue: 1})
+	text := "我们 Queue thread 的标题要同步成 session 标题\n用户输入的 request 是需求正文"
+	request, _ := local.CreateRequest(p.ID, "me", "我们 Queue thread 的标题要同步成 session 标题", "", text)
+	local.SetRouting(board.Routing{Locations: map[string]string{"claude": "cloud"}})
+	local.SetPrimary(true)
+	ce := &executorFixture{}
+	cs := Scheduler{Store: cloud, Executor: ce}
+	ls := Scheduler{Store: local, Executor: &executorFixture{}}
+	syncStores(t, local, cloud)
+	step(t, ls)
+	syncStores(t, local, cloud)
+	step(t, cs)
+	r, _ := cloud.Request(p.ID, request.Number)
+	if ce.starts != 1 || r.Title != request.Title {
+		t.Fatal(ce.starts, r.Title)
+	}
+	// Before the agent names its session the placeholder title stays.
+	ce.sessions[0].Title = "✳ Claude Code"
+	step(t, cs)
+	if r, _ = cloud.Request(p.ID, request.Number); r.Title != request.Title {
+		t.Fatal(r.Title)
+	}
+	ce.sessions[0].Title = "✳ " + p.Key + "-1 队列线程标题同步"
+	step(t, cs)
+	syncStores(t, cloud, local)
+	r, _ = local.Request(p.ID, request.Number)
+	if r.Title != "队列线程标题同步" || r.Messages[0].Body != text {
+		t.Fatal(r.Title, r.Messages[0].Body)
 	}
 }

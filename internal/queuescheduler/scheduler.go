@@ -13,7 +13,8 @@ import (
 	"time"
 )
 
-type Session struct{ ID, State string }
+// Session is a herdr-core terminal: its fennec.session label, state and OSC title.
+type Session struct{ ID, State, Title string }
 type Executor interface {
 	List(context.Context) ([]Session, error)
 	Start(context.Context, board.Project, board.Request, string) error
@@ -84,9 +85,10 @@ func (s Scheduler) Step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	states = map[string]string{}
+	states, titles := map[string]string{}, map[string]string{}
 	for _, v := range listed {
 		states[v.ID] = v.State
+		titles[v.ID] = v.Title
 	}
 	routing := s.Store.Routing()
 	control := s.Store.LocalControl()
@@ -96,6 +98,12 @@ func (s Scheduler) Step(ctx context.Context) error {
 				continue
 			}
 			state := states[r.ExecutionSession()]
+			if state == "live" {
+				// The thread takes the name the agent gives its session.
+				if title := board.SessionTitle(titles[r.ExecutionSession()], r.ExecutionSession(), fmt.Sprintf("%s-%d", q.Key, r.Number)); title != "" && title != r.Title {
+					s.report(s.Store.Retitle(q.Project, r.Number, r.ExecutionSession(), title))
+				}
+			}
 			if r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting" {
 				p, e := s.Store.Project(q.Project)
 				if e != nil {

@@ -223,6 +223,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	var list struct {
 		Terminals []struct {
 			State  string            `json:"state"`
+			Title  string            `json:"title"`
 			Labels map[string]string `json:"labels"`
 		} `json:"terminals"`
 	}
@@ -231,7 +232,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], State: t.State})
+		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title})
 	}
 	return out, nil
 }

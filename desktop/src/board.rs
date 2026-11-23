@@ -246,8 +246,9 @@ pub fn request(project: &str, n: u64) -> Result<Request> {
     )?)?)
 }
 
-/// A new request: its first line is the title; with more lines the whole
-/// text is its first message.
+/// A new request: the whole text is its first message (the request itself);
+/// its first line is only a placeholder title until the agent's session
+/// names the work, which the queue scheduler then copies onto the thread.
 pub fn post(
     project: &str,
     text: &str,
@@ -255,13 +256,13 @@ pub fn post(
     attachments: &[Attachment],
 ) -> Result<Request> {
     let text = text.trim();
-    let (title, rest) = text.split_once('\n').unwrap_or((text, ""));
-    let title: String = if title.trim().is_empty() {
+    let first = text.lines().next().unwrap_or_default().trim();
+    let title: String = if first.is_empty() {
         crate::i18n::t("image_request")
     } else {
-        title.trim().chars().take(200).collect()
+        first.chars().take(200).collect()
     };
-    let body = json!({"title": title, "body": if rest.trim().is_empty() { "" } else { text }, "author": author, "attachments":attachments});
+    let body = json!({"title": title, "body": text, "author": author, "attachments":attachments});
     Ok(serde_json::from_value(call(
         "POST",
         &format!("/v1/projects/{project}/requests"),
