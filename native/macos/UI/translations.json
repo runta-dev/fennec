@@ -1,5 +1,91 @@
 {
   "messages": {
+    "desktop.run_local": {"en-GB":"This Mac","en-US":"This Mac","zh-CN":"此 Mac"},
+    "desktop.run_cloud": {"en-GB":"Cloud computer","en-US":"Cloud computer","zh-CN":"云端电脑"},
+    "desktop.run": {"en-GB":"Run","en-US":"Run","zh-CN":"执行"},
+    "desktop.concurrency_limit": {"en-GB":"Up to {n} running","en-US":"Up to {n} running","zh-CN":"最多同时运行 {n} 个"},
+    "desktop.queue_pending": {"en-GB":"Changes waiting to sync","en-US":"Changes waiting to sync","zh-CN":"修改待同步"},
+    "desktop.queue_offline": {"en-GB":"Cloud unavailable · local changes are saved","en-US":"Cloud unavailable · local changes are saved","zh-CN":"云端暂不可用 · 修改已保存在本机"},
+    "desktop.paused": {
+      "en-GB": "Paused",
+      "en-US": "Paused",
+      "zh-CN": "已暂停"
+    },
+    "desktop.pause_hint": {
+      "en-GB": "Pausing keeps current runs active",
+      "en-US": "Pausing keeps current runs active",
+      "zh-CN": "暂停后，当前请求仍会继续运行"
+    },
+    "desktop.active": {
+      "en-GB": "Active",
+      "en-US": "Active",
+      "zh-CN": "待处理"
+    },
+    "desktop.run_location_hint": {
+      "en-GB": "Uses the agent's Run location",
+      "en-US": "Uses the agent's Run location",
+      "zh-CN": "沿用 Agent 的运行位置"
+    },
+    "desktop.view_session": {
+      "en-GB": "Open session",
+      "en-US": "Open session",
+      "zh-CN": "打开会话"
+    },
+    "desktop.retry_request": {
+      "en-GB": "Retry",
+      "en-US": "Retry",
+      "zh-CN": "重试"
+    },
+    "desktop.continue_request": {
+      "en-GB": "Continue",
+      "en-US": "Continue",
+      "zh-CN": "继续执行"
+    },
+    "desktop.move_hint": {
+      "en-GB": "Drag queued requests to change their order",
+      "en-US": "Drag queued requests to change their order",
+      "zh-CN": "拖动排队中的请求调整顺序"
+    },
+    "desktop.pause_queue": {
+      "en-GB": "Pause queue",
+      "en-US": "Pause queue",
+      "zh-CN": "暂停队列"
+    },
+    "desktop.repository_optional": {
+      "en-GB": "Repository (optional)",
+      "en-US": "Repository (optional)",
+      "zh-CN": "仓库（可选）"
+    },
+    "desktop.result": {
+      "en-GB": "Result",
+      "en-US": "Result",
+      "zh-CN": "结果"
+    },
+    "desktop.default_agent": {
+      "en-GB": "Default agent",
+      "en-US": "Default agent",
+      "zh-CN": "默认 Agent"
+    },
+    "desktop.unknown": {
+      "en-GB": "Awaiting confirmation",
+      "en-US": "Awaiting confirmation",
+      "zh-CN": "等待确认"
+    },
+    "desktop.failed": {
+      "en-GB": "Failed",
+      "en-US": "Failed",
+      "zh-CN": "失败"
+    },
+    "desktop.run_next": {
+      "en-GB": "Run next",
+      "en-US": "Run next",
+      "zh-CN": "下一个执行"
+    },
+    "desktop.resume_queue": {
+      "en-GB": "Resume queue",
+      "en-US": "Resume queue",
+      "zh-CN": "继续队列"
+    },
     "desktop.app_appearance": {"en-US":"Appearance","zh-CN":"外观"},
     "desktop.app_system": {"en-US":"System","zh-CN":"跟随系统"},
     "desktop.app_light": {"en-US":"Light","zh-CN":"浅色"},
@@ -29,17 +115,29 @@
     "desktop.add_tag": {"en-US": "Add tag, press Return", "zh-CN": "添加标签，按回车"},
     "desktop.add_worker": {"en-US": "Add worker…", "zh-CN": "添加 worker…"},
     "desktop.agents": {"en-US": "Agents", "zh-CN": "Agents"},
-    "desktop.agents_hint": {"en-US": "Which agents and models may pick up this project's requests, a new request goes to the first enabled worker", "zh-CN": "可以处理这个项目 request 的 agent 和模型，新 request 交给第一个启用的 worker"},
+    "desktop.agents_hint": {
+      "en-GB": "The first enabled agent handles new requests using its Run location",
+      "en-US": "The first enabled agent handles new requests using its Run location",
+      "zh-CN": "新请求由首个启用的 Agent 处理，沿用该 Agent 的运行位置"
+    },
     "desktop.all": {"en-US": "All", "zh-CN": "全部"},
     "desktop.all_tags": {"en-US": "All tags", "zh-CN": "全部标签"},
     "desktop.at_once": {"en-US": "Requests worked on at once", "zh-CN": "同时处理的 request 数"},
     "desktop.at_once_hint": {"en-US": "Each runs in its own session, others wait as Queued", "zh-CN": "每个 request 在自己的会话里处理，其余的排队等待"},
     "desktop.back_to_requests": {"en-US": "Back to requests", "zh-CN": "返回 request 列表"},
     "desktop.based_on": {"en-US": "Based on", "zh-CN": "来源"},
-    "desktop.board_unavailable": {"en-US": "Projects are unavailable right now, Fennec keeps trying", "zh-CN": "暂时无法读取项目，Fennec 会继续尝试"},
+    "desktop.board_unavailable": {
+      "en-GB": "Queues are unavailable right now, Fennec keeps trying",
+      "en-US": "Queues are unavailable right now, Fennec keeps trying",
+      "zh-CN": "暂时无法读取队列，Fennec 会继续尝试"
+    },
     "desktop.cancel": {"en-US": "Cancel", "zh-CN": "取消"},
     "desktop.check_repository": {"en-US": "Check the name and repository (owner/repo)", "zh-CN": "请检查名称和仓库（owner/repo）"},
-    "desktop.context_open_project": {"en-US": "Open project", "zh-CN": "打开项目"},
+    "desktop.context_open_project": {
+      "en-GB": "Open queue",
+      "en-US": "Open queue",
+      "zh-CN": "打开队列"
+    },
     "desktop.context_open_terminal": {"en-US": "Open terminal", "zh-CN": "打开终端"},
     "desktop.context_rename": {"en-US": "Rename", "zh-CN": "重命名"},
     "desktop.context_new_tab": {"en-US": "New tab", "zh-CN": "新建标签页"},
@@ -78,12 +176,20 @@
     "desktop.needs_review": {"en-US": "Needs review", "zh-CN": "待审阅"},
     "desktop.needs_you": {"en-US": "Needs you", "zh-CN": "需要你"},
     "desktop.new_organization": {"en-US": "New organization…", "zh-CN": "新建组织…"},
-    "desktop.new_project": {"en-US": "New project", "zh-CN": "新建项目"},
+    "desktop.new_project": {
+      "en-GB": "New queue",
+      "en-US": "New queue",
+      "zh-CN": "新建队列"
+    },
     "desktop.new_request": {"en-US": "New request", "zh-CN": "新建 request"},
     "desktop.new_session": {"en-US": "New session", "zh-CN": "新建会话"},
     "desktop.new_tab": {"en-US": "New tab (local shell)", "zh-CN": "新标签页（本地 shell）"},
     "desktop.no_open_requests": {"en-US": "No open requests", "zh-CN": "没有未完成的 request"},
-    "desktop.no_projects": {"en-US": "No projects in this organization yet", "zh-CN": "这个组织还没有项目"},
+    "desktop.no_projects": {
+      "en-GB": "No queues yet",
+      "en-US": "No queues yet",
+      "zh-CN": "还没有队列"
+    },
     "desktop.not_yet": {"en-US": "Not yet", "zh-CN": "尚未"},
     "desktop.nothing_here": {"en-US": "Nothing here", "zh-CN": "这里没有内容"},
     "desktop.nothing_resolved": {"en-US": "Nothing resolved yet", "zh-CN": "还没有已解决的 request"},
@@ -94,19 +200,47 @@
     "desktop.organization": {"en-US": "Organization", "zh-CN": "组织"},
     "desktop.pick_request": {"en-US": "Pick a request to read it here", "zh-CN": "选择一个 request 在这里查看"},
     "desktop.post": {"en-US": "Post", "zh-CN": "发布"},
-    "desktop.project": {"en-US": "Project", "zh-CN": "项目"},
-    "desktop.project_settings": {"en-US": "Project settings", "zh-CN": "项目设置"},
-    "desktop.projects": {"en-US": "Projects", "zh-CN": "项目"},
-    "desktop.queue": {"en-US": "Queue", "zh-CN": "队列"},
+    "desktop.project": {
+      "en-GB": "Queue",
+      "en-US": "Queue",
+      "zh-CN": "队列"
+    },
+    "desktop.project_settings": {
+      "en-GB": "Queue settings",
+      "en-US": "Queue settings",
+      "zh-CN": "队列设置"
+    },
+    "desktop.projects": {
+      "en-GB": "Queues",
+      "en-US": "Queues",
+      "zh-CN": "队列"
+    },
+    "desktop.queue": {
+      "en-GB": "Execution",
+      "en-US": "Execution",
+      "zh-CN": "执行"
+    },
     "desktop.queue_empty": {"en-US": "Nothing in progress or waiting", "zh-CN": "没有进行中或等待中的 request"},
     "desktop.queued": {"en-US": "Queued", "zh-CN": "排队中"},
     "desktop.remove": {"en-US": "Remove", "zh-CN": "移除"},
     "desktop.reopen": {"en-US": "Reopen", "zh-CN": "重新打开"},
-    "desktop.reply": {"en-US": "Reply", "zh-CN": "回复"},
+    "desktop.reply": {
+      "en-GB": "Comment",
+      "en-US": "Comment",
+      "zh-CN": "评论"
+    },
     "desktop.repository": {"en-US": "Repository", "zh-CN": "仓库"},
     "desktop.reset_tags": {"en-US": "Reset to Bug, Feature, Discussion", "zh-CN": "恢复为 Bug、Feature、Discussion"},
-    "desktop.resolve": {"en-US": "Resolve", "zh-CN": "解决"},
-    "desktop.resolved": {"en-US": "Resolved", "zh-CN": "已解决"},
+    "desktop.resolve": {
+      "en-GB": "Mark done",
+      "en-US": "Mark done",
+      "zh-CN": "标记完成"
+    },
+    "desktop.resolved": {
+      "en-GB": "Done",
+      "en-US": "Done",
+      "zh-CN": "已完成"
+    },
     "desktop.restore": {"en-US": "Restore", "zh-CN": "恢复"},
     "desktop.reviewed_by": {"en-US": "Reviewed by", "zh-CN": "审阅人"},
     "desktop.save_changes": {"en-US": "Save", "zh-CN": "保存"},
@@ -115,12 +249,20 @@
     "desktop.section_decisions": {"en-US": "Decisions", "zh-CN": "决策"},
     "desktop.section_glossary": {"en-US": "Glossary", "zh-CN": "术语"},
     "desktop.section_runbooks": {"en-US": "Runbooks", "zh-CN": "操作手册"},
-    "desktop.send": {"en-US": "Send", "zh-CN": "发送"},
+    "desktop.send": {
+      "en-GB": "Comment",
+      "en-US": "Comment",
+      "zh-CN": "评论"
+    },
     "desktop.session_ended": {"en-US": "This session has ended", "zh-CN": "这个会话已结束"},
     "desktop.sessions": {"en-US": "Sessions", "zh-CN": "会话"},
     "desktop.settings": {"en-US": "Settings", "zh-CN": "设置"},
     "desktop.shell": {"en-US": "Shell", "zh-CN": "Shell"},
-    "desktop.sign_in_first": {"en-US": "Sign in to Runta in Fennec to see your projects and sessions", "zh-CN": "在 Fennec 中登录 Runta 后即可查看项目和会话"},
+    "desktop.sign_in_first": {
+      "en-GB": "Sign in to Fennec to run requests in the cloud",
+      "en-US": "Sign in to Fennec to run requests in the cloud",
+      "zh-CN": "登录 Fennec 后可在云端运行请求"
+    },
     "desktop.starting": {"en-US": "Starting…", "zh-CN": "正在启动…"},
     "desktop.status": {"en-US": "Status", "zh-CN": "状态"},
     "desktop.tag_bug": {"en-US": "Bug", "zh-CN": "Bug"},
@@ -134,7 +276,11 @@
     "desktop.untitled_session": {"en-US": "Untitled session", "zh-CN": "未命名会话"},
     "desktop.upload_image": {"en-US": "Upload image…", "zh-CN": "上传图片…"},
     "desktop.waiting": {"en-US": "{n} waiting", "zh-CN": "{n} 个等待中"},
-    "desktop.working": {"en-US": "Working", "zh-CN": "进行中"},
+    "desktop.working": {
+      "en-GB": "Running",
+      "en-US": "Running",
+      "zh-CN": "运行中"
+    },
     "desktop.written_by": {"en-US": "Written by", "zh-CN": "作者"},
     "ios.attachments": {"en-US": "Attachments", "zh-CN": "附件"},
     "ios.agent_asks": {"en-US": "{agent} is asking", "zh-CN": "{agent} 在询问"},

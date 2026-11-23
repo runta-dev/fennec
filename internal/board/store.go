@@ -25,6 +25,8 @@ const (
 	Working  = "working"
 	NeedsYou = "you"
 	Resolved = "resolved"
+	Failed   = "failed"
+	Unknown  = "unknown"
 )
 
 var (
@@ -59,11 +61,16 @@ type Project struct {
 	Icon        string    `json:"icon,omitempty"`
 	Tags        []Tag     `json:"tags"`
 	Queue       int       `json:"queue"`
+	Paused      bool      `json:"paused"`
+	Order       []int     `json:"order,omitempty"`
+	Slots       []Slot    `json:"slots,omitempty"`
 	Workers     []Worker  `json:"workers"`
 	Created     time.Time `json:"created"`
 }
 
 type Message struct {
+	UID    string    `json:"uid,omitempty"`
+	RunID  string    `json:"run_id,omitempty"`
 	ID     int       `json:"id"`
 	Author string    `json:"author"`
 	Agent  string    `json:"agent,omitempty"`
@@ -72,17 +79,22 @@ type Message struct {
 }
 
 type Request struct {
-	Number  int       `json:"number"`
-	Title   string    `json:"title"`
-	Tag     string    `json:"tag"`
-	Status  string    `json:"status"`
-	Author  string    `json:"author"`
-	Created time.Time `json:"created"`
-	Updated time.Time `json:"updated"`
+	Number   int       `json:"number"`
+	Title    string    `json:"title"`
+	Tag      string    `json:"tag"`
+	Status   string    `json:"status"`
+	Author   string    `json:"author"`
+	Created  time.Time `json:"created"`
+	Updated  time.Time `json:"updated"`
+	QueuedAt time.Time `json:"queued_at,omitempty"`
+	Failure  string    `json:"failure,omitempty"`
 	// The agent and session working on it, once a worker has taken it.
-	Agent   string `json:"agent,omitempty"`
-	Session string `json:"session,omitempty"`
-	Votes   int    `json:"votes,omitempty"`
+	Agent       string `json:"agent,omitempty"`
+	Session     string `json:"session,omitempty"`
+	RunLocation string `json:"run_location,omitempty"`
+	Runs        []Run  `json:"runs,omitempty"`
+	Offer       *Offer `json:"offer,omitempty"`
+	Votes       int    `json:"votes,omitempty"`
 	// Messages up to this ID have reached Session.
 	Delivered int       `json:"delivered,omitempty"`
 	Messages  []Message `json:"messages,omitempty"`
@@ -98,6 +110,7 @@ type Summary struct {
 type Store struct {
 	Home string
 	Now  func() time.Time
+	Role string
 }
 
 var (
@@ -145,6 +158,11 @@ func (s Store) lock() (func(), error) {
 		file.Close()
 		return nil, err
 	}
+	if err = s.recoverReplica(); err != nil {
+		syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		file.Close()
+		return nil, err
+	}
 	return func() { syscall.Flock(int(file.Fd()), syscall.LOCK_UN); file.Close() }, nil
 }
 
@@ -165,10 +183,22 @@ func writeJSON(path string, value any) error {
 		temp.Close()
 		return err
 	}
+	if err = temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
 	if err = temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), path)
+	if err = os.Rename(temp.Name(), path); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func readJSON(path string, value any) error {
@@ -294,6 +324,9 @@ func (s Store) CreateProject(p Project) (Project, error) {
 		base = "project"
 	}
 	p.ID = base
+	if s.Role != "" {
+		p.ID = base[:min(len(base), 33)] + "-" + randomID()[:6]
+	}
 	for i := 2; ; i++ {
 		if _, err := os.Stat(s.projectDir(p.ID)); errors.Is(err, os.ErrNotExist) {
 			break
@@ -316,10 +349,15 @@ func (s Store) CreateProject(p Project) (Project, error) {
 		p.Workers = []Worker{{Agent: "claude", On: true}}
 	}
 	p.Next, p.Created = 1, s.now()
+	if s.Role != "" {
+		for i := 0; i < p.Queue; i++ {
+			p.Slots = append(p.Slots, Slot{ID: fmt.Sprintf("slot-%d", i), Index: i, Owner: s.Role})
+		}
+	}
 	if err = validProject(p); err != nil {
 		return p, err
 	}
-	return p, writeJSON(filepath.Join(s.projectDir(p.ID), "project.json"), p)
+	return p, s.commit(filepath.Join(s.projectDir(p.ID), "project.json"), p)
 }
 
 // UpdateProject applies a partial change. The id, next number and creation
@@ -338,11 +376,17 @@ func (s Store) UpdateProject(id string, change json.RawMessage) (Project, error)
 	if err = json.Unmarshal(change, &next); err != nil {
 		return p, ErrInvalid
 	}
-	next.ID, next.Next, next.Created = p.ID, p.Next, p.Created
+	next.ID, next.Next, next.Created, next.Order = p.ID, p.Next, p.Created, p.Order
+	next.Slots = p.Slots
+	if s.Role != "" {
+		for i := len(next.Slots); i < next.Queue; i++ {
+			next.Slots = append(next.Slots, Slot{ID: fmt.Sprintf("slot-%d", i), Index: i, Owner: s.Role})
+		}
+	}
 	if err = validProject(next); err != nil {
 		return p, err
 	}
-	return next, writeJSON(filepath.Join(s.projectDir(id), "project.json"), next)
+	return next, s.commit(filepath.Join(s.projectDir(id), "project.json"), next)
 }
 
 // ---------- requests ----------
@@ -370,7 +414,8 @@ func (s Store) Requests(project string) ([]Summary, error) {
 		}
 		list = append(list, summarize(r))
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Updated.After(list[j].Updated) })
+	p, _ := s.Project(project)
+	sortRequests(list, p.Order)
 	return list, nil
 }
 
@@ -432,17 +477,35 @@ func (s Store) CreateRequest(project, author, title, tag, body string) (Request,
 		body = title
 	}
 	now := s.now()
-	r := Request{Number: p.Next, Title: title, Tag: tag, Status: Queued, Author: author, Created: now, Updated: now,
-		Messages: []Message{{ID: 1, Author: author, Body: body, At: now}}}
+	if s.Role != "" {
+		list, err := s.Requests(project)
+		if err != nil {
+			return Request{}, err
+		}
+		for _, item := range list {
+			if item.Number >= p.Next {
+				p.Next = item.Number + 1
+			}
+		}
+		want := 1
+		if s.Role == "cloud" {
+			want = 0
+		}
+		if p.Next%2 != want {
+			p.Next++
+		}
+	}
+	r := Request{Number: p.Next, Title: title, Tag: tag, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
+		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now}}}
 	p.Next++
-	if err = writeJSON(s.requestPath(project, r.Number), r); err != nil {
+	if err = s.commit(s.requestPath(project, r.Number), r); err != nil {
 		return r, err
 	}
-	return r, writeJSON(filepath.Join(s.projectDir(project), "project.json"), p)
+	return r, s.commit(filepath.Join(s.projectDir(project), "project.json"), p)
 }
 
-// Reply adds a message. A person's reply puts the request back in the queue
-// for its agent; an agent's reply means it needs the person again.
+// Reply adds a comment without scheduling work. An agent response hands the
+// request back to the person. Continue is an explicit scheduling action.
 func (s Store) Reply(project string, n int, author, agent, body string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
@@ -456,21 +519,27 @@ func (s Store) Reply(project string, n int, author, agent, body string) (Request
 	if !validText(author, 80) || !validText(body, maxBody) || (agent != "" && !Agents[agent]) || len(r.Messages) >= 2000 {
 		return r, ErrInvalid
 	}
+	if agent != "" && (r.Status != Working || len(r.Runs) > 1) {
+		return r, ErrConflict
+	}
 	now := s.now()
 	id := 1
 	if len(r.Messages) > 0 {
 		id = r.Messages[len(r.Messages)-1].ID + 1
 	}
-	r.Messages = append(r.Messages, Message{ID: id, Author: author, Agent: agent, Body: body, At: now})
+	message := Message{UID: randomID(), ID: id, Author: author, Agent: agent, Body: body, At: now}
+	if agent != "" {
+		message.RunID = r.Session
+	}
+	r.Messages = append(r.Messages, message)
 	r.Updated = now
 	if agent != "" {
 		r.Status = NeedsYou
 		r.Agent = agent
 		r.Delivered = id
-	} else {
-		r.Status = Queued
+		recordRun(&r, NeedsYou, now)
 	}
-	return r, writeJSON(s.requestPath(project, n), r)
+	return r, s.commit(s.requestPath(project, n), r)
 }
 
 // Change sets a request's tag or status (resolve, reopen). Reopening returns
@@ -498,6 +567,9 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 	switch status {
 	case "":
 	case Resolved:
+		if r.Status != NeedsYou && r.Status != Failed && r.Status != Resolved {
+			return r, ErrConflict
+		}
 		r.Status = Resolved
 	case NeedsYou:
 		if r.Status != Resolved {
@@ -508,12 +580,16 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 		return r, ErrInvalid
 	}
 	r.Updated = s.now()
-	return r, writeJSON(s.requestPath(project, n), r)
+	return r, s.commit(s.requestPath(project, n), r)
 }
 
 // Claim gives a queued request to a session. It fails if someone else took
 // it first, so two dispatchers never start two agents for one request.
 func (s Store) Claim(project string, n int, session, agent string) (Request, error) {
+	return s.ClaimAt(project, n, session, agent, "cloud")
+}
+
+func (s Store) ClaimAt(project string, n int, session, agent, location string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -523,18 +599,43 @@ func (s Store) Claim(project string, n int, session, agent string) (Request, err
 	if err != nil {
 		return r, err
 	}
-	if !sessionRef.MatchString(session) || !Agents[agent] {
+	if !sessionRef.MatchString(session) || !Agents[agent] || (location != "local" && location != "cloud") {
 		return r, ErrInvalid
 	}
 	if r.Status != Queued {
 		return r, ErrConflict
 	}
+	p, err := s.Project(project)
+	if err != nil {
+		return r, err
+	}
+	list, err := s.Requests(project)
+	if err != nil {
+		return r, err
+	}
+	working, first := 0, 0
+	for _, item := range list {
+		if item.Status == Working || item.Status == Unknown {
+			working++
+		}
+		if item.Status == Queued && first == 0 {
+			first = item.Number
+		}
+	}
+	if p.Paused || working >= p.Queue || first != n {
+		return r, ErrConflict
+	}
+	if err = s.validateDispatch(p, list, n, agent, location, session); err != nil {
+		return r, err
+	}
 	r.Status, r.Session, r.Agent = Working, session, agent
+	r.RunLocation = location
+	r.Runs = append(r.Runs, Run{ID: session, Session: session, Location: location, State: "starting", Started: s.now()})
 	if len(r.Messages) > 0 {
 		r.Delivered = r.Messages[len(r.Messages)-1].ID
 	}
 	r.Updated = s.now()
-	return r, writeJSON(s.requestPath(project, n), r)
+	return r, s.commit(s.requestPath(project, n), r)
 }
 
 // Release returns a claimed request to the queue when its session could not
@@ -554,10 +655,10 @@ func (s Store) Release(project string, n int, session string) (Request, error) {
 	}
 	r.Session, r.Delivered = "", 0
 	if r.Status == Working {
-		r.Status = Queued
+		r.Status, r.Failure = Failed, "The session could not start"
 	}
 	r.Updated = s.now()
-	return r, writeJSON(s.requestPath(project, n), r)
+	return r, s.commit(s.requestPath(project, n), r)
 }
 
 // QueueProject is one project's slots and waiting requests, oldest first.
@@ -566,8 +667,10 @@ type QueueProject struct {
 	Key     string    `json:"key"`
 	Limit   int       `json:"limit"`
 	Working int       `json:"working"`
+	Paused  bool      `json:"paused"`
 	Workers []Worker  `json:"workers"`
 	Queued  []Request `json:"queued"`
+	Active  []Request `json:"active"`
 }
 
 // Queue lists every project's waiting requests with their threads, for the
@@ -583,13 +686,16 @@ func (s Store) Queue() ([]QueueProject, error) {
 		if err != nil {
 			continue
 		}
-		q := QueueProject{Project: p.ID, Key: p.Key, Limit: p.Queue, Workers: p.Workers, Queued: []Request{}}
+		q := QueueProject{Project: p.ID, Key: p.Key, Limit: p.Queue, Paused: p.Paused, Workers: p.Workers, Queued: []Request{}}
 		for _, sum := range list {
-			if sum.Status == Working {
+			if sum.Status == Working || sum.Status == Unknown {
 				q.Working++
+				if active, err := s.Request(p.ID, sum.Number); err == nil {
+					q.Active = append(q.Active, active)
+				}
 			}
 		}
-		for i := len(list) - 1; i >= 0; i-- {
+		for i := 0; i < len(list); i++ {
 			if list[i].Status == Queued {
 				if r, err := s.Request(p.ID, list[i].Number); err == nil {
 					q.Queued = append(q.Queued, r)

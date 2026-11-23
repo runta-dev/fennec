@@ -54,6 +54,24 @@ struct NewProject {
     name: Entity<InputState>,
     description: Entity<InputState>,
     repository: Entity<InputState>,
+    agent: String,
+}
+
+#[derive(Clone)]
+struct QueuedRequestDrag {
+    project: String,
+    number: u64,
+    title: String,
+}
+impl Render for QueuedRequestDrag {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(12.0))
+            .py(px(8.0))
+            .bg(c("f_card"))
+            .text_color(c("f_text"))
+            .child(self.title.clone())
+    }
 }
 
 pub struct FennecWindow {
@@ -703,6 +721,10 @@ impl FennecWindow {
     }
 
     fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.submit_reply(false, window, cx);
+    }
+
+    fn submit_reply(&mut self, resume: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.replying {
             return;
         }
@@ -710,7 +732,7 @@ impl FennecWindow {
         let (Some(project), Some(n)) = (self.project_id(), self.open) else {
             return;
         };
-        if text.trim().is_empty() {
+        if text.trim().is_empty() && !resume {
             return;
         }
         self.replying = true;
@@ -719,7 +741,13 @@ impl FennecWindow {
         let origin = project.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let sent = cx
-                .background_spawn(async move { board::reply(&project, n, &text, &me) })
+                .background_spawn(async move {
+                    if resume {
+                        board::continue_request(&project, n, &text, &me)
+                    } else {
+                        board::reply(&project, n, &text, &me)
+                    }
+                })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.replying = false;
@@ -748,6 +776,45 @@ impl FennecWindow {
                 .background_spawn(async move { board::set_status(&project, n, status) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| match done {
+                Ok(_) => this.refresh_now(window, cx),
+                Err(e) => this.say(format!("{e:#}"), cx),
+            });
+        }));
+    }
+
+    fn move_request(
+        &mut self,
+        project: String,
+        number: u64,
+        before: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_spawn(async move { board::move_request(&project, number, before) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
+                Ok(_) => this.refresh_now(window, cx),
+                Err(e) => this.say(format!("{e:#}"), cx),
+            });
+        }));
+    }
+
+    fn pause_queue(
+        &mut self,
+        project: String,
+        paused: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    board::update_project(&project, serde_json::json!({"paused":paused}))
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
                 Ok(_) => this.refresh_now(window, cx),
                 Err(e) => this.say(format!("{e:#}"), cx),
             });
@@ -1303,10 +1370,13 @@ impl FennecWindow {
     /// changed, and keeps frames coming until it settles.
     fn step_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let target = if self.sidebar { 1.0 } else { 0.0 };
-        if self.sidebar_motion.is_none_or(|(to, _, _)| to != self.sidebar)
+        if self
+            .sidebar_motion
+            .is_none_or(|(to, _, _)| to != self.sidebar)
             && self.sidebar_shown != target
         {
-            self.sidebar_motion = Some((self.sidebar, self.sidebar_shown, std::time::Instant::now()));
+            self.sidebar_motion =
+                Some((self.sidebar, self.sidebar_shown, std::time::Instant::now()));
             // Animation frames can pause (a hidden window); one late redraw still lands the slide.
             cx.spawn(async move |this, cx| {
                 cx.background_executor()
@@ -1399,12 +1469,14 @@ impl FennecWindow {
             .absolute()
             .left(px(SIDEBAR_TOGGLE_LEFT))
             .top(px(10.0))
-            .child(ui::icon_button("sidebar-toggle", "sidebar").size(px(SIDEBAR_TOGGLE_SIZE)).on_click(
-                cx.listener(|this, _, _, cx| {
-                    this.sidebar = !this.sidebar;
-                    cx.notify();
-                }),
-            ))
+            .child(
+                ui::icon_button("sidebar-toggle", "sidebar")
+                    .size(px(SIDEBAR_TOGGLE_SIZE))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.sidebar = !this.sidebar;
+                        cx.notify();
+                    })),
+            )
             .into_any_element()
     }
 
@@ -1606,6 +1678,7 @@ impl FennecWindow {
             name,
             description,
             repository,
+            agent: "claude".into(),
         });
         self.menu = None;
         cx.notify();
@@ -1624,11 +1697,12 @@ impl FennecWindow {
             return;
         }
         let org = String::new();
+        let agent = np.agent.clone();
         let color = board::COLORS[self.projects.len() % board::COLORS.len()];
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let created = cx
                 .background_spawn(async move {
-                    board::create_project(&name, &org, &description, &repository, color)
+                    board::create_project(&name, &org, &description, &repository, color, &agent)
                 })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| match created {
@@ -1699,7 +1773,37 @@ impl FennecWindow {
                         )
                         .child(field(t("name"), &np.name))
                         .child(field(t("description"), &np.description))
-                        .child(field(t("repository"), &np.repository))
+                        .child(field(t("repository_optional"), &np.repository))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(c("f_muted"))
+                                .child(t("default_agent")),
+                        )
+                        .child(h_flex().gap(px(4.0)).flex_wrap().children(
+                            board::AGENTS.iter().map(|agent| {
+                                let agent = agent.to_string();
+                                secondary_button(
+                                    SharedString::from(format!("new-worker-{agent}")),
+                                    sessions::agent_name(&agent).to_owned(),
+                                    np.agent == agent,
+                                )
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        if let Some(np) = &mut this.new_project {
+                                            np.agent = agent.clone();
+                                        }
+                                        cx.notify();
+                                    },
+                                ))
+                            }),
+                        ))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(c("f_muted"))
+                                .child(t("run_location_hint")),
+                        )
                         .child(
                             h_flex()
                                 .justify_end()
@@ -1736,8 +1840,7 @@ impl FennecWindow {
         let agents: Vec<String> = keys
             .filter(|key| {
                 let p = &self.activity[key.strip_prefix("local:").unwrap_or(key)];
-                p["program"]["agent"] == true
-                    || p["state"].as_str().is_some_and(|w| !w.is_empty())
+                p["program"]["agent"] == true || p["state"].as_str().is_some_and(|w| !w.is_empty())
             })
             .collect();
         if agents.len() < 2 {
@@ -1763,7 +1866,9 @@ impl FennecWindow {
                 };
                 SidebarRow {
                     session: s,
-                    state: activity::state(self.activity[address]["state"].as_str().unwrap_or_default()),
+                    state: activity::state(
+                        self.activity[address]["state"].as_str().unwrap_or_default(),
+                    ),
                     since_ms,
                     tab: Some(key),
                     agent: true,
@@ -1914,9 +2019,7 @@ impl FennecWindow {
                         .map(String::as_str)
                         .filter(|p| !p.is_empty())
                         .unwrap_or(&s.directory);
-                    if (grouped && (split || !tab.starts_with("local:")))
-                        || path.is_empty()
-                    {
+                    if (grouped && (split || !tab.starts_with("local:"))) || path.is_empty() {
                         s.title.clone()
                     } else {
                         sessions::directory_label(path)
@@ -2065,12 +2168,21 @@ impl FennecWindow {
     fn project(&self, p: &Project, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let q = self.query(cx);
         let all = self.requests.get(&p.id).cloned().unwrap_or_default();
-        let shown: Vec<&Request> = all
+        let mut shown: Vec<&Request> = all
             .iter()
             .filter(|r| r.resolved() == self.resolved)
             .filter(|r| self.tag.as_ref().is_none_or(|t| &r.tag == t))
             .filter(|r| q.is_empty() || r.title.to_lowercase().contains(&q))
             .collect();
+        let group = |status: &str| match status {
+            "you" => 0,
+            "failed" => 1,
+            "unknown" => 2,
+            "working" => 3,
+            "queued" => 4,
+            _ => 5,
+        };
+        shown.sort_by_key(|r| group(&r.status));
         let open_count = all.iter().filter(|r| !r.resolved()).count();
         let resolved_count = all.len() - open_count;
         let tag_label = |id: &str| {
@@ -2111,7 +2223,9 @@ impl FennecWindow {
                         .child(count.to_string()),
                 )
         };
-        let cards = shown.iter().map(|r| {
+        let pause_project = p.id.clone();
+        let paused = p.paused;
+        let cards = shown.iter().enumerate().map(|(index, r)| {
             let selected = self.open == Some(r.number);
             let n = r.number;
             let latest = r
@@ -2125,7 +2239,10 @@ impl FennecWindow {
                         .to_owned()
                 })
                 .unwrap_or_default();
-            v_flex()
+            let project = p.id.clone();
+            let drop_project = project.clone();
+            let next_project = project.clone();
+            let card = v_flex()
                 .id(SharedString::from(format!("req-{n}")))
                 .w_full()
                 .px(px(13.0))
@@ -2142,6 +2259,23 @@ impl FennecWindow {
                 .when(selected, |d| d.bg(c("f_card")))
                 .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
                 .on_click(cx.listener(move |this, _, window, cx| this.open_request(n, window, cx)))
+                .when(r.status == "queued", |d| {
+                    d.on_drag(
+                        QueuedRequestDrag {
+                            project,
+                            number: n,
+                            title: r.title.clone(),
+                        },
+                        |drag, _, _, cx| cx.new(|_| drag.clone()),
+                    )
+                    .on_drop(cx.listener(
+                        move |this, drag: &QueuedRequestDrag, window, cx| {
+                            if drag.project == drop_project && drag.number != n {
+                                this.move_request(drop_project.clone(), drag.number, n, window, cx);
+                            }
+                        },
+                    ))
+                })
                 .child(
                     h_flex()
                         .items_start()
@@ -2195,6 +2329,44 @@ impl FennecWindow {
                         .when(r.votes > 0, |d| d.child(format!("+{}", r.votes)))
                         .child(sessions::age(sessions::rfc3339_ms(&r.updated), now)),
                 )
+                .when(r.status == "queued", |d| {
+                    d.child(
+                        h_flex().child(
+                            secondary_button(
+                                SharedString::from(format!("next-{n}")),
+                                t("run_next"),
+                                false,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.move_request(next_project.clone(), n, 0, window, cx);
+                                },
+                            )),
+                        ),
+                    )
+                })
+                .into_any_element();
+            v_flex()
+                .when(index == 0 || shown[index - 1].status != r.status, |d| {
+                    d.child(
+                        div()
+                            .px(px(13.0))
+                            .pt(px(12.0))
+                            .pb(px(6.0))
+                            .text_size(px(11.5))
+                            .text_color(c("f_muted"))
+                            .child(t(match r.status.as_str() {
+                                "you" => "needs_you",
+                                "working" => "working",
+                                "queued" => "queued",
+                                "failed" => "failed",
+                                "unknown" => "unknown",
+                                _ => "resolved",
+                            })),
+                    )
+                })
+                .child(card)
                 .into_any_element()
         });
         v_flex()
@@ -2266,6 +2438,43 @@ impl FennecWindow {
                     }),
             )
             .child(
+                h_flex()
+                    .px(px(18.0))
+                    .py(px(6.0))
+                    .gap(px(8.0))
+                    .child(
+                        secondary_button(
+                            "pause-queue",
+                            if paused {
+                                t("resume_queue")
+                            } else {
+                                t("pause_queue")
+                            },
+                            false,
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.pause_queue(pause_project.clone(), !paused, window, cx)
+                            },
+                        )),
+                    )
+                    .child(div().text_size(px(11.0)).text_color(c("f_muted")).child(
+                        crate::i18n::tf("concurrency_limit", &[("n", &p.queue.to_string())]),
+                    )),
+            )
+            .child(
+                div()
+                    .h(px(20.0))
+                    .px(px(18.0))
+                    .text_size(px(11.0))
+                    .text_color(c("f_muted"))
+                    .child(match p.sync_status.as_str() {
+                        "offline" => t("queue_offline"),
+                        "pending" => t("queue_pending"),
+                        _ => String::new(),
+                    }),
+            )
+            .child(
                 v_flex()
                     .id("requests")
                     .flex_1()
@@ -2328,7 +2537,7 @@ impl FennecWindow {
                                     .p(px(2.0))
                                     .rounded(px(8.0))
                                     .bg(c("f_line"))
-                                    .child(segment(t("open"), open_count, !self.resolved, false))
+                                    .child(segment(t("active"), open_count, !self.resolved, false))
                                     .child(segment(
                                         t("resolved"),
                                         resolved_count,
@@ -2509,6 +2718,58 @@ impl FennecWindow {
         }
         let reply_has = !self.reply.read(cx).value().trim().is_empty();
         let resolved = r.resolved();
+        let can_continue = matches!(r.status.as_str(), "you" | "failed");
+        let retry = r.status == "failed";
+        let session_route = self
+            .sessions
+            .iter()
+            .find(|s| s.name == r.session)
+            .map(|s| s.address.clone());
+        let can_resolve = resolved || matches!(r.status.as_str(), "you" | "failed");
+        for (index, run) in r.runs.iter().enumerate() {
+            let route = self
+                .sessions
+                .iter()
+                .find(|s| s.name == run.session)
+                .map(|s| s.address.clone());
+            let label = format!(
+                "{} {} · {}",
+                t("run"),
+                index + 1,
+                t(if run.location == "cloud" {
+                    "run_cloud"
+                } else {
+                    "run_local"
+                })
+            );
+            items.push(
+                h_flex()
+                    .py(px(6.0))
+                    .gap(px(8.0))
+                    .text_size(px(11.0))
+                    .text_color(c("f_muted"))
+                    .child(label)
+                    .child(ui::status_pill(match run.state.as_str() {
+                        "running" | "starting" => "working",
+                        other => other,
+                    }))
+                    .when_some(route, |d, address| {
+                        d.child(
+                            secondary_button(
+                                SharedString::from(format!("run-{}", run.id)),
+                                t("view_session"),
+                                false,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.go(Route::Session(address.clone()), window, cx)
+                                },
+                            )),
+                        )
+                    })
+                    .into_any_element(),
+            );
+        }
         v_flex()
             .flex_1()
             .min_w_0()
@@ -2542,23 +2803,34 @@ impl FennecWindow {
                     )
                     .child(ui::tag_chip(&r.tag, &tag))
                     .child(ui::status_pill(&r.status))
-                    .child(div().flex_1())
-                    .child(
-                        secondary_button(
-                            "resolve",
-                            if resolved { t("reopen") } else { t("resolve") },
-                            !resolved,
+                    .when_some(session_route, |d, address| {
+                        d.child(
+                            secondary_button("request-session", t("view_session"), false).on_click(
+                                cx.listener(move |this, _, window, cx| {
+                                    this.go(Route::Session(address.clone()), window, cx)
+                                }),
+                            ),
                         )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.set_status(
-                                    if resolved { "you" } else { "resolved" },
-                                    window,
-                                    cx,
-                                )
-                            },
-                        )),
-                    ),
+                    })
+                    .child(div().flex_1())
+                    .when(can_resolve, |d| {
+                        d.child(
+                            secondary_button(
+                                "resolve",
+                                if resolved { t("reopen") } else { t("resolve") },
+                                !resolved,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.set_status(
+                                        if resolved { "you" } else { "resolved" },
+                                        window,
+                                        cx,
+                                    )
+                                },
+                            )),
+                        )
+                    }),
             )
             .child(
                 v_flex()
@@ -2593,15 +2865,39 @@ impl FennecWindow {
                         .min_h(px(42.0))
                         .text_size(px(13.5))
                         .line_height(relative(1.6))
-                        .when(reply_has, |d| d.pb(px(38.0)))
+                        .pb(px(38.0))
                         .child(Textarea::new(&self.reply))
-                        .when(reply_has, |d| {
-                            d.child(div().absolute().right(px(8.0)).bottom(px(8.0)).child(
-                                primary_button("send", t("send")).on_click(
-                                    cx.listener(|this, _, window, cx| this.send_reply(window, cx)),
-                                ),
-                            ))
-                        }),
+                        .child(
+                            h_flex()
+                                .absolute()
+                                .right(px(8.0))
+                                .bottom(px(8.0))
+                                .gap(px(8.0))
+                                .when(can_continue, |d| {
+                                    d.child(
+                                        primary_button(
+                                            "continue-request",
+                                            if retry {
+                                                t("retry_request")
+                                            } else {
+                                                t("continue_request")
+                                            },
+                                        )
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
+                                                this.submit_reply(true, window, cx)
+                                            }),
+                                        ),
+                                    )
+                                })
+                                .when(reply_has, |d| {
+                                    d.child(primary_button("send", t("send")).on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.send_reply(window, cx)
+                                        }),
+                                    ))
+                                }),
+                        ),
                 ),
             )
             .into_any_element()
@@ -2746,13 +3042,20 @@ impl FennecWindow {
                             .child(self.program_icon(&s.address, &s.agent, 14.0))
                             .child(self.activity_mark(&s.address))
                             // An agent's tab carries the session's title, like its sidebar row.
-                            .child(div().max_w(px(260.0)).truncate().child(
-                                if sessions::agent_icon(&s.agent).is_none() || s.title.trim().is_empty() {
-                                    self.program_name(&s.address, sessions::agent_name(&s.agent))
-                                } else {
-                                    s.title.clone()
-                                },
-                            )),
+                            .child(
+                                div().max_w(px(260.0)).truncate().child(
+                                    if sessions::agent_icon(&s.agent).is_none()
+                                        || s.title.trim().is_empty()
+                                    {
+                                        self.program_name(
+                                            &s.address,
+                                            sessions::agent_name(&s.agent),
+                                        )
+                                    } else {
+                                        s.title.clone()
+                                    },
+                                ),
+                            ),
                         )
                     })
                     .children(shell_tabs)
@@ -2831,7 +3134,7 @@ pub(crate) fn primary_button(id: &'static str, label: String) -> Stateful<Div> {
 }
 
 pub(crate) fn secondary_button(
-    id: &'static str,
+    id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     check: bool,
 ) -> Stateful<Div> {
@@ -2865,8 +3168,10 @@ impl FennecWindow {
             caret: c("f_text"),
             ..InputEditorStyle::default()
         };
-        self.search.update(cx, |s, _| s.set_editor_style(style.clone()));
-        self.composer.update(cx, |s, _| s.set_editor_style(style.clone()));
+        self.search
+            .update(cx, |s, _| s.set_editor_style(style.clone()));
+        self.composer
+            .update(cx, |s, _| s.set_editor_style(style.clone()));
         self.reply.update(cx, |s, _| s.set_editor_style(style));
     }
 }
@@ -3109,5 +3414,9 @@ fn state_label(state: State) -> (&'static str, &'static str) {
 }
 
 fn empty() -> AnyElement {
-    div().flex_1().h_full().bg(c("background")).into_any_element()
+    div()
+        .flex_1()
+        .h_full()
+        .bg(c("background"))
+        .into_any_element()
 }

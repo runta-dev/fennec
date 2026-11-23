@@ -79,7 +79,7 @@ func Command(home, name string, args []string, stdin io.Reader, out io.Writer) e
 func Thread(p Project, r Request) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s-%d: %s\n", p.Key, r.Number, r.Title)
-	fmt.Fprintf(&b, "Project: %s", p.Name)
+	fmt.Fprintf(&b, "Queue: %s", p.Name)
 	if p.Repository != "" {
 		fmt.Fprintf(&b, " (github.com/%s)", p.Repository)
 	}
@@ -117,7 +117,7 @@ func Call(home, method, path string, body io.Reader, out io.Writer) error {
 	}
 	r := httptest.NewRequest(method, "http://board.fennec"+path, body)
 	w := httptest.NewRecorder()
-	Store{Home: home}.Handler().ServeHTTP(w, r)
+	Store{Home: home, Role: "cloud"}.Handler().ServeHTTP(w, r)
 	if w.Code >= 400 {
 		var fault struct {
 			Error string `json:"error"`

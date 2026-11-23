@@ -1,4 +1,4 @@
-// Fennec desktop window mockup: Agents (cloud TUIs) + Projects (request groups, forum style).
+// Fennec desktop window mockup: Agents (cloud TUIs) + Queues (request groups, forum style).
 const I = {
   search: '<path d="m11 11 3 3"/><circle cx="7" cy="7" r="4.5"/>',
   sidebar: '<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/>',
@@ -123,7 +123,7 @@ function choice(key, value, options, { placeholder = '', disabled = false } = {}
     data-options='${esc(JSON.stringify(options))}' data-value="${esc(value ?? '')}">
     ${current?.[2] ? `<img src="${current[2]}" alt="">` : ''}<span class="${current ? '' : 'ph'}">${esc(current ? current[1] : placeholder)}</span>${chevron}</button>`;
 }
-// Organizations the user belongs to (Runta /v2/organizations). Projects belong to one.
+// Organizations the user belongs to (Runta /v2/organizations). Queues belong to one.
 const ORGS = [['runta', 'Runta', '#f38d25'], ['personal', 'Personal', '#8a8f98']];
 let org = 'runta', query = '';
 const matches = (...texts) => !query || texts.some((t) => t && t.toLowerCase().includes(query.toLowerCase()));
@@ -178,7 +178,7 @@ function sidebar() {
       <span class="spacer"></span><button class="ib" title="Hide sidebar">${icon('sidebar')}</button></div>
     <label class="side-search">${icon('search')}<input data-search placeholder="Search" value="${esc(query)}" spellcheck="false" autocomplete="off"><kbd>⌘K</kbd></label>
     <div class="side-scroll">
-      <div class="section">Projects <button class="ib sm" data-new-project title="New project">${icon('plus')}</button></div>${projectRows}
+      <div class="section">Queues <button class="ib sm" data-new-project title="New queue">${icon('plus')}</button></div>${projectRows}
       <div class="section">Sessions <button class="ib sm" data-new-session title="New session">${icon('plus')}</button></div>${agentRows}
     </div>
     <div class="side-foot"><button class="side-row">${icon('gear')}<span class="side-name">Settings</span></button></div>
@@ -210,7 +210,7 @@ function projectView(p) {
   return `<section class="forum">
     <div class="pane-head">${mark(p, 'lg')}
       <div class="ph-text"><b>${esc(p.name)}</b><span>${esc(p.desc)}</span></div>
-      <button class="ib" data-settings="${p.id}" title="Project settings">${icon('gear')}</button></div>
+      <button class="ib" data-settings="${p.id}" title="Queue settings">${icon('gear')}</button></div>
     <div class="forum-scroll">
       <form class="composer" data-compose="new">${editor('new')}<button class="btn primary sm send">Post</button></form>
       <div class="filters"><div class="seg">${[['open', 'Open', open.length], ['resolved', 'Resolved', done.length]].map(([k, v, n]) => `<button class="${scope === k ? 'on' : ''}" data-scope="${k}">${v}<span>${n}</span></button>`).join('')}</div>
@@ -297,7 +297,7 @@ Do you want to proceed?
 
 function projectModal() {
   return `<div class="scrim" data-scrim><form class="modal" data-create-project>
-    <div class="m-head"><b>New project</b><button type="button" class="ib" data-scrim>${icon('close')}</button></div>
+    <div class="m-head"><b>New queue</b><button type="button" class="ib" data-scrim>${icon('close')}</button></div>
     <input name="name" placeholder="Name" required>
     <textarea name="desc" rows="3" placeholder="Description"></textarea>
     <div class="m-foot"><button type="button" class="btn" data-scrim>Cancel</button><button class="btn primary">Create</button></div>
@@ -331,7 +331,7 @@ function settingsView(p) {
   return `<section class="settings">
     <div class="pane-head"><button class="ib" data-project="${p.id}" title="Back to requests">${icon('back')}</button>
       ${mark(p, 'lg')}
-      <div class="ph-text"><b>${esc(p.name)}</b><span>Project settings</span></div></div>
+      <div class="ph-text"><b>${esc(p.name)}</b><span>Queue settings</span></div></div>
     <div class="set-wrap"><nav class="set-nav">${SETTINGS_TABS.map(([k, label, ic]) => `
       <button class="side-row ${tab === k ? 'sel' : ''}" data-settings="${p.id}" data-tab="${k}">${icon(ic)}<span class="side-name">${label}</span>
       ${k === 'knowledge' && p.knowledge.length ? `<span class="side-meta">${p.knowledge.length}</span>` : ''}</button>`).join('')}</nav>
@@ -436,7 +436,7 @@ function render() {
     : view.type === 'settings'
     ? settingsView(projects.find((p) => p.id === view.id))
     : view.type === 'empty'
-    ? `<section class="forum empty-org"><p>No projects in this organization yet.</p><button class="btn sm" data-new-project>${icon('plus')} New project</button></section>`
+    ? `<section class="forum empty-org"><p>No queues yet.</p><button class="btn sm" data-new-project>${icon('plus')} New queue</button></section>`
     : projectView(projects.find((p) => p.id === view.id)) + threadView(reqOf(openId)?.project === view.id ? reqOf(openId) : null);
   $('#app').innerHTML = sidebar() + `<main class="main">${main}</main>` + (newProject ? projectModal() : '') + (newSession ? sessionModal() : '') + (menu ? choiceMenu() : '');
   const t = $('.thread-scroll'); if (t) t.scrollTop = t.scrollHeight;

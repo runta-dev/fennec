@@ -15,6 +15,7 @@ import (
 	"fennec/internal/magpieweb"
 	"fennec/internal/preview"
 	"fennec/internal/project"
+	"fennec/internal/queuescheduler"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/stackdump"
@@ -22,12 +23,14 @@ import (
 	"fennec/internal/trafficbroker"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -40,6 +43,9 @@ func main() {
 	}
 	os.Exit(code)
 }
+
+var queueServiceOnce sync.Once
+var queueServiceError error
 
 type prefixedInput struct {
 	io.Reader
@@ -105,6 +111,24 @@ func run() (int, error) {
 	}
 	if len(os.Args) == 4 && os.Args[1] == "board-call" {
 		return 0, board.Call(home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "queue" {
+		return 0, board.AgentCommand(home, os.Args[2:], os.Stdin, os.Stdout)
+	}
+	if len(os.Args) == 3 && os.Args[1] == "queue-service" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		if os.Args[2] == "install" {
+			return 0, queuescheduler.EnsureService(ctx, home)
+		}
+		if os.Args[2] != "run" {
+			return 1, fmt.Errorf("invalid queue service command")
+		}
+		store := board.Store{Home: home, Role: "cloud"}
+		executor := queuescheduler.CloudExecutor{Runtime: cloudruntime.NewLocalRuntime(home), Store: store}
+		scheduler := queuescheduler.Scheduler{Store: store, Executor: executor, Command: filepath.Join(home, ".local/fennec/bin/fennec-terminal") + " queue", OnError: func(err error) { log.Printf("queue scheduler: %v", err) }}
+		scheduler.Run(ctx)
+		return 0, nil
 	}
 	if len(os.Args) >= 2 && (os.Args[1] == "reply" || os.Args[1] == "request") {
 		return 0, board.Command(home, os.Args[1], os.Args[2:], os.Stdin, os.Stdout)
@@ -386,7 +410,11 @@ func run() (int, error) {
 				return (preview.Store{Home: home}).Dial(ctx)
 			}
 			if target == terminalstream.SocketBoard {
-				return (board.Store{Home: home}).Dial(ctx)
+				queueServiceOnce.Do(func() { queueServiceError = queuescheduler.EnsureService(ctx, home) })
+				if queueServiceError != nil {
+					return nil, fmt.Errorf("queue scheduler startup failed: %w", queueServiceError)
+				}
+				return (board.Store{Home: home, Role: "cloud"}).Dial(ctx)
 			}
 			if target == terminalstream.SocketMagpieWeb {
 				return panel.Dial(ctx, home)

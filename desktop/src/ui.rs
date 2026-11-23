@@ -271,6 +271,18 @@ pub fn project_mark(name: &str, color: &str, size: f32) -> Div {
 /// Request status pill: Needs you (tint), Working, Queued (outline), Resolved.
 pub fn status_pill(status: &str) -> Div {
     let (label, fg, bg, border) = match status {
+        "failed" => (
+            crate::i18n::t("failed"),
+            c("f_text"),
+            gpui::transparent_black(),
+            c("f_field"),
+        ),
+        "unknown" => (
+            crate::i18n::t("unknown"),
+            c("f_muted"),
+            gpui::transparent_black(),
+            c("f_field"),
+        ),
         "needs_you" | "you" => (
             crate::i18n::t("needs_you"),
             c("accent_text"),

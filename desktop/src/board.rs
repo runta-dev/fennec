@@ -35,6 +35,8 @@ pub struct Project {
     pub color: String,
     pub tags: Vec<Tag>,
     pub queue: usize,
+    pub paused: bool,
+    pub sync_status: String,
     pub workers: Vec<Worker>,
     pub open: usize,
     pub needs_you: usize,
@@ -101,10 +103,22 @@ pub struct Request {
     pub updated: String,
     pub agent: String,
     pub session: String,
+    pub run_location: String,
+    pub failure: String,
     pub votes: u64,
     pub replies: u64,
     pub latest: Option<Message>,
     pub messages: Vec<Message>,
+    pub runs: Vec<Run>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Run {
+    pub id: String,
+    pub session: String,
+    pub location: String,
+    pub state: String,
 }
 
 impl Request {
@@ -209,6 +223,22 @@ pub fn reply(project: &str, n: u64, text: &str, author: &str) -> Result<Value> {
     )
 }
 
+pub fn continue_request(project: &str, n: u64, text: &str, author: &str) -> Result<Value> {
+    call(
+        "POST",
+        &format!("/v1/projects/{project}/requests/{n}/continue"),
+        Some(json!({"body":text.trim(),"author":author})),
+    )
+}
+
+pub fn move_request(project: &str, n: u64, before: u64) -> Result<Value> {
+    call(
+        "POST",
+        &format!("/v1/projects/{project}/requests/{n}/move"),
+        Some(json!({"before":before})),
+    )
+}
+
 pub fn set_status(project: &str, n: u64, status: &str) -> Result<Value> {
     call(
         "PATCH",
@@ -223,8 +253,9 @@ pub fn create_project(
     description: &str,
     repository: &str,
     color: &str,
+    agent: &str,
 ) -> Result<Project> {
-    let body = json!({"name": name, "org": org, "description": description, "repository": repository, "color": color, "workers": [{"agent": "claude", "model": "", "on": true}]});
+    let body = json!({"name": name, "org": org, "description": description, "repository": repository, "color": color, "workers": [{"agent": agent, "model": "", "on": true}]});
     Ok(serde_json::from_value(call(
         "POST",
         "/v1/projects",

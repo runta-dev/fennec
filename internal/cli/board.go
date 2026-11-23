@@ -33,7 +33,7 @@ type boardClient struct {
 
 func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
 	if b.local {
-		return (board.Store{Home: b.s.home}).Dial(ctx)
+		return (board.Store{Home: b.s.home, Role: "local"}).Dial(ctx)
 	}
 	if _, _, _, ok := b.s.account.Session(); !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in to Fennec"}
@@ -206,7 +206,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		return map[string]string{"session_id": id}, nil
 	}
-	go queue.run(ctx)
+	startQueueReplication(ctx, s)
 }
 
 // boardQueue hands queued requests to agents: a new session through the
@@ -216,132 +216,6 @@ type boardQueue struct {
 	s     *daemonServices
 	c     *controlplane.Controller
 	board boardClient
-}
-
-func (q *boardQueue) run(ctx context.Context) {
-	ticker := time.NewTicker(4 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		if _, _, _, ok := q.s.account.Session(); !ok {
-			continue
-		}
-		q.s.mu.Lock()
-		ready := q.s.channel != nil && q.s.brokerReady
-		q.s.mu.Unlock()
-		if ready {
-			q.pass(ctx)
-		}
-	}
-}
-
-func (q *boardQueue) pass(ctx context.Context) {
-	status, data, err := q.board.do(ctx, http.MethodGet, "/v1/queue", nil)
-	if err != nil || status != http.StatusOK {
-		return
-	}
-	var projects []board.QueueProject
-	if json.Unmarshal(data, &projects) != nil {
-		return
-	}
-	live := q.liveSessions(ctx)
-	started := 0
-	for _, project := range projects {
-		slots := project.Limit - project.Working
-		for _, request := range project.Queued {
-			if slots <= 0 || started >= 2 || ctx.Err() != nil {
-				break
-			}
-			if q.take(ctx, project, request, live) {
-				slots--
-				started++
-			}
-		}
-	}
-}
-
-// liveSessions are the sessions on the cloud computer that are still running.
-func (q *boardQueue) liveSessions(ctx context.Context) map[string]bool {
-	live := map[string]bool{}
-	result, err := q.c.Handlers()["sessions.list"](ctx, nil)
-	if err != nil {
-		return live
-	}
-	raw, _ := json.Marshal(result)
-	var listing struct {
-		Terminals []struct {
-			State  string            `json:"state"`
-			Labels map[string]string `json:"labels"`
-		} `json:"terminals"`
-	}
-	if json.Unmarshal(raw, &listing) != nil {
-		return live
-	}
-	for _, terminal := range listing.Terminals {
-		if id := terminal.Labels["fennec.session"]; id != "" && terminal.State == "live" {
-			live[id] = true
-		}
-	}
-	return live
-}
-
-func (q *boardQueue) take(ctx context.Context, project board.QueueProject, request board.Request, live map[string]bool) bool {
-	path := fmt.Sprintf("/v1/projects/%s/requests/%d", project.Project, request.Number)
-	if request.Session != "" && live[request.Session] {
-		// A reply to a request its agent is still on: pass the new messages on.
-		var text strings.Builder
-		for _, message := range request.Messages {
-			if message.ID > request.Delivered && message.Agent == "" {
-				fmt.Fprintf(&text, "New reply on %s-%d from %s:\n%s\n\n", project.Key, request.Number, message.Author, message.Body)
-			}
-		}
-		if text.Len() == 0 {
-			return false
-		}
-		fmt.Fprintf(&text, "Answer with `%s reply %s-%d` when you are done.", boardCommand, project.Key, request.Number)
-		if status, _, err := q.board.do(ctx, http.MethodPost, path+"/claim", map[string]string{"session": request.Session, "agent": request.Agent}); err != nil || status != http.StatusOK {
-			return false
-		}
-		message := text.String()
-		if len(message) > 16000 {
-			message = message[:16000] + fmt.Sprintf("\n\n(Cut short; `%s request %s-%d` has the whole thread.)", boardCommand, project.Key, request.Number)
-		}
-		params, _ := json.Marshal(controlplane.SessionParams{SessionID: request.Session, Text: message})
-		if _, err := q.c.Handlers()["sessions.send"](ctx, params); err != nil {
-			q.board.do(ctx, http.MethodPost, path+"/release", map[string]string{"session": request.Session})
-		}
-		return true
-	}
-	var worker *board.Worker
-	for i := range project.Workers {
-		if project.Workers[i].On {
-			worker = &project.Workers[i]
-			break
-		}
-	}
-	if worker == nil {
-		return false
-	}
-	id, err := sessionid.Allocate(q.s.home)
-	if err != nil {
-		return false
-	}
-	if status, _, err := q.board.do(ctx, http.MethodPost, path+"/claim", map[string]string{"session": id, "agent": worker.Agent}); err != nil || status != http.StatusOK {
-		return false
-	}
-	p, err := q.project(ctx, project.Project)
-	if err == nil {
-		err = q.launch(ctx, id, worker.Agent, launchArguments(*worker, firstMessage(p, request, worker.Agent)))
-	}
-	if err != nil {
-		q.board.do(ctx, http.MethodPost, path+"/release", map[string]string{"session": id})
-		return false
-	}
-	return true
 }
 
 func (q *boardQueue) project(ctx context.Context, id string) (board.Project, error) {

@@ -28,6 +28,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	method := ""
 	params := map[string]any{}
 	switch args[0] {
+	case "queue":
+		return true, fenQueueCommand(args[1:], output)
 	case "update":
 		return true, fenUpdateCommand(args[1:], output)
 	case "sandbox":

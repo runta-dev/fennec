@@ -1,5 +1,9 @@
 # Fennec for Mac: the desktop window
 
+Queues use the [replication and scheduling contract](queues.md). The user-facing
+name is Queue; Request and New Request remain unchanged. Internal project IDs
+and API paths remain stable.
+
 The menu bar panel stays the quick way in: sign-in, agents, approvals, usage.
 The desktop window is native Rust/GPUI, using herdr-app's terminal renderer.
 It starts on this Mac's bundled herdr-core, without waiting for sign-in or a
@@ -8,7 +12,7 @@ optional `--cloud` process mode remains available for remote access without
 blocking local terminals and projects.
 
 The desktop window is where work is organized. Its left column lists
-**Projects** (a request board per project) and **Sessions** (the agents running
+**Queues** (a request board per project) and **Sessions** (the agents running
 on the cloud computer); the right side shows the open project, request or
 session.
 
@@ -46,7 +50,7 @@ starts a session on the cloud computer and shows it.
 Rows are flat: selected = card fill with a hairline; hover = a faint fill; 1 px
 between rows. Typography is medium weight (500) throughout.
 
-### Project
+### Queue
 
 - Header: project icon, name, description, settings (gear).
 - *New Request* composer (rich text; first line is the title).
@@ -58,7 +62,7 @@ between rows. Typography is medium weight (500) throughout.
   `KEY-n`, tag, assigned agent icon, reply count, +1 count, age.
 - Thread: `KEY-n`, title, tag, status, *Resolve*/*Reopen*; messages from
   people and agents; agent switches shown as a divider; reply box at the
-  bottom. A reply re-queues the request for its agent.
+  bottom. Comment preserves execution state; Continue explicitly enqueues another run.
 
 ### Request numbers
 
@@ -74,7 +78,7 @@ local shells. `+` opens a new tab running the user's login shell on the Mac in
 the home folder. Tabs close with `×`; the agent tab cannot be closed. If the
 session came from a request, a button on the right opens that request.
 
-### Project settings
+### Queue settings
 
 - **General**: icon (8 colors, or *Upload image…*; *Remove* returns to the
   initial), name, key, description, repository (`owner/repo`), tags (default
@@ -87,7 +91,7 @@ session came from a request, a button on the right opens that request.
   who wrote it, who reviewed it, tags and sources; actions *Mark reviewed*
   (adds `human:<user>` to `verified`, Draft becomes Current) and
   *Deprecate*/*Restore*.
-- **Queue**: *Requests worked on at once* (1–10, default 3), and *Now*: the
+- **Execution**: *Requests worked on at once* (1–10, default 3), and *Now*: the
   requests holding a slot (with their agent) then the waiting ones in order,
   "*n* of *limit* in progress · *m* waiting". Rows open the request.
 - **Agents**: workers allowed to take this project's requests, each an agent,
@@ -100,16 +104,20 @@ dropdowns with an orange check, the panel's 32×19 switch.
 
 ## Where the data lives
 
-In the default local window, projects, requests and knowledge are stored on
-the Mac through `board.local.call`, under `~/.fen/board/`. Local requests are
-a durable backlog; automatic agent dispatch remains a cloud-board feature.
-There is no implicit migration or synchronization between the two stores.
+The Mac and cloud computer each keep the board under `~/.fen/board/`.
+Mutations are persisted to an operation journal before their JSON projections,
+then exchanged over the authenticated resident board channel. The local UI
+remains usable offline and shows whether changes are waiting to synchronize.
+Comments merge by stable identity; queue settings and ordering are versioned.
 
-In the explicit cloud window, projects, requests and knowledge stay on the cloud computer,
-under `~/.fen/board/`. Agents there read and reply to requests directly, and
-the iPhone app can show them later over the same channel. Data is one user's;
-sharing a board with teammates needs a Runta backend and is not part of this
-version.
+The cloud-local `fennec-queues.service` normally schedules work. The Mac
+accepts cloud proposals for local runs while connected; while disconnected its
+backup schedules local requests only within Mac-owned capacity. Slot ownership
+is transferred by its current owner; unknown executions keep their slots.
+Agent Run location determines execution, and each run starts a herdr-core
+session carrying queue, request and run labels. Results are written at the
+execution endpoint, so cloud results do not require the Mac to be online.
+
 
 ```
 ~/.fen/board/
@@ -144,32 +152,24 @@ The Mac daemon exposes it to the app as the control method `board.call`
 | `POST /v1/projects/{id}/requests/{n}/claim` | Assign a queued request to a session (fails if already taken) |
 | `POST /v1/projects/{id}/requests/{n}/release` | Return a claimed request to the queue when its session did not start |
 
-## The queue
+## Queue operations
 
-The Mac daemon dispatches. Every few seconds while it is signed in and
-connected it reads `GET /v1/queue`. For each project with fewer *Working*
-requests than its limit it takes the oldest *Queued* request, claims it, and
-starts a session on the cloud computer the way a session started from the
-iPhone is started (no Mac folder, nothing uploaded; the receipt is saved so
-the session shows in Fennec and `fen attach` reaches it), with
-the first enabled worker's agent and model and a first message that carries
-the request. If the request already has a live session (a reply to a request
-the agent worked on), the new messages are sent to that session instead.
-When the Mac is off, requests wait as *Queued*.
+The list groups Needs you, Failed, Running and Queued, with Done available
+separately. Waiting requests support drag ordering and Run next. Pause prevents
+new assignments but leaves current runs intact. Comment only appends a message;
+Continue or Retry explicitly creates another run with a new session identity.
+The request keeps its prior runs and can open any still-live session.
 
-## What agents do
+The existing project API retains its paths. Requests additionally expose
+`continue`, `move`, `complete` and `reconcile` operations. Completion carries
+an agent and exact run/session identity, preventing late results from completing
+a newer attempt. `POST /v1/sync` exchanges bounded operation batches and durable
+cursors. Request numbers may have gaps because local and cloud writers allocate
+disjoint numbers while offline.
 
-The first message tells the agent the request (`KEY-n`, title, thread),
-the project's repository, and how to answer:
-
-```sh
-~/.local/fennec/bin/fennec-terminal reply FEN-42 "Fixed: narrow screens no longer scroll sideways."   # status becomes Needs you
-~/.local/fennec/bin/fennec-terminal request FEN-42                                                     # read the thread
-```
-
-Agents record what they learn as OKF concepts in the project's knowledge
-folder (`type` required; `generated.by` set to the agent; `status: draft`).
-People review them in Knowledge.
+Agents read and answer with `fen queue read/reply` on the Mac or
+`fennec-terminal queue read/reply` on the cloud. Result text travels on stdin.
+The execution prompt supplies the exact queue, number, agent and run identity.
 
 ## The window and the menu bar
 
