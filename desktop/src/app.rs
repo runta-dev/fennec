@@ -2573,7 +2573,7 @@ impl FennecWindow {
                 .bg(c("background"))
                 .items_center()
                 .justify_center()
-                .child(ui::icon("chat", 32.0, c("f_muted").opacity(0.5)))
+                .child(ui::icon("chat", 16.0, c("f_muted").opacity(0.5)))
                 .into_any_element();
         };
         let tag = p
