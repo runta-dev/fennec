@@ -170,6 +170,14 @@ impl FennecWindow {
             .to_owned()
     }
 
+    pub(super) fn terminal_title(&self, address: &str, fallback: &str) -> String {
+        let address = address.strip_prefix("local:").unwrap_or(address);
+        self.terminal_records().iter()
+            .find(|record| record["address"] == address)
+            .and_then(sessions::agent_terminal_title)
+            .unwrap_or_else(|| self.program_name(address, fallback))
+    }
+
     pub(super) fn activity_mark(&self, address: &str) -> AnyElement {
         self.activity_mark_for(address, "state")
     }

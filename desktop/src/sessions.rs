@@ -207,3 +207,36 @@ pub fn directory_label(path: &str) -> String {
         .unwrap_or(path)
         .to_owned()
 }
+
+/// Child tabs have their own OSC title even though they share a sidebar group.
+pub fn agent_terminal_title(terminal: &Value) -> Option<String> {
+    agent_icon(terminal["status"]["app"].as_str()?)?;
+    let title = terminal["title"].as_str()?.trim_start_matches(
+        |c: char| !c.is_alphanumeric() && !"~/(".contains(c),
+    ).trim();
+    let directory = terminal_directory(terminal);
+    let cwd = std::path::Path::new(&directory).file_name().and_then(|s| s.to_str());
+    let mut title = title;
+    for suffix in [terminal["labels"]["fennec.session"].as_str(), cwd].into_iter().flatten().filter(|s| !s.is_empty()) {
+        for separator in [" | ", " · "] {
+            if let Some(clean) = title.strip_suffix(&format!("{separator}{suffix}")) { title = clean; }
+        }
+    }
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn child_agent_titles_do_not_require_a_parent_session_label() {
+        let mut child = json!({"status":{"app":"codex"},"title":"⠙ Fix login | repo", "cwd":"/work/repo", "labels":{"fennec.shell-of":"parent"}});
+        assert_eq!(agent_terminal_title(&child).as_deref(), Some("Fix login"));
+        child["title"] = json!("Review changes | repo");
+        assert_eq!(agent_terminal_title(&child).as_deref(), Some("Review changes"));
+        child["status"]["app"] = json!("zsh");
+        assert_eq!(agent_terminal_title(&child), None);
+    }
+}

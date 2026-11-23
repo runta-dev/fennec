@@ -1422,13 +1422,15 @@ impl FennecWindow {
             .sessions
             .iter()
             .filter(|s| !(s.address.starts_with("cloud:") && shown_locally.contains(&s.name)))
-            .filter(|s| {
+            .flat_map(|s| self.sidebar_rows(s))
+            .filter(|r| {
+                let s = r.session;
+                let tab = r.tab.clone().unwrap_or_else(|| self.shown_tab(&s.address));
                 q.is_empty()
-                    || s.title.to_lowercase().contains(q)
+                    || self.terminal_title(&tab, &s.title).to_lowercase().contains(q)
                     || s.name.contains(q)
                     || self.session_directory(s).to_lowercase().contains(q)
             })
-            .flat_map(|s| self.sidebar_rows(s))
             .collect();
         list.sort_by_key(|r| (r.agent, if r.agent { r.state } else { State::Unknown }));
         list
@@ -2000,7 +2002,7 @@ impl FennecWindow {
                         .filter(|p| !p.is_empty())
                         .unwrap_or(&s.directory);
                     if (grouped && (split || !tab.starts_with("local:"))) || path.is_empty() {
-                        s.title.clone()
+                        self.terminal_title(&tab, &s.title)
                     } else {
                         sessions::directory_label(path)
                     }
@@ -2917,14 +2919,14 @@ impl FennecWindow {
             .child(self.program_icon(a, "shell", 14.0))
             .child(self.activity_mark(a))
             .child(
-                self.program_name(
+                div().max_w(px(260.0)).truncate().child(self.terminal_title(
                     a,
                     &(self
                         .shell_names
                         .get(a)
                         .cloned()
                         .unwrap_or_else(|| sessions::shell_name(&serde_json::Value::Null))),
-                ),
+                )),
             )
             .child(
                 div()
