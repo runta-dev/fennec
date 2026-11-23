@@ -30,6 +30,31 @@ func (d *Decoder) Feed(data []byte) ([]byte, bool) {
 			d.pending = append([]byte(nil), data[i:]...)
 			break
 		}
+		// String controls (including OSC color replies) are one protocol
+		// message, not keystrokes. Sending their prefix separately lets the
+		// remote attach parser time out before the body crosses the network.
+		if stringControl(data[i:]) {
+			end := i + 2
+			for end < len(data) {
+				if data[end] == 7 {
+					end++
+					break
+				}
+				if data[end] == 27 && end+1 < len(data) && data[end+1] == '\\' {
+					end += 2
+					break
+				}
+				end++
+			}
+			complete := end > i+2 && (data[end-1] == 7 || (data[end-1] == '\\' && data[end-2] == 27))
+			if !complete && end-i <= 512 {
+				d.pending = append([]byte(nil), data[i:end]...)
+				break
+			}
+			out = append(out, data[i:end]...)
+			i = end
+			continue
+		}
 		if data[i+1] != '[' {
 			out = append(out, data[i])
 			i++
@@ -61,17 +86,29 @@ func (d *Decoder) Feed(data []byte) ([]byte, bool) {
 	}
 	return out, false
 }
-func (d *Decoder) Flush() []byte { data := d.pending; d.pending = nil; return data }
+func stringControl(data []byte) bool {
+	return len(data) >= 2 && data[0] == 27 && (data[1] == ']' || data[1] == 'P' || data[1] == '_')
+}
 
-// EscapeWait is how long a lone ESC (or a partial sequence) waits for the
-// rest of its sequence. Terminals deliver a whole sequence in one read, so a
-// short wait suffices; a long one delays every Esc key press.
+func (d *Decoder) Flush() []byte {
+	// A recognized string control cannot be a lone Escape key. Keep its
+	// bounded partial message across idle polls instead of leaking its tail.
+	if stringControl(d.pending) {
+		return nil
+	}
+	data := d.pending
+	d.pending = nil
+	return data
+}
+
+// EscapeWait bounds the wait for a lone ESC or a partial keyboard sequence.
+// Recognized string controls are buffered separately across idle polls.
 const EscapeWait = 10
 
 // PollTimeout returns the poll timeout in milliseconds: EscapeWait while a
 // partial sequence is held, idle otherwise.
 func (d *Decoder) PollTimeout(idle int) int {
-	if len(d.pending) > 0 {
+	if len(d.pending) > 0 && !stringControl(d.pending) {
 		return min(idle, EscapeWait)
 	}
 	return idle
