@@ -341,12 +341,34 @@ pub fn status_pill(status: &str) -> Div {
         .child(label)
 }
 
+/// Stable tag colors across views, restarts and tag reordering.
+pub fn tag_color(id: &str) -> Hsla {
+    if matches!(id, "bug" | "feature" | "discussion") {
+        return c(id);
+    }
+    // Each pair is tuned for light and dark surfaces respectively.
+    const PALETTE: [(u32, u32); 10] = [
+        (0x946800, 0xe5bc68),
+        (0xb55d20, 0xefa56c),
+        (0x167d79, 0x71c8c0),
+        (0x337d46, 0x83c995),
+        (0x9e4984, 0xd99ac4),
+        (0x6754b0, 0xb5a5e5),
+        (0x356f9f, 0x8bbce5),
+        (0xb14f54, 0xe99da0),
+        (0x167b91, 0x78c7dc),
+        (0x6a7827, 0xbacb7d),
+    ];
+    let hash = id.bytes().fold(2166136261u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16777619)
+    });
+    let (light, dark) = PALETTE[hash as usize % PALETTE.len()];
+    rgb(if crate::settings::get().dark { dark } else { light }).into()
+}
+
 /// A tag chip (Bug, Feature, Discussion, or the project's own).
 pub fn tag_chip(id: &str, label: &str) -> Div {
-    let color = match id {
-        "bug" | "feature" | "discussion" => c(id),
-        _ => c("f_muted"),
-    };
+    let color = tag_color(id);
     div()
         .flex_none()
         .h(px(19.0))

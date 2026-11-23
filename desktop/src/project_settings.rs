@@ -502,11 +502,7 @@ impl FennecWindow {
         });
         let tags = s.tags.iter().map(|tag| {
             let id = tag.id.clone();
-            let color = if ["bug", "feature", "discussion"].contains(&tag.id.as_str()) {
-                c(&tag.id)
-            } else {
-                c("f_muted")
-            };
+            let color = ui::tag_color(&tag.id);
             h_flex()
                 .h(px(24.0))
                 .pl(px(9.0))
