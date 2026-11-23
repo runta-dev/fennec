@@ -223,6 +223,7 @@ impl FennecWindow {
                             let (width, height) = (80.0, 80.0);
                             div()
                                 .id(SharedString::from(format!("draft-image-{}", image.id)))
+                                .group("request-attachment")
                                 .relative()
                                 .w(px(width))
                                 .h(px(height))
@@ -230,14 +231,19 @@ impl FennecWindow {
                                 .rounded(px(6.0))
                                 .border_1()
                                 .border_color(c("f_line"))
-                                .overflow_hidden()
                                 .cursor_pointer()
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.open_request_image(open.clone(), window, cx)
                                 }))
-                                .child(thumbnail(&image, width, height))
                                 .child(
-                                    div().absolute().top(px(3.0)).right(px(3.0)).child(
+                                    div()
+                                        .size(px(width))
+                                        .rounded(px(6.0))
+                                        .overflow_hidden()
+                                        .child(thumbnail(&image, width, height)),
+                                )
+                                .child(
+                                    div().absolute().top(px(-5.0)).right(px(-5.0)).child(
                                         div()
                                             .id(SharedString::from(format!(
                                                 "remove-image-{}",
@@ -247,14 +253,18 @@ impl FennecWindow {
                                             .items_center()
                                             .justify_center()
                                             .size(px(20.0))
-                                            .rounded(px(4.0))
-                                            .bg(c("f_card"))
-                                            .hover(|s| s.bg(c("f_line")))
+                                            .invisible()
+                                            .group_hover("request-attachment", |s| s.visible())
+                                            .rounded_full()
+                                            .border_2()
+                                            .border_color(c("f_card"))
+                                            .bg(c("f_text"))
+                                            .hover(|s| s.bg(c("f_muted")))
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                                 cx.stop_propagation()
                                             })
                                             .cursor_pointer()
-                                            .child(ui::icon("close", 10.0, c("f_muted")))
+                                            .child(ui::icon("close", 10.0, c("f_card")))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 cx.stop_propagation();
                                                 if let Some(images) =
