@@ -91,6 +91,10 @@ func (s Store) Handler() http.Handler {
 		p, err := s.Project(r.PathValue("id"))
 		reply(w, p, err)
 	})
+	mux.HandleFunc("DELETE /v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		err := s.DeleteProject(r.PathValue("id"))
+		reply(w, map[string]bool{"deleted": err == nil}, err)
+	})
 	mux.HandleFunc("PATCH /v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var change json.RawMessage
 		if decode(w, r, &change) {

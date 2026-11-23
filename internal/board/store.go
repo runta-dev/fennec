@@ -50,6 +50,7 @@ type Worker struct {
 }
 
 type Project struct {
+	Deleted     bool      `json:"deleted,omitempty"`
 	ID          string    `json:"id"`
 	Org         string    `json:"org,omitempty"`
 	Key         string    `json:"key"`
@@ -241,7 +242,26 @@ func (s Store) Project(id string) (Project, error) {
 		return p, ErrNotFound
 	}
 	err := readJSON(filepath.Join(s.projectDir(id), "project.json"), &p)
+	if err == nil && p.Deleted {
+		return p, ErrNotFound
+	}
 	return p, err
+}
+
+// DeleteProject persists a replicated tombstone. Existing sessions and files
+// remain intact, while the queue and its requests are no longer accessible.
+func (s Store) DeleteProject(id string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	p, err := s.Project(id)
+	if err != nil {
+		return err
+	}
+	p.Deleted = true
+	return s.commit(filepath.Join(s.projectDir(id), "project.json"), p)
 }
 
 // KeyFrom makes a request-number prefix from a project name: its first
@@ -378,6 +398,7 @@ func (s Store) UpdateProject(id string, change json.RawMessage) (Project, error)
 	}
 	next.ID, next.Next, next.Created, next.Order = p.ID, p.Next, p.Created, p.Order
 	next.Slots = p.Slots
+	next.Deleted = p.Deleted
 	if s.Role != "" {
 		for i := len(next.Slots); i < next.Queue; i++ {
 			next.Slots = append(next.Slots, Slot{ID: fmt.Sprintf("slot-%d", i), Index: i, Owner: s.Role})

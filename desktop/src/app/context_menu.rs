@@ -1,5 +1,6 @@
 //! Sidebar and tab context menus, using Herdr's compact menu metrics.
 use super::*;
+use crate::i18n::tf;
 
 #[derive(Clone)]
 pub(super) enum Target {
@@ -8,7 +9,7 @@ pub(super) enum Target {
 }
 #[derive(Clone)]
 enum Action {
-    OpenProject(String),
+    DeleteProject(String),
     RenameProject(String),
     ProjectSettings(String),
     OpenTerminal(String, String),
@@ -63,11 +64,6 @@ impl FennecWindow {
         let items = match target {
             Target::Project(id) => vec![
                 Item {
-                    label: "context_open_project",
-                    icon: "layers",
-                    action: Action::OpenProject(id.clone()),
-                },
-                Item {
                     label: "context_rename",
                     icon: "context-rename",
                     action: Action::RenameProject(id.clone()),
@@ -75,7 +71,12 @@ impl FennecWindow {
                 Item {
                     label: "project_settings",
                     icon: "gear",
-                    action: Action::ProjectSettings(id),
+                    action: Action::ProjectSettings(id.clone()),
+                },
+                Item {
+                    label: "delete_queue",
+                    icon: "trash",
+                    action: Action::DeleteProject(id),
                 },
             ],
             Target::Terminal { session, tab } => {
@@ -147,7 +148,7 @@ impl FennecWindow {
             .map(|item| item.action.clone());
         self.dismiss_context_menu(true, cx);
         match action {
-            Some(Action::OpenProject(id)) => self.go(Route::Project(id), window, cx),
+            Some(Action::DeleteProject(id)) => self.delete_queue(id, window, cx),
             Some(Action::RenameProject(id)) => {
                 self.go(
                     Route::Settings(id, crate::project_settings::Tab::General),
@@ -179,6 +180,46 @@ impl FennecWindow {
             }
             _ => {}
         }
+    }
+
+    fn delete_queue(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            return;
+        }
+        let Some(project) = self.projects.iter().find(|p| p.id == id) else {
+            return;
+        };
+        let title = tf("delete_queue_title", &[("name", &project.name)]);
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            &title,
+            Some(&t("delete_queue_detail")),
+            &[t("cancel").as_str(), t("delete_queue").as_str()],
+            cx,
+        );
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            if answer.await.ok() != Some(1) { return; }
+            let deleted_id = id.clone();
+            let result = cx.background_spawn(async move {
+                board::call("DELETE", &format!("/v1/projects/{deleted_id}"), None)
+            }).await;
+            let _ = this.update_in(cx, |this, window, cx| match result {
+                Ok(_) => {
+                    this.deleted_projects.insert(id.clone());
+                    this.projects.retain(|p| p.id != id);
+                    this.requests.remove(&id);
+                    if matches!(&this.route, Some(Route::Project(p) | Route::Settings(p, _)) if p == &id) {
+                        this.route = None;
+                        this.open = None;
+                        this.thread = None;
+                        this.settings = Default::default();
+                    }
+                    this.refresh_now(window, cx);
+                    cx.notify();
+                }
+                Err(_) => this.say(t("delete_queue_failed"), cx),
+            });
+        }));
     }
 
     pub(super) fn context_key(
@@ -219,7 +260,7 @@ impl FennecWindow {
             + if menu
                 .items
                 .iter()
-                .any(|i| matches!(i.action, Action::CloseTab(_)))
+                .any(|i| matches!(i.action, Action::CloseTab(_) | Action::DeleteProject(_)))
             {
                 9.0
             } else {
@@ -252,9 +293,10 @@ impl FennecWindow {
                 )
                 .children(menu.items.iter().enumerate().map(|(index, item)| {
                     v_flex()
-                        .when(matches!(item.action, Action::CloseTab(_)), |d| {
-                            d.child(div().mx(px(7.0)).my(px(4.0)).h(px(1.0)).bg(c("border")))
-                        })
+                        .when(
+                            matches!(item.action, Action::CloseTab(_) | Action::DeleteProject(_)),
+                            |d| d.child(div().mx(px(7.0)).my(px(4.0)).h(px(1.0)).bg(c("border"))),
+                        )
                         .child(
                             h_flex()
                                 .id(SharedString::from(format!("context-item-{index}")))
@@ -264,7 +306,11 @@ impl FennecWindow {
                                 .rounded(px(7.0))
                                 .text_size(px(12.8))
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(c("foreground"))
+                                .text_color(c(if matches!(item.action, Action::DeleteProject(_)) {
+                                    "blocked"
+                                } else {
+                                    "foreground"
+                                }))
                                 .when(menu.selected == Some(index), |d| d.bg(c("selected")))
                                 .hover(|s| s.bg(c("hover")))
                                 .on_mouse_down(
@@ -274,7 +320,15 @@ impl FennecWindow {
                                         this.choose_context_item(index, window, cx);
                                     }),
                                 )
-                                .child(ui::icon(item.icon, 14.0, c("muted")))
+                                .child(ui::icon(
+                                    item.icon,
+                                    14.0,
+                                    c(if matches!(item.action, Action::DeleteProject(_)) {
+                                        "blocked"
+                                    } else {
+                                        "muted"
+                                    }),
+                                ))
                                 .child(t(item.label)),
                         )
                 }))

@@ -90,6 +90,7 @@ pub struct FennecWindow {
     events: Option<EventLines>,
     sessions: Vec<Session>,
     pub(crate) projects: Vec<Project>,
+    deleted_projects: std::collections::HashSet<String>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
     thread: Option<Request>,
     pub(crate) route: Option<Route>,
@@ -241,6 +242,7 @@ impl FennecWindow {
             events: None,
             sessions: Vec::new(),
             projects: Vec::new(),
+            deleted_projects: Default::default(),
             requests: HashMap::new(),
             thread: None,
             route: None,
@@ -575,7 +577,12 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         match projects {
-            Ok(p) => self.projects = p,
+            Ok(p) => {
+                self.projects = p
+                    .into_iter()
+                    .filter(|p| !self.deleted_projects.contains(&p.id))
+                    .collect()
+            }
             Err(e) if self.projects.is_empty() => tracing::debug!("board unavailable: {e:#}"),
             Err(_) => {}
         }

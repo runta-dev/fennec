@@ -1,5 +1,9 @@
 {
   "messages": {
+    "desktop.delete_queue": {"en-GB":"Delete queue","en-US":"Delete queue","zh-CN":"删除队列"},
+    "desktop.delete_queue_title": {"en-GB":"Delete “{name}”?","en-US":"Delete “{name}”?","zh-CN":"删除“{name}”？"},
+    "desktop.delete_queue_detail": {"en-GB":"This removes the queue and its requests from your devices. Existing sessions and repository files are kept.","en-US":"This removes the queue and its requests from your devices. Existing sessions and repository files are kept.","zh-CN":"这会从你的设备中移除队列及其请求。现有会话和仓库文件会保留。"},
+    "desktop.delete_queue_failed": {"en-GB":"Could not delete this queue. Please try again.","en-US":"Could not delete this queue. Please try again.","zh-CN":"未能删除此队列，请重试。"},
     "desktop.run_local": {"en-GB":"This Mac","en-US":"This Mac","zh-CN":"此 Mac"},
     "desktop.run_cloud": {"en-GB":"Cloud computer","en-US":"Cloud computer","zh-CN":"云端电脑"},
     "desktop.run": {"en-GB":"Run","en-US":"Run","zh-CN":"执行"},

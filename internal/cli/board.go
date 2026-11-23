@@ -61,7 +61,7 @@ var boardPath = regexp.MustCompile(`^/v1/[A-Za-z0-9/_.-]{0,200}$`)
 
 // do sends one request and returns the status and JSON body.
 func (b boardClient) do(ctx context.Context, method, path string, body any) (int, json.RawMessage, error) {
-	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch) {
+	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch && method != http.MethodDelete) {
 		return 0, nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
 	}
 	var payload io.Reader
