@@ -18,6 +18,7 @@ pub struct Preferences {
     pub font_size: u16,
     pub padding_x: u16,
     pub padding_y: u16,
+    pub sidebar_width: u16,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -29,6 +30,7 @@ impl Default for Preferences {
             font_size: 14,
             padding_x: 0,
             padding_y: 0,
+            sidebar_width: 252,
         }
     }
 }
@@ -54,6 +56,7 @@ impl State {
                     && (8..=32).contains(&p.font_size)
                     && p.padding_x <= 32
                     && p.padding_y <= 32
+                    && (180..=480).contains(&p.sidebar_width)
             })
             .unwrap_or_default();
         Self {
@@ -116,7 +119,10 @@ impl FennecWindow {
             let _ = this.update_in(cx, |this, window, cx| {
                 this.app_preferences.saving = false;
                 match result {
-                    Ok(value) => {
+                    Ok(mut value) => {
+                        if this.sidebar_resize.drag.is_some() || this.sidebar_resize.saving || this.sidebar_resize.pending.is_some() {
+                            value.sidebar_width = this.app_preferences.value.sidebar_width;
+                        }
                         this.app_preferences.value = value;
                         this.apply_desktop_preferences(window, cx);
                     }

@@ -42,3 +42,33 @@ func TestDesktopWindowSettingsAreIndependent(t *testing.T) {
 		t.Fatal("failed write changed preferences")
 	}
 }
+
+func TestSidebarWidthPersistsWithoutResettingExistingPreferences(t *testing.T) {
+	home := t.TempDir()
+	s := newDesktopWindowSettings(home)
+	if s.get().SidebarWidth != 252 {
+		t.Fatal(s.get())
+	}
+	if _, err := s.set(context.Background(), json.RawMessage(`{"sidebar_width":360,"theme":"dark"}`)); err != nil {
+		t.Fatal(err)
+	}
+	loaded := newDesktopWindowSettings(home).get()
+	if loaded.SidebarWidth != 360 || loaded.Theme != "dark" {
+		t.Fatal(loaded)
+	}
+	for _, body := range []string{`{"sidebar_width":179}`, `{"sidebar_width":481}`} {
+		if _, err := s.set(context.Background(), json.RawMessage(body)); err == nil {
+			t.Fatal("invalid width accepted")
+		}
+	}
+	if s.get() != loaded {
+		t.Fatal("rejected resize changed preferences")
+	}
+	if err := os.WriteFile(s.path, []byte(`{"theme":"dark","font_size":16}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := newDesktopWindowSettings(home).get()
+	if old.SidebarWidth != 252 || old.Theme != "dark" || old.FontSize != 16 {
+		t.Fatal("old preferences were reset", old)
+	}
+}

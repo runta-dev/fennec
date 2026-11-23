@@ -1094,4 +1094,60 @@ mod tests {
         }
         assert!(closest<=px(6.5),"the widest age must leave only the intended six-pixel gap");
     }
+
+    fn resize_sidebar(cx: &mut VisualTestContext, delta: f32) {
+        cx.run_until_parked();
+        let bounds=cx.debug_bounds("sidebar-column").unwrap();
+        let start=point(bounds.right()-px(2.0),bounds.top()+px(160.0));
+        let end=start+point(px(delta),px(0.0));
+        cx.simulate_mouse_down(start,MouseButton::Left,Modifiers::default());
+        cx.simulate_mouse_move(start+point(px(if delta>0.0 {10.0}else{-10.0}),px(0.0)),Some(MouseButton::Left),Modifiers::default());
+        cx.simulate_mouse_move(end,Some(MouseButton::Left),Modifiers::default());
+        cx.simulate_mouse_up(end,MouseButton::Left,Modifiers::default());
+        cx.run_until_parked();
+    }
+    #[gpui::test]
+    fn sidebar_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
+        let (app,cx)=window(cx);
+        cx.simulate_resize(gpui::size(px(1200.0),px(800.0)));
+        resize_sidebar(cx,80.0);
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(332.0));
+        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,Some(332)));
+        resize_sidebar(cx,-400.0);
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(180.0));
+        resize_sidebar(cx,800.0);
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(480.0));
+        cx.simulate_resize(gpui::size(px(650.0),px(600.0)));
+        cx.run_until_parked();
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(250.0));
+    }
+    #[gpui::test]
+    fn sidebar_resize_escape_restores_width_without_saving(cx: &mut TestAppContext) {
+        let (app,cx)=window(cx);cx.run_until_parked();
+        cx.update(|window,cx|{let focus=app.read(cx).focus.clone();focus.focus(window,cx)});
+        let start=point(px(250.0),px(160.0));
+        cx.simulate_mouse_down(start,MouseButton::Left,Modifiers::default());
+        cx.simulate_mouse_move(point(px(340.0),px(160.0)),Some(MouseButton::Left),Modifiers::default());
+        cx.simulate_mouse_move(point(px(360.0),px(160.0)),Some(MouseButton::Left),Modifiers::default());
+        cx.simulate_keystrokes("escape");
+        cx.simulate_mouse_up(point(px(360.0),px(160.0)),MouseButton::Left,Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(252.0));
+        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,None));
+    }
+    #[gpui::test]
+    fn sidebar_resize_double_click_resets_width_and_restores_terminal_focus(cx: &mut TestAppContext) {
+        let (app,cx)=window(cx);focus_fixture(&app,cx,"a");
+        resize_sidebar(cx,80.0);
+        assert_terminal_focus(&app,cx,"a");
+        cx.simulate_event(gpui::MouseDownEvent {
+            position:point(px(330.0),px(160.0)),button:MouseButton::Left,
+            modifiers:Modifiers::default(),click_count:2,first_mouse:false,
+        });
+        cx.simulate_mouse_up(point(px(330.0),px(160.0)),MouseButton::Left,Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(252.0));
+        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,Some(252)));
+        assert_terminal_focus(&app,cx,"a");
+    }
 }

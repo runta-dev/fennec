@@ -20,6 +20,7 @@ type desktopWindowPreferences struct {
 	FontSize           int    `json:"font_size"`
 	PaddingX           int    `json:"padding_x"`
 	PaddingY           int    `json:"padding_y"`
+	SidebarWidth       int    `json:"sidebar_width"`
 }
 type desktopWindowSettings struct {
 	mu    sync.Mutex
@@ -28,7 +29,7 @@ type desktopWindowSettings struct {
 }
 
 func newDesktopWindowSettings(home string) *desktopWindowSettings {
-	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{NotificationSounds: true, Theme: "system", Language: "system", FontSize: 14, PaddingX: 0, PaddingY: 0}}
+	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{NotificationSounds: true, Theme: "system", Language: "system", FontSize: 14, PaddingX: 0, PaddingY: 0, SidebarWidth: 252}}
 	saved := s.value
 	if data, err := os.ReadFile(s.path); err == nil && json.Unmarshal(data, &saved) == nil && validDesktopWindowPreferences(saved) {
 		s.value = saved
@@ -36,7 +37,7 @@ func newDesktopWindowSettings(home string) *desktopWindowSettings {
 	return s
 }
 func validDesktopWindowPreferences(p desktopWindowPreferences) bool {
-	return (p.Theme == "system" || p.Theme == "light" || p.Theme == "dark") && (p.Language == "system" || p.Language == "en-US" || p.Language == "zh-CN") && p.FontSize >= 8 && p.FontSize <= 32 && p.PaddingX >= 0 && p.PaddingX <= 32 && p.PaddingY >= 0 && p.PaddingY <= 32
+	return (p.Theme == "system" || p.Theme == "light" || p.Theme == "dark") && (p.Language == "system" || p.Language == "en-US" || p.Language == "zh-CN") && p.FontSize >= 8 && p.FontSize <= 32 && p.PaddingX >= 0 && p.PaddingX <= 32 && p.PaddingY >= 0 && p.PaddingY <= 32 && p.SidebarWidth >= 180 && p.SidebarWidth <= 480
 }
 func (s *desktopWindowSettings) get() desktopWindowPreferences {
 	s.mu.Lock()
@@ -52,6 +53,7 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 		FontSize           *int    `json:"font_size"`
 		PaddingX           *int    `json:"padding_x"`
 		PaddingY           *int    `json:"padding_y"`
+		SidebarWidth       *int    `json:"sidebar_width"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -84,6 +86,9 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 	}
 	if p.PaddingY != nil {
 		next.PaddingY = *p.PaddingY
+	}
+	if p.SidebarWidth != nil {
+		next.SidebarWidth = *p.SidebarWidth
 	}
 	if !validDesktopWindowPreferences(next) {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Check the settings"}

@@ -6,6 +6,7 @@ mod activity;
 mod cloud;
 mod context_menu;
 mod row_motion;
+mod sidebar_resize;
 mod tab_close;
 mod tabs;
 
@@ -111,6 +112,7 @@ pub struct FennecWindow {
     sidebar_shown: f32,
     /// The running sidebar animation: the target, the starting amount, and when it started.
     sidebar_motion: Option<(bool, f32, std::time::Instant)>,
+    pub(crate) sidebar_resize: sidebar_resize::State,
     /// Session rows easing to a new place after their state moved them.
     row_motion: row_motion::RowMotion,
     /// The instant this frame's row positions are drawn at.
@@ -271,6 +273,7 @@ impl FennecWindow {
             sidebar: true,
             sidebar_shown: 1.0,
             sidebar_motion: None,
+            sidebar_resize: Default::default(),
             row_motion: Default::default(),
             row_frame: std::time::Instant::now(),
             focus: cx.focus_handle(),
@@ -2053,7 +2056,7 @@ impl FennecWindow {
             );
         }
         v_flex()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(self.sidebar_width(window)))
             .h_full()
             .flex_none()
             .bg(c("f_bg"))
@@ -3057,6 +3060,7 @@ impl Render for FennecWindow {
         window.set_rem_size(px(crate::settings::ui_font_size()));
         self.sync_input_styles(cx);
         self.step_sidebar(window, cx);
+        let sidebar_width=self.sidebar_width(window);
         self.step_rows(window, cx);
         self.step_tabs(window, cx);
         let route = self.route.clone();
@@ -3101,6 +3105,12 @@ impl Render for FennecWindow {
             .bg(c("f_card"))
             .text_color(c("f_text"))
             .on_action(cx.listener(Self::on_shell_action))
+            .on_drag_move::<sidebar_resize::SidebarDrag>(cx.listener(Self::drag_sidebar))
+            .on_drop(cx.listener(|this,_:&sidebar_resize::SidebarDrag,window,cx|this.finish_sidebar_resize(window,cx)))
+            .capture_any_mouse_up(cx.listener(|this,event:&MouseUpEvent,window,cx| {
+                if event.button==MouseButton::Left {this.finish_sidebar_resize(window,cx);}
+            }))
+            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,window,cx|this.finish_sidebar_resize(window,cx)))
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 if this.context_key(&e.keystroke.key, window, cx) {
@@ -3108,6 +3118,10 @@ impl Render for FennecWindow {
                 }
                 let k = &e.keystroke;
                 if k.key == "escape" && cx.has_active_drag() {
+                    if let Some((_,width))=this.sidebar_resize.drag.take() {
+                        this.app_preferences.value.sidebar_width=width;
+                        this.restore_sidebar_focus(window,cx);
+                    }
                     cx.stop_active_drag(window);
                     this.layout.hover = None;
                     cx.stop_propagation();
@@ -3176,15 +3190,19 @@ impl Render for FennecWindow {
                 let shown = self.sidebar_shown;
                 d.child(
                     div()
-                        .w(px(SIDEBAR_WIDTH * shown))
+                        .relative()
+                        .debug_selector(||"sidebar-column".into())
+                        .w(px(sidebar_width * shown))
                         .h_full()
                         .flex_none()
                         .overflow_hidden()
                         .child(
                             div()
                                 .h_full()
-                                .ml(px(-SIDEBAR_WIDTH * (1.0 - shown)))
+                                .ml(px(-sidebar_width * (1.0 - shown)))
                                 .child(self.sidebar(window, cx)),
+                        )
+                        .when(shown >= 1.0,|d|d.child(self.sidebar_resize_handle(cx))
                         ),
                 )
             })
@@ -3249,7 +3267,6 @@ impl Render for FennecWindow {
 /// Where the sidebar toggle starts: just right of the traffic lights.
 const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
 const SIDEBAR_TOGGLE_SIZE: f32 = 26.0;
-const SIDEBAR_WIDTH: f32 = 252.0;
 const SIDEBAR_SLIDE_SECONDS: f32 = 0.22;
 /// A sidebar row's height and the gap below it.
 const ROW_HEIGHT: f32 = 30.0;

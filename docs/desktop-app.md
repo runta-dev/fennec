@@ -279,3 +279,18 @@ content fades in over 160 ms. The drag preview tracks the pointer directly.
 GPUI mouse-event tests cover sidebar-to-strip merge, strip reordering,
 sidebar split, invalid drops and Escape. Store tests cover restart, stale
 revisions, source isolation, repeated splits and temporary disconnection.
+
+## Sidebar width
+
+Drag the sidebar's right edge to resize it. The native GPUI resize band owns
+cursor and pointer capture; the width follows the pointer directly. Mouse-up
+saves only the sidebar width through the local daemon's desktop preferences.
+Double-click the edge to restore 252 px; Escape cancels the current drag.
+The preferred width is 180–480 px, further limited while a narrow window needs
+400 px for its main content. This temporary clamp does not overwrite the saved
+width. Sidebar collapse/expand uses the saved width and keeps its existing
+ease-out motion. Keyboard focus returns to its previous control after resizing.
+
+The original Herdr window used resizable layout nodes and separators. Fennec's
+window chrome had replaced that layout with a fixed 252 px column; the terminal
+port alone did not carry over the resize interaction or persisted dimensions.
