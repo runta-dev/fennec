@@ -111,18 +111,18 @@ func (s *daemonServices) handlers(controller *controlplane.Controller) map[strin
 			if json.Unmarshal(raw, &scope) != nil || (scope.Location != "" && scope.Location != "cloud" && scope.Location != "local") {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Choose a run location"}
 			}
-			if !newDesktopSettings(s.home).value.Magpie {
-				if scope.Location == "local" {
-					return nil, &control.Fault{Code: "unsupported_operation", Message: "Choose the local model in your agent"}
-				}
-				return s.setNativeModel(ctx, raw)
-			}
 			var choice struct {
 				Agent string `json:"agent"`
 				Model string `json:"model"`
 			}
 			if json.Unmarshal(raw, &choice) != nil {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Agent and model required"}
+			}
+			if !newDesktopSettings(s.home).value.magpieFor(choice.Agent) {
+				if scope.Location == "local" {
+					return nil, &control.Fault{Code: "unsupported_operation", Message: "Choose the local model in your agent"}
+				}
+				return s.setNativeModel(ctx, raw)
 			}
 			if scope.Location == "local" {
 				if err := setup.SetLocalMagpieModel(ctx, s.home, choice.Agent, choice.Model); err != nil {

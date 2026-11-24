@@ -17,7 +17,7 @@ import (
 
 // Private diagnostics retain only hashes. Public cache status names changed
 // inputs, never their values. They have no effect on readiness or authorization.
-func recordPreparationInputs(home, token, runtimeID string, magpie bool, versions []setup.Agent, routes []setup.AgentRoute, plugins []setup.ModelPlugin, native setup.ModelAccountsRequest) ([]string, bool) {
+func recordPreparationInputs(home, token, runtimeID string, magpie bool, nativeAgents []string, versions []setup.Agent, routes []setup.AgentRoute, plugins []setup.ModelPlugin, native setup.ModelAccountsRequest) ([]string, bool) {
 	digests := map[string]string{}
 	put := func(name string, value any) {
 		data, err := json.Marshal(value)
@@ -28,6 +28,9 @@ func recordPreparationInputs(home, token, runtimeID string, magpie bool, version
 	put("account", token)
 	put("runtime", runtimeID)
 	put("magpie_enabled", magpie)
+	if len(nativeAgents) > 0 {
+		put("magpie_off_agents", nativeAgents)
+	}
 	put("agent_inventory", versions)
 	put("routes", routes)
 	put("plugins", plugins)

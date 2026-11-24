@@ -9,19 +9,32 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 )
 
+type agentMode struct {
+	Native bool `json:"native"`
+	// NativeAgents bypass Magpie while it serves every other agent.
+	NativeAgents []string `json:"native_agents,omitempty"`
+}
+
 // ConfigureAgentMode is account-scoped by the verified sandbox owner. Existing
 // agent processes retain their own environment when the integration is toggled.
-func ConfigureAgentMode(home string, native bool) error {
+func ConfigureAgentMode(home string, native bool, nativeAgents ...string) error {
 	root := filepath.Join(home, ".local/fennec")
 	if err := ensureNativeDirectory(home, ".local/fennec"); err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]bool{"native": native})
+	mode := agentMode{Native: native}
+	if !native {
+		mode.NativeAgents = append([]string(nil), nativeAgents...)
+		slices.Sort(mode.NativeAgents)
+		mode.NativeAgents = slices.Compact(mode.NativeAgents)
+	}
+	b, _ := json.Marshal(mode)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return gateway.WithLock(ctx, home, func() error {
@@ -32,12 +45,25 @@ func ConfigureAgentMode(home string, native bool) error {
 	})
 }
 func NativeAgentMode(home string) bool {
-	var mode struct {
-		Native bool `json:"native"`
+	mode, ok := readAgentMode(home)
+	return !ok || mode.Native
+}
+
+// NativeAgent reports whether agent runs on its own account and models: every
+// agent does with Magpie off, and Magpie can also be turned off for one agent.
+func NativeAgent(home, agent string) bool {
+	if agents.NativeOnly(agent) {
+		return true
 	}
+	mode, ok := readAgentMode(home)
+	return !ok || mode.Native || slices.Contains(mode.NativeAgents, agent)
+}
+
+func readAgentMode(home string) (agentMode, bool) {
+	var mode agentMode
 	b, e := os.ReadFile(filepath.Join(home, ".local/fennec/agent-mode.json"))
 	// No migration file means native mode, not implicit gateway activation.
-	return e != nil || json.Unmarshal(b, &mode) != nil || mode.Native
+	return mode, e == nil && json.Unmarshal(b, &mode) == nil
 }
 func ExecNativeAgent(home, agent string, args []string) error {
 	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[agent] {

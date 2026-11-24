@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fennec/internal/agentcmd"
 	"fennec/internal/launchprofile"
 	"fennec/internal/setup"
 	"path/filepath"
@@ -22,17 +21,19 @@ type preparationInputs struct {
 
 // This runs only after EnsureShared has authenticated the runtime's owner, but
 // overlaps its remaining SSH/API work. No credentials are sent to the cloud here.
-func gatherPreparationInputs(ctx context.Context, home, token, owner, runtimeID, artifacts string, magpie bool, ids []string, versions []setup.Agent, localRoutes []setup.AgentRoute) (inputs preparationInputs) {
+func gatherPreparationInputs(ctx context.Context, home, token, owner, runtimeID, artifacts string, prefs desktopPreferences, ids []string, versions []setup.Agent, localRoutes []setup.AgentRoute) (inputs preparationInputs) {
 	inputs.routes = localRoutes
+	magpie := prefs.Magpie
+	nativeAgents := prefs.nativeAgents(ids)
 	cloudAccounts := setup.NativeCloudPreferences(filepath.Join(home, ".config/fennec"), owner, runtimeID)
 	var sourceIDs []string
 	for _, id := range ids {
-		if !cloudAccounts[id] || (magpie && !agentcmd.NativeOnly(id)) {
+		if !cloudAccounts[id] || prefs.magpieFor(id) {
 			sourceIDs = append(sourceIDs, id)
 		}
 	}
 	finish := launchprofile.Begin("prepare.native_gather")
-	inputs.native, inputs.err = setup.GatherNativeAccounts(ctx, home, sourceIDs, magpie)
+	inputs.native, inputs.err = setup.GatherAgentAccounts(ctx, home, sourceIDs, magpie, nativeAgents)
 	finish()
 	inputs.native.Agents = ids
 	if inputs.err != nil {
@@ -50,10 +51,15 @@ func gatherPreparationInputs(ctx context.Context, home, token, owner, runtimeID,
 		if inputs.err != nil {
 			return
 		}
-		inputs.fingerprint, inputs.configurationFingerprint, inputs.fingerprintErr = preparationFingerprints(home, token, runtimeID, []any{versions, inputs.routes, inputs.plugins, inputs.native}, artifacts, true)
+		parts := []any{versions, inputs.routes, inputs.plugins, inputs.native}
+		if len(nativeAgents) > 0 {
+			// Only a per-agent choice changes existing fingerprints.
+			parts = append(parts, nativeAgents)
+		}
+		inputs.fingerprint, inputs.configurationFingerprint, inputs.fingerprintErr = preparationFingerprints(home, token, runtimeID, parts, artifacts, true)
 	} else {
 		inputs.fingerprint, inputs.configurationFingerprint, inputs.fingerprintErr = preparationFingerprints(home, token, runtimeID, []any{versions, inputs.native}, artifacts, false)
 	}
-	inputs.changedInputs, inputs.hasPreviousInputs = recordPreparationInputs(home, token, runtimeID, magpie, versions, inputs.routes, inputs.plugins, inputs.native)
+	inputs.changedInputs, inputs.hasPreviousInputs = recordPreparationInputs(home, token, runtimeID, magpie, nativeAgents, versions, inputs.routes, inputs.plugins, inputs.native)
 	return
 }

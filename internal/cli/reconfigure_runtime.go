@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
-	"fennec/internal/agentcmd"
 	"fennec/internal/cloudstate"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -42,14 +41,16 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 		return false, nil
 	}
 	mark("transport_ready")
-	magpie := newDesktopSettings(s.home).value.Magpie
+	prefs := newDesktopSettings(s.home).value
+	magpie := prefs.Magpie
 	ids := agent.CloudAgentIDs()
+	nativeAgents := prefs.nativeAgents(ids)
 	sourceIDs := ids
 	{
 		sourceIDs = nil
 		cloud := setup.NativeCloudPreferences(filepath.Join(s.home, ".config/fennec"), user, runtimeID)
 		for _, id := range ids {
-			if !cloud[id] || (magpie && !agentcmd.NativeOnly(id)) {
+			if !cloud[id] || prefs.magpieFor(id) {
 				sourceIDs = append(sourceIDs, id)
 			}
 		}
@@ -61,7 +62,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	jobs := []func(context.Context) error{func(ctx context.Context) error {
 		started := time.Now()
 		var err error
-		native, err = setup.GatherNativeAccounts(ctx, s.home, sourceIDs, magpie)
+		native, err = setup.GatherAgentAccounts(ctx, s.home, sourceIDs, magpie, nativeAgents)
 		nativeElapsed = float64(time.Since(started).Microseconds()) / 1000
 		return err
 	}}
@@ -69,7 +70,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 		jobs = append(jobs, func(ctx context.Context) error {
 			routes := []setup.AgentRoute{}
 			for _, id := range ids {
-				if !agentcmd.NativeOnly(id) {
+				if prefs.magpieFor(id) {
 					routes = append(routes, setup.AgentRoute{Agent: id})
 				}
 			}
@@ -115,6 +116,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	if magpie {
 		request.Accounts.NativeFiles = native.Files
 		request.Accounts.NativeProblems = native.NativeProblems
+		request.Accounts.NativeAgents = nativeAgents
 	} else {
 		request.Accounts = native
 	}
@@ -144,7 +146,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	}
 	// A newer user choice is already queued by the controller. Do not publish
 	// readiness for the superseded mode while that choice is being applied.
-	if newDesktopSettings(s.home).value.Magpie != magpie {
+	if !newDesktopSettings(s.home).value.sameMagpie(prefs) {
 		return true, nil
 	}
 	emit := func(event map[string]string) error {

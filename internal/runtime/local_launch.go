@@ -240,7 +240,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
-	if setup.NativeAgentMode(runtime.Home) || agents.NativeOnly(request.Agent) {
+	if setup.NativeAgent(runtime.Home, request.Agent) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]
@@ -259,7 +259,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		}
 	}
-	if !setup.NativeAgentMode(runtime.Home) && !agents.NativeOnly(request.Agent) {
+	if !setup.NativeAgent(runtime.Home, request.Agent) {
 		command = append([]string{"env", gateway.DependencyEnv + "=1"}, command...)
 	}
 	if request.Agent == "pi" {

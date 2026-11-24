@@ -213,9 +213,9 @@ func (s *daemonServices) prepare(ctx context.Context, token string, output io.Wr
 	if handled, err := s.reconfigureExisting(ctx, epoch, output); handled {
 		return err
 	}
-	configurationMode := newDesktopSettings(s.home).value.Magpie
+	configurationMode := newDesktopSettings(s.home).value
 	events := &serviceEvents{emit: func(event map[string]json.RawMessage) {
-		if ctx.Err() == nil && newDesktopSettings(s.home).value.Magpie == configurationMode {
+		if ctx.Err() == nil && newDesktopSettings(s.home).value.sameMagpie(configurationMode) {
 			s.runtimeEvent(epoch, event)
 		}
 	}}
@@ -300,7 +300,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 		// Route results follow an applied cloud configuration, so the agent mode
 		// on the runtime now matches the Magpie setting.
 		if s.chatgpt != nil {
-			go s.chatgpt.reconcileMode(newDesktopSettings(s.home).value.Magpie)
+			go s.chatgpt.reconcileMode(newDesktopSettings(s.home).value.magpieFor("codex"))
 		}
 	case "agent_routes":
 		data := json.RawMessage(decodeText(event, "routes"))

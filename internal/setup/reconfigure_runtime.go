@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fennec/internal/agentcmd"
 	"fennec/internal/gateway"
 	"fmt"
 	"os"
@@ -38,7 +37,7 @@ func (r RuntimeConfiguration) Validate() error {
 	if !r.Accounts.Native {
 		wanted := map[string]bool{}
 		for _, id := range r.Accounts.Agents {
-			if !agentcmd.NativeOnly(id) {
+			if !r.Accounts.NativeAgent(id) {
 				wanted[id] = true
 			}
 		}
@@ -186,7 +185,7 @@ func reconfigureRuntimeWith(ctx context.Context, home string, request RuntimeCon
 			return result, fmt.Errorf("configuration readback failed: %w", err)
 		}
 		for _, id := range request.Accounts.Agents {
-			if !agentcmd.NativeOnly(id) {
+			if !request.Accounts.NativeAgent(id) {
 				continue
 			}
 			status := "credentials_required"

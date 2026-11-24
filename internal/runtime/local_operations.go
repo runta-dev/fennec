@@ -205,7 +205,7 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	if o.Kind == "native_models" || o.Kind == "native_model_set" {
 		var state setup.NativeModelState
 		var err error
-		if !setup.NativeAgentMode(r.Home) {
+		if !setup.NativeAgent(r.Home, o.NativeModel.Agent) {
 			return nil, fmt.Errorf("native models unavailable in gateway mode")
 		}
 		if o.Kind == "native_models" {

@@ -14,7 +14,7 @@ func (s *daemonServices) localModel(ctx context.Context, raw json.RawMessage) (a
 	if json.Unmarshal(raw, &params) != nil {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Choose an agent"}
 	}
-	if !newDesktopSettings(s.home).value.Magpie {
+	if !newDesktopSettings(s.home).value.magpieFor(params.Agent) {
 		return nil, &control.Fault{Code: "integration_disabled", Message: "Magpie is off"}
 	}
 	model, err := setup.LocalMagpieModel(ctx, s.home, params.Agent)

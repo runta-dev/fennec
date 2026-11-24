@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fennec/internal/agentcmd"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
 	"fmt"
@@ -603,7 +602,7 @@ func ApplySessionImport(home string, bundle SessionImport) (int, error) {
 // cloudAgentHome is where the cloud agent keeps conversations: the isolated
 // native configuration, or the default directory under the gateway.
 func cloudAgentHome(home, agent string) string {
-	native := setup.NativeAgentMode(home) || agentcmd.NativeOnly(agent)
+	native := setup.NativeAgent(home, agent)
 	if native {
 		switch agent {
 		case "claude", "codex", "pi", "kimi", "opencode", "cursor", "grok":

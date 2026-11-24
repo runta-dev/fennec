@@ -14,7 +14,7 @@ func TestPreparationDiagnosticsIdentifyChangesWithoutStoringCredentials(t *testi
 	home := t.TempDir()
 	request := setup.ModelAccountsRequest{Files: map[string]string{"codex/auth.json": base64.StdEncoding.EncodeToString([]byte(`{"token":"private-fixture","mode":"oauth"}`))}}
 	record := func(token string) ([]string, bool) {
-		return recordPreparationInputs(home, token, "runtime", false, []setup.Agent{{ID: "codex"}}, nil, nil, request)
+		return recordPreparationInputs(home, token, "runtime", false, nil, []setup.Agent{{ID: "codex"}}, nil, nil, request)
 	}
 	if changed, known := record("account-secret-fixture"); known || len(changed) != 0 {
 		t.Fatal(changed, known)

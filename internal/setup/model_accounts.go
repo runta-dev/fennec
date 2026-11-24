@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	agentcmd "fennec/internal/agentcmd"
 	"fennec/internal/commandstream"
 	"fennec/internal/gateway"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,6 +28,14 @@ type ModelAccountsRequest struct {
 	Files          map[string]string `json:"files"`
 	Plugins        []ModelPlugin     `json:"plugins"`
 	Agents         []string          `json:"agents,omitempty"`
+	// NativeAgents opts individual agents out of Magpie while it serves the
+	// rest; each one keeps its own account, credentials and model choice.
+	NativeAgents []string `json:"native_agents,omitempty"`
+}
+
+// NativeAgent reports whether id bypasses Magpie in this gateway request.
+func (r ModelAccountsRequest) NativeAgent(id string) bool {
+	return agentcmd.NativeOnly(id) || slices.Contains(r.NativeAgents, id)
 }
 
 type ModelAccountsResult struct {
@@ -131,6 +141,11 @@ func ValidateModelAccountsRequest(request ModelAccountsRequest) error {
 	if err := validateAgentInventory(request.Agents); err != nil {
 		return err
 	}
+	for _, id := range request.NativeAgents {
+		if request.Native || !slices.Contains(request.Agents, id) {
+			return fmt.Errorf("invalid native agent selection")
+		}
+	}
 	return validateModelPlugins(request.Plugins)
 }
 
@@ -172,7 +187,7 @@ func ApplyModelAccounts(ctx context.Context, home string, request ModelAccountsR
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	if err := ConfigureAgentMode(home, false); err != nil {
+	if err := ConfigureAgentMode(home, false, request.NativeAgents...); err != nil {
 		return result, err
 	}
 	return result, nil

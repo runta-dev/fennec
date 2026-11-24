@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -39,10 +40,12 @@ var nativeFiles = map[string]bool{
 var nativeEnvKeys = []string{"CURSOR_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "MISTRAL_API_KEY", "AZURE_OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "CLAUDE_CODE_EFFORT_LEVEL", "MAX_THINKING_TOKENS", "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"}
 
 type NativeSource struct {
-	Gateway  bool
-	Home     string
-	Env      func(string) string
-	Keychain func(context.Context, string, string) ([]byte, error)
+	Gateway bool
+	// NativeAgents are gathered as in native mode although Magpie serves the rest.
+	NativeAgents []string
+	Home         string
+	Env          func(string) string
+	Keychain     func(context.Context, string, string) ([]byte, error)
 }
 
 func (s NativeSource) dir(key, fallback string) string {
@@ -106,8 +109,13 @@ func readNativeKeychain(ctx context.Context, service, account string) ([]byte, e
 	return data, nil
 }
 func GatherNativeAccounts(ctx context.Context, home string, agents []string, gateway ...bool) (ModelAccountsRequest, error) {
+	return GatherAgentAccounts(ctx, home, agents, len(gateway) > 0 && gateway[0], nil)
+}
+
+// GatherAgentAccounts gathers with Magpie serving every agent except nativeAgents.
+func GatherAgentAccounts(ctx context.Context, home string, agents []string, gateway bool, nativeAgents []string) (ModelAccountsRequest, error) {
 	env := nativeSourceEnvironment(ctx)
-	return (NativeSource{Home: home, Gateway: len(gateway) > 0 && gateway[0], Env: func(k string) string { return env[k] }, Keychain: readNativeKeychain}).GatherAll(ctx, agents)
+	return (NativeSource{Home: home, Gateway: gateway, NativeAgents: nativeAgents, Env: func(k string) string { return env[k] }, Keychain: readNativeKeychain}).GatherAll(ctx, agents)
 }
 func (s NativeSource) GatherAll(ctx context.Context, agents []string) (ModelAccountsRequest, error) {
 	if err := validateAgentInventory(agents); err != nil {
@@ -116,7 +124,9 @@ func (s NativeSource) GatherAll(ctx context.Context, agents []string) (ModelAcco
 	result := ModelAccountsRequest{Version: 1, Native: true, DeferCatalog: true, Agents: agents, Files: map[string]string{}, NativeProblems: map[string]string{}}
 	allEnv := map[string]string{}
 	for _, id := range agents {
-		one, err := s.Gather(ctx, []string{id})
+		source := s
+		source.Gateway = s.Gateway && !slices.Contains(s.NativeAgents, id)
+		one, err := source.Gather(ctx, []string{id})
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
