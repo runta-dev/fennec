@@ -2958,10 +2958,22 @@
         "image": "docker.io/shiqimei/fennec-cloud:1.1.0"
       },
       "sha256": "169bcd587405d54f1ce44eb37201b00546f72dc0ea760da22befbbf449debf21"
+    },
+    "2026-11-24-byoc-singapore-vps-app.json": {
+      "client_origin": "Mac on a home LAN reaching a private WireGuard address; geography and carrier unknown",
+      "server_location_at_capture": "GCP runta-integration asia-southeast1-b, n2-standard-8 (live metadata)",
+      "boundary": "client-to-guest over WireGuard to a Docker-published SSH port, daemon from a built Fennec.app; see the artifact",
+      "recorded_metadata": {
+        "started_utc": "2026-11-24T15:37:10Z",
+        "source": "3a028e4",
+        "daemon": "Fennec.app bundle, build id 77a737d3b9cc",
+        "image": "docker.io/shiqimei/fennec-cloud:1.1.0"
+      },
+      "sha256": "29fdaef6df9cb2873ae63784f0716b62c83b8a794b79c2d2e1cffd8801884e4d"
     }
   },
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-24T15:22:48Z"
+  "updated_utc": "2026-11-24T15:39:33Z"
 }
