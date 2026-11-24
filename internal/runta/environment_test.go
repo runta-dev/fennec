@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -110,8 +111,14 @@ func TestDialAndPassSSHFDPreservesKernelTCPNoDelay(t *testing.T) {
 		t.Fatalf("expected passed socket to retain TCP_NODELAY != 0, got val=%d err=%v", val, err)
 	}
 
-	// Non-port-22 targets must be rejected fail-closed.
-	if err := DialAndPassSSHFD(context.Background(), "127.0.0.1", "8080", true, pair[1]); err == nil {
-		t.Fatal("expected non-SSH port to be rejected")
+	// Destinations the policy does not allow are rejected fail-closed, before
+	// any dial, and a missing policy allows nothing.
+	refused := ln.Addr().(*net.TCPAddr)
+	gatewayOnly := func(_, port string) bool { return port == "22" }
+	if err := DialAndPassSSHFD(context.Background(), "127.0.0.1", strconv.Itoa(refused.Port), gatewayOnly, true, pair[1]); err == nil {
+		t.Fatal("expected a disallowed port to be rejected")
+	}
+	if err := DialAndPassSSHFD(context.Background(), "127.0.0.1", strconv.Itoa(refused.Port), nil, true, pair[1]); err == nil {
+		t.Fatal("expected a missing policy to reject every target")
 	}
 }

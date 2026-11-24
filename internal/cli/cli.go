@@ -79,12 +79,10 @@ func Run(arguments []string, output io.Writer) error {
 			return errors.New("usage: ssh-dial <host> <port>")
 		}
 		home, _ := os.UserHomeDir()
-		if !cloudtarget.AllowsDial(home, arguments[1], arguments[2]) {
-			return fmt.Errorf("refusing unexpected SSH host %q", arguments[1])
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		return runta.DialAndPassSSHFD(ctx, arguments[1], arguments[2], runta.SSHNoDelayEnabled(home), int(os.Stdout.Fd()))
+		allow := func(host, port string) bool { return cloudtarget.AllowsDial(home, host, port) }
+		return runta.DialAndPassSSHFD(ctx, arguments[1], arguments[2], allow, runta.SSHNoDelayEnabled(home), int(os.Stdout.Fd()))
 	case "install-entry":
 		if len(arguments) != 3 {
 			return errors.New("install-entry requires agent and absolute entry path")

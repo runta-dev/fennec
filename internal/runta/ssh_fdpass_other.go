@@ -7,6 +7,6 @@ import (
 	"fmt"
 )
 
-func DialAndPassSSHFD(_ context.Context, _, _ string, _ bool, _ int) error {
+func DialAndPassSSHFD(_ context.Context, _, _ string, _ func(string, string) bool, _ bool, _ int) error {
 	return fmt.Errorf("SSH descriptor passing is unsupported on this platform")
 }
