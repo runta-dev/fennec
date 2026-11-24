@@ -58,7 +58,9 @@ var ErrRuntaAccountRequired = errors.New("a Runta account is required for this o
 // account is signed in, or a self-hosted cloud computer is paired.
 func (s Snapshot) Active() bool { return s.Status == StatusAuthorized || s.Status == StatusPaired }
 
-var machineIdentity = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$`)
+// machineIdentity is a lowercase UUID, the same shape as a Runta runtime ID, so a
+// paired machine ID can be carried as the runtime ID by every session path.
+var machineIdentity = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
 
 // ValidMachineID reports whether id is an acceptable BYOC machine identity.
 func ValidMachineID(id string) bool { return machineIdentity.MatchString(id) }

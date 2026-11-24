@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
@@ -13,7 +14,11 @@ import (
 
 // Reconnection only attaches to a pinned receipt through the shared daemon.
 func reconnectResident(ctx context.Context, receipt launcher.LaunchReceipt, home string, ready func()) error {
-	if _, err := launcher.AttachArgs(receipt.RuntimeID, receipt.Address, receipt.SessionID, filepath.Join(home, ".config/fennec/cloud")); err != nil {
+	target, err := cloudtarget.Active(home)
+	if err != nil {
+		return err
+	}
+	if _, err := launcher.AttachArgs(receipt.RuntimeID, receipt.Address, receipt.SessionID, target.Dir); err != nil {
 		return err
 	}
 	plan, err := residentReconnectPlan(ctx, receipt, home)

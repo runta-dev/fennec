@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"fennec/internal/cloudtarget"
 	"fmt"
 	"io"
 	"os"
@@ -25,8 +26,13 @@ func AttachArgs(runtimeID, address, sessionID, directory string) ([]string, erro
 		return nil, err
 	}
 	args := []string{"ssh", "-tt", "-S", control, "-o", "ControlMaster=no", "-o", "LogLevel=ERROR", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
-	args = append(args, SSHTransportOptions(homeFromCloudDir(directory))...)
-	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory), remote)
+	target, err := cloudtarget.ForDir(directory)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, SSHTransportOptions(target.Home())...)
+	args = append(args, target.OpenSSHArgs(runtimeID)...)
+	args = append(args, remote)
 	return args, nil
 }
 func Attach(runtimeID, address, sessionID, directory string) error {

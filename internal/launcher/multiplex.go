@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"crypto/sha256"
+	"fennec/internal/cloudtarget"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,7 +30,12 @@ func LaunchSSHArgs(directory, runtimeID, sessionID string) ([]string, error) {
 		return nil, fmt.Errorf("SSH control directory must be private")
 	}
 	args := []string{"-T", "-S", control, "-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
-	args = append(args, SSHTransportOptions(homeFromCloudDir(directory))...)
-	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory), "sh -s")
+	target, err := cloudtarget.ForDir(directory)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, SSHTransportOptions(target.Home())...)
+	args = append(args, target.OpenSSHArgs(runtimeID)...)
+	args = append(args, "sh -s")
 	return args, nil
 }

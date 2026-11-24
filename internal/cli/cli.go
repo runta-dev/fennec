@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudtarget"
 	"flag"
 	"fmt"
 	"io"
@@ -78,8 +79,8 @@ func Run(arguments []string, output io.Writer) error {
 			return errors.New("usage: ssh-dial <host> <port>")
 		}
 		home, _ := os.UserHomeDir()
-		if arguments[1] != runta.ActiveSSHHost(home) {
-			return fmt.Errorf("refusing unexpected SSH gateway host %q", arguments[1])
+		if !cloudtarget.AllowsDial(home, arguments[1], arguments[2]) {
+			return fmt.Errorf("refusing unexpected SSH host %q", arguments[1])
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()

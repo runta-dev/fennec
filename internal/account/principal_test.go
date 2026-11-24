@@ -36,7 +36,7 @@ func TestPairSwitchesPrincipalUnderFreshEpoch(t *testing.T) {
 	}
 	runtaCtx, _, runtaEpoch, _ := m.Session()
 
-	epoch, err := m.Pair("vps-1")
+	epoch, err := m.Pair("00000000-0000-4000-8000-000000000001")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestPairSwitchesPrincipalUnderFreshEpoch(t *testing.T) {
 		t.Fatal("Runta session lifecycle survived the principal switch")
 	}
 	pairedCtx, principal, current, ok := m.Session()
-	if !ok || current != epoch || principal.Kind != PrincipalBYOC || principal.Machine != "vps-1" || principal.Token != "" {
+	if !ok || current != epoch || principal.Kind != PrincipalBYOC || principal.Machine != "00000000-0000-4000-8000-000000000001" || principal.Token != "" {
 		t.Fatalf("unexpected principal: kind=%q machine=%q ok=%v", principal.Kind, principal.Machine, ok)
 	}
 	if !principal.IsBYOC() {
@@ -64,14 +64,14 @@ func TestPairSwitchesPrincipalUnderFreshEpoch(t *testing.T) {
 	}
 
 	// Re-pairing the same machine is idempotent and keeps the epoch.
-	if again, err := m.Pair("vps-1"); err != nil || again != epoch || pairedCtx.Err() != nil {
+	if again, err := m.Pair("00000000-0000-4000-8000-000000000001"); err != nil || again != epoch || pairedCtx.Err() != nil {
 		t.Fatal("re-pairing the same machine replaced the session")
 	}
 }
 
 func TestPairRejectsInvalidMachineIdentity(t *testing.T) {
 	m := New(context.Background(), &memoryCredentials{}, "")
-	for _, id := range []string{"", "a", "-vps", "vps-", "VPS", "vps/1", "vps 1", string(make([]byte, 65))} {
+	for _, id := range []string{"", "vps-1", "00000000-0000-4000-8000-00000000000G", "00000000-0000-4000-8000-0000000000001", "00000000-0000-4000-8000-00000000000A", "00000000000040008000000000000001", string(make([]byte, 36))} {
 		if _, err := m.Pair(id); err == nil {
 			t.Fatalf("accepted machine identity %q", id)
 		}
@@ -83,15 +83,15 @@ func TestPairRejectsInvalidMachineIdentity(t *testing.T) {
 
 func TestUnpairIgnoresStaleMachine(t *testing.T) {
 	m := New(context.Background(), &memoryCredentials{}, "")
-	epoch, err := m.Pair("vps-2")
+	epoch, err := m.Pair("00000000-0000-4000-8000-000000000002")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Unpair("vps-1")
-	if _, principal, current, ok := m.Session(); !ok || current != epoch || principal.Machine != "vps-2" {
+	m.Unpair("00000000-0000-4000-8000-000000000001")
+	if _, principal, current, ok := m.Session(); !ok || current != epoch || principal.Machine != "00000000-0000-4000-8000-000000000002" {
 		t.Fatal("unpairing a different machine ended the current pairing")
 	}
-	m.Unpair("vps-2")
+	m.Unpair("00000000-0000-4000-8000-000000000002")
 	if _, _, current, ok := m.Session(); ok || current <= epoch {
 		t.Fatal("unpairing did not end the session under a new epoch")
 	}
@@ -102,7 +102,7 @@ func TestUnpairIgnoresStaleMachine(t *testing.T) {
 
 func TestSignInReplacesPairedPrincipal(t *testing.T) {
 	m := New(context.Background(), &memoryCredentials{}, "http://127.0.0.1:1")
-	if _, err := m.Pair("vps-3"); err != nil {
+	if _, err := m.Pair("00000000-0000-4000-8000-000000000003"); err != nil {
 		t.Fatal(err)
 	}
 	if state := m.Login(); state.Status != "authorizing" {
@@ -116,7 +116,7 @@ func TestSignInReplacesPairedPrincipal(t *testing.T) {
 
 func TestRuntaQueriesRequireRuntaPrincipal(t *testing.T) {
 	m := New(context.Background(), &memoryCredentials{}, "")
-	if _, err := m.Pair("vps-4"); err != nil {
+	if _, err := m.Pair("00000000-0000-4000-8000-000000000004"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Profile(context.Background()); !errors.Is(err, ErrRuntaAccountRequired) {

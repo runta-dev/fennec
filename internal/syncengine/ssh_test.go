@@ -1,6 +1,7 @@
 package syncengine
 
 import (
+	"fennec/internal/cloudtarget"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,5 +37,33 @@ func TestRejectSSHConfigInjection(t *testing.T) {
 	}
 	if _, err := quoteConfig("/tmp/%h"); err == nil {
 		t.Fatal("SSH expansion accepted")
+	}
+}
+
+func TestPrivateSSHConfigurationForSelfHostedTarget(t *testing.T) {
+	root := t.TempDir()
+	identity := filepath.Join(root, "identity")
+	os.MkdirAll(identity, 0700)
+	os.WriteFile(filepath.Join(identity, "runtime_key"), []byte("unused"), 0600)
+	os.WriteFile(filepath.Join(identity, "known_hosts"), nil, 0600)
+	dir := filepath.Join(root, "wrapper")
+	target := cloudtarget.Target{Dir: identity, Host: "vps.example.com", Port: 2222, User: "fennec"}
+	alias, err := ConfigureTargetSSH(dir, "0b9f6c1e-3d2a-4c5b-9e8f-7a6b5c4d3e2f", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(filepath.Join(dir, "ssh"), "-G", alias).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{"hostname vps.example.com", "port 2222", "user fennec", "stricthostkeychecking true"} {
+		if !strings.Contains(string(output), line) {
+			t.Fatal(line)
+		}
+	}
+	for _, bad := range []cloudtarget.Target{{Dir: identity, Host: "a b", Port: 22, User: "fennec"}, {Dir: identity, Host: "h", Port: 70000, User: "fennec"}, {Dir: identity, Host: "h", Port: 22, User: "x\nProxyCommand y"}} {
+		if _, err := ConfigureTargetSSH(dir, "0b9f6c1e-3d2a-4c5b-9e8f-7a6b5c4d3e2f", bad); err == nil {
+			t.Fatalf("accepted target %+v", bad)
+		}
 	}
 }

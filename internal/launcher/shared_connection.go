@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/connectivity"
 	"fmt"
 	"os"
@@ -62,10 +63,14 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
 		return nil, fmt.Errorf("SSH control directory must be private")
 	}
+	target, err := cloudtarget.ForDir(directory)
+	if err != nil {
+		return nil, err
+	}
 	manager := &SharedConnection{ctx: ctx, control: control}
-	home := homeFromCloudDir(directory)
+	home := target.Home()
 	controlOperation := func(ctx context.Context, operation string) error {
-		return exec.CommandContext(ctx, "/usr/bin/ssh", "-S", control, "-O", operation, runtimeID+"@"+activeSSHHostForCloudDir(directory)).Run()
+		return exec.CommandContext(ctx, "/usr/bin/ssh", "-S", control, "-O", operation, target.Destination(runtimeID)).Run()
 	}
 	manager.check = func(ctx context.Context) error {
 		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
@@ -80,7 +85,7 @@ func NewSharedConnection(ctx context.Context, directory, runtimeID string, autho
 	connect := func(ctx context.Context) error {
 		args := []string{"-N", "-f", "-M", "-S", control, "-o", "ControlPersist=yes", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"}
 		args = append(args, SSHTransportOptions(home)...)
-		args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), runtimeID+"@"+activeSSHHostForCloudDir(directory))
+		args = append(args, target.OpenSSHArgs(runtimeID)...)
 		err := exec.CommandContext(ctx, "/usr/bin/ssh", args...).Run()
 		if ctx.Err() != nil {
 			manager.stop()

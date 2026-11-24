@@ -26,12 +26,12 @@ func TestPairedPrincipalDrivesPreparation(t *testing.T) {
 		},
 	}
 	c.Start(ctx)
-	if _, err := manager.Pair("vps-1"); err != nil {
+	if _, err := manager.Pair("00000000-0000-4000-8000-000000000001"); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case principal := <-seen:
-		if principal.Kind != account.PrincipalBYOC || principal.Machine != "vps-1" || principal.Token != "" {
+		if principal.Kind != account.PrincipalBYOC || principal.Machine != "00000000-0000-4000-8000-000000000001" || principal.Token != "" {
 			t.Fatalf("unexpected principal: kind=%q machine=%q", principal.Kind, principal.Machine)
 		}
 	case <-ctx.Done():
@@ -52,7 +52,7 @@ func TestRuntaRejectionDoesNotEndPairing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	manager := account.New(ctx, &testCredentials{}, "")
-	epoch, err := manager.Pair("vps-2")
+	epoch, err := manager.Pair("00000000-0000-4000-8000-000000000002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestRuntaRejectionDoesNotEndPairing(t *testing.T) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	if _, principal, current, ok := manager.Session(); !ok || current != epoch || principal.Machine != "vps-2" {
+	if _, principal, current, ok := manager.Session(); !ok || current != epoch || principal.Machine != "00000000-0000-4000-8000-000000000002" {
 		t.Fatal("a Runta 401 ended the self-hosted pairing")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -15,8 +16,8 @@ import (
 // on the underlying kernel socket, and passes the file descriptor over outFD for
 // OpenSSH's ProxyUseFdpass=yes protocol.
 func DialAndPassSSHFD(ctx context.Context, host, port string, noDelay bool, outFD int) error {
-	if host == "" || port != "22" {
-		return fmt.Errorf("unsupported SSH gateway target %s:%s", host, port)
+	if number, err := strconv.Atoi(port); host == "" || err != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port {
+		return fmt.Errorf("unsupported SSH target %s:%s", host, port)
 	}
 	conn, err := (&net.Dialer{
 		Timeout:   20 * time.Second,
