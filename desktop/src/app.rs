@@ -11,6 +11,7 @@ mod request_attachments;
 mod sidebar_resize;
 mod tab_close;
 mod tabs;
+mod thread_peek;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -102,6 +103,8 @@ pub struct FennecWindow {
     thread_scroll: ScrollHandle,
     /// Scroll the thread to its newest message once a sent reply shows up.
     thread_follow: bool,
+    /// The latest lines the open thread's working agent printed.
+    thread_peek: Option<thread_peek::Peek>,
     pub(crate) route: Option<Route>,
     open: Option<u64>,
     resolved: bool,
@@ -267,6 +270,7 @@ impl FennecWindow {
             deleted_projects: Default::default(),
             requests: HashMap::new(),
             thread: None,
+            thread_peek: None,
             route: None,
             open: None,
             resolved: false,
@@ -393,7 +397,7 @@ impl FennecWindow {
                 }
             }));
         }
-        if connect {this.follow_board(window, cx);}
+        if connect {this.follow_board(window, cx); this.follow_thread_peek(window, cx);}
         // Toasts the terminal core asks for (a refused file drop).
         this._tasks.push(cx.spawn_in(window, async move |this, cx| {
             while let Ok(crate::mods::Request::OpenOverlay { spec, id: _ }) = requests.recv().await
@@ -2883,6 +2887,7 @@ impl FennecWindow {
         let session_route = r
             .active_session(&self.sessions)
             .map(|s| s.address.clone());
+        let peek = self.peek_target().map(|s| self.thread_peek_card(s));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
         v_flex()
             .flex_1()
@@ -2963,7 +2968,8 @@ impl FennecWindow {
                     .track_scroll(&self.thread_scroll)
                     .px(px(22.0))
                     .py(px(14.0))
-                    .children(items),
+                    .children(items)
+                    .when_some(peek, |d, card| d.child(card)),
             )
             .child(
                 div().px(px(18.0)).pb(px(16.0)).child(

@@ -24,6 +24,8 @@ pub struct Session {
     pub queue: String,
     pub request: Option<u64>,
     pub state: State,
+    /// What the agent says it is doing now (herdr-core's `status.msg`).
+    pub activity: String,
     /// When the status last changed, in ms since the epoch.
     pub since_ms: u64,
 }
@@ -88,6 +90,11 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                     .as_str()
                     .and_then(|n| n.parse().ok()),
                 state,
+                activity: t["status"]["msg"]
+                    .as_str()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_owned(),
                 since_ms: t["status_ms"]
                     .as_u64()
                     .or_else(|| t["created_ms"].as_u64())
