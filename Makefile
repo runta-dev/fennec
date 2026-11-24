@@ -95,6 +95,17 @@ test-e2e-byoc:
 	docker build -f deploy/byoc/Dockerfile -t fennec-cloud:e2e .
 	FENNEC_BYOC_E2E=1 FENNEC_BYOC_IMAGE=fennec-cloud:e2e go test -count=1 -timeout=25m -v -run '^TestEndToEnd$$' ./deploy/byoc
 
+# The same flow with the daemon and terminal service shipped in a built
+# Fennec.app (FENNEC_BUILD_DIR, nothing installed or restarted).
+.PHONY: test-e2e-byoc-app
+FENNEC_E2E_APP_BUILD ?= $(CURDIR)/build/byoc-e2e-app
+test-e2e-byoc-app:
+	test "$$(uname -s)" = Darwin
+	go build -trimpath -o "$(FENNEC_E2E_APP_BUILD)/fennec-daemon" .
+	FENNEC_DAEMON_BINARY="$(FENNEC_E2E_APP_BUILD)/fennec-daemon" FENNEC_BUILD_DIR="$(FENNEC_E2E_APP_BUILD)" ./scripts/build-macos.sh
+	docker build -f deploy/byoc/Dockerfile -t fennec-cloud:e2e .
+	FENNEC_BYOC_E2E=1 FENNEC_BYOC_IMAGE=fennec-cloud:e2e FENNEC_BYOC_E2E_APP="$(FENNEC_E2E_APP_BUILD)/Fennec.app" go test -count=1 -timeout=25m -v -run '^TestEndToEnd$$' ./deploy/byoc
+
 .PHONY: test-e2e-launchd-demand
 test-e2e-launchd-demand:
 	test "$$(uname -s)" = Darwin

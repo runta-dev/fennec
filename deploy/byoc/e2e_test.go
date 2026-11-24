@@ -40,12 +40,14 @@ import (
 )
 
 type e2eHarness struct {
-	t      *testing.T
-	root   string // binaries
-	home   string
-	env    []string
-	daemon *exec.Cmd
-	exited chan struct{}
+	t            *testing.T
+	root         string // scratch files (daemon log)
+	client       string // the fen CLI client
+	daemonBinary string // the fen that runs control-daemon (the binary under test)
+	home         string
+	env          []string
+	daemon       *exec.Cmd
+	exited       chan struct{}
 }
 
 func (h *e2eHarness) fen(args ...string) (string, error) {
@@ -55,7 +57,7 @@ func (h *e2eHarness) fen(args ...string) (string, error) {
 func (h *e2eHarness) fenInput(input []byte, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(ctx, filepath.Join(h.root, "bin", "fen"), args...)
+	command := exec.CommandContext(ctx, h.client, args...)
 	command.Dir, command.Env = h.home, h.env
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
@@ -150,7 +152,7 @@ func (h *e2eHarness) startDaemon() {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.daemon = exec.Command(filepath.Join(h.root, "bin", "fen"), "control-daemon")
+	h.daemon = exec.Command(h.daemonBinary, "control-daemon")
 	h.daemon.Dir, h.daemon.Env = h.home, h.env
 	h.daemon.Stdout, h.daemon.Stderr = log, log
 	if err := h.daemon.Start(); err != nil {
@@ -212,6 +214,44 @@ func buildFennec(t *testing.T, root string) {
 	}
 }
 
+// e2eBinaries returns the fen CLI client, the fen that runs the daemon, and
+// extra environment. By default both, and the terminal service, are built from
+// this source. With FENNEC_BYOC_E2E_APP (a built Fennec.app) the daemon is the
+// app's own fen, preparing the computer with the app's bundled
+// Resources/fennec-terminal-linux-*. The app is copied to a temporary
+// directory, where fen does not consider itself installed: the foreground
+// daemon then starts no Trash watcher. The CLI client stays the source build:
+// an installed-looking client would register the per-user launchd daemon job
+// and replace the Fennec daemon already running on this Mac.
+func e2eBinaries(t *testing.T, root string) (string, string, []string) {
+	t.Helper()
+	buildFennec(t, root)
+	client := filepath.Join(root, "bin", "fen")
+	app := os.Getenv("FENNEC_BYOC_E2E_APP")
+	if app == "" {
+		return client, client, nil
+	}
+	copyRoot, err := os.MkdirTemp("/tmp", "fe2e-app-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(copyRoot) })
+	copied := filepath.Join(copyRoot, "Fennec.app")
+	if output, err := exec.Command("ditto", app, copied).CombinedOutput(); err != nil {
+		t.Fatalf("copy %s: %v\n%s", app, err, output)
+	}
+	if output, err := exec.Command("codesign", "--verify", "--strict", copied).CombinedOutput(); err != nil {
+		t.Fatalf("the app under test is not validly signed: %v\n%s", err, output)
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		if _, err := os.Stat(filepath.Join(copied, "Contents/Resources/fennec-terminal-linux-"+arch)); err != nil {
+			t.Fatalf("the app does not bundle the %s terminal service: %v", arch, err)
+		}
+	}
+	t.Logf("testing the binaries bundled in %s", app)
+	return client, filepath.Join(copied, "Contents/MacOS/fen"), []string{"TMPDIR=" + copyRoot}
+}
+
 func fileDigest(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -256,7 +296,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	codexAuth := os.Getenv("FENNEC_BYOC_E2E_CODEX_AUTH")
 	root := t.TempDir()
-	buildFennec(t, root)
+	fen, daemonBinary, extraEnv := e2eBinaries(t, root)
 	// Unix socket paths are limited to 104 bytes on macOS, and the HOME holds
 	// control and attach sockets: keep it short.
 	home, err := os.MkdirTemp("/tmp", "fe2e-")
@@ -268,13 +308,13 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(home, ".config/fennec/launch-profile.enabled"), nil, 0600)
-	h := &e2eHarness{t: t, root: root, home: home, env: []string{
-		"HOME=" + home,
+	h := &e2eHarness{t: t, root: root, client: fen, daemonBinary: daemonBinary, home: home, env: append(extraEnv,
+		"HOME="+home,
 		"USER=fennec-e2e", // no Keychain entry belongs to this user
-		"FENNEC_CREDENTIALS_FILE=" + filepath.Join(home, "runta-credentials.json"),
-		"PATH=" + filepath.Join(root, "bin") + ":/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
+		"FENNEC_CREDENTIALS_FILE="+filepath.Join(home, "runta-credentials.json"),
+		"PATH="+filepath.Dir(fen)+":/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
 		"LANG=en_US.UTF-8",
-	}}
+	)}
 	originalAuth := ""
 	if codexAuth != "" {
 		originalAuth = fileDigest(codexAuth)
@@ -327,6 +367,15 @@ func TestEndToEnd(t *testing.T) {
 	if state.Runtime.RuntimeID != machine {
 		t.Fatalf("prepared %q, the container is %q", state.Runtime.RuntimeID, machine)
 	}
+	// The terminal service on the computer is the one shipped next to the
+	// daemon under test (content-addressed by its SHA-256).
+	arch := map[string]string{"x86_64": "amd64", "aarch64": "arm64"}[docker(t, "exec", c.name, "uname", "-m")]
+	shipped := fileDigest(filepath.Join(filepath.Dir(h.daemonBinary), "..", "Resources", "fennec-terminal-linux-"+arch))
+	installed := docker(t, "exec", "-u", "fennec", c.name, "sh", "-c", `basename "$(dirname "$(readlink "$HOME/.local/fennec/bin/fennec-terminal")")"`)
+	if installed != shipped {
+		t.Fatalf("the computer runs terminal service %s, the daemon ships %s", installed, shipped)
+	}
+	t.Logf("terminal service on the computer is the shipped %s artifact %s", arch, shipped[:12])
 	h.must("takeover", "codex", "on")
 
 	t.Run("sessions stay available while the computer is prepared again", func(t *testing.T) {
@@ -436,7 +485,7 @@ func TestEndToEnd(t *testing.T) {
 		}
 
 		t.Run("attach and detach over a terminal", func(t *testing.T) {
-			command := exec.Command(filepath.Join(root, "bin", "fen"), "attach", session)
+			command := exec.Command(h.client, "attach", session)
 			command.Dir, command.Env = home, append(h.env, "TERM=xterm-256color")
 			terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: 40, Cols: 120})
 			if err != nil {
