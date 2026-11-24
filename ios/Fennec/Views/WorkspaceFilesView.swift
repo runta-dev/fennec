@@ -80,7 +80,17 @@ struct WorkspaceFileCard: View {
         .disabled(loading)
         .accessibilityLabel(L10n.text("ios.preview_file", values: ["name": caption]))
         .accessibilityIdentifier("workspace-file-preview")
-        .task(id: ref) { await load(download: false) }
+        .task(id: ref) {
+            // The conversation is lazy: a card scrolled away and back is a
+            // new view. Take what an earlier one loaded, so it comes back at
+            // its full height at once instead of loading (and growing) again.
+            if file == nil, let cached = WorkspacePreviewCache.shared[cacheKey] {
+                file = cached.file
+                localURL = cached.localURL
+                thumbnail = cached.thumbnail
+            }
+            await load(download: false)
+        }
         .quickLookPreview($previewURL)
         .fullScreenCover(isPresented: Binding(get: { webURL != nil }, set: { if !$0 { webURL = nil } })) {
             if let webURL { WebPagePreview(url: webURL, title: caption) { self.webURL = nil } }
@@ -93,17 +103,24 @@ struct WorkspaceFileCard: View {
         return file.title.isEmpty ? file.name : file.title
     }
 
+    private var cacheKey: String { sessionID + "\n" + ref }
+
     private func load(download: Bool) async {
         guard !loading else { return }
         loading = true
-        defer { loading = false }
+        defer {
+            loading = false
+            if let file { WorkspacePreviewCache.shared[cacheKey] = .init(file: file, localURL: localURL, thumbnail: thumbnail) }
+        }
         do {
             if file == nil { file = try await store.previewMetadata(ref, sessionID: sessionID) }
             guard let file else { return }
             let visual = file.kind == "image" || file.isWebPage
             if localURL == nil && (download || visual) {
-                let url = try await store.preview(file, sessionID: sessionID)
-                localURL = url
+                localURL = try await store.preview(file, sessionID: sessionID)
+            }
+            // Also when an earlier card's thumbnail was cut short (scrolled away).
+            if visual, thumbnail == nil, let url = localURL, !Task.isCancelled {
                 if file.isWebPage {
                     thumbnail = await WebPageSnapshot.render(url)
                 } else if file.kind == "image" {
@@ -117,6 +134,25 @@ struct WorkspaceFileCard: View {
             }
             failed = false
         } catch { failed = true }
+    }
+}
+
+/// What workspace file cards have loaded, for the app's lifetime: the
+/// file's details, its downloaded copy and its thumbnail.
+@MainActor
+final class WorkspacePreviewCache {
+    struct Entry {
+        var file: WorkspaceFile
+        var localURL: URL?
+        var thumbnail: UIImage?
+    }
+
+    static let shared = WorkspacePreviewCache()
+    private var entries: [String: Entry] = [:]
+
+    subscript(key: String) -> Entry? {
+        get { entries[key] }
+        set { entries[key] = newValue }
     }
 }
 
