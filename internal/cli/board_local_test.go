@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/board"
 	"net/http"
 	"testing"
 )
@@ -39,5 +40,36 @@ func TestLocalBoardOfflinePersistence(t *testing.T) {
 	}
 	if _, err = restarted.call(context.Background(), http.MethodGet, "/v1/../private", nil); err == nil {
 		t.Fatal("accepted invalid path")
+	}
+}
+
+func TestQueueBackupKeepsSavedCloudLocation(t *testing.T) {
+	home := t.TempDir()
+	store := board.Store{Home: home, Role: "local"}
+	if err := store.SetRouting(board.Routing{Locations: map[string]string{"codex": "cloud"}, Device: "12345678"}); err != nil {
+		t.Fatal(err)
+	}
+	s := &daemonServices{home: home, selected: map[string]bool{}}
+	got := queueRouting(s, store)
+	if got.Locations["codex"] != "cloud" || got.Device != "12345678" {
+		t.Fatal("unprepared services changed execution location", got)
+	}
+}
+
+func TestLocalBoardSendsKnowledgeToTheCloud(t *testing.T) {
+	local := boardClient{local: true}
+	for path, wantLocal := range map[string]bool{
+		"/v1/projects/this/knowledge":        false,
+		"/v1/projects/this/knowledge/review": false,
+		"/v1/projects/this":                  true,
+		"/v1/projects/this/requests":         true,
+		"/v1/projects/knowledge":             true,
+	} {
+		if got := local.forPath(path).local; got != wantLocal {
+			t.Errorf("%s: local = %v, want %v", path, got, wantLocal)
+		}
+	}
+	if (boardClient{}).forPath("/v1/projects/this").local {
+		t.Error("a cloud client became local")
 	}
 }

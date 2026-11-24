@@ -33,7 +33,7 @@ func (s *daemonServices) nativeModelOperation(ctx context.Context, raw json.RawM
 	if channel == nil || current != epoch {
 		return nil, &control.Fault{Code: "not_ready", Message: "Cloud computer is connecting", Retryable: true}
 	}
-	if newDesktopSettings(s.home).value.Magpie {
+	if newDesktopSettings(s.home).value.magpieFor(choice.Agent) {
 		return nil, &control.Fault{Code: "mode_changed", Message: "Model settings changed; reopen the agent"}
 	}
 	ctx, cancel := context.WithCancel(ctx)

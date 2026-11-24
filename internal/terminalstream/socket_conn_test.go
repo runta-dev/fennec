@@ -135,6 +135,34 @@ func TestSocketConnDrainsDataBeforeEOFAndHonorsDeadline(t *testing.T) {
 	}
 }
 
+// Desktop holds one stream per open cloud tab; 16 open tabs used to make the
+// next attach fail with "session already exists or capacity exhausted".
+func TestManyOpenStreamsLeaveRoomForMoreAndForControl(t *testing.T) {
+	transport := socketTransport(t, func(ctx context.Context, _ string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		context.AfterFunc(ctx, func() { remote.Close() })
+		return local, nil
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var conns []net.Conn
+	defer func() {
+		for _, conn := range conns {
+			conn.Close()
+		}
+	}()
+	for range 40 {
+		conn, err := transport.DialSocket(ctx, SocketCodexAppServer, "")
+		if err != nil {
+			t.Fatal("stream capacity exhausted at", len(conns), err)
+		}
+		conns = append(conns, conn)
+	}
+	if _, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"}); err != nil {
+		t.Fatal("open streams exhausted control capacity", err)
+	}
+}
+
 func TestDeviceRelayCapacityLeavesNormalStreamsAvailable(t *testing.T) {
 	transport := socketTransport(t, func(ctx context.Context, _ string) (net.Conn, error) {
 		local, remote := net.Pipe()

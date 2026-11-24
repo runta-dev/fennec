@@ -2,8 +2,70 @@ package terminalinput
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
+
+func TestStringRepliesStayAtomicAcrossDelayedReads(t *testing.T) {
+	for _, reply := range []string{
+		"\x1b]10;rgb:cdcd/d6d6/e4e4\x1b\\",
+		"\x1b]11;rgb:1010/1616/2020\a",
+		"\x1b]12;rgb:ffff/ffff/ffff\x1b\\",
+		"\x1bP1+r544e=787465726d\x1b\\",
+		"\x1b_Gi=1;OK\x1b\\",
+	} {
+		for split := 2; split < len(reply); split++ {
+			var d Decoder
+			out, detached := d.Feed([]byte("before" + reply[:split]))
+			if detached || string(out) != "before" {
+				t.Fatalf("split %d: forwarded a reply prefix: %q", split, out)
+			}
+			// The remote attach parser's escape timeout must never see this
+			// prefix, even if the next local read arrives after idle polls.
+			for range 3 {
+				if out := d.Flush(); len(out) != 0 || d.PollTimeout(100) != 100 {
+					t.Fatalf("split %d: idle poll released %q", split, out)
+				}
+			}
+			out, detached = d.Feed([]byte(reply[split:] + "after"))
+			if detached || string(out) != reply+"after" {
+				t.Fatalf("split %d: reply or typing changed: %q", split, out)
+			}
+		}
+	}
+}
+
+func TestStringControlsPreservePasteAndBoundBuffer(t *testing.T) {
+	input := "\x1b[200~code \x1b]10;rgb:cdcd/d6d6/e4e4\a\x03\x1b[201~"
+	var d Decoder
+	var output []byte
+	for _, b := range []byte(input) {
+		out, detached := d.Feed([]byte{b})
+		if detached {
+			t.Fatal("paste detached the session")
+		}
+		output = append(output, out...)
+	}
+	if string(output) != input {
+		t.Fatalf("paste changed: %q", output)
+	}
+	input = "\x1b]" + strings.Repeat("x", 511)
+	out, _ := d.Feed([]byte(input))
+	if string(out) != input || len(d.pending) != 0 {
+		t.Fatal("unterminated string exceeded the buffer limit")
+	}
+}
+
+func TestDetachInterruptsUnfinishedStringControl(t *testing.T) {
+	for _, key := range []byte{3, 4, 28} {
+		var d Decoder
+		d.Feed([]byte("\x1b]10;rgb:"))
+		out, detached := d.Feed([]byte{key})
+		if !detached || !bytes.Equal(out, []byte{28}) {
+			t.Fatal("unfinished reply swallowed detach", key, out)
+		}
+	}
+}
 
 func TestDetachKeysNeverReachAgent(t *testing.T) {
 	for _, key := range []byte{3, 4, 28} {

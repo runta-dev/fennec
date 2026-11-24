@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/agentcmd"
 	"fennec/internal/control"
 	"fennec/internal/runta"
 	"fennec/internal/sandbox"
@@ -13,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -25,23 +27,51 @@ type desktopSettings struct {
 	value   desktopPreferences
 }
 type desktopPreferences struct {
-	Revision       uint64   `json:"revision"`
-	Magpie         bool     `json:"magpie"`
-	NoAutoUpdate   bool     `json:"no_auto_update,omitempty"`
-	UpdateSkip     string   `json:"update_skip,omitempty"`
-	Environment    string   `json:"environment,omitempty"`
-	NoSSHNoDelay   bool     `json:"no_ssh_nodelay,omitempty"`
-	PermissionMode string   `json:"permission_mode,omitempty"`
-	SandboxMode    string   `json:"sandbox_mode,omitempty"`
-	SandboxNetwork bool     `json:"sandbox_network,omitempty"`
-	SandboxRoots   []string `json:"sandbox_roots,omitempty"`
-	Theme          string   `json:"theme"`
-	Language       string   `json:"language"`
-	Initialized    bool     `json:"initialized"`
-	PredictiveEcho string   `json:"predictive_echo,omitempty"`
+	Revision uint64 `json:"revision"`
+	Magpie   bool   `json:"magpie"`
+	// MagpieOffAgents keep their own accounts and models while Magpie serves
+	// every other agent; the Settings switch above still turns all of it off.
+	MagpieOffAgents []string `json:"magpie_off_agents,omitempty"`
+	NoAutoUpdate    bool     `json:"no_auto_update,omitempty"`
+	UpdateSkip      string   `json:"update_skip,omitempty"`
+	Environment     string   `json:"environment,omitempty"`
+	NoSSHNoDelay    bool     `json:"no_ssh_nodelay,omitempty"`
+	PermissionMode  string   `json:"permission_mode,omitempty"`
+	SandboxMode     string   `json:"sandbox_mode,omitempty"`
+	SandboxNetwork  bool     `json:"sandbox_network,omitempty"`
+	SandboxRoots    []string `json:"sandbox_roots,omitempty"`
+	Theme           string   `json:"theme"`
+	Language        string   `json:"language"`
+	Initialized     bool     `json:"initialized"`
+	PredictiveEcho  string   `json:"predictive_echo,omitempty"`
 	// The Agents view's Get started card: hidden by the user, or finished.
 	GetStartedHidden bool `json:"get_started_hidden,omitempty"`
 	GetStartedDone   bool `json:"get_started_done,omitempty"`
+	// FennecTerminal opens the Fennec Terminal window (Contents/MacOS/fennec-desktop)
+	// when the bundle carries it. Off unless the user turns it on.
+	FennecTerminal bool `json:"fennec_terminal,omitempty"`
+}
+
+// magpieFor reports whether Magpie serves agent: on in Settings, not turned off
+// for this agent, and not an agent that always keeps its own account.
+func (p desktopPreferences) magpieFor(agent string) bool {
+	return p.Magpie && !agentcmd.NativeOnly(agent) && !slices.Contains(p.MagpieOffAgents, agent)
+}
+
+// sameMagpie reports whether p and q route every agent the same way.
+func (p desktopPreferences) sameMagpie(q desktopPreferences) bool {
+	return p.Magpie == q.Magpie && (!p.Magpie || slices.Equal(p.MagpieOffAgents, q.MagpieOffAgents))
+}
+
+// nativeAgents lists the agents in ids that bypass Magpie while it is on.
+func (p desktopPreferences) nativeAgents(ids []string) []string {
+	var native []string
+	for _, id := range ids {
+		if p.Magpie && !agentcmd.NativeOnly(id) && !p.magpieFor(id) {
+			native = append(native, id)
+		}
+	}
+	return native
 }
 
 func effectivePermissionPreset(prefs desktopPreferences) string {
@@ -136,6 +166,9 @@ func initializeDesktopPreferences(path string, value desktopPreferences) error {
 	return err
 }
 func validDesktop(value desktopPreferences) bool {
+	if len(value.MagpieOffAgents) > 32 {
+		return false
+	}
 	if len(value.UpdateSkip) > 64 || strings.ContainsAny(value.UpdateSkip, "\x00\r\n ") {
 		return false
 	}
@@ -169,7 +202,7 @@ func (s *desktopSettings) update(ctx context.Context, raw json.RawMessage, chang
 		return nil, err
 	}
 	next := value.(desktopPreferences)
-	if changed != nil && (prev.Magpie != next.Magpie || prev.Environment != next.Environment || prev.NoSSHNoDelay != next.NoSSHNoDelay) {
+	if changed != nil && (prev.Magpie != next.Magpie || (next.Magpie && !slices.Equal(prev.MagpieOffAgents, next.MagpieOffAgents)) || prev.Environment != next.Environment || prev.NoSSHNoDelay != next.NoSSHNoDelay) {
 		if err := changed(); err != nil {
 			return nil, err
 		}
@@ -179,8 +212,12 @@ func (s *desktopSettings) update(ctx context.Context, raw json.RawMessage, chang
 func (s *desktopSettings) set(importing bool) control.Handler {
 	return func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var request struct {
-			ExpectedRevision *uint64         `json:"expected_revision"`
-			Magpie           *bool           `json:"magpie"`
+			ExpectedRevision *uint64 `json:"expected_revision"`
+			Magpie           *bool   `json:"magpie"`
+			MagpieAgent      *struct {
+				Agent   string `json:"agent"`
+				Enabled bool   `json:"enabled"`
+			} `json:"magpie_agent"`
 			AutoUpdate       *bool           `json:"auto_update"`
 			NoAutoUpdate     *bool           `json:"no_auto_update"`
 			UpdateSkip       *string         `json:"update_skip"`
@@ -196,6 +233,7 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			PredictiveEcho   *string         `json:"predictive_echo"`
 			GetStartedHidden *bool           `json:"get_started_hidden"`
 			GetStartedDone   *bool           `json:"get_started_done"`
+			FennecTerminal   *bool           `json:"fennec_terminal"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
@@ -214,6 +252,21 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		next := s.value
 		if request.Magpie != nil && !importing {
 			next.Magpie = *request.Magpie
+		}
+		if request.MagpieAgent != nil && !importing {
+			id := request.MagpieAgent.Agent
+			if !slices.Contains(agent.CloudAgentIDs(), id) || agentcmd.NativeOnly(id) {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Unsupported agent"}
+			}
+			off := slices.DeleteFunc(slices.Clone(next.MagpieOffAgents), func(v string) bool { return v == id })
+			if !request.MagpieAgent.Enabled {
+				off = append(off, id)
+				slices.Sort(off)
+			}
+			if len(off) == 0 {
+				off = nil
+			}
+			next.MagpieOffAgents = off
 		}
 		if request.AutoUpdate != nil && !importing {
 			next.NoAutoUpdate = !*request.AutoUpdate
@@ -237,6 +290,9 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		}
 		if request.GetStartedHidden != nil && !importing {
 			next.GetStartedHidden = *request.GetStartedHidden
+		}
+		if request.FennecTerminal != nil && !importing {
+			next.FennecTerminal = *request.FennecTerminal
 		}
 		if request.GetStartedDone != nil && !importing {
 			// Completion records a successful first use, not current cloud readiness.

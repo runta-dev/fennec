@@ -190,8 +190,16 @@ func TestCodexParityDeniedEscalationAndFullAccess(t *testing.T) {
 	if code, stderr := exec("mkdir " + outside); code != 0 {
 		t.Fatalf("full access should run unsandboxed: %d %q", code, stderr)
 	}
-	if code, stderr := exec("rm -rf " + outside); code != 126 || !strings.Contains(stderr, "rejected by policy") {
-		t.Fatalf("full access forbids forced rm like Codex: %d %q", code, stderr)
+	// Fennec Full access permits ordinary forced deletion, while retaining
+	// the separate catastrophic-target guard (unlike Codex's forced-rm rule).
+	if code, stderr := exec("rm -rf " + outside); code != 0 {
+		t.Fatalf("full access should remove an ordinary scratch directory: %d %q", code, stderr)
+	}
+	if _, err := os.Stat(outside); !os.IsNotExist(err) {
+		t.Fatal("scratch directory was not removed", err)
+	}
+	if !sandbox.IsCatastrophicDeletion("rm -rf /", workspace) {
+		t.Fatal("catastrophic-target guard is missing")
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("full access must not invoke review (reviews %d)", calls.Load())

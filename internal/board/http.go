@@ -17,6 +17,21 @@ import (
 // it via ingress.
 func (s Store) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/sync", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 16<<20)
+		var in Exchange
+		if json.NewDecoder(r.Body).Decode(&in) != nil {
+			writeError(w, ErrInvalid)
+			return
+		}
+		out, err := s.Sync(in)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+	})
 	decode := func(w http.ResponseWriter, r *http.Request, value any) bool {
 		r.Body = http.MaxBytesReader(w, r.Body, maxIcon+maxBody+(16<<10))
 		if err := json.NewDecoder(r.Body).Decode(value); err != nil {
@@ -45,18 +60,24 @@ func (s Store) Handler() http.Handler {
 		projects, err := s.Projects()
 		type row struct {
 			Project
-			Open     int `json:"open"`
-			NeedsYou int `json:"needs_you"`
+			SyncStatus string     `json:"sync_status"`
+			SyncedAt   *time.Time `json:"synced_at,omitempty"`
+			Open       int        `json:"open"`
+			NeedsYou   int        `json:"needs_you"`
 		}
 		rows := []row{}
+		status, synced := s.SyncStatus(), s.SyncedAt()
 		for _, p := range projects {
 			list, _ := s.Requests(p.ID)
-			item := row{Project: p}
+			item := row{Project: p, SyncStatus: status}
+			if !synced.IsZero() {
+				item.SyncedAt = &synced
+			}
 			for _, sum := range list {
 				if sum.Status != Resolved {
 					item.Open++
 				}
-				if sum.Status == NeedsYou {
+				if sum.Status == NeedsYou || sum.Status == Review {
 					item.NeedsYou++
 				}
 			}
@@ -75,6 +96,10 @@ func (s Store) Handler() http.Handler {
 		p, err := s.Project(r.PathValue("id"))
 		reply(w, p, err)
 	})
+	mux.HandleFunc("DELETE /v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		err := s.DeleteProject(r.PathValue("id"))
+		reply(w, map[string]bool{"deleted": err == nil}, err)
+	})
 	mux.HandleFunc("PATCH /v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var change json.RawMessage
 		if decode(w, r, &change) {
@@ -87,11 +112,33 @@ func (s Store) Handler() http.Handler {
 		reply(w, list, err)
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Author, Title, Tag, Body string }
+		var body struct {
+			Author, Title, Tag, Body string
+			Attachments              []Attachment `json:"attachments"`
+		}
 		if decode(w, r, &body) {
-			req, err := s.CreateRequest(r.PathValue("id"), body.Author, body.Title, body.Tag, body.Body)
+			req, err := s.CreateRequestWithAttachments(r.PathValue("id"), body.Author, body.Title, body.Tag, body.Body, body.Attachments)
 			reply(w, req, err)
 		}
+	})
+	mux.HandleFunc("GET /v1/attachments/{id}/{offset}", func(w http.ResponseWriter, r *http.Request) {
+		offset, err := strconv.ParseInt(r.PathValue("offset"), 10, 64)
+		if err != nil {
+			writeError(w, ErrInvalid)
+			return
+		}
+		chunk, err := s.ReadAttachmentChunk(r.PathValue("id"), offset)
+		reply(w, chunk, err)
+	})
+	mux.HandleFunc("POST /v1/attachments/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, AttachmentChunkBytes*2)
+		var chunk AttachmentChunk
+		if json.NewDecoder(r.Body).Decode(&chunk) != nil || chunk.Attachment.ID != r.PathValue("id") {
+			writeError(w, ErrInvalid)
+			return
+		}
+		err := s.WriteAttachmentChunk(chunk)
+		reply(w, map[string]bool{"saved": err == nil}, err)
 	})
 	mux.HandleFunc("GET /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
 		if n, ok := number(w, r); ok {
@@ -114,10 +161,51 @@ func (s Store) Handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/claim", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Session, Agent string }
+		var body struct{ Session, Agent, Location string }
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
-			req, err := s.Claim(r.PathValue("id"), n, body.Session, body.Agent)
+			if body.Location == "" {
+				body.Location = "cloud"
+			}
+			req, err := s.ClaimAt(r.PathValue("id"), n, body.Session, body.Agent, body.Location)
 			reply(w, req, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/continue", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Author, Body string
+			Attachments  []Attachment
+		}
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.FollowUp(r.PathValue("id"), n, body.Author, body.Body, body.Attachments)
+			reply(w, value, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/move", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Before int }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.Move(r.PathValue("id"), n, body.Before)
+			reply(w, value, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/complete", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Session, Agent, Body, Outcome string }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.Complete(r.PathValue("id"), n, body.Session, body.Agent, body.Body, body.Outcome)
+			reply(w, value, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/fail", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Session string }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.Fail(r.PathValue("id"), n, body.Session)
+			reply(w, value, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/reconcile", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Session, State string }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.Reconcile(r.PathValue("id"), n, body.Session, body.State)
+			reply(w, value, err)
 		}
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/release", func(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +237,10 @@ func (s Store) Handler() http.Handler {
 		// anything that looks like a browser.
 		if r.Header.Get("Origin") != "" || (r.Host != "board.fennec" && r.Host != "") {
 			http.Error(w, "board access denied", http.StatusForbidden)
+			return
+		}
+		if err := s.Recover(); err != nil {
+			writeError(w, err)
 			return
 		}
 		mux.ServeHTTP(w, r)

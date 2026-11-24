@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
-	"fennec/internal/agentcmd"
 	"fennec/internal/launchprofile"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
@@ -41,7 +40,8 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 		return err
 	}
 	artifacts := filepath.Join(filepath.Dir(executable), "..", "Resources")
-	magpie := newDesktopSettings(home).value.Magpie
+	prefs := newDesktopSettings(home).value
+	magpie := prefs.Magpie
 	go setup.PrewarmNativeEnvironment(ctx)
 	discoveredInstalled := map[string]bool{}
 	for _, item := range agent.PanelCatalog(agent.Discover()) {
@@ -73,7 +73,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 			workers.Add(1)
 			go func(i int, version setup.Agent) {
 				defer workers.Done()
-				if magpie && !agentcmd.NativeOnly(version.ID) {
+				if prefs.magpieFor(version.ID) {
 					localRoutes[i] = setup.ConfiguredAgentRoutes(home, []setup.Agent{version})[0]
 					if localRoutes[i].Problem == "local_gateway_not_found" {
 						localRoutes[i].Problem = "model_selection_required"
@@ -109,7 +109,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 				return
 			case <-localReady:
 			}
-			inputs = gatherPreparationInputs(ctx, home, scope, owner, id, artifacts, magpie, ids, versions, localRoutes)
+			inputs = gatherPreparationInputs(ctx, home, scope, owner, id, artifacts, prefs, ids, versions, localRoutes)
 		}(resolved.Owner, resolved.ID)
 		return nil
 	})
@@ -427,6 +427,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 			request, err = setup.GatherModelAccountsRequest(home, plugins, ids)
 			request.NativeFiles = nativeRequest.Files
 			request.NativeProblems = nativeRequest.NativeProblems
+			request.NativeAgents = prefs.nativeAgents(ids)
 		}
 		if err != nil {
 			return setup.ModelAccountsResult{}, err
@@ -529,7 +530,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 		},
 		func(ctx context.Context, route setup.AgentRoute) ([]setup.RouteResult, error) {
 			defer launchprofile.Begin("prepare.route." + route.Agent)()
-			if !magpie || agentcmd.NativeOnly(route.Agent) {
+			if !prefs.magpieFor(route.Agent) {
 				status := "credentials_required"
 				if nativeRequest.NativeProblems[route.Agent] != "" {
 					status = nativeRequest.NativeProblems[route.Agent]

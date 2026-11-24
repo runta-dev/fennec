@@ -9,6 +9,12 @@ go run ./cmd/check-bundle-permissions "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" == 13.0 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
+# Fennec Terminal (FENNEC_BUILD_DESKTOP=1) is all or nothing.
+if [[ -e "$app/Contents/MacOS/fennec-desktop" ]]; then
+  [[ -x "$app/Contents/MacOS/hc" && -x "$app/Contents/Resources/fennec-hc" && -x "$app/Contents/Resources/fennec-hc-local" ]]
+else
+  [[ ! -e "$app/Contents/MacOS/hc" && ! -e "$app/Contents/Resources/fennec-hc" && ! -e "$app/Contents/Resources/fennec-hc-local" ]]
+fi
 for binary in Fennec fennec-daemon fennec-credentials fennec-clipboard; do
   [[ -x "$app/Contents/MacOS/$binary" ]]
   lipo -archs "$app/Contents/MacOS/$binary" | grep -qw arm64
@@ -20,8 +26,6 @@ for arch in amd64 arm64; do
   [[ -s "$app/Contents/Resources/fennec-terminal-linux-$arch" ]]
   file "$app/Contents/Resources/fennec-terminal-linux-$arch" | grep -q ELF
 done
-[[ ! -e "$app/Contents/MacOS/fennec-desktop" && ! -e "$app/Contents/MacOS/hc" ]]
-[[ ! -e "$app/Contents/Resources/fennec-hc" && ! -e "$app/Contents/Resources/fennec-hc-local" ]]
 [[ -s "$app/Contents/Resources/UI/index.html" ]]
 [[ -s "$app/Contents/Resources/UI/translations.json" ]]
 [[ -s "$app/Contents/Resources/UI/locale-data.js" ]]

@@ -17,6 +17,12 @@ import (
 )
 
 var fixtures = map[string]string{
+	"desktop/src/terminal/drag_paths.rs":        "upstream herdr-app multilingual path fixtures",
+	"desktop/src/terminal.rs":                   "upstream herdr-app multilingual shaping fixtures",
+	"desktop/src/vt.rs":                         "upstream herdr-app multilingual terminal fixtures",
+	"desktop/src/links.rs":                      "upstream herdr-app multilingual file URL fixture",
+	"internal/board/title_test.go":              "multilingual session title fixtures",
+	"internal/queuescheduler/scheduler_test.go": "multilingual request text fixtures",
 	"internal/transcript/transcript_test.go":    "multilingual user messages in agent transcripts",
 	"ios/FennecTests/FennecTests.swift":         "multilingual chat preview and Markdown fixtures",
 	"ios/FennecUITests/ScreenTourUITests.swift": "Unicode user-authored session titles in UI screenshots",
@@ -40,6 +46,10 @@ var fixtures = map[string]string{
 var readmeLanguageLink = regexp.MustCompile(`<a href="docs/README_ZH\.md" lang="zh-CN">[^<\r\n]*</a>`)
 
 func sourceLanguage(path string, data []byte) error {
+	// Vendored upstream source retains its original copy and Unicode tests.
+	if strings.HasPrefix(path, "desktop/vendor/") {
+		return nil
+	}
 	if path == "native/macos/UI/translations.json" || path == "docs/README_ZH.md" || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil
 	}

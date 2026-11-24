@@ -28,6 +28,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	method := ""
 	params := map[string]any{}
 	switch args[0] {
+	case "queue":
+		return true, fenQueueCommand(args[1:], output)
 	case "update":
 		return true, fenUpdateCommand(args[1:], output)
 	case "sandbox":
@@ -71,8 +73,8 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 			method = "settings.get"
 			break
 		}
-		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie" && args[1] != "auto-update" && args[1] != "env" && args[1] != "environment" && args[1] != "ssh-nodelay") {
-			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off | auto-update on|off | env <production|integration|url> | ssh-nodelay on|off]")
+		if len(args) != 3 || (args[1] != "theme" && args[1] != "language" && args[1] != "magpie" && args[1] != "auto-update" && args[1] != "env" && args[1] != "environment" && args[1] != "ssh-nodelay" && args[1] != "fennec-terminal") {
+			return true, fmt.Errorf("usage: fen settings [theme|language <value> | magpie on|off | auto-update on|off | env <production|integration|url> | ssh-nodelay on|off | fennec-terminal on|off]")
 		}
 		method = "settings.set"
 		if args[1] == "auto-update" {
@@ -84,6 +86,13 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 		}
 		if args[1] == "env" || args[1] == "environment" {
 			params["environment"] = args[2]
+			break
+		}
+		if args[1] == "fennec-terminal" {
+			if args[2] != "on" && args[2] != "off" {
+				return true, fmt.Errorf("usage: fen settings fennec-terminal on|off")
+			}
+			params["fennec_terminal"] = args[2] == "on"
 			break
 		}
 		if args[1] == "ssh-nodelay" {

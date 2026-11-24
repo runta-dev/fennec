@@ -81,6 +81,8 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 	if plan.SessionID != intent.RequestID || plan.Agent != intent.Agent {
 		return fmt.Errorf("launch plan identity mismatch")
 	}
+	unmark := markAttached(intent.RequestID)
+	defer unmark()
 	var once sync.Once
 	clear := func() { once.Do(ready) }
 	defer clear()
@@ -144,6 +146,7 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 	}
 	if exit, ok := err.(*exec.ExitError); ok {
 		connection.Close()
+		unmark()
 		code := exit.ExitCode()
 		if code < 0 {
 			code = 1

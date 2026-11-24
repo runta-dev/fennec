@@ -14,7 +14,9 @@ func TestLocalCallbackUsesFixedScopeAndNeverRemotePaths(t *testing.T) {
 	binary := filepath.Join(dir, "cmux")
 	input := filepath.Join(dir, "input.json")
 	argv := filepath.Join(dir, "argv")
-	script := "#!/bin/sh\ncat > \"$FIXTURE_INPUT\"\nprintf '%s\\n' \"$@\" > \"$FIXTURE_ARGS\"\ntest \"$CMUX_AGENT_HOOK_RELAY_ORIGIN\" = 1 || exit 99\ntest -z \"${CMUX_CODEX_PID:-}\" || exit 98\nprintf '%s' '{\"decision\":\"block\",\"reason\":\"fixture\"}'\nexit 2\n"
+	// Run sends one newline-terminated JSON value. Shell builtins keep the
+	// fixture independent of PATH shims and extra process startup under load.
+	script := "#!/bin/sh\nIFS= read -r payload\nprintf '%s\\n' \"$payload\" > \"$FIXTURE_INPUT\"\nprintf '%s\\n' \"$@\" > \"$FIXTURE_ARGS\"\ntest \"$CMUX_AGENT_HOOK_RELAY_ORIGIN\" = 1 || exit 99\ntest -z \"${CMUX_CODEX_PID:-}\" || exit 98\nprintf '%s' '{\"decision\":\"block\",\"reason\":\"fixture\"}'\nexit 2\n"
 	os.WriteFile(binary, []byte(script), 0700)
 	local := &Local{Executable: binary, Socket: "/local/socket", Workspace: "local-workspace", Surface: "local-surface", Env: []string{"FIXTURE_INPUT=" + input, "FIXTURE_ARGS=" + argv, "CMUX_CODEX_PID=999", "PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "TERM=" + os.Getenv("TERM")}}
 	result := local.Run(context.Background(), "inbox-stop", []byte(`{"session_id":"cloud-session","transcript_path":"/Users/someone/private.json","cwd":"/Users/someone","tool_name":"Bash"}`))

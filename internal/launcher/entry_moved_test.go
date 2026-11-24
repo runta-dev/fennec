@@ -28,7 +28,11 @@ func TestRegularExecutableEntryIsWrappedAndRestored(t *testing.T) {
 	if !bytes.Contains(wrapper, []byte("# Fennec managed entry v1\n")) || !bytes.Contains(wrapper, []byte(MovedName(entry))) {
 		t.Fatalf("entry not wrapped: %q", wrapper)
 	}
-	if got, err := OriginalEntry(entry); err != nil || got != MovedName(entry) {
+	canonicalOriginal, err := filepath.EvalSymlinks(MovedName(entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := OriginalEntry(entry); err != nil || got != canonicalOriginal {
 		t.Fatalf("original %q %v", got, err)
 	}
 	if err := InstallEntry(entry, daemon, "kimi"); err != nil {

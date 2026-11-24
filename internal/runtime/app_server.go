@@ -36,7 +36,7 @@ func CodexAppServerSocket(codexHome string) string {
 // codexAppServerEnvironment mirrors how the cloud launches Codex CLI in the
 // current agent mode, so desktop and terminal sessions share configuration.
 func codexAppServerEnvironment(ctx context.Context, home string) (mode string, env []string, codexHome string, err error) {
-	if setup.NativeAgentMode(home) {
+	if setup.NativeAgent(home, "codex") {
 		env, err = setup.NativeAgentEnvironment(home, "codex")
 		if err != nil {
 			return "", nil, "", err
@@ -254,7 +254,7 @@ func dialCodexAppServer(ctx context.Context, home, socket string, env, overrides
 	command := exec.Command(workload[0], workload[1:]...)
 	command.Dir = home
 	command.Env = env
-	if !setup.NativeAgentMode(home) {
+	if !setup.NativeAgent(home, "codex") {
 		command.Env = append(command.Env, gateway.DependencyEnv+"=1")
 	}
 	command.Stdout, command.Stderr = logFile, logFile

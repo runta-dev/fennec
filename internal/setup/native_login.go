@@ -131,7 +131,7 @@ func prepareNativeLogin(home string, plan NativeLogin) error {
 	if err := plan.Validate(); err != nil {
 		return err
 	}
-	if !NativeAgentMode(home) && !agents.NativeOnly(plan.Agent) {
+	if !NativeAgent(home, plan.Agent) {
 		return fmt.Errorf("switch off Magpie before signing in to an agent")
 	}
 	parent := ".local/fennec/native-logins"
@@ -241,7 +241,7 @@ func activateNativeLogin(home string, plan NativeLogin) error {
 	if !nativeHasCredentials(root, plan.Agent) {
 		return fmt.Errorf("finish signing in before continuing")
 	}
-	if !NativeAgentMode(home) && !agents.NativeOnly(plan.Agent) {
+	if !NativeAgent(home, plan.Agent) {
 		return fmt.Errorf("agent settings changed; sign in again")
 	}
 	pending, err := readLoginSelections(home, ".pending-logins.json")

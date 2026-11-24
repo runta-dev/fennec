@@ -12,6 +12,7 @@ import (
 
 func TestReasoningReconcilesUnchangedModel(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	nativeFixture(t, home, ".codex/config.toml", `model_provider = "magpie"
 model = "codex/gpt-test"
 model_reasoning_effort = "high"

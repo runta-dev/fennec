@@ -20,6 +20,14 @@ FENNEC_DAEMON_BINARY="$PWD/bin/fennec" ./scripts/build-macos.sh
 open build/Fennec.app
 ```
 
+The Fennec Terminal window (`desktop/`, Rust with GPUI) is built only with
+`FENNEC_BUILD_DESKTOP=1`, which needs Rust, Zig 0.16 and the `desktop/vendor`
+submodules (see `desktop/README.md`). Without it the bundle has no
+`fennec-desktop`, `hc` or `fennec-hc*`, and Settings hides the **Fennec
+Terminal** switch; with it, the switch (off by default, also
+`fen settings fennec-terminal on|off`) opens the window at launch and from
+the menu.
+
 Local builds are versioned `0.3.<MMDDHHMM>-dev` (Singapore time), shown in the menu
 and Settings, and never install a release over themselves. Release packaging sets
 `FENNEC_RELEASE=1` and drops the suffix.
@@ -268,11 +276,3 @@ loading/fallback; native bundle tests run on macOS. A bare source HTML file does
 include generated locale data or the native message bridge: preview the built UI with
 an isolated bridge fixture, and distinguish that rendering check from live app/service
 acceptance.
-
-## Fennec Desktop branch
-
-Fennec Desktop is developed separately on [feat/fennec-desktop](https://github.com/runta-dev/fennec/tree/feat/fennec-desktop).
-That branch contains the native terminal window, design references and its build
-instructions. The main branch builds the macOS menubar app and CLI without the
-Desktop window or Rust/Zig build dependencies. Codex Desktop integration is a
-separate feature and remains available on main.

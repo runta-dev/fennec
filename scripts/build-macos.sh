@@ -73,7 +73,7 @@ mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
 english_source="$(dirname "$app")/FennecEnglish.swift"
 go run ./cmd/build-locales native/macos/UI/translations.json "$app/Contents/Resources/UI/locale-data.js" "$english_source"
-swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/PopupPlacement.swift native/macos/Localization.swift native/macos/LicenseWindow.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/DesktopWindow.swift native/macos/PopupPlacement.swift native/macos/Localization.swift native/macos/LicenseWindow.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -95,11 +95,35 @@ PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
-# Desktop is developed on feat/fennec-desktop, not shipped from main.
-# A reused staging bundle must not retain the branch's binaries or shims.
-for old_desktop_artifact in "$app/Contents/MacOS/fennec-desktop" "$app/Contents/MacOS/hc" "$app/Contents/Resources/fennec-hc" "$app/Contents/Resources/fennec-hc-local"; do
-  if [ -e "$old_desktop_artifact" ]; then rm "$old_desktop_artifact"; fi
-done
+# The Fennec Terminal window: native on GPUI, with herdr-app's terminal core
+# (desktop/, Apache-2.0, see desktop/UPSTREAM.md). Building it needs Rust,
+# Zig 0.16 and two submodules (desktop/README.md), so it is opt-in:
+# FENNEC_BUILD_DESKTOP=1. Without it the bundle carries no Fennec Terminal and
+# the setting that opens it stays hidden; a reused staging bundle must not keep
+# an earlier build's window binaries or shims.
+if [ "${FENNEC_BUILD_DESKTOP:-0}" = 1 ]; then
+  git submodule update --init --depth 1 desktop/vendor/ghostty
+  git submodule update --init --recursive --depth 1 desktop/vendor/herdr-core
+  (cd desktop && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked)
+  # herdr-core for the window's local shell tabs (Fennec's own instance, HC_SESSION=fennec).
+  (cd desktop/vendor/herdr-core && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked -p herdr-core)
+  cp desktop/vendor/herdr-core/target/release/herdr-core "$app/Contents/MacOS/hc"
+  sign_artifact "$app/Contents/MacOS/hc"
+  install -m 755 desktop/fennec-hc-local "$app/Contents/Resources/fennec-hc-local"
+  cp desktop/target/release/fennec-desktop "$app/Contents/MacOS/fennec-desktop"
+  sign_artifact "$app/Contents/MacOS/fennec-desktop"
+  install -m 755 desktop/fennec-hc "$app/Contents/Resources/fennec-hc"
+  cp desktop/LICENSE "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt"
+  cp desktop/licenses/LobeHub-icons.txt "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt"
+  cp desktop/THIRD-PARTY-NOTICES "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt"
+  cp desktop/vendor/herdr-core/LICENSE "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"
+else
+  for old_desktop_artifact in "$app/Contents/MacOS/fennec-desktop" "$app/Contents/MacOS/hc" "$app/Contents/Resources/fennec-hc" "$app/Contents/Resources/fennec-hc-local" \
+    "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt" "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt" \
+    "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt" "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"; do
+    if [ -e "$old_desktop_artifact" ]; then rm "$old_desktop_artifact"; fi
+  done
+fi
 # Fennec CUA and the Chromium it drives ship on their own (fennec-cua-v*
 # releases), not inside Fennec.app: Chromium was about 170 MB of the 215 MB
 # bundle. With no nested components, components.json is empty and updates
@@ -113,6 +137,6 @@ if [ -f "$app/Contents/MacOS/fennec-daemon" ]; then
   sign_artifact "$app/Contents/MacOS/fen" --identifier com.runta.fennec
 fi
 shasum -a 256 "$app/Contents/MacOS/fen" | cut -d ' ' -f 1 > "$app/Contents/Resources/control-build-id"
-go run ./cmd/check-control-contract "$app" native/macos/Fennec.swift native/macos/ControlClient.swift
+go run ./cmd/check-control-contract "$app" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/DesktopWindow.swift
 sign_artifact "$app"
 printf '%s\n' "$app"

@@ -34,6 +34,7 @@ import (
 // daemonServices owns the account-scoped processes. UI clients never own these
 // contexts, pipes, credentials, preferences or reconnect timers.
 type daemonServices struct {
+	boardCore                                  *boardLocalCore
 	auditStore                                 *audit.Store
 	sandboxPolicy                              func() sandbox.Policy
 	network                                    *connectivity.Monitor
@@ -82,6 +83,7 @@ type daemonServices struct {
 	entryQueue                                 chan string
 	entryPending                               map[string]bool
 	entryInstaller                             func(context.Context, string) (string, error)
+	integrationReconciler                      func(string, string, string)
 	trustWait                                  chan bool
 	permissions                                *localssh.Broker
 	hookLeases                                 map[string]hookLease
@@ -94,7 +96,7 @@ func newDaemonServices(home string, account *account.Manager, monitors ...*conne
 	if len(monitors) > 0 {
 		network = monitors[0]
 	}
-	return &daemonServices{network: network, home: home, account: account, entryInstaller: func(ctx context.Context, id string) (string, error) {
+	return &daemonServices{network: network, home: home, account: account, integrationReconciler: reconcileTerminalIntegrationOnSelection, entryInstaller: func(ctx context.Context, id string) (string, error) {
 		return installManagedEntryAt(ctx, executable, id)
 	}}
 }
@@ -220,9 +222,9 @@ func (s *daemonServices) prepare(ctx context.Context, principal account.Principa
 	if handled, err := s.reconfigureExisting(ctx, epoch, output); handled {
 		return err
 	}
-	configurationMode := newDesktopSettings(s.home).value.Magpie
+	configurationMode := newDesktopSettings(s.home).value
 	events := &serviceEvents{emit: func(event map[string]json.RawMessage) {
-		if ctx.Err() == nil && newDesktopSettings(s.home).value.Magpie == configurationMode {
+		if ctx.Err() == nil && newDesktopSettings(s.home).value.sameMagpie(configurationMode) {
 			s.runtimeEvent(epoch, event)
 		}
 	}}
@@ -307,7 +309,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 		// Route results follow an applied cloud configuration, so the agent mode
 		// on the runtime now matches the Magpie setting.
 		if s.chatgpt != nil {
-			go s.chatgpt.reconcileMode(newDesktopSettings(s.home).value.Magpie)
+			go s.chatgpt.reconcileMode(newDesktopSettings(s.home).value.magpieFor("codex"))
 		}
 	case "agent_routes":
 		data := json.RawMessage(decodeText(event, "routes"))
@@ -392,8 +394,8 @@ func (s *daemonServices) reconcileSelectionLocked() {
 	s.config.Agents = active
 	_ = launcher.PublishEnabled(filepath.Join(s.home, ".config/fennec/takeover.json"), selected)
 	if len(selected) > 0 {
-		if executable, err := os.Executable(); err == nil {
-			reconcileTerminalIntegrationOnSelection(s.home, executable, strings.Join(selected, ","))
+		if executable, err := os.Executable(); err == nil && s.integrationReconciler != nil {
+			s.integrationReconciler(s.home, executable, strings.Join(selected, ","))
 		}
 	}
 }

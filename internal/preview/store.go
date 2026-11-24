@@ -122,7 +122,18 @@ func (s Store) Register(session, source, title string) (Metadata, error) {
 		source = filepath.Join(s.Home, source[2:])
 	}
 	if filepath.IsAbs(source) {
-		source, err = filepath.Rel(filepath.Join(s.Home, ".fen", session), source)
+		// Compare physical paths so aliases of the home directory do not look
+		// like escapes. The actual read still uses the already-open os.Root;
+		// resolving a symlink never grants access outside that workspace.
+		root, resolveErr := filepath.EvalSymlinks(filepath.Join(s.Home, ".fen", session))
+		if resolveErr != nil {
+			return Metadata{}, resolveErr
+		}
+		resolved, resolveErr := filepath.EvalSymlinks(source)
+		if resolveErr != nil {
+			return Metadata{}, resolveErr
+		}
+		source, err = filepath.Rel(root, resolved)
 		if err != nil {
 			return Metadata{}, err
 		}

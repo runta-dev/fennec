@@ -490,7 +490,7 @@ func writeNativeSelection(home string, choice NativeModelSelection) error {
 	return atomicCredential(marker, raw)
 }
 func SetNativeModel(ctx context.Context, home string, choice NativeModelSelection) (NativeModelState, error) {
-	if !NativeAgentMode(home) {
+	if !NativeAgent(home, choice.Agent) {
 		return NativeModelState{}, fmt.Errorf("native model settings require native mode")
 	}
 	var state NativeModelState
@@ -519,7 +519,7 @@ func SetNativeModel(ctx context.Context, home string, choice NativeModelSelectio
 		}
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	if !NativeAgentMode(home) {
+	if !NativeAgent(home, choice.Agent) {
 		return state, fmt.Errorf("native mode changed")
 	}
 	state, err = NativeModels(ctx, home, choice.Agent, false)

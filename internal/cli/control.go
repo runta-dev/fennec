@@ -194,6 +194,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	for method, handler := range newBYOCControl(home, manager).handlers() {
 		controller.Additional[method] = handler
 	}
+	controller.Additional["desktop.session.seen"] = services.desktopSessionSeen
 	services.chatgpt = newChatGPTBridge(home, services)
 	for method, handler := range services.terminalCoverageHandlers() {
 		controller.Additional[method] = handler
@@ -208,6 +209,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installMagpiePanel(ctx, services, controller, settings)
 	installPreviewServer(ctx, services)
 	installBoard(ctx, services, controller)
+	installDesktopWindowSettings(home, controller)
 	controller.Settings = func() any {
 		auditRes, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
 		return desktopSettingsResponse(home, settings.snapshot().(desktopPreferences), auditRes.Summary)

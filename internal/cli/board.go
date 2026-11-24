@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -25,7 +26,7 @@ import (
 
 // boardClient reaches the cloud computer's board (projects, requests,
 // knowledge) over the daemon's authenticated resident connection, the way
-// previews are reached.
+// previews are reached. See docs/desktop-app.md.
 type boardClient struct {
 	s     *daemonServices
 	local bool
@@ -33,7 +34,7 @@ type boardClient struct {
 
 func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
 	if b.local {
-		return (board.Store{Home: b.s.home}).Dial(ctx)
+		return (board.Store{Home: b.s.home, Role: "local"}).Dial(ctx)
 	}
 	if _, _, _, ok := b.s.account.Session(); !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in to Fennec"}
@@ -59,9 +60,22 @@ func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
 
 var boardPath = regexp.MustCompile(`^/v1/[A-Za-z0-9/_.-]{0,200}$`)
 
+// knowledgePath matches a project's knowledge endpoints. The bundle is files
+// agents write on the cloud computer; replication does not carry it, so the
+// Mac's local board never has it. It is always read and reviewed in the cloud.
+var knowledgePath = regexp.MustCompile(`^/v1/projects/[^/]+/knowledge(?:/|$)`)
+
+// forPath sends knowledge requests to the cloud board even from a local client.
+func (b boardClient) forPath(path string) boardClient {
+	if b.local && knowledgePath.MatchString(path) {
+		b.local = false
+	}
+	return b
+}
+
 // do sends one request and returns the status and JSON body.
 func (b boardClient) do(ctx context.Context, method, path string, body any) (int, json.RawMessage, error) {
-	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch) {
+	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch && method != http.MethodDelete) {
 		return 0, nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
 	}
 	var payload io.Reader
@@ -126,6 +140,39 @@ func (b boardClient) call(ctx context.Context, method, path string, body any) (j
 
 func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Controller) {
 	client := boardClient{s: s}
+	c.Additional["board.attachment.url"] = func(_ context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
+		}
+		url, err := (board.Store{Home: s.home, Role: "local"}).AttachmentURL(params.ID)
+		if err != nil {
+			return nil, &control.Fault{Code: "not_ready", Message: "The image is still syncing", Retryable: true}
+		}
+		return map[string]string{"url": url}, nil
+	}
+	imageImports := make(chan struct{}, 2)
+	c.Additional["board.attachment.import"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		select {
+		case imageImports <- struct{}{}:
+			defer func() { <-imageImports }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		var params struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(raw, &params) != nil || !filepath.IsAbs(params.Path) {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
+		}
+		attachment, err := (board.Store{Home: s.home, Role: "local"}).ImportAttachment(params.Path)
+		if err != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Use a PNG or JPEG image up to 8 MB"}
+		}
+		return attachment, nil
+	}
 	c.Additional["board.icon"] = func(_ context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
 			Path string `json:"path"`
@@ -154,13 +201,65 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 			if len(params.Body) > 0 && string(params.Body) != "null" {
 				body = params.Body
 			}
-			return boardService.call(ctx, params.Method, params.Path, body)
+			return boardService.forPath(params.Path).call(ctx, params.Method, params.Path, body)
 		}
 	}
 	c.Additional["account.organizations"] = func(ctx context.Context, _ json.RawMessage) (any, error) {
 		return s.account.Organizations(ctx)
 	}
 	queue := &boardQueue{s: s, c: c, board: client}
+	c.Additional["board.session"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Project string `json:"project"`
+			Number  int    `json:"number"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, board.ErrInvalid
+		}
+		op := r.LocalOperation{Kind: "thread_session", Project: params.Project, RequestNumber: params.Number}
+		if err := op.Validate(); err != nil {
+			return nil, err
+		}
+		localStore := board.Store{Home: s.home, Role: "local"}
+		if request, err := localStore.Request(params.Project, params.Number); err == nil && len(request.Runs) > 0 && request.Runs[len(request.Runs)-1].Location == "local" {
+			exe, err := os.Executable()
+			if err != nil {
+				return nil, err
+			}
+			s.mu.Lock()
+			core := s.boardCore
+			s.mu.Unlock()
+			if core == nil {
+				return nil, &control.Fault{Code: "not_ready", Message: "Session service is starting", Retryable: true}
+			}
+			terminal, err := (queueMacExecutor{home: s.home, exe: exe, core: core}).threadSession(ctx, params.Project, params.Number)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"terminal": terminal, "location": "local"}, nil
+		}
+		s.mu.Lock()
+		channel := s.channel
+		s.mu.Unlock()
+		if channel == nil {
+			return nil, &control.Fault{Code: "not_ready", Message: "Connecting to the cloud computer", Retryable: true}
+		}
+		transport, err := channel.get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := transport.Ready(ctx); err != nil {
+			return nil, err
+		}
+		if !transport.Supports(terminalstream.CapabilityThreadSession) {
+			return nil, &control.Fault{Code: "not_ready", Message: "The cloud computer is updating", Retryable: true}
+		}
+		rawTerminal, err := transport.Operate(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"terminal": json.RawMessage(rawTerminal), "location": "cloud"}, nil
+	}
 	// sessions.start opens a session on the cloud computer from the desktop
 	// window's New session: no Mac folder, optionally in a project.
 	c.Additional["sessions.start"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -206,7 +305,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		return map[string]string{"session_id": id}, nil
 	}
-	go queue.run(ctx)
+	startQueueReplication(ctx, s)
 }
 
 // boardQueue hands queued requests to agents: a new session through the
@@ -216,132 +315,6 @@ type boardQueue struct {
 	s     *daemonServices
 	c     *controlplane.Controller
 	board boardClient
-}
-
-func (q *boardQueue) run(ctx context.Context) {
-	ticker := time.NewTicker(4 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		if _, _, _, ok := q.s.account.Session(); !ok {
-			continue
-		}
-		q.s.mu.Lock()
-		ready := q.s.channel != nil && q.s.brokerReady
-		q.s.mu.Unlock()
-		if ready {
-			q.pass(ctx)
-		}
-	}
-}
-
-func (q *boardQueue) pass(ctx context.Context) {
-	status, data, err := q.board.do(ctx, http.MethodGet, "/v1/queue", nil)
-	if err != nil || status != http.StatusOK {
-		return
-	}
-	var projects []board.QueueProject
-	if json.Unmarshal(data, &projects) != nil {
-		return
-	}
-	live := q.liveSessions(ctx)
-	started := 0
-	for _, project := range projects {
-		slots := project.Limit - project.Working
-		for _, request := range project.Queued {
-			if slots <= 0 || started >= 2 || ctx.Err() != nil {
-				break
-			}
-			if q.take(ctx, project, request, live) {
-				slots--
-				started++
-			}
-		}
-	}
-}
-
-// liveSessions are the sessions on the cloud computer that are still running.
-func (q *boardQueue) liveSessions(ctx context.Context) map[string]bool {
-	live := map[string]bool{}
-	result, err := q.c.Handlers()["sessions.list"](ctx, nil)
-	if err != nil {
-		return live
-	}
-	raw, _ := json.Marshal(result)
-	var listing struct {
-		Terminals []struct {
-			State  string            `json:"state"`
-			Labels map[string]string `json:"labels"`
-		} `json:"terminals"`
-	}
-	if json.Unmarshal(raw, &listing) != nil {
-		return live
-	}
-	for _, terminal := range listing.Terminals {
-		if id := terminal.Labels["fennec.session"]; id != "" && terminal.State == "live" {
-			live[id] = true
-		}
-	}
-	return live
-}
-
-func (q *boardQueue) take(ctx context.Context, project board.QueueProject, request board.Request, live map[string]bool) bool {
-	path := fmt.Sprintf("/v1/projects/%s/requests/%d", project.Project, request.Number)
-	if request.Session != "" && live[request.Session] {
-		// A reply to a request its agent is still on: pass the new messages on.
-		var text strings.Builder
-		for _, message := range request.Messages {
-			if message.ID > request.Delivered && message.Agent == "" {
-				fmt.Fprintf(&text, "New reply on %s-%d from %s:\n%s\n\n", project.Key, request.Number, message.Author, message.Body)
-			}
-		}
-		if text.Len() == 0 {
-			return false
-		}
-		fmt.Fprintf(&text, "Answer with `%s reply %s-%d` when you are done.", boardCommand, project.Key, request.Number)
-		if status, _, err := q.board.do(ctx, http.MethodPost, path+"/claim", map[string]string{"session": request.Session, "agent": request.Agent}); err != nil || status != http.StatusOK {
-			return false
-		}
-		message := text.String()
-		if len(message) > 16000 {
-			message = message[:16000] + fmt.Sprintf("\n\n(Cut short; `%s request %s-%d` has the whole thread.)", boardCommand, project.Key, request.Number)
-		}
-		params, _ := json.Marshal(controlplane.SessionParams{SessionID: request.Session, Text: message})
-		if _, err := q.c.Handlers()["sessions.send"](ctx, params); err != nil {
-			q.board.do(ctx, http.MethodPost, path+"/release", map[string]string{"session": request.Session})
-		}
-		return true
-	}
-	var worker *board.Worker
-	for i := range project.Workers {
-		if project.Workers[i].On {
-			worker = &project.Workers[i]
-			break
-		}
-	}
-	if worker == nil {
-		return false
-	}
-	id, err := sessionid.Allocate(q.s.home)
-	if err != nil {
-		return false
-	}
-	if status, _, err := q.board.do(ctx, http.MethodPost, path+"/claim", map[string]string{"session": id, "agent": worker.Agent}); err != nil || status != http.StatusOK {
-		return false
-	}
-	p, err := q.project(ctx, project.Project)
-	if err == nil {
-		err = q.launch(ctx, id, worker.Agent, launchArguments(*worker, firstMessage(p, request, worker.Agent)))
-	}
-	if err != nil {
-		q.board.do(ctx, http.MethodPost, path+"/release", map[string]string{"session": id})
-		return false
-	}
-	return true
 }
 
 func (q *boardQueue) project(ctx context.Context, id string) (board.Project, error) {
@@ -397,24 +370,4 @@ func launchArguments(worker board.Worker, message string) []string {
 		arguments = append(arguments, "--model", worker.Model)
 	}
 	return append(arguments, message)
-}
-
-// boardCommand answers and reads requests on the cloud computer, where the
-// resident binary is installed (there is no `fen` there).
-const boardCommand = "~/.local/fennec/bin/fennec-terminal"
-
-// firstMessage is what a new session for a request is asked to do.
-func firstMessage(p board.Project, request board.Request, agent string) string {
-	ref := fmt.Sprintf("%s-%d", p.Key, request.Number)
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are working on request %s from the %s project board in Fennec.\n\n", ref, p.Name)
-	b.WriteString(board.Thread(p, request))
-	b.WriteString("\nHow to work on it:\n")
-	if p.Repository != "" {
-		fmt.Fprintf(&b, "- The code is github.com/%s. Use a checkout under ~/repos/%s (clone it if missing).\n", p.Repository, p.Repository)
-	}
-	fmt.Fprintf(&b, "- When you have a result, a question, or something for the person to check, answer with `%s reply %s \"...\"` (or `%s reply %s -` with the text on standard input). Replying hands the request back to them; their next reply reaches you here.\n", boardCommand, ref, boardCommand, ref)
-	fmt.Fprintf(&b, "- `%s request %s` prints the whole thread.\n", boardCommand, ref)
-	fmt.Fprintf(&b, "- Record what a later agent should know about this project (architecture, runbooks, decisions, terms) as OKF concepts: markdown files under ~/.fen/board/projects/%s/knowledge/<section>/<name>.md with YAML front matter (type, title, description, tags, sources: [%s], generated: {by: %s, at: <UTC time>}, status: draft). Keep each to one idea.\n", p.ID, ref, agent)
-	return b.String()
 }

@@ -215,7 +215,9 @@ window.renderAgents = agents => {
     const configAgent = desktop ? 'codex' : agent.id;
     const nativeOnly = configAgent === 'cursor';
     const nativeModelPicker = !['cursor','grok','opencode'].includes(configAgent);
-    const agentMagpie = magpieEnabled && !nativeOnly;
+    // Magpie can be on in Settings yet turned off for this agent alone.
+    const magpieAvailable = magpieEnabled && !nativeOnly;
+    const agentMagpie = magpieAvailable && !magpieOffAgents.has(configAgent);
     if(!agent.cloudSupported){
       head.disabled=true;
       head.removeAttribute('aria-expanded');head.removeAttribute('aria-controls');
@@ -322,15 +324,16 @@ window.renderAgents = agents => {
        }
       }
       if (agentMagpie && route?.status === 'model_selection_required') {statusNode.textContent='';statusNode.hidden=true;}
-      // The per-agent switch mirrors the Settings preference; only surface it once Magpie is enabled there.
-      if(agentMagpie){
+      // The per-agent switch connects or disconnects only this agent; it appears
+      // while Magpie is on in Settings, which still turns it off everywhere.
+      if(magpieAvailable){
         const row=document.createElement('div');row.className='agent-integration-row';
         const icon=document.querySelector('#magpie-label')?.previousElementSibling?.cloneNode(true);
         const label=document.createElement('span');label.textContent='Magpie';
         const info=document.querySelector('#magpie-label')?.parentElement?.querySelector('.setting-info')?.cloneNode(true);
         if(info){const tooltip=info.querySelector('[role="tooltip"]');const button=info.querySelector('.setting-info-button');if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}}
         const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(agentMagpie));
-        toggle.onclick=()=>toggleMagpie();
+        toggle.onclick=()=>toggleAgentMagpie(configAgent,!agentMagpie);
         if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
       }
       if(!agentMagpie){
@@ -725,9 +728,21 @@ window.renderMagpiePreference = enabled => {
  document.querySelector('#magpie-panel-row').hidden=!enabled;
  document.querySelector('#magpie-integration')?.setAttribute('aria-checked',String(magpieEnabled));
 };
+window.renderMagpieAgents = agents => {
+ const next=new Set(Array.isArray(agents)?agents:[]);
+ const changed=[...next].filter(id=>!magpieOffAgents.has(id)).concat([...magpieOffAgents].filter(id=>!next.has(id)));
+ for(const id of changed){
+  nativeModelStates.delete(id);nativeModelRequests.delete(id);localGatewayModels.delete(id);localGatewayPending.delete(id);
+  for(const key of [...nativeAccountStates.keys()])if(key.startsWith(id+':'))nativeAccountStates.delete(key);
+  for(const key of [...nativeAccountPending])if(key.startsWith(id+':'))nativeAccountPending.delete(key);
+ }
+ magpieOffAgents=next;
+};
 window.renderPreferences = value => {
 
  window.renderMagpiePreference(value.magpie === true);
+ window.renderFennecTerminalPreference?.(value.fennec_terminal === true);
+ window.renderMagpieAgents(value.magpie_off_agents);
  window.renderUpdatePreferences?.(value);
  window.renderDeveloperPreferences?.(value);
  window.renderSandboxPreferences?.(value);
@@ -749,9 +764,26 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyAppea
 
 const loginItemSwitch = document.querySelector('#launch-at-login');
 let magpieEnabled = false;
+let magpieOffAgents = new Set();
 const magpieSwitch = document.querySelector('#magpie-integration');
 if(magpieSwitch) magpieSwitch.onclick=()=>toggleMagpie();
 const loginItemApproval = document.querySelector('#login-item-approval');
+// Fennec Terminal (the desktop window) is shown only when this build carries it.
+// The switch reflects the saved setting; a change waits for its confirmation.
+const fennecTerminalSwitch = document.querySelector('#fennec-terminal');
+window.renderFennecTerminalAvailable = available => {
+  const row = document.querySelector('#fennec-terminal-row');
+  if (row) row.hidden = available !== true;
+};
+window.renderFennecTerminalPreference = enabled => {
+  if (!fennecTerminalSwitch) return;
+  fennecTerminalSwitch.setAttribute('aria-checked', String(enabled));
+  fennecTerminalSwitch.disabled = false;
+};
+if (fennecTerminalSwitch) fennecTerminalSwitch.onclick = () => {
+  fennecTerminalSwitch.disabled = true;
+  send('settings:' + JSON.stringify({fennec_terminal: fennecTerminalSwitch.getAttribute('aria-checked') !== 'true'}));
+};
 window.renderLoginItem = value => {
   if (!loginItemSwitch || !loginItemApproval) return;
   loginItemSwitch.disabled = !value.supported;
@@ -1308,7 +1340,7 @@ window.renderNativeAccount = state => {if(!state?.agent||!state?.location)return
 window.resetNativeAccountViews = () => {modelSaving=false;agentEffortEditing=false;nativeAccountStates.clear();nativeAccountPending.clear();nativeModelStates.clear();nativeModelRequests.clear();};
 window.renderLocalModel = state => {if(!state?.agent)return;localGatewayPending.delete(state.agent);localGatewayModels.set(state.agent,{...localGatewayModels.get(state.agent),...state});window.renderAgents(detectedAgents);};
 window.renderNativeModelFailure = agent => {nativeModelRequests.set(agent,'failed');window.renderAgents(detectedAgents);};
-window.renderNativeModels = state => { if(!state || magpieEnabled || !Array.isArray(state.models))return;nativeModelStates.set(state.agent,state);window.renderAgents(detectedAgents); };
+window.renderNativeModels = state => { if(!state || (magpieEnabled && !magpieOffAgents.has(state.agent) && state.agent!=='cursor') || !Array.isArray(state.models))return;nativeModelStates.set(state.agent,state);window.renderAgents(detectedAgents); };
 window.renderModelCatalog = (models, catalog) => {
   gatewayModels = Array.isArray(models) ? models : [];
   if (Array.isArray(catalog)) {
@@ -1504,8 +1536,16 @@ function confirmCodexDesktopRestart(toCloud, proceed) {
 // ChatGPT runs on the cloud computer reconnects ChatGPT.
 function toggleMagpie() {
   const change = () => send('settings:' + JSON.stringify({magpie: !magpieEnabled}));
-  if (!takeoverAgents.has('codex-desktop')) { change(); return; }
+  // ChatGPT keeps its own connection when Magpie is already off for Codex.
+  if (!takeoverAgents.has('codex-desktop') || magpieOffAgents.has('codex')) { change(); return; }
   confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: magpieEnabled ? "[[i18n:ui.chatgpt_reconnect_without_magpie]]" : "[[i18n:ui.chatgpt_reconnect_with_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
+}
+
+// Connects or disconnects one agent; Magpie keeps serving every other agent.
+function toggleAgentMagpie(agent, enabled) {
+  const change = () => send('settings:' + JSON.stringify({magpie_agent: {agent, enabled}}));
+  if (agent !== 'codex' || !takeoverAgents.has('codex-desktop')) { change(); return; }
+  confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: enabled ? "[[i18n:ui.chatgpt_reconnect_with_magpie]]" : "[[i18n:ui.chatgpt_reconnect_without_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
 }
 
 // Closing a modal dialog returns focus to its opener, which WebKit paints as

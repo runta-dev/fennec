@@ -1,0 +1,467 @@
+{
+  "responses": {
+    "/v1/projects": [
+      {
+        "color": "#f38d25",
+        "description": "Mac menu bar app, fen CLI and iOS client",
+        "id": "fennec",
+        "key": "FEN",
+        "name": "Fennec",
+        "needs_you": 2,
+        "open": 4,
+        "queue": 3,
+        "repository": "runta-dev/fennec",
+        "tags": [
+          {
+            "id": "bug",
+            "label": "Bug"
+          },
+          {
+            "id": "feature",
+            "label": "Feature"
+          },
+          {
+            "id": "discussion",
+            "label": "Discussion"
+          }
+        ],
+        "workers": [
+          {
+            "agent": "claude",
+            "model": "Opus 5.5",
+            "on": true
+          },
+          {
+            "agent": "codex",
+            "model": "GPT-5",
+            "on": true
+          },
+          {
+            "agent": "kimi",
+            "model": "K2",
+            "on": false
+          }
+        ]
+      },
+      {
+        "color": "#6f8fd9",
+        "description": "Runta website and docs",
+        "id": "website",
+        "key": "WEB",
+        "name": "runta.com",
+        "queue": 3,
+        "tags": [
+          {
+            "id": "bug",
+            "label": "Bug"
+          },
+          {
+            "id": "feature",
+            "label": "Feature"
+          },
+          {
+            "id": "discussion",
+            "label": "Discussion"
+          }
+        ]
+      }
+    ],
+    "/v1/projects/fennec": {
+      "color": "#f38d25",
+      "description": "Mac menu bar app, fen CLI and iOS client",
+      "id": "fennec",
+      "key": "FEN",
+      "name": "Fennec",
+      "needs_you": 2,
+      "open": 4,
+      "queue": 3,
+      "repository": "runta-dev/fennec",
+      "tags": [
+        {
+          "id": "bug",
+          "label": "Bug"
+        },
+        {
+          "id": "feature",
+          "label": "Feature"
+        },
+        {
+          "id": "discussion",
+          "label": "Discussion"
+        }
+      ],
+      "workers": [
+        {
+          "agent": "claude",
+          "model": "Opus 5.5",
+          "on": true
+        },
+        {
+          "agent": "codex",
+          "model": "GPT-5",
+          "on": true
+        },
+        {
+          "agent": "kimi",
+          "model": "K2",
+          "on": false
+        }
+      ]
+    },
+    "/v1/projects/fennec/knowledge": [],
+    "/v1/projects/fennec/requests": [
+      {
+        "agent": "claude",
+        "latest": {
+          "agent": "claude",
+          "at": "2026-11-19T09:24:29Z",
+          "author": "Claude Code",
+          "body": "Fixed: narrow screens no longer scroll sideways. Checked in Safari and Chrome:",
+          "id": 2
+        },
+        "messages": [
+          {
+            "at": "2026-11-19T09:12:29Z",
+            "author": "shiqi",
+            "body": "On iPhone the Queues page scrolls sideways and the last column is cut off. Chrome is fine; only Safari has the problem.",
+            "id": 1
+          },
+          {
+            "agent": "claude",
+            "at": "2026-11-19T09:24:29Z",
+            "author": "Claude Code",
+            "body": "Fixed: narrow screens no longer scroll sideways. Checked in Safari and Chrome:",
+            "id": 2
+          }
+        ],
+        "number": 42,
+        "replies": 1,
+        "status": "you",
+        "tag": "bug",
+        "title": "Queues page overflows sideways in iPhone Safari",
+        "updated": "2026-11-19T09:24:29Z"
+      },
+      {
+        "agent": "codex",
+        "latest": {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "+1. It would also help if the agent’s reply showed who +1’d it.",
+          "id": 1
+        },
+        "messages": [
+          {
+            "at": "2026-11-19T09:12:29Z",
+            "author": "shiqi",
+            "body": "+1. It would also help if the agent’s reply showed who +1’d it.",
+            "id": 1
+          }
+        ],
+        "number": 41,
+        "replies": 1,
+        "status": "working",
+        "tag": "feature",
+        "title": "Let people +1 other people’s requests",
+        "updated": "2026-11-19T09:15:29Z",
+        "votes": 4
+      },
+      {
+        "agent": "claude",
+        "latest": {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "`fen attach cone-leaf` sometimes hangs at `ssh: handshake failed: EOF`; it takes three retries to connect.",
+          "id": 1
+        },
+        "messages": [
+          {
+            "at": "2026-11-19T09:12:29Z",
+            "author": "shiqi",
+            "body": "`fen attach cone-leaf` sometimes hangs at `ssh: handshake failed: EOF`; it takes three retries to connect.",
+            "id": 1
+          }
+        ],
+        "number": 40,
+        "replies": 0,
+        "status": "you",
+        "tag": "bug",
+        "title": "fen attach sometimes hangs at handshake",
+        "updated": "2026-11-19T09:01:29Z"
+      },
+      {
+        "agent": "",
+        "latest": {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "If I don’t use it for a week, are my sessions and worktrees still on the cloud computer? Is anything cleaned up automatically?",
+          "id": 1
+        },
+        "messages": [
+          {
+            "at": "2026-11-19T09:12:29Z",
+            "author": "shiqi",
+            "body": "If I don’t use it for a week, are my sessions and worktrees still on the cloud computer? Is anything cleaned up automatically?",
+            "id": 1
+          }
+        ],
+        "number": 39,
+        "replies": 0,
+        "status": "queued",
+        "tag": "discussion",
+        "title": "How long do sessions survive after the cloud computer shuts down?",
+        "updated": "2026-11-19T08:27:29Z"
+      },
+      {
+        "agent": "claude",
+        "latest": {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "Changed it to Choose models with Magpie in both languages",
+          "id": 1
+        },
+        "messages": [
+          {
+            "at": "2026-11-19T09:12:29Z",
+            "author": "shiqi",
+            "body": "Changed it to Choose models with Magpie in both languages",
+            "id": 1
+          }
+        ],
+        "number": 38,
+        "replies": 0,
+        "status": "resolved",
+        "tag": "feature",
+        "title": "Magpie toggle label in Settings is too long",
+        "updated": "2026-11-18T09:27:29Z"
+      }
+    ],
+    "/v1/projects/fennec/requests/38": {
+      "agent": "claude",
+      "latest": {
+        "at": "2026-11-19T09:12:29Z",
+        "author": "shiqi",
+        "body": "Changed it to Choose models with Magpie in both languages",
+        "id": 1
+      },
+      "messages": [
+        {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "Changed it to Choose models with Magpie in both languages",
+          "id": 1
+        }
+      ],
+      "number": 38,
+      "replies": 0,
+      "status": "resolved",
+      "tag": "feature",
+      "title": "Magpie toggle label in Settings is too long",
+      "updated": "2026-11-18T09:27:29Z"
+    },
+    "/v1/projects/fennec/requests/39": {
+      "agent": "",
+      "latest": {
+        "at": "2026-11-19T09:12:29Z",
+        "author": "shiqi",
+        "body": "If I don’t use it for a week, are my sessions and worktrees still on the cloud computer? Is anything cleaned up automatically?",
+        "id": 1
+      },
+      "messages": [
+        {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "If I don’t use it for a week, are my sessions and worktrees still on the cloud computer? Is anything cleaned up automatically?",
+          "id": 1
+        }
+      ],
+      "number": 39,
+      "replies": 0,
+      "status": "queued",
+      "tag": "discussion",
+      "title": "How long do sessions survive after the cloud computer shuts down?",
+      "updated": "2026-11-19T08:27:29Z"
+    },
+    "/v1/projects/fennec/requests/40": {
+      "agent": "claude",
+      "latest": {
+        "at": "2026-11-19T09:12:29Z",
+        "author": "shiqi",
+        "body": "`fen attach cone-leaf` sometimes hangs at `ssh: handshake failed: EOF`; it takes three retries to connect.",
+        "id": 1
+      },
+      "messages": [
+        {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "`fen attach cone-leaf` sometimes hangs at `ssh: handshake failed: EOF`; it takes three retries to connect.",
+          "id": 1
+        }
+      ],
+      "number": 40,
+      "replies": 0,
+      "status": "you",
+      "tag": "bug",
+      "title": "fen attach sometimes hangs at handshake",
+      "updated": "2026-11-19T09:01:29Z"
+    },
+    "/v1/projects/fennec/requests/41": {
+      "agent": "codex",
+      "latest": {
+        "at": "2026-11-19T09:12:29Z",
+        "author": "shiqi",
+        "body": "+1. It would also help if the agent’s reply showed who +1’d it.",
+        "id": 1
+      },
+      "messages": [
+        {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "+1. It would also help if the agent’s reply showed who +1’d it.",
+          "id": 1
+        }
+      ],
+      "number": 41,
+      "replies": 1,
+      "status": "working",
+      "tag": "feature",
+      "title": "Let people +1 other people’s requests",
+      "updated": "2026-11-19T09:15:29Z",
+      "votes": 4
+    },
+    "/v1/projects/fennec/requests/42": {
+      "agent": "claude",
+      "latest": {
+        "agent": "claude",
+        "at": "2026-11-19T09:24:29Z",
+        "author": "Claude Code",
+        "body": "Fixed: narrow screens no longer scroll sideways. Checked in Safari and Chrome:",
+        "id": 2
+      },
+      "messages": [
+        {
+          "at": "2026-11-19T09:12:29Z",
+          "author": "shiqi",
+          "body": "On iPhone the Queues page scrolls sideways and the last column is cut off. Chrome is fine; only Safari has the problem.",
+          "id": 1
+        },
+        {
+          "agent": "claude",
+          "at": "2026-11-19T09:24:29Z",
+          "author": "Claude Code",
+          "body": "Fixed: narrow screens no longer scroll sideways. Checked in Safari and Chrome:",
+          "id": 2
+        }
+      ],
+      "number": 42,
+      "replies": 1,
+      "status": "you",
+      "tag": "bug",
+      "title": "Queues page overflows sideways in iPhone Safari",
+      "updated": "2026-11-19T09:24:29Z"
+    },
+    "/v1/projects/website": {
+      "color": "#6f8fd9",
+      "description": "Runta website and docs",
+      "id": "website",
+      "key": "WEB",
+      "name": "runta.com",
+      "queue": 3,
+      "tags": [
+        {
+          "id": "bug",
+          "label": "Bug"
+        },
+        {
+          "id": "feature",
+          "label": "Feature"
+        },
+        {
+          "id": "discussion",
+          "label": "Discussion"
+        }
+      ]
+    },
+    "/v1/projects/website/requests": [],
+    "/v1/queue": []
+  },
+  "terminals": [
+    {
+      "address": "a3",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "a3"
+      },
+      "state": "live",
+      "status": {
+        "state": "blocked"
+      },
+      "status_ms": 1795078889539,
+      "title": "fen attach handshake"
+    },
+    {
+      "address": "a2",
+      "labels": {
+        "fennec.agent": "codex",
+        "fennec.session": "a2"
+      },
+      "state": "live",
+      "status": {
+        "state": "working"
+      },
+      "status_ms": 1795079909539,
+      "title": "Sort requests by +1"
+    },
+    {
+      "address": "a4",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "a4"
+      },
+      "state": "live",
+      "status": {
+        "state": "working"
+      },
+      "status_ms": 1795078169539,
+      "title": "iPhone demo dark frame"
+    },
+    {
+      "address": "a1",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "a1"
+      },
+      "state": "live",
+      "status": {
+        "state": "idle"
+      },
+      "status_ms": 1795080269539,
+      "title": "Queues overflow in Safari"
+    },
+    {
+      "address": "a5",
+      "labels": {
+        "fennec.agent": "claude",
+        "fennec.session": "a5"
+      },
+      "state": "live",
+      "status": {
+        "state": "idle"
+      },
+      "status_ms": 1795076849539,
+      "title": "Website social card icon"
+    },
+    {
+      "address": "a6",
+      "labels": {
+        "fennec.agent": "kimi",
+        "fennec.session": "a6"
+      },
+      "state": "live",
+      "status": {
+        "state": "idle"
+      },
+      "status_ms": 1795069649539,
+      "title": "Weekly report data"
+    }
+  ]
+}

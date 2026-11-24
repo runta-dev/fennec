@@ -26,6 +26,7 @@ type LocalLaunch struct {
 	NativeLogin    bool                        `json:"native_login,omitempty"`
 	Hooks          []hookbridge.Binding        `json:"hooks,omitempty"`
 	ID             string                      `json:"id"`
+	ResumeFrom     string                      `json:"resume_from,omitempty"`
 	Agent          string                      `json:"agent"`
 	LocalDirectory string                      `json:"local_directory"`
 	Device         string                      `json:"device"`
@@ -37,6 +38,7 @@ type LocalTerminal struct {
 	Name     string             `json:"name,omitempty"`
 	Parent   *string            `json:"parent,omitempty"`
 	Status   json.RawMessage    `json:"status,omitempty"`
+	StatusMS int64              `json:"status_ms,omitempty"`
 	Timings  map[string]float64 `json:"timings_ms,omitempty"`
 	ID       string             `json:"id,omitempty"`
 	Agent    string             `json:"agent,omitempty"`
@@ -54,6 +56,9 @@ type LocalRuntime struct {
 }
 
 func (request LocalLaunch) Validate() error {
+	if request.ResumeFrom != "" && (!sessionIDPattern.MatchString(request.ResumeFrom) || request.ResumeFrom == request.ID) {
+		return fmt.Errorf("invalid resume identity")
+	}
 	if err := hookbridge.ValidateClaudeSettings(request.Agent, request.Arguments, request.ClaudeSettings); err != nil {
 		return err
 	}
@@ -83,6 +88,8 @@ func (request LocalLaunch) Validate() error {
 	}
 	return nil
 }
+
+var ErrAgentExecutableMissing = errors.New("cloud agent executable missing")
 
 func NewLocalRuntime(home string) *LocalRuntime {
 	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Query: herdrQuery(home), Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
@@ -179,14 +186,21 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		}
 	}
 	if err != nil {
-		return LocalTerminal{}, fmt.Errorf("cloud agent executable missing")
+		return LocalTerminal{}, ErrAgentExecutableMissing
 	}
 	cwd, err := prepareSessionWorkspace(runtime.Home, request)
 	if err != nil {
 		return LocalTerminal{}, err
 	}
 	command := append([]string{binary}, agents.NoUpdateArguments(request.Agent)...)
-	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, request.Arguments, request.ClaudeSettings)
+	inputArguments := request.Arguments
+	if request.ResumeFrom != "" {
+		inputArguments, cwd, err = runtime.resumeArguments(request, binary)
+		if err != nil {
+			return LocalTerminal{}, err
+		}
+	}
+	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, inputArguments, request.ClaudeSettings)
 	if err != nil {
 		return LocalTerminal{}, err
 	}
@@ -226,7 +240,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
-	if setup.NativeAgentMode(runtime.Home) || agents.NativeOnly(request.Agent) {
+	if setup.NativeAgent(runtime.Home, request.Agent) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]
@@ -245,7 +259,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			command = append([]string{"env", `OPENCODE_PERMISSION={"*":"allow"}`}, command...)
 		}
 	}
-	if !setup.NativeAgentMode(runtime.Home) && !agents.NativeOnly(request.Agent) {
+	if !setup.NativeAgent(runtime.Home, request.Agent) {
 		command = append([]string{"env", gateway.DependencyEnv + "=1"}, command...)
 	}
 	if request.Agent == "pi" {
