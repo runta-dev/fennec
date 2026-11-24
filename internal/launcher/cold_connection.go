@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fennec/internal/cloudtarget"
 	"fennec/internal/launchprofile"
-	"fennec/internal/runta"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,7 +32,7 @@ func StartColdConnection(ctx context.Context, home string, intent LaunchIntent) 
 	var preference struct {
 		RuntimeID string `json:"runtime_id"`
 	}
-	data, err := os.ReadFile(runta.TakeoverPreferencesPath(home))
+	data, err := os.ReadFile(cloudtarget.TakeoverPreferencesPath(home))
 	if err != nil || len(data) > 8192 || json.Unmarshal(data, &preference) != nil {
 		return nil
 	}

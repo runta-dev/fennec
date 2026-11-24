@@ -361,7 +361,11 @@ func Run(arguments []string, output io.Writer) error {
 		defer stopLifecycle()
 		ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 		defer cancel()
-		return prepareRuntime(ctx, input.Token, output)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		return prepareRuntime(ctx, newRuntaComputer(home, input.Token, false), output)
 	case "connector":
 		home, err := os.UserHomeDir()
 		if err != nil {

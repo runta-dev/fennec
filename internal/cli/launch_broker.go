@@ -10,7 +10,6 @@ import (
 	"fennec/internal/connectivity"
 	"fennec/internal/launchprofile"
 	"fennec/internal/project"
-	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -19,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -31,14 +29,18 @@ type brokerConfiguration struct {
 	PreparedTerminal  *terminalstream.Transport `json:"-"`
 	PreparedSSH       *ssh.Client               `json:"-"`
 	PreparedRuntimeID string                    `json:"-"`
-	Token             string                    `json:"token"`
-	RuntimeID         string                    `json:"runtime_id"`
-	Device            string                    `json:"device"`
-	Socket            string                    `json:"socket"`
-	Agents            []string                  `json:"agents"`
-	Roots             []string                  `json:"roots"`
-	Selected          []string                  `json:"selected,omitempty"`
-	AutoProjects      bool                      `json:"auto_projects,omitempty"`
+	// Computer is how the daemon's broker reaches its cloud computer. The
+	// standalone broker, configured over a pipe, derives a Runta computer
+	// from Token instead.
+	Computer     cloudComputer `json:"-"`
+	Token        string        `json:"token"`
+	RuntimeID    string        `json:"runtime_id"`
+	Device       string        `json:"device"`
+	Socket       string        `json:"socket"`
+	Agents       []string      `json:"agents"`
+	Roots        []string      `json:"roots"`
+	Selected     []string      `json:"selected,omitempty"`
+	AutoProjects bool          `json:"auto_projects,omitempty"`
 }
 
 // Roots and agent enablement arrive only from the parent-owned pipe. A local
@@ -159,13 +161,12 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 	}
 	scope := sha256.Sum256([]byte(config.RuntimeID + "\x00" + config.Device))
 	journal := &launcher.LaunchJournal{Directory: filepath.Join(home, ".config/fennec/launch-journal", hex.EncodeToString(scope[:16]))}
-	api := runta.NewClient(home, config.Token)
-	if runtime.GOOS == "darwin" {
-		api.RetainSSHHome = home
+	computer := config.Computer
+	if computer == nil {
+		computer = newRuntaComputer(home, config.Token, true)
 	}
-	shared, err := launcher.NewSharedConnection(ctx, filepath.Join(home, ".config/fennec/cloud"), config.RuntimeID, func(operation context.Context) error {
-		_, err := api.PrepareOwnedSSH(operation, config.RuntimeID, filepath.Join(home, ".config/fennec/cloud"))
-		return err
+	shared, err := launcher.NewSharedConnection(ctx, computer.Directory(), config.RuntimeID, func(operation context.Context) error {
+		return computer.Authorize(operation, config.RuntimeID)
 	})
 	if err != nil {
 		return err
@@ -177,7 +178,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 	}
 	channel := &terminalChannel{ctx: ctx, network: config.Network, shared: shared, home: home, runtimeID: config.RuntimeID}
 	channel.connect = func(operation context.Context) (*ssh.Client, error) {
-		return api.ConnectOwned(operation, config.RuntimeID, filepath.Join(home, ".config/fennec/cloud"))
+		return computer.Reconnect(operation, config.RuntimeID)
 	}
 	if config.PreparedRuntimeID == config.RuntimeID {
 		channel.preparedSSH = config.PreparedSSH
@@ -245,7 +246,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		}
 		control := ""
 		if intent.Cold {
-			if _, err := api.PrepareOwnedSSH(operation, config.RuntimeID, filepath.Join(home, ".config/fennec/cloud")); err != nil {
+			if err := computer.Authorize(operation, config.RuntimeID); err != nil {
 				return launcher.LaunchPlan{}, err
 			}
 		} else {

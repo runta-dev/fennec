@@ -137,3 +137,14 @@ func AllowsDial(home, host, port string) bool {
 	p, err := byoc.Load(home)
 	return err == nil && host == p.Host && port == strconv.Itoa(p.Port)
 }
+
+// TakeoverPreferencesPath is where the selected agents, project roots and
+// runtime hint for the active cloud computer are saved. A paired self-hosted
+// computer keeps its own file, so switching between it and a Runta computer
+// never overwrites the other's selection.
+func TakeoverPreferencesPath(home string) string {
+	if _, err := byoc.Load(home); err == nil {
+		return filepath.Join(byoc.Dir(home), "takeover-preferences.json")
+	}
+	return runta.TakeoverPreferencesPath(home)
+}
