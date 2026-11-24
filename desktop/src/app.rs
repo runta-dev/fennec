@@ -105,6 +105,7 @@ pub struct FennecWindow {
     pub(crate) search: Entity<InputState>,
     pub(crate) composer: Entity<TextareaState>,
     request_images: request_attachments::Drafts,
+    image_viewer: Option<request_attachments::Viewer>,
     posting: bool,
     replying: bool,
     pub(crate) reply: Entity<TextareaState>,
@@ -209,6 +210,7 @@ impl FennecWindow {
                 && !this.prefix
                 && this.close_others.is_none()
                 && this.new_project.is_none()
+                && this.image_viewer.is_none()
                 && this.menu.is_none()
                 && this.context_menu.is_none()
             {
@@ -266,6 +268,7 @@ impl FennecWindow {
             search,
             composer,
             request_images: Default::default(),
+            image_viewer: None,
             posting: false,
             replying: false,
             reply,
@@ -3151,6 +3154,7 @@ impl Render for FennecWindow {
         let menu = self.menu(cx);
         let context_menu = self.context_menu_view(window, cx);
         let dialog = self.new_project_dialog(cx);
+        let image_viewer = self.image_viewer_view(cx);
         h_flex()
             .relative()
             .track_focus(&self.focus)
@@ -3177,6 +3181,9 @@ impl Render for FennecWindow {
             .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,window,cx|this.finish_sidebar_resize(window,cx)))
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
+                if this.image_viewer_key(&e.keystroke.key, cx) {
+                    return;
+                }
                 if this.context_key(&e.keystroke.key, window, cx) {
                     return;
                 }
@@ -3310,6 +3317,7 @@ impl Render for FennecWindow {
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
+            .when_some(image_viewer, |d, m| d.child(m))
             .when(self.prefix, |d| {
                 d.child(
                     div()
