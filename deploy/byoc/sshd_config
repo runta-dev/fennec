@@ -1,0 +1,37 @@
+# Fennec self-hosted cloud computer. Key-only access for one unprivileged user.
+Port 22
+HostKey /home/fennec/.fennec-host/ssh_host_ed25519_key
+# Regenerated at every start from the persistent list on the home volume.
+AuthorizedKeysFile /etc/ssh/fennec_authorized_keys
+
+AllowUsers fennec
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+UsePAM no
+StrictModes yes
+
+# The Mac connector relays through remote forwards on loopback.
+AllowTcpForwarding yes
+GatewayPorts no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitUserEnvironment no
+
+# Fennec multiplexes many session channels over one connection.
+MaxSessions 256
+MaxStartups 32:30:128
+ClientAliveInterval 15
+ClientAliveCountMax 8
+
+# Agents get a UTF-8 locale that exists in the image. A Mac's LANG/LC_* values
+# (for example LC_CTYPE=UTF-8) are not valid Linux locales, so they are not
+# accepted.
+SetEnv LANG=C.UTF-8
+AcceptEnv TERM COLORTERM
+PrintMotd no
+PrintLastLog no
+Subsystem sftp internal-sftp
