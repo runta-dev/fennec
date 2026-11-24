@@ -19,6 +19,7 @@ export default function Home() {
         <p>Your coding agents, running in the cloud. Connected to your Mac. <br/>Close your laptop. Come back to the same work.</p>
         <div className="hero-actions"><Start/><a className="button secondary" href={repo}><Github size={18}/>GitHub</a></div>
         <span className="platform-note">For macOS · Apple Silicon · Developer preview</span>
+        <a className="text-link hero-byos" href="/self-hosted/">Bring your own server: run your agents on a Linux machine you control <ArrowUpRight size={15}/></a>
       </section>
 
       <div className="demo-wrap"><Demo/></div>
