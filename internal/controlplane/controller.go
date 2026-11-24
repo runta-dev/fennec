@@ -89,6 +89,9 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			if c.LoginAllowed != nil && !c.LoginAllowed() {
 				return nil, &control.Fault{Code: "uninstall_pending", Message: "Wait for uninstall to finish before signing in"}
 			}
+			if c.Account.Snapshot().Status == account.StatusPaired {
+				return nil, &control.Fault{Code: "self_hosted_paired", Message: "Unpair your own cloud computer before signing in to Runta"}
+			}
 			var request struct {
 				Reauthenticate bool `json:"reauthenticate"`
 			}

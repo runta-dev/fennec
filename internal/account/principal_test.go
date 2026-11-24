@@ -100,17 +100,37 @@ func TestUnpairIgnoresStaleMachine(t *testing.T) {
 	}
 }
 
-func TestSignInReplacesPairedPrincipal(t *testing.T) {
-	m := New(context.Background(), &memoryCredentials{}, "http://127.0.0.1:1")
-	if _, err := m.Pair("00000000-0000-4000-8000-000000000003"); err != nil {
+func TestRuntaSignInIsRefusedWhilePaired(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	store := &memoryCredentials{token: "secret-token"}
+	m := New(ctx, store, "http://127.0.0.1:1")
+	epoch, err := m.Pair("00000000-0000-4000-8000-000000000003")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if state := m.Login(); state.Status != "authorizing" {
-		t.Fatalf("unexpected status %q", state.Status)
+	if _, err := m.LoginMethod("github"); !errors.Is(err, ErrSelfHostedPaired) {
+		t.Fatalf("sign-in while paired: %v", err)
 	}
-	m.CancelAuthorization(context.Background())
-	if _, principal, _, ok := m.Session(); ok || principal.Machine != "" {
-		t.Fatal("paired machine survived a Runta sign-in attempt")
+	m.Login()
+	m.Reauthenticate()
+	m.Redeem("device-code")
+	if _, err := m.LoginNative("github", NativeOAuthConfig{AuthURL: "https://auth.example.com", BackendURL: "https://api.example.com", PublishableKey: "sb_publishable_x"}); !errors.Is(err, ErrSelfHostedPaired) {
+		t.Fatalf("native sign-in while paired: %v", err)
+	}
+	if err := m.SetEndpoint(ctx, "https://api.runta.xyz", ""); err != nil {
+		t.Fatal(err)
+	}
+	// Signing out of Runta removes its credential but keeps the pairing.
+	if err := m.Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Read(ctx); !errors.Is(err, ErrNotFound) {
+		t.Fatal("sign-out kept the Runta credential")
+	}
+	_, principal, current, ok := m.Session()
+	if !ok || current != epoch || principal.Machine != "00000000-0000-4000-8000-000000000003" || m.Snapshot().Status != StatusPaired {
+		t.Fatal("a Runta account operation changed the paired principal")
 	}
 }
 

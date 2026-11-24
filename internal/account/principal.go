@@ -54,6 +54,11 @@ func (p Principal) IsBYOC() bool { return p.Kind == PrincipalBYOC && p.Machine !
 // billing, organizations, managed cloud lifecycle) under a BYOC principal.
 var ErrRuntaAccountRequired = errors.New("a Runta account is required for this operation")
 
+// ErrSelfHostedPaired refuses a Runta sign-in while a self-hosted computer is
+// paired. The pairing record decides which computer every SSH path targets,
+// so the two principals cannot change independently.
+var ErrSelfHostedPaired = errors.New("unpair your own cloud computer before signing in to Runta")
+
 // Active reports whether a principal is in effect for this snapshot: a Runta
 // account is signed in, or a self-hosted cloud computer is paired.
 func (s Snapshot) Active() bool { return s.Status == StatusAuthorized || s.Status == StatusPaired }

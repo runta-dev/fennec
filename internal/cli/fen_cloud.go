@@ -34,6 +34,9 @@ func cloudCommand(ctx context.Context, client cloudCaller, args []string, input 
 	if len(args) == 0 {
 		args = []string{"status"}
 	}
+	if args[0] == "byoc" {
+		return byocCommand(ctx, client, args[1:], output)
+	}
 	if args[0] == "status" && len(args) == 1 {
 		var state any
 		if err := client.Call(ctx, "cloud.status", nil, &state); err != nil {
@@ -60,7 +63,7 @@ func cloudCommand(ctx context.Context, client cloudCaller, args []string, input 
 		return json.NewEncoder(output).Encode(result)
 	}
 	if args[0] != "delete" || (len(args) != 2 && len(args) != 4) {
-		return fmt.Errorf("usage: fen cloud status | delete <runtime-id> [--confirm-runtime <runtime-id>] | create")
+		return fmt.Errorf("usage: fen cloud status | delete <runtime-id> [--confirm-runtime <runtime-id>] | create | byoc ...")
 	}
 	id := args[1]
 	confirmed := ""

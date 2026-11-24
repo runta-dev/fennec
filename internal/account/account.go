@@ -122,6 +122,11 @@ func (m *Manager) SetEndpoint(ctx context.Context, endpoint, dashboard string) e
 	}
 	m.endpoint = trimmed
 	m.dashboard = dash
+	// A paired self-hosted computer does not depend on the Runta environment.
+	if m.state.Status == StatusPaired {
+		m.mu.Unlock()
+		return nil
+	}
 	_, epoch := m.resetLocked("restoring")
 	m.mu.Unlock()
 
@@ -229,6 +234,11 @@ func (m *Manager) Logout(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Signing out of Runta removes its credential but does not unpair a
+	// self-hosted computer; only Unpair ends that principal.
+	if m.state.Status == StatusPaired {
+		return nil
+	}
 	m.resetLocked("signed_out")
 	return nil
 }
@@ -245,6 +255,9 @@ func (m *Manager) LoginMethod(method string) (Snapshot, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.state.Status == StatusPaired {
+		return m.state, ErrSelfHostedPaired
+	}
 	if m.state.Status == "authorizing" || m.state.Status == "authorized" {
 		return m.state, nil
 	}
@@ -258,7 +271,7 @@ func (m *Manager) LoginMethod(method string) (Snapshot, error) {
 // succeeds; cancellation or refusal must not erase uninstall recovery access.
 func (m *Manager) Reauthenticate(requests ...context.Context) Snapshot {
 	m.mu.Lock()
-	if m.state.Status == "authorizing" {
+	if m.state.Status == "authorizing" || m.state.Status == StatusPaired {
 		state := m.state
 		m.mu.Unlock()
 		return state
@@ -461,7 +474,7 @@ func (m *Manager) authorizeMethod(ctx context.Context, epoch uint64, method stri
 func (m *Manager) Redeem(deviceCode string) Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if deviceCode == "" || m.state.Status == "authorized" {
+	if deviceCode == "" || m.state.Status == "authorized" || m.state.Status == StatusPaired {
 		return m.state
 	}
 	ctx, epoch := m.resetLocked("authorizing")

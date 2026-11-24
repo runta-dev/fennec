@@ -137,6 +137,9 @@ func (m *Manager) loginNativeWith(provider string, config NativeOAuthConfig, ema
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.state.Status == StatusPaired {
+		return m.state, ErrSelfHostedPaired
+	}
 	if m.state.Status == "authorizing" || m.state.Status == "authorized" {
 		return m.state, nil
 	}
