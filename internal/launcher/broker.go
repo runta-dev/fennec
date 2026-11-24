@@ -34,7 +34,10 @@ type LaunchIntent struct {
 type BrokerReply struct {
 	Receipt *LaunchReceipt `json:"receipt,omitempty"`
 	Error   string         `json:"error,omitempty"`
-	Plan    *LaunchPlan    `json:"plan,omitempty"`
+	// NotStarted marks an Error returned before anything started (see
+	// NotStartedError). Without it an error leaves the outcome unknown.
+	NotStarted bool        `json:"not_started,omitempty"`
+	Plan       *LaunchPlan `json:"plan,omitempty"`
 }
 
 type LaunchPlan struct {
@@ -161,19 +164,19 @@ func ServeBrokerPrepared(ctx context.Context, path string, launch func(context.C
 			conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			var intent LaunchIntent
 			if json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&intent) != nil || intent.Validate() != nil {
-				json.NewEncoder(conn).Encode(BrokerReply{Error: "invalid launch request"})
+				json.NewEncoder(conn).Encode(BrokerReply{Error: "invalid launch request", NotStarted: true})
 				return
 			}
 			conn.SetReadDeadline(time.Time{})
 			if intent.Prepare {
 				if prepare == nil {
-					json.NewEncoder(conn).Encode(BrokerReply{Error: "launch preparation unavailable"})
+					json.NewEncoder(conn).Encode(BrokerReply{Error: "launch preparation unavailable", NotStarted: true})
 					return
 				}
 				plan, err := prepare(operation, intent)
 				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				if err != nil {
-					json.NewEncoder(conn).Encode(BrokerReply{Error: err.Error()})
+					json.NewEncoder(conn).Encode(BrokerReply{Error: err.Error(), NotStarted: IsNotStarted(err)})
 					return
 				}
 				json.NewEncoder(conn).Encode(BrokerReply{Plan: &plan})
@@ -186,7 +189,7 @@ func ServeBrokerPrepared(ctx context.Context, path string, launch func(context.C
 				if len(message) > 1000 {
 					message = message[:1000]
 				}
-				json.NewEncoder(conn).Encode(BrokerReply{Error: message})
+				json.NewEncoder(conn).Encode(BrokerReply{Error: message, NotStarted: IsNotStarted(err)})
 				return
 			}
 			if receipt.SessionID != intent.RequestID || receipt.Agent != intent.Agent {
@@ -204,7 +207,7 @@ func RequestLaunch(ctx context.Context, path string, intent LaunchIntent) (Launc
 	}
 	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", path)
 	if err != nil {
-		return LaunchReceipt{}, fmt.Errorf("Fennec launch broker unavailable")
+		return LaunchReceipt{}, &NotStartedError{Message: "Fennec launch broker unavailable"}
 	}
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -217,6 +220,9 @@ func RequestLaunch(ctx context.Context, path string, intent LaunchIntent) (Launc
 		return LaunchReceipt{}, fmt.Errorf("launch outcome unknown; inspect request %s before retrying", intent.RequestID)
 	}
 	if reply.Error != "" {
+		if reply.NotStarted {
+			return LaunchReceipt{}, &NotStartedError{Message: reply.Error}
+		}
 		return LaunchReceipt{}, fmt.Errorf("%s", reply.Error)
 	}
 	if reply.Receipt == nil || reply.Receipt.SessionID != intent.RequestID || reply.Receipt.Agent != intent.Agent {

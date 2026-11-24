@@ -201,7 +201,8 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		config := configuration()
 		request, err := brokerRequest(config, intent)
 		if err != nil {
-			return launcher.LaunchReceipt{}, err
+			// Validation and readiness refusals start nothing.
+			return launcher.LaunchReceipt{}, launcher.NotStarted(err)
 		}
 		if request.CloudWorkspace {
 			if intent, err = resumeLocalSession(operation, channel, intent); err != nil {
@@ -232,7 +233,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 		config := configuration()
 		request, err := brokerRequest(config, intent)
 		if err != nil {
-			return launcher.LaunchPlan{}, err
+			return launcher.LaunchPlan{}, launcher.NotStarted(err)
 		}
 		if !request.CloudWorkspace {
 			return launcher.LaunchPlan{}, fmt.Errorf("direct terminal requires cloud workspace")

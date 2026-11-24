@@ -40,3 +40,14 @@ func TestLaunchWaitsOnlyForRefusalsBeforeTheBroker(t *testing.T) {
 		t.Fatalf("unexpected final error: %v", err)
 	}
 }
+
+func TestLaunchRefusedByTheBrokerIsReportedOnce(t *testing.T) {
+	calls := 0
+	err := launchWhenReady(func() error {
+		calls++
+		return &control.Fault{Code: "launch_refused", Message: "cloud takeover is enabled, but this agent's model or runtime is not ready; refresh preparation in Fennec"}
+	}, "pigeon-basket", time.Now().Add(time.Minute), func(time.Duration) { t.Fatal("waited on a refusal that waiting cannot fix") })
+	if calls != 1 || err == nil || !strings.Contains(err.Error(), "was not started: cloud takeover is enabled") || strings.Contains(err.Error(), "not confirmed") {
+		t.Fatalf("unexpected result: calls=%d err=%v", calls, err)
+	}
+}
