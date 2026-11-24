@@ -599,9 +599,9 @@
   };
 
   const origAuthorized = window.renderAuthorized;
-  window.renderAuthorized = () => {
+  window.renderAuthorized = (...args) => {
     const wasSignedOut = sawSignedOut && !isAuthorized;
-    origAuthorized?.();
+    origAuthorized?.(...args);
     authKnown = true;
     sawSignedOut = false;
     isAuthorized = true;

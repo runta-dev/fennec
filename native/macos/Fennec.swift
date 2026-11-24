@@ -64,6 +64,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var localMonitor: Any?
     private var web: WKWebView!
     private var authorized = false
+    // A paired self-hosted cloud computer is the principal: no Runta profile or
+    // billing, and the account menu unpairs it.
+    private var selfHosted = false
+    private var selfHostedMachine = ""
     // The page learns the sign-in state once after every load, signed in or not,
     // so it never guesses from its own default.
     private var authorizationRendered = false
@@ -712,16 +716,22 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let online = state["online"] as? Bool ?? true
         let reconnected = online && !isOnline
         isOnline = online
-        let isAuthorized = account["status"] as? String == "authorized"
+        let accountStatus = account["status"] as? String
+        let isSelfHosted = accountStatus == "paired"
+        let isAuthorized = accountStatus == "authorized" || isSelfHosted
         // While credentials are still being restored the sign-in state is unknown;
         // showing sign-in then would flash it on every launch.
         let authorizationKnown = account["status"] as? String != "restoring"
-        if authorizationKnown, isAuthorized != authorized || !authorizationRendered {
+        if authorizationKnown, isAuthorized != authorized || isSelfHosted != selfHosted || !authorizationRendered {
             authorizationRendered = true
             authorized = isAuthorized
+            selfHosted = isSelfHosted
+            if !selfHosted { selfHostedMachine = "" }
             if !authorized { profileLoaded = false; lastSessionsData = nil }
-            render(authorized ? "renderAuthorized" : "renderSignedOut")
-            if authorized, online { loadProfile(); loadMetrics() }
+            if authorized { render("renderAuthorized", [selfHosted]) } else { render("renderSignedOut") }
+            // The pairing is local, so a self-hosted computer's details load offline too.
+            if authorized, online || selfHosted { loadProfile() }
+            if authorized, online { loadMetrics() }
             if authorized, pendingInteractiveLogin {
                 pendingInteractiveLogin = false
                 showPopupInForeground()
@@ -786,6 +796,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         renderApprovals()
     }
     private func loadProfile() {
+        if selfHosted { loadSelfHosted(); return }
         let epoch = accountEpoch
         control.call("account.profile") { [weak self] result in
             guard let self, self.accountEpoch == epoch, case .success(let value) = result, let profile = value as? [String:Any] else { return }
@@ -826,6 +837,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func loadBilling() {
         guard authorized, !loadingBilling else { return }
+        if selfHosted { loadSelfHosted(); return }
         guard isOnline else {
             render("renderBilling", [["offline": true]])
             return
@@ -842,6 +854,19 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 if self.isOnline { self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
                 else { self.render("renderBilling", [["offline": true]]) }
             }
+        }
+    }
+    private func loadSelfHosted() {
+        let epoch = accountEpoch
+        control.call("byoc.status") { [weak self] result in
+            guard let self, self.accountEpoch == epoch, self.selfHosted else { return }
+            guard case .success(let value) = result, let status = value as? [String:Any] else {
+                self.render("renderSelfHosted", [["paired": false]])
+                return
+            }
+            self.profileLoaded = true
+            self.selfHostedMachine = status["machine_id"] as? String ?? ""
+            self.render("renderSelfHosted", [status])
         }
     }
     private func loadMetrics() {
@@ -1091,7 +1116,13 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "ready","refresh": lastState = nil; pollState(); refreshAgents(); renderLoginItem()
         case "login": pendingInteractiveLogin = true; mutate("account.login")
 	    case "reauthenticate": pendingInteractiveLogin = true; mutate("account.login",["reauthenticate":true])
-        case "logout": mutate("account.logout")
+        case "logout":
+            if selfHosted {
+                // Unpairing confirms with the paired machine ID; without it the daemon refuses.
+                if !selfHostedMachine.isEmpty { mutate("byoc.unpair", ["machine_id": selfHostedMachine]) }
+            } else {
+                mutate("account.logout")
+            }
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics()
         case "open-magpie-panel":

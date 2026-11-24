@@ -2,6 +2,9 @@ const send = action => window.webkit.messageHandlers.fennec.postMessage(action);
 const chevron = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
 let expandedAgent = null;
 let authorized = false;
+// A paired self-hosted (BYOC) cloud computer is the principal: no Runta account,
+// profile or billing, and the account menu unpairs instead of signing out.
+let selfHosted = false;
 let takeoverAgents = new Set();
 let takeoverChanging = false;
 let takeoverSelectionKnown = false;
@@ -443,13 +446,19 @@ window.renderLogin = (message, busy) => {
 };
 let sessionListConnecting = true;
 let visibleSessionCount = 0;
-window.renderAuthorized = () => {
+window.renderAuthorized = (isSelfHosted = false) => {
   authorized = true;
-  window.renderPairingAvailable?.(true);
+  selfHosted = isSelfHosted === true;
+  window.renderPairingAvailable?.(!selfHosted);
+  // iPhone pairing signs in with a Runta account; a self-hosted computer has none.
+  document.querySelector('#app-footer').hidden = selfHosted;
   document.querySelector('#notice').hidden = true;
   const header = document.querySelector('.header-login');
-  header.textContent = "[[i18n:ui.account]]";
-  header.setAttribute('data-i18n','ui.account');
+  const headerKey = selfHosted ? 'ui.your_server' : 'ui.account';
+  header.textContent = selfHosted ? "[[i18n:ui.your_server]]" : "[[i18n:ui.account]]";
+  header.setAttribute('data-i18n',headerKey);
+  header.removeAttribute('title');
+  renderAccountMenu();
   header.disabled = false;
   header.classList.remove('login');
   header.classList.add('account-link');
@@ -630,8 +639,16 @@ window.renderRuntimes = (rows, message) => {
    list.append(section);
   }
 };
+function renderAccountMenu() {
+  const label = document.querySelector('#logout span');
+  if (!label) return;
+  const key = selfHosted ? 'ui.unpair_server' : 'ui.sign_out';
+  label.setAttribute('data-i18n',key);
+  label.textContent = selfHosted ? "[[i18n:ui.unpair_server]]" : "[[i18n:ui.sign_out]]";
+}
 let currentProfileName = '';
 window.renderProfile = (name, fallback = false) => {
+  if (selfHosted) return;
   currentProfileName = fallback ? '' : (name || '');
   const button = document.querySelector('.header-login');
   if(fallback){button.setAttribute('data-i18n','ui.account');button.textContent='[[i18n:ui.account]]';button.removeAttribute('title');}
@@ -645,6 +662,9 @@ window.renderProfile = (name, fallback = false) => {
 window.renderSignedOut = () => {
   window.resetSessionList?.();
   currentProfileName = '';
+  selfHosted = false;
+  renderAccountMenu();
+  document.querySelector('#app-footer').hidden = false;
   window.resetAgentLogin?.();
   authorized = false;
   window.renderPairingAvailable?.(false);
@@ -943,8 +963,39 @@ function renderBillingRows(payload,loading){
   footer.append(status,retry);content.append(footer);
  }
 }
-window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);
-window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(payload,false);};
+window.renderBillingLoading = () => { if (!selfHosted) renderBillingRows(lastBillingPayload,true); };
+window.renderBilling = payload => {lastBillingPayload=payload;if(!selfHosted)renderBillingRows(payload,false);};
+// The Account tab of a paired self-hosted computer: where it is and how this Mac
+// recognizes it, using the billing card's rows.
+window.renderSelfHosted = status => {
+ if(!selfHosted)return;
+ const content=document.querySelector('#billing-content');content.replaceChildren();
+ content.setAttribute('aria-busy','false');
+ const planHeader=document.querySelector('.billing-card>.billing-plan');
+ if(planHeader)planHeader.hidden=true;
+ const row=(label,iconPath,value,className)=>{
+  const element=document.createElement('div');element.className=className||'billing-row';
+  const title=document.createElement('span');title.className='billing-field-label';
+  const icon=document.createElement('span');icon.className='billing-field-icon';icon.setAttribute('aria-hidden','true');
+  icon.innerHTML=`<svg viewBox="0 0 20 20">${iconPath}</svg>`;
+  const text=document.createElement('span');text.textContent=label;title.append(icon,text);
+  element.append(title,value);return element;
+ };
+ const field=text=>{const value=document.createElement('span');value.className='billing-value self-hosted-value';value.textContent=text||'—';if(text)value.title=text;return value;};
+ const badge=document.createElement('span');badge.className='billing-plan-badge';badge.textContent="[[i18n:ui.self_hosted]]";
+ content.append(row("[[i18n:ui.your_server]]",'<rect x="3" y="3" width="14" height="6" rx="1.5"/><rect x="3" y="11" width="14" height="6" rx="1.5"/><path d="M6 6h.01M6 14h.01"/>',badge,'billing-row billing-plan-row'));
+ if(!status||status.paired!==true){
+  const footer=document.createElement('div');footer.className='billing-footer';
+  const message=document.createElement('span');message.className='billing-status';message.textContent="[[i18n:ui.server_details_unavailable]]";
+  footer.append(message);content.append(footer);return;
+ }
+ const address=status.host?(String(status.host).includes(':')?`[${status.host}]`:status.host)+(status.port&&status.port!==22?`:${status.port}`:''):'';
+ content.append(
+  row("[[i18n:ui.server_address]]",'<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2.5 2.5 11.5 0 14M10 3c-2.5 2.5-2.5 11.5 0 14"/>',field(address)),
+  row("[[i18n:ui.machine_id]]",'<rect x="4" y="4" width="12" height="12" rx="2"/><path d="M7.5 8h5M7.5 12h3"/>',field(status.machine_id)),
+  row("[[i18n:ui.host_key]]",'<circle cx="7" cy="12" r="3"/><path d="m9 10 6-6m-2 2 2 2"/>',field(status.host_key_fingerprint))
+ );
+};
 
 let lastMetricsPayload = { ready: false };
 const METRIC_HISTORY_LEN = 24;

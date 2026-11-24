@@ -5,7 +5,8 @@ service is involved: your Mac connects to the server directly over SSH, pins
 its host key when you pair, and verifies its machine identity on every
 connection.
 
-The menu-bar app does not show self-hosted computers yet; pair with `fen`.
+Pair with `fen`. Once paired, the menu bar shows the server under Account and
+unpairs it from the account menu.
 
 ## Deploy
 

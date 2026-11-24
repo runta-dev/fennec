@@ -5,7 +5,11 @@ assert.equal((html.match(/class="[^"]*\blogin\b[^"]*"/g)||[]).length,1,'one logi
 const elements=new Map();
 function element(key){if(!elements.has(key))elements.set(key,{hidden:false,disabled:false,textContent:'',attributes:{},classList:{add(){},remove(){},toggle(){}},setAttribute(name,value){this.attributes[name]=value},removeAttribute(name){delete this.attributes[name]},replaceChildren(){}});return elements.get(key);}
 const actions=[];
-const context=vm.createContext({window:{renderAgents(){},renderBilling(){}},authorized:false,sessionListConnecting:true,visibleSessionCount:0,detectedAgents:[],routeResults:new Map(),takeoverAgents:new Set(),activeTakeoverAgents:new Set(),takeoverChanging:false,gatewayModels:[],localGatewayModels:new Map(),localGatewayPending:new Set(),nativeModelStates:new Map(),nativeAccountStates:new Map(),nativeAccountPending:new Set(),nativeModelRequests:new Map(),modelSaving:false,userMenu:{hidden:false},tab:x=>actions.push('tab:'+x),send:x=>actions.push(x),document:{createElement:()=>({textContent:"",classList:{toggle(){}}}),querySelector:element,querySelectorAll:()=>[element('.header-login')]}});
+const context=vm.createContext({window:{renderAgents(){},renderBilling(){}},authorized:false,selfHosted:false,sessionListConnecting:true,visibleSessionCount:0,detectedAgents:[],routeResults:new Map(),takeoverAgents:new Set(),activeTakeoverAgents:new Set(),takeoverChanging:false,gatewayModels:[],localGatewayModels:new Map(),localGatewayPending:new Set(),nativeModelStates:new Map(),nativeAccountStates:new Map(),nativeAccountPending:new Set(),nativeModelRequests:new Map(),modelSaving:false,userMenu:{hidden:false},tab:x=>actions.push('tab:'+x),send:x=>actions.push(x),document:{createElement:()=>({textContent:"",classList:{toggle(){}}}),querySelector:element,querySelectorAll:()=>[element('.header-login')]}});
+{
+ const start=source.indexOf('function renderAccountMenu()');const end=source.indexOf('\n}',start)+2;
+ vm.runInContext(source.slice(start,end),context);
+}
 for(const name of ['renderLogin','renderAuthorized','renderProfile','renderSignedOut']){
  const start=source.indexOf('window.'+name+' =');const end=source.indexOf('\n};',start)+3;
  vm.runInContext(source.slice(start,end),context);
@@ -28,6 +32,23 @@ assert.equal(element('#session-signin').hidden,false);
 assert.equal(element('#runtime-panel').hidden,true);
 assert.equal(element('.header-login').disabled,false);
 console.log('PASS single login entry, normal first-launch state and logout transitions');
+
+// A paired self-hosted computer is signed in without a Runta account: the header
+// names the server, the menu unpairs, and iPhone pairing (Runta only) is hidden.
+context.window.renderAuthorized(true);
+assert.equal(element('.header-login').attributes['data-i18n'],'ui.your_server');
+assert.equal(element('#logout span').attributes['data-i18n'],'ui.unpair_server');
+assert.equal(element('#app-footer').hidden,true);
+assert.equal(element('#session-signin').hidden,true);
+context.window.renderProfile('someone@example.com');
+assert.equal(element('.header-login').attributes['data-i18n'],'ui.your_server','a Runta profile must not replace the server label');
+context.window.renderSignedOut();
+assert.equal(element('#logout span').attributes['data-i18n'],'ui.sign_out');
+assert.equal(element('#app-footer').hidden,false);
+context.window.renderAuthorized();
+assert.equal(element('.header-login').attributes['data-i18n'],'ui.account');
+assert.equal(element('#app-footer').hidden,false);
+console.log('PASS self-hosted principal header, unpair menu and Runta-only entries');
 
 // Background rerenders must preserve the in-flight native login control state.
 const loginActions=[];

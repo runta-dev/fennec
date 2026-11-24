@@ -97,9 +97,13 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 	if json.Unmarshal(raw, &metrics) != nil {
 		return nil, false
 	}
-	metrics.MemoryMinMiB = runta.SharedRuntimeBaselineMemoryMiB
-	if metrics.MemoryMaxMiB == 0 {
-		metrics.MemoryMaxMiB = runta.SharedRuntimeMaxMemoryMiB
+	// A Runta computer has a known shape; a self-hosted one reports only what
+	// the terminal service measures.
+	if _, isRunta := principal.RuntaToken(); isRunta {
+		metrics.MemoryMinMiB = runta.SharedRuntimeBaselineMemoryMiB
+		if metrics.MemoryMaxMiB == 0 {
+			metrics.MemoryMaxMiB = runta.SharedRuntimeMaxMemoryMiB
+		}
 	}
 	s.metricsAPIMu.Lock()
 	needAPIRefresh := s.metricsRuntimeID != runtimeID || time.Since(s.metricsAPIAt) > 15*time.Second
