@@ -36,7 +36,7 @@ Cloud sessions can keep working around the clock while their cloud computer is r
 3. **Open your terminal** and launch that agent as usual—for example, `codex`.
 4. **Press Ctrl+C to detach.** Fennec prints the command for that specific session. Run it to return, or run `fen` to choose from your live sessions.
 
-Cloud execution needs a Runta account and model access configured for the agent. Cloud compute and model-provider charges are separate.
+Cloud execution needs a Runta account and model access configured for the agent. Cloud compute and model-provider charges are separate. To run on a server of your own instead, without a Runta account, see [Use your own server](#use-your-own-server).
 
 Cloud controls are currently available for **Claude Code, Codex, Pi, Kimi Code, Cursor CLI, Grok Build, and OpenCode**. Other discovered agents are shown as **Coming soon** at the end of the list. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
 
@@ -87,6 +87,49 @@ fen --help                  # See available commands
 ```
 
 Control commands return structured JSON, making them useful in scripts as well as your terminal.
+
+</details>
+
+## Use your own server
+
+Prefer to run the cloud computer yourself? Fennec can use any Linux server you control instead of a Runta cloud computer. No Runta account is needed: your Mac connects straight to the server over SSH and checks the server's identity on every connection.
+
+You need a Linux server (amd64 or arm64) with Docker, that you can already reach with `ssh`, and one port your Mac can connect to (a VPN or private network works).
+
+```sh
+fen cloud byoc deploy you@your-server
+```
+
+This uses your own SSH setup to start the Fennec cloud image (`docker.io/shiqimei/fennec-cloud:1`) on the server, reads the server's key back over that same connection, and pairs this Mac with it. Fennec then prepares the server, and your agents launch there exactly as they would on a Runta cloud computer. Use `--port` (default 2222) to pick the port, or `--address <host>[:<port>]` when your Mac reaches the server at a different address than SSH does.
+
+```sh
+fen cloud byoc status                  # Show the paired server
+fen cloud byoc unpair <machine-id>     # Stop using it
+```
+
+Once paired, the menu bar shows **Your server** with its address and identity. Account, billing and iPhone pairing need a Runta account and are hidden; signing in to Runta requires unpairing first. The server image gives agents `sudo` inside the container, so the container is the boundary: don't mount the Docker socket or host directories you don't want agents to change. Restarting the container ends running agents, like restarting a machine; their files stay on the volume.
+
+<details>
+<summary><strong>Deploy by hand</strong></summary>
+
+```sh
+fen cloud byoc key        # On your Mac: this Mac's key
+```
+
+```sh
+# On the server:
+docker run -d --name fennec-cloud --restart unless-stopped \
+  -p 2222:22 -v fennec-home:/home/fennec \
+  -e FENNEC_AUTHORIZED_KEY='<output of fen cloud byoc key>' \
+  docker.io/shiqimei/fennec-cloud:1
+docker logs fennec-cloud  # Shows the host key fingerprint
+```
+
+```sh
+fen cloud byoc pair your-server:2222 --fingerprint SHA256:...
+```
+
+Read the fingerprint over a connection you trust. More in [deploy/byoc/README.md](deploy/byoc/README.md).
 
 </details>
 

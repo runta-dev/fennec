@@ -64,7 +64,7 @@ Fennec 将编程代理的工作循环放到云电脑上运行，让它按你的�
 3. **打开终端**，像往常一样启动代理，例如运行 `codex`。
 4. **按 Ctrl+C 断开终端**。Fennec 会显示当前会话的重新连接命令。执行该命令即可回来，也可以运行 `fen` 从正在运行的会话中选择。
 
-云端执行需要 Runta 账户，以及为代理配置好的模型访问权限。**云计算费用与模型服务商费用分开计算。**
+云端执行需要 Runta 账户，以及为代理配置好的模型访问权限。**云计算费用与模型服务商费用分开计算。** 如果想改用自己的服务器、不使用 Runta 账户，请参阅[使用自己的服务器](#使用自己的服务器)。
 
 目前支持云端控制的代理包括 **Claude Code、Codex、Pi、Kimi Code、Cursor CLI、Grok Build 和 OpenCode**。其他已发现的代理会显示为 **Coming soon（即将支持）**。Fennec 会同步受支持的本地模型设置和凭据，无需本地与云端 CLI 使用完全相同的版本。
 
@@ -115,6 +115,49 @@ fen --help                  # 查看可用命令
 ```
 
 控制命令返回结构化 JSON，既适合在终端中使用，也方便接入脚本。
+
+</details>
+
+## 使用自己的服务器
+
+想自己运行云电脑？Fennec 可以使用你自己的任意 Linux 服务器，代替 Runta 云电脑。不需要 Runta 账户：你的 Mac 通过 SSH 直接连接服务器，并且每次连接都会核对服务器的身份。
+
+你需要一台装有 Docker 的 Linux 服务器（amd64 或 arm64），能用 `ssh` 登录，并且有一个 Mac 能连通的端口（通过 VPN 或内网也可以）。
+
+```sh
+fen cloud byoc deploy you@your-server
+```
+
+这条命令会用你自己的 SSH 配置，在服务器上启动 Fennec 云端镜像（`docker.io/shiqimei/fennec-cloud:1`），通过同一条 SSH 连接读回服务器的密钥，并把这台 Mac 和它配对。之后 Fennec 会自动准备服务器，你的代理会像在 Runta 云电脑上一样在那里启动。用 `--port` 指定端口（默认 2222）；如果 Mac 访问服务器的地址和 SSH 用的地址不同，用 `--address <host>[:<port>]` 指定。
+
+```sh
+fen cloud byoc status                  # 查看已配对的服务器
+fen cloud byoc unpair <machine-id>     # 不再使用它
+```
+
+配对后，菜单栏会显示 **你的服务器**，以及它的地址和身份信息。账户、账单和 iPhone 配对需要 Runta 账户，因此会被隐藏；要登录 Runta，需要先取消配对。服务器镜像在容器内给代理提供 `sudo`，所以隔离边界是容器本身：不要挂载 Docker socket，也不要挂载你不希望代理改动的主机目录。重启容器会结束正在运行的代理，就像重启一台机器；它们的文件仍保留在卷中。
+
+<details>
+<summary><strong>手动部署</strong></summary>
+
+```sh
+fen cloud byoc key        # 在 Mac 上：查看这台 Mac 的密钥
+```
+
+```sh
+# 在服务器上：
+docker run -d --name fennec-cloud --restart unless-stopped \
+  -p 2222:22 -v fennec-home:/home/fennec \
+  -e FENNEC_AUTHORIZED_KEY='<fen cloud byoc key 的输出>' \
+  docker.io/shiqimei/fennec-cloud:1
+docker logs fennec-cloud  # 显示主机密钥指纹
+```
+
+```sh
+fen cloud byoc pair your-server:2222 --fingerprint SHA256:...
+```
+
+请通过你信任的连接核对指纹。更多说明见 [deploy/byoc/README.md](../deploy/byoc/README.md)。
 
 </details>
 
