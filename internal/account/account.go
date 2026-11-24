@@ -52,8 +52,10 @@ type Manager struct {
 	cancel      context.CancelFunc
 	state       Snapshot
 	token       string
-	changed     chan struct{}
-	revision    uint64
+	// machine is the paired self-hosted computer while Status is StatusPaired.
+	machine  string
+	changed  chan struct{}
+	revision uint64
 
 	// forgetRejected also deletes a credential the server rejected (the
 	// iPhone), so it can't come back signed in at the next launch.
@@ -168,16 +170,19 @@ func (m *Manager) resetLocked(status string) (context.Context, uint64) {
 	m.cancel = cancel
 	m.state = Snapshot{Epoch: m.state.Epoch + 1, Status: status}
 	m.token = ""
+	m.machine = ""
 	m.notifyLocked()
 	return ctx, m.state.Epoch
 }
 
-// Session returns an account-scoped context, invalidated by logout or replacement.
-// Only daemon code may use the token; it must never enter a public response.
-func (m *Manager) Session() (context.Context, string, uint64, bool) {
+// Session returns the principal-scoped context, invalidated by logout, unpairing
+// or replacement, with the active principal and its epoch. Only daemon code may
+// use a principal's token; it must never enter a public response.
+func (m *Manager) Session() (context.Context, Principal, uint64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.session, m.token, m.state.Epoch, m.state.Status == "authorized" && m.token != ""
+	principal, ok := m.principalLocked()
+	return m.session, principal, m.state.Epoch, ok
 }
 func (m *Manager) Restore(ctx context.Context) error {
 	m.credentialsMu.Lock()

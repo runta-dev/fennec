@@ -200,7 +200,8 @@ func installUninstallControl(home, executable string, manager *account.Manager, 
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, fmt.Errorf("invalid uninstall options")
 		}
-		_, token, _, _ := manager.Session()
+		_, principal, _, _ := manager.Session()
+		token, _ := principal.RuntaToken()
 		plan, err := uninstallPreview(ctx, home, executable, request.DeleteCloud, token)
 		if err != nil {
 			return nil, err

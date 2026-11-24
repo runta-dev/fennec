@@ -47,7 +47,7 @@ func TestCloudRPCReceiptIsNotDeletionCompletion(t *testing.T) {
 	services.user = "owner"
 	services.epoch = epoch
 	services.config.RuntimeID = "original"
-	c := &controlplane.Controller{Account: manager, Additional: map[string]control.Handler{}, Prepare: func(context.Context, string, io.Writer) error { return nil }}
+	c := &controlplane.Controller{Account: manager, Additional: map[string]control.Handler{}, Prepare: func(context.Context, account.Principal, io.Writer) error { return nil }}
 	backend := &cloudBackendFixture{release: make(chan struct{}), entered: make(chan struct{})}
 	h := installCloudControl(services.home, services, c, func(string) cloudstate.Backend { return backend })
 	handlers := c.Handlers()

@@ -203,10 +203,16 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.startMagpieCredentialSync(ctx, epoch)
 	return nil
 }
-func (s *daemonServices) prepare(ctx context.Context, token string, output io.Writer) error {
+func (s *daemonServices) prepare(ctx context.Context, principal account.Principal, output io.Writer) error {
 	lifecycle, _, epoch, ok := s.account.Session()
 	if !ok {
 		return fmt.Errorf("login required")
+	}
+	// Only the Runta-managed cloud computer can be prepared so far; a paired
+	// self-hosted computer gets its own preparation backend.
+	token, isRunta := principal.RuntaToken()
+	if !isRunta {
+		return errSelfHostedUnavailable
 	}
 	if handled, err := s.reconfigureExisting(ctx, epoch, output); handled {
 		return err

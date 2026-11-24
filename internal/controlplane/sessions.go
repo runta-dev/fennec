@@ -41,7 +41,7 @@ func (c *Controller) sessionHandler(operation string) control.Handler {
 		if params.Address != "" && !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(params.Address) {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid terminal address"}
 		}
-		lifecycle, token, epoch, ok := c.Account.Session()
+		lifecycle, principal, epoch, ok := c.Account.Session()
 		if !ok {
 			return nil, &control.Fault{Code: "login_required", Message: "Sign in before accessing sessions"}
 		}
@@ -56,6 +56,6 @@ func (c *Controller) sessionHandler(operation string) control.Handler {
 		defer cancel()
 		stop := context.AfterFunc(lifecycle, cancel)
 		defer stop()
-		return c.Session(operationCtx, token, runtime.RuntimeID, operation, params)
+		return c.Session(operationCtx, principal, runtime.RuntimeID, operation, params)
 	}
 }

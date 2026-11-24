@@ -29,8 +29,8 @@ type Controller struct {
 	authActions        sync.Mutex
 	Account            *account.Manager
 	Connectivity       *connectivity.Monitor
-	Prepare            func(context.Context, string, io.Writer) error
-	Session            func(context.Context, string, string, string, SessionParams) (any, error)
+	Prepare            func(context.Context, account.Principal, io.Writer) error
+	Session            func(context.Context, account.Principal, string, string, SessionParams) (any, error)
 	mu                 sync.Mutex
 	runtime            RuntimeState
 	runtimeAgain       bool

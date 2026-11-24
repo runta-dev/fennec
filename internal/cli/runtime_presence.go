@@ -65,8 +65,14 @@ func (s *daemonServices) runRuntimePresence(ctx context.Context, epoch uint64) {
 			reset()
 			continue
 		}
-		lifecycle, token, current, ok := s.account.Session()
+		lifecycle, principal, current, ok := s.account.Session()
 		if !ok || current != epoch {
+			return
+		}
+		// Deletion is an authoritative Runta API answer; a self-hosted computer
+		// is never presumed deleted.
+		token, isRunta := principal.RuntaToken()
+		if !isRunta {
 			return
 		}
 		s.mu.Lock()

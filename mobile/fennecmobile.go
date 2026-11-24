@@ -163,7 +163,9 @@ func (a *Auth) CancelLogin() error {
 // (best effort: an offline phone is signed out all the same, and the key
 // expires on its own).
 func (a *Auth) Logout() error {
-	_, token, _, ok := a.manager.Session()
+	_, principal, _, signedIn := a.manager.Session()
+	token, ok := principal.RuntaToken()
+	ok = ok && signedIn
 	endpoint := a.manager.Endpoint()
 	if err := a.manager.Logout(context.Background()); err != nil {
 		return err
@@ -276,8 +278,9 @@ var errNoComputer = errors.New("no Fennec cloud computer yet; start an agent fro
 
 // runtimeClient returns a Runta API client for the signed-in account.
 func (s *Sessions) runtimeClient() (*runta.Client, string, uint64, error) {
-	_, token, epoch, ok := s.auth.manager.Session()
-	if !ok {
+	_, principal, epoch, ok := s.auth.manager.Session()
+	token, isRunta := principal.RuntaToken()
+	if !ok || !isRunta {
 		return nil, "", 0, errSignedOut
 	}
 	return &runta.Client{Endpoint: s.auth.manager.Endpoint(), Token: token}, token, epoch, nil

@@ -27,7 +27,7 @@ func TestPreparationRetriesConnectionLossWhileRoutingStaysOnline(t *testing.T) {
 	var calls atomic.Int64
 	controller := &Controller{
 		Account: manager, Connectivity: connectivity.NewMonitor(func() bool { return true }, time.Hour),
-		Prepare: func(context.Context, string, io.Writer) error {
+		Prepare: func(context.Context, account.Principal, io.Writer) error {
 			if calls.Add(1) == 1 {
 				return fmt.Errorf("shared SSH lost during readiness check: %w", io.EOF)
 			}
@@ -61,8 +61,8 @@ func TestPreparationSingleFlightAndLogoutCancellation(t *testing.T) {
 	}
 	entered, stopped := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(ctx context.Context, token string, w io.Writer) error {
-		if token != "private" {
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, principal account.Principal, w io.Writer) error {
+		if principal.Token != "private" || principal.Kind != account.PrincipalRunta {
 			t.Error("incorrect credential")
 		}
 		calls.Add(1)
@@ -116,7 +116,7 @@ func TestUninstallQuiesceDrainsPreparationAndPreventsRecreation(t *testing.T) {
 	}
 	entered, cancelled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ string, _ io.Writer) error {
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ account.Principal, _ io.Writer) error {
 		calls.Add(1)
 		close(entered)
 		<-ctx.Done()
@@ -149,8 +149,8 @@ func TestUninstallQuiesceDrainsPreparationAndPreventsRecreation(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatal("queued reconciliation escaped uninstall barrier")
 	}
-	_, token, _, ok := manager.Session()
-	if !ok || token != "fixture" {
+	_, principal, _, ok := manager.Session()
+	if !ok || principal.Token != "fixture" {
 		t.Fatal("recovery credentials deleted before cloud confirmation")
 	}
 }
@@ -159,7 +159,10 @@ func TestPersistentUninstallBlocksPreparationAfterDaemonRestart(t *testing.T) {
 	defer cancel()
 	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
 	_ = manager.Restore(ctx)
-	c := &Controller{Account: manager, PreparationBlocked: func() bool { return true }, Prepare: func(context.Context, string, io.Writer) error { t.Error("recreated runtime after restart"); return nil }}
+	c := &Controller{Account: manager, PreparationBlocked: func() bool { return true }, Prepare: func(context.Context, account.Principal, io.Writer) error {
+		t.Error("recreated runtime after restart")
+		return nil
+	}}
 	if _, err := c.ensureRuntime(ctx, nil); err == nil {
 		t.Fatal("persisted uninstall ignored")
 	}
@@ -182,7 +185,7 @@ func TestUnauthorizedPreparationOffersAccountLogin(t *testing.T) {
 	store := &testCredentials{token: "fixture"}
 	manager := account.New(ctx, store, "")
 	_ = manager.Restore(ctx)
-	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return &runta.APIError{Status: 401} }}
+	c := &Controller{Account: manager, Prepare: func(context.Context, account.Principal, io.Writer) error { return &runta.APIError{Status: 401} }}
 	if _, err := c.ensureRuntime(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +235,7 @@ func TestReconciliationGenerationsFenceQueuedConfiguration(t *testing.T) {
 	entered := make(chan int64, 3)
 	release := make(chan struct{}, 3)
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ string, w io.Writer) error {
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ account.Principal, w io.Writer) error {
 		n := calls.Add(1)
 		entered <- n
 		select {
@@ -311,7 +314,7 @@ func TestFailedPreparationKeepsGenerationAndRetryAdvances(t *testing.T) {
 	if err := manager.Restore(ctx); err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return io.ErrUnexpectedEOF }}
+	c := &Controller{Account: manager, Prepare: func(context.Context, account.Principal, io.Writer) error { return io.ErrUnexpectedEOF }}
 	if _, err := c.ensureRuntime(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +364,7 @@ func TestCloudQuiesceDrainsAndKeepsLocalControlsAvailable(t *testing.T) {
 	_, _, epoch, _ := manager.Session()
 	entered, released := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ string, _ io.Writer) error {
+	c := &Controller{Account: manager, Prepare: func(ctx context.Context, _ account.Principal, _ io.Writer) error {
 		calls.Add(1)
 		close(entered)
 		<-ctx.Done()
@@ -456,7 +459,7 @@ func TestIntentionalCloudDeletionRestoresWithoutPreparationError(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { calls.Add(1); return cloudstate.ErrDisabled }}
+	c := &Controller{Account: manager, Prepare: func(context.Context, account.Principal, io.Writer) error { calls.Add(1); return cloudstate.ErrDisabled }}
 	if _, err := c.ensureRuntime(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +501,7 @@ func TestOfflinePausesPreparationAndReconnectRecoversAutomatically(t *testing.T)
 	c := &Controller{
 		Account:      manager,
 		Connectivity: network,
-		Prepare: func(ctx context.Context, _ string, w io.Writer) error {
+		Prepare: func(ctx context.Context, _ account.Principal, w io.Writer) error {
 			n := calls.Add(1)
 			entered <- n
 			select {
@@ -596,7 +599,7 @@ func TestReplaceDeletedRuntimePreparesReplacementAfterTeardown(t *testing.T) {
 	}
 	_, _, epoch, _ := manager.Session()
 	var calls atomic.Int64
-	c := &Controller{Account: manager, Prepare: func(_ context.Context, _ string, w io.Writer) error {
+	c := &Controller{Account: manager, Prepare: func(_ context.Context, _ account.Principal, w io.Writer) error {
 		id := "old"
 		if calls.Add(1) > 1 {
 			id = "new"
@@ -655,7 +658,7 @@ func TestReplaceDeletedRuntimeRespectsFennecDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, epoch, _ := manager.Session()
-	c := &Controller{Account: manager, Prepare: func(context.Context, string, io.Writer) error { return nil }}
+	c := &Controller{Account: manager, Prepare: func(context.Context, account.Principal, io.Writer) error { return nil }}
 	c.runtime = RuntimeState{Epoch: epoch, Stage: "disabled", RuntimeID: "old"}
 	c.cloudPaused, c.cloudPausedEpoch = true, epoch
 	if err := c.ReplaceDeletedRuntime(ctx, epoch, "old", func(context.Context) error {

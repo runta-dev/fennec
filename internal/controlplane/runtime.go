@@ -51,7 +51,7 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.runtime.Epoch != account.Epoch {
-		if account.Status == "authorized" && !online {
+		if account.Active() && !online {
 			return RuntimeState{Epoch: account.Epoch, Offline: true, Stage: "offline"}
 		}
 		return RuntimeState{Epoch: account.Epoch, Stage: "idle"}
@@ -66,7 +66,7 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 		}
 		result.Events[kind] = copy
 	}
-	if !online && account.Status == "authorized" && result.Stage != "disabled" {
+	if !online && account.Active() && result.Stage != "disabled" {
 		result.Offline = true
 		result.Stage = "offline"
 		result.Error = ""
@@ -75,7 +75,7 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 	return result
 }
 func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, error) {
-	lifecycle, token, epoch, ok := c.Account.Session()
+	lifecycle, principal, epoch, ok := c.Account.Session()
 	if !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in before preparing a runtime"}
 	}
@@ -145,9 +145,9 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 				c.runtime.RuntimeID = id
 			}
 		}}
-		err := c.Prepare(ctx, token, writer)
+		err := c.Prepare(ctx, principal, writer)
 		var api *runta.APIError
-		if errors.As(err, &api) && api.Status == 401 {
+		if token, isRunta := principal.RuntaToken(); isRunta && errors.As(err, &api) && api.Status == 401 {
 			c.Account.RejectCredential(token, epoch)
 		}
 		nowOnline := c.Connectivity == nil || c.Connectivity.Refresh()
@@ -297,7 +297,7 @@ func (c *Controller) Start(ctx context.Context) {
 			account := c.Account.Snapshot()
 			var retryTimer <-chan time.Time
 			var stopTimer func() bool
-			if account.Status != "authorized" {
+			if !account.Active() {
 				lastEpoch = account.Epoch
 				wasOnline = online
 				retryDelay = 2 * time.Second
@@ -354,7 +354,7 @@ func (c *Controller) Start(ctx context.Context) {
 			if stopTimer != nil {
 				stopTimer()
 			}
-			if triggeredByTimer && (c.Connectivity == nil || c.Connectivity.Online()) && c.Account.Snapshot().Status == "authorized" && c.Prepare != nil {
+			if triggeredByTimer && (c.Connectivity == nil || c.Connectivity.Online()) && c.Account.Snapshot().Active() && c.Prepare != nil {
 				_, _ = c.ensureRuntime(ctx, nil)
 			}
 		}

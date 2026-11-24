@@ -15,9 +15,9 @@ func TestSessionCannotSubstituteAccountOrRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	called := false
-	c := &Controller{Account: manager, Session: func(_ context.Context, token, runtimeID, operation string, params SessionParams) (any, error) {
+	c := &Controller{Account: manager, Session: func(_ context.Context, principal account.Principal, runtimeID, operation string, params SessionParams) (any, error) {
 		called = true
-		if token != "private" || runtimeID != "owned" || operation != "list" {
+		if principal.Token != "private" || runtimeID != "owned" || operation != "list" {
 			t.Error("incorrect authoritative context")
 		}
 		return []any{}, nil

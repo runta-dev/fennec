@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/account"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
@@ -11,7 +12,7 @@ import (
 	"path/filepath"
 )
 
-func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, operation string, params controlplane.SessionParams) (any, error) {
+func (s *daemonServices) session(ctx context.Context, _ account.Principal, runtimeID, operation string, params controlplane.SessionParams) (any, error) {
 	s.mu.Lock()
 	channel := s.channel
 	config := s.config

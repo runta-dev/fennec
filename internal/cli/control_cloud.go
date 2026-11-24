@@ -57,9 +57,15 @@ func installCloudControl(home string, s *daemonServices, c *controlplane.Control
 	return h
 }
 func (h *cloudControl) session() (context.Context, cloudstate.Backend, uint64, error) {
-	lifecycle, token, epoch, ok := h.controller.Account.Session()
+	lifecycle, principal, epoch, ok := h.controller.Account.Session()
 	if !ok {
 		return nil, nil, 0, &control.Fault{Code: "login_required", Message: "Sign in to manage your cloud computer"}
+	}
+	// Creating and deleting the computer is Runta-managed; a self-hosted
+	// computer's lifecycle belongs to its owner.
+	token, isRunta := principal.RuntaToken()
+	if !isRunta {
+		return nil, nil, 0, &control.Fault{Code: "runta_account_required", Message: "Your own server manages this cloud computer"}
 	}
 	return lifecycle, h.backend(token), epoch, nil
 }

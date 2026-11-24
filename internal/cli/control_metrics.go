@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/account"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/runta"
@@ -54,7 +55,7 @@ func (s *daemonServices) runMetricsCollector(ctx context.Context, epoch uint64) 
 			if s.network != nil && !s.network.Online() {
 				continue
 			}
-			_, token, curEpoch, ok := s.account.Session()
+			_, principal, curEpoch, ok := s.account.Session()
 			if !ok || curEpoch != epoch {
 				return
 			}
@@ -81,13 +82,13 @@ func (s *daemonServices) runMetricsCollector(ctx context.Context, epoch uint64) 
 				idleTicks = 0
 			}
 			opCtx, cancel := context.WithTimeout(ctx, 2500*time.Millisecond)
-			_, _ = s.fetchMetricsFromTransport(opCtx, transport, token, runtimeID)
+			_, _ = s.fetchMetricsFromTransport(opCtx, transport, principal, runtimeID)
 			cancel()
 		}
 	}
 }
 
-func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transport *terminalstream.Transport, token, runtimeID string) (map[string]any, bool) {
+func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transport *terminalstream.Transport, principal account.Principal, runtimeID string) (map[string]any, bool) {
 	raw, err := transport.Operate(opCtx, r.LocalOperation{Kind: "system_metrics"})
 	if err != nil {
 		return nil, false
@@ -103,7 +104,9 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 	s.metricsAPIMu.Lock()
 	needAPIRefresh := s.metricsRuntimeID != runtimeID || time.Since(s.metricsAPIAt) > 15*time.Second
 	s.metricsAPIMu.Unlock()
-	if needAPIRefresh {
+	// Resource requests and limits come from the Runta API; a self-hosted
+	// computer reports only what the terminal service measures.
+	if token, isRunta := principal.RuntaToken(); needAPIRefresh && isRunta {
 		apiCtx, apiCancel := context.WithTimeout(opCtx, 1500*time.Millisecond)
 		rt, apiErr := runta.NewClient(s.home, token).Get(apiCtx, runtimeID)
 		apiCancel()
@@ -171,7 +174,7 @@ func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transp
 }
 
 func (s *daemonServices) runtimeMetrics(ctx context.Context, _ json.RawMessage, controller *controlplane.Controller) (any, error) {
-	lifecycle, token, epoch, ok := s.account.Session()
+	lifecycle, principal, epoch, ok := s.account.Session()
 	if !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in to Runta first"}
 	}
@@ -210,7 +213,7 @@ func (s *daemonServices) runtimeMetrics(ctx context.Context, _ json.RawMessage, 
 				}
 			}
 		}
-		if runtimeID == "" && status != "connecting" && status != "offline" {
+		if token, isRunta := principal.RuntaToken(); isRunta && runtimeID == "" && status != "connecting" && status != "offline" {
 			queryCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 			defer cancel()
 			client := runta.NewClient(s.home, token)
@@ -244,7 +247,7 @@ func (s *daemonServices) runtimeMetrics(ctx context.Context, _ json.RawMessage, 
 	if err != nil || transport == nil || !transport.Supports("system_metrics") {
 		return notReady(), nil
 	}
-	if out, ok := s.fetchMetricsFromTransport(opCtx, transport, token, runtimeID); ok {
+	if out, ok := s.fetchMetricsFromTransport(opCtx, transport, principal, runtimeID); ok {
 		return out, nil
 	}
 	return notReady(), nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/account"
 	"fennec/internal/connectivity"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
@@ -197,7 +198,7 @@ func TestOfflineSessionServicePreservesSessionsAndSkipsRetries(t *testing.T) {
 		brokerReady: true,
 		config:      brokerConfiguration{RuntimeID: runtimeID},
 	}
-	result, err := daemon.session(ctx, "tok", runtimeID, "refresh", controlplane.SessionParams{})
+	result, err := daemon.session(ctx, account.Principal{Kind: account.PrincipalRunta, Token: "tok"}, runtimeID, "refresh", controlplane.SessionParams{})
 	if err != nil {
 		t.Fatalf("offline sessions.refresh returned error: %v", err)
 	}
