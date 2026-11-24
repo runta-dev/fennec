@@ -2947,10 +2947,21 @@
       "sample_records": 192,
       "server_location_at_capture": "unknown unless explicitly recorded",
       "sha256": "afa8bd5d7388601bc09bc1efd6b6fecbc15b1122df8e4a3d04b9438e7280a1f3"
+    },
+    "2026-11-24-byoc-singapore-vps.json": {
+      "client_origin": "Mac on a home LAN reaching a private WireGuard address; geography and carrier unknown",
+      "server_location_at_capture": "GCP runta-integration asia-southeast1-b, n2-standard-8 (live metadata)",
+      "boundary": "client-to-guest over WireGuard to a Docker-published SSH port; see the artifact boundaries",
+      "recorded_metadata": {
+        "started_utc": "2026-11-24T15:19:23Z",
+        "source": "611e82a",
+        "image": "docker.io/shiqimei/fennec-cloud:1.1.0"
+      },
+      "sha256": "169bcd587405d54f1ce44eb37201b00546f72dc0ea760da22befbbf449debf21"
     }
   },
   "purpose": "Retrospective per-artifact provenance catalog; missing historical facts remain unknown, not reconstructed from current settings",
   "recorded_utc": "2026-11-16T12:04:23Z",
   "schema_version": 1,
-  "updated_utc": "2026-11-16T14:03:18.712388122Z"
+  "updated_utc": "2026-11-24T15:22:48Z"
 }
