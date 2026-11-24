@@ -136,7 +136,7 @@ func TestImage(t *testing.T) {
 	}
 	defer client.Close()
 
-	t.Run("unprivileged user and protected state", func(t *testing.T) {
+	t.Run("user, sudo and protected state", func(t *testing.T) {
 		if out, err := run(t, client, "id -un; id -u"); err != nil || out != "fennec\n1000" {
 			t.Fatalf("unexpected user %q (%v)", out, err)
 		}
@@ -144,7 +144,6 @@ func TestImage(t *testing.T) {
 			"cat ~/.fennec-host/ssh_host_ed25519_key",
 			"echo forged > ~/.config/fennec-cloud/identity.json",
 			"echo forged >> /etc/ssh/fennec_authorized_keys",
-			"command -v sudo",
 		} {
 			if out, err := run(t, client, command); err == nil {
 				t.Fatalf("%q succeeded: %q", command, out)
@@ -153,16 +152,29 @@ func TestImage(t *testing.T) {
 		if _, err := run(t, client, "touch ~/writable && rm ~/writable"); err != nil {
 			t.Fatal("home is not writable")
 		}
+		// Agents may administer the container; it is the isolation boundary.
+		if out, err := run(t, client, "sudo -n id -u"); err != nil || out != "0" {
+			t.Fatalf("passwordless sudo unavailable: %q (%v)", out, err)
+		}
 	})
 
 	t.Run("bootstrap tools", func(t *testing.T) {
-		for _, tool := range []string{"sh", "bash", "curl", "tar", "gzip", "sha256sum", "base64", "flock", "setsid", "timeout", "mktemp", "git", "ps", "uname"} {
+		for _, tool := range []string{
+			"sh", "bash", "curl", "tar", "gzip", "sha256sum", "base64", "flock", "setsid", "timeout", "mktemp", "ps", "uname",
+			"git", "git-lfs", "rg", "fd", "jq", "python3", "pip3", "make", "gcc", "g++", "pkg-config", "wget", "rsync", "ssh", "zip", "unzip", "tmux", "sudo",
+		} {
 			if _, err := run(t, client, "command -v "+tool); err != nil {
 				t.Errorf("missing %s", tool)
 			}
 		}
 		if out, _ := run(t, client, `printf '%s' "$LANG"`); out != "C.UTF-8" {
 			t.Errorf("LANG is %q", out)
+		}
+		if _, err := run(t, client, "python3 -m venv /tmp/venv-check && /tmp/venv-check/bin/python -c 'import ssl'"); err != nil {
+			t.Error("python3 venv with ssl unavailable")
+		}
+		if _, err := run(t, client, "printf 'int main(void){return 0;}' > /tmp/c.c && gcc /tmp/c.c -o /tmp/c && /tmp/c"); err != nil {
+			t.Error("C toolchain unavailable")
 		}
 	})
 
