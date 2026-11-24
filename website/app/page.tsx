@@ -66,10 +66,12 @@ export default function Home() {
             <li><span>2</span><div><h3>Choose your agent.</h3><p>Select Cloud computer. Use supported credentials from your existing model account; Magpie is optional for model routing.</p></div></li>
             <li><span>3</span><div><h3>Start from your terminal.</h3><p>Run your usual agent command, such as <code>codex</code>. Have the agent prepare the project in the cloud before you step away.</p></div></li>
           </ol>
-          <div className="setup-costs"><h3>What you need. What you pay for.</h3><p>Fennec is in developer preview. A Runta account and supported model access are required.</p><dl><div><dt>Cloud compute</dt><dd>Billed through your Runta account.</dd></div><div><dt>Model usage</dt><dd>Covered by your model provider’s plan or usage billing, separately from cloud compute.</dd></div></dl><p className="costs-note">Downloading the macOS companion does not include cloud compute or model usage.</p><a className="text-link" href={repo + '#get-started'}>Read the setup guide <ArrowUpRight size={15}/></a></div>
+          <div className="setup-costs"><h3>What you need. What you pay for.</h3><p>Fennec is in developer preview. A Runta account and supported model access are required, or <a href="/self-hosted/">your own server</a> in place of the Runta account.</p><dl><div><dt>Cloud compute</dt><dd>Billed through your Runta account, or by your own server provider.</dd></div><div><dt>Model usage</dt><dd>Covered by your model provider’s plan or usage billing, separately from cloud compute.</dd></div></dl><p className="costs-note">Downloading the macOS companion does not include cloud compute or model usage.</p><a className="text-link" href={repo + '#get-started'}>Read the setup guide <ArrowUpRight size={15}/></a></div>
         </div>
         <div className="setup-actions"><Start/><a className="text-link" href={repo + '/releases?q=v0.&expanded=true'}>Release notes <ArrowUpRight size={15}/></a></div>
       </section>
+
+      <aside className="computer-use-aside"><div><strong>Prefer to run the cloud computer yourself?</strong><p>Pair Fennec with a Linux server you control, in one command. No Runta account needed.</p></div><a className="text-link" href="/self-hosted/">Use your own server <ArrowUpRight size={15}/></a></aside>
 
       <aside className="computer-use-aside"><div><strong>Need your agent to operate Mac apps and web pages?</strong><p>Fennec Computer Use is a separate app. Use it on its own or alongside Fennec.</p></div><a className="text-link" href="/computer-use/">Explore Computer Use <ArrowUpRight size={15}/></a></aside>
 
@@ -81,6 +83,7 @@ export default function Home() {
         ['Can I bring an existing conversation?', 'Yes, using your agent’s supported resume command. Fennec brings the local conversation history into the cloud session so you can continue there.'],
         ['Can I keep my terminal tools and shortcuts?', 'Yes. Keep tmux, cmux, Herdr, and your terminal workflow. Fennec supports clipboard image paste in supported cloud agent terminals, input prediction for supported terminal input, and approved cmux hooks for cloud Codex sessions.'],
         ['Does this preview run a real agent?', 'No. The app preview uses browser-only sample data and prerecorded terminal output. It does not connect to your computer or send tasks to an AI service.'],
+        ['Can I use my own server?', 'Yes. Fennec can pair with a Linux server you run with Docker instead of a Runta cloud computer, with no Runta account. Your Mac connects to it directly over SSH. See Use your own server.'],
         ['Are cloud and model usage included?', 'No. Cloud compute is billed through your Runta account, and model usage depends on your provider’s plan or usage billing. They are separate from the macOS companion.'],
       ].map(([q, a]) => <details key={q}><summary>{q}<span className="faq-plus" aria-hidden="true">+</span></summary><p>{a}</p></details>)}</div></section>
 
