@@ -1,17 +1,35 @@
 name: BYOC image
 # Builds the self-hosted cloud image, verifies it with Fennec's real client
-# code, and publishes it to Docker Hub only for byoc-v* tags. Publishing needs the
+# code (image tests, then the end-to-end flow with a daemon built from this
+# commit, without agent credentials), and publishes it to Docker Hub only for
+# byoc-v* tags. Publishing needs the
 # DOCKERHUB_USERNAME variable and DOCKERHUB_TOKEN secret (a Docker Hub access
 # token with read and write scope).
 on:
   push:
     tags: ['byoc-v*']
+    branches: [main]
+    paths:
+      # The end-to-end test exercises the daemon, broker, preparation and
+      # terminal service as well as the image.
+      - deploy/byoc/**
+      - cmd/fennec-cloud/**
+      - cmd/fennec-terminal/**
+      - internal/**
+      - main.go
+      - go.mod
+      - go.sum
+      - .dockerignore
+      - .github/workflows/byoc-image.yml
   pull_request:
     paths:
       - deploy/byoc/**
       - cmd/fennec-cloud/**
-      - internal/cloudimage/**
-      - internal/byoc/**
+      - cmd/fennec-terminal/**
+      - internal/**
+      - main.go
+      - go.mod
+      - go.sum
       - .dockerignore
       - .github/workflows/byoc-image.yml
   workflow_dispatch:
@@ -43,6 +61,11 @@ jobs:
           FENNEC_BYOC_IMAGE: fennec-cloud:verify
           FENNEC_BYOC_BOOTSTRAP: '1'
         run: go test -count=1 -v ./deploy/byoc
+      - name: End to end without agent credentials
+        env:
+          FENNEC_BYOC_E2E: '1'
+          FENNEC_BYOC_IMAGE: fennec-cloud:verify
+        run: go test -count=1 -timeout=20m -v -run '^TestEndToEnd$' ./deploy/byoc
 
   publish:
     needs: verify
