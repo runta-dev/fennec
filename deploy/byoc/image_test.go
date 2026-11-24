@@ -302,3 +302,75 @@ func bootstrap(ctx context.Context, t *testing.T, client *ssh.Client) {
 		}
 	}
 }
+
+// TestDeployScript runs the script `fen cloud byoc deploy` sends over SSH,
+// here with the local shell and Docker, then pairs with the host key it
+// prints. Running it again reuses the container and returns the same key.
+func TestDeployScript(t *testing.T) {
+	image := os.Getenv("FENNEC_BYOC_IMAGE")
+	if image == "" {
+		t.Skip("set FENNEC_BYOC_IMAGE to test the deployment script")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	home := t.TempDir()
+	device, err := byoc.DeviceKey(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	deployment := byoc.Deployment{Image: image, Container: randomName("fennec-byoc-test-"), Volume: randomName("fennec-byoc-test-"), Port: port, DeviceKey: byoc.AuthorizedKey(device)}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", deployment.Container).Run()
+		_ = exec.Command("docker", "volume", "rm", "-f", deployment.Volume).Run()
+	})
+	script, err := deployment.Script()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deploy := func() string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		command := exec.CommandContext(ctx, "sh", "-s")
+		command.Stdin, command.Stdout, command.Stderr = strings.NewReader(script), &stdout, &stderr
+		if err := command.Run(); err != nil {
+			t.Fatalf("deployment script: %v\n%s", err, stderr.String())
+		}
+		hostKey, err := byoc.ParseDeployOutput(stdout.String())
+		if err != nil {
+			t.Fatalf("%v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		}
+		return hostKey
+	}
+	hostKey := deploy()
+	if again := deploy(); again != hostKey {
+		t.Fatalf("redeploying changed the host key: %s -> %s", hostKey, again)
+	}
+	endpoint := byoc.Endpoint{Host: "127.0.0.1", Port: port, User: byoc.DefaultUser}
+	var pairing byoc.Pairing
+	var client *ssh.Client
+	for attempt := 0; ; attempt++ {
+		pairing, client, err = byoc.Discover(ctx, home, endpoint, hostKey)
+		if err == nil || attempt == 20 {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+	machine := docker(t, "exec", deployment.Container, "fennec-cloud", "identity")
+	if pairing.MachineID != machine {
+		t.Fatalf("paired machine %s, container reports %s", pairing.MachineID, machine)
+	}
+	devices := docker(t, "exec", deployment.Container, "fennec-cloud", "devices")
+	if strings.Count(devices, ssh.FingerprintSHA256(device.PublicKey())) != 1 {
+		t.Fatalf("device authorized %d times:\n%s", strings.Count(devices, ssh.FingerprintSHA256(device.PublicKey())), devices)
+	}
+}

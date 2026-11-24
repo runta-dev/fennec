@@ -13,6 +13,7 @@ import (
 const byocUsage = `usage: fen cloud byoc status
        fen cloud byoc key
        fen cloud byoc pair <host>[:<port>] --fingerprint <SHA256:...> [--user <name>]
+       fen cloud byoc deploy <[user@]server> [--port 2222] [--image <ref>] [--name <container>] [--volume <volume>] [--address <host>[:<port>]]
        fen cloud byoc unpair [<machine-id>]`
 
 // byocCommand pairs this Mac with a self-hosted cloud computer. The host key
@@ -33,6 +34,8 @@ func byocCommand(ctx context.Context, client cloudCaller, args []string, output 
 		return call("byoc.status", nil)
 	case args[0] == "key" && len(args) == 1:
 		return call("byoc.key", nil)
+	case args[0] == "deploy":
+		return byocDeployCommand(ctx, client, args[1:], output)
 	case args[0] == "pair":
 		request, err := parseBYOCPair(args[1:])
 		if err != nil {

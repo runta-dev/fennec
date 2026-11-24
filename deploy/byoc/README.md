@@ -8,7 +8,22 @@ connection.
 Pair with `fen`. Once paired, the menu bar shows the server under Account and
 unpairs it from the account menu.
 
-## Deploy
+## Deploy with one command
+
+If you can already `ssh` to the server and it has Docker:
+
+```sh
+fen cloud byoc deploy you@your-server
+```
+
+This uses your own SSH configuration to start the image on the server (port
+2222 by default), reads the computer's host key back over that SSH connection,
+and pairs with it. Options: `--port`, `--image`, `--name`, `--volume`, and
+`--address <host>[:<port>]` when the Mac reaches the server at a different
+address than SSH does (for example through a VPN instead of a jump host).
+Docker runs as your SSH user, or through `sudo` when that needs no password.
+
+## Deploy manually
 
 On your Mac, print this Mac's device key:
 
