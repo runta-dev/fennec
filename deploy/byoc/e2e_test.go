@@ -330,8 +330,37 @@ func TestEndToEnd(t *testing.T) {
 	h.must("takeover", "codex", "on")
 
 	t.Run("sessions stay available while the computer is prepared again", func(t *testing.T) {
-		// Enabling an agent may already have started a re-preparation; either
-		// way one is running while the checks below are made.
+		// Hold preparation open deterministically with the product's own lock:
+		// with codex missing, re-preparation falls back to full preparation,
+		// whose installer waits on install-locks/codex.lock (flock -w 180)
+		// until this test releases it.
+		h.waitReady(5 * time.Minute)
+		lock := `"$HOME/.local/fennec/install-locks/codex.lock"`
+		inContainer := func(script string) error {
+			return exec.Command("docker", "exec", "-u", "fennec", c.name, "sh", "-c", script).Run()
+		}
+		if err := inContainer(`rm -f "$HOME/.local/fennec/agents/bin/codex" "$HOME/.local/bin/codex"`); err != nil {
+			t.Fatal(err)
+		}
+		// -o: only this flock process holds the lock, so killing it releases it.
+		if err := exec.Command("docker", "exec", "-d", "-u", "fennec", c.name, "sh", "-c", "exec flock -o "+lock+" sleep 600").Run(); err != nil {
+			t.Fatal(err)
+		}
+		released := false
+		release := func() {
+			if !released {
+				released = true
+				_ = exec.Command("docker", "exec", c.name, "pkill", "-f", "codex.lock sleep 600").Run()
+			}
+		}
+		defer release()
+		for i := 0; inContainer("flock -n "+lock+" true") == nil; i++ {
+			if i > 50 {
+				t.Fatal("the test could not take the installation lock")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
 		if err := h.control("runtime.retry", nil, nil); err != nil && !strings.Contains(err.Error(), "already running") {
 			t.Fatal(err)
 		}
@@ -339,17 +368,38 @@ func TestEndToEnd(t *testing.T) {
 			Stage     string `json:"stage"`
 			RuntimeID string `json:"runtime_id"`
 		}
-		if err := h.control("runtime.status", nil, &runtime); err != nil {
-			t.Fatal(err)
+		held := time.Now()
+		// Stay inside the window for several seconds: preparation cannot end
+		// while the lock is held, so every check below runs during it.
+		for time.Since(held) < 5*time.Second {
+			if err := h.control("runtime.status", nil, &runtime); err != nil {
+				t.Fatal(err)
+			}
+			if runtime.Stage != "preparing" || runtime.RuntimeID != machine {
+				t.Fatalf("expected the same computer in preparation, got %+v", runtime)
+			}
+			if err := h.control("sessions.list", nil, nil); err != nil {
+				t.Fatalf("sessions.list refused during re-preparation: %v", err)
+			}
+			if err := h.control("sessions.refresh", nil, nil); err != nil {
+				t.Fatalf("sessions.refresh refused during re-preparation: %v", err)
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		t.Logf("runtime during re-preparation: %+v", runtime)
-		if runtime.RuntimeID != machine {
-			t.Fatalf("re-preparation dropped the computer: %+v", runtime)
+		if codexAuth == "" {
+			// The broker answers during preparation; without credentials it
+			// refuses before starting anything.
+			if _, err := h.fen("launch", "codex"); err == nil || !strings.Contains(err.Error(), "was not started") || strings.Contains(err.Error(), "not ready yet") {
+				t.Fatalf("launch during re-preparation did not reach the broker: %v", err)
+			}
 		}
-		if err := h.control("sessions.list", nil, nil); err != nil {
-			t.Fatalf("sessions refused during re-preparation: %v", err)
-		}
+		t.Logf("held preparation open for %s; stage %q, computer kept", time.Since(held).Round(100*time.Millisecond), runtime.Stage)
+
+		release()
 		h.waitReady(5 * time.Minute)
+		if err := inContainer(`test -x "$HOME/.local/fennec/agents/bin/codex" && test -e "$HOME/.local/bin/codex"`); err != nil {
+			t.Fatal("preparation did not reinstall codex after the lock was released")
+		}
 	})
 
 	if codexAuth == "" {
