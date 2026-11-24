@@ -118,9 +118,18 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 	if c.runtime.Epoch != epoch {
 		c.runtimeAgain = false
 	}
+	// A repeated preparation in the same epoch keeps the computer it last
+	// confirmed: its broker and resident channel stay usable while preparation
+	// reconciles, so session operations must not be refused meanwhile. A
+	// different computer replaces the ID through its runtime_id events, and
+	// ReplaceDeletedRuntime clears it explicitly.
+	previousID := ""
+	if c.runtime.Epoch == epoch {
+		previousID = c.runtime.RuntimeID
+	}
 	c.runtimeGeneration++
 	c.runtimeRetry = false
-	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
+	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", RuntimeID: previousID, Events: map[string]map[string]string{}}
 	ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 	done := make(chan struct{})
 	c.runtimeCancel = cancel

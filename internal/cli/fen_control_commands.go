@@ -275,11 +275,10 @@ func fenControlCommand(arguments []string, output io.Writer) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	err = callControl([]string{method}, bytes.NewReader(data), output)
-	if err != nil && method == "sessions.launch" {
-		return true, fmt.Errorf("launch %s not confirmed; inspect this request before retrying: %w", params["session_id"], err)
+	if method == "sessions.launch" {
+		return true, launchWhenReady(func() error { return callControl([]string{method}, bytes.NewReader(data), output) }, params["session_id"], time.Now().Add(launchReadyWait), time.Sleep)
 	}
-	return true, err
+	return true, callControl([]string{method}, bytes.NewReader(data), output)
 }
 
 const fenControlHelp = `Fennec — one daemon, UI and CLI clients
