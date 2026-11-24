@@ -18,6 +18,17 @@ func (s Store) RecordSync(seen map[string]uint64) error {
 func (s Store) RecordImageSync(seen map[string]uint64, pending bool) error {
 	return writeJSON(filepath.Join(s.root(), "sync-status.json"), SyncReport{Seen: seen, At: s.now(), PendingImages: pending})
 }
+
+// SyncedAt is when the Mac replica last completed a sync with the cloud board;
+// zero on the cloud (it is the source) or before the first sync.
+func (s Store) SyncedAt() time.Time {
+	var report SyncReport
+	if s.Role == "cloud" || readJSON(filepath.Join(s.root(), "sync-status.json"), &report) != nil {
+		return time.Time{}
+	}
+	return report.At
+}
+
 func (s Store) SyncStatus() string {
 	if s.Role == "cloud" {
 		return "synced"

@@ -301,7 +301,7 @@ pub fn status_pill(status: &str) -> Div {
             gpui::transparent_black(),
             c("f_field"),
         ),
-        "needs_you" | "you" => (
+        "needs_you" | "you" | "stalled" => (
             crate::i18n::t("needs_you"),
             c("accent_text"),
             c("tint"),

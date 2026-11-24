@@ -60,14 +60,19 @@ func (s Store) Handler() http.Handler {
 		projects, err := s.Projects()
 		type row struct {
 			Project
-			SyncStatus string `json:"sync_status"`
-			Open       int    `json:"open"`
-			NeedsYou   int    `json:"needs_you"`
+			SyncStatus string     `json:"sync_status"`
+			SyncedAt   *time.Time `json:"synced_at,omitempty"`
+			Open       int        `json:"open"`
+			NeedsYou   int        `json:"needs_you"`
 		}
 		rows := []row{}
+		status, synced := s.SyncStatus(), s.SyncedAt()
 		for _, p := range projects {
 			list, _ := s.Requests(p.ID)
-			item := row{Project: p, SyncStatus: s.SyncStatus()}
+			item := row{Project: p, SyncStatus: status}
+			if !synced.IsZero() {
+				item.SyncedAt = &synced
+			}
 			for _, sum := range list {
 				if sum.Status != Resolved {
 					item.Open++

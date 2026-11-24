@@ -14,7 +14,7 @@ mod tabs;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::sessions::{self, Session, State};
 use crate::terminal::{TerminalEvent, TerminalView};
 use crate::ui::{self, c};
@@ -2370,6 +2370,14 @@ impl FennecWindow {
                         .to_owned()
                 })
                 .unwrap_or_default();
+            // Why an open request is not progressing (stalled agent,
+            // unconfirmed delivery) says more than its last message.
+            let latest = match r.failure.as_str() {
+                _ if r.resolved() => latest,
+                "" => latest,
+                board::STALLED_FAILURE => t("stalled"),
+                failure => failure.to_owned(),
+            };
             let project = p.id.clone();
             let drop_project = project.clone();
             let next_project = project.clone();
@@ -2586,6 +2594,9 @@ impl FennecWindow {
                     .min_h_0()
                     .overflow_y_scroll()
                     .p(px(14.0))
+                    .when(p.sync_status == "offline", |d| {
+                        d.child(stale_board_banner(&p.synced_at, now))
+                    })
                     .child(
                         // New Request: one plain box; the first line is the title.
                         v_flex()
@@ -3392,4 +3403,30 @@ fn empty() -> AnyElement {
         .h_full()
         .bg(c("background"))
         .into_any_element()
+}
+
+/// The Mac shows its replica of the board. While the cloud is unreachable that
+/// replica is frozen, so "Running" may be hours out of date (THI-55): say so.
+fn stale_board_banner(synced_at: &str, now: u64) -> impl IntoElement {
+    let since = sessions::rfc3339_ms(synced_at);
+    let text = if since == 0 || now.saturating_sub(since) < 60_000 {
+        t("board_stale")
+    } else {
+        tf(
+            "board_stale_since",
+            &[("age", &sessions::age(since, now))],
+        )
+    };
+    h_flex()
+        .w_full()
+        .mb(px(10.0))
+        .px(px(12.0))
+        .py(px(8.0))
+        .gap(px(8.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(c("f_field"))
+        .text_size(px(12.0))
+        .text_color(c("f_muted"))
+        .child(div().flex_1().min_w_0().child(text))
 }

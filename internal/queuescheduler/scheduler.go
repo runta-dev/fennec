@@ -5,6 +5,7 @@ package queuescheduler
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fennec/internal/board"
 	r "fennec/internal/runtime"
@@ -13,8 +14,40 @@ import (
 	"time"
 )
 
-// Session is a herdr-core terminal: its fennec.session label, state and OSC title.
-type Session struct{ ID, State, Title, Status string }
+// Session is a herdr-core terminal: its fennec.session label, state, OSC
+// title, and the agent's own status word with when that word last changed.
+type Session struct {
+	ID, State, Title, Status string
+	StatusAt                 time.Time
+}
+
+// AgentStatus extracts the agent's status word from a herdr-core status record.
+func AgentStatus(raw json.RawMessage) string {
+	var status struct {
+		State string `json:"state"`
+	}
+	_ = json.Unmarshal(raw, &status)
+	return status.State
+}
+
+// StatusTime converts herdr-core's status_ms; zero when the agent never said.
+func StatusTime(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms)
+}
+
+// StallAfter is how long a running request's agent may sit idle without
+// replying before the request stops showing as running. Agents end a turn
+// while waiting on a background job and resume when it reports back, so this
+// leaves room for that; a resumed agent puts the request back to running.
+var StallAfter = 15 * time.Minute
+
+// stopped reports an agent that is not working and not asking for anything:
+// its turn ended. "blocked" (asking for input) is visible in the session.
+func stopped(status string) bool { return status == "done" || status == "idle" }
+
 type Executor interface {
 	List(context.Context) ([]Session, error)
 	Start(context.Context, board.Project, board.Request, string) error
@@ -24,6 +57,7 @@ type Scheduler struct {
 	Executor Executor
 	Command  string
 	OnError  func(error)
+	Now      func() time.Time // nil means time.Now; tests move the clock
 }
 
 func (s Scheduler) report(err error) {
@@ -86,14 +120,28 @@ func (s Scheduler) Step(ctx context.Context) error {
 		return err
 	}
 	states, titles, agents := map[string]string{}, map[string]string{}, map[string]string{}
+	since := map[string]time.Time{}
 	for _, v := range listed {
 		states[v.ID] = v.State
 		titles[v.ID] = v.Title
 		agents[v.ID] = v.Status
+		since[v.ID] = v.StatusAt
+	}
+	now := time.Now()
+	if s.Now != nil {
+		now = s.Now()
 	}
 	routing := s.Store.Routing()
 	control := s.Store.LocalControl()
 	for _, q := range queues {
+		// A stalled run's agent that starts working again (its background job
+		// reported back) is running again.
+		for _, r := range q.Stalled {
+			if r.RunLocation == s.Store.Role && states[r.ExecutionSession()] == "live" && agents[r.ExecutionSession()] == "working" {
+				_, err := s.Store.ConfirmStarted(q.Project, r.Number, r.Session)
+				s.report(err)
+			}
+		}
 		for _, r := range q.Active {
 			if r.RunLocation != s.Store.Role {
 				continue
@@ -110,6 +158,21 @@ func (s Scheduler) Step(ctx context.Context) error {
 			if r.Status == board.Unknown && state == "live" && agents[r.ExecutionSession()] == "working" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
 				_, err := s.Store.ConfirmStarted(q.Project, r.Number, r.Session)
 				s.report(err)
+				continue
+			}
+			// A running request whose agent ended its turn without `queue
+			// reply` is not running: nothing will move it on by itself. The
+			// idle time counts from the later of delivery and the agent's last
+			// status change, so a prompt that never started a turn stalls too.
+			if r.Status == board.Working && state == "live" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && stopped(agents[r.ExecutionSession()]) {
+				idle := r.Runs[len(r.Runs)-1].Started
+				if at := since[r.ExecutionSession()]; at.After(idle) {
+					idle = at
+				}
+				if now.Sub(idle) >= StallAfter {
+					_, err := s.Store.Stall(q.Project, r.Number, r.Session)
+					s.report(err)
+				}
 				continue
 			}
 			if r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting" {

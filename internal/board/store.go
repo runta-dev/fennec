@@ -712,6 +712,9 @@ type QueueProject struct {
 	Workers []Worker  `json:"workers"`
 	Queued  []Request `json:"queued"`
 	Active  []Request `json:"active"`
+	// Stalled holds needs-you requests whose agent stopped without replying;
+	// they leave the running slots but resume if the agent works again.
+	Stalled []Request `json:"stalled,omitempty"`
 }
 
 // Queue lists every project's waiting requests with their threads, for the
@@ -733,6 +736,11 @@ func (s Store) Queue() ([]QueueProject, error) {
 				q.Working++
 				if active, err := s.Request(p.ID, sum.Number); err == nil {
 					q.Active = append(q.Active, active)
+				}
+			}
+			if sum.Status == NeedsYou {
+				if r, err := s.Request(p.ID, sum.Number); err == nil && r.Stalled() {
+					q.Stalled = append(q.Stalled, r)
 				}
 			}
 		}

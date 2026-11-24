@@ -27,11 +27,7 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	}
 	out := []Session{}
 	for _, t := range list.Terminals {
-		var status struct {
-			State string `json:"state"`
-		}
-		_ = json.Unmarshal(t.Status, &status)
-		out = append(out, Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title, Status: status.State})
+		out = append(out, Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title, Status: AgentStatus(t.Status), StatusAt: StatusTime(t.StatusMS)})
 	}
 	return out, nil
 }

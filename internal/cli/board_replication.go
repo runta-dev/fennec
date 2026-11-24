@@ -42,6 +42,9 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 		var epoch uint64
 		var identity string
 		last := time.Time{}
+		// Log only transitions: a silent 3.5-hour outage (THI-55) left the
+		// Mac showing a frozen board with nothing in daemon.log to explain it.
+		health := syncHealth{}
 		for {
 			select {
 			case <-ctx.Done():
@@ -57,6 +60,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			lifecycle, token, current, authorized := s.account.Session()
 			if !ready || !authorized {
+				health.failed(fmt.Sprintf("channel ready=%t authorized=%t", ready, authorized))
 				if last.IsZero() || time.Since(last) > 10*time.Second {
 					_ = store.SetPrimary(false)
 				}
@@ -70,6 +74,11 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				transportErr = transport.Ready(step)
 			}
 			if transportErr != nil || !transport.Supports(terminalstream.CapabilityBoardImages) {
+				if transportErr != nil {
+					health.failed("transport: " + transportErr.Error())
+				} else {
+					health.failed("cloud service lacks board image support")
+				}
 				if last.IsZero() || time.Since(last) > 10*time.Second {
 					_ = store.SetPrimary(false)
 				}
@@ -80,6 +89,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				api := runta.Client{Endpoint: s.account.Endpoint(), Token: token}
 				owner, err := api.CurrentUser(step)
 				if err != nil {
+					health.failed("account: " + err.Error())
 					cancel()
 					continue
 				}
@@ -90,6 +100,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			pair := filepath.Join(s.home, ".fen/board/paired-account")
 			if old, err := os.ReadFile(pair); err == nil && string(old) != identity {
+				health.failed("board is paired with a different account")
 				cancel()
 				continue
 			} else if os.IsNotExist(err) {
@@ -123,16 +134,44 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				}
 			}
 			if err == nil {
+				health.ok()
 				last = time.Now()
 				if caughtUp {
 					err = store.SetPrimary(true)
 				}
-			} else if last.IsZero() || time.Since(last) > 10*time.Second {
-				_ = store.SetPrimary(false)
+			} else {
+				health.failed("sync: " + err.Error())
+				if last.IsZero() || time.Since(last) > 10*time.Second {
+					_ = store.SetPrimary(false)
+				}
 			}
 			cancel()
 		}
 	}()
+}
+
+// syncHealth logs queue sync failures and recovery once per change.
+type syncHealth struct {
+	reason string
+	since  time.Time
+}
+
+func (h *syncHealth) failed(reason string) {
+	if reason == h.reason {
+		return
+	}
+	if h.reason == "" {
+		h.since = time.Now()
+	}
+	h.reason = reason
+	log.Printf("queue sync failing: %s", reason)
+}
+
+func (h *syncHealth) ok() {
+	if h.reason != "" {
+		log.Printf("queue sync recovered after %s", time.Since(h.since).Round(time.Second))
+	}
+	h.reason = ""
 }
 
 func syncQueueAttachments(ctx context.Context, remote boardClient, local board.Store, push, pull []board.MissingAttachment) error {
@@ -222,9 +261,11 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	var list struct {
 		Terminals []struct {
-			State  string            `json:"state"`
-			Title  string            `json:"title"`
-			Labels map[string]string `json:"labels"`
+			State    string            `json:"state"`
+			Title    string            `json:"title"`
+			Labels   map[string]string `json:"labels"`
+			Status   json.RawMessage   `json:"status"`
+			StatusMS int64             `json:"status_ms"`
 		} `json:"terminals"`
 	}
 	if json.Unmarshal(raw, &list) != nil {
@@ -232,7 +273,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title})
+		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS)})
 	}
 	return out, nil
 }

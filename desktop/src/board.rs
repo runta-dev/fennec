@@ -37,6 +37,8 @@ pub struct Project {
     pub queue: usize,
     pub paused: bool,
     pub sync_status: String,
+    /// When this Mac's board replica last synced with the cloud (RFC 3339).
+    pub synced_at: String,
     pub workers: Vec<Worker>,
     pub open: usize,
     pub needs_you: usize,
@@ -103,6 +105,10 @@ pub struct Attachment {
     pub height: u32,
     pub thumbnail: String,
 }
+
+/// `failure` of a request whose agent stopped without replying
+/// (board.StalledFailure); shown localized.
+pub const STALLED_FAILURE: &str = "The agent stopped without reporting back";
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]

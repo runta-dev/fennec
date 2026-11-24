@@ -236,7 +236,9 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 			}
 		}
 	}
-	if r.Status != Working && r.Status != Unknown {
+	// A stalled run's agent may still answer late (e.g. after a background
+	// build it was waiting on); its reply supersedes the stall.
+	if r.Status != Working && r.Status != Unknown && !r.Stalled() {
 		return r, ErrConflict
 	}
 	if outcome != NeedsYou && outcome != Resolved && outcome != Failed {
@@ -292,10 +294,44 @@ func (s Store) fail(project string, n int, session string, input bool) (Request,
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
+// StalledFailure is shown on a request whose agent stopped without replying.
+const StalledFailure = "The agent stopped without reporting back"
+
+// Stalled reports a run the scheduler gave up waiting on: its agent went idle
+// without calling `queue reply`.
+func (r Request) Stalled() bool {
+	return r.Status == NeedsYou && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "stalled"
+}
+
+// Stall moves a running request whose agent has stopped without replying to
+// needs-you, so it stops showing as running. The session is kept: a late reply
+// still lands (see Complete) and a resumed agent puts it back to running (see
+// ConfirmStarted).
+func (s Store) Stall(project string, n int, session string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if r.Session != session || r.Status != Working || len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].State != "running" {
+		return r, ErrConflict
+	}
+	now := s.now()
+	r.Status, r.Failure, r.Updated = NeedsYou, StalledFailure, now
+	run := &r.Runs[len(r.Runs)-1]
+	run.State, run.Finished = "stalled", &now
+	return r, s.commit(s.requestPath(project, n), r)
+}
+
 // ConfirmStarted resolves an unconfirmed input delivery once the agent is seen
 // working in the run's session. A queue session starts a turn only from input,
 // so working after the delivery attempt proves the input arrived; a merely
-// live session proves nothing and stays unknown (see Reconcile).
+// live session proves nothing and stays unknown (see Reconcile). It also puts
+// a stalled run back to running when its agent resumes on its own.
 func (s Store) ConfirmStarted(project string, n int, session string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
@@ -306,7 +342,8 @@ func (s Store) ConfirmStarted(project string, n int, session string) (Request, e
 	if err != nil {
 		return r, err
 	}
-	if r.Session != session || r.Status != Unknown || len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].State != "input_unknown" {
+	unconfirmed := r.Status == Unknown && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown"
+	if r.Session != session || !unconfirmed && !r.Stalled() {
 		return r, ErrConflict
 	}
 	now := s.now()
