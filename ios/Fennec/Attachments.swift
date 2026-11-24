@@ -163,8 +163,7 @@ extension SessionStore {
         guard let core, let session = session(id), let address = session.address,
               pendingSends[id] == nil, let attachments = attachmentDrafts[id], !attachments.isEmpty else { return }
         let images = attachments.filter(\.isImage).compactMap { try? Data(contentsOf: $0.url) }
-        pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now, images: images),
-                                      previousMatches: matchingPrompts(text, in: session.transcriptItems))
+        pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now, images: images), session: session)
         let messageID = pendingSends[id]?.message.id
         Task {
             var submitted = false
@@ -187,7 +186,7 @@ extension SessionStore {
                 }
                 let prompt = ([text].filter { !$0.isEmpty } + paths).joined(separator: "\n")
                 pendingSends[id]?.message.kind = .user(prompt)
-                pendingSends[id]?.previousMatches = matchingPrompts(prompt, in: session.transcriptItems)
+                if let current = self.session(id) { pendingSends[id]?.rebase(on: current) }
                 let imagePaths = attachments.filter(\.isImage).map { $0.url.path }
                 let json = String(data: try JSONEncoder().encode(imagePaths), encoding: .utf8)!
                 submitted = true
