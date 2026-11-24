@@ -60,6 +60,19 @@ func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
 
 var boardPath = regexp.MustCompile(`^/v1/[A-Za-z0-9/_.-]{0,200}$`)
 
+// knowledgePath matches a project's knowledge endpoints. The bundle is files
+// agents write on the cloud computer; replication does not carry it, so the
+// Mac's local board never has it. It is always read and reviewed in the cloud.
+var knowledgePath = regexp.MustCompile(`^/v1/projects/[^/]+/knowledge(?:/|$)`)
+
+// forPath sends knowledge requests to the cloud board even from a local client.
+func (b boardClient) forPath(path string) boardClient {
+	if b.local && knowledgePath.MatchString(path) {
+		b.local = false
+	}
+	return b
+}
+
 // do sends one request and returns the status and JSON body.
 func (b boardClient) do(ctx context.Context, method, path string, body any) (int, json.RawMessage, error) {
 	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch && method != http.MethodDelete) {
@@ -188,7 +201,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 			if len(params.Body) > 0 && string(params.Body) != "null" {
 				body = params.Body
 			}
-			return boardService.call(ctx, params.Method, params.Path, body)
+			return boardService.forPath(params.Path).call(ctx, params.Method, params.Path, body)
 		}
 	}
 	c.Additional["account.organizations"] = func(ctx context.Context, _ json.RawMessage) (any, error) {
