@@ -719,6 +719,38 @@ impl FennecWindow {
         cx.notify();
     }
 
+    /// The queue request a session was launched for, as (project, number, title):
+    /// from the board's loaded requests, or else the session's own
+    /// `fennec.queue`/`fennec.request` labels.
+    pub(super) fn session_request(&self, s: &Session) -> Option<(String, u64, String)> {
+        self.requests
+            .iter()
+            .find_map(|(pid, list)| {
+                list.iter()
+                    .find(|r| {
+                        r.session == s.name || r.runs.iter().any(|run| run.session == s.name)
+                    })
+                    .map(|r| (pid.clone(), r.number, r.title.clone()))
+            })
+            .or_else(|| {
+                s.request
+                    .filter(|_| !s.queue.is_empty())
+                    .map(|n| (s.queue.clone(), n, t("view_thread")))
+            })
+    }
+
+    /// Show a request's thread on its project page.
+    pub(super) fn go_request(
+        &mut self,
+        project: String,
+        n: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.go(Route::Project(project), window, cx);
+        self.open_request(n, window, cx);
+    }
+
     fn save_reply_draft(&mut self, cx: &Context<Self>) {
         if let (Some(project), Some(n)) = (self.project_id(), self.open) {
             self.reply_drafts.insert(
@@ -2946,22 +2978,7 @@ impl FennecWindow {
                 self.pending_focus = None;
             }
         }
-        let request = s.as_ref().and_then(|s| {
-            self.requests
-                .iter()
-                .find_map(|(pid, list)| {
-                    list.iter()
-                        .find(|r| {
-                            r.session == s.name || r.runs.iter().any(|run| run.session == s.name)
-                        })
-                        .map(|r| (pid.clone(), r.number, r.title.clone()))
-                })
-                .or_else(|| {
-                    s.request
-                        .filter(|_| !s.queue.is_empty())
-                        .map(|n| (s.queue.clone(), n, t("view_thread")))
-                })
-        });
+        let request = s.as_ref().and_then(|s| self.session_request(s));
         v_flex()
             .flex_1()
             .min_w_0()
@@ -2985,8 +3002,7 @@ impl FennecWindow {
                     .when_some(request, |d, (pid, n, title)| {
                         d.child(secondary_button("goto-request", title, false).on_click(
                             cx.listener(move |this, _, window, cx| {
-                                this.go(Route::Project(pid.clone()), window, cx);
-                                this.open_request(n, window, cx);
+                                this.go_request(pid.clone(), n, window, cx)
                             }),
                         ))
                     }),

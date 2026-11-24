@@ -207,6 +207,18 @@ impl FennecWindow {
             .into_any_element()
     }
 
+    /// The queue request behind a notice's session (its group), if any.
+    fn notice_request(&self, group: &str, address: &str) -> Option<(String, u64, String)> {
+        let bare = |a: &str| a.strip_prefix("local:").unwrap_or(a).to_owned();
+        [group, address].iter().find_map(|key| {
+            let key = bare(key);
+            self.sessions
+                .iter()
+                .find(|s| bare(&s.address) == key)
+                .and_then(|s| self.session_request(s))
+        })
+    }
+
     pub(super) fn notification_stack(&self, cx: &Context<Self>) -> AnyElement {
         v_flex()
             .absolute()
@@ -218,6 +230,7 @@ impl FennecWindow {
                 let group = alert["group"].as_str().unwrap_or_default().to_owned();
                 let dismiss = address.clone();
                 let kind = alert["kind"].as_str().unwrap_or("done");
+                let blocked = kind == "blocked";
                 h_flex()
                     .id(SharedString::from(format!("agent-notice-{address}")))
                     .occlude()
@@ -235,6 +248,16 @@ impl FennecWindow {
                         cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
                             this.agent_notices.retain(|a| a["address"] != address);
+                            // A finished queue request opens its thread, where the
+                            // result is reviewed; "needs you" stays on the terminal
+                            // the agent is waiting in.
+                            if !blocked {
+                                if let Some((project, n, _)) = this.notice_request(&group, &address)
+                                {
+                                    this.go_request(project, n, window, cx);
+                                    return;
+                                }
+                            }
                             if address != group {
                                 this.tab.insert(group.clone(), format!("local:{address}"));
                             }
