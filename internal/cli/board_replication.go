@@ -261,6 +261,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	var list struct {
 		Terminals []struct {
+			Address  string            `json:"address"`
 			State    string            `json:"state"`
 			Title    string            `json:"title"`
 			Labels   map[string]string `json:"labels"`
@@ -273,9 +274,13 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS)})
+		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS)})
 	}
 	return out, nil
+}
+func (e queueMacExecutor) End(ctx context.Context, address string) error {
+	_, err := e.core.call(ctx, "terminal.kill", map[string]any{"terminal": address})
+	return err
 }
 func (e queueMacExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt string) error {
 	terminal, err := e.threadSession(ctx, p.ID, request.Number)

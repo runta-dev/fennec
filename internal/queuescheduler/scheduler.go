@@ -18,6 +18,7 @@ import (
 // title, and the agent's own status word with when that word last changed.
 type Session struct {
 	ID, State, Title, Status string
+	Address                  string // herdr-core terminal address, for ending it
 	StatusAt                 time.Time
 }
 
@@ -132,6 +133,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 		agents[v.ID] = v.Status
 		since[v.ID] = v.StatusAt
 	}
+	s.reclaim(ctx, listed)
 	now := time.Now()
 	if s.Now != nil {
 		now = s.Now()
