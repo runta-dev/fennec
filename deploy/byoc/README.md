@@ -37,12 +37,8 @@ On the server (any Linux host with Docker, amd64 or arm64):
 docker run -d --name fennec-cloud --restart unless-stopped \
   -p 2222:22 -v fennec-home:/home/fennec \
   -e FENNEC_AUTHORIZED_KEY='<output of fen cloud byoc key>' \
-  ghcr.io/runta-dev/fennec-cloud:1
+  docker.io/shiqimei/fennec-cloud:1
 ```
-
-Images are published to GHCR for `byoc-v*` release tags. Until the first
-release, build the image yourself (see [Build and verify](#build-and-verify)) and
-use that tag instead.
 
 `docker logs fennec-cloud` prints the machine ID and the host key fingerprint.
 Pair from your Mac with that fingerprint:
@@ -104,5 +100,5 @@ FENNEC_BYOC_IMAGE=fennec-cloud:local FENNEC_BYOC_BOOTSTRAP=1 go test ./deploy/by
 
 The second test pairs and connects with Fennec's client code; the third also
 runs the first-connection bootstrap. `.github/workflows/byoc-image.yml` runs
-both on every change and publishes multi-arch, signed images for `byoc-v*`
+both on every change and publishes multi-arch, signed images to Docker Hub for `byoc-v*`
 tags.

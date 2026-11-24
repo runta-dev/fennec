@@ -17,7 +17,7 @@ func TestDeployScriptQuotesEveryValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"image='ghcr.io/runta-dev/fennec-cloud:1'", "name='fennec-cloud'", "volume='fennec-home'", "port=2222", "key='" + d.DeviceKey + "'"} {
+	for _, want := range []string{"image='docker.io/shiqimei/fennec-cloud:1'", "name='fennec-cloud'", "volume='fennec-home'", "port=2222", "key='" + d.DeviceKey + "'"} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("script lacks %q", want)
 		}

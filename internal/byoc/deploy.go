@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultImage is the published self-hosted cloud image.
-const DefaultImage = "ghcr.io/runta-dev/fennec-cloud:1"
+const DefaultImage = "docker.io/shiqimei/fennec-cloud:1"
 
 // Deployment describes one self-hosted computer to start with Docker on a
 // server the user already reaches over SSH.
