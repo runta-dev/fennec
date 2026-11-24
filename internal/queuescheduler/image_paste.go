@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fennec/internal/board"
 )
@@ -113,12 +114,89 @@ func SendRequest(ctx context.Context, store board.Store, query func(context.Cont
 		return err
 	}
 	var receipt struct {
-		Started *bool `json:"started"`
+		Started *bool   `json:"started"`
+		Turn    *uint64 `json:"turn"`
 	}
-	if json.Unmarshal(raw, &receipt) != nil || receipt.Started != nil && !*receipt.Started {
+	if json.Unmarshal(raw, &receipt) != nil {
 		return fmt.Errorf("input was not confirmed as started")
 	}
+	if receipt.Started == nil || !*receipt.Started {
+		// Without the turn the paste was typed into there is nothing to check.
+		if receipt.Turn == nil {
+			if receipt.Started != nil {
+				return fmt.Errorf("input was not confirmed as started")
+			}
+		} else if err = confirmSubmitted(ctx, query, terminal, *receipt.Turn); err != nil {
+			return err
+		}
+	}
 	return os.WriteFile(marker, []byte("done"), 0600)
+}
+
+// Confirmation timing; tests shorten it.
+var (
+	confirmWindow = 45 * time.Second
+	confirmPoll   = time.Second
+	maxResubmits  = 3
+)
+
+// confirmSubmitted proves a pasted request became an agent turn. An agent can
+// swallow the Enter that follows a paste (Claude Code does while it is still
+// starting or ingesting a long paste), leaving the prompt unsent in its input
+// box. herdr-core then reports started=false, or null while a fresh agent has
+// not reported any status yet. Neither is a started turn.
+//
+// While the agent sits idle on the turn the paste was typed into, press its
+// submit key again; Enter on an empty input box does nothing. Never press it
+// while the agent is working or showing anything else (a dialog would take it
+// as an answer). An agent that never reports status cannot be checked and
+// keeps the previous behaviour.
+func confirmSubmitted(ctx context.Context, query func(context.Context, string, any) (json.RawMessage, error), terminal string, turn uint64) error {
+	deadline := time.Now().Add(confirmWindow)
+	presses, reported := 0, false
+	for {
+		raw, err := query(ctx, "terminal.get", map[string]any{"terminal": terminal})
+		if err != nil {
+			return err
+		}
+		var t struct {
+			State  string  `json:"state"`
+			Turn   *uint64 `json:"turn"`
+			Status *struct {
+				State string `json:"state"`
+			} `json:"status"`
+		}
+		if json.Unmarshal(raw, &t) != nil || t.Turn == nil {
+			return fmt.Errorf("invalid terminal state")
+		}
+		if t.State != "live" {
+			return fmt.Errorf("the session ended before the request started")
+		}
+		word := ""
+		if t.Status != nil {
+			reported, word = true, t.Status.State
+		}
+		if *t.Turn > turn || word == "working" {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if !reported {
+				return nil
+			}
+			return fmt.Errorf("input was not confirmed as started")
+		}
+		if (word == "idle" || word == "done") && presses < maxResubmits {
+			presses++
+			if _, err = query(ctx, "terminal.keys", map[string]any{"terminal": terminal, "keys": []string{"enter"}}); err != nil {
+				return err
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(confirmPoll):
+		}
+	}
 }
 
 // This is the Unix path quoting used by the existing terminal paste_paths.
