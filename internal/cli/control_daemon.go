@@ -320,6 +320,10 @@ func waitForAgentBroker(ctx context.Context, agent string) error {
 		if err := client.Call(ctx, "state.get", nil, &state); err != nil {
 			return err
 		}
+		// A launch now would only fail later on the dead connection.
+		if state.Runtime.Stage == "unreachable" {
+			return fmt.Errorf("Fennec can't reach your cloud computer right now; it reconnects automatically, so try again shortly")
+		}
 		if state.Services.Ready && brokerAgentReady(agent, state.Services.Active) {
 			return nil
 		}

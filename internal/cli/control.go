@@ -180,7 +180,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		prefs := settings.snapshot().(desktopPreferences)
 		return effectiveSandboxPolicy(home, prefs)
 	}
-	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
+	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot, CloudUnreachable: services.cloudUnreachable}
 	controller.Additional = services.handlers(controller)
 	// runRuntimePresence calls this when the cloud computer was deleted outside
 	// Fennec, to tear down services bound to it and prepare a replacement.

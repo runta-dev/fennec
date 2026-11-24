@@ -764,6 +764,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             preparationState["stage"] = "offline"
             preparationState["status"] = "network_offline"
         }
+        if online, runtime["stage"] as? String == "unreachable" {
+            preparationState["stage"] = "unreachable"
+            preparationState["status"] = selfHosted ? "server_unreachable" : "cloud_unreachable"
+        }
 	    if runtime["stage"] as? String == "disabled" { preparationState=["stage":"disabled"] }
         if let text = events["model_catalog"]?["models"], let data = text.data(using: .utf8), let models = try? JSONSerialization.jsonObject(with: data) {
             if let catText = events["model_catalog"]?["catalog"], let catData = catText.data(using: .utf8), let catalog = try? JSONSerialization.jsonObject(with: catData) {

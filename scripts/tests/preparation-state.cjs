@@ -34,6 +34,17 @@ assert.equal(runtimePanel.hidden,true,'offline state with zero sessions must not
 assert.equal(panel.children.filter(x=>x.tag==='button').length,0,'offline state recovers automatically without manual retry');
 assert.equal(panel.children.filter(x=>x.tag==='p').length,1,'offline state explains automatic reconnection');
 console.log('PASS preparation waits expose action; active work retains spinner');
+for (const [status,title] of [['server_unreachable','[[i18n:ui.cant_reach_your_server]]'],['cloud_unreachable','[[i18n:ui.cant_reach_cloud_computer]]']]) {
+ context.window.renderPreparation({stage:'unreachable',status});
+ assert.equal(panel.hidden,false,'an unreachable computer is shown, not hidden as ready');
+ assert.equal(panel.attrs['aria-busy'],'false','unreachable is a wait, not progress');
+ assert.equal(panel.children[0].children[0].textContent,title);
+ assert.ok(!panel.children[0].children[1].classes.has('working'),'no spinner while unreachable');
+ assert.equal(panel.children.filter(x=>x.tag==='button').length,0,'reconnection is automatic');
+ const detail=panel.children.filter(x=>x.tag==='p');
+ assert.equal(detail.length,1);assert.equal(detail[0].textContent,'[[i18n:ui.reconnects_automatically]]');
+}
+console.log('PASS an unreachable computer reads like offline: named, no spinner, automatic reconnection');
 
 for (const stage of ['waiting_credentials','credentials_required']) { context.window.renderPreparation({stage}); assert.equal(panel.hidden,true); assert.equal(panel.children.length,0); }
 

@@ -478,6 +478,23 @@ func TestEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("a stopped computer is reported unreachable until it returns", func(t *testing.T) {
+		docker(t, "stop", "-t", "2", c.name)
+		stopped := time.Now()
+		deadline := stopped.Add(2 * time.Minute)
+		for h.state().Runtime.Stage != "unreachable" {
+			if time.Now().After(deadline) {
+				t.Fatalf("still %q two minutes after the computer stopped", h.state().Runtime.Stage)
+			}
+			time.Sleep(time.Second)
+		}
+		t.Logf("reported unreachable %s after the computer stopped", time.Since(stopped).Round(time.Second))
+		docker(t, "start", c.name)
+		returned := time.Now()
+		h.waitReady(2 * time.Minute)
+		t.Logf("ready again %s after the computer returned", time.Since(returned).Round(time.Second))
+	})
+
 	t.Run("unpair forgets the computer", func(t *testing.T) {
 		h.must("cloud", "byoc", "unpair", machine)
 		// Unpairing restores the stored Runta account in the background; this

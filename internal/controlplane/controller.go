@@ -31,17 +31,20 @@ type Controller struct {
 	Connectivity       *connectivity.Monitor
 	Prepare            func(context.Context, account.Principal, io.Writer) error
 	Session            func(context.Context, account.Principal, string, string, SessionParams) (any, error)
-	mu                 sync.Mutex
-	runtime            RuntimeState
-	runtimeAgain       bool
-	runtimeRetry       bool
-	runtimeGeneration  uint64
-	runtimeCancel      context.CancelFunc
-	runtimeDone        chan struct{}
-	runtimeWake        chan struct{}
-	maintenance        bool
-	cloudPaused        bool
-	cloudPausedEpoch   uint64
+	// CloudUnreachable reports whether the prepared computer of an epoch has
+	// stayed unreachable while this Mac is online. Optional.
+	CloudUnreachable  func(epoch uint64) bool
+	mu                sync.Mutex
+	runtime           RuntimeState
+	runtimeAgain      bool
+	runtimeRetry      bool
+	runtimeGeneration uint64
+	runtimeCancel     context.CancelFunc
+	runtimeDone       chan struct{}
+	runtimeWake       chan struct{}
+	maintenance       bool
+	cloudPaused       bool
+	cloudPausedEpoch  uint64
 	// replacing holds off preparation while services bound to a cloud computer
 	// deleted outside Fennec are torn down (ReplaceDeletedRuntime).
 	replacing bool

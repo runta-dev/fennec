@@ -48,6 +48,8 @@ func (c *Controller) notifyRuntimeWakeLocked() {
 func (c *Controller) runtimeSnapshot() RuntimeState {
 	account := c.Account.Snapshot()
 	online := c.Connectivity == nil || c.Connectivity.Online()
+	// Asked before taking c.mu: the services take their own lock.
+	unreachable := online && c.CloudUnreachable != nil && c.CloudUnreachable(account.Epoch)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.runtime.Epoch != account.Epoch {
@@ -71,6 +73,12 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 		result.Stage = "offline"
 		result.Error = ""
 		result.Running = false
+	}
+	// A prepared computer this online Mac cannot reach is not ready. Only the
+	// reported stage changes: the resident channel keeps reconnecting, and the
+	// stage returns to ready as soon as it does.
+	if unreachable && account.Active() && result.Stage == "ready" {
+		result.Stage = "unreachable"
 	}
 	return result
 }

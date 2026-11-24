@@ -2389,6 +2389,27 @@
       "zh-CN": "退出登录",
       "zh-TW": "登出"
     },
+    "ui.cant_reach_cloud_computer": {
+      "en-US": "Can't reach your cloud computer",
+      "ja": "クラウドコンピューターに接続できません",
+      "ko": "클라우드 컴퓨터에 연결할 수 없음",
+      "zh-CN": "无法连接到你的云电脑",
+      "zh-TW": "無法連線到你的雲端電腦"
+    },
+    "ui.cant_reach_your_server": {
+      "en-US": "Can't reach your server",
+      "ja": "サーバーに接続できません",
+      "ko": "서버에 연결할 수 없음",
+      "zh-CN": "无法连接到你的服务器",
+      "zh-TW": "無法連線到你的伺服器"
+    },
+    "ui.reconnects_automatically": {
+      "en-US": "Fennec keeps trying and reconnects automatically",
+      "ja": "Fennec は自動的に再接続を試み続けます",
+      "ko": "Fennec이 자동으로 다시 연결을 시도합니다",
+      "zh-CN": "Fennec 会持续尝试并自动重连",
+      "zh-TW": "Fennec 會持續嘗試並自動重新連線"
+    },
     "ui.your_server": {
       "en-US": "Your server",
       "ja": "自分のサーバー",
