@@ -119,6 +119,14 @@ func (e queueMacExecutor) threadSession(ctx context.Context, project string, num
 				return r.LocalTerminal{}, err
 			}
 		}
+		if agent == "claude" {
+			// Nobody is there to answer Claude Code's "Quick safety check"
+			// folder trust prompt in a queue session; the launch would sit
+			// on it and the scheduler would never see the agent start.
+			if err = trustClaudeFolders(claudeProfile(e.home, setup.LocalAgentHome(ctx, agent)), cwd); err != nil {
+				return r.LocalTerminal{}, fmt.Errorf("trust Claude working directory: %w", err)
+			}
+		}
 		marker, err := os.OpenFile(filepath.Join(root, id+".json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return r.LocalTerminal{}, fmt.Errorf("local launch needs reconciliation: %w", err)
