@@ -172,11 +172,19 @@ struct ChatView: View {
             .onScrollGeometryChange(for: EdgeInsets.self, of: { $0.contentInsets }) { _, insets in
                 scrollFacts.insets = insets
             }
-            .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.height }) { _, _ in
-                if followBottom { proxy.scrollTo("bottom", anchor: .bottom) }
+            .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
+                guard new.contentSize.height != old.contentSize.height else { return }
+                // Only from where it was before the content grew, and never
+                // under your finger: a preview loading in the same moment you
+                // start scrolling up must not pull you back to the bottom
+                // (the phase change that stops following can come later).
+                let wasAtBottom = old.visibleRect.maxY >= old.contentSize.height - 80
+                if followBottom, wasAtBottom, !scrollFacts.phase.isScrolling { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, height in
                 scrollFacts.containerHeight = height
+                // Dragging the keyboard away resizes the list; keep your scroll.
+                guard !scrollFacts.phase.isScrolling else { return }
                 if followBottom || composerFocused { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: store.pendingSends[session.id]?.message.id) {
@@ -199,7 +207,7 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: session.messages.count) {
-                if followBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if followBottom, !scrollFacts.phase.isScrolling { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
             .onChange(of: session.transcriptLoaded) {
                 proxy.scrollTo("bottom", anchor: .bottom)
@@ -866,6 +874,11 @@ extension EnvironmentValues {
 
 /// What the conversation's scroll view last reported. A plain class: written
 /// on every scroll, read only when a turn opens, never redraws anything.
+private extension ScrollPhase {
+    /// A finger on the list, or the list still moving from one.
+    var isScrolling: Bool { self == .tracking || self == .interacting || self == .decelerating }
+}
+
 private final class ScrollFacts {
     var phase: ScrollPhase = .idle
     var containerHeight: CGFloat = 0
