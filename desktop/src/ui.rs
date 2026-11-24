@@ -286,7 +286,7 @@ pub fn project_mark(name: &str, color: &str, size: f32) -> Div {
         .child(initial)
 }
 
-/// Request status pill: Needs you (tint), Working, Queued (outline), Resolved.
+/// Request status pill: Needs you (tint), Running and Queued (outline), Resolved.
 pub fn status_pill(status: &str) -> Div {
     let (label, fg, bg, border) = match status {
         "failed" => (
@@ -316,8 +316,8 @@ pub fn status_pill(status: &str) -> Div {
         "working" => (
             crate::i18n::t("working"),
             c("ok"),
-            c("ok").opacity(0.13),
             gpui::transparent_black(),
+            c("ok").opacity(0.45),
         ),
         "resolved" => (
             crate::i18n::t("resolved"),
