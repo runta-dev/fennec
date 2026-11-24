@@ -14,8 +14,12 @@ type CloudExecutor struct {
 	Store   board.Store
 }
 
+// ListAll asks Herdr for finished terminals too. Its default listing hides
+// them, and a run whose terminal finished must be seen as finished, not absent.
+var ListAll = map[string]any{"all": true}
+
 func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
-	raw, err := c.Runtime.Query(ctx, "terminal.list", map[string]any{})
+	raw, err := c.Runtime.Query(ctx, "terminal.list", ListAll)
 	if err != nil {
 		return nil, err
 	}

@@ -122,6 +122,11 @@ func (s Scheduler) Step(ctx context.Context) error {
 	states, titles, agents := map[string]string{}, map[string]string{}, map[string]string{}
 	since := map[string]time.Time{}
 	for _, v := range listed {
+		// The listing includes finished terminals. A reused thread session can
+		// have an earlier finished terminal beside its live one; live wins.
+		if states[v.ID] == "live" && v.State != "live" {
+			continue
+		}
 		states[v.ID] = v.State
 		titles[v.ID] = v.Title
 		agents[v.ID] = v.Status
@@ -191,6 +196,13 @@ func (s Scheduler) Step(ctx context.Context) error {
 				}
 				s.report(e)
 				continue
+			}
+			// A running request whose session ended, or that no longer exists at
+			// all, is not running: its agent can never reply. An absent session
+			// only counts once the run is old enough that a launch cannot still
+			// be on its way into the listing.
+			if state == "" && r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && now.Sub(r.Runs[len(r.Runs)-1].Started) >= StallAfter {
+				state = "finished"
 			}
 			if state == "finished" || (state == "live" && (r.Status == board.Unknown || len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting")) {
 				_, err := s.Store.Reconcile(q.Project, r.Number, r.Session, state)

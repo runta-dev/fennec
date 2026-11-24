@@ -128,3 +128,51 @@ func TestStalledRunLetsTheNextRequestStart(t *testing.T) {
 		t.Fatalf("phantom run still holds the slot: %+v", got)
 	}
 }
+
+// THI-69: the agent's terminal ended mid-run (Herdr's default listing hides
+// finished terminals, so the scheduler never saw it). The request must stop
+// showing as running and release its slot.
+func TestRunWhoseSessionFinishedIsNotRunning(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	ex.sessions = []Session{{ID: r.Session, State: "finished", Status: "working"}}
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Failed {
+		t.Fatalf("finished session still shown as running: %+v", got)
+	}
+}
+
+func TestEarlierFinishedTerminalDoesNotHideTheLiveOne(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	// A reused thread session keeps its earlier, finished terminal around.
+	for _, order := range [][]string{{"live", "finished"}, {"finished", "live"}} {
+		ex.sessions = []Session{{ID: r.Session, State: order[0], Status: "working"}, {ID: r.Session, State: order[1], Status: "working"}}
+		step(t, s)
+		if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+			t.Fatalf("%v: live run treated as ended: %+v", order, got)
+		}
+	}
+}
+
+func TestRunWhoseSessionVanishedIsNotRunning(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	ex.sessions = nil
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+		t.Fatalf("absent right after launch must wait for the listing: %+v", got)
+	}
+	later(&s, StallAfter+time.Minute)
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Failed {
+		t.Fatalf("vanished session still shown as running: %+v", got)
+	}
+}
+
+func TestUnavailableListingNeverEndsARun(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	ex.unavailable = true
+	later(&s, 24*time.Hour)
+	_ = s.Step(t.Context())
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+		t.Fatalf("failed listing ended a run: %+v", got)
+	}
+}

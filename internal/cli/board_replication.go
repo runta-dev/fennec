@@ -255,7 +255,7 @@ type queueMacExecutor struct {
 }
 
 func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, error) {
-	raw, err := e.core.call(ctx, "terminal.list", map[string]any{})
+	raw, err := e.core.call(ctx, "terminal.list", queuescheduler.ListAll)
 	if err != nil {
 		return nil, err
 	}
