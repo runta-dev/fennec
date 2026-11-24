@@ -184,9 +184,17 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					used++
 				}
 			}
-			limit := 16
+			// Fennec Desktop keeps one attach stream open per cloud tab, so a
+			// person with many sessions open needs well over 16. Stops and
+			// operations share this count and get headroom above it, so open
+			// tabs can never starve the control plane.
+			limit := 64
 			if frame.Type == "stop" || frame.Type == "operation" {
-				limit = 32
+				limit = 96
+			}
+			if commandStream {
+				// Remote commands keep their own, smaller allowance.
+				limit = 16
 			}
 			if deviceRelay {
 				// Eight parked bridges, 64 active connections and eight retiring
