@@ -14,7 +14,7 @@ import (
 )
 
 // Session is a herdr-core terminal: its fennec.session label, state and OSC title.
-type Session struct{ ID, State, Title string }
+type Session struct{ ID, State, Title, Status string }
 type Executor interface {
 	List(context.Context) ([]Session, error)
 	Start(context.Context, board.Project, board.Request, string) error
@@ -85,10 +85,11 @@ func (s Scheduler) Step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	states, titles := map[string]string{}, map[string]string{}
+	states, titles, agents := map[string]string{}, map[string]string{}, map[string]string{}
 	for _, v := range listed {
 		states[v.ID] = v.State
 		titles[v.ID] = v.Title
+		agents[v.ID] = v.Status
 	}
 	routing := s.Store.Routing()
 	control := s.Store.LocalControl()
@@ -103,6 +104,13 @@ func (s Scheduler) Step(ctx context.Context) error {
 				if title := board.SessionTitle(titles[r.ExecutionSession()], r.ExecutionSession(), fmt.Sprintf("%s-%d", q.Key, r.Number)); title != "" && title != r.Title {
 					s.report(s.Store.Retitle(q.Project, r.Number, r.ExecutionSession(), title))
 				}
+			}
+			// An unconfirmed delivery that the agent is now working on (its
+			// Enter went through late, or someone submitted it by hand) is running.
+			if r.Status == board.Unknown && state == "live" && agents[r.ExecutionSession()] == "working" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
+				_, err := s.Store.ConfirmStarted(q.Project, r.Number, r.Session)
+				s.report(err)
+				continue
 			}
 			if r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting" {
 				p, e := s.Store.Project(q.Project)

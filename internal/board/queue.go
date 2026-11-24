@@ -249,7 +249,8 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	pending := r.HasPendingFollowUp()
 	id := len(r.Messages) + 1
 	r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
-	r.Status, r.Updated = status, now
+	// The agent's reply proves the run started; an unconfirmed-input note is stale.
+	r.Status, r.Updated, r.Failure = status, now, ""
 	if !pending {
 		r.Delivered = id
 	}
@@ -288,6 +289,30 @@ func (s Store) fail(project string, n int, session string, input bool) (Request,
 	if input || len(RequestAttachments(r)) > 0 {
 		recordRun(&r, "input_unknown", r.Updated)
 	}
+	return r, s.commit(s.requestPath(project, n), r)
+}
+
+// ConfirmStarted resolves an unconfirmed input delivery once the agent is seen
+// working in the run's session. A queue session starts a turn only from input,
+// so working after the delivery attempt proves the input arrived; a merely
+// live session proves nothing and stays unknown (see Reconcile).
+func (s Store) ConfirmStarted(project string, n int, session string) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if r.Session != session || r.Status != Unknown || len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].State != "input_unknown" {
+		return r, ErrConflict
+	}
+	now := s.now()
+	r.Status, r.Failure, r.Updated = Working, "", now
+	run := &r.Runs[len(r.Runs)-1]
+	run.State, run.Finished = "running", nil
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
