@@ -358,23 +358,3 @@ func launchArguments(worker board.Worker, message string) []string {
 	}
 	return append(arguments, message)
 }
-
-// boardCommand answers and reads requests on the cloud computer, where the
-// resident binary is installed (there is no `fen` there).
-const boardCommand = "~/.local/fennec/bin/fennec-terminal"
-
-// firstMessage is what a new session for a request is asked to do.
-func firstMessage(p board.Project, request board.Request, agent string) string {
-	ref := fmt.Sprintf("%s-%d", p.Key, request.Number)
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are working on request %s from the %s project board in Fennec.\n\n", ref, p.Name)
-	b.WriteString(board.Thread(p, request))
-	b.WriteString("\nHow to work on it:\n")
-	if p.Repository != "" {
-		fmt.Fprintf(&b, "- The code is github.com/%s. Use a checkout under ~/repos/%s (clone it if missing).\n", p.Repository, p.Repository)
-	}
-	fmt.Fprintf(&b, "- When you have a result, a question, or something for the person to check, answer with `%s reply %s \"...\"` (or `%s reply %s -` with the text on standard input). Replying hands the request back to them; their next reply reaches you here.\n", boardCommand, ref, boardCommand, ref)
-	fmt.Fprintf(&b, "- `%s request %s` prints the whole thread.\n", boardCommand, ref)
-	fmt.Fprintf(&b, "- Record what a later agent should know about this project (architecture, runbooks, decisions, terms) as OKF concepts: markdown files under ~/.fen/board/projects/%s/knowledge/<section>/<name>.md with YAML front matter (type, title, description, tags, sources: [%s], generated: {by: %s, at: <UTC time>}, status: draft). Keep each to one idea.\n", p.ID, ref, agent)
-	return b.String()
-}
