@@ -230,7 +230,6 @@ impl FennecWindow {
                 let group = alert["group"].as_str().unwrap_or_default().to_owned();
                 let dismiss = address.clone();
                 let kind = alert["kind"].as_str().unwrap_or("done");
-                let blocked = kind == "blocked";
                 h_flex()
                     .id(SharedString::from(format!("agent-notice-{address}")))
                     .occlude()
@@ -248,15 +247,12 @@ impl FennecWindow {
                         cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
                             this.agent_notices.retain(|a| a["address"] != address);
-                            // A finished queue request opens its thread, where the
-                            // result is reviewed; "needs you" stays on the terminal
-                            // the agent is waiting in.
-                            if !blocked {
-                                if let Some((project, n, _)) = this.notice_request(&group, &address)
-                                {
-                                    this.go_request(project, n, window, cx);
-                                    return;
-                                }
+                            // A queue request's agent, done or waiting on the user,
+                            // opens the request's thread: the result is reviewed
+                            // and replies are sent there.
+                            if let Some((project, n, _)) = this.notice_request(&group, &address) {
+                                this.go_request(project, n, window, cx);
+                                return;
                             }
                             if address != group {
                                 this.tab.insert(group.clone(), format!("local:{address}"));
