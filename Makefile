@@ -88,6 +88,13 @@ test-e2e-performance:
 test-cmux:
 	test -n "$(CMUX_BINARY)" && test -x "$(CMUX_BINARY)"
 	FENNEC_CMUX_BINARY="$(CMUX_BINARY)" go test -race -count=1 -timeout=90s ./internal/cmuxhooks ./internal/hookbridge ./internal/hookplugins ./internal/localssh ./internal/control ./internal/terminalstream ./internal/launcher ./internal/cli ./cmd/fennec-terminal
+# Self-hosted (BYOC) end to end with a locally built image and an isolated daemon.
+# Set FENNEC_BYOC_E2E_CODEX_AUTH=~/.codex/auth.json to launch a real agent.
+.PHONY: test-e2e-byoc
+test-e2e-byoc:
+	docker build -f deploy/byoc/Dockerfile -t fennec-cloud:e2e .
+	FENNEC_BYOC_E2E=1 FENNEC_BYOC_IMAGE=fennec-cloud:e2e go test -count=1 -timeout=25m -v -run '^TestEndToEnd$$' ./deploy/byoc
+
 .PHONY: test-e2e-launchd-demand
 test-e2e-launchd-demand:
 	test "$$(uname -s)" = Darwin

@@ -57,8 +57,19 @@ func randomName(prefix string) string {
 // until sshd accepts connections.
 func start(t *testing.T, image, volume, authorizedKey string) (container, byoc.Endpoint) {
 	t.Helper()
+	return startOn(t, image, volume, authorizedKey, 0)
+}
+
+// startOn publishes the SSH port on hostPort, or on a port Docker picks when it
+// is 0. A picked port changes when the container restarts.
+func startOn(t *testing.T, image, volume, authorizedKey string, hostPort int) (container, byoc.Endpoint) {
+	t.Helper()
 	c := container{name: randomName("fennec-byoc-test-"), volume: volume}
-	args := []string{"run", "-d", "--name", c.name, "-p", "127.0.0.1::22", "-v", volume + ":/home/fennec"}
+	publish := "127.0.0.1::22"
+	if hostPort != 0 {
+		publish = "127.0.0.1:" + strconv.Itoa(hostPort) + ":22"
+	}
+	args := []string{"run", "-d", "--name", c.name, "-p", publish, "-v", volume + ":/home/fennec"}
 	if authorizedKey != "" {
 		args = append(args, "-e", "FENNEC_AUTHORIZED_KEY="+authorizedKey)
 	}
