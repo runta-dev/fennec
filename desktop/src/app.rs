@@ -5,6 +5,7 @@
 mod activity;
 mod cloud;
 mod context_menu;
+mod glide;
 mod row_motion;
 mod request_attachments;
 mod sidebar_resize;
@@ -117,6 +118,8 @@ pub struct FennecWindow {
     sidebar_shown: f32,
     /// The running sidebar animation: the target, the starting amount, and when it started.
     sidebar_motion: Option<(bool, f32, std::time::Instant)>,
+    /// Queue cards easing to a new place after their status moved them.
+    queue_glide: glide::Shared,
     pub(crate) sidebar_resize: sidebar_resize::State,
     focus: FocusHandle,
     pending_focus: Option<String>,
@@ -278,6 +281,7 @@ impl FennecWindow {
             sidebar: true,
             sidebar_shown: 1.0,
             sidebar_motion: None,
+            queue_glide: Default::default(),
             sidebar_resize: Default::default(),
             focus: cx.focus_handle(),
             pending_focus: None,
@@ -2349,6 +2353,9 @@ impl FennecWindow {
                         .child(count.to_string()),
                 )
         };
+        let glide_scope = format!("{}|{}|{:?}|{q}", p.id, self.resolved, self.tag);
+        let frame_at = std::time::Instant::now();
+        let appear = |key: &str| self.queue_glide.borrow_mut().appear(&glide_scope, key, frame_at);
         let cards = shown.iter().enumerate().map(|(index, r)| {
             let selected = self.open == Some(r.number);
             let n = r.number;
@@ -2366,8 +2373,10 @@ impl FennecWindow {
             let project = p.id.clone();
             let drop_project = project.clone();
             let next_project = project.clone();
+            let card_key = format!("req-{n}");
             let card = v_flex()
-                .id(SharedString::from(format!("req-{n}")))
+                .id(SharedString::from(card_key.clone()))
+                .opacity(appear(&card_key))
                 .w_full()
                 .px(px(13.0))
                 .py(px(11.0))
@@ -2473,8 +2482,12 @@ impl FennecWindow {
                 .into_any_element();
             v_flex()
                 .when(index == 0 || shown[index - 1].status != r.status, |d| {
-                    d.child(
+                    let header_key = format!("group-{}", r.status);
+                    d.child(glide::glided(
+                        &self.queue_glide,
+                        header_key.clone(),
                         div()
+                            .opacity(appear(&header_key))
                             .px(px(13.0))
                             .pt(px(12.0))
                             .pb(px(6.0))
@@ -2489,11 +2502,15 @@ impl FennecWindow {
                                 "unknown" => "unknown",
                                 _ => "resolved",
                             })),
-                    )
+                    ))
                 })
-                .child(card)
+                .child(glide::glided(&self.queue_glide, card_key, card))
                 .into_any_element()
-        });
+        })
+        .collect::<Vec<_>>();
+        if self.queue_glide.borrow().fading() {
+            window.request_animation_frame();
+        }
         v_flex()
             .w(relative(0.42))
             .max_w(px(460.0))
@@ -2686,6 +2703,7 @@ impl FennecWindow {
                                 }),
                         )
                     })
+                    .child(glide::origin(&self.queue_glide, glide_scope))
                     .children(cards),
             )
     }
@@ -3125,6 +3143,10 @@ impl Render for FennecWindow {
         let sidebar_width=self.sidebar_width(window);
         self.step_tabs(window, cx);
         let route = self.route.clone();
+        if !matches!(route, Some(Route::Project(_))) {
+            // Hidden meanwhile: the queue's cards are placed at once when it shows again.
+            self.queue_glide.borrow_mut().reset();
+        }
         let main = match &route {
             Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
             Some(Route::Project(id)) => match self.projects.iter().find(|p| &p.id == id).cloned() {
