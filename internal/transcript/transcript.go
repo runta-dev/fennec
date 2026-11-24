@@ -32,7 +32,7 @@ import (
 
 // Version changes whenever Parse reads a log differently. Clients that cache
 // parsed items drop a cache made by another version and read the log again.
-const Version = 6
+const Version = 7
 
 // Item is one entry in the conversation. Consecutive tool items are grouped
 // by the client into one collapsed step.

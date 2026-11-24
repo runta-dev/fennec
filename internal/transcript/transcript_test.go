@@ -131,6 +131,7 @@ func TestPiTurn(t *testing.T) {
 		`{"type":"message","message":{"role":"toolResult","toolName":"bash","content":[{"type":"text","text":"/root"}]}}`,
 		`{"type":"message","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"Here it is."}]}}`,
 		`{"type":"message","message":{"role":"assistant","stopReason":"aborted","content":[]}}`,
+		`{"type":"message","message":{"role":"assistant","stopReason":"error","errorMessage":"402 Insufficient balance","content":[]}}`,
 		`{"type":"compaction","summary":"..."}`,
 	),
 		Item{Kind: "user", Text: "tell me your sop", Images: []string{"data:image/png;base64,iVBO"}},
@@ -140,6 +141,8 @@ func TestPiTurn(t *testing.T) {
 		Item{Kind: "agent", Text: "Here it is."},
 		Item{Kind: "end"},
 		Item{Kind: "end", Reason: "interrupted"},
+		Item{Kind: "agent", Text: "402 Insufficient balance"},
+		Item{Kind: "end", Reason: "error"},
 		Item{Kind: "compacted"},
 	)
 }

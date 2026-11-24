@@ -7,7 +7,10 @@ import (
 
 // Pi writes {"type":"message","message":{"role":…,"content":[…]}} lines.
 // An assistant message's stopReason says whether the turn goes on
-// ("toolUse") or ended ("stop", "aborted", "error", "length").
+// ("toolUse") or ended ("stop", "aborted", "error", "length"). A failed
+// request ("error") carries no content, only errorMessage, which Pi prints
+// on its screen; it is shown as the agent's reply so a chat isn't left
+// silent (THI-73).
 // {"type":"compaction"} marks a summarized history.
 
 type piBlock struct {
@@ -24,9 +27,10 @@ func pi(kind string, raw json.RawMessage) []Item {
 		return []Item{{Kind: "compacted"}}
 	}
 	var message struct {
-		Role       string          `json:"role"`
-		Content    json.RawMessage `json:"content"`
-		StopReason string          `json:"stopReason"`
+		Role         string          `json:"role"`
+		Content      json.RawMessage `json:"content"`
+		StopReason   string          `json:"stopReason"`
+		ErrorMessage string          `json:"errorMessage"`
 	}
 	if json.Unmarshal(raw, &message) != nil {
 		return nil
@@ -66,6 +70,7 @@ func pi(kind string, raw json.RawMessage) []Item {
 		case "aborted":
 			items = append(items, end(0, "interrupted"))
 		case "error":
+			items = append(items, agentItem(message.ErrorMessage)...)
 			items = append(items, end(0, "error"))
 		}
 		return items
