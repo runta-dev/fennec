@@ -44,6 +44,7 @@ mod app_preferences;
 mod preview;
 mod board;
 mod control;
+mod cursor;
 mod dispatch_env;
 mod i18n;
 mod project_settings;
@@ -68,7 +69,8 @@ fn main() {
                 .unwrap_or_else(|_| "warn,fennec_desktop=info".into()),
         )
         .init();
-    gpui_platform::application()
+    // Buttons and links keep the arrow cursor (cursor.rs).
+    gpui::Application::with_platform(cursor::platform(gpui_platform::current_platform(false)))
         .with_assets(ui::Assets)
         .run(move |cx| {
             gpui_base::init(cx);

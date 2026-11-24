@@ -1767,6 +1767,7 @@ dependencies = [
  "async-channel",
  "base64",
  "fancy-regex",
+ "futures",
  "ghostty-sys",
  "gpui-base",
  "gpui-pre",

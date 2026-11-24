@@ -245,7 +245,6 @@ impl FennecWindow {
                             .rounded(px(10.0))
                             .border_1()
                             .border_color(c("f_line"))
-                            .cursor_pointer()
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_request_image(ids.clone(), index, window, cx)
                             }))
@@ -275,7 +274,6 @@ impl FennecWindow {
                                         .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                             cx.stop_propagation()
                                         })
-                                        .cursor_pointer()
                                         .child(ui::icon("close", 10.0, c("f_card")))
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             cx.stop_propagation();
@@ -318,7 +316,6 @@ impl FennecWindow {
                     .border_1()
                     .border_color(c("f_line"))
                     .overflow_hidden()
-                    .cursor_pointer()
                     .child(thumbnail(image, width, height))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_request_image(ids.clone(), index, window, cx)
@@ -432,7 +429,6 @@ impl FennecWindow {
                 .rounded_full()
                 .bg(hsla(0.0, 0.0, 1.0, 0.12))
                 .hover(|s| s.bg(hsla(0.0, 0.0, 1.0, 0.22)))
-                .cursor_pointer()
                 .child(ui::icon(icon, 16.0, on_dark))
         };
         let body = match path {
