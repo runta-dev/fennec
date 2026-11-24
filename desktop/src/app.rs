@@ -98,6 +98,10 @@ pub struct FennecWindow {
     deleted_projects: std::collections::HashSet<String>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
     thread: Option<Request>,
+    /// The open thread's message list, kept at its newest message.
+    thread_scroll: ScrollHandle,
+    /// Scroll the thread to its newest message once a sent reply shows up.
+    thread_follow: bool,
     pub(crate) route: Option<Route>,
     open: Option<u64>,
     resolved: bool,
@@ -274,6 +278,8 @@ impl FennecWindow {
             image_viewer: None,
             posting: false,
             replying: false,
+            thread_scroll: ScrollHandle::new(),
+            thread_follow: false,
             reply,
             reply_drafts: HashMap::new(),
 		    opening_thread_session: false,
@@ -626,6 +632,18 @@ impl FennecWindow {
         if let Some(Ok(t)) = thread
             && Some(t.number) == self.open
         {
+            // Follow new messages to the bottom when the thread was just opened,
+            // a reply was just sent, or the list was already at its newest
+            // message; leave it alone while reading older ones.
+            let grew = self.thread.as_ref().is_none_or(|old| {
+                old.number != t.number || t.messages.len() > old.messages.len()
+            });
+            if grew {
+                if self.thread_follow || self.thread.is_none() || self.thread_at_bottom() {
+                    self.thread_scroll.scroll_to_bottom();
+                }
+                self.thread_follow = false;
+            }
             self.thread = Some(t);
         }
         if self.route.is_none() {
@@ -635,6 +653,12 @@ impl FennecWindow {
                 .map(|p| Route::Project(p.id.clone()));
         }
         cx.notify();
+    }
+
+    /// Whether the thread's message list shows its newest message.
+    fn thread_at_bottom(&self) -> bool {
+        let max = self.thread_scroll.max_offset().y;
+        -self.thread_scroll.offset().y >= max - px(24.0)
     }
 
     pub(crate) fn visible_projects(&self) -> Vec<&Project> {
@@ -888,6 +912,8 @@ impl FennecWindow {
             return;
         }
         self.replying = true;
+        self.thread_follow = true;
+        self.thread_scroll.scroll_to_bottom();
         let me = self.me.clone();
         let submitted = text.clone();
         let submitted_images: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
@@ -922,7 +948,10 @@ impl FennecWindow {
                             this.refresh_now(window, cx);
                         }
                     }
-                    Err(e) => this.say(format!("{e:#}"), cx),
+                    Err(e) => {
+                        this.thread_follow = false;
+                        this.say(format!("{e:#}"), cx)
+                    }
                 }
                 cx.notify();
             });
@@ -2931,6 +2960,7 @@ impl FennecWindow {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.thread_scroll)
                     .px(px(22.0))
                     .py(px(14.0))
                     .children(items),
