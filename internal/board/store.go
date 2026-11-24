@@ -85,9 +85,14 @@ type Message struct {
 }
 
 type Request struct {
-	Number   int       `json:"number"`
-	Title    string    `json:"title"`
-	Tag      string    `json:"tag"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	Tag    string `json:"tag"`
+	// TagAuto marks a tag nobody chose: the project's first tag, given when
+	// the request was posted without one. The agent working on the request
+	// replaces it with the tag that fits (see AutoTag); a person's choice
+	// clears it and then stands.
+	TagAuto  bool      `json:"tag_auto,omitempty"`
 	Status   string    `json:"status"`
 	Author   string    `json:"author"`
 	Created  time.Time `json:"created"`
@@ -500,7 +505,8 @@ func (s Store) CreateRequestWithAttachments(project, author, title, tag, body st
 		return Request{}, err
 	}
 	title = strings.TrimSpace(title)
-	if tag == "" {
+	auto := tag == ""
+	if auto {
 		tag = p.Tags[0].ID
 	}
 	if !validText(title, maxTitle*4) || utf8.RuneCountInString(title) > maxTitle || strings.ContainsAny(title, "\r\n") ||
@@ -529,7 +535,7 @@ func (s Store) CreateRequestWithAttachments(project, author, title, tag, body st
 			p.Next++
 		}
 	}
-	r := Request{Number: p.Next, Title: title, Tag: tag, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
+	r := Request{Number: p.Next, Title: title, Tag: tag, TagAuto: auto, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
 		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
 	p.Next++
 	if err = s.commit(s.requestPath(project, r.Number), r); err != nil {
@@ -596,7 +602,7 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 		if !hasTag(p, tag) {
 			return r, ErrInvalid
 		}
-		r.Tag = tag
+		r.Tag, r.TagAuto = tag, false
 	}
 	switch status {
 	case "":

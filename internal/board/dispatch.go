@@ -203,7 +203,7 @@ func (s Store) validateDispatch(p Project, list []Summary, n int, agent, locatio
 // names only the root of the queue's OKF knowledge bundle; the agent decides
 // what goes in it and how it is arranged.
 func RunPrompt(p Project, r Request, command string) string {
-	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\nReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. These commands release the execution slot; do not use them for progress updates.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
+	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\n%sReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. These commands release the execution slot; do not use them for progress updates.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), tagPrompt(p, r, command), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
 }
 
 func knowledgeNote(p Project) string {
