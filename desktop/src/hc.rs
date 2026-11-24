@@ -83,6 +83,13 @@ impl EventLines {
         json!({ "terminals": live })
     }
 
+    /// One live terminal by its raw address, without copying the others.
+    pub fn live_terminal(&self, address: &str) -> Option<&Value> {
+        self.terminals
+            .iter()
+            .find(|t| t["state"] == "live" && t["address"] == address)
+    }
+
     /// Apply a confirmed close immediately, before its stream notification arrives.
     pub fn forget_terminal(&mut self, address: &str) {
         self.terminals.retain(|terminal| terminal["address"] != address);

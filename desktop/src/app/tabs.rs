@@ -1120,6 +1120,33 @@ mod tests {
         }
     }
 
+    #[gpui::test]
+    fn core_events_keep_rows_in_their_attention_group(cx: &mut TestAppContext) {
+        // The raw label says "working"; the attention policy already reports
+        // "done". An unrelated core event must not drop the row back into
+        // Working until the next activity result returns it (sidebar flicker).
+        let (app, cx) = window(cx);
+        cx.update(|_, cx| app.update(cx, |app, _| {
+            app.activity["c"]["state"] = json!("done");
+            app.activity["c"]["group_state"] = json!("done");
+            app.apply_activity();
+        }));
+        let state = |cx: &mut VisualTestContext| app.read_with(cx, |app, _| {
+            app.sessions.iter().find(|s| s.address == "c").map(|s| s.state)
+        });
+        assert_eq!(state(cx), Some(sessions::State::Done));
+        for _ in 0..3 {
+            cx.update(|window, cx| app.update(cx, |app, cx| app.terminals_changed(window, cx)));
+            cx.run_until_parked();
+            assert_eq!(state(cx), Some(sessions::State::Done), "a core event moved the row");
+        }
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.terminal_title("c", "fallback"), "Third agent");
+            assert_eq!(app.terminal_title("local:b", "fallback"), "Second agent");
+            assert_eq!(app.terminal_title("cloud:c", "fallback"), "fallback");
+        });
+    }
+
     fn resize_sidebar(cx: &mut VisualTestContext, delta: f32) {
         cx.run_until_parked();
         let bounds=cx.debug_bounds("sidebar-column").unwrap();

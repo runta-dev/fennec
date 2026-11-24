@@ -172,8 +172,14 @@ impl FennecWindow {
 
     pub(super) fn terminal_title(&self, address: &str, fallback: &str) -> String {
         let address = address.strip_prefix("local:").unwrap_or(address);
-        self.terminal_records().iter()
-            .find(|record| record["address"] == address)
+        // Sidebar rows and tabs ask for a title on every frame (a working
+        // spinner animates), so look the record up in place rather than
+        // copying every terminal through `terminal_records`.
+        let record = match address.strip_prefix("cloud:") {
+            Some(raw) => self.cloud_events.as_ref().and_then(|e| e.live_terminal(raw)),
+            None => self.events.as_ref().and_then(|e| e.live_terminal(address)),
+        };
+        record
             .and_then(sessions::agent_terminal_title)
             .unwrap_or_else(|| self.program_name(address, fallback))
     }

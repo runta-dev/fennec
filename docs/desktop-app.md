@@ -275,7 +275,9 @@ first tab of a group. A late move response cannot override newer navigation.
 
 Tab displacement uses a 280 ms cubic ease-out that can reverse
 from its current drawn position. Sidebar state groups reflow immediately,
-with stable ordering within each group and no overlapping row animations; selected terminal
+with stable ordering within each group and no overlapping row animations. A row's
+group follows the attention policy's state: terminal events rebuild sessions from
+raw labels and then reapply that state, so rows never bounce between groups. Selected terminal
 content fades in over 160 ms. The drag preview tracks the pointer directly.
 GPUI mouse-event tests cover sidebar-to-strip merge, strip reordering,
 sidebar split, invalid drops and Escape. Store tests cover restart, stale

@@ -527,9 +527,12 @@ impl FennecWindow {
                 .map(Vec::as_slice)
                 .unwrap_or_default(),
         );
-        self.apply_activity();
         self.layout_snapshot();
         self.apply_layout();
+        // `apply_layout` rebuilds sessions from raw terminal labels; overlay the
+        // attention state afterwards, or every core event drops rows into their
+        // raw group until the next activity result moves them back (flicker).
+        self.apply_activity();
         if previously_shown.as_ref().is_some_and(|key| !self.layout.members.contains_key(key)) {
             self.focus.focus(window, cx);
         }
