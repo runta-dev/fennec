@@ -63,9 +63,10 @@ server). Pairing refuses any other host key.
   computer; a new volume is a different computer and must be paired again.
 - A development base: git and git-lfs, build-essential, pkg-config, OpenSSL
   and zlib headers, Python 3 with pip and venv, ripgrep, fd, jq, curl, wget,
-  rsync, tmux and common network and archive tools. On first connection Fennec
-  installs Node.js, Herdr, its terminal service and the agents into the user's
-  home, and keeps the terminal service matched to the Mac's version.
+  rsync, tmux and common network and archive tools. Node.js 22 is built in and
+  copied into the home on a volume's first start; on first connection Fennec
+  installs Herdr, its terminal service and the agents there, and keeps the
+  terminal service matched to the Mac's version.
 - Debian's Python is externally managed: use `python3 -m venv`, or `sudo apt
   install python3-<package>`, rather than a system-wide `pip install`.
 

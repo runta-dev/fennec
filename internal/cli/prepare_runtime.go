@@ -503,7 +503,10 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 		emit("agents_installed", runtime.ID, earlyStatus)
 	}
 	if !installationReady {
-		if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
+		nodeDone := launchprofile.Begin("prepare.install.node")
+		err = setup.Exec(ctx, connection, setup.NodeSetupScript)
+		nodeDone()
+		if err != nil {
 			emit("failed", runtime.ID, "Node setup failed")
 			return err
 		}

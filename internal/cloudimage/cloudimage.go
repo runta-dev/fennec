@@ -32,11 +32,14 @@ type Layout struct {
 	// UID and GID own Home. Ownership changes are skipped when Chown is nil.
 	UID, GID int
 	Chown    func(path string, uid, gid int) error
+	// Seed holds tools built into the image (Node.js) that Fennec would
+	// otherwise download on first connection. Empty disables seeding.
+	Seed string
 }
 
 // DefaultLayout is the published image's layout.
 func DefaultLayout() Layout {
-	return Layout{Home: "/home/fennec", AuthorizedKeys: "/etc/ssh/fennec_authorized_keys", UID: 1000, GID: 1000, Chown: os.Chown}
+	return Layout{Home: "/home/fennec", AuthorizedKeys: "/etc/ssh/fennec_authorized_keys", UID: 1000, GID: 1000, Chown: os.Lchown, Seed: "/opt/fennec/seed"}
 }
 
 // State is root-owned (0700) inside the home volume: the SSH user cannot read
@@ -74,6 +77,9 @@ func Init(l Layout, initialKey string) (Report, error) {
 		return Report{}, err
 	}
 	if err := os.Chmod(l.State(), 0700); err != nil {
+		return Report{}, err
+	}
+	if err := seedTools(l); err != nil {
 		return Report{}, err
 	}
 	fingerprint, err := ensureHostKey(l)

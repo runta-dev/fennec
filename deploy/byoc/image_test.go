@@ -152,6 +152,10 @@ func TestImage(t *testing.T) {
 		if _, err := run(t, client, "touch ~/writable && rm ~/writable"); err != nil {
 			t.Fatal("home is not writable")
 		}
+		// Node.js is seeded into the home on the volume's first start.
+		if out, err := run(t, client, `stat -c %U ~/.local/fennec/node/bin/node && ~/.local/fennec/node/bin/node --version && PATH=~/.local/fennec/node/bin:$PATH npm --version >/dev/null && echo npm-ok`); err != nil || out != "fennec\nv22.22.0\nnpm-ok" {
+			t.Fatalf("seeded Node.js unusable: %q (%v)", out, err)
+		}
 		// Agents may administer the container; it is the isolation boundary.
 		if out, err := run(t, client, "sudo -n id -u"); err != nil || out != "0" {
 			t.Fatalf("passwordless sudo unavailable: %q (%v)", out, err)
