@@ -38,6 +38,7 @@ type LocalTerminal struct {
 	Name     string             `json:"name,omitempty"`
 	Parent   *string            `json:"parent,omitempty"`
 	Status   json.RawMessage    `json:"status,omitempty"`
+	Records  json.RawMessage    `json:"records,omitempty"`
 	StatusMS int64              `json:"status_ms,omitempty"`
 	Timings  map[string]float64 `json:"timings_ms,omitempty"`
 	ID       string             `json:"id,omitempty"`

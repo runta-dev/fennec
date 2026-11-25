@@ -206,6 +206,55 @@ func TestClaudeCodeWithBackgroundWorkNeverStalls(t *testing.T) {
 	}
 }
 
+// THI-173: Claude Code can leave its root status at done while a background
+// shell it started is still open, reporting the shell only as its own record
+// (herdr-core's "records"). That agent is waiting, not stopped.
+func TestClaudeCodeDoneWithWorkingRecordNeverStalls(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	listed := NewSession(r.Session, "t1", "live", "", []byte(`{"app":"claude-code","state":"done"}`),
+		[]byte(`{"bnye50fsb":{"app":"claude-code","state":"working","title":"Wait for THI-150 to finish"}}`), time.Now().UnixMilli())
+	if listed.Status != "working" || !listed.Background || listed.Busy() {
+		t.Fatalf("done root with a working record: %+v", listed)
+	}
+	ex.sessions = []Session{listed}
+	later(&s, 24*time.Hour)
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+		t.Fatalf("agent waiting on a background record stalled: %+v", got)
+	}
+}
+
+func TestStalledRunWithWorkingRecordRunsAgain(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	stoppedAt := time.Now()
+	agentIs(ex, r, "done", stoppedAt)
+	ex.sessions[0].App = "claude-code"
+	s.Now = func() time.Time { return stoppedAt.Add(QuietStallAfter + time.Minute) }
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Failure != board.StalledFailure {
+		t.Fatalf("setup: not stalled: %+v", got)
+	}
+	ex.sessions = []Session{NewSession(r.Session, "t1", "live", "", []byte(`{"app":"claude-code","state":"done"}`),
+		[]byte(`{"b1":{"app":"claude-code","state":"working"}}`), stoppedAt.UnixMilli())}
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working || got.Runs[len(got.Runs)-1].State != "running" {
+		t.Fatalf("stalled run with a working record not running again: %+v", got)
+	}
+}
+
+func TestNewSessionIgnoresFinishedRecords(t *testing.T) {
+	for _, records := range []string{``, `null`, `{}`, `{"b1":{"app":"claude-code","state":"done"}}`} {
+		got := NewSession("s", "t1", "live", "", []byte(`{"app":"claude-code","state":"done"}`), []byte(records), 1)
+		if got.Status != "done" || got.Background {
+			t.Errorf("records %q: %+v", records, got)
+		}
+	}
+	// A busy root stays busy whatever its records say.
+	if got := NewSession("s", "t1", "live", "", []byte(`{"app":"claude-code","state":"working","msg":"Writing x"}`), []byte(`{"b1":{"state":"working"}}`), 1); !got.Busy() {
+		t.Errorf("mid-turn agent not busy: %+v", got)
+	}
+}
+
 func TestAgentApp(t *testing.T) {
 	if got := AgentApp([]byte(`{"app":"claude-code","state":"done"}`)); got != "claude-code" {
 		t.Fatalf("AgentApp = %q", got)

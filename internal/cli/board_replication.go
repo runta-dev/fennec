@@ -285,6 +285,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 			Title    string            `json:"title"`
 			Labels   map[string]string `json:"labels"`
 			Status   json.RawMessage   `json:"status"`
+			Records  json.RawMessage   `json:"records"`
 			StatusMS int64             `json:"status_ms"`
 		} `json:"terminals"`
 	}
@@ -293,7 +294,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), App: queuescheduler.AgentApp(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS), Background: queuescheduler.BackgroundOnly(t.Status)})
+		out = append(out, queuescheduler.NewSession(t.Labels["fennec.session"], t.Address, t.State, t.Title, t.Status, t.Records, t.StatusMS))
 	}
 	return out, nil
 }

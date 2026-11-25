@@ -52,6 +52,37 @@ func BackgroundOnly(raw json.RawMessage) bool {
 	return status.State == "working" && backgroundOnly.MatchString(strings.TrimSpace(status.Msg))
 }
 
+// BackgroundRecords reports whether any of a terminal's other OSC 7501 records
+// (herdr-core's "records", one per thing the program reports on) is working.
+// Claude Code reports each background shell or monitor as its own record, and
+// it can leave the root status at done while one is still running (THI-173:
+// THI-145 and THI-160 were stalled two minutes into a real background wait).
+func BackgroundRecords(raw json.RawMessage) bool {
+	var records map[string]struct {
+		State string `json:"state"`
+	}
+	_ = json.Unmarshal(raw, &records)
+	for _, r := range records {
+		if r.State == "working" {
+			return true
+		}
+	}
+	return false
+}
+
+// NewSession builds a Session from one herdr-core terminal listing entry. An
+// agent whose turn ended but whose background record is still working counts
+// as working in the background, exactly like Claude Code's "1 shell still
+// running" root status: it does not stall, and a stalled run goes back to
+// running, but reclaim does not wait for it (Busy is false).
+func NewSession(id, address, state, title string, status, records json.RawMessage, statusMS int64) Session {
+	s := Session{ID: id, Address: address, State: state, Title: title, Status: AgentStatus(status), App: AgentApp(status), StatusAt: StatusTime(statusMS), Background: BackgroundOnly(status)}
+	if stopped(s.Status) && BackgroundRecords(records) {
+		s.Status, s.Background = "working", true
+	}
+	return s
+}
+
 // AgentApp extracts which agent reported a herdr-core status record.
 func AgentApp(raw json.RawMessage) string {
 	var status struct {
@@ -85,6 +116,7 @@ func StatusTime(ms int64) time.Time {
 var StallAfter = 15 * time.Minute
 
 // QuietStallAfter replaces StallAfter for agents whose "done" means nothing
+// (a done root with a working background record is not done: see NewSession)
 // can wake them. Claude Code reports working ("1 shell still running", "1
 // monitor still running") while anything it started in the background is
 // open, so a Claude Code agent that is done for this long ended its turn
