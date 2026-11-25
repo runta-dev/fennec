@@ -369,6 +369,9 @@ impl FennecWindow {
         if r.related.is_empty() {
             return None;
         }
+        // Rows with an explicit link end in an × button; the others keep an
+        // empty slot of the same width so every status pill lines up.
+        let unlinkable = r.related.iter().any(|l| l.kind != "mention");
         let rows = ordered(&r.related)
             .into_iter()
             .enumerate()
@@ -438,6 +441,9 @@ impl FennecWindow {
                                         }))
                                         .child(ui::icon("close", 11.0, c("f_muted"))),
                                 )
+                            })
+                            .when(unlinkable && link.kind == "mention", |d| {
+                                d.child(div().flex_none().size(px(20.0)))
                             }),
                     )
                     .children(link.mentions.iter().take(SHOWN_MENTIONS).enumerate().map(
