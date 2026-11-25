@@ -1,0 +1,134 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "crossfade": 0.6,
+  "voice": {
+    "voiceId": "EXAVITQu4vr4xnSDxMaL",
+    "voiceName": "Sarah",
+    "modelId": "eleven_multilingual_v2",
+    "stability": 0.55,
+    "similarityBoost": 0.8,
+    "style": 0.15,
+    "speed": 0.95
+  },
+  "scenes": [
+    {
+      "id": "lid",
+      "minDur": 9,
+      "lead": 1.4,
+      "tail": 1.6,
+      "lines": [
+        { "id": "l01", "text": "Your coding agent is halfway through the job." },
+        { "id": "l02", "text": "Then you close your laptop, and everything stops.", "gap": 0.7 }
+      ],
+      "cues": [
+        { "name": "lidClose", "line": "l02", "offset": 1.0, "sfx": "lid" }
+      ]
+    },
+    {
+      "id": "meet",
+      "minDur": 3.6,
+      "lead": 0.9,
+      "tail": 1.4,
+      "lines": [
+        { "id": "l03", "text": "Meet Fennec." }
+      ],
+      "cues": [
+        { "name": "logo", "offset": 0.35, "sfx": "chime" }
+      ]
+    },
+    {
+      "id": "cloud",
+      "minDur": 6,
+      "lead": 0.5,
+      "tail": 1.2,
+      "lines": [
+        { "id": "l04", "text": "Fennec gives your agent its own computer in the cloud, connected to your Mac." }
+      ],
+      "cues": [
+        { "name": "connect", "line": "l04", "offset": 2.4, "sfx": "whoosh" }
+      ]
+    },
+    {
+      "id": "brain",
+      "minDur": 7,
+      "lead": 0.5,
+      "tail": 1.4,
+      "lines": [
+        { "id": "l05", "text": "The thinking happens in the cloud. The hands stay on your Mac," },
+        { "id": "l06", "text": "reaching only the files and tools you approve.", "gap": 0.25 }
+      ],
+      "cues": [
+        { "name": "ask", "line": "l06", "offset": 0.1, "sfx": "pop" },
+        { "name": "approve", "line": "l06", "anchor": "end", "offset": -0.4, "sfx": "click" }
+      ]
+    },
+    {
+      "id": "terminal",
+      "minDur": 8,
+      "lead": 0.4,
+      "tail": 1.4,
+      "lines": [
+        { "id": "l07", "text": "Nothing about how you work has to change." },
+        { "id": "l08", "text": "Open your terminal, and launch Claude Code, Codex, or the agent you already use.", "gap": 0.5 }
+      ],
+      "cues": [
+        { "name": "typeAgent", "offset": 0.9, "sfx": "typing", "text": "claude", "cps": 9 },
+        { "name": "chips", "line": "l08", "offset": 1.1, "sfx": "pops", "count": 11, "interval": 0.16 }
+      ]
+    },
+    {
+      "id": "detach",
+      "minDur": 7,
+      "lead": 0.4,
+      "tail": 1.6,
+      "lines": [
+        { "id": "l09", "text": "Press Control-C to step away. Your session keeps working in the cloud." }
+      ],
+      "cues": [
+        { "name": "ctrlC", "line": "l09", "offset": 0.75, "sfx": "keys", "count": 2, "interval": 0.12 },
+        { "name": "handoff", "line": "l09", "offset": 2.4, "sfx": "whoosh" }
+      ]
+    },
+    {
+      "id": "away",
+      "minDur": 7,
+      "lead": 0.4,
+      "tail": 1.8,
+      "lines": [
+        { "id": "l10", "text": "Close the lid. Go for a walk. Check in from your phone." }
+      ],
+      "cues": [
+        { "name": "lidClose", "line": "l10", "offset": 0.35, "sfx": "lid" },
+        { "name": "notify", "line": "l10", "anchor": "end", "offset": 0.2, "sfx": "ding" }
+      ]
+    },
+    {
+      "id": "return",
+      "minDur": 7.5,
+      "lead": 0.3,
+      "tail": 2.2,
+      "lines": [
+        { "id": "l11", "text": "When you're back, one command picks up right where you left off." }
+      ],
+      "cues": [
+        { "name": "lidOpen", "offset": 0.2, "sfx": "lidOpen" },
+        { "name": "typeAttach", "line": "l11", "offset": 1.5, "sfx": "typing", "text": "fen attach cone-leaf", "cps": 14 },
+        { "name": "restore", "line": "l11", "offset": 3.75, "sfx": "whooshSoft" }
+      ]
+    },
+    {
+      "id": "end",
+      "minDur": 7,
+      "lead": 0.9,
+      "tail": 3.4,
+      "lines": [
+        { "id": "l12", "text": "Fennec. Keep your agent. Leave the laptop." }
+      ],
+      "cues": [
+        { "name": "logo", "offset": 0.0, "sfx": "chimeFinal" }
+      ]
+    }
+  ]
+}

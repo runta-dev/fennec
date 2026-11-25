@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fennec trailer</title>
+<style>
+  @font-face { font-family: "Newsreader"; src: url("fonts/Newsreader.ttf") format("truetype"); font-weight: 200 800; font-style: normal; }
+  @font-face { font-family: "Newsreader"; src: url("fonts/Newsreader-Italic.ttf") format("truetype"); font-weight: 200 800; font-style: italic; }
+  @font-face { font-family: "Inter"; src: url("fonts/Inter.ttf") format("truetype"); font-weight: 100 900; }
+  @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; }
+  html, body { margin: 0; background: #111; height: 100%; }
+  body { display: grid; place-items: center; }
+  canvas { width: min(100vw, calc(100vh * 16 / 9)); height: auto; display: block; }
+  body.render canvas { width: 1920px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script src="trailer.js"></script>
+</body>
+</html>
