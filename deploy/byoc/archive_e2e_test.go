@@ -70,10 +70,8 @@ func TestArchiveMovesToAnotherComputer(t *testing.T) {
 	on := func(c container, script string) string {
 		return docker(t, "exec", "-u", "fennec", c.name, "sh", "-c", script)
 	}
-	// boardCall runs a board request on the computer itself. The Mac reaches
-	// the board through the resident board socket, which a computer without
-	// systemd does not serve yet (the queue service cannot be installed), so
-	// queue data is seeded and checked in place.
+	// boardCall runs a board request on the computer itself, so the test checks
+	// each computer's own board rather than what the Mac replica relays.
 	boardCall := func(c container, method, path, body string) string {
 		t.Helper()
 		return docker(t, "exec", "-i", "-u", "fennec", c.name, "sh", "-c", `printf '%s' "$1" | "$HOME/.local/fennec/bin/fennec-terminal" board-call `+method+" "+path, "sh", body)
