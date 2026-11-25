@@ -168,7 +168,6 @@ const FILES: &[(&str, &[u8])] = &[
     ("programs/zig.svg", include_bytes!("../assets/programs/zig.svg")),
 
     ("agents/xai.svg", include_bytes!("../assets/agents/xai.svg")),
-    ("agents/antigravity.svg", include_bytes!("../assets/agents/antigravity.svg")),
     ("agents/cursor.svg", include_bytes!("../assets/agents/cursor.svg")),
     ("agents/opencode.svg", include_bytes!("../assets/agents/opencode.svg")),
     ("agents/pi.svg", include_bytes!("../assets/agents/pi.svg")),
@@ -188,6 +187,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("icons/sort.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10M2.5 10.5 5 13l2.5-2.5M11 13V3M8.5 5.5 11 3l2.5 2.5"/></svg>"##),
     ("icons/term.svg", include_bytes!("../assets/icons/terminal.svg")),
     ("fennec.svg", include_bytes!("../assets/fennec.svg")),
+    ("agents/antigravity.png", include_bytes!("../assets/agents/antigravity.png")),
     ("agents/claudecode.png", include_bytes!("../assets/agents/claudecode.png")),
     ("agents/codex.png", include_bytes!("../assets/agents/codex.png")),
     ("agents/cursor.png", include_bytes!("../assets/agents/cursor.png")),
@@ -236,7 +236,7 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
 pub fn agent_icon(agent: &str, size: f32) -> AnyElement {
     match crate::sessions::agent_icon(agent) {
         Some(name) => {
-            if ["pi", "opencode", "cursor", "xai", "antigravity"].contains(&name) {
+            if ["pi", "opencode", "cursor", "xai"].contains(&name) {
                 return svg()
                     .path(SharedString::from(format!("agents/{name}.svg")))
                     .size(px(size))
