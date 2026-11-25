@@ -17,7 +17,7 @@ whose `Refresh` compares the systemd process's executable inode with the target
 and restarts the owned service when necessary. It does not kill agent sessions
 or alter credentials, models, reasoning effort or the saved Magpie toggle.
 
-The runtime, `0.1.4177-runta.5`, is based on upstream commit
+The runtime, `0.1.4177-runta.6`, is based on upstream commit
 `e6e0585bd3d92a79dab08f0955789a5801382b71`. Codex omits the backend's output
 `metadata.turn_id` from replayed history. The downstream excludes this
 top-level attribution when checking WebSocket continuation. Version `runta.3`
@@ -48,6 +48,16 @@ accounts every minute. It also re-reads catalog, memory and session database
 files written within two seconds of their last read, so a same-size rewrite is
 not missed. The pinned source is Magpie commit
 `9f7f7faa2d5b364951a8fdee2731550c910557aa`; `runta.4` was not released.
+
+Version `runta.6` fixes cloud Claude sessions that returned 502 on every
+request ("interactive mode didn't start … exited before it answered magpie's
+initialize request"). Interactive mode resumes the conversation in a nested
+Claude Code TUI, and the readiness check took the words "trust this folder" or
+"Bypass Permissions mode" anywhere on screen for Claude Code's own dialog, so a
+conversation whose last reply quoted them never became ready. A question now
+counts only when one of its choice lines is drawn. The theme and Chrome checks
+still match words only. The pinned source is Magpie commit
+`abab94c2e23d10feb45f8475140aec2855b1fb0b`.
 
 To upgrade:
 
