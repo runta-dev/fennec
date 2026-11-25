@@ -833,19 +833,21 @@ impl FennecWindow {
         cx.notify();
     }
 
+    /// The board's loaded request a session was launched for, with its project.
+    fn loaded_session_request(&self, s: &Session) -> Option<(&str, &Request)> {
+        self.requests.iter().find_map(|(pid, list)| {
+            list.iter()
+                .find(|r| r.session == s.name || r.runs.iter().any(|run| run.session == s.name))
+                .map(|r| (pid.as_str(), r))
+        })
+    }
+
     /// The queue request a session was launched for, as (project, number, title):
     /// from the board's loaded requests, or else the session's own
     /// `fennec.queue`/`fennec.request` labels.
     pub(super) fn session_request(&self, s: &Session) -> Option<(String, u64, String)> {
-        self.requests
-            .iter()
-            .find_map(|(pid, list)| {
-                list.iter()
-                    .find(|r| {
-                        r.session == s.name || r.runs.iter().any(|run| run.session == s.name)
-                    })
-                    .map(|r| (pid.clone(), r.number, r.title.clone()))
-            })
+        self.loaded_session_request(s)
+            .map(|(pid, r)| (pid.to_owned(), r.number, r.title.clone()))
             .or_else(|| {
                 s.request
                     .filter(|_| !s.queue.is_empty())
@@ -3142,6 +3144,11 @@ impl FennecWindow {
             }
         }
         let request = s.as_ref().and_then(|s| self.session_request(s));
+        // The request's status beside its button, as on its card and thread (THI-85).
+        let request_status = s
+            .as_ref()
+            .and_then(|s| self.loaded_session_request(s))
+            .map(|(_, r)| r.status.clone());
         v_flex()
             .flex_1()
             .min_w_0()
@@ -3162,6 +3169,12 @@ impl FennecWindow {
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
                     .child(self.tab_strip(address, cx))
                     .child(div().flex_1())
+                    .when_some(request_status, |d, status| {
+                        d.child(
+                            ui::status_pill(&status)
+                                .debug_selector(|| "session-request-status".into()),
+                        )
+                    })
                     .when_some(request, |d, (pid, n, title)| {
                         d.child(secondary_button("goto-request", title, false).on_click(
                             cx.listener(move |this, _, window, cx| {
