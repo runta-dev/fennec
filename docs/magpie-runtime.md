@@ -55,9 +55,15 @@ initialize request"). Interactive mode resumes the conversation in a nested
 Claude Code TUI, and the readiness check took the words "trust this folder" or
 "Bypass Permissions mode" anywhere on screen for Claude Code's own dialog, so a
 conversation whose last reply quoted them never became ready. A question now
-counts only when one of its choice lines is drawn. The theme and Chrome checks
-still match words only. The pinned source is Magpie commit
+counts only when one of its choice lines is drawn. Source: Magpie commit
 `abab94c2e23d10feb45f8475140aec2855b1fb0b`.
+
+Version `runta.7` does the same for the two remaining first-run screens, the
+Claude in Chrome offer and the theme (text style) screen. On `runta.6`, a
+resumed reply that quoted their words made the helper press keys at the prompt
+until it gave up, so the session returned 502 on every request again (THI-215,
+THI-217). The pinned source is Magpie commit
+`331bebff03e722f4ea22c702b7ae1174f4eb64e4`.
 
 To upgrade:
 
