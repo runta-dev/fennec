@@ -181,6 +181,7 @@
     "desktop.context_open_terminal": {"en-US": "Open terminal", "zh-CN": "打开终端"},
     "desktop.context_rename": {"en-US": "Rename", "zh-CN": "重命名"},
     "desktop.context_new_tab": {"en-US": "New tab", "zh-CN": "新建标签页"},
+    "desktop.context_copy": {"en-US": "Copy", "zh-CN": "复制"},
     "desktop.context_copy_directory": {"en-US": "Copy working directory", "zh-CN": "复制工作目录"},
     "desktop.close_tab": {"en-US": "Close tab", "zh-CN": "关闭标签页"},
     "desktop.composer_hint": {"en-US": "The first line is the title, ⌘↩ to post", "zh-CN": "第一行是标题，⌘↩ 发布"},

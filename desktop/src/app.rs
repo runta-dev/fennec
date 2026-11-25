@@ -3726,6 +3726,9 @@ impl Render for FennecWindow {
             // without it nothing in the window can be selected (THI-169).
             .child(gpui_base::TextSelectionLayer)
             .on_action(cx.listener(Self::on_shell_action))
+            .on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {
+                this.open_text_context_menu(e.position, window, cx)
+            }))
             // Captured first: a focused reply box would otherwise copy its own empty selection.
             // Any click clears the window selection, so a non-empty one is what was just selected.
             .capture_action(cx.listener(|_, _: &gpui_base::input::Copy, window, cx| copy_selected_text(window, cx)))

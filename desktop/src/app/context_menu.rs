@@ -1,4 +1,4 @@
-//! Sidebar and tab context menus, using Herdr's compact menu metrics.
+//! Sidebar, tab and selected-text context menus, using Herdr's compact menu metrics.
 use super::*;
 use crate::i18n::tf;
 
@@ -6,6 +6,8 @@ use crate::i18n::tf;
 pub(super) enum Target {
     Project(String),
     Terminal { session: String, tab: String },
+    /// Right-click with text selected in a thread or knowledge page (THI-169).
+    Text(String),
 }
 #[derive(Clone)]
 enum Action {
@@ -17,6 +19,7 @@ enum Action {
     CopyDirectory(String),
     CloseTab(String),
     SplitTab(String),
+    CopyText(String),
 }
 struct Item {
     label: &'static str,
@@ -55,6 +58,21 @@ impl FennecWindow {
         )
     }
 
+    /// Right-click anywhere else: offers Copy when text views have a selection. The text is
+    /// read now, because the left click on the menu item clears the window selection.
+    pub(super) fn open_text_context_menu(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = gpui_base::TextSelection::selected_text(window, cx);
+        let text = text.trim();
+        if !text.is_empty() {
+            self.open_context_menu(Target::Text(text.to_owned()), position, window, cx);
+        }
+    }
+
     fn open_context_menu(
         &mut self,
         target: Target,
@@ -63,6 +81,11 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         let items = match target {
+            Target::Text(text) => vec![Item {
+                label: "context_copy",
+                icon: "copy",
+                action: Action::CopyText(text),
+            }],
             Target::Project(id) => vec![
                 Item {
                     label: "context_rename",
@@ -176,7 +199,7 @@ impl FennecWindow {
                     self.new_shell(session, window, cx);
                 }
             }
-            Some(Action::CopyDirectory(path)) => {
+            Some(Action::CopyDirectory(path) | Action::CopyText(path)) => {
                 cx.write_to_clipboard(ClipboardItem::new_string(path))
             }
             Some(Action::CloseTab(key)) if !crate::preview::active() => {
