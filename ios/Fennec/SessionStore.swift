@@ -556,8 +556,18 @@ extension SessionStore {
             transcriptsBehind.insert(session.id)
         }
         guard transcripts else { return }
-        for session in sessions where !session.transcriptLoaded || transcriptsBehind.contains(session.id) {
-            await loadTranscript(session.id)
+        // Working sessions first, a few at a time, so one long log doesn't
+        // hold up the rest (THI-201). Opening a chat cancels the home list's
+        // task: no new reads start then, and the chat reads its own log.
+        let behind = sessions.filter { !$0.transcriptLoaded || transcriptsBehind.contains($0.id) }
+        let pending = (behind.filter { $0.state == .working } + behind.filter { $0.state != .working }).map(\.id)
+        await withTaskGroup(of: Void.self) { group in
+            var next = pending.makeIterator()
+            for _ in 0..<3 { if let id = next.next() { group.addTask { await self.loadTranscript(id) } } }
+            while await group.next() != nil {
+                if Task.isCancelled { break }
+                if let id = next.next() { group.addTask { await self.loadTranscript(id) } }
+            }
         }
     }
 
@@ -565,6 +575,9 @@ extension SessionStore {
     /// state ends the working indicator) and any question on screen.
     /// Returns how long to wait before the next pass.
     func pollChat(_ id: String) async -> Duration {
+        // The home list is reading this log right now: look again shortly,
+        // not after a whole poll interval (THI-201).
+        if transcriptReads.contains(id) { return .milliseconds(250) }
         await loadTranscript(id)
         await refresh(transcripts: false)
         await loadPrompt(id)

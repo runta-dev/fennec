@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fennec/internal/agylog"
 	"fennec/internal/board"
+	"fennec/internal/chatlog"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/cloudarchive"
 	"fennec/internal/commandstream"
@@ -119,6 +120,20 @@ func run() (int, error) {
 		if path != "" {
 			fmt.Println(path)
 		}
+		return 0, nil
+	}
+	// The phone reads a chat through this: the log is found, read and parsed
+	// here, so one round trip carries items, not raw log lines (THI-201).
+	if len(os.Args) == 5 && os.Args[1] == "transcript" {
+		offset, err := strconv.ParseInt(os.Args[4], 10, 64)
+		if err != nil {
+			return 1, fmt.Errorf("invalid offset")
+		}
+		out, err := chatlog.Local().Read(os.Args[2], os.Args[3], offset)
+		if err != nil {
+			return 1, err
+		}
+		fmt.Println(out)
 		return 0, nil
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "preview" {

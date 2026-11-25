@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"fennec/internal/account"
+	"fennec/internal/chatlog"
 	"fennec/internal/cli"
 	"fennec/internal/commandstream"
 	"fennec/internal/runta"
@@ -228,8 +229,8 @@ type Sessions struct {
 	client         *ssh.Client
 	runtimeID      string
 	token          string
-	paths          map[string]string    // address/session -> conversation log
-	pathsAt        map[string]time.Time // when each was resolved
+	log            *chatlog.Reader // reads chats when the cloud's fennec-terminal is older
+	oldTerminal    bool            // its fennec-terminal has no transcript command
 	metrics        cloudruntime.RemoteSampler
 	residentMu     sync.Mutex
 	residentClient *ssh.Client
@@ -363,6 +364,7 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 		return nil, "", err
 	}
 	s.client, s.runtimeID, s.token = connection, sharedID, token
+	s.oldTerminal = false // the Mac may have updated it since
 	s.rememberRuntime(sharedID)
 	return connection, sharedID, nil
 }
