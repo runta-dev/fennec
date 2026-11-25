@@ -179,7 +179,10 @@ terminal core kept unchanged ([`desktop/UPSTREAM.md`](../desktop/UPSTREAM.md),
 Apache-2.0). `native/macos/DesktopWindow.swift` only starts it, brings it to
 the front and stops it with Fennec. The window calls the daemon directly:
 `board.call`, `sessions.start` (a session on the cloud computer with no Mac
-folder), `account.organizations` (the switcher) and `account.profile` (who
+folder), `sessions.local_folder` (a Claude Code session on this Mac starts in
+a folder under `~/.fen/desktop-sessions` that Fennec marks trusted, since
+Claude Code never remembers trust for the home folder),
+`account.organizations` (the switcher) and `account.profile` (who
 signs requests and replies). Its terminals are herdr-core terminal views on
 the cloud computer's core, reached through `fen hc connect` (control method
 `hc.open`: a command stream over the resident connection). Copy comes from the

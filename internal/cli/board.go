@@ -260,6 +260,22 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		return map[string]any{"terminal": json.RawMessage(rawTerminal), "location": "cloud"}, nil
 	}
+	// sessions.local_folder gives the desktop window the working directory
+	// for an agent session it starts on this Mac ("" keeps the home folder).
+	c.Additional["sessions.local_folder"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Agent string `json:"agent"`
+			Name  string `json:"name"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid session"}
+		}
+		dir, err := desktopLocalFolder(ctx, s.home, params.Agent, params.Name)
+		if err != nil {
+			return nil, &control.Fault{Code: "invalid_params", Message: "The session folder could not be prepared"}
+		}
+		return map[string]string{"directory": dir}, nil
+	}
 	// sessions.start opens a session on the cloud computer from the desktop
 	// window's New session: no Mac folder, optionally in a project.
 	c.Additional["sessions.start"] = func(ctx context.Context, raw json.RawMessage) (any, error) {

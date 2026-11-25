@@ -1751,7 +1751,9 @@ impl FennecWindow {
                         let name = format!("desktop-{}", sessions::now_ms());
                         // A long-lived core can retain NO_COLOR from a noninteractive launcher.
                         let argv = [vec!["/usr/bin/env".into(), "-u".into(), "NO_COLOR".into()], argv].concat();
-                        core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
+                        let cwd = if agent.is_empty() { None } else { board::local_folder(&agent, &name) }
+                            .or_else(|| std::env::var("HOME").ok());
+                        core.run(argv, cwd, serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {
                         Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
