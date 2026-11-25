@@ -236,7 +236,7 @@ func mixAudio(root string, tl *Timeline, path string) (int, error) {
 				}
 				t := float64(i) / sampleRate
 				d := math.Min(1, math.Min((t-(a-0.3))/0.3, ((b+0.5)-t)/0.5))
-				g := float32(1 - 0.42*d)
+				g := float32(1 - 0.55*d)
 				if g < duck[i] {
 					duck[i] = g
 				}
