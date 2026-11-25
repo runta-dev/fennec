@@ -111,7 +111,10 @@ func TestInstallAgyTokenKeepsCloudRefresh(t *testing.T) {
 	if err := installAgyToken(home, root); err != nil || !strings.Contains(read(), "ya29.other") {
 		t.Fatal("new Mac sign-in did not replace the cloud's", err)
 	}
-	if accounts := agyAccounts(func(name string) []byte { data, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(name))); return data }); len(accounts) != 1 || accounts[0].Provider != "google" {
+	if accounts := agyAccounts(func(name string) []byte {
+		data, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		return data
+	}); len(accounts) != 1 || accounts[0].Provider != "google" {
 		t.Fatal(accounts)
 	}
 }
@@ -137,7 +140,7 @@ func TestAgyKeychainValueIsDecoded(t *testing.T) {
 		t.Fatalf("agy sign-in unavailable: %v %v", err, request.NativeProblems)
 	}
 	view := NativeAccountFromFiles("agy", request.Files)
-	if view.Status != "signed_in" || len(view.Accounts) != 1 || view.Accounts[0].Email != "someone@example.com" || view.Accounts[0].Subscription != "Agent Platform" {
+	if view.Status != "signed_in" || len(view.Accounts) != 1 || view.Accounts[0].Email != "someone@example.com" || view.Accounts[0].Subscription != "Agent Platform" || view.Accounts[0].Project != "playground-1" {
 		t.Fatalf("%+v", view)
 	}
 }

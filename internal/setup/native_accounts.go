@@ -30,7 +30,7 @@ import (
 // shell hooks, MCP commands, or arbitrary local directories are copied.
 var nativeFiles = map[string]bool{
 	cursorAuthFile: true, cursorConfigFile: true, grokAuthFile: true, grokConfigFile: true,
-	agyAuthFile: true,
+	agyAuthFile:       true,
 	"codex/auth.json": true, "codex/config.toml": true,
 	"claude/.credentials.json": true, "claude/settings.json": true, "claude/.claude.json": true,
 	"pi/auth.json": true, "pi/settings.json": true, "pi/models.json": true,

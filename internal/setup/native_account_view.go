@@ -14,7 +14,9 @@ type NativeAccountIdentity struct {
 	Provider     string `json:"provider"`
 	Email        string `json:"email,omitempty"`
 	Subscription string `json:"subscription,omitempty"`
-	AuthType     string `json:"auth_type"`
+	// Project is the Google Cloud project a sign-in uses (Antigravity CLI's Agent Platform).
+	Project  string `json:"project,omitempty"`
+	AuthType string `json:"auth_type"`
 }
 type NativeAccountView struct {
 	Agent    string                  `json:"agent"`

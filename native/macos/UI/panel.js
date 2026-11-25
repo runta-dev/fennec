@@ -352,7 +352,9 @@ window.renderAgents = agents => {
           if(identity)name.dataset.identity='true';
           name.textContent=identity?(identity.email||({openai:'OpenAI',anthropic:'Anthropic','openai-codex':'ChatGPT',google:'Google'}[identity.provider]||identity.provider)):(account?.status==='signed_out'?"[[i18n:ui.not_signed_in]]":account?"[[i18n:ui.account_unavailable]]":'');
           if(!account)name.classList.add('setting-skeleton');
-          accountRow.append(badge,name);
+          // A Google Cloud sign-in (Antigravity CLI) also names its project, as agy does.
+          if(identity?.project){const text=document.createElement('span');text.className='native-account-text';const project=document.createElement('span');project.className='native-account-project';project.textContent="[[i18n:ui.gcp_project]]"+': '+identity.project;project.title=project.textContent;text.append(name,project);accountRow.append(badge,text);}
+          else accountRow.append(badge,name);
           if(identity){const plan=document.createElement('span');plan.className='native-subscription';plan.textContent=identity.subscription||(identity.auth_type==='api_key'?'API key':'OAuth');accountRow.append(plan);}
           const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label',"[[i18n:ui.refresh_account]]");refresh.title="[[i18n:ui.refresh_account]]";refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';

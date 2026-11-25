@@ -1533,6 +1533,14 @@
       "zh-CN": "在这台 Mac 上登录 Antigravity CLI 后，Fennec 会把登录信息迁移到云电脑。",
       "zh-TW": "在這台 Mac 上登入 Antigravity CLI 後，Fennec 會把登入資訊遷移到雲端電腦。"
     },
+    "ui.gcp_project": {
+      "en-GB": "GCP Project",
+      "en-US": "GCP Project",
+      "ja": "GCP プロジェクト",
+      "ko": "GCP 프로젝트",
+      "zh-CN": "GCP 项目",
+      "zh-TW": "GCP 專案"
+    },
     "ui.chatgpt_reconnect_title": {
       "en-GB": "Reconnect ChatGPT?",
       "en-US": "Reconnect ChatGPT?",

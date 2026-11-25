@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -115,6 +116,9 @@ func agyEntry(v map[string]any) nativeOAuthEntry {
 	return entry
 }
 
+// gcpProjectID is a Google Cloud project ID; anything else is not shown.
+var gcpProjectID = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
+
 func agyAccounts(read func(string) []byte) []NativeAccountIdentity {
 	token, ok := agyToken(read(agyAuthFile))
 	if !ok {
@@ -124,6 +128,9 @@ func agyAccounts(read func(string) []byte) []NativeAccountIdentity {
 	identity := NativeAccountIdentity{Provider: "google", AuthType: "oauth", Subscription: "Antigravity", Email: publicEmail(value["id_token_email"])}
 	if stringValue(value["auth_method"]) == "gcp" {
 		identity.Subscription = "Agent Platform"
+		if project := stringValue(value["project_id"]); gcpProjectID.MatchString(project) {
+			identity.Project = project
+		}
 	}
 	return []NativeAccountIdentity{identity}
 }
