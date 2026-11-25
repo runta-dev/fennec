@@ -19,6 +19,10 @@ pub fn markdown_style() -> gpui_base::text::TextViewStyle {
         .with_border(c("f_line"))
         .with_selection(c("f_text").opacity(0.2))
         .with_code_background(c("f_line"))
+        // A table body otherwise fills with gpui-kit's theme `surface`, which
+        // Fennec never sets, so it stayed white in dark mode (THI-129). Let it
+        // sit on whatever the text is drawn on, like paragraphs do.
+        .with_table(StyleRefinement::default().bg(gpui::transparent_black()))
         .with_inline_code(HighlightStyle {
             color: Some(c("f_text")),
             background_color: Some(c("f_line")),
