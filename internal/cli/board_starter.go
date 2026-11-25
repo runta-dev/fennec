@@ -9,15 +9,20 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"fennec/internal/localization"
+	uiassets "fennec/native/macos/UI"
 )
 
 // starterQueueCopy is the name and description of the queue a new board starts
 // with (THI-177), in the language the Fennec window shows.
 func starterQueueCopy(home string) (name, description string) {
-	if starterQueueLanguage(home) == "zh-CN" {
-		return "我的任务", "把要做的事发到这里，Agent 会依次接手并回复你。不需要可以删除。"
+	catalog, err := localization.Decode(uiassets.Translations)
+	if err != nil {
+		return "My tasks", "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it."
 	}
-	return "My tasks", "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it."
+	language := starterQueueLanguage(home)
+	return catalog.Text("desktop.starter_queue_name", language), catalog.Text("desktop.starter_queue_description", language)
 }
 
 // starterQueueLanguage follows the window's language setting, then the

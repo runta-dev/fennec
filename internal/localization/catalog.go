@@ -22,6 +22,15 @@ var locales = map[string]bool{"en-US": true, "en-GB": true, "zh-CN": true, "zh-T
 func IsCJK(r rune) bool {
 	return unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hangul, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r)
 }
+
+// Text returns key's copy in locale, falling back to en-US.
+func (c Catalog) Text(key, locale string) string {
+	if value := c.Messages[key][locale]; value != "" {
+		return value
+	}
+	return c.Messages[key]["en-US"]
+}
+
 func Decode(raw []byte) (Catalog, error) {
 	var c Catalog
 	decoder := json.NewDecoder(bytes.NewReader(raw))

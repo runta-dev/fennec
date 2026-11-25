@@ -257,6 +257,8 @@
       "zh-CN": "执行"
     },
     "desktop.queue_empty": {"en-US": "Nothing in progress or waiting", "zh-CN": "没有进行中或等待中的 request"},
+    "desktop.starter_queue_name": {"en-US": "My tasks", "zh-CN": "我的任务"},
+    "desktop.starter_queue_description": {"en-US": "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it.", "zh-CN": "把要做的事发到这里，Agent 会依次接手并回复你。不需要可以删除。"},
     "desktop.queued": {"en-US": "Queued", "zh-CN": "排队中"},
     "desktop.queued_wait": {"en-US": "Waiting for an agent", "zh-CN": "等待 Agent 接手"},
     "desktop.queued_next": {"en-US": "Next up", "zh-CN": "下一个开始"},
