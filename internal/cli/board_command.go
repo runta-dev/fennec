@@ -38,7 +38,7 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		return err
 	}
 	if len(args) != 3 && len(args) != 6 && len(args) != 7 {
-		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | threads <queue>")
+		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | new <queue> <number> <agent> <session> <tag|auto> (title line, then body, on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | threads <queue>")
 	}
 	n, err := strconv.Atoi(args[2])
 	if err != nil || n < 1 {
@@ -58,6 +58,17 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		body = map[string]string{"agent": args[3], "author": args[3], "session": args[4], "outcome": args[5], "body": string(text)}
 		verb = "POST"
 		path += "/complete"
+	} else if args[0] == "new" && len(args) == 6 {
+		if !board.Agents[args[3]] {
+			return fmt.Errorf("invalid agent")
+		}
+		text, err := io.ReadAll(io.LimitReader(os.Stdin, (64<<10)+1))
+		if err != nil {
+			return err
+		}
+		body = map[string]string{"agent": args[3], "session": args[4], "tag": args[5], "text": string(text)}
+		verb = "POST"
+		path += "/file"
 	} else if (args[0] == "link" && len(args) >= 6) || (args[0] == "merge" && len(args) == 6) {
 		link, err := fenQueueLink(args)
 		if err != nil {

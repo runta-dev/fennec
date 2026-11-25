@@ -181,6 +181,15 @@ func (s Store) Handler() http.Handler {
 			reply(w, req, err)
 		}
 	})
+	// The run working on request n files a new request for its person
+	// (`queue new`); see Store.FileRequest.
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/file", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Session, Agent, Tag, Text string }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			req, err := s.FileRequest(r.PathValue("id"), n, body.Session, body.Agent, body.Tag, body.Text)
+			reply(w, req, err)
+		}
+	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/claim", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Session, Agent, Location string }
 		if n, ok := number(w, r); ok && decode(w, r, &body) {

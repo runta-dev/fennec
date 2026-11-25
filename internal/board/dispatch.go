@@ -3,6 +3,7 @@ package board
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -213,5 +214,14 @@ func knowledgeNote(p Project) string {
 // threadsNote points the agent at the queue's mirrored threads (THI-103) and
 // the commands that link this request to them.
 func threadsNote(p Project, r Request, command string) string {
-	return fmt.Sprintf("Queue threads: every request of this queue is mirrored as markdown in ~/.fen/board/projects/%s/threads/ (INDEX.md lists them, %s-<n>.md holds each thread with its links). Search it (rg, grep) for earlier requests about the same thing and use what they found. Mentioning %s-<n> in your reply links the two threads; to link explicitly run:\n%s link %s %d %s %s %s-<n> [related|duplicate|none]\nIf this request repeats an earlier one, merge it into that one with:\n%s merge %s %d %s %s %s-<n>", p.ID, p.Key, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key)
+	return fmt.Sprintf("Queue threads: every request of this queue is mirrored as markdown in ~/.fen/board/projects/%s/threads/ (INDEX.md lists them, %s-<n>.md holds each thread with its links). Search it (rg, grep) for earlier requests about the same thing and use what they found. Mentioning %s-<n> in your reply links the two threads; to link explicitly run:\n%s link %s %d %s %s %s-<n> [related|duplicate|none]\nIf this request repeats an earlier one, merge it into that one with:\n%s merge %s %d %s %s %s-<n>\nTo file a new request in this queue for the person (work they ask you to queue, or a follow-up you both agreed on), pass its title on the first line and its body after it on stdin, and name one of %s, or auto:\n%s new %s %d %s %s <tag|auto>\nIt is theirs, starts as Queued, and links to this request.", p.ID, p.Key, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key, tagIDs(p), command, p.ID, r.Number, r.Agent, r.Session)
+}
+
+// tagIDs lists a project's tag ids for the run prompt.
+func tagIDs(p Project) string {
+	ids := make([]string, 0, len(p.Tags))
+	for _, t := range p.Tags {
+		ids = append(ids, t.ID)
+	}
+	return strings.Join(ids, ", ")
 }
