@@ -3026,6 +3026,7 @@ impl FennecWindow {
                     )
                     .child(ui::tag_chip(&r.tag, &tag))
                     .child(ui::status_pill(&r.status))
+                    .child(div().flex_1())
                     .when(session_route.is_none() && !r.runs.is_empty(), |d| {
                         d.child(
                             secondary_button("resume-thread-session", t("view_session"), false)
@@ -3043,7 +3044,6 @@ impl FennecWindow {
                             ),
                         )
                     })
-                    .child(div().flex_1())
                     .when(can_resolve, |d| {
                         d.child(
                             secondary_button(
