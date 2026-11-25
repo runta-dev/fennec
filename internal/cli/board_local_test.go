@@ -59,11 +59,11 @@ func TestQueueBackupKeepsSavedCloudLocation(t *testing.T) {
 func TestLocalBoardSendsKnowledgeToTheCloud(t *testing.T) {
 	local := boardClient{local: true}
 	for path, wantLocal := range map[string]bool{
-		"/v1/projects/this/knowledge":        false,
-		"/v1/projects/this/knowledge/review": false,
-		"/v1/projects/this":                  true,
-		"/v1/projects/this/requests":         true,
-		"/v1/projects/knowledge":             true,
+		"/v1/projects/this/knowledge":   false,
+		"/v1/projects/this/knowledge/x": false,
+		"/v1/projects/this":             true,
+		"/v1/projects/this/requests":    true,
+		"/v1/projects/knowledge":        true,
 	} {
 		if got := local.forPath(path).local; got != wantLocal {
 			t.Errorf("%s: local = %v, want %v", path, got, wantLocal)

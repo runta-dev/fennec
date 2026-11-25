@@ -22,8 +22,6 @@ pub enum Tab {
 pub enum KnowledgeFilter {
     #[default]
     All,
-    Review,
-    Draft,
     Deprecated,
 }
 
@@ -213,28 +211,6 @@ impl FennecWindow {
         self.patch_project(change, window, cx);
     }
 
-    fn review(
-        &mut self,
-        concept: String,
-        action: &'static str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let (id, person) = (self.settings.project.clone(), self.me().to_owned());
-        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let done = cx
-                .background_spawn(async move { board::review(&id, &concept, action, &person) })
-                .await;
-            let _ = this.update_in(cx, |this, window, cx| match done {
-                Ok(_) => {
-                    let id = this.settings.project.clone();
-                    this.open_settings(id, window, cx);
-                }
-                Err(_) => this.say(t("try_again"), cx),
-            });
-        }));
-    }
-
     pub(crate) fn project_settings(
         &mut self,
         p: &Project,
@@ -375,10 +351,6 @@ impl FennecWindow {
                             ),
                     ),
             )
-    }
-
-    fn me(&self) -> &str {
-        &self.me
     }
 
     fn upload_project_icon(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -648,14 +620,10 @@ impl FennecWindow {
         let s = &self.settings;
         let show = |k: &Concept| match s.filter {
             KnowledgeFilter::All => true,
-            KnowledgeFilter::Review => k.verified.is_empty() && k.status != "deprecated",
-            KnowledgeFilter::Draft => k.status == "draft",
             KnowledgeFilter::Deprecated => k.status == "deprecated",
         };
         let filters = [
             (KnowledgeFilter::All, t("all")),
-            (KnowledgeFilter::Review, t("needs_review")),
-            (KnowledgeFilter::Draft, t("k_draft")),
             (KnowledgeFilter::Deprecated, t("k_deprecated")),
         ]
         .map(|(f, label)| {
@@ -705,18 +673,12 @@ impl FennecWindow {
             .find(|k| k.id == s.concept)
             .or_else(|| s.knowledge.iter().find(|k| show(k)));
         let concept = |k: &Concept| {
+            // Agents keep the status; there is no review step, so a draft
+            // reads the same as any other live entry.
             let (status, color) = match k.status.as_str() {
                 "deprecated" => (t("k_deprecated"), c("f_muted")),
-                "draft" => (t("k_draft"), c("accent_text")),
                 _ => (t("k_current"), c("ok")),
             };
-            let reviewed: Vec<String> = k
-                .verified
-                .iter()
-                .map(|a| a.by.trim_start_matches("human:").to_owned())
-                .collect();
-            let (id_review, id_dep) = (k.id.clone(), k.id.clone());
-            let deprecated = k.status == "deprecated";
             v_flex()
                 .px(px(18.0))
                 .py(px(16.0))
@@ -742,7 +704,7 @@ impl FennecWindow {
                                 .text_size(px(11.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(color)
-                                .child(status),
+                                .child(status.clone()),
                         ),
                 )
                 .when(!k.description.is_empty(), |d| {
@@ -762,14 +724,7 @@ impl FennecWindow {
                         .border_color(c("f_line"))
                         .children(
                             [
-                                (
-                                    t("status"),
-                                    match k.status.as_str() {
-                                        "draft" => t("k_draft"),
-                                        "deprecated" => t("k_deprecated"),
-                                        _ => t("k_current"),
-                                    },
-                                ),
+                                (t("status"), status),
                                 (
                                     t("written_by"),
                                     format!(
@@ -781,14 +736,6 @@ impl FennecWindow {
                                             format!(" · {}", k.generated_at)
                                         }
                                     ),
-                                ),
-                                (
-                                    t("reviewed_by"),
-                                    if reviewed.is_empty() {
-                                        t("not_yet")
-                                    } else {
-                                        reviewed.join(", ")
-                                    },
                                 ),
                                 (t("tags"), k.tags.join(" · ")),
                                 (t("based_on"), k.sources.join(" · ")),
@@ -821,45 +768,6 @@ impl FennecWindow {
                         .text_color(c("f_text")),
                     )
                 })
-                .child(
-                    h_flex()
-                        .mt(px(4.0))
-                        .pt(px(12.0))
-                        .border_t_1()
-                        .border_color(c("f_line"))
-                        .justify_end()
-                        .gap(px(8.0))
-                        .when(k.verified.is_empty() && !deprecated, |d| {
-                            d.child(
-                                secondary_button("k-review", t("mark_reviewed"), true).on_click(
-                                    cx.listener(move |this, _, window, cx| {
-                                        this.review(id_review.clone(), "review", window, cx)
-                                    }),
-                                ),
-                            )
-                        })
-                        .child(
-                            secondary_button(
-                                "k-deprecate",
-                                if deprecated {
-                                    t("restore")
-                                } else {
-                                    t("deprecate")
-                                },
-                                false,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.review(
-                                        id_dep.clone(),
-                                        if deprecated { "restore" } else { "deprecate" },
-                                        window,
-                                        cx,
-                                    )
-                                },
-                            )),
-                        ),
-                )
         };
         v_flex()
             .gap(px(14.0))

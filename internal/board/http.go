@@ -222,13 +222,6 @@ func (s Store) Handler() http.Handler {
 		list, err := s.Knowledge(r.PathValue("id"))
 		reply(w, list, err)
 	})
-	mux.HandleFunc("POST /v1/projects/{id}/knowledge/review", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ ID, Action, Person string }
-		if decode(w, r, &body) {
-			c, err := s.Review(r.PathValue("id"), body.ID, body.Action, body.Person)
-			reply(w, c, err)
-		}
-	})
 	mux.HandleFunc("GET /v1/queue", func(w http.ResponseWriter, r *http.Request) {
 		queue, err := s.Queue()
 		reply(w, queue, err)

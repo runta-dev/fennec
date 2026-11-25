@@ -44,13 +44,6 @@ pub struct Project {
     pub needs_you: usize,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct Actor {
-    pub by: String,
-    pub at: String,
-}
-
 /// An OKF concept agents wrote in the project's knowledge bundle.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -66,7 +59,6 @@ pub struct Concept {
     pub status: String,
     pub generated_by: String,
     pub generated_at: String,
-    pub verified: Vec<Actor>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -337,15 +329,6 @@ pub fn knowledge(id: &str) -> Result<Vec<Concept>> {
         &format!("/v1/projects/{id}/knowledge"),
         None,
     )?)?)
-}
-
-/// `action`: "review", "deprecate" or "restore".
-pub fn review(id: &str, concept: &str, action: &str, person: &str) -> Result<Value> {
-    call(
-        "POST",
-        &format!("/v1/projects/{id}/knowledge/review"),
-        Some(json!({"id": concept, "action": action, "person": person})),
-    )
 }
 
 pub fn queue() -> Result<Vec<QueueProject>> {

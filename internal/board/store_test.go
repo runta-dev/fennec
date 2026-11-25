@@ -117,7 +117,7 @@ custom: kept
 1. Check the relay.
 `
 
-func TestKnowledgeReview(t *testing.T) {
+func TestKnowledge(t *testing.T) {
 	s := testStore(t)
 	s.CreateProject(Project{Name: "Fennec"})
 	dir := filepath.Join(s.KnowledgePath("fennec"), "runbooks")
@@ -132,20 +132,6 @@ func TestKnowledgeReview(t *testing.T) {
 	if c.ID != "runbooks/attach-eof" || c.Title != "fen attach stuck at handshake: EOF" || c.Status != "draft" || c.GeneratedBy != "claude-code" ||
 		strings.Join(c.Tags, ",") != "ssh,attach" || strings.Join(c.Sources, ",") != "FEN-40" || c.Body != "1. Check the relay.\n" {
 		t.Fatalf("%+v", c)
-	}
-	if c, err = s.Review("fennec", "runbooks/attach-eof", "review", "shiqi"); err != nil || c.Status != "stable" || len(c.Verified) != 1 {
-		t.Fatal(c, err)
-	}
-	data, _ := os.ReadFile(filepath.Join(dir, "attach-eof.md"))
-	if !strings.Contains(string(data), "custom: kept\n") || !strings.Contains(string(data), "  - by: \"human:shiqi\"\n") || !strings.HasSuffix(string(data), "---\n1. Check the relay.\n") {
-		t.Fatal(string(data))
-	}
-	list, _ = s.Knowledge("fennec")
-	if list[0].Verified[0].By != "human:shiqi" || list[0].Status != "stable" {
-		t.Fatalf("%+v", list[0])
-	}
-	if _, err = s.Review("fennec", "../../project", "deprecate", "shiqi"); !errors.Is(err, ErrInvalid) {
-		t.Fatal(err)
 	}
 }
 

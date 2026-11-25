@@ -147,7 +147,6 @@ The Mac daemon exposes it to the app as the control method `board.call`
 | `POST /v1/projects/{id}/requests/{n}/messages` | Reply; from a person it re-queues the request |
 | `PATCH /v1/projects/{id}/requests/{n}` | Tag, resolve, reopen |
 | `GET /v1/projects/{id}/knowledge` | Knowledge concepts |
-| `POST /v1/projects/{id}/knowledge/review` | Mark a concept reviewed, deprecate or restore it (`{id, action, person}`) |
 | `GET /v1/queue` | Requests ready to start, with each project's limit and workers |
 | `POST /v1/projects/{id}/requests/{n}/claim` | Assign a queued request to a session (fails if already taken) |
 | `POST /v1/projects/{id}/requests/{n}/release` | Return a claimed request to the queue when its session did not start |

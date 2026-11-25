@@ -207,5 +207,5 @@ func RunPrompt(p Project, r Request, command string) string {
 }
 
 func knowledgeNote(p Project) string {
-	return fmt.Sprintf("Queue knowledge: ~/.fen/board/projects/%s/knowledge/ is this queue's OKF bundle (https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md); people review it in Fennec. Read what is relevant there before you start. You maintain it: while you work, record what a later agent on this queue should know, and whenever the user asks you to remember something, record that too. Update or deprecate entries that turn out wrong instead of adding duplicates.", p.ID)
+	return fmt.Sprintf("Queue knowledge: ~/.fen/board/projects/%s/knowledge/ is this queue's OKF bundle (https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md); people read it in Fennec. Read what is relevant there before you start. You maintain it: while you work, record what a later agent on this queue should know, and whenever the user asks you to remember something, record that too. Update or deprecate entries that turn out wrong instead of adding duplicates.", p.ID)
 }

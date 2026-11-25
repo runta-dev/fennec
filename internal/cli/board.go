@@ -62,7 +62,7 @@ var boardPath = regexp.MustCompile(`^/v1/[A-Za-z0-9/_.-]{0,200}$`)
 
 // knowledgePath matches a project's knowledge endpoints. The bundle is files
 // agents write on the cloud computer; replication does not carry it, so the
-// Mac's local board never has it. It is always read and reviewed in the cloud.
+// Mac's local board never has it. It is always read in the cloud.
 var knowledgePath = regexp.MustCompile(`^/v1/projects/[^/]+/knowledge(?:/|$)`)
 
 // forPath sends knowledge requests to the cloud board even from a local client.
