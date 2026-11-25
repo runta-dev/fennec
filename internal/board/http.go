@@ -146,7 +146,12 @@ func (s Store) Handler() http.Handler {
 			if err == nil {
 				req = s.RequestForUI(req)
 			}
-			reply(w, req, err)
+			// THI-103: the thread carries its links and backlinks.
+			related, _ := s.Related(r.PathValue("id"), n)
+			reply(w, struct {
+				Request
+				Related []Related `json:"related"`
+			}{req, related}, err)
 		}
 	})
 	mux.HandleFunc("PATCH /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +165,19 @@ func (s Store) Handler() http.Handler {
 		var body struct{ Author, Agent, Body string }
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
 			req, err := s.Reply(r.PathValue("id"), n, body.Author, body.Agent, body.Body)
+			reply(w, req, err)
+		}
+	})
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/links", func(w http.ResponseWriter, r *http.Request) {
+		// Body: {"number": 42, "kind": "related"|"duplicate"|		// Body: {"number": 42, "kind": "related"|"duplicate"|"" (removes), "author": "…"}.
+		// An agent also sends its "agent" and run "session"; only the run
+		// working on the request may change its links.
+		var body struct {
+			Number                       int
+			Kind, Author, Session, Agent string
+		}
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			req, err := s.SetLink(r.PathValue("id"), n, body.Number, body.Kind, body.Author, body.Session, body.Agent)
 			reply(w, req, err)
 		}
 	})

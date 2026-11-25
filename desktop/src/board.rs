@@ -121,6 +121,21 @@ pub struct Request {
     pub latest: Option<Message>,
     pub messages: Vec<Message>,
     pub runs: Vec<Run>,
+    /// Links and backlinks to other requests of the queue (THI-103); only
+    /// a single-request fetch carries them.
+    pub related: Vec<Related>,
+}
+
+/// One linked request as the board reports it (board.Related): kind is
+/// related, duplicate or mention; incoming means the other one links here.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Related {
+    pub number: u64,
+    pub title: String,
+    pub status: String,
+    pub kind: String,
+    pub incoming: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

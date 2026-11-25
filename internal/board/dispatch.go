@@ -203,9 +203,15 @@ func (s Store) validateDispatch(p Project, list []Summary, n int, agent, locatio
 // names only the root of the queue's OKF knowledge bundle; the agent decides
 // what goes in it and how it is arranged.
 func RunPrompt(p Project, r Request, command string) string {
-	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\n%sReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. These commands release the execution slot; do not use them for progress updates.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), tagPrompt(p, r, command), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
+	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\n%s\n\n%sReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. These commands release the execution slot; do not use them for progress updates.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), threadsNote(p, r, command), tagPrompt(p, r, command), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
 }
 
 func knowledgeNote(p Project) string {
 	return fmt.Sprintf("Queue knowledge: ~/.fen/board/projects/%s/knowledge/ is this queue's OKF bundle (https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md); people read it in Fennec. Read what is relevant there before you start. You maintain it: while you work, record what a later agent on this queue should know, and whenever the user asks you to remember something, record that too. Update or deprecate entries that turn out wrong instead of adding duplicates.", p.ID)
+}
+
+// threadsNote points the agent at the queue's mirrored threads (THI-103) and
+// the commands that link this request to them.
+func threadsNote(p Project, r Request, command string) string {
+	return fmt.Sprintf("Queue threads: every request of this queue is mirrored as markdown in ~/.fen/board/projects/%s/threads/ (INDEX.md lists them, %s-<n>.md holds each thread with its links). Search it (rg, grep) for earlier requests about the same thing and use what they found. Mentioning %s-<n> in your reply links the two threads; to link explicitly run:\n%s link %s %d %s %s %s-<n> [related|duplicate|none]\nIf this request repeats an earlier one, merge it into that one with:\n%s merge %s %d %s %s %s-<n>", p.ID, p.Key, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key, command, p.ID, r.Number, r.Agent, r.Session, p.Key)
 }

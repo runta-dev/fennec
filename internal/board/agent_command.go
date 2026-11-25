@@ -8,15 +8,25 @@ import (
 	"strconv"
 )
 
+const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag> | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue threads <queue>"
+
 func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error {
-	if len(args) != 3 && len(args) != 6 {
-		return fmt.Errorf("usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag>")
+	s := Store{Home: home, Role: "cloud"}
+	// queue threads <queue>: refresh the thread mirror and print its folder.
+	if len(args) == 2 && args[0] == "threads" {
+		if err := s.MirrorThreads(args[1]); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintln(out, s.ThreadsPath(args[1]))
+		return err
+	}
+	if len(args) != 3 && len(args) != 6 && len(args) != 7 {
+		return errors.New(agentUsage)
 	}
 	n, err := strconv.Atoi(args[2])
 	if err != nil || n < 1 {
 		return ErrInvalid
 	}
-	s := Store{Home: home, Role: "cloud"}
 	if args[0] == "read" && len(args) == 3 {
 		r, err := s.Request(args[1], n)
 		if err != nil {
@@ -35,8 +45,11 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 		}
 		return json.NewEncoder(out).Encode(RequestForAgent(r))
 	}
+	if (args[0] == "link" && (len(args) == 6 || len(args) == 7)) || (args[0] == "merge" && len(args) == 6) {
+		return agentLink(s, args, n, out)
+	}
 	if args[0] != "reply" || len(args) != 6 {
-		return ErrInvalid
+		return errors.New(agentUsage)
 	}
 	b, err := io.ReadAll(io.LimitReader(in, maxBody+1))
 	if err != nil {
@@ -47,4 +60,47 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 		return err
 	}
 	return json.NewEncoder(out).Encode(RequestForAgent(r))
+}
+
+// agentLink runs `queue link` and `queue merge` for the run working on a
+// request: link it to another request of its queue, or mark it a duplicate
+// of one (merge). Both threads then show the link.
+func agentLink(s Store, args []string, n int, out io.Writer) error {
+	p, err := s.Project(args[1])
+	if err != nil {
+		return err
+	}
+	to, ok := RefNumber(p, args[5])
+	if !ok {
+		return fmt.Errorf("%q is not a request of %s (use %s-<n>)", args[5], p.Name, p.Key)
+	}
+	kind := LinkRelated
+	if args[0] == "merge" {
+		kind = LinkDuplicate
+	} else if len(args) == 7 {
+		switch args[6] {
+		case LinkRelated, LinkDuplicate:
+			kind = args[6]
+		case "none", "remove":
+			kind = ""
+		default:
+			return fmt.Errorf("unknown link kind %q (related, duplicate or none)", args[6])
+		}
+	}
+	_, err = s.SetLink(p.ID, n, to, kind, args[3], args[4], args[3])
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return fmt.Errorf("no request %s-%d", p.Key, to)
+	case errors.Is(err, ErrConflict):
+		return fmt.Errorf("this run no longer owns %s-%d", p.Key, n)
+	case errors.Is(err, ErrInvalid):
+		return fmt.Errorf("%s-%d can't link to itself", p.Key, n)
+	case err != nil:
+		return err
+	}
+	related, err := s.Related(p.ID, n)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(out).Encode(related)
 }

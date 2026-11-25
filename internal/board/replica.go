@@ -255,6 +255,7 @@ func (s Store) materialize(state ReplicaState) error {
 			}
 		}
 	}
+	mirror := map[string]bool{}
 	for object, fields := range objects {
 		value := map[string]json.RawMessage{}
 		path := filepath.Join(s.root(), object)
@@ -317,7 +318,11 @@ func (s Store) materialize(state ReplicaState) error {
 		if err := writeJSON(path, value); err != nil {
 			return err
 		}
+		if parts := strings.Split(object, "/"); len(parts) == 4 && parts[2] == "requests" {
+			mirror[parts[1]] = true
+		}
 	}
+	s.mirrorThreads(objects, mirror)
 	return writeJSON(filepath.Join(s.root(), "replica-applied.json"), len(state.Events))
 }
 

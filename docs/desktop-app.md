@@ -1,3 +1,4 @@
+| `POST /v1/projects/{id}/requests/{n}/links` | Link to another request (`related`), merge into one (`duplicate`), or unlink (`""`) |
 # Fennec for Mac: the desktop window
 
 Queues use the [replication and scheduling contract](queues.md). The user-facing
@@ -124,6 +125,7 @@ execution endpoint, so cloud results do not require the Mac to be online.
   projects/<project-id>/project.json      settings (name, key, org, icon, tags, queue, workers)
   projects/<project-id>/requests/<n>.json one request and its messages
   projects/<project-id>/knowledge/**.md   OKF concepts (YAML front matter + markdown)
+  projects/<project-id>/threads/*.md      derived markdown mirror of every thread (INDEX.md, KEY-n.md)
 ```
 
 Writes are atomic (temporary file and rename) under one lock file, so the
@@ -169,6 +171,22 @@ disjoint numbers while offline.
 Agents read and answer with `fen queue read/reply` on the Mac or
 `fennec-terminal queue read/reply` on the cloud. Result text travels on stdin.
 The execution prompt supplies the exact queue, number, agent and run identity.
+
+### Thread mirror and links
+
+Every board change rewrites the changed files of
+`projects/<id>/threads/`: `INDEX.md` (one line per request) and `KEY-n.md`
+(front matter with status, tag, links and backlinks, then the thread). Agents
+search it with `rg`/`grep` to find earlier requests. The request JSON stays the
+source of truth; the mirror is never read back and can be deleted.
+
+Requests link like GitHub issues. Writing `KEY-n` in any message links the two
+requests. The working run can also add an explicit link with
+`queue link <queue> <n> <agent> <run> KEY-m [related|duplicate|none]`, or
+merge its request into an earlier one with `queue merge … KEY-m`. A request is
+a duplicate of at most one other. Backlinks are derived, so every link shows on
+both threads. `GET …/requests/{n}` returns them as `related`, and the desktop
+thread lists them under the opening message.
 
 ## The window and the menu bar
 

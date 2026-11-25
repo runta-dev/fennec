@@ -106,6 +106,9 @@ type Request struct {
 	Runs        []Run  `json:"runs,omitempty"`
 	Offer       *Offer `json:"offer,omitempty"`
 	Votes       int    `json:"votes,omitempty"`
+	// Links are this request's explicit links to other requests of its
+	// queue (see links.go); backlinks and mentions are derived.
+	Links []Link `json:"links,omitempty"`
 	// Reclaim is set when a person marks the request done: its agent sessions
 	// are ended once their agents stop. Requests resolved earlier keep theirs.
 	Reclaim bool `json:"reclaim,omitempty"`

@@ -13,6 +13,7 @@ mod sidebar_resize;
 mod tab_close;
 mod tabs;
 mod thread_peek;
+mod thread_links;
 mod thread_wait;
 #[cfg(test)]
 mod reply_tests;
@@ -1084,10 +1085,15 @@ impl FennecWindow {
                     Ok(value) => {
                         // The board answers with the updated request: show it
                         // now; the refresh below catches up the list.
-                        if let Ok(updated) = serde_json::from_value::<Request>(value)
+                        if let Ok(mut updated) = serde_json::from_value::<Request>(value)
                             && updated.number == n
                             && !updated.messages.is_empty()
                         {
+                            // The reply answer has no links (THI-103); keep the
+                            // thread's until the refresh brings them.
+                            if let Some(old) = this.thread_cache.get(&(origin.clone(), n)) {
+                                updated.related = old.related.clone();
+                            }
                             if here {
                                 if let Some(old) = &this.thread {
                                     this.fresh_messages
@@ -3131,6 +3137,10 @@ impl FennecWindow {
             } else {
                 item.into_any_element()
             });
+            // Linked requests sit under the opening message, as on GitHub (THI-103).
+            if i == 0 {
+                items.extend(self.thread_links(p, r, cx));
+            }
         }
         let reply_key = format!("reply:{}:{}", p.id, r.number);
         let reply_has = !self.replying
