@@ -15,8 +15,9 @@ type Ender interface {
 
 // reclaim ends the agent sessions of requests marked done (board.Request.Reclaim).
 // It only touches sessions this scheduler's location runs, never one an
-// unfinished request still uses, and never an agent that is working: that
-// session is ended after its turn. Once every session is gone the flag clears,
+// unfinished request still uses, and never an agent in the middle of a turn
+// (Session.Busy): that session is ended after its turn. Open background shells
+// alone don't count as a turn. Once every session is gone the flag clears,
 // but only on the side that ran the request last (Request.RunLocation): both
 // schedulers see the flag, and the other side has nothing of its own to end.
 //
@@ -87,7 +88,7 @@ func (s Scheduler) reclaim(ctx context.Context, listed []Session) {
 			}
 			ended[run.Session] = true
 			for _, t := range live[run.Session] {
-				if t.Status != "working" && t.Address != "" {
+				if !t.Busy() && t.Address != "" {
 					end(t)
 				}
 			}
@@ -105,7 +106,7 @@ func (s Scheduler) reclaim(ctx context.Context, listed []Session) {
 			}
 			seen[run.Session] = true
 			for _, t := range live[run.Session] {
-				if t.Status == "working" || t.Address == "" {
+				if t.Busy() || t.Address == "" {
 					done = false
 					continue
 				}

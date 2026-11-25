@@ -31,7 +31,7 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	}
 	out := []Session{}
 	for _, t := range list.Terminals {
-		out = append(out, Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: AgentStatus(t.Status), StatusAt: StatusTime(t.StatusMS)})
+		out = append(out, Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: AgentStatus(t.Status), StatusAt: StatusTime(t.StatusMS), Background: BackgroundOnly(t.Status)})
 	}
 	return out, nil
 }

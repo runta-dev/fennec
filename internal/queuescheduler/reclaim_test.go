@@ -2,6 +2,7 @@ package queuescheduler
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"fennec/internal/board"
@@ -92,6 +93,38 @@ func TestMarkDoneWaitsForAWorkingAgent(t *testing.T) {
 	reclaimStep(t, s)
 	if len(ex.ended) != 1 {
 		t.Fatal("session not ended after the turn", ex.ended)
+	}
+}
+
+// THI-107: Claude Code keeps reporting "working" while a background shell it
+// started is open, even after its turn ended; a wait loop whose pgrep matches
+// itself never exits, so the session of a done request stayed forever.
+func TestMarkDoneEndsAnAgentIdleBehindBackgroundShells(t *testing.T) {
+	store, p, r, ex := finishedRequest(t, "working")
+	ex.sessions[0].Background = BackgroundOnly(json.RawMessage(`{"app":"claude-code","msg":"2 shells still running","state":"working"}`))
+	s := Scheduler{Store: store, Executor: ex}
+	store.Change(p.ID, r.Number, "", board.Resolved)
+	reclaimStep(t, s)
+	if len(ex.ended) != 1 || ex.ended[0] != "t1" {
+		t.Fatal("kept a session that only has background shells open", ex.ended)
+	}
+	if got, _ := store.Request(p.ID, r.Number); got.Reclaim {
+		t.Fatal("reclaim flag kept after the session ended")
+	}
+}
+
+func TestBackgroundOnly(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`{"msg":"1 shell still running","state":"working"}`:                   true,
+		`{"msg":"12 shells still running","state":"working"}`:                 true,
+		`{"msg":"Writing desktop/src/app/thread_links.rs","state":"working"}`: false,
+		`{"msg":"1 shell still running","state":"done"}`:                      false,
+		`{"state":"working"}`: false,
+		``:                    false,
+	} {
+		if got := BackgroundOnly(json.RawMessage(raw)); got != want {
+			t.Errorf("BackgroundOnly(%s) = %v, want %v", raw, got, want)
+		}
 	}
 }
 

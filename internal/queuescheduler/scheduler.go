@@ -10,7 +10,9 @@ import (
 	"fennec/internal/board"
 	r "fennec/internal/runtime"
 	"fmt"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -20,6 +22,33 @@ type Session struct {
 	ID, State, Title, Status string
 	Address                  string // herdr-core terminal address, for ending it
 	StatusAt                 time.Time
+	// Background: the agent finished its turn and only reports working because
+	// background shells it started are still open (see BackgroundOnly).
+	Background bool
+}
+
+// Busy reports whether the agent is in the middle of a turn. An agent whose
+// turn ended but whose background shells are still open is not busy: those
+// shells can outlive the turn forever (a wait loop whose pgrep matches its own
+// command line never exits), and treating that as work kept done requests'
+// sessions alive (THI-107).
+func (s Session) Busy() bool {
+	return s.Status == "working" && !s.Background
+}
+
+// backgroundOnly is Claude Code's status line once its turn is over while
+// background shells are still open: "1 shell still running".
+var backgroundOnly = regexp.MustCompile(`^\d+ shells? still running$`)
+
+// BackgroundOnly reports whether a herdr-core status record says the agent is
+// idle apart from background shells.
+func BackgroundOnly(raw json.RawMessage) bool {
+	var status struct {
+		State string `json:"state"`
+		Msg   string `json:"msg"`
+	}
+	_ = json.Unmarshal(raw, &status)
+	return status.State == "working" && backgroundOnly.MatchString(strings.TrimSpace(status.Msg))
 }
 
 // AgentStatus extracts the agent's status word from a herdr-core status record.
