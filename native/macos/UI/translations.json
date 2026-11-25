@@ -55,6 +55,11 @@
       "en-US": "Open session",
       "zh-CN": "打开会话"
     },
+    "desktop.open_in_tab": {
+      "en-GB": "Open in tab",
+      "en-US": "Open in tab",
+      "zh-CN": "在标签页中打开"
+    },
     "desktop.retry_request": {
       "en-GB": "Retry",
       "en-US": "Retry",

@@ -8,6 +8,7 @@ mod context_menu;
 mod glide;
 mod pending_reply;
 mod row_motion;
+mod session_modal;
 mod request_attachments;
 mod sidebar_resize;
 mod tab_close;
@@ -142,6 +143,7 @@ pub struct FennecWindow {
     pub(crate) composer: Entity<TextareaState>,
     request_images: request_attachments::Drafts,
     image_viewer: Option<request_attachments::Viewer>,
+    session_modal: Option<session_modal::SessionModal>,
     posting: bool,
     replying: bool,
     pub(crate) reply: Entity<TextareaState>,
@@ -249,6 +251,7 @@ impl FennecWindow {
                 && this.close_others.is_none()
                 && this.new_project.is_none()
                 && this.image_viewer.is_none()
+                && this.session_modal.is_none()
                 && this.menu.is_none()
                 && this.context_menu.is_none()
             {
@@ -309,6 +312,7 @@ impl FennecWindow {
             composer,
             request_images: Default::default(),
             image_viewer: None,
+            session_modal: None,
             posting: false,
             replying: false,
             thread_scroll: ScrollHandle::new(),
@@ -749,6 +753,7 @@ impl FennecWindow {
     }
 
     pub(crate) fn go(&mut self, mut route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_session_modal(window, cx);
         self.close_others = None;
         self.prefix = false;
         self.layout.intent += 1;
@@ -1009,7 +1014,7 @@ impl FennecWindow {
                             if this.project_id().as_deref() == Some(&origin)
                                 && this.open == Some(number)
                             {
-                                this.go(Route::Session(address), window, cx);
+                                this.open_session_modal(address, window, cx);
                             }
                             this.refresh_now(window, cx);
                         }
@@ -3166,7 +3171,7 @@ impl FennecWindow {
             .map(|s| s.address.clone());
         let peek = self
             .peek_target()
-            .map(|s| self.thread_peek_card(s, &r.status))
+            .map(|s| self.thread_peek_card(s, &r.status, cx))
             .or_else(|| self.thread_wait_card(p, r));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
         v_flex()
@@ -3215,7 +3220,7 @@ impl FennecWindow {
                         d.child(
                             secondary_button("request-session", t("view_session"), false).on_click(
                                 cx.listener(move |this, _, window, cx| {
-                                    this.go(Route::Session(address.clone()), window, cx)
+                                    this.open_session_modal(address.clone(), window, cx)
                                 }),
                             ),
                         )
@@ -3523,6 +3528,7 @@ impl Render for FennecWindow {
         let context_menu = self.context_menu_view(window, cx);
         let dialog = self.new_project_dialog(cx);
         let image_viewer = self.image_viewer_view(cx);
+        let session_modal = self.session_modal_view(window, cx);
         h_flex()
             .relative()
             .track_focus(&self.focus)
@@ -3685,6 +3691,7 @@ impl Render for FennecWindow {
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
+            .when_some(session_modal, |d, m| d.child(m))
             .when_some(image_viewer, |d, m| d.child(m))
             .when(self.prefix, |d| {
                 d.child(

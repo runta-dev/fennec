@@ -192,7 +192,13 @@ impl FennecWindow {
 
     /// The agent's row at the end of the thread: its state, what it says it
     /// is doing and the last lines it printed.
-    pub(super) fn thread_peek_card(&self, session: &Session, status: &str) -> AnyElement {
+    pub(super) fn thread_peek_card(
+        &self,
+        session: &Session,
+        status: &str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let address = session.address.clone();
         let peek = self
             .thread_peek
             .get(&session.address);
@@ -205,6 +211,11 @@ impl FennecWindow {
         h_flex()
             .id("thread-peek")
             .items_start()
+            // THI-115: the agent's whole screen, in a modal over the thread.
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_session_modal(address.clone(), window, cx)
+            }))
             .gap(px(12.0))
             .py(px(10.0))
             .child(
