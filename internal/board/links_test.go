@@ -172,6 +172,25 @@ func TestThreadAPICarriesRelatedAndSetsLinks(t *testing.T) {
 	}
 }
 
+func TestMentionsReadSlashShorthand(t *testing.T) {
+	pattern := mentionPattern("THI")
+	text := "正在跑的请求（THI-73/103/107）。THI-5/6x, THI-8/ and THI-9/10/THI-11"
+	got := mentions(pattern, text)
+	want := []int{73, 103, 107, 5, 8, 9, 10, 11}
+	if len(got) != len(want) {
+		t.Fatalf("%v", got)
+	}
+	for i, n := range want {
+		if got[i][0] != n {
+			t.Fatalf("%v", got)
+		}
+	}
+	head := strings.Index(text, "THI-73") + 4
+	if got[1][1] != head || got[2][1] != head {
+		t.Fatalf("offsets %v, want %d", got, head)
+	}
+}
+
 func TestExcerptShowsTheLineAroundAMention(t *testing.T) {
 	text := "Intro line\n- **Waiting on you** (`you`): THI-41, 59, 61\nlast"
 	if got := excerpt(text, strings.Index(text, "THI-41")); got != "Waiting on you (you): THI-41, 59, 61" {

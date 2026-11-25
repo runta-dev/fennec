@@ -60,6 +60,28 @@ pub(super) fn request_link(url: &str) -> Option<u64> {
 /// `body` with every reference to a known request of the queue (KEY-n, as
 /// the board matches mentions) turned into a markdown link that opens it.
 /// Code, and the text and target of existing links, are left alone.
+/// Reads the numbers after "KEY-": "73" or the shorthand "73/103/107"
+/// (THI-117), returning them and the bytes they span. A number must end at a
+/// non-word character, so "42x" is not a reference.
+fn ref_chain(s: &str) -> Option<(Vec<u64>, usize)> {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let number = |at: usize| -> Option<(u64, usize)> {
+        let len = s[at..].bytes().take_while(u8::is_ascii_digit).count();
+        let ends = s[at + len..].chars().next().is_none_or(|c| !word(c));
+        (len > 0 && len <= 7 && ends)
+            .then(|| s[at..at + len].parse().ok().map(|n| (n, len)))
+            .flatten()
+    };
+    let (first, mut used) = number(0)?;
+    let mut numbers = vec![first];
+    while s[used..].starts_with('/') {
+        let Some((n, len)) = number(used + 1) else { break };
+        numbers.push(n);
+        used += 1 + len;
+    }
+    Some((numbers, used))
+}
+
 pub(super) fn link_refs(body: &str, key: &str, known: &HashSet<u64>) -> String {
     if key.is_empty() || !body.contains(key) {
         return body.to_owned();
@@ -89,23 +111,23 @@ pub(super) fn link_refs(body: &str, key: &str, known: &HashSet<u64>) -> String {
                 && rest.starts_with(key)
                 && rest[key.len()..].starts_with('-')
                 && prev.is_none_or(|p| !word(p) && p != '-')
+                && let Some((numbers, used)) = ref_chain(&rest[key.len() + 1..])
+                && numbers.iter().any(|n| known.contains(n))
             {
-                let digits: String = rest[key.len() + 1..]
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
-                let after = rest[key.len() + 1 + digits.len()..].chars().next();
-                if let Ok(n) = digits.parse::<u64>()
-                    && !digits.is_empty()
-                    && digits.len() <= 7
-                    && after.is_none_or(|c| !word(c))
-                    && known.contains(&n)
-                {
-                    out.push_str(&format!("[{key}-{n}]({REQUEST_URL}{n})"));
-                    i += key.len() + 1 + digits.len();
-                    prev = Some('0');
-                    continue;
+                for (j, n) in numbers.iter().enumerate() {
+                    if j > 0 {
+                        out.push('/');
+                    }
+                    let text = if j == 0 { format!("{key}-{n}") } else { n.to_string() };
+                    if known.contains(n) {
+                        out.push_str(&format!("[{text}]({REQUEST_URL}{n})"));
+                    } else {
+                        out.push_str(&text);
+                    }
                 }
+                i += key.len() + 1 + used;
+                prev = Some('0');
+                continue;
             }
             match ch {
                 '`' => code = !code,
@@ -583,6 +605,11 @@ mod tests {
         assert_eq!(
             link_refs("```\nTHI-41\n```\n(THI-41)", "THI", &known),
             "```\nTHI-41\n```\n([THI-41](fennec://request/41))"
+        );
+        let known: HashSet<u64> = [73, 103, 107].into_iter().collect();
+        assert_eq!(
+            link_refs("正在跑的请求（THI-73/103/107）。THI-99/103x THI-99/107/", "THI", &known),
+            "正在跑的请求（[THI-73](fennec://request/73)/[103](fennec://request/103)/[107](fennec://request/107)）。THI-99/103x THI-99/[107](fennec://request/107)/"
         );
         assert_eq!(request_link("fennec://request/41"), Some(41));
         assert_eq!(request_link("https://example.com"), None);
