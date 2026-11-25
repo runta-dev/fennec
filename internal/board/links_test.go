@@ -268,3 +268,37 @@ func TestMentionsReadLists(t *testing.T) {
 		t.Fatalf("offsets %v", got)
 	}
 }
+
+// THI-191: a request linked to n that also mentions n is one row, not a
+// Related row plus a Mentioned in row.
+func TestALinkAndAMentionOfTheSameRequestAreOneRow(t *testing.T) {
+	s := testStore(t)
+	p, _ := s.CreateProject(Project{Name: "Delivery", Key: "DEL"})
+	a, _ := s.CreateRequest(p.ID, "me", "Public beta", "feature", "")
+	b, _ := s.CreateRequest(p.ID, "me", "Privacy page", "feature", "From DEL-1: needed for review")
+	c, _ := s.CreateRequest(p.ID, "me", "Old beta plan", "feature", "Same as DEL-1")
+	if _, err := s.SetLink(p.ID, a.Number, b.Number, LinkRelated, "me", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetLink(p.ID, a.Number, c.Number, LinkRelated, "me", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetLink(p.ID, c.Number, a.Number, LinkDuplicate, "me", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	related, _ := s.Related(p.ID, a.Number)
+	if len(related) != 2 {
+		t.Fatal(related)
+	}
+	byNumber := map[int]Related{}
+	for _, r := range related {
+		byNumber[r.Number] = r
+	}
+	if r := byNumber[b.Number]; r.Kind != LinkRelated || r.Incoming || len(r.Mentions) != 1 || !strings.Contains(r.Mentions[0].Excerpt, "needed for review") {
+		t.Fatal(r)
+	}
+	// The stronger link wins: DEL-3 was merged into DEL-1.
+	if r := byNumber[c.Number]; r.Kind != LinkDuplicate || !r.Incoming {
+		t.Fatal(r)
+	}
+}

@@ -150,22 +150,28 @@ func sortedNumbers(requests map[int]Request) []int {
 }
 
 // relatedFor is what request n's thread shows: its explicit links, then
-// every request linking to or mentioning it, one row per other request and
-// direction. The requests n itself mentions are links in its own text.
+// every request linking to or mentioning it. Each other request is one row
+// (THI-191): an explicit link and a mention between the same two requests
+// would otherwise show twice, as Related and as Mentioned in. The row keeps
+// the strongest kind (duplicate, then related, then mention; outgoing first
+// on a tie) and every place the other request mentions n. The requests n
+// itself mentions are links in its own text.
 func relatedFor(n int, requests map[int]Request, all []edge) []Related {
 	out := []Related{}
-	seen := map[[2]int]bool{}
+	row := map[int]int{}
+	rank := map[string]int{LinkDuplicate: 2, LinkRelated: 1}
 	add := func(e edge, other int, incoming bool) {
-		dir := 0
-		if incoming {
-			dir = 1
-		}
-		if seen[[2]int{other, dir}] {
+		i, ok := row[other]
+		if !ok {
+			r := requests[other]
+			row[other] = len(out)
+			out = append(out, Related{Number: other, Title: r.Title, Status: r.Status, Kind: e.Kind, Incoming: incoming, Mentions: e.Sources})
 			return
 		}
-		seen[[2]int{other, dir}] = true
-		r := requests[other]
-		out = append(out, Related{Number: other, Title: r.Title, Status: r.Status, Kind: e.Kind, Incoming: incoming, Mentions: e.Sources})
+		if rank[e.Kind] > rank[out[i].Kind] {
+			out[i].Kind, out[i].Incoming = e.Kind, incoming
+		}
+		out[i].Mentions = append(out[i].Mentions, e.Sources...)
 	}
 	for _, e := range all {
 		if e.From == n && e.Kind != "mention" {
