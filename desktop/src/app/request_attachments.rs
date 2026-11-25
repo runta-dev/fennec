@@ -37,7 +37,10 @@ fn hits_image(stage: Bounds<Pixels>, size: (u32, u32), click: Point<Pixels>) -> 
     }
     let fitted = ObjectFit::Contain.get_bounds(
         stage,
-        gpui::size(DevicePixels::from(size.0 as i32), DevicePixels::from(size.1 as i32)),
+        gpui::size(
+            DevicePixels::from(size.0 as i32),
+            DevicePixels::from(size.1 as i32),
+        ),
     );
     fitted.contains(&click)
 }
@@ -254,8 +257,10 @@ impl FennecWindow {
                     images.iter().cloned().enumerate().map(|(index, image)| {
                         let project = project.to_owned();
                         let remove = image.id.clone();
-                        let ids: Vec<(String, (u32, u32))> =
-                    images.iter().map(|a| (a.id.clone(), (a.width, a.height))).collect();
+                        let ids: Vec<(String, (u32, u32))> = images
+                            .iter()
+                            .map(|a| (a.id.clone(), (a.width, a.height)))
+                            .collect();
                         let (width, height) = (80.0, 80.0);
                         div()
                             .id(SharedString::from(format!("draft-image-{}", image.id)))
@@ -327,8 +332,10 @@ impl FennecWindow {
             .mt(px(6.0))
             .children(images.iter().enumerate().map(|(index, image)| {
                 let id = image.id.clone();
-                let ids: Vec<(String, (u32, u32))> =
-                    images.iter().map(|a| (a.id.clone(), (a.width, a.height))).collect();
+                let ids: Vec<(String, (u32, u32))> = images
+                    .iter()
+                    .map(|a| (a.id.clone(), (a.width, a.height)))
+                    .collect();
                 let (width, height) = (96.0, 96.0);
                 div()
                     .id(SharedString::from(format!("request-image-{key}-{id}")))
@@ -608,8 +615,16 @@ mod tests {
         // A 2:1 screenshot in a 1000×1000 stage is drawn 1000×500, centered.
         let stage = bounds(point(px(0.0), px(0.0)), size(px(1000.0), px(1000.0)));
         assert!(hits_image(stage, (3024, 1512), point(px(500.0), px(500.0))));
-        assert!(!hits_image(stage, (3024, 1512), point(px(500.0), px(100.0))));
-        assert!(!hits_image(stage, (3024, 1512), point(px(500.0), px(900.0))));
+        assert!(!hits_image(
+            stage,
+            (3024, 1512),
+            point(px(500.0), px(100.0))
+        ));
+        assert!(!hits_image(
+            stage,
+            (3024, 1512),
+            point(px(500.0), px(900.0))
+        ));
         // A tall image leaves the sides as backdrop instead.
         assert!(!hits_image(stage, (500, 1000), point(px(100.0), px(500.0))));
         // No recorded size: the whole stage counts as the image.
