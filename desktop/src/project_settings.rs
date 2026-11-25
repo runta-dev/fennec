@@ -327,19 +327,22 @@ impl FennecWindow {
                             .children(tabs),
                     )
                     .child(
+                        // Knowledge is a list beside a reader, each scrolling on
+                        // its own, so the body itself doesn't scroll there.
                         div()
                             .id("settings-body")
                             .flex_1()
                             .min_w_0()
                             .min_h_0()
-                            .overflow_y_scroll()
+                            .when(tab != Tab::Knowledge, |d| d.overflow_y_scroll())
+                            .when(tab == Tab::Knowledge, |d| d.flex().flex_col())
                             .child(
                                 v_flex()
                                     .w_full()
-                                    .when(tab != Tab::Knowledge, |d| d.max_w(px(760.0)))
+                                    .when(tab != Tab::Knowledge, |d| d.max_w(px(760.0)).pb(px(40.0)))
+                                    .when(tab == Tab::Knowledge, |d| d.flex_1().min_h_0())
                                     .px(px(28.0))
                                     .pt(px(20.0))
-                                    .pb(px(40.0))
                                     .child(
                                         div()
                                             .mb(px(14.0))
@@ -622,29 +625,33 @@ impl FennecWindow {
             KnowledgeFilter::All => true,
             KnowledgeFilter::Deprecated => k.status == "deprecated",
         };
+        let deprecated = s.knowledge.iter().filter(|k| k.status == "deprecated").count();
         let filters = [
-            (KnowledgeFilter::All, t("all")),
-            (KnowledgeFilter::Deprecated, t("k_deprecated")),
+            (KnowledgeFilter::All, t("all"), s.knowledge.len()),
+            (KnowledgeFilter::Deprecated, t("k_deprecated"), deprecated),
         ]
-        .map(|(f, label)| {
+        .map(|(f, label, count)| {
             let on = s.filter == f;
-            div()
+            h_flex()
                 .id(SharedString::from(format!("kf-{label}")))
                 .h(px(24.0))
                 .px(px(10.0))
+                .gap(px(6.0))
                 .rounded(px(12.0))
-                .flex()
-                .items_center()
                 .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(if on { c("f_text") } else { c("f_muted") })
                 .when(on, |d| d.bg(c("f_line")))
+                .when(!on, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.settings.filter = f;
                     cx.notify();
                 }))
                 .child(label)
+                .child(div().text_color(c("f_muted")).child(count.to_string()))
         });
+        // Known folders first in a fixed order, the rest by name; newest
+        // entries first inside a folder.
         let mut sections: Vec<(String, Vec<&Concept>)> = Vec::new();
         for k in s.knowledge.iter().filter(|k| show(k)) {
             let folder = k.id.split('/').next().unwrap_or_default().to_owned();
@@ -652,6 +659,16 @@ impl FennecWindow {
                 Some((_, list)) => list.push(k),
                 None => sections.push((folder, vec![k])),
             }
+        }
+        const ORDER: [&str; 4] = ["architecture", "decisions", "runbooks", "glossary"];
+        let rank = |f: &str| ORDER.iter().position(|o| *o == f).unwrap_or(ORDER.len());
+        sections.sort_by(|(a, _), (b, _)| rank(a).cmp(&rank(b)).then_with(|| a.cmp(b)));
+        for (_, list) in &mut sections {
+            list.sort_by(|a, b| {
+                b.generated_at
+                    .cmp(&a.generated_at)
+                    .then_with(|| a.title.cmp(&b.title))
+            });
         }
         let section_name = |folder: &str| match folder {
             "architecture" | "runbooks" | "decisions" | "glossary" => {
@@ -666,96 +683,133 @@ impl FennecWindow {
                     .unwrap_or_default()
             }
         };
-        let current = s
-            .knowledge
+        let visible: Vec<&Concept> = sections.iter().flat_map(|(_, l)| l.iter().copied()).collect();
+        let current = visible
             .iter()
-            .filter(|k| show(k))
+            .copied()
             .find(|k| k.id == s.concept)
-            .or_else(|| s.knowledge.iter().find(|k| show(k)));
-        let concept = |k: &Concept| {
-            // Agents keep the status; there is no review step, so a draft
-            // reads the same as any other live entry.
-            let (status, color) = match k.status.as_str() {
-                "deprecated" => (t("k_deprecated"), c("f_muted")),
-                _ => (t("k_current"), c("ok")),
-            };
+            .or_else(|| visible.first().copied());
+        let row = |k: &Concept| {
+            let id = k.id.clone();
+            let selected = current.is_some_and(|c| c.id == k.id);
+            let gone = k.status == "deprecated";
+            let meta = [day(&k.generated_at), k.sources.join(", ")]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
             v_flex()
-                .px(px(18.0))
-                .py(px(16.0))
-                .flex_1()
-                .min_w_0()
-                .gap(px(12.0))
-                .rounded(px(10.0))
-                .bg(c("f_card"))
-                .border_1()
-                .border_color(c("f_line"))
+                .id(SharedString::from(format!("concept-{}", k.id)))
+                .px(px(10.0))
+                .py(px(7.0))
+                .gap(px(2.0))
+                .rounded(px(8.0))
+                .when(selected, |d| d.bg(c("f_card")).shadow(ui::selection_shadow()))
+                .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings.concept = id.clone();
+                    cx.notify();
+                }))
                 .child(
-                    h_flex()
-                        .gap(px(8.0))
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_size(px(13.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(k.title.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(color)
-                                .child(status.clone()),
-                        ),
+                    div()
+                        .text_size(px(13.0))
+                        .line_height(px(18.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(if gone { c("f_muted") } else { c("f_text") })
+                        .line_clamp(2)
+                        .child(k.title.clone()),
                 )
-                .when(!k.description.is_empty(), |d| {
+                .when(!meta.is_empty(), |d| {
                     d.child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(px(11.0))
                             .text_color(c("f_muted"))
-                            .child(k.description.clone()),
+                            .truncate()
+                            .child(meta),
                     )
                 })
+        };
+        let concept = |k: &Concept| {
+            // Agents keep the status and there is no review step, so only a
+            // retired entry is marked; everything else is simply live.
+            let gone = k.status == "deprecated";
+            let written = [sessions_actor(&k.generated_by), stamp(&k.generated_at)]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let facts = [
+                (t("written_by"), written),
+                (t("based_on"), k.sources.join(" · ")),
+                (t("tags"), k.tags.join(" · ")),
+            ];
+            v_flex()
+                .w_full()
+                .max_w(px(760.0))
+                .gap(px(14.0))
                 .child(
                     v_flex()
-                        .py(px(12.0))
-                        .gap(px(8.0))
-                        .border_t_1()
+                        .gap(px(6.0))
+                        .child(
+                            h_flex()
+                                .gap(px(10.0))
+                                .items_start()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_size(px(18.0))
+                                        .line_height(px(25.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(k.title.clone()),
+                                )
+                                .when(gone, |d| {
+                                    d.child(
+                                        div()
+                                            .mt(px(3.0))
+                                            .px(px(8.0))
+                                            .py(px(2.0))
+                                            .rounded(px(10.0))
+                                            .bg(c("f_line"))
+                                            .text_size(px(11.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(c("f_muted"))
+                                            .child(t("k_deprecated")),
+                                    )
+                                }),
+                        )
+                        .when(!k.description.is_empty(), |d| {
+                            d.child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .line_height(px(19.0))
+                                    .text_color(c("f_muted"))
+                                    .child(k.description.clone()),
+                            )
+                        }),
+                )
+                .child(
+                    v_flex()
+                        .pb(px(14.0))
+                        .gap(px(6.0))
                         .border_b_1()
                         .border_color(c("f_line"))
-                        .children(
-                            [
-                                (t("status"), status),
-                                (
-                                    t("written_by"),
-                                    format!(
-                                        "{}{}",
-                                        sessions_actor(&k.generated_by),
-                                        if k.generated_at.is_empty() {
-                                            String::new()
-                                        } else {
-                                            format!(" · {}", k.generated_at)
-                                        }
-                                    ),
-                                ),
-                                (t("tags"), k.tags.join(" · ")),
-                                (t("based_on"), k.sources.join(" · ")),
-                            ]
-                            .into_iter()
-                            .map(|(label, value)| {
+                        .children(facts.into_iter().filter(|(_, v)| !v.is_empty()).map(
+                            |(label, value)| {
                                 h_flex()
                                     .gap(px(12.0))
                                     .items_start()
-                                    .text_size(px(12.5))
+                                    .text_size(px(12.0))
                                     .child(
                                         div()
-                                            .w(px(96.0))
+                                            .w(px(84.0))
                                             .flex_none()
                                             .text_color(c("f_muted"))
                                             .child(label),
                                     )
                                     .child(div().flex_1().min_w_0().child(value))
-                            }),
-                        ),
+                            },
+                        )),
                 )
                 .when(!k.body.is_empty(), |d| {
                     d.child(
@@ -770,14 +824,23 @@ impl FennecWindow {
                 })
         };
         v_flex()
-            .gap(px(14.0))
+            .flex_1()
+            .min_h_0()
+            .gap(px(12.0))
             .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(c("f_muted"))
-                    .child(tf("knowledge_hint", &[("name", &p.name)])),
+                h_flex()
+                    .gap(px(16.0))
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(12.5))
+                            .text_color(c("f_muted"))
+                            .child(tf("knowledge_hint", &[("name", &p.name)])),
+                    )
+                    .child(h_flex().flex_none().gap(px(4.0)).children(filters)),
             )
-            .child(h_flex().gap(px(4.0)).children(filters))
             .when(sections.is_empty(), |d| {
                 d.child(
                     div()
@@ -791,61 +854,57 @@ impl FennecWindow {
                         }),
                 )
             })
-            .child(
-                h_flex()
-                    .gap(px(14.0))
-                    .items_start()
-                    .min_h(px(420.0))
-                    .child(
-                        v_flex()
-                            .w(px(240.0))
-                            .flex_none()
-                            .children(sections.iter().map(|(folder, list)| {
-                                v_flex()
-                                    .child(
-                                        div()
-                                            .px(px(10.0))
-                                            .pt(px(10.0))
-                                            .pb(px(3.0))
-                                            .text_size(px(11.0))
-                                            .text_color(c("f_muted"))
-                                            .child(section_name(folder)),
-                                    )
-                                    .children(list.iter().map(|k| {
-                                        let id = k.id.clone();
-                                        let selected = current.is_some_and(|c| c.id == k.id);
-                                        v_flex()
-                                            .id(SharedString::from(format!("concept-{}", k.id)))
-                                            .px(px(10.0))
-                                            .py(px(8.0))
-                                            .gap(px(3.0))
-                                            .rounded(px(8.0))
-                                            .when(selected, |d| {
-                                                d.bg(c("f_card")).shadow(ui::selection_shadow())
-                                            })
-                                            .hover(|s| s.bg(c("f_line").opacity(0.5)))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.settings.concept = id.clone();
-                                                cx.notify();
-                                            }))
-                                            .child(
-                                                div()
-                                                    .text_size(px(13.0))
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .truncate()
-                                                    .child(k.title.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.0))
-                                                    .text_color(c("f_muted"))
-                                                    .child(k.kind.clone()),
-                                            )
-                                    }))
-                            })),
-                    )
-                    .when_some(current, |d, k| d.child(concept(k))),
-            )
+            .when(!sections.is_empty(), |d| {
+                d.child(
+                    h_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .items_stretch()
+                        .border_t_1()
+                        .border_color(c("f_line"))
+                        .child(
+                            div()
+                                .id("knowledge-list")
+                                .w(px(300.0))
+                                .flex_none()
+                                .h_full()
+                                .pr(px(10.0))
+                                .pb(px(24.0))
+                                .border_r_1()
+                                .border_color(c("f_line"))
+                                .overflow_y_scroll()
+                                .children(sections.iter().map(|(folder, list)| {
+                                    v_flex()
+                                        .child(
+                                            h_flex()
+                                                .px(px(10.0))
+                                                .pt(px(14.0))
+                                                .pb(px(4.0))
+                                                .text_size(px(11.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(c("f_muted"))
+                                                .child(div().flex_1().child(section_name(folder)))
+                                                .child(list.len().to_string()),
+                                        )
+                                        .children(list.iter().map(|k| row(k)))
+                                })),
+                        )
+                        .when_some(current, |d, k| {
+                            d.child(
+                                div()
+                                    .id("knowledge-reader")
+                                    .flex_1()
+                                    .min_w_0()
+                                    .h_full()
+                                    .pl(px(28.0))
+                                    .pt(px(18.0))
+                                    .pb(px(40.0))
+                                    .overflow_y_scroll()
+                                    .child(concept(k)),
+                            )
+                        }),
+                )
+            })
     }
 
     fn queue_tab(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1362,4 +1421,20 @@ fn sessions_actor(value: &str) -> String {
         return person.to_owned();
     }
     crate::sessions::agent_name(value.split('/').next().unwrap_or(value)).to_owned()
+}
+
+/// `2026-11-25T03:30:00Z` as `2026-11-25 03:30 UTC`; anything else as is.
+fn stamp(at: &str) -> String {
+    match (at.get(..10), at.get(11..16)) {
+        (Some(date), Some(time)) if at.as_bytes().get(10) == Some(&b'T') => {
+            let utc = at.ends_with('Z') || at.ends_with("+00:00");
+            format!("{date} {time}{}", if utc { " UTC" } else { "" })
+        }
+        _ => at.to_owned(),
+    }
+}
+
+/// The date part of an RFC 3339 time, for the list.
+fn day(at: &str) -> String {
+    at.get(..10).filter(|d| d.as_bytes().get(4) == Some(&b'-')).unwrap_or(at).to_owned()
 }
