@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/account"
+	"fennec/internal/applog"
 	"fennec/internal/audit"
 	"fennec/internal/cloudstate"
 	"fennec/internal/connectivity"
@@ -17,11 +18,14 @@ import (
 	"fennec/internal/sshcarrier"
 	"fennec/internal/stackdump"
 	"fennec/internal/terminalstream"
+	"fennec/internal/updater"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"syscall"
 	"time"
@@ -73,6 +77,10 @@ func serveControl(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// Daily log in logs/, kept for seven days and exported from Settings.
+	logs := applog.Install(home)
+	defer logs.Close()
+	log.Printf("fennec daemon starting: pid=%d build=%.12s version=%s executable=%s os=%s/%s", os.Getpid(), control.BuildID(), updater.BundleVersion(updater.BundlePath(executable)), executable, runtime.GOOS, runtime.GOARCH)
 	// SIGUSR1 writes every goroutine's stack to logs/ for hangs that log nothing.
 	stackdump.Install(ctx, filepath.Join(home, ".config/fennec/logs"))
 	manager, services, controller := newControlApplication(ctx, home, executable)
@@ -210,6 +218,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installPreviewServer(ctx, services)
 	installBoard(ctx, services, controller)
 	installDesktopWindowSettings(home, controller)
+	installLogExport(home, executable, controller)
 	controller.Settings = func() any {
 		auditRes, _ := auditStore.Query(audit.QueryOptions{Limit: 1})
 		return desktopSettingsResponse(home, settings.snapshot().(desktopPreferences), auditRes.Summary)

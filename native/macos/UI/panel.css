@@ -668,3 +668,10 @@ nav button{padding:3px 7px}
 .session-loading-title{width:58%;height:13px}
 .session-loading-row:nth-child(2) .session-loading-title{width:43%}
 .self-hosted-value{min-width:0;max-width:62%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;user-select:text}
+#preferences #export-logs{min-height:40px;box-shadow:none;font-weight:400}
+#export-logs:hover{background:var(--expanded);filter:none}
+#export-logs:focus-visible{outline-offset:-3px}
+#export-logs-status{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+#export-logs[aria-busy=true]{opacity:1;cursor:progress}
+#export-logs[aria-busy=true] .magpie-panel-spinner{display:block;animation:refresh-rotate .9s linear infinite}
+@media(prefers-reduced-motion:reduce){#export-logs[aria-busy=true] .magpie-panel-spinner{animation:none}}

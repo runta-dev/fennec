@@ -1651,3 +1651,17 @@ window.renderMagpiePanelResult=success=>{
  button.disabled=false;button.setAttribute('aria-busy','false');
  document.querySelector('#magpie-panel-status').textContent=success?'':"[[i18n:ui.magpie_panel_retry]]";
 };
+
+document.querySelector('#export-logs').onclick=()=>{
+ const button=document.querySelector('#export-logs');
+ if(button.getAttribute('aria-busy')==='true')return;
+ button.disabled=true;button.setAttribute('aria-busy','true');
+ document.querySelector('#export-logs-status').textContent="[[i18n:ui.export_logs_collecting]]";
+ send('export-logs');
+};
+// Swift reports saved, cancelled or failed once the save panel closes.
+window.renderLogExportResult=outcome=>{
+ const button=document.querySelector('#export-logs');
+ button.disabled=false;button.setAttribute('aria-busy','false');
+ document.querySelector('#export-logs-status').textContent=outcome==='saved'?"[[i18n:ui.export_logs_saved]]":outcome==='failed'?"[[i18n:ui.export_logs_retry]]":'';
+};

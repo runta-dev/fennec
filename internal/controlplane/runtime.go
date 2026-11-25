@@ -11,6 +11,7 @@ import (
 	"fennec/internal/runta"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"syscall"
@@ -44,6 +45,9 @@ func (c *Controller) notifyRuntimeWakeLocked() {
 	default:
 	}
 }
+
+// RuntimeStatus is the snapshot runtime.status returns.
+func (c *Controller) RuntimeStatus() RuntimeState { return c.runtimeSnapshot() }
 
 func (c *Controller) runtimeSnapshot() RuntimeState {
 	account := c.Account.Snapshot()
@@ -142,10 +146,14 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 	done := make(chan struct{})
 	c.runtimeCancel = cancel
 	c.runtimeDone = done
+	generation := c.runtimeGeneration
 	c.mu.Unlock()
 	go func() {
 		defer close(done)
 		defer cancel()
+		started := time.Now()
+		log.Printf("cloud computer preparation %d started (account epoch %d, runtime %q)", generation, epoch, previousID)
+		lastStage := ""
 		writer := &runtimeEvents{emit: func(event map[string]string) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
@@ -157,12 +165,17 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 			default:
 				return
 			}
+			if event["type"] == "runtime_progress" && event["stage"]+event["status"] != lastStage {
+				lastStage = event["stage"] + event["status"]
+				log.Printf("cloud computer preparation %d: %s %s %s", generation, event["stage"], event["runtime_id"], event["status"])
+			}
 			c.runtime.Events[event["type"]] = event
 			if id := event["runtime_id"]; id != "" {
 				c.runtime.RuntimeID = id
 			}
 		}}
 		err := c.Prepare(ctx, principal, writer)
+		logPreparationResult(generation, time.Since(started), err, ctx.Err())
 		var api *runta.APIError
 		if token, isRunta := principal.RuntaToken(); isRunta && errors.As(err, &api) && api.Status == 401 {
 			c.Account.RejectCredential(token, epoch)
@@ -576,4 +589,24 @@ func (c *Controller) ResumeCloud(epoch uint64) error {
 	c.cloudPaused = false
 	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Stage: "idle"}
 	return nil
+}
+
+// logPreparationResult records why a preparation ended. The UI shows only a
+// generic "could not create the cloud computer"; this line is what a
+// support request needs (THI-145).
+func logPreparationResult(generation uint64, elapsed time.Duration, err, ctxErr error) {
+	elapsed = elapsed.Round(time.Millisecond)
+	if err == nil && ctxErr == nil {
+		log.Printf("cloud computer preparation %d ready after %s", generation, elapsed)
+		return
+	}
+	if err == nil {
+		err = ctxErr
+	}
+	detail := ""
+	var api *runta.APIError
+	if errors.As(err, &api) {
+		detail = fmt.Sprintf(" [runta status=%d code=%q]", api.Status, api.Code)
+	}
+	log.Printf("cloud computer preparation %d failed after %s: %v%s", generation, elapsed, err, detail)
 }

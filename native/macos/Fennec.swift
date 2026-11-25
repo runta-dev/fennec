@@ -3,6 +3,7 @@ import CoreImage
 import Foundation
 import WebKit
 import ServiceManagement
+import UniformTypeIdentifiers
 
 final class PopupPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -721,6 +722,72 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
         return "data:image/png;base64," + png.base64EncodedString()
     }
+    /// Settings → Export logs (THI-145). The daemon zips the last seven days
+    /// of logs; when the daemon itself is down the log folder is zipped here.
+    private func exportLogs() {
+        control.call("logs.export") { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let exports = NSHomeDirectory() + "/.config/fennec/exports/"
+                if case .success(let value) = result, let reply = value as? [String:Any], let path = reply["path"] as? String, path.hasPrefix(exports), !path.contains("/../") {
+                    let source = URL(fileURLWithPath: path)
+                    self.saveLogExport(source, name: (reply["name"] as? String) ?? source.lastPathComponent)
+                } else {
+                    self.exportLogFolderDirectly()
+                }
+            }
+        }
+    }
+    private func exportLogFolderDirectly() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let name = "fennec-logs-" + formatter.string(from: Date()) + ".zip"
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let archive = folder.appendingPathComponent(name)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var zipped = false
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                process.arguments = ["-c", "-k", "--keepParent", NSHomeDirectory() + "/.config/fennec/logs", archive.path]
+                try process.run()
+                process.waitUntilExit()
+                zipped = process.terminationStatus == 0
+            } catch {}
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if zipped { self.saveLogExport(archive, name: name) } else { self.render("renderLogExportResult", ["failed"]) }
+            }
+        }
+    }
+    private func saveLogExport(_ source: URL, name: String) {
+        // The popup sits above normal windows and closes on outside clicks,
+        // so it steps aside for the save panel.
+        popupPresentationID = nil
+        popup.orderOut(nil)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            try? FileManager.default.removeItem(at: source)
+            render("renderLogExportResult", ["cancelled"])
+            return
+        }
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+            try FileManager.default.moveItem(at: source, to: destination)
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+            render("renderLogExportResult", ["saved"])
+        } catch {
+            NSLog("Fennec log export failed: %@", error.localizedDescription)
+            render("renderLogExportResult", ["failed"])
+        }
+    }
     private func render(_ function: String, _ arguments: [Any] = []) {
         guard let data = try? JSONSerialization.data(withJSONObject: arguments) else { return }
         web.evaluateJavaScript("window.\(function)(...\(String(decoding: data, as: UTF8.self)))", completionHandler: nil)
@@ -1198,6 +1265,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics()
+        case "export-logs": exportLogs()
         case "open-magpie-panel":
             control.call("magpie.panel") { [weak self] result in
                 DispatchQueue.main.async {

@@ -177,7 +177,7 @@ func (c *Controller) Handlers() map[string]control.Handler {
 		return names, nil
 	}
 	for name, handler := range handlers {
-		if strings.HasPrefix(name, "uninstall.") || name == "state.get" || name == "daemon.ping" || name == "api.methods" || name == "account.status" || name == "account.login" || name == "settings.get" || name == "runtime.status" {
+		if strings.HasPrefix(name, "uninstall.") || name == "state.get" || name == "daemon.ping" || name == "api.methods" || name == "account.status" || name == "account.login" || name == "settings.get" || name == "runtime.status" || name == "logs.export" {
 			continue
 		}
 		handlers[name] = func(ctx context.Context, raw json.RawMessage) (any, error) {

@@ -39,6 +39,10 @@ pub struct State {
     pub value: Preferences,
     pub previous: Option<Route>,
     pub saving: bool,
+    /// Settings → Export logs: busy while the daemon builds the archive.
+    pub exporting_logs: bool,
+    /// What the export row says after the save panel closes.
+    pub log_export_status: Option<String>,
 }
 impl State {
     pub fn load() -> Self {
@@ -129,6 +133,63 @@ impl FennecWindow {
                     Err(_) => this.say(t("try_again"), cx),
                 };
                 cx.notify();
+            });
+        }));
+    }
+    /// The daemon zips the last seven days of logs (THI-145); the user picks
+    /// where the archive goes, and Finder shows it.
+    fn export_logs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.app_preferences.exporting_logs || crate::preview::active() {
+            return;
+        }
+        self.app_preferences.exporting_logs = true;
+        self.app_preferences.log_export_status = Some(t("export_logs_collecting"));
+        cx.notify();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let exported = cx
+                .background_spawn(async move { crate::control::call("logs.export", json!({})) })
+                .await
+                .ok()
+                .and_then(|v| Some((v["path"].as_str()?.to_owned(), v["name"].as_str()?.to_owned())));
+            let finish = |this: &mut FennecWindow, status: Option<String>, cx: &mut Context<FennecWindow>| {
+                this.app_preferences.exporting_logs = false;
+                this.app_preferences.log_export_status = status;
+                cx.notify();
+            };
+            let Some((source, name)) = exported else {
+                let _ = this.update(cx, |this, cx| finish(this, Some(t("export_logs_retry")), cx));
+                return;
+            };
+            let downloads = std::env::var_os("HOME")
+                .map(|home| std::path::PathBuf::from(home).join("Downloads"))
+                .unwrap_or_default();
+            let Ok(chosen) = this.update(cx, |_, cx| cx.prompt_for_new_path(&downloads, Some(&name))) else {
+                return;
+            };
+            let Ok(Ok(Some(destination))) = chosen.await else {
+                let _ = std::fs::remove_file(&source);
+                let _ = this.update(cx, |this, cx| finish(this, None, cx));
+                return;
+            };
+            let target = destination.clone();
+            let moved = cx
+                .background_spawn(async move {
+                    let _ = std::fs::remove_file(&target);
+                    std::fs::rename(&source, &target).or_else(|_| {
+                        std::fs::copy(&source, &target)?;
+                        std::fs::remove_file(&source)
+                    })
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match moved {
+                Ok(()) => {
+                    cx.reveal_path(&destination);
+                    finish(this, Some(t("export_logs_saved")), cx);
+                }
+                Err(error) => {
+                    tracing::warn!("log export: {error}");
+                    finish(this, Some(t("export_logs_retry")), cx);
+                }
             });
         }));
     }
@@ -398,7 +459,48 @@ impl FennecWindow {
                                     })
                                     .collect(),
                                 ),
-                            ),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(8.0))
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(t("app_troubleshooting")),
+                            )
+                            .child(card(vec![row(
+                                t("export_logs_label"),
+                                h_flex()
+                                    .gap(px(10.0))
+                                    .when_some(
+                                        self.app_preferences.log_export_status.clone(),
+                                        |d, status| {
+                                            d.child(
+                                                div()
+                                                    .text_size(px(12.0))
+                                                    .text_color(c("f_muted"))
+                                                    .child(status),
+                                            )
+                                        },
+                                    )
+                                    .child(
+                                        div()
+                                            .id("export-logs")
+                                            .h(px(28.0))
+                                            .px(px(12.0))
+                                            .rounded(px(7.0))
+                                            .border_1()
+                                            .border_color(c("f_field"))
+                                            .flex()
+                                            .items_center()
+                                            .text_size(px(12.5))
+                                            .opacity(if self.app_preferences.exporting_logs { 0.55 } else { 1.0 })
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.export_logs(window, cx)
+                                            }))
+                                            .child(t("export_logs")),
+                                    )
+                                    .into_any_element(),
+                            )])),
                     ),
             )
     }

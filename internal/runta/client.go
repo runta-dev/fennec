@@ -440,6 +440,9 @@ func (c *Client) WaitReady(ctx context.Context, id string, emit func(Runtime)) e
 			if r.ErrorCode == "balance_exhausted" || r.ErrorCode == "billing_restricted" {
 				return fmt.Errorf("billing_restricted: %s", r.ErrorCode)
 			}
+			if r.ErrorCode != "" {
+				return fmt.Errorf("runtime %s (%s)", r.Status, r.ErrorCode)
+			}
 			return fmt.Errorf("runtime %s", r.Status)
 		case "shutdown", "stopped":
 			return fmt.Errorf("runtime stopped; explicit start required")
