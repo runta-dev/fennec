@@ -67,6 +67,14 @@ impl State {
     }
 }
 
+impl State {
+    /// Selects a knowledge entry, as a link to it in a thread does (THI-117).
+    pub(crate) fn show_concept(&mut self, id: String) {
+        self.filter = KnowledgeFilter::All;
+        self.concept = id;
+    }
+}
+
 impl FennecWindow {
     pub(crate) fn focus_project_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(input) = &self.settings.name {

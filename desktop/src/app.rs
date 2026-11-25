@@ -6,6 +6,7 @@ mod activity;
 mod cloud;
 mod context_menu;
 mod glide;
+mod knowledge_links;
 mod pending_reply;
 mod row_motion;
 mod session_modal;
@@ -106,6 +107,8 @@ pub struct FennecWindow {
     pub(crate) projects: Vec<Project>,
     deleted_projects: std::collections::HashSet<String>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
+    /// Each queue's knowledge titles, for references in thread messages (THI-117).
+    knowledge_refs: knowledge_links::KnowledgeRefs,
     thread: Option<Request>,
     /// Threads already fetched, by (project, number): switching back to one
     /// shows it at once while a refresh runs.
@@ -321,6 +324,7 @@ impl FennecWindow {
             projects: Vec::new(),
             deleted_projects: Default::default(),
             requests: HashMap::new(),
+            knowledge_refs: Default::default(),
             thread: None,
             thread_peek: HashMap::new(),
             peek_reads: Default::default(),
@@ -761,8 +765,13 @@ impl FennecWindow {
     pub(crate) fn refresh_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let project = self.project_id();
         let open = self.open;
+        // An open thread names knowledge entries by file; their titles come
+        // with the refresh, at most every 30 s per queue (THI-117).
+        let knowledge = project
+            .clone()
+            .filter(|p| open.is_some() && self.knowledge_refs.stale(p));
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
-            let fetched = cx
+            let (fetched, knowledge) = cx
                 .background_spawn(async move {
                     let projects = board::projects();
                     let requests = project.as_ref().map(|p| (p.clone(), board::requests(p)));
@@ -770,10 +779,19 @@ impl FennecWindow {
                         .as_ref()
                         .zip(open)
                         .map(|(p, n)| board::request(p, n));
-                    (projects, requests, thread)
+                    let knowledge = knowledge.map(|p| {
+                        let concepts = board::knowledge(&p);
+                        (p, concepts)
+                    });
+                    ((projects, requests, thread), knowledge)
                 })
                 .await;
-            let _ = this.update(cx, |this, cx| this.board_loaded(fetched, cx));
+            let _ = this.update(cx, |this, cx| {
+                if let Some((p, Ok(concepts))) = knowledge {
+                    this.knowledge_refs.store(p, &concepts);
+                }
+                this.board_loaded(fetched, cx)
+            });
         }));
     }
 
@@ -3065,6 +3083,7 @@ impl FennecWindow {
             .get(&p.id)
             .map(|list| list.iter().map(|r| r.number).collect())
             .unwrap_or_default();
+        let knowledge = self.knowledge_refs.get(&p.id);
         let window_handle = cx.weak_entity();
         let mut jump_item = None;
         let mut items = Vec::new();
@@ -3161,18 +3180,26 @@ impl FennecWindow {
                             .child(
                                 gpui_base::text::TextView::markdown(
                                     SharedString::from(key.clone()),
-                                    thread_links::link_refs(&m.body, &p.key, &known),
+                                    knowledge_links::link_knowledge(
+                                        &thread_links::link_refs(&m.body, &p.key, &known),
+                                        knowledge,
+                                    ),
                                 )
                                 .on_link_click({
                                     let window_handle = window_handle.clone();
+                                    let project = p.id.clone();
                                     move |url, _, window, cx| {
-                                        match thread_links::request_link(url) {
-                                            Some(n) => {
-                                                let _ = window_handle.update(cx, |this, cx| {
-                                                    this.open_request(n, window, cx)
-                                                });
-                                            }
-                                            None => cx.open_url(url),
+                                        if let Some(n) = thread_links::request_link(url) {
+                                            let _ = window_handle.update(cx, |this, cx| {
+                                                this.open_request(n, window, cx)
+                                            });
+                                        } else if let Some(id) = knowledge_links::knowledge_link(url) {
+                                            let (project, id) = (project.clone(), id.to_owned());
+                                            let _ = window_handle.update(cx, |this, cx| {
+                                                this.open_concept(project, id, window, cx)
+                                            });
+                                        } else {
+                                            cx.open_url(url);
                                         }
                                     }
                                 })

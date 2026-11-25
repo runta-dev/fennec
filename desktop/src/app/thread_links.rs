@@ -57,9 +57,6 @@ pub(super) fn request_link(url: &str) -> Option<u64> {
     url.strip_prefix(REQUEST_URL)?.parse().ok()
 }
 
-/// `body` with every reference to a known request of the queue (KEY-n, as
-/// the board matches mentions) turned into a markdown link that opens it.
-/// Code, and the text and target of existing links, are left alone.
 /// Reads the numbers after "KEY-": "73" or the shorthand "73/103/107"
 /// (THI-117), returning them and the bytes they span. A number must end at a
 /// non-word character, so "42x" is not a reference.
@@ -82,6 +79,9 @@ fn ref_chain(s: &str) -> Option<(Vec<u64>, usize)> {
     Some((numbers, used))
 }
 
+/// `body` with every reference to a known request of the queue (KEY-n, as
+/// the board matches mentions) turned into a markdown link that opens it.
+/// Code, and the text and target of existing links, are left alone.
 pub(super) fn link_refs(body: &str, key: &str, known: &HashSet<u64>) -> String {
     if key.is_empty() || !body.contains(key) {
         return body.to_owned();
