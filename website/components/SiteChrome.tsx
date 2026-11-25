@@ -21,5 +21,5 @@ export function SiteHeader({ brand = fennecBrand, cta = { label: 'Get started', 
 }
 
 export function SiteFooter({ brand = fennecBrand, tagline = 'Cloud agents. Local tools.' }: { brand?: Brand; tagline?: string }) {
-  return <footer><Wordmark brand={brand} size={28}/><div>{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub</a><a href={runta}>Runta</a></div><small>© {new Date().getFullYear()} Runta</small><p className="footer-attribution">{tagline} Built by <a href={runta}>Runta</a>.</p></footer>;
+  return <footer><Wordmark brand={brand} size={28}/><div>{brand.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}<a href={repo}>GitHub</a><a href={runta}>Runta</a><a href="/privacy/">Privacy</a></div><small>© {new Date().getFullYear()} Runta</small><p className="footer-attribution">{tagline} Built by <a href={runta}>Runta</a>.</p></footer>;
 }

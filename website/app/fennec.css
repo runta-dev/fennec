@@ -70,3 +70,14 @@
   .fennec-header .header-actions { margin-left:0; }
   .fennec-header .nav-download { gap:4px; padding-inline:9px; }
 }
+/* Legal pages (app/privacy): one readable column in the site's type. */
+.legal{max-width:720px;margin:0 auto;padding:72px 24px 96px;font-size:15px;line-height:1.65;color:var(--text)}
+.legal h1{font-size:40px;letter-spacing:-1px;line-height:1.15;margin:0 0 8px}
+.legal .legal-updated{color:var(--muted);font-size:13px;margin:0 0 32px}
+.legal section{margin-top:40px}
+.legal h2{font-size:21px;letter-spacing:-.3px;line-height:1.3;margin:0 0 12px}
+.legal p{margin:0 0 14px}
+.legal ul{margin:0 0 14px;padding-left:20px;display:grid;gap:8px}
+.legal b{font-weight:600}
+.legal a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:760px){.legal{padding:48px 20px 72px}.legal h1{font-size:32px}}
