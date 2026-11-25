@@ -96,9 +96,22 @@ func readNativeKeychain(ctx context.Context, service, account string) ([]byte, e
 		}
 		return nil, fmt.Errorf("allow access to the agent's macOS Keychain credential to continue")
 	}
+	return decodeNativeKeychain(service, data)
+}
+
+// decodeNativeKeychain turns an agent's Keychain value into its credential.
+func decodeNativeKeychain(service string, data []byte) ([]byte, error) {
 	data = bytes.TrimSpace(data)
 	if strings.HasPrefix(service, "cursor-") {
 		return data, nil
+	}
+	// go-keyring (Antigravity CLI's store) writes "go-keyring-base64:<base64>".
+	if encoded, ok := bytes.CutPrefix(data, []byte("go-keyring-base64:")); ok {
+		decoded, err := base64.StdEncoding.DecodeString(string(encoded))
+		if err != nil {
+			return nil, fmt.Errorf("invalid native Keychain credential")
+		}
+		data = bytes.TrimSpace(decoded)
 	}
 	if !json.Valid(data) {
 		decoded, e := hex.DecodeString(string(data))

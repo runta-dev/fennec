@@ -115,3 +115,44 @@ func TestInstallAgyTokenKeepsCloudRefresh(t *testing.T) {
 		t.Fatal(accounts)
 	}
 }
+
+// agy 1.5.17 on macOS, signed in with a Google Cloud project (Agent Platform).
+const agyGCPToken = `{"token":{"access_token":"ya29.gcp","token_type":"Bearer","refresh_token":"1//gcp","expiry":"2026-11-25T10:00:00Z","expires_in":3599},"auth_method":"gcp","id_token_email":"someone@example.com","project_id":"playground-1","region":"global","unrelated":"dropped"}`
+
+func TestAgyKeychainValueIsDecoded(t *testing.T) {
+	value := []byte(agyKeyringPrefix + base64.StdEncoding.EncodeToString([]byte(agyGCPToken)) + "\n")
+	data, err := decodeNativeKeychain(agyKeychainService, value)
+	if err != nil || !strings.Contains(string(data), `"project_id":"playground-1"`) {
+		t.Fatalf("go-keyring value not decoded: %q %v", data, err)
+	}
+	if _, err := decodeNativeKeychain(agyKeychainService, []byte(agyKeyringPrefix+"!!")); err == nil {
+		t.Fatal("accepted an undecodable value")
+	}
+	home := t.TempDir()
+	source := NativeSource{Home: home, Keychain: func(_ context.Context, service, _ string) ([]byte, error) {
+		return decodeNativeKeychain(service, value)
+	}}
+	request, err := source.GatherAll(context.Background(), []string{"agy"})
+	if err != nil || request.NativeProblems["agy"] != "" || request.Files[agyAuthFile] == "" {
+		t.Fatalf("agy sign-in unavailable: %v %v", err, request.NativeProblems)
+	}
+	view := NativeAccountFromFiles("agy", request.Files)
+	if view.Status != "signed_in" || len(view.Accounts) != 1 || view.Accounts[0].Email != "someone@example.com" || view.Accounts[0].Subscription != "Agent Platform" {
+		t.Fatalf("%+v", view)
+	}
+}
+
+func TestAgyGCPSignInKeepsProject(t *testing.T) {
+	token, ok := agyToken([]byte(agyGCPToken))
+	if !ok {
+		t.Fatal("GCP sign-in rejected")
+	}
+	for _, want := range []string{`"auth_method":"gcp"`, `"project_id":"playground-1"`, `"region":"global"`, `"id_token_email":"someone@example.com"`, `"expires_in":3599`} {
+		if !strings.Contains(string(token), want) {
+			t.Fatalf("missing %s in %s", want, token)
+		}
+	}
+	if strings.Contains(string(token), "unrelated") {
+		t.Fatal("copied a field that is not the sign-in's")
+	}
+}

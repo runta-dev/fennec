@@ -20,7 +20,11 @@ import (
 // cloud has no D-Bus session) the same JSON in
 // ~/.gemini/antigravity-cli/antigravity-oauth-token:
 //
-//	{"token":{"access_token","token_type","refresh_token","expiry"},"auth_method":"consumer"}
+//	{"token":{"access_token","token_type","refresh_token","expiry","expires_in"},
+//	 "auth_method":"consumer"|"gcp", "id_token_email", "project_id", "region"}
+//
+// A "gcp" (Agent Platform) sign-in needs project_id too: without it agy
+// reports incomplete GCP onboarding and treats the user as signed out.
 //
 // agy has no variable for its configuration directory, so the cloud copy is
 // placed in the cloud's own ~/.gemini right before agy starts.
@@ -47,25 +51,29 @@ func agyToken(raw []byte) ([]byte, bool) {
 		}
 		value = strings.TrimSpace(string(decoded))
 	}
-	var source struct {
-		Token      map[string]any `json:"token"`
-		AuthMethod string         `json:"auth_method"`
-	}
-	if json.Unmarshal([]byte(value), &source) != nil || source.Token == nil {
+	var source map[string]any
+	if json.Unmarshal([]byte(value), &source) != nil {
 		return nil, false
 	}
+	sourceToken, _ := source["token"].(map[string]any)
 	token := map[string]any{}
 	for _, key := range []string{"access_token", "token_type", "refresh_token", "expiry"} {
-		if v, ok := source.Token[key].(string); ok && v != "" {
+		if v, ok := sourceToken[key].(string); ok && v != "" {
 			token[key] = v
 		}
+	}
+	if v, ok := sourceToken["expires_in"].(float64); ok {
+		token["expires_in"] = v
 	}
 	if token["access_token"] == nil && token["refresh_token"] == nil {
 		return nil, false
 	}
 	out := map[string]any{"token": token}
-	if source.AuthMethod != "" {
-		out["auth_method"] = source.AuthMethod
+	// Only the sign-in's own fields; nothing else agy may keep there travels.
+	for _, key := range []string{"auth_method", "id_token_email", "project_id", "region"} {
+		if v, ok := source[key].(string); ok && v != "" {
+			out[key] = v
+		}
 	}
 	data, err := json.Marshal(out)
 	return data, err == nil
@@ -108,10 +116,16 @@ func agyEntry(v map[string]any) nativeOAuthEntry {
 }
 
 func agyAccounts(read func(string) []byte) []NativeAccountIdentity {
-	if _, ok := agyToken(read(agyAuthFile)); !ok {
+	token, ok := agyToken(read(agyAuthFile))
+	if !ok {
 		return []NativeAccountIdentity{}
 	}
-	return []NativeAccountIdentity{{Provider: "google", AuthType: "oauth", Subscription: "Antigravity"}}
+	value := jsonObject(token)
+	identity := NativeAccountIdentity{Provider: "google", AuthType: "oauth", Subscription: "Antigravity", Email: publicEmail(value["id_token_email"])}
+	if stringValue(value["auth_method"]) == "gcp" {
+		identity.Subscription = "Agent Platform"
+	}
+	return []NativeAccountIdentity{identity}
 }
 
 // installAgyToken puts the copy synced from the Mac where agy reads it. A
