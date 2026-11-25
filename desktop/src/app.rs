@@ -7,6 +7,7 @@ mod cloud;
 mod context_menu;
 mod glide;
 mod knowledge_links;
+mod local_state;
 mod pending_reply;
 mod row_motion;
 mod session_modal;
@@ -162,6 +163,10 @@ pub struct FennecWindow {
     replying: bool,
     pub(crate) reply: Entity<TextareaState>,
     pub(crate) reply_drafts: HashMap<String, String>,
+    /// The last-saved queue and drafts, kept across restarts (THI-121).
+    local_state: local_state::Saved,
+    /// The queue reopened from the last run, until the board confirms it exists.
+    restored_queue: Option<String>,
     opening_thread_session: bool,
     notice: Option<String>,
     pub(crate) sidebar: bool,
@@ -354,6 +359,8 @@ impl FennecWindow {
             opening: None,
             reply,
             reply_drafts: HashMap::new(),
+            local_state: Default::default(),
+            restored_queue: None,
 		    opening_thread_session: false,
             notice: None,
             sidebar: true,
@@ -387,6 +394,8 @@ impl FennecWindow {
         };
         if connect && !crate::preview::active() {
             this.apply_desktop_preferences(window, cx);
+            this.restore_local_state(window, cx);
+            this.start_local_state(window, cx);
             this.start_activity(window, cx);
             this.start_layout(window, cx);
             this.follow_cloud(window, cx);
@@ -415,7 +424,7 @@ impl FennecWindow {
                                 .iter()
                                 .find(|s| !s.address.starts_with("cloud:"))
                             {
-                                if this.route == Some(Route::AppSettings) {
+                                if matches!(this.route, Some(Route::AppSettings | Route::Project(_))) {
                                     cx.notify();
                                     return;
                                 }
@@ -424,7 +433,7 @@ impl FennecWindow {
                             } else {
                                 this.start_session_selection(
                                     String::new(),
-                                    this.route != Some(Route::AppSettings),
+                                    !matches!(this.route, Some(Route::AppSettings | Route::Project(_))),
                                     window,
                                     cx,
                                 );
@@ -693,7 +702,8 @@ impl FennecWindow {
                 self.projects = p
                     .into_iter()
                     .filter(|p| !self.deleted_projects.contains(&p.id))
-                    .collect()
+                    .collect();
+                self.check_restored_queue();
             }
             Err(e) if self.projects.is_empty() => tracing::debug!("board unavailable: {e:#}"),
             Err(_) => {}
