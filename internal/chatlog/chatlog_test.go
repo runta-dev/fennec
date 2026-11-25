@@ -3,8 +3,11 @@ package chatlog
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
+
+	"fennec/internal/transcript"
 )
 
 func TestTranscriptWithoutLogWaitsWithoutResettingHistory(t *testing.T) {
@@ -71,5 +74,45 @@ func TestLongLineIsReadAgainNotSkipped(t *testing.T) {
 	_, _, _, position, _ = ParseKeptLines([]byte(huge), 0, MaxLine)
 	if position != MaxLine {
 		t.Fatalf("huge line not stepped over: %d", position)
+	}
+}
+
+func TestLazyImagesAreFetchedByReference(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/log.jsonl"
+	first := `{"type":"user","message":{"role":"user","content":"hi"}}`
+	withImage := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"look"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}}`
+	if err := os.WriteFile(path, []byte(first+"\n"+withImage+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reader := Local()
+	reader.LazyImages = true
+	raw, err := reader.ReadPath("t1", "abc-def", path, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunk struct{ Items []transcript.Item }
+	if err := json.Unmarshal([]byte(raw), &chunk); err != nil || len(chunk.Items) != 2 || len(chunk.Items[1].Images) != 1 {
+		t.Fatalf("%s %v", raw, err)
+	}
+	ref := chunk.Items[1].Images[0]
+	if strings.Contains(raw, "iVBORw0KGgo") || !strings.HasPrefix(ref, RefPrefix) {
+		t.Fatalf("image data sent with the chat: %s", raw)
+	}
+	gotPath, id, index, err := ParseImageRef(ref)
+	if err != nil || gotPath != path {
+		t.Fatalf("%q %v", gotPath, err)
+	}
+	url, err := Image(gotPath, id, index)
+	if err != nil || url != "data:image/png;base64,iVBORw0KGgo=" {
+		t.Fatalf("%q %v", url, err)
+	}
+	if _, err := Image(path, id, 1); err == nil {
+		t.Fatal("missing image index must fail")
+	}
+	for _, bad := range []string{"fennec-log-image:1:0:relative.jsonl", "fennec-log-image:x:0:/a.jsonl", "fennec-log-image:1:0:/etc/passwd"} {
+		if _, _, _, err := ParseImageRef(bad); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
 	}
 }

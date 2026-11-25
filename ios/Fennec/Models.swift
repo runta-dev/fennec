@@ -102,6 +102,9 @@ struct ChatMessage: Identifiable, Hashable {
     var time: Date? = nil
     /// Images pasted into a user message.
     var images: [Data] = []
+    /// Pasted images still on the cloud computer (chatlog ImageRef): the
+    /// chat loads without them and fetches each one when it shows it.
+    var imageRefs: [String] = []
     /// A message the agent recorded as sent while it worked (Claude Code).
     var steer = false
 }

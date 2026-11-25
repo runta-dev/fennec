@@ -52,7 +52,7 @@ func (s *Sessions) Transcript(address, sessionID string, offset int64) (out0 str
 	old := s.oldTerminal
 	s.mu.Unlock()
 	if !old {
-		raw, err := s.read(`exec "$HOME/.local/fennec/bin/fennec-terminal" transcript ` + address + " " + sessionID + " " + strconv.FormatInt(offset, 10))
+		raw, err := s.read(`exec "$HOME/.local/fennec/bin/fennec-terminal" transcript ` + address + " " + sessionID + " " + strconv.FormatInt(offset, 10) + " --lazy-images")
 		if err == nil {
 			return strings.TrimSpace(string(raw)), nil
 		}
@@ -64,4 +64,16 @@ func (s *Sessions) Transcript(address, sessionID string, offset int64) (out0 str
 		s.mu.Unlock()
 	}
 	return s.stepwise().Read(address, sessionID, offset)
+}
+
+// TranscriptImage returns the data: URL behind an image reference that
+// Transcript sent in place of the image (internal/chatlog ImageRef). The
+// chat asks for each image only when it shows it.
+func (s *Sessions) TranscriptImage(ref string) (out0 string, err error) {
+	defer func() { err = classify(err) }()
+	if _, _, _, err := chatlog.ParseImageRef(ref); err != nil {
+		return "", err
+	}
+	raw, err := s.read(`exec "$HOME/.local/fennec/bin/fennec-terminal" transcript-image ` + chatlog.ShellQuote(ref))
+	return strings.TrimSpace(string(raw)), err
 }

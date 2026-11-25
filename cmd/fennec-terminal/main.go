@@ -124,16 +124,32 @@ func run() (int, error) {
 	}
 	// The phone reads a chat through this: the log is found, read and parsed
 	// here, so one round trip carries items, not raw log lines (THI-201).
-	if len(os.Args) == 5 && os.Args[1] == "transcript" {
+	// With --lazy-images, pasted images come as references that
+	// transcript-image fetches when the phone shows them.
+	if (len(os.Args) == 5 || len(os.Args) == 6 && os.Args[5] == "--lazy-images") && os.Args[1] == "transcript" {
 		offset, err := strconv.ParseInt(os.Args[4], 10, 64)
 		if err != nil {
 			return 1, fmt.Errorf("invalid offset")
 		}
-		out, err := chatlog.Local().Read(os.Args[2], os.Args[3], offset)
+		reader := chatlog.Local()
+		reader.LazyImages = len(os.Args) == 6
+		out, err := reader.Read(os.Args[2], os.Args[3], offset)
 		if err != nil {
 			return 1, err
 		}
 		fmt.Println(out)
+		return 0, nil
+	}
+	if len(os.Args) == 3 && os.Args[1] == "transcript-image" {
+		path, id, index, err := chatlog.ParseImageRef(os.Args[2])
+		if err != nil {
+			return 1, err
+		}
+		url, err := chatlog.Image(path, id, index)
+		if err != nil {
+			return 1, err
+		}
+		fmt.Println(url)
 		return 0, nil
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "preview" {

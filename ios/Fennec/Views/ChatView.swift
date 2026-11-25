@@ -660,7 +660,7 @@ struct MessageView: View {
             .accessibilityIdentifier("mac-online-notice")
         case .user(let text):
             VStack(alignment: .trailing, spacing: 6) {
-                if !message.images.isEmpty { PastedImages(images: message.images) }
+                if !message.images.isEmpty || !message.imageRefs.isEmpty { PastedImages(images: message.images, refs: message.imageRefs) }
                 ForEach(Array(PreviewPart.parse(text).enumerated()), id: \.offset) { _, part in
                 if let ref = part.ref { WorkspaceFileCard(ref: ref) }
                 else if let text = part.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1092,20 +1092,31 @@ private struct TurnView: View {
 }
 
 /// Images pasted into a user message: right-aligned thumbnails; tap for full screen.
+/// Images still on the cloud computer (refs) load as their thumbnails show,
+/// in a box of the final size, so the chat never waits for them (THI-201).
 private struct PastedImages: View {
     var images: [Data]
+    var refs: [String] = []
     @State private var shown: Int?
 
+    private enum Entry { case local(UIImage), remote(String) }
+
     var body: some View {
-        let thumbnails = images.compactMap(UIImage.init(data:))
+        let entries = images.compactMap(UIImage.init(data:)).map(Entry.local) + refs.map(Entry.remote)
+        let side: CGFloat = entries.count == 1 ? 180 : 96
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(Array(thumbnails.enumerated()), id: \.offset) { index, image in
+                ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                     Button { shown = index } label: {
-                        Image(uiImage: image).resizable().scaledToFill()
-                            .frame(width: thumbnails.count == 1 ? 180 : 96, height: thumbnails.count == 1 ? 180 : 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line))
+                        Group {
+                            switch entry {
+                            case .local(let image): Image(uiImage: image).resizable().scaledToFill()
+                            case .remote(let ref): RemoteImage(ref: ref, fill: true)
+                            }
+                        }
+                        .frame(width: side, height: side)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.text("ios.image_number", values: ["number": String(index + 1)]))
@@ -1113,16 +1124,22 @@ private struct PastedImages: View {
             }
         }
         .defaultScrollAnchor(.trailing)
-        .frame(height: thumbnails.count == 1 ? 180 : 96)
+        .frame(height: side)
         .fullScreenCover(isPresented: Binding(get: { shown != nil }, set: { if !$0 { shown = nil } })) {
             ZStack(alignment: .topTrailing) {
                 Color.black.ignoresSafeArea()
                 TabView(selection: Binding(get: { shown ?? 0 }, set: { shown = $0 })) {
-                    ForEach(Array(thumbnails.enumerated()), id: \.offset) { index, image in
-                        ZoomableImage(image: image).tag(index)
+                    ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                        Group {
+                            switch entry {
+                            case .local(let image): ZoomableImage(image: image)
+                            case .remote(let ref): RemoteImage(ref: ref, fill: false)
+                            }
+                        }
+                        .tag(index)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: thumbnails.count > 1 ? .automatic : .never))
+                .tabViewStyle(.page(indexDisplayMode: entries.count > 1 ? .automatic : .never))
                 Button { shown = nil } label: {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).frame(width: 40, height: 40)
                 }
@@ -1131,6 +1148,41 @@ private struct PastedImages: View {
                 .accessibilityLabel(L10n.text("ui.close"))
             }
             .environment(\.colorScheme, .dark)
+        }
+    }
+}
+
+/// A pasted image fetched from the cloud computer when it first shows.
+private struct RemoteImage: View {
+    var ref: String
+    /// A thumbnail fills its box; full screen zooms.
+    var fill: Bool
+    @Environment(SessionStore.self) private var store
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                if fill { Image(uiImage: image).resizable().scaledToFill() } else { ZoomableImage(image: image) }
+            } else {
+                ZStack {
+                    Theme.surface
+                    if failed {
+                        Image(systemName: "photo").font(.system(size: 20)).foregroundStyle(Theme.fg3)
+                    } else {
+                        ProgressView().tint(Theme.fg3)
+                    }
+                }
+            }
+        }
+        .task(id: ref) {
+            guard image == nil else { return }
+            if let data = await store.pastedImage(ref), let loaded = UIImage(data: data) {
+                image = loaded
+            } else {
+                failed = true
+            }
         }
     }
 }

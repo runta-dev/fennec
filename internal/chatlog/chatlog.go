@@ -58,6 +58,10 @@ var (
 // only reads (on the phone: over SSH, retried after a dropped link).
 type Reader struct {
 	Run func(command string) ([]byte, error)
+	// LazyImages sends each pasted image as a reference (ImageRef) instead
+	// of its data, so a chat with screenshots loads as fast as one without;
+	// the phone fetches an image with Image when it shows it.
+	LazyImages bool
 
 	mu      sync.Mutex
 	paths   map[string]string    // address/session -> conversation log
@@ -284,6 +288,13 @@ func (r *Reader) readLimit(address, sessionID, path string, offset, limit int64)
 	}
 	if offset >= 0 && size < offset {
 		return r.Read(address, sessionID, -1) // the log was replaced or truncated
+	}
+	if r.LazyImages {
+		for i := range items {
+			for j := range items[i].Images {
+				items[i].Images[j] = ImageRef(path, items[i].ID, j)
+			}
+		}
 	}
 	result, err := json.Marshal(map[string]any{"items": items, "offset": position, "reset": offset < 0, "path": path, "version": transcript.Version})
 	return string(result), err

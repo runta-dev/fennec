@@ -1,3 +1,4 @@
+import CryptoKit
 import FennecCore
 import Foundation
 import Observation
@@ -134,6 +135,9 @@ final class SessionStore {
     /// Sessions that changed (or work) since their log was last read. A list
     /// refreshed from a chat leaves them for the home list to read.
     @ObservationIgnored var transcriptsBehind: Set<String> = []
+    /// Pasted images fetched so far, and fetches running (pastedImage).
+    @ObservationIgnored var pastedImageCache: [String: Data] = [:]
+    @ObservationIgnored var pastedImageLoads: [String: Task<Data?, Never>] = [:]
     @ObservationIgnored private var sessionListRevision = 0
 
     init(sessions: [Session], macOnline: Bool = true, cloudRunning: Bool = true,
@@ -443,6 +447,10 @@ struct SessionSummary: Codable {
 }
 
 /// transcript.Item from internal/transcript.
+/// Starts an image reference the cloud sends in place of a pasted image
+/// (internal/chatlog RefPrefix).
+let pastedImagePrefix = "fennec-log-image:"
+
 struct TranscriptItem: Codable, Hashable {
     /// Stable across reads of one log: the line's byte offset × 16 + its index.
     var id: Int64? = nil
@@ -717,7 +725,8 @@ extension SessionStore {
                 session.messages.append(.init(kind: .macOnline, time: time))
                 return
             }
-            let images = (item.images ?? []).compactMap { url -> Data? in
+            let refs = (item.images ?? []).filter { $0.hasPrefix(pastedImagePrefix) }
+            let images = (item.images ?? []).filter { !$0.hasPrefix(pastedImagePrefix) }.compactMap { url -> Data? in
                 guard let comma = url.firstIndex(of: ",") else { return nil }
                 return Data(base64Encoded: String(url[url.index(after: comma)...]))
             }
@@ -726,10 +735,13 @@ extension SessionStore {
             if let index = session.messages.indices.suffix(12).last(where: {
                 if case .user(let text) = session.messages[$0].kind { return text == item.text } else { return false }
             }), !item.text.isEmpty {
-                if session.messages[index].images.isEmpty { session.messages[index].images = images }
+                if session.messages[index].images.isEmpty && session.messages[index].imageRefs.isEmpty {
+                    session.messages[index].images = images
+                    session.messages[index].imageRefs = refs
+                }
                 return
             }
-            session.messages.append(.init(kind: .user(item.text), time: time, images: images, steer: item.steer ?? false))
+            session.messages.append(.init(kind: .user(item.text), time: time, images: images, imageRefs: refs, steer: item.steer ?? false))
             if let time { session.turnStarted = time }
         case "agent":
             session.messages.append(.init(kind: .agent(item.text), time: time))
@@ -749,5 +761,35 @@ extension SessionStore {
         default:
             break
         }
+    }
+}
+
+/// Pasted images the chat fetches one at a time as it shows them (THI-201):
+/// in memory while the app runs, on disk across launches.
+extension SessionStore {
+    func pastedImage(_ ref: String) async -> Data? {
+        if let data = pastedImageCache[ref] { return data }
+        if let running = pastedImageLoads[ref] { return await running.value }
+        let core = core
+        let task = Task.detached { () -> Data? in
+            let file = Self.pastedImageFile(ref)
+            if let data = try? Data(contentsOf: file) { return data }
+            guard let core, let url = try? goCall({ core.transcriptImage(ref, error: $0) }),
+                  let comma = url.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+            return data
+        }
+        pastedImageLoads[ref] = task
+        let data = await task.value
+        pastedImageLoads[ref] = nil
+        if let data { pastedImageCache[ref] = data }
+        return data
+    }
+
+    nonisolated static func pastedImageFile(_ ref: String) -> URL {
+        let name = SHA256.hash(data: Data(ref.utf8)).map { String(format: "%02x", $0) }.joined()
+        return URL.cachesDirectory.appending(path: "pasted-images/" + name)
     }
 }
