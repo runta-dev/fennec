@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -13,10 +14,11 @@ import (
 
 // DialAndPassSSHFD connects to host:port, applies TCP_NODELAY and TCP keepalive
 // on the underlying kernel socket, and passes the file descriptor over outFD for
-// OpenSSH's ProxyUseFdpass=yes protocol.
-func DialAndPassSSHFD(ctx context.Context, host, port string, noDelay bool, outFD int) error {
-	if host == "" || port != "22" {
-		return fmt.Errorf("unsupported SSH gateway target %s:%s", host, port)
+// OpenSSH's ProxyUseFdpass=yes protocol. It fails closed: allow must accept the
+// destination (the Runta gateway or the paired self-hosted computer).
+func DialAndPassSSHFD(ctx context.Context, host, port string, allow func(host, port string) bool, noDelay bool, outFD int) error {
+	if number, err := strconv.Atoi(port); host == "" || err != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port || allow == nil || !allow(host, port) {
+		return fmt.Errorf("refusing unexpected SSH target %s:%s", host, port)
 	}
 	conn, err := (&net.Dialer{
 		Timeout:   20 * time.Second,

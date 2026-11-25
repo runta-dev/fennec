@@ -2,6 +2,9 @@ const send = action => window.webkit.messageHandlers.fennec.postMessage(action);
 const chevron = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
 let expandedAgent = null;
 let authorized = false;
+// A paired self-hosted (BYOC) cloud computer is the principal: no Runta account,
+// profile or billing, and the account menu unpairs instead of signing out.
+let selfHosted = false;
 let takeoverAgents = new Set();
 let takeoverChanging = false;
 let takeoverSelectionKnown = false;
@@ -446,13 +449,19 @@ window.renderLogin = (message, busy) => {
 };
 let sessionListConnecting = true;
 let visibleSessionCount = 0;
-window.renderAuthorized = () => {
+window.renderAuthorized = (isSelfHosted = false) => {
   authorized = true;
-  window.renderPairingAvailable?.(true);
+  selfHosted = isSelfHosted === true;
+  window.renderPairingAvailable?.(!selfHosted);
+  // iPhone pairing signs in with a Runta account; a self-hosted computer has none.
+  document.querySelector('#app-footer').hidden = selfHosted;
   document.querySelector('#notice').hidden = true;
   const header = document.querySelector('.header-login');
-  header.textContent = "[[i18n:ui.account]]";
-  header.setAttribute('data-i18n','ui.account');
+  const headerKey = selfHosted ? 'ui.your_server' : 'ui.account';
+  header.textContent = selfHosted ? "[[i18n:ui.your_server]]" : "[[i18n:ui.account]]";
+  header.setAttribute('data-i18n',headerKey);
+  header.removeAttribute('title');
+  renderAccountMenu();
   header.disabled = false;
   header.classList.remove('login');
   header.classList.add('account-link');
@@ -633,8 +642,16 @@ window.renderRuntimes = (rows, message) => {
    list.append(section);
   }
 };
+function renderAccountMenu() {
+  const label = document.querySelector('#logout span');
+  if (!label) return;
+  const key = selfHosted ? 'ui.unpair_server' : 'ui.sign_out';
+  label.setAttribute('data-i18n',key);
+  label.textContent = selfHosted ? "[[i18n:ui.unpair_server]]" : "[[i18n:ui.sign_out]]";
+}
 let currentProfileName = '';
 window.renderProfile = (name, fallback = false) => {
+  if (selfHosted) return;
   currentProfileName = fallback ? '' : (name || '');
   const button = document.querySelector('.header-login');
   if(fallback){button.setAttribute('data-i18n','ui.account');button.textContent='[[i18n:ui.account]]';button.removeAttribute('title');}
@@ -648,6 +665,9 @@ window.renderProfile = (name, fallback = false) => {
 window.renderSignedOut = () => {
   window.resetSessionList?.();
   currentProfileName = '';
+  selfHosted = false;
+  renderAccountMenu();
+  document.querySelector('#app-footer').hidden = false;
   window.resetAgentLogin?.();
   authorized = false;
   window.renderPairingAvailable?.(false);
@@ -721,6 +741,7 @@ window.renderMagpieAgents = agents => {
 window.renderPreferences = value => {
 
  window.renderMagpiePreference(value.magpie === true);
+ window.renderFennecTerminalPreference?.(value.fennec_terminal === true);
  window.renderMagpieAgents(value.magpie_off_agents);
  window.renderUpdatePreferences?.(value);
  window.renderDeveloperPreferences?.(value);
@@ -747,6 +768,22 @@ let magpieOffAgents = new Set();
 const magpieSwitch = document.querySelector('#magpie-integration');
 if(magpieSwitch) magpieSwitch.onclick=()=>toggleMagpie();
 const loginItemApproval = document.querySelector('#login-item-approval');
+// Fennec Terminal (the desktop window) is shown only when this build carries it.
+// The switch reflects the saved setting; a change waits for its confirmation.
+const fennecTerminalSwitch = document.querySelector('#fennec-terminal');
+window.renderFennecTerminalAvailable = available => {
+  const row = document.querySelector('#fennec-terminal-row');
+  if (row) row.hidden = available !== true;
+};
+window.renderFennecTerminalPreference = enabled => {
+  if (!fennecTerminalSwitch) return;
+  fennecTerminalSwitch.setAttribute('aria-checked', String(enabled));
+  fennecTerminalSwitch.disabled = false;
+};
+if (fennecTerminalSwitch) fennecTerminalSwitch.onclick = () => {
+  fennecTerminalSwitch.disabled = true;
+  send('settings:' + JSON.stringify({fennec_terminal: fennecTerminalSwitch.getAttribute('aria-checked') !== 'true'}));
+};
 window.renderLoginItem = value => {
   if (!loginItemSwitch || !loginItemApproval) return;
   loginItemSwitch.disabled = !value.supported;
@@ -822,10 +859,12 @@ window.renderPreparation = state => {
   const titles = {checking_resources:"[[i18n:ui.verifying_cloud_computer_resources]]", installing_session_service:"[[i18n:ui.preparing_session_service]]", restoring_model_accounts:"[[i18n:ui.restoring_model_accounts]]", configuring_routes:"[[i18n:ui.configuring_agent_models]]", installing_model_plugins:"[[i18n:ui.configuring_model_plugins]]", migrating_credentials:"[[i18n:ui.migrating_model_credentials]]", discovering_providers:"[[i18n:ui.loading_model_configuration]]", waiting_credentials:"[[i18n:ui.reading_sign_in_credentials]]", credentials_required:"[[i18n:ui.sign_in_again_to_continue_setup]]", installing_pi:"[[i18n:ui.installing_pi]]",installing_kimi:"[[i18n:ui.installing_kimi]]", installing_opencode:"[[i18n:ui.installing_opencode]]", starting_magpie:"[[i18n:ui.starting_model_gateway]]", installing_node:"[[i18n:ui.installing_runtime_tools]]", installing_magpie:"[[i18n:ui.installing_model_gateway]]", detecting_versions:"[[i18n:ui.discovering_available_agents]]", syncing_versions:"[[i18n:ui.checking_cloud_agents]]", installing_claude:"[[i18n:ui.installing_claude_code]]", installing_codex:"[[i18n:ui.installing_codex]]", agents_installed:"[[i18n:ui.waiting_for_model_gateway_configuration]]", allocating:"[[i18n:ui.allocating_cloud_computer]]", starting:"[[i18n:ui.starting_cloud_computer]]", connecting:"[[i18n:ui.connecting_to_cloud_computer]]", runtime_ready:"[[i18n:ui.environment_started_agent_installation_pending]]", offline:"[[i18n:ui.offline_waiting_for_network]]", failed:"[[i18n:ui.environment_preparation_failed]]"};
   const row = document.createElement('div'); row.className = 'preparation-row';
   const title = document.createElement('span'); title.className = 'preparation-title';
-  const reasons = {network_offline:"[[i18n:ui.offline_waiting_for_network]]", native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
+  const reasons = {network_offline:"[[i18n:ui.offline_waiting_for_network]]", cloud_unreachable:"[[i18n:ui.cant_reach_cloud_computer]]", server_unreachable:"[[i18n:ui.cant_reach_your_server]]", native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
   title.textContent = reasons[state.status] || titles[state.stage] || "[[i18n:ui.preparing_2]]";
   const indicator = document.createElement('span'); indicator.className = 'preparation-indicator';
-  const isOffline = state.stage === 'offline';
+  // Unreachable reads like offline: nothing to do but wait, and no progress.
+  const isUnreachable = state.stage === 'unreachable';
+  const isOffline = state.stage === 'offline' || isUnreachable;
   const needsAction = ['failed', 'credentials_required', 'agents_installed'].includes(state.stage);
   panel.setAttribute('aria-busy', String(!needsAction && !isOffline));
   if (isOffline) {
@@ -869,7 +908,7 @@ window.renderPreparation = state => {
   }
   if (isOffline) {
     const detail = document.createElement('p');
-    detail.textContent = "[[i18n:ui.reconnects_automatically_when_back_online]]";
+    detail.textContent = isUnreachable ? "[[i18n:ui.reconnects_automatically]]" : "[[i18n:ui.reconnects_automatically_when_back_online]]";
     panel.append(detail);
   }
   if (state.stage === 'failed') {
@@ -958,8 +997,39 @@ function renderBillingRows(payload,loading){
   footer.append(status,retry);content.append(footer);
  }
 }
-window.renderBillingLoading = () => renderBillingRows(lastBillingPayload,true);
-window.renderBilling = payload => {lastBillingPayload=payload;renderBillingRows(payload,false);};
+window.renderBillingLoading = () => { if (!selfHosted) renderBillingRows(lastBillingPayload,true); };
+window.renderBilling = payload => {lastBillingPayload=payload;if(!selfHosted)renderBillingRows(payload,false);};
+// The Account tab of a paired self-hosted computer: where it is and how this Mac
+// recognizes it, using the billing card's rows.
+window.renderSelfHosted = status => {
+ if(!selfHosted)return;
+ const content=document.querySelector('#billing-content');content.replaceChildren();
+ content.setAttribute('aria-busy','false');
+ const planHeader=document.querySelector('.billing-card>.billing-plan');
+ if(planHeader)planHeader.hidden=true;
+ const row=(label,iconPath,value,className)=>{
+  const element=document.createElement('div');element.className=className||'billing-row';
+  const title=document.createElement('span');title.className='billing-field-label';
+  const icon=document.createElement('span');icon.className='billing-field-icon';icon.setAttribute('aria-hidden','true');
+  icon.innerHTML=`<svg viewBox="0 0 20 20">${iconPath}</svg>`;
+  const text=document.createElement('span');text.textContent=label;title.append(icon,text);
+  element.append(title,value);return element;
+ };
+ const field=text=>{const value=document.createElement('span');value.className='billing-value self-hosted-value';value.textContent=text||'—';if(text)value.title=text;return value;};
+ const badge=document.createElement('span');badge.className='billing-plan-badge';badge.textContent="[[i18n:ui.self_hosted]]";
+ content.append(row("[[i18n:ui.your_server]]",'<rect x="3" y="3" width="14" height="6" rx="1.5"/><rect x="3" y="11" width="14" height="6" rx="1.5"/><path d="M6 6h.01M6 14h.01"/>',badge,'billing-row billing-plan-row'));
+ if(!status||status.paired!==true){
+  const footer=document.createElement('div');footer.className='billing-footer';
+  const message=document.createElement('span');message.className='billing-status';message.textContent="[[i18n:ui.server_details_unavailable]]";
+  footer.append(message);content.append(footer);return;
+ }
+ const address=status.host?(String(status.host).includes(':')?`[${status.host}]`:status.host)+(status.port&&status.port!==22?`:${status.port}`:''):'';
+ content.append(
+  row("[[i18n:ui.server_address]]",'<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2.5 2.5 11.5 0 14M10 3c-2.5 2.5-2.5 11.5 0 14"/>',field(address)),
+  row("[[i18n:ui.machine_id]]",'<rect x="4" y="4" width="12" height="12" rx="2"/><path d="M7.5 8h5M7.5 12h3"/>',field(status.machine_id)),
+  row("[[i18n:ui.host_key]]",'<circle cx="7" cy="12" r="3"/><path d="m9 10 6-6m-2 2 2 2"/>',field(status.host_key_fingerprint))
+ );
+};
 
 let lastMetricsPayload = { ready: false };
 const METRIC_HISTORY_LEN = 24;

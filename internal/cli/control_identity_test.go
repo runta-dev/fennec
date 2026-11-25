@@ -9,11 +9,11 @@ import (
 func TestVerifiedOwnerCannotChangeWithinAccountEpoch(t *testing.T) {
 	s := &daemonServices{epoch: 1, ctx: context.Background(), user: "owner-a"}
 	for _, user := range []string{"", "owner-b"} {
-		if err := s.initialize(context.Background(), "token", 1, user); err == nil {
+		if err := s.initialize(context.Background(), runtaComputer{token: "token"}, 1, user); err == nil {
 			t.Fatalf("accepted owner %q", user)
 		}
 	}
-	if err := s.initialize(context.Background(), "token", 1, "owner-a"); err != nil {
+	if err := s.initialize(context.Background(), runtaComputer{token: "token"}, 1, "owner-a"); err != nil {
 		t.Fatal(err)
 	}
 }

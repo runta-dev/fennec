@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/launchprofile"
-	"fennec/internal/runta"
 	"fmt"
 	"io"
 	"os"
@@ -70,7 +70,11 @@ func (output *receiptOutput) Write(data []byte) (int, error) {
 }
 
 func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func(), connection *ColdConnection) error {
-	directory := filepath.Join(home, ".config/fennec/cloud")
+	target, err := cloudtarget.Active(home)
+	if err != nil {
+		return err
+	}
+	directory := target.Dir
 	if _, err := AttachArgs(plan.RuntimeID, "t1", plan.SessionID, directory); err != nil {
 		return err
 	}
@@ -127,14 +131,15 @@ func ExecutePlan(plan LaunchPlan, intent LaunchIntent, home string, ready func()
 	} else {
 		args = append(args, "-o", "ProxyCommand=false")
 	}
-	args = append(args, "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@"+runta.ActiveSSHHost(home), remote)
+	args = append(args, target.OpenSSHArgs(plan.RuntimeID)...)
+	args = append(args, remote)
 	command := exec.Command("/usr/bin/ssh", args...)
 	command.Stdin = os.Stdin
 	command.Stdout = output
 	diagnostics := &sshDiagnostics{sessionID: intent.RequestID, writer: terminalOutput{os.Stderr, clear}}
 	defer diagnostics.Flush()
 	command.Stderr = diagnostics
-	err := command.Run()
+	err = command.Run()
 	diagnostics.Finish(err)
 	if !output.confirmed {
 		return fmt.Errorf("launch outcome unknown; inspect request %s before retrying: %v", intent.RequestID, err)

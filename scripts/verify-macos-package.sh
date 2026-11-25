@@ -9,6 +9,12 @@ go run ./cmd/check-bundle-permissions "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" == 13.0 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
+# Fennec Terminal (FENNEC_BUILD_DESKTOP=1) is all or nothing.
+if [[ -e "$app/Contents/MacOS/fennec-desktop" ]]; then
+  [[ -x "$app/Contents/MacOS/hc" && -x "$app/Contents/Resources/fennec-hc" && -x "$app/Contents/Resources/fennec-hc-local" ]]
+else
+  [[ ! -e "$app/Contents/MacOS/hc" && ! -e "$app/Contents/Resources/fennec-hc" && ! -e "$app/Contents/Resources/fennec-hc-local" ]]
+fi
 for binary in Fennec fennec-daemon fennec-credentials fennec-clipboard; do
   [[ -x "$app/Contents/MacOS/$binary" ]]
   lipo -archs "$app/Contents/MacOS/$binary" | grep -qw arm64

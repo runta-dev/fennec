@@ -29,19 +29,22 @@ type Controller struct {
 	authActions        sync.Mutex
 	Account            *account.Manager
 	Connectivity       *connectivity.Monitor
-	Prepare            func(context.Context, string, io.Writer) error
-	Session            func(context.Context, string, string, string, SessionParams) (any, error)
-	mu                 sync.Mutex
-	runtime            RuntimeState
-	runtimeAgain       bool
-	runtimeRetry       bool
-	runtimeGeneration  uint64
-	runtimeCancel      context.CancelFunc
-	runtimeDone        chan struct{}
-	runtimeWake        chan struct{}
-	maintenance        bool
-	cloudPaused        bool
-	cloudPausedEpoch   uint64
+	Prepare            func(context.Context, account.Principal, io.Writer) error
+	Session            func(context.Context, account.Principal, string, string, SessionParams) (any, error)
+	// CloudUnreachable reports whether the prepared computer of an epoch has
+	// stayed unreachable while this Mac is online. Optional.
+	CloudUnreachable  func(epoch uint64) bool
+	mu                sync.Mutex
+	runtime           RuntimeState
+	runtimeAgain      bool
+	runtimeRetry      bool
+	runtimeGeneration uint64
+	runtimeCancel     context.CancelFunc
+	runtimeDone       chan struct{}
+	runtimeWake       chan struct{}
+	maintenance       bool
+	cloudPaused       bool
+	cloudPausedEpoch  uint64
 	// replacing holds off preparation while services bound to a cloud computer
 	// deleted outside Fennec are torn down (ReplaceDeletedRuntime).
 	replacing bool
@@ -88,6 +91,9 @@ func (c *Controller) Handlers() map[string]control.Handler {
 			defer c.authActions.Unlock()
 			if c.LoginAllowed != nil && !c.LoginAllowed() {
 				return nil, &control.Fault{Code: "uninstall_pending", Message: "Wait for uninstall to finish before signing in"}
+			}
+			if c.Account.Snapshot().Status == account.StatusPaired {
+				return nil, &control.Fault{Code: "self_hosted_paired", Message: "Unpair your own cloud computer before signing in to Runta"}
 			}
 			var request struct {
 				Reauthenticate bool `json:"reauthenticate"`

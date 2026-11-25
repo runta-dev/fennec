@@ -18,7 +18,7 @@ func RequestPlan(ctx context.Context, path string, intent LaunchIntent) (LaunchP
 	}
 	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", path)
 	if err != nil {
-		return LaunchPlan{}, fmt.Errorf("Fennec launch broker unavailable")
+		return LaunchPlan{}, &NotStartedError{Message: "Fennec launch broker unavailable"}
 	}
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -31,6 +31,9 @@ func RequestPlan(ctx context.Context, path string, intent LaunchIntent) (LaunchP
 		return LaunchPlan{}, fmt.Errorf("launch authorization outcome unknown; inspect request %s", intent.RequestID)
 	}
 	if reply.Error != "" {
+		if reply.NotStarted {
+			return LaunchPlan{}, &NotStartedError{Message: reply.Error}
+		}
 		return LaunchPlan{}, fmt.Errorf("%s", reply.Error)
 	}
 	if reply.Plan == nil || reply.Plan.SessionID != intent.RequestID || reply.Plan.Agent != intent.Agent || (reply.Plan.Script == "" && reply.Plan.Launch == nil) {

@@ -1,0 +1,52 @@
+{
+  "title": "BYOC on a real VPS with the daemon and terminal service shipped in Fennec.app",
+  "started_utc": "2026-11-24T15:37:10Z",
+  "provenance": {
+    "client": {
+      "device": "MacBook, macOS 26.6.2, arm64",
+      "location": "unknown for this run (not reported; not inferred from latency)",
+      "network": "home LAN, route to the server through a WireGuard tunnel (utun); carrier unknown",
+      "daemon_under_test": "Contents/MacOS/fen of a Fennec.app built with scripts/build-macos.sh (FENNEC_BUILD_DIR, signed by Fennec Local Development) from the tree of 3a028e4, copied to a temporary directory and run as control-daemon in an isolated HOME; build id 77a737d3b9cc (matches Contents/Resources/control-build-id)",
+      "cli_client": "fen built from the same commit (a client from the bundle would register the per-user launchd job and replace the Fennec daemon running on this Mac)",
+      "isolation": "no Runta account; USER changed so no Keychain credential is read; the installed Fennec daemon kept its pid and launchd plist"
+    },
+    "server": {
+      "provider": "Google Cloud, project runta-integration",
+      "region_zone": "asia-southeast1-b (instance metadata, captured live earlier the same day)",
+      "machine": "n2-standard-8, Ubuntu 24.04.5 LTS, x86_64, Docker 29.1.3 (shared development VM)",
+      "reached_at": "private WireGuard address, TCP port 2223 published by Docker; address withheld",
+      "image": "docker.io/shiqimei/fennec-cloud:1 = 1.1.0 (pulled fresh: the previous run removed it)"
+    },
+    "network_baseline": "ICMP over the tunnel, 10 samples: min 5.622, avg 10.275, max 44.904, stddev 11.552 ms",
+    "other_load": "the VM also ran unrelated development services; not controlled"
+  },
+  "boundaries": "as in 2026-11-24-byoc-singapore-vps.json; warm operations are fen control process wall time on the Mac including CLI start, 10 sequential samples each",
+  "results": {
+    "terminal_service_on_server_is_shipped_amd64_artifact": true,
+    "terminal_service_sha256_prefix": "2b42c7d3e515",
+    "deploy_and_pair_s": 17.259,
+    "preparation_total_s": 14.5,
+    "preparation_steps_s": {"terminal_service_push": 0.4, "herdr": 0.4, "node": 0.0, "codex_install": 8.8, "opencode_install": 13.5, "pi_install": 10.3, "cursor_install": 7.1, "grok_install": 2.6},
+    "launch_receipt_ms": 74,
+    "input_ready_tui_ms": 263,
+    "model_reply_s": 6.359,
+    "warm_operations_ms": {
+      "sessions.list": [23, 18, 18, 18, 18, 17, 17, 18, 17, 18],
+      "sessions.refresh": [26, 26, 26, 27, 27, 27, 26, 26, 26, 26],
+      "sessions.read": [29, 28, 77, 30, 28, 29, 31, 28, 29, 28]
+    },
+    "warm_operations_over_500ms": 0,
+    "warm_operation_failures": 0,
+    "attach_live_screen_ms": 155,
+    "detach_notice": true,
+    "daemon_restart": "pairing restored and stage ready on the first poll; the live session and its reply survived",
+    "stop_ms": 52,
+    "cloud_processes_after_stop": 0,
+    "unreachable_reported_s_after_container_stop": 14,
+    "unreachable_note": "timed from docker stop returning; the daemon's 15 s threshold starts when the connection drops, slightly earlier",
+    "ready_again_s_after_container_start": 1.716,
+    "unpair": "signed_out, pairing material removed"
+  },
+  "cleanup": "container, volume (with the synchronized credential copy) and image removed from the server; isolated HOME, its codex credential copy and the app copy removed from the Mac; the original ~/.codex/auth.json digest was unchanged",
+  "single_run": "one run, not a controlled comparison with the source-built daemon run"
+}

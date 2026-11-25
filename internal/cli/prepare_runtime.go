@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
-	"fennec/internal/cloudstate"
 	"fennec/internal/launchprofile"
-	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
@@ -16,7 +14,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	hostruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -25,12 +22,12 @@ import (
 // prepareRuntime is shared by the standalone daemon and the legacy command.
 // Its cancellation belongs to the caller's account lifecycle.
 type preparationRetainer struct {
-	Runtime    func(runta.Runtime) error
+	Runtime    func(resolvedComputer) error
 	Connection func(string, *ssh.Client) bool
 	Terminal   func(string, *terminalstream.Transport) bool
 }
 
-func prepareRuntime(ctx context.Context, token string, output io.Writer, retain ...preparationRetainer) error {
+func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Writer, retain ...preparationRetainer) error {
 	defer launchprofile.Begin("prepare.total")()
 	ctx, cancelPreparation := context.WithCancel(ctx)
 	defer cancelPreparation()
@@ -90,37 +87,18 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	}()
 	var recorded bytes.Buffer
 	output = io.MultiWriter(output, &recorded)
-	env := runta.ActiveEnvironment(home)
-	lifecycleStore := cloudstate.NewScoped(home, env.Key())
-	client := runta.NewClient(home, token)
-	if hostruntime.GOOS == "darwin" && len(retain) == 1 {
-		client.RetainSSHHome = home
-	}
-	client.SharedAllowed = lifecycleStore.Check
-	client.CreationGeneration = lifecycleStore.Generation
+	scope := computer.Scope()
 	emit := func(stage, id, status string) {
 		json.NewEncoder(output).Encode(map[string]string{"type": "runtime_progress", "stage": stage, "runtime_id": id, "status": status})
 	}
 	emit("allocating", "", "")
-	var hint struct {
-		RuntimeID string `json:"runtime_id"`
-	}
-	if data, err := os.ReadFile(runta.TakeoverPreferencesPath(home)); err == nil && len(data) <= 8192 {
-		_ = json.Unmarshal(data, &hint)
-	}
-	var runtime runta.Runtime
 	var inputs preparationInputs
 	inputsReady := make(chan struct{})
 	connectDone := launchprofile.Begin("prepare.connect")
-	connection, err := client.ConnectResolved(ctx, hint.RuntimeID, filepath.Join(home, ".config", "fennec", "cloud"), func(resolveCtx context.Context) (string, error) {
-		var err error
-		runtime, err = client.EnsureShared(resolveCtx)
-		if err != nil {
-			return "", err
-		}
+	connection, runtime, err := computer.Resolve(ctx, emit, func(resolved resolvedComputer) error {
 		if len(retain) == 1 && retain[0].Runtime != nil {
-			if err := retain[0].Runtime(runtime); err != nil {
-				return "", err
+			if err := retain[0].Runtime(resolved); err != nil {
+				return err
 			}
 		}
 		go func(owner, id string) {
@@ -131,25 +109,9 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 				return
 			case <-localReady:
 			}
-			inputs = gatherPreparationInputs(ctx, home, token, owner, id, artifacts, prefs, ids, versions, localRoutes)
-		}(runtime.Owner, runtime.ID)
-		switch runtime.Status {
-		case "shutdown", "stopped":
-			err = client.Start(resolveCtx, runtime.ID)
-		case "paused", "suspended":
-			err = client.Resume(resolveCtx, runtime.ID)
-		}
-		if err != nil {
-			return "", err
-		}
-		if runtime.Status != "running" || runtime.Degraded || !runtime.SSHEnabled {
-			err = client.WaitReady(resolveCtx, runtime.ID, func(r runta.Runtime) { emit("starting", r.ID, r.Status) })
-		}
-		if err != nil {
-			return "", err
-		}
-		emit("connecting", runtime.ID, "")
-		return runtime.ID, nil
+			inputs = gatherPreparationInputs(ctx, home, scope, owner, id, artifacts, prefs, ids, versions, localRoutes)
+		}(resolved.Owner, resolved.ID)
+		return nil
 	})
 	if err != nil {
 		reason := err.Error()
@@ -197,7 +159,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 	// updated configuration reader or new operation. Starting the old executable
 	// before replacing it leaves the broker bound to old code for this lifetime.
 	// Unchanged daemon restarts still resume before account synchronization.
-	installation, installationErr := installationFingerprint(home, token, runtime.ID, versions, artifacts)
+	installation, installationErr := installationFingerprint(home, scope, runtime.ID, versions, artifacts)
 	residentChecked := false
 	residentFingerprint := ""
 	if retained && retain[0].Terminal != nil && reusableEarlyResident(home, installation, installationErr) {
@@ -247,7 +209,7 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		return inputs.err
 	}
 	nativeRequest, routes, plugins := inputs.native, inputs.routes, inputs.plugins
-	gatewayFingerprint := gatewayPreparationFingerprint(token, runtime.ID)
+	gatewayFingerprint := gatewayPreparationFingerprint(scope, runtime.ID)
 	fingerprint, fingerprintErr := inputs.fingerprint, inputs.fingerprintErr
 	cacheStatus := func(result string) {
 		data, _ := json.Marshal(map[string]any{"result": result, "changed_inputs": inputs.changedInputs, "previous_inputs_known": inputs.hasPreviousInputs})
@@ -542,7 +504,10 @@ func prepareRuntime(ctx context.Context, token string, output io.Writer, retain 
 		emit("agents_installed", runtime.ID, earlyStatus)
 	}
 	if !installationReady {
-		if err = setup.Exec(ctx, connection, setup.NodeSetupScript); err != nil {
+		nodeDone := launchprofile.Begin("prepare.install.node")
+		err = setup.Exec(ctx, connection, setup.NodeSetupScript)
+		nodeDone()
+		if err != nil {
 			emit("failed", runtime.ID, "Node setup failed")
 			return err
 		}

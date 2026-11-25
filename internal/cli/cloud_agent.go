@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fennec/internal/cloudtarget"
 	"fmt"
 	"io"
 	"os"
@@ -47,7 +48,11 @@ func cloudAgent(arguments []string) error {
 		if err := launcher.SaveReceipt(filepath.Join(home, ".config/fennec/launches"), receipt); err != nil {
 			return fmt.Errorf("cloud session exists but receipt could not be saved: %w", err)
 		}
-		return launcher.Attach(runtime, address, session, filepath.Join(home, ".config/fennec/cloud"))
+		target, err := cloudtarget.Active(home)
+		if err != nil {
+			return err
+		}
+		return launcher.Attach(runtime, address, session, target.Dir)
 	})
 }
 func cloudAgentWith(request launchProjectRequest, launch func(io.Reader, io.Writer) error, attach func(string, string, string) error) error {

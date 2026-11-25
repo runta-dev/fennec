@@ -7,18 +7,6 @@ import (
 	"strings"
 )
 
-func homeFromCloudDir(directory string) string {
-	clean := filepath.Clean(directory)
-	if filepath.Base(clean) == "cloud" && filepath.Base(filepath.Dir(clean)) == "fennec" && filepath.Base(filepath.Dir(filepath.Dir(clean))) == ".config" {
-		return filepath.Dir(filepath.Dir(filepath.Dir(clean)))
-	}
-	return ""
-}
-
-func activeSSHHostForCloudDir(directory string) string {
-	return runta.ActiveSSHHost(homeFromCloudDir(directory))
-}
-
 // SSHTransportOptions returns low-latency OpenSSH client flags, using fd-passing
 // with TCP_NODELAY=1 when enabled so non-PTY ControlMaster (-N -M) and stream (-T)
 // connections bypass Nagle buffering from the first packet.

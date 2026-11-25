@@ -58,6 +58,12 @@ final class DesktopWindow: NSObject {
     // The native window owns its preferences independently of menu bar state.
     func update(_ change: [String: Any]) {}
 
+    // Closes the window when Fennec Terminal is turned off.
+    func close() {
+        if let process, process.isRunning { process.terminate() }
+        process = nil
+    }
+
     @objc private func quit() {
         process?.terminate()
     }

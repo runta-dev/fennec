@@ -2,7 +2,7 @@
 
 ## Commit and push workflow
 
-- Fennec Desktop development belongs on `feat/fennec-desktop`. Commit and push Desktop work there; keep its native window, design assets, and packaging out of `main`, which ships the menubar app and CLI.
+- Fennec Terminal, the desktop window in `desktop/` (formerly developed on `feat/fennec-desktop`), is part of `main`; develop it there like everything else. It stays behind the `fennec_terminal` setting, off by default, and its row in Settings appears only in builds that carry it. Its native build needs Rust, Zig 0.16 and the `desktop/vendor` submodules, so it is opt-in (`FENNEC_BUILD_DESKTOP=1`); default and release builds omit it until CI and the errand release workflow provide that toolchain.
 
 - The user's standing preference is to commit and push task changes promptly after appropriate validation, at meaningful milestones and before reporting completion. Do not wait for a separate request to push completed work.
 - During the current rapid-development cycle, make all changes directly on `main` and push to `origin/main` by default. Do not create a feature branch or wait for a separate merge/push request unless the user explicitly asks for a different workflow.

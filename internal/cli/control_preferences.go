@@ -3,10 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
-	"fennec/internal/runta"
 	"fennec/internal/sessionid"
 	"fennec/internal/setup"
 	"fennec/internal/sshcarrier"
@@ -161,7 +161,7 @@ func (s *daemonServices) setTakeover(ctx context.Context, raw json.RawMessage) (
 		delete(s.selected, request.Agent)
 	}
 	s.reconcileSelectionLocked()
-	err := writePublicJSON(runta.TakeoverPreferencesPath(s.home), map[string]any{"runtime_id": s.config.RuntimeID, "agents": s.config.Selected, "roots": s.config.Roots})
+	err := writePublicJSON(cloudtarget.TakeoverPreferencesPath(s.home), map[string]any{"runtime_id": s.config.RuntimeID, "agents": s.config.Selected, "roots": s.config.Roots})
 	if err != nil {
 		if before {
 			s.selected[request.Agent] = true

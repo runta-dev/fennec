@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fennec/internal/runta"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/terminalstate"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -52,10 +52,15 @@ func ExecuteColdStream(ctx context.Context, plan LaunchPlan, intent LaunchIntent
 	if framed {
 		remote = fmt.Sprintf(`"$HOME/.local/fennec/bin/fennec-terminal" serve --protocol=%d`, terminalstream.ProtocolVersion)
 	}
-	directory := filepath.Join(home, ".config/fennec/cloud")
+	target, err := cloudtarget.Active(home)
+	if err != nil {
+		return err
+	}
 	lifecycle, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", "-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes", "-o", "UserKnownHostsFile="+filepath.Join(directory, "known_hosts"), "-i", filepath.Join(directory, "runtime_key"), plan.RuntimeID+"@"+runta.ActiveSSHHost(home), remote)
+	args := []string{"-T", "-S", connection.control, "-o", "ControlMaster=no", "-o", "ProxyCommand=false", "-o", "IPQoS=ef", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes"}
+	args = append(args, target.OpenSSHArgs(plan.RuntimeID)...)
+	command := exec.CommandContext(lifecycle, "/usr/bin/ssh", append(args, remote)...)
 	var transport *terminalstream.Transport
 	var session *terminalstream.Session
 	if framed {

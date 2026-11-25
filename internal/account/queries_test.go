@@ -94,7 +94,8 @@ func TestLateUnauthorizedResponseCannotSignOutNewLogin(t *testing.T) {
 	store := &memoryCredentials{token: "same-fixture-token"}
 	m := New(ctx, store, "")
 	_ = m.Restore(ctx)
-	_, token, epoch, _ := m.Session()
+	_, principal, epoch, _ := m.Session()
+	token := principal.Token
 	if err := m.Logout(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +244,8 @@ func TestRejectedCredentialIsForgottenWhenAsked(t *testing.T) {
 			m.ForgetRejectedCredentials()
 		}
 		_ = m.Restore(ctx)
-		_, token, epoch, ok := m.Session()
+		_, principal, epoch, ok := m.Session()
+		token := principal.Token
 		if !ok {
 			t.Fatal("not restored")
 		}

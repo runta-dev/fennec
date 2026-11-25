@@ -236,7 +236,9 @@
     const chevron = el('span', 'gs-chevron'); chevron.setAttribute('aria-hidden', 'true');
     chevron.innerHTML = '<svg viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></svg>';
     phone.append(phoneIcon, el('span', 'gs-phone-title', "[[i18n:ui.gs_iphone]]"), el('span', 'gs-tag', "[[i18n:ui.gs_optional]]"), chevron);
-    card.append(head, progress, steps, phone);
+    const iPhoneAvailable = typeof selfHosted === 'undefined' || !selfHosted;
+    card.append(head, progress, steps);
+    if (iPhoneAvailable) card.append(phone);
     if (doneCount === 3) card.append(el('p', 'gs-finished', "[[i18n:ui.gs_detach_hint]]"));
     card.hidden = false;
   }

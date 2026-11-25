@@ -21,6 +21,8 @@ var fixtures = map[string]string{
 	"desktop/src/terminal.rs":                   "upstream herdr-app multilingual shaping fixtures",
 	"desktop/src/vt.rs":                         "upstream herdr-app multilingual terminal fixtures",
 	"desktop/src/links.rs":                      "upstream herdr-app multilingual file URL fixture",
+	"internal/board/title_test.go":              "multilingual session title fixtures",
+	"internal/queuescheduler/scheduler_test.go": "multilingual request text fixtures",
 	"internal/transcript/transcript_test.go":    "multilingual user messages in agent transcripts",
 	"ios/FennecTests/FennecTests.swift":         "multilingual chat preview and Markdown fixtures",
 	"ios/FennecUITests/ScreenTourUITests.swift": "Unicode user-authored session titles in UI screenshots",

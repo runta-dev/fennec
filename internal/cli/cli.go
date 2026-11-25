@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudtarget"
 	"flag"
 	"fmt"
 	"io"
@@ -78,12 +79,10 @@ func Run(arguments []string, output io.Writer) error {
 			return errors.New("usage: ssh-dial <host> <port>")
 		}
 		home, _ := os.UserHomeDir()
-		if arguments[1] != runta.ActiveSSHHost(home) {
-			return fmt.Errorf("refusing unexpected SSH gateway host %q", arguments[1])
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		return runta.DialAndPassSSHFD(ctx, arguments[1], arguments[2], runta.SSHNoDelayEnabled(home), int(os.Stdout.Fd()))
+		allow := func(host, port string) bool { return cloudtarget.AllowsDial(home, host, port) }
+		return runta.DialAndPassSSHFD(ctx, arguments[1], arguments[2], allow, runta.SSHNoDelayEnabled(home), int(os.Stdout.Fd()))
 	case "install-entry":
 		if len(arguments) != 3 {
 			return errors.New("install-entry requires agent and absolute entry path")
@@ -360,7 +359,11 @@ func Run(arguments []string, output io.Writer) error {
 		defer stopLifecycle()
 		ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 		defer cancel()
-		return prepareRuntime(ctx, input.Token, output)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		return prepareRuntime(ctx, newRuntaComputer(home, input.Token, false), output)
 	case "connector":
 		home, err := os.UserHomeDir()
 		if err != nil {

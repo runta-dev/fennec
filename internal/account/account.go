@@ -52,8 +52,10 @@ type Manager struct {
 	cancel      context.CancelFunc
 	state       Snapshot
 	token       string
-	changed     chan struct{}
-	revision    uint64
+	// machine is the paired self-hosted computer while Status is StatusPaired.
+	machine  string
+	changed  chan struct{}
+	revision uint64
 
 	// forgetRejected also deletes a credential the server rejected (the
 	// iPhone), so it can't come back signed in at the next launch.
@@ -120,6 +122,11 @@ func (m *Manager) SetEndpoint(ctx context.Context, endpoint, dashboard string) e
 	}
 	m.endpoint = trimmed
 	m.dashboard = dash
+	// A paired self-hosted computer does not depend on the Runta environment.
+	if m.state.Status == StatusPaired {
+		m.mu.Unlock()
+		return nil
+	}
 	_, epoch := m.resetLocked("restoring")
 	m.mu.Unlock()
 
@@ -168,16 +175,19 @@ func (m *Manager) resetLocked(status string) (context.Context, uint64) {
 	m.cancel = cancel
 	m.state = Snapshot{Epoch: m.state.Epoch + 1, Status: status}
 	m.token = ""
+	m.machine = ""
 	m.notifyLocked()
 	return ctx, m.state.Epoch
 }
 
-// Session returns an account-scoped context, invalidated by logout or replacement.
-// Only daemon code may use the token; it must never enter a public response.
-func (m *Manager) Session() (context.Context, string, uint64, bool) {
+// Session returns the principal-scoped context, invalidated by logout, unpairing
+// or replacement, with the active principal and its epoch. Only daemon code may
+// use a principal's token; it must never enter a public response.
+func (m *Manager) Session() (context.Context, Principal, uint64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.session, m.token, m.state.Epoch, m.state.Status == "authorized" && m.token != ""
+	principal, ok := m.principalLocked()
+	return m.session, principal, m.state.Epoch, ok
 }
 func (m *Manager) Restore(ctx context.Context) error {
 	m.credentialsMu.Lock()
@@ -224,6 +234,11 @@ func (m *Manager) Logout(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Signing out of Runta removes its credential but does not unpair a
+	// self-hosted computer; only Unpair ends that principal.
+	if m.state.Status == StatusPaired {
+		return nil
+	}
 	m.resetLocked("signed_out")
 	return nil
 }
@@ -240,6 +255,9 @@ func (m *Manager) LoginMethod(method string) (Snapshot, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.state.Status == StatusPaired {
+		return m.state, ErrSelfHostedPaired
+	}
 	if m.state.Status == "authorizing" || m.state.Status == "authorized" {
 		return m.state, nil
 	}
@@ -253,7 +271,7 @@ func (m *Manager) LoginMethod(method string) (Snapshot, error) {
 // succeeds; cancellation or refusal must not erase uninstall recovery access.
 func (m *Manager) Reauthenticate(requests ...context.Context) Snapshot {
 	m.mu.Lock()
-	if m.state.Status == "authorizing" {
+	if m.state.Status == "authorizing" || m.state.Status == StatusPaired {
 		state := m.state
 		m.mu.Unlock()
 		return state
@@ -456,7 +474,7 @@ func (m *Manager) authorizeMethod(ctx context.Context, epoch uint64, method stri
 func (m *Manager) Redeem(deviceCode string) Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if deviceCode == "" || m.state.Status == "authorized" {
+	if deviceCode == "" || m.state.Status == "authorized" || m.state.Status == StatusPaired {
 		return m.state
 	}
 	ctx, epoch := m.resetLocked("authorizing")

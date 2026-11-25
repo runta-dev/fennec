@@ -20,7 +20,7 @@ func desktopSettingsResponse(home string, prefs desktopPreferences, summary audi
 		"permission_mode": effectivePermissionPreset(prefs), "sandbox_mode": policy.Mode, "sandbox_network": policy.Network,
 		"sandbox_roots": roots, "effective_sandbox_roots": policy.WritableRoots, "audit_summary": summary,
 		"theme": prefs.Theme, "language": prefs.Language, "initialized": prefs.Initialized,
-		"get_started_done": prefs.GetStartedDone, "get_started_hidden": prefs.GetStartedHidden,
+		"get_started_done": prefs.GetStartedDone, "get_started_hidden": prefs.GetStartedHidden, "fennec_terminal": prefs.FennecTerminal,
 	}
 }
 

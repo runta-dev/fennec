@@ -78,8 +78,8 @@ impl FennecWindow {
                         if this.peek_target().is_none_or(|s| s.address != peek.address) {
                             return;
                         }
-                        if this.thread_peek.as_ref() != Some(&peek) {
-                            this.thread_peek = Some(peek);
+                        if this.thread_peek.get(&peek.address) != Some(&peek) {
+                            this.thread_peek.insert(peek.address.clone(), peek);
                             cx.notify();
                         }
                     });
@@ -87,13 +87,29 @@ impl FennecWindow {
                         break;
                     }
                 }
-                cx.background_executor()
-                    .timer(
-                        EVERY
-                            .saturating_sub(started.elapsed())
-                            .max(Duration::from_millis(100)),
-                    )
-                    .await;
+                // Wait for the next read, but read at once when another thread
+                // opens: its card would otherwise sit empty and then grow.
+                let read_for = this
+                    .update(cx, |this, _| this.peek_target().map(|s| s.address.clone()))
+                    .ok()
+                    .flatten();
+                let wait = EVERY
+                    .saturating_sub(started.elapsed())
+                    .max(Duration::from_millis(100));
+                let step = Duration::from_millis(50);
+                let mut waited = Duration::ZERO;
+                while waited < wait {
+                    cx.background_executor().timer(step).await;
+                    waited += step;
+                    let Ok(now) =
+                        this.update(cx, |this, _| this.peek_target().map(|s| s.address.clone()))
+                    else {
+                        return;
+                    };
+                    if now.is_some() && now != read_for {
+                        break;
+                    }
+                }
             }
         }));
     }
@@ -103,8 +119,7 @@ impl FennecWindow {
     pub(super) fn thread_peek_card(&self, session: &Session, status: &str) -> AnyElement {
         let peek = self
             .thread_peek
-            .as_ref()
-            .filter(|p| p.address == session.address);
+            .get(&session.address);
         let lines = peek.map(|p| p.lines.clone()).unwrap_or_default();
         let bg = peek
             .and_then(|p| p.bg)

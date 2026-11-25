@@ -2690,6 +2690,83 @@
       "zh-CN": "退出登录",
       "zh-TW": "登出"
     },
+    "ui.fennec_terminal": {
+      "en-US": "Fennec Terminal",
+      "ja": "Fennec Terminal",
+      "ko": "Fennec Terminal",
+      "zh-CN": "Fennec Terminal",
+      "zh-TW": "Fennec Terminal"
+    },
+    "ui.cant_reach_cloud_computer": {
+      "en-US": "Can't reach your cloud computer",
+      "ja": "クラウドコンピューターに接続できません",
+      "ko": "클라우드 컴퓨터에 연결할 수 없음",
+      "zh-CN": "无法连接到你的云电脑",
+      "zh-TW": "無法連線到你的雲端電腦"
+    },
+    "ui.cant_reach_your_server": {
+      "en-US": "Can't reach your server",
+      "ja": "サーバーに接続できません",
+      "ko": "서버에 연결할 수 없음",
+      "zh-CN": "无法连接到你的服务器",
+      "zh-TW": "無法連線到你的伺服器"
+    },
+    "ui.reconnects_automatically": {
+      "en-US": "Fennec keeps trying and reconnects automatically",
+      "ja": "Fennec は自動的に再接続を試み続けます",
+      "ko": "Fennec이 자동으로 다시 연결을 시도합니다",
+      "zh-CN": "Fennec 会持续尝试并自动重连",
+      "zh-TW": "Fennec 會持續嘗試並自動重新連線"
+    },
+    "ui.your_server": {
+      "en-US": "Your server",
+      "ja": "自分のサーバー",
+      "ko": "내 서버",
+      "zh-CN": "你的服务器",
+      "zh-TW": "你的伺服器"
+    },
+    "ui.unpair_server": {
+      "en-US": "Unpair server",
+      "ja": "サーバーのペアリングを解除",
+      "ko": "서버 페어링 해제",
+      "zh-CN": "取消配对服务器",
+      "zh-TW": "取消配對伺服器"
+    },
+    "ui.self_hosted": {
+      "en-US": "Self-hosted",
+      "ja": "セルフホスト",
+      "ko": "셀프 호스팅",
+      "zh-CN": "自托管",
+      "zh-TW": "自行託管"
+    },
+    "ui.server_address": {
+      "en-US": "Address",
+      "ja": "アドレス",
+      "ko": "주소",
+      "zh-CN": "地址",
+      "zh-TW": "位址"
+    },
+    "ui.machine_id": {
+      "en-US": "Machine ID",
+      "ja": "マシン ID",
+      "ko": "머신 ID",
+      "zh-CN": "机器 ID",
+      "zh-TW": "機器 ID"
+    },
+    "ui.host_key": {
+      "en-US": "Host key",
+      "ja": "ホストキー",
+      "ko": "호스트 키",
+      "zh-CN": "主机密钥",
+      "zh-TW": "主機金鑰"
+    },
+    "ui.server_details_unavailable": {
+      "en-US": "Server details unavailable",
+      "ja": "サーバー情報を取得できません",
+      "ko": "서버 정보를 불러올 수 없음",
+      "zh-CN": "无法获取服务器信息",
+      "zh-TW": "無法取得伺服器資訊"
+    },
     "ui.signed_in": {
       "en-US": "Signed in",
       "ja": "ログイン済み",

@@ -99,12 +99,21 @@ pub struct FennecWindow {
     deleted_projects: std::collections::HashSet<String>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
     thread: Option<Request>,
+    /// Threads already fetched, by (project, number): switching back to one
+    /// shows it at once while a refresh runs.
+    thread_cache: HashMap<(String, u64), Request>,
+    /// A clicked request whose thread is still loading. The card is selected,
+    /// but the pane keeps the current thread (and its actions) until the new
+    /// one arrives, so the pane never blanks between threads.
+    opening: Option<u64>,
     /// The open thread's message list, kept at its newest message.
     thread_scroll: ScrollHandle,
     /// Scroll the thread to its newest message once a sent reply shows up.
     thread_follow: bool,
     /// The latest lines the open thread's working agent printed.
-    thread_peek: Option<thread_peek::Peek>,
+    /// Each agent's last peek, by session address: a thread switched back to
+    /// shows it at once instead of growing when the first read lands.
+    thread_peek: HashMap<String, thread_peek::Peek>,
     pub(crate) route: Option<Route>,
     open: Option<u64>,
     resolved: bool,
@@ -270,7 +279,7 @@ impl FennecWindow {
             deleted_projects: Default::default(),
             requests: HashMap::new(),
             thread: None,
-            thread_peek: None,
+            thread_peek: HashMap::new(),
             route: None,
             open: None,
             resolved: false,
@@ -284,6 +293,8 @@ impl FennecWindow {
             replying: false,
             thread_scroll: ScrollHandle::new(),
             thread_follow: false,
+            thread_cache: HashMap::new(),
+            opening: None,
             reply,
             reply_drafts: HashMap::new(),
 		    opening_thread_session: false,
@@ -630,11 +641,18 @@ impl FennecWindow {
             Err(e) if self.projects.is_empty() => tracing::debug!("board unavailable: {e:#}"),
             Err(_) => {}
         }
+        let fetched_project = requests.as_ref().map(|(id, _)| id.clone());
         if let Some((id, Ok(list))) = requests {
             self.requests.insert(id, list);
         }
-        if let Some(Ok(t)) = thread
+        let thread = thread.and_then(Result::ok);
+        if let (Some(project), Some(t)) = (&fetched_project, &thread) {
+            self.thread_cache
+                .insert((project.clone(), t.number), t.clone());
+        }
+        if let Some(t) = thread
             && Some(t.number) == self.open
+            && fetched_project == self.project_id()
         {
             // Follow new messages to the bottom when the thread was just opened,
             // a reply was just sent, or the list was already at its newest
@@ -731,6 +749,7 @@ impl FennecWindow {
             }
             if let Route::Project(_) = route {
                 self.open = None;
+                self.opening = None;
                 self.thread = None;
                 self.tag = None;
             }
@@ -743,17 +762,72 @@ impl FennecWindow {
         cx.notify();
     }
 
+    /// Open a request's thread. The pane swaps from the current thread to the
+    /// new one in a single frame: a thread fetched before shows at once (and
+    /// refreshes), otherwise the card is selected while the thread loads and
+    /// the pane changes when it arrives. Clearing the pane first would flash
+    /// the empty placeholder between the two threads.
     pub(crate) fn open_request(&mut self, n: u64, window: &mut Window, cx: &mut Context<Self>) {
-        self.save_reply_draft(cx);
-        self.open = Some(n);
-        let draft = self
-            .project_id()
-            .and_then(|p| self.reply_drafts.get(&format!("reply:{p}:{n}")).cloned())
-            .unwrap_or_default();
-        self.reply
-            .update(cx, |s, cx| s.set_value(draft, window, cx));
-        self.thread = None;
-        self.refresh_now(window, cx);
+        let Some(project) = self.project_id() else {
+            return;
+        };
+        if let Some(t) = self.thread_cache.get(&(project.clone(), n)).cloned() {
+            self.opening = None;
+            self.show_thread(n, Some(t), window, cx);
+            self.refresh_now(window, cx);
+            return;
+        }
+        self.opening = Some(n);
+        cx.notify();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let fetched = {
+                let project = project.clone();
+                cx.background_spawn(async move { board::request(&project, n) })
+                    .await
+            };
+            let _ = this.update_in(cx, |this, window, cx| {
+                if let Ok(t) = &fetched {
+                    this.thread_cache.insert((project.clone(), n), t.clone());
+                }
+                // A later click, or leaving the queue, supersedes this one.
+                if this.opening != Some(n) || this.project_id().as_ref() != Some(&project) {
+                    return;
+                }
+                this.opening = None;
+                // On failure open it empty; the board refresh fills it in.
+                this.show_thread(n, fetched.ok(), window, cx);
+                this.refresh_now(window, cx);
+            });
+        }));
+    }
+
+    /// Make `n` the open thread, with `thread` (if loaded) on screen at its
+    /// newest message and its own reply draft in the reply box.
+    fn show_thread(
+        &mut self,
+        n: u64,
+        thread: Option<Request>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open != Some(n) {
+            self.save_reply_draft(cx);
+            self.open = Some(n);
+            let draft = self
+                .project_id()
+                .and_then(|p| self.reply_drafts.get(&format!("reply:{p}:{n}")).cloned())
+                .unwrap_or_default();
+            self.reply
+                .update(cx, |s, cx| s.set_value(draft, window, cx));
+        }
+        if let Some(t) = thread {
+            if self.thread.as_ref().is_none_or(|old| old.number != n) {
+                self.thread_scroll.scroll_to_bottom();
+            }
+            self.thread = Some(t);
+        } else if self.thread.as_ref().is_some_and(|old| old.number != n) {
+            self.thread = None;
+        }
         cx.notify();
     }
 
@@ -835,6 +909,10 @@ impl FennecWindow {
                         }
                         if this.project_id().as_deref() == Some(&submitted_project) {
                             this.resolved = false;
+                            if !r.messages.is_empty() {
+                                this.thread_cache
+                                    .insert((submitted_project.clone(), r.number), r.clone());
+                            }
                             this.open_request(r.number, window, cx);
                         }
                     }
@@ -1751,7 +1829,9 @@ impl FennecWindow {
                         let name = format!("desktop-{}", sessions::now_ms());
                         // A long-lived core can retain NO_COLOR from a noninteractive launcher.
                         let argv = [vec!["/usr/bin/env".into(), "-u".into(), "NO_COLOR".into()], argv].concat();
-                        core.run(argv, std::env::var("HOME").ok(), serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
+                        let cwd = if agent.is_empty() { None } else { board::local_folder(&agent, &name) }
+                            .or_else(|| std::env::var("HOME").ok());
+                        core.run(argv, cwd, serde_json::json!({"fennec.session":name, "fennec.agent":if agent.is_empty() { "shell" } else { &agent }}), None, None, display)
                     }).await;
                     let _ = this.update(cx, |this, cx| {this.creating_local=false;match started {
                         Ok(address) => { let key = if crate::core_bin::cloud() { format!("local:{address}") } else { address }; this.confirmed_session = Some(key.clone()); if select && (this.route==origin || this.route.is_none()) {this.pending_focus = Some(key.clone()); this.route = Some(Route::Session(key));} cx.notify(); },
@@ -2390,7 +2470,7 @@ impl FennecWindow {
         let frame_at = std::time::Instant::now();
         let appear = |key: &str| self.queue_glide.borrow_mut().appear(&glide_scope, key, frame_at);
         let cards = shown.iter().enumerate().map(|(index, r)| {
-            let selected = self.open == Some(r.number);
+            let selected = self.opening.or(self.open) == Some(r.number);
             let n = r.number;
             let latest = r
                 .latest

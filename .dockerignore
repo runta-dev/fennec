@@ -1,0 +1,7 @@
+# Only the self-hosted cloud image is built with Docker; send it nothing else.
+*
+!go.mod
+!go.sum
+!cmd/fennec-cloud
+!internal/cloudimage
+!deploy/byoc

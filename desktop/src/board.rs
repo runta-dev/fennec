@@ -363,6 +363,22 @@ pub fn start_session(agent: &str) -> Result<String> {
     Ok(r["session_id"].as_str().unwrap_or_default().to_owned())
 }
 
+/// The working directory for an agent session started on this Mac: a folder
+/// Fennec made and Claude Code trusts, so it doesn't stop at "Quick safety
+/// check" (it never remembers trust for the home folder). None keeps the home
+/// folder, also when the daemon can't be asked.
+pub fn local_folder(agent: &str, name: &str) -> Option<String> {
+    let r = crate::control::call(
+        "sessions.local_folder",
+        json!({"agent": agent, "name": name}),
+    )
+    .ok()?;
+    r["directory"]
+        .as_str()
+        .filter(|d| !d.is_empty())
+        .map(str::to_owned)
+}
+
 /// The agents a session or worker can run (internal/board Agents).
 pub const AGENTS: &[&str] = &[
     "claude", "codex", "kimi", "opencode", "cursor", "grok", "pi",

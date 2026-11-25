@@ -58,7 +58,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			if err := store.SetRouting(queueRouting(s, store)); err != nil {
 				continue
 			}
-			lifecycle, token, current, authorized := s.account.Session()
+			lifecycle, principal, current, authorized := s.account.Session()
 			if !ready || !authorized {
 				health.failed(fmt.Sprintf("channel ready=%t authorized=%t", ready, authorized))
 				if last.IsZero() || time.Since(last) > 10*time.Second {
@@ -86,14 +86,20 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				continue
 			}
 			if current != epoch || identity == "" {
-				api := runta.Client{Endpoint: s.account.Endpoint(), Token: token}
-				owner, err := api.CurrentUser(step)
-				if err != nil {
-					health.failed("account: " + err.Error())
-					cancel()
-					continue
+				// The board is shared by the devices of one owner: a Runta account,
+				// or a paired self-hosted computer.
+				scope := "byoc/" + principal.Machine
+				if token, isRunta := principal.RuntaToken(); isRunta {
+					api := runta.Client{Endpoint: s.account.Endpoint(), Token: token}
+					owner, err := api.CurrentUser(step)
+					if err != nil {
+						health.failed("account: " + err.Error())
+						cancel()
+						continue
+					}
+					scope = api.Endpoint + "/" + owner
 				}
-				sum := sha256.Sum256([]byte(api.Endpoint + "/" + owner))
+				sum := sha256.Sum256([]byte(scope))
 				identity = hex.EncodeToString(sum[:])
 				epoch = current
 				peerSeen = nil

@@ -26,9 +26,13 @@ func (e *httpStatusError) Error() string {
 }
 
 func (m *Manager) queryContext(parent context.Context) (context.Context, string, uint64, func(), error) {
-	lifecycle, token, epoch, ok := m.Session()
+	lifecycle, principal, epoch, ok := m.Session()
 	if !ok {
 		return nil, "", 0, func() {}, fmt.Errorf("login required")
+	}
+	token, isRunta := principal.RuntaToken()
+	if !isRunta {
+		return nil, "", 0, func() {}, ErrRuntaAccountRequired
 	}
 	ctx, cancel := context.WithCancel(parent)
 	stop := context.AfterFunc(lifecycle, cancel)

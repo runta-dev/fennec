@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/account"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
@@ -11,7 +12,7 @@ import (
 	"path/filepath"
 )
 
-func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, operation string, params controlplane.SessionParams) (any, error) {
+func (s *daemonServices) session(ctx context.Context, _ account.Principal, runtimeID, operation string, params controlplane.SessionParams) (any, error) {
 	s.mu.Lock()
 	channel := s.channel
 	config := s.config
@@ -27,7 +28,12 @@ func (s *daemonServices) session(ctx context.Context, _ string, runtimeID, opera
 		receipt, err := launcher.RequestLaunch(ctx, config.Socket, launcher.LaunchIntent{RequestID: params.SessionID, Agent: params.Agent, Directory: params.Directory, Arguments: params.Arguments})
 		if err != nil {
 			// The broker's reasons are written for the user (run location,
-			// preparation, an unknown outcome to inspect); keep them.
+			// preparation, an unknown outcome to inspect); keep them. A refusal
+			// before anything started is launch_refused; launch_failed leaves the
+			// outcome unknown.
+			if launcher.IsNotStarted(err) {
+				return nil, &control.Fault{Code: "launch_refused", Message: err.Error()}
+			}
 			return nil, &control.Fault{Code: "launch_failed", Message: err.Error()}
 		}
 		if err := launcher.SaveReceipt(filepath.Join(s.home, ".config/fennec/launches"), receipt); err != nil {

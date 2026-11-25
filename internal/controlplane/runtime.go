@@ -48,10 +48,12 @@ func (c *Controller) notifyRuntimeWakeLocked() {
 func (c *Controller) runtimeSnapshot() RuntimeState {
 	account := c.Account.Snapshot()
 	online := c.Connectivity == nil || c.Connectivity.Online()
+	// Asked before taking c.mu: the services take their own lock.
+	unreachable := online && c.CloudUnreachable != nil && c.CloudUnreachable(account.Epoch)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.runtime.Epoch != account.Epoch {
-		if account.Status == "authorized" && !online {
+		if account.Active() && !online {
 			return RuntimeState{Epoch: account.Epoch, Offline: true, Stage: "offline"}
 		}
 		return RuntimeState{Epoch: account.Epoch, Stage: "idle"}
@@ -66,16 +68,22 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 		}
 		result.Events[kind] = copy
 	}
-	if !online && account.Status == "authorized" && result.Stage != "disabled" {
+	if !online && account.Active() && result.Stage != "disabled" {
 		result.Offline = true
 		result.Stage = "offline"
 		result.Error = ""
 		result.Running = false
 	}
+	// A prepared computer this online Mac cannot reach is not ready. Only the
+	// reported stage changes: the resident channel keeps reconnecting, and the
+	// stage returns to ready as soon as it does.
+	if unreachable && account.Active() && result.Stage == "ready" {
+		result.Stage = "unreachable"
+	}
 	return result
 }
 func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, error) {
-	lifecycle, token, epoch, ok := c.Account.Session()
+	lifecycle, principal, epoch, ok := c.Account.Session()
 	if !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in before preparing a runtime"}
 	}
@@ -118,9 +126,18 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 	if c.runtime.Epoch != epoch {
 		c.runtimeAgain = false
 	}
+	// A repeated preparation in the same epoch keeps the computer it last
+	// confirmed: its broker and resident channel stay usable while preparation
+	// reconciles, so session operations must not be refused meanwhile. A
+	// different computer replaces the ID through its runtime_id events, and
+	// ReplaceDeletedRuntime clears it explicitly.
+	previousID := ""
+	if c.runtime.Epoch == epoch {
+		previousID = c.runtime.RuntimeID
+	}
 	c.runtimeGeneration++
 	c.runtimeRetry = false
-	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", Events: map[string]map[string]string{}}
+	c.runtime = RuntimeState{Epoch: epoch, Generation: c.runtimeGeneration, Running: true, Stage: "preparing", RuntimeID: previousID, Events: map[string]map[string]string{}}
 	ctx, cancel := context.WithTimeout(lifecycle, 12*time.Minute)
 	done := make(chan struct{})
 	c.runtimeCancel = cancel
@@ -145,9 +162,9 @@ func (c *Controller) ensureRuntime(_ context.Context, _ json.RawMessage) (any, e
 				c.runtime.RuntimeID = id
 			}
 		}}
-		err := c.Prepare(ctx, token, writer)
+		err := c.Prepare(ctx, principal, writer)
 		var api *runta.APIError
-		if errors.As(err, &api) && api.Status == 401 {
+		if token, isRunta := principal.RuntaToken(); isRunta && errors.As(err, &api) && api.Status == 401 {
 			c.Account.RejectCredential(token, epoch)
 		}
 		nowOnline := c.Connectivity == nil || c.Connectivity.Refresh()
@@ -297,7 +314,7 @@ func (c *Controller) Start(ctx context.Context) {
 			account := c.Account.Snapshot()
 			var retryTimer <-chan time.Time
 			var stopTimer func() bool
-			if account.Status != "authorized" {
+			if !account.Active() {
 				lastEpoch = account.Epoch
 				wasOnline = online
 				retryDelay = 2 * time.Second
@@ -354,7 +371,7 @@ func (c *Controller) Start(ctx context.Context) {
 			if stopTimer != nil {
 				stopTimer()
 			}
-			if triggeredByTimer && (c.Connectivity == nil || c.Connectivity.Online()) && c.Account.Snapshot().Status == "authorized" && c.Prepare != nil {
+			if triggeredByTimer && (c.Connectivity == nil || c.Connectivity.Online()) && c.Account.Snapshot().Active() && c.Prepare != nil {
 				_, _ = c.ensureRuntime(ctx, nil)
 			}
 		}

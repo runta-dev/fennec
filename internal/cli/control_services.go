@@ -9,6 +9,7 @@ import (
 	"fennec/internal/account"
 	"fennec/internal/agent"
 	"fennec/internal/audit"
+	"fennec/internal/cloudtarget"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/guardian"
@@ -123,7 +124,7 @@ func writePublicJSON(path string, value any) error {
 }
 
 // user is supplied only from EnsureShared's freshly verified runtime owner.
-func (s *daemonServices) initialize(lifecycle context.Context, token string, epoch uint64, user string) error {
+func (s *daemonServices) initialize(lifecycle context.Context, computer cloudComputer, epoch uint64, user string) error {
 	s.initializeMu.Lock()
 	defer s.initializeMu.Unlock()
 	if lifecycle.Err() != nil {
@@ -170,7 +171,11 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.user = user
 	s.ctx = ctx
 	s.cancel = cancel
-	s.config = brokerConfiguration{Network: s.network, Token: token, Device: strings.TrimSpace(string(device)), Socket: filepath.Join(s.home, ".config/fennec/ipc/launch.sock"), AutoProjects: true}
+	token := ""
+	if managed, ok := computer.(runtaComputer); ok {
+		token = managed.token
+	}
+	s.config = brokerConfiguration{Network: s.network, Computer: computer, Token: token, Device: strings.TrimSpace(string(device)), Socket: filepath.Join(s.home, ".config/fennec/ipc/launch.sock"), AutoProjects: true}
 	s.selected = map[string]bool{}
 	s.ready = map[string]bool{}
 	s.approvals = map[string]localssh.Event{}
@@ -205,10 +210,14 @@ func (s *daemonServices) initialize(lifecycle context.Context, token string, epo
 	s.startMagpieCredentialSync(ctx, epoch)
 	return nil
 }
-func (s *daemonServices) prepare(ctx context.Context, token string, output io.Writer) error {
+func (s *daemonServices) prepare(ctx context.Context, principal account.Principal, output io.Writer) error {
 	lifecycle, _, epoch, ok := s.account.Session()
 	if !ok {
 		return fmt.Errorf("login required")
+	}
+	computer, err := newCloudComputer(s.home, principal, true)
+	if err != nil {
+		return err
 	}
 	if handled, err := s.reconfigureExisting(ctx, epoch, output); handled {
 		return err
@@ -219,8 +228,8 @@ func (s *daemonServices) prepare(ctx context.Context, token string, output io.Wr
 			s.runtimeEvent(epoch, event)
 		}
 	}}
-	return prepareRuntime(ctx, token, io.MultiWriter(output, events), preparationRetainer{Runtime: func(runtime runta.Runtime) error {
-		return s.initialize(lifecycle, token, epoch, runtime.Owner)
+	return prepareRuntime(ctx, computer, io.MultiWriter(output, events), preparationRetainer{Runtime: func(resolved resolvedComputer) error {
+		return s.initialize(lifecycle, computer, epoch, resolved.Owner)
 	}, Connection: func(runtimeID string, connection *ssh.Client) bool {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -267,7 +276,7 @@ func (s *daemonServices) runtimeEvent(epoch uint64, event map[string]json.RawMes
 			Agents    []string `json:"agents"`
 			Roots     []string `json:"roots"`
 		}
-		if data, err := os.ReadFile(runta.TakeoverPreferencesPath(s.home)); err == nil && json.Unmarshal(data, &saved) == nil && saved.RuntimeID == runtimeID {
+		if data, err := os.ReadFile(cloudtarget.TakeoverPreferencesPath(s.home)); err == nil && json.Unmarshal(data, &saved) == nil && saved.RuntimeID == runtimeID {
 			for _, id := range saved.Agents {
 				if launcher.Supported[id] {
 					s.selected[id] = true

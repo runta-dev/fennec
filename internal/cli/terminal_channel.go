@@ -26,6 +26,10 @@ type terminalChannel struct {
 	service         *fenSessionService
 	err             error
 	generation      uint64
+	// downSince is when the channel last lost a usable transport; zero while
+	// one is connected. It distinguishes a brief reconnect from a computer
+	// that stays unreachable.
+	downSince time.Time
 }
 
 func (channel *terminalChannel) start() <-chan struct{} {
@@ -122,6 +126,9 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 		channel.mu.Unlock()
 		return transport, nil
 	}
+	if channel.pending == nil && channel.downSince.IsZero() {
+		channel.downSince = time.Now()
+	}
 	if channel.pending == nil {
 		previousFailed := channel.transport != nil
 		previous := channel.transport
@@ -192,6 +199,7 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 			channel.transport = transport
 			if err == nil && transport != nil {
 				channel.generation++
+				channel.downSince = time.Time{}
 			}
 			channel.err = err
 			channel.pending = nil
@@ -231,4 +239,32 @@ func (channel *terminalChannel) get(ctx context.Context) (*terminalstream.Transp
 		return nil, channel.err
 	}
 	return channel.transport, channel.err
+}
+
+// unreachableAfter is how long the cloud computer may stay unreachable before
+// the channel reports it, so an ordinary reconnect never changes the state.
+const unreachableAfter = 15 * time.Second
+
+// unreachable reports whether the channel has had no usable transport for
+// unreachableAfter while this Mac is online. Offline Macs are reported as
+// offline by the network monitor instead.
+func (channel *terminalChannel) unreachable(now time.Time) bool {
+	if channel.network != nil && !channel.network.Online() {
+		return false
+	}
+	channel.mu.Lock()
+	defer channel.mu.Unlock()
+	if channel.transport != nil && channel.transport.Alive() && !channel.transport.Suspended() && channel.pending == nil {
+		return false
+	}
+	return !channel.downSince.IsZero() && now.Sub(channel.downSince) >= unreachableAfter
+}
+
+// cloudUnreachable reports whether the prepared cloud computer of epoch has
+// stayed unreachable from this online Mac (see terminalChannel.unreachable).
+func (s *daemonServices) cloudUnreachable(epoch uint64) bool {
+	s.mu.Lock()
+	channel, current := s.channel, s.epoch
+	s.mu.Unlock()
+	return channel != nil && current == epoch && channel.unreachable(time.Now())
 }

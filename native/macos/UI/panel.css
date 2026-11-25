@@ -666,3 +666,4 @@ nav button{padding:3px 7px}
 .session-loading-icon{width:18px;height:18px;border-radius:5px;flex:none}
 .session-loading-title{width:58%;height:13px}
 .session-loading-row:nth-child(2) .session-loading-title{width:43%}
+.self-hosted-value{min-width:0;max-width:62%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;user-select:text}

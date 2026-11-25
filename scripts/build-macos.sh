@@ -95,23 +95,35 @@ PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
-# The desktop window: native on GPUI, with herdr-app's terminal core (desktop/,
-# Apache-2.0, see desktop/UPSTREAM.md). Needs Rust and Zig 0.16 (desktop/README.md).
-git submodule update --init --depth 1 desktop/vendor/ghostty
-git submodule update --init --recursive --depth 1 desktop/vendor/herdr-core
-(cd desktop && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked)
-# herdr-core for the window's local shell tabs (Fennec's own instance, HC_SESSION=fennec).
-(cd desktop/vendor/herdr-core && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked -p herdr-core)
-cp desktop/vendor/herdr-core/target/release/herdr-core "$app/Contents/MacOS/hc"
-sign_artifact "$app/Contents/MacOS/hc"
-install -m 755 desktop/fennec-hc-local "$app/Contents/Resources/fennec-hc-local"
-cp desktop/target/release/fennec-desktop "$app/Contents/MacOS/fennec-desktop"
-sign_artifact "$app/Contents/MacOS/fennec-desktop"
-install -m 755 desktop/fennec-hc "$app/Contents/Resources/fennec-hc"
-cp desktop/LICENSE "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt"
-cp desktop/licenses/LobeHub-icons.txt "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt"
-cp desktop/THIRD-PARTY-NOTICES "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt"
-cp desktop/vendor/herdr-core/LICENSE "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"
+# The Fennec Terminal window: native on GPUI, with herdr-app's terminal core
+# (desktop/, Apache-2.0, see desktop/UPSTREAM.md). Building it needs Rust,
+# Zig 0.16 and two submodules (desktop/README.md), so it is opt-in:
+# FENNEC_BUILD_DESKTOP=1. Without it the bundle carries no Fennec Terminal and
+# the setting that opens it stays hidden; a reused staging bundle must not keep
+# an earlier build's window binaries or shims.
+if [ "${FENNEC_BUILD_DESKTOP:-0}" = 1 ]; then
+  git submodule update --init --depth 1 desktop/vendor/ghostty
+  git submodule update --init --recursive --depth 1 desktop/vendor/herdr-core
+  (cd desktop && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked)
+  # herdr-core for the window's local shell tabs (Fennec's own instance, HC_SESSION=fennec).
+  (cd desktop/vendor/herdr-core && PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH" cargo build --release --locked -p herdr-core)
+  cp desktop/vendor/herdr-core/target/release/herdr-core "$app/Contents/MacOS/hc"
+  sign_artifact "$app/Contents/MacOS/hc"
+  install -m 755 desktop/fennec-hc-local "$app/Contents/Resources/fennec-hc-local"
+  cp desktop/target/release/fennec-desktop "$app/Contents/MacOS/fennec-desktop"
+  sign_artifact "$app/Contents/MacOS/fennec-desktop"
+  install -m 755 desktop/fennec-hc "$app/Contents/Resources/fennec-hc"
+  cp desktop/LICENSE "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt"
+  cp desktop/licenses/LobeHub-icons.txt "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt"
+  cp desktop/THIRD-PARTY-NOTICES "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt"
+  cp desktop/vendor/herdr-core/LICENSE "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"
+else
+  for old_desktop_artifact in "$app/Contents/MacOS/fennec-desktop" "$app/Contents/MacOS/hc" "$app/Contents/Resources/fennec-hc" "$app/Contents/Resources/fennec-hc-local" \
+    "$app/Contents/Resources/licenses/herdr-app-Apache-2.0.txt" "$app/Contents/Resources/licenses/LobeHub-icons-MIT.txt" \
+    "$app/Contents/Resources/licenses/herdr-app-THIRD-PARTY-NOTICES.txt" "$app/Contents/Resources/licenses/herdr-core-Apache-2.0.txt"; do
+    if [ -e "$old_desktop_artifact" ]; then rm "$old_desktop_artifact"; fi
+  done
+fi
 # Fennec CUA and the Chromium it drives ship on their own (fennec-cua-v*
 # releases), not inside Fennec.app: Chromium was about 170 MB of the 215 MB
 # bundle. With no nested components, components.json is empty and updates

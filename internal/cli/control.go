@@ -125,7 +125,7 @@ func serveControl(arguments []string) error {
 			defer launchprofile.Begin("account.restore")()
 			restore, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
-			_ = manager.Restore(restore)
+			restorePrincipal(restore, home, manager)
 		}()
 	})
 }
@@ -180,7 +180,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 		prefs := settings.snapshot().(desktopPreferences)
 		return effectiveSandboxPolicy(home, prefs)
 	}
-	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot}
+	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot, CloudUnreachable: services.cloudUnreachable}
 	controller.Additional = services.handlers(controller)
 	// runRuntimePresence calls this when the cloud computer was deleted outside
 	// Fennec, to tear down services bound to it and prepare a replacement.
@@ -191,6 +191,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller.Additional["transfer.open"] = services.openTransfer
 	controller.Additional["hc.open"] = services.openHC
+	for method, handler := range newBYOCControl(home, manager).handlers() {
+		controller.Additional[method] = handler
+	}
 	controller.Additional["desktop.session.seen"] = services.desktopSessionSeen
 	services.chatgpt = newChatGPTBridge(home, services)
 	for method, handler := range services.terminalCoverageHandlers() {

@@ -72,9 +72,21 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         window.refreshSessions = { [weak self] in self?.loadRuntimes() }
         return window
     }()
+    // Fennec Terminal (the desktop window) opens only when the bundle carries it
+    // (FENNEC_BUILD_DESKTOP=1) and the user turned it on; it is off by default.
+    private var fennecTerminalEnabled = false
+    private var fennecTerminalLaunchPending = true
+    private var fennecTerminalAvailable: Bool {
+        FileManager.default.isExecutableFile(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/fennec-desktop").path)
+    }
+    private var fennecTerminalOn: Bool { fennecTerminalAvailable && fennecTerminalEnabled }
     private var desktopAccountName = ""
     private var lastDesktopSettings: [String:Any]?
     private var authorized = false
+    // A paired self-hosted cloud computer is the principal: no Runta profile or
+    // billing, and the account menu unpairs it.
+    private var selfHosted = false
+    private var selfHostedMachine = ""
     // The page learns the sign-in state once after every load, signed in or not,
     // so it never guesses from its own default.
     private var authorizationRendered = false
@@ -129,8 +141,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        self.installationPending=false
 	        self.connectControl()
 	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
-	        // Fennec opens to its window; the menu bar panel stays one click away.
-	        self.openDesktop()
+	        // With Fennec Terminal on, Fennec opens to its window once the saved
+	        // setting is read (see the preferences in pollState).
 	    }
 	}
 
@@ -183,8 +195,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
 	    if installationPending{return false}
-        // Opening Fennec again (Dock, Finder, Spotlight) shows its window.
-        openDesktop()
+        // Opening Fennec again (Dock, Finder, Spotlight) shows its window when
+        // Fennec Terminal is on, otherwise the menu bar panel.
+        if fennecTerminalOn { openDesktop() } else { showPopupInForeground() }
         return false
     }
 
@@ -242,10 +255,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 menu.addItem(updateItem)
             }
             menu.addItem(.separator())
-            let open = NSMenuItem(title: L10n.text("ui.open_fennec_window", language: nativeLanguage), action: #selector(openDesktop), keyEquivalent: "")
-            open.target = self
-            menu.addItem(open)
-            menu.addItem(.separator())
+            if fennecTerminalOn {
+                let open = NSMenuItem(title: L10n.text("ui.open_fennec_window", language: nativeLanguage), action: #selector(openDesktop), keyEquivalent: "")
+                open.target = self
+                menu.addItem(open)
+                menu.addItem(.separator())
+            }
             for (title, action) in [("Restart", #selector(restartApp)), ("Exit", #selector(quitApp))] {
                 let entry = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 entry.target = self
@@ -740,6 +755,16 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        }
 	    }
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
+	        let terminalWanted = preferences["fennec_terminal"] as? Bool == true
+	        if terminalWanted != fennecTerminalEnabled {
+	            fennecTerminalEnabled = terminalWanted
+	            if !fennecTerminalOn { desktop.close() } else if !fennecTerminalLaunchPending { openDesktop() }
+	        }
+	        render("renderFennecTerminalAvailable", [fennecTerminalAvailable])
+	        if fennecTerminalLaunchPending {
+	            fennecTerminalLaunchPending = false
+	            if fennecTerminalOn { openDesktop() }
+	        }
 	        render("renderPreferences",[preferences])
 	        let shared=["theme":preferences["theme"] ?? "system","language":preferences["language"] ?? nativeLanguage,"permission_mode":preferences["permission_mode"] ?? "ask"]
 	        if lastDesktopSettings.map({NSDictionary(dictionary:$0) != NSDictionary(dictionary:shared)}) ?? true {lastDesktopSettings=shared;desktop.update(["settings":shared])}
@@ -755,17 +780,23 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let online = state["online"] as? Bool ?? true
         let reconnected = online && !isOnline
         isOnline = online
-        let isAuthorized = account["status"] as? String == "authorized"
+        let accountStatus = account["status"] as? String
+        let isSelfHosted = accountStatus == "paired"
+        let isAuthorized = accountStatus == "authorized" || isSelfHosted
         // While credentials are still being restored the sign-in state is unknown;
         // showing sign-in then would flash it on every launch.
         let authorizationKnown = account["status"] as? String != "restoring"
-        if authorizationKnown, isAuthorized != authorized || !authorizationRendered {
+        if authorizationKnown, isAuthorized != authorized || isSelfHosted != selfHosted || !authorizationRendered {
             authorizationRendered = true
             authorized = isAuthorized
+            selfHosted = isSelfHosted
+            if !selfHosted { selfHostedMachine = "" }
             if !authorized { profileLoaded = false; lastSessionsData = nil; desktopAccountName = "" }
             desktop.update(["account": ["signedIn": authorized, "name": desktopAccountName]])
-            render(authorized ? "renderAuthorized" : "renderSignedOut")
-            if authorized, online { loadProfile(); loadMetrics() }
+            if authorized { render("renderAuthorized", [selfHosted]) } else { render("renderSignedOut") }
+            // The pairing is local, so a self-hosted computer's details load offline too.
+            if authorized, online || selfHosted { loadProfile() }
+            if authorized, online { loadMetrics() }
             if authorized, pendingInteractiveLogin {
                 pendingInteractiveLogin = false
                 showPopupInForeground()
@@ -797,6 +828,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if runtime["stage"] as? String == "offline" || runtime["offline"] as? Bool == true || (!online && authorized && runtime["stage"] as? String != "disabled") {
             preparationState["stage"] = "offline"
             preparationState["status"] = "network_offline"
+        }
+        if online, runtime["stage"] as? String == "unreachable" {
+            preparationState["stage"] = "unreachable"
+            preparationState["status"] = selfHosted ? "server_unreachable" : "cloud_unreachable"
         }
 	    if runtime["stage"] as? String == "disabled" { preparationState=["stage":"disabled"] }
         if let text = events["model_catalog"]?["models"], let data = text.data(using: .utf8), let models = try? JSONSerialization.jsonObject(with: data) {
@@ -831,6 +866,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         renderApprovals()
     }
     private func loadProfile() {
+        if selfHosted { loadSelfHosted(); return }
         let epoch = accountEpoch
         control.call("account.profile") { [weak self] result in
             guard let self, self.accountEpoch == epoch, case .success(let value) = result, let profile = value as? [String:Any] else { return }
@@ -874,6 +910,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func loadBilling() {
         guard authorized, !loadingBilling else { return }
+        if selfHosted { loadSelfHosted(); return }
         guard isOnline else {
             render("renderBilling", [["offline": true]])
             return
@@ -890,6 +927,19 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 if self.isOnline { self.render("renderBilling", [["error":"[[i18n:ui.unable_to_load_account_usage]]"]]) }
                 else { self.render("renderBilling", [["offline": true]]) }
             }
+        }
+    }
+    private func loadSelfHosted() {
+        let epoch = accountEpoch
+        control.call("byoc.status") { [weak self] result in
+            guard let self, self.accountEpoch == epoch, self.selfHosted else { return }
+            guard case .success(let value) = result, let status = value as? [String:Any] else {
+                self.render("renderSelfHosted", [["paired": false]])
+                return
+            }
+            self.profileLoaded = true
+            self.selfHostedMachine = status["machine_id"] as? String ?? ""
+            self.render("renderSelfHosted", [status])
         }
     }
     private func loadMetrics() {
@@ -1139,7 +1189,13 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         case "ready","refresh": lastState = nil; pollState(); refreshAgents(); renderLoginItem()
         case "login": pendingInteractiveLogin = true; mutate("account.login")
 	    case "reauthenticate": pendingInteractiveLogin = true; mutate("account.login",["reauthenticate":true])
-        case "logout": mutate("account.logout")
+        case "logout":
+            if selfHosted {
+                // Unpairing confirms with the paired machine ID; without it the daemon refuses.
+                if !selfHostedMachine.isEmpty { mutate("byoc.unpair", ["machine_id": selfHostedMachine]) }
+            } else {
+                mutate("account.logout")
+            }
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics()
         case "open-magpie-panel":
