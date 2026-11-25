@@ -4,24 +4,6 @@ import XCTest
 final class NativeLoginUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    /// Guideline 4.8: Sign in with Apple is offered, first among the providers.
-    func testSignInWithAppleComesFirst() {
-        let app = XCUIApplication()
-        app.launchArguments += ["-RuntaEnvironment", "production", "-appLanguage", "en-US"]
-        app.launch()
-        let apple = app.buttons["login-apple"]
-        let google = app.buttons["Continue with Google"]
-        XCTAssertTrue(apple.waitForExistence(timeout: 10))
-        XCTAssertTrue(google.exists)
-        XCTAssertTrue(apple.isHittable)
-        XCTAssertLessThan(apple.frame.maxY, google.frame.minY)
-        XCTAssertEqual(apple.frame.width, google.frame.width, accuracy: 1)
-        let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "Sign-In-With-Apple-First"
-        shot.lifetime = .keepAlways
-        add(shot)
-    }
-
     func testNativeProvidersAndEmailKeepScanAvailable() {
         let app = XCUIApplication()
         app.launchArguments += ["-RuntaEnvironment", "integration", "-appLanguage", "en-US"]

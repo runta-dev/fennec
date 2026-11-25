@@ -1,5 +1,3 @@
-import AuthenticationServices
-import CryptoKit
 import FennecCore
 import Foundation
 import Observation
@@ -101,58 +99,6 @@ final class RuntaAuth {
             apply(snapshot)
         } catch {
             status = .failed("Couldn't start sign-in. Try again.")
-        }
-    }
-
-    /// The raw nonce of the Sign in with Apple request, with its attempt's epoch.
-    private var appleNonce: (value: String, epoch: Int64)?
-
-    /// Starts Sign in with Apple and returns the SHA-256 (hex) of a new nonce
-    /// for the Apple request, or nil if no attempt started. Supabase checks
-    /// that the identity token carries it, so a token can't be replayed.
-    func beginApple() -> String? {
-        guard !isAuthorizing else { return nil }
-        pairing = false
-        status = .authorizing(nil)
-        do { apply(try goCall { core.appleLogin($0) }) }
-        catch {
-            status = .failed("Couldn't start sign-in. Try again.")
-            return nil
-        }
-        var bytes = [UInt8](repeating: 0, count: 32)
-        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            failSignIn("no random nonce")
-            return nil
-        }
-        let nonce = Data(bytes).base64EncodedString()
-        appleNonce = (nonce, epoch)
-        return SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Apple's sheet returned: give the identity token to the Go client.
-    func completeApple(_ result: Result<ASAuthorization, Error>) {
-        let nonce = appleNonce
-        appleNonce = nil
-        switch result {
-        case .failure(let error):
-            let ns = error as NSError
-            if ns.domain == ASAuthorizationError.errorDomain, ns.code == ASAuthorizationError.canceled.rawValue {
-                cancelSignIn()
-            } else {
-                failSignIn("Sign in with Apple: \(ns.domain) \(ns.code)")
-            }
-        case .success(let authorization):
-            guard let nonce, nonce.epoch == epoch, isAuthorizing else { return }
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                  let data = credential.identityToken, let token = String(data: data, encoding: .utf8) else {
-                failSignIn("Sign in with Apple returned no identity token")
-                return
-            }
-            // Apple shares the name on the first authorization only.
-            let name = credential.fullName.map { PersonNameComponentsFormatter.localizedString(from: $0, style: .default) } ?? ""
-            if !core.completeAppleLogin(token, nonce: nonce.value, fullName: name, epoch: nonce.epoch) {
-                failSignIn("Apple identity token not accepted")
-            }
         }
     }
 

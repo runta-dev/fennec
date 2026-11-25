@@ -1,5 +1,4 @@
 import AVFoundation
-import AuthenticationServices
 import CoreImage
 import PhotosUI
 import SwiftUI
@@ -8,7 +7,6 @@ import SwiftUI
 struct ScanSignInView: View {
     @Environment(RuntaAuth.self) private var auth
     @Environment(AppModel.self) private var app
-    @Environment(\.colorScheme) private var colorScheme
     @State private var web = WebSignIn()
     @State private var photo: PhotosPickerItem?
     @State private var notice: String?
@@ -139,16 +137,6 @@ struct ScanSignInView: View {
 
     private var choicesPanel: some View {
         VStack(spacing: 12) {
-            // Apple's own button, first among the sign-in providers (guideline 4.8).
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.fullName, .email]
-                request.nonce = auth.beginApple()
-            } onCompletion: { auth.completeApple($0) }
-                .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-                .frame(height: 54)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .disabled(auth.isAuthorizing)
-                .accessibilityIdentifier("login-apple")
             loginButton(L10n.text("ios.google_signin"), asset: "auth-google", method: "google")
             loginButton(L10n.text("ios.github_signin"), asset: "auth-github", method: "github")
             Button { mode = "scan" } label: { loginLabel(L10n.text("ios.scan"), symbol: "qrcode.viewfinder") }

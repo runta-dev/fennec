@@ -34,10 +34,7 @@ type LoginOrganization struct {
 	Name string `json:"name"`
 }
 type nativeAttempt struct {
-	config   NativeOAuthConfig
-	provider string
-	// started closes when the Runta login attempt is recorded (or not).
-	started             chan struct{}
+	config              NativeOAuthConfig
 	verifier, attemptID string
 	expires             time.Time
 	callbackUsed        bool
@@ -150,7 +147,7 @@ func (m *Manager) loginNativeWith(provider string, config NativeOAuthConfig, ema
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	oldCancel := m.cancel
 	m.cancel = func() { cancel(); oldCancel() }
-	a := &nativeAttempt{config: config, provider: provider, started: make(chan struct{}), expires: time.Now().Add(10 * time.Minute), email: email, turnstileToken: turnstileToken}
+	a := &nativeAttempt{config: config, expires: time.Now().Add(10 * time.Minute), email: email, turnstileToken: turnstileToken}
 	verifier := make([]byte, 32)
 	if _, e := rand.Read(verifier); e != nil {
 		cancel()
@@ -215,7 +212,6 @@ func (m *Manager) loginRequest(ctx context.Context, method, endpoint, token, key
 	return nil
 }
 func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttempt, provider string) {
-	defer close(a.started)
 	var start struct {
 		Data struct {
 			AttemptID string `json:"attempt_id"`
@@ -231,14 +227,8 @@ func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttemp
 		a.turnstileToken = ""
 	} else {
 		err = m.nativeRequest(ctx, a, "POST", "/v1/auth/oauth/start", "", map[string]string{"provider": provider}, &start)
-		// The attempt is only an audit record. A Runta deployment from before
-		// Sign in with Apple refuses the provider; the session is then
-		// registered without an attempt.
-		if provider == "apple" && err != nil {
-			err, start.Data.AttemptID = nil, ""
-		}
 	}
-	if err != nil || (start.Data.AttemptID == "" && provider != "apple") {
+	if err != nil || start.Data.AttemptID == "" {
 		m.fail(epoch, "authorization_failed")
 		return
 	}
@@ -252,10 +242,6 @@ func (m *Manager) startNative(ctx context.Context, epoch uint64, a *nativeAttemp
 		m.state.EmailCode = true
 		m.state.ExpiresAt = a.expires
 		m.notifyLocked()
-		return
-	}
-	if provider == "apple" {
-		// The system sheet asks the person; CompleteApple takes its token.
 		return
 	}
 	challenge := sha256.Sum256([]byte(a.verifier))
@@ -278,7 +264,7 @@ func (m *Manager) CompleteNative(raw string, epoch uint64) bool {
 	q := u.Query()
 	m.mu.Lock()
 	a := m.native
-	if a == nil || a.email != "" || a.provider == "apple" || m.state.Status != "authorizing" || m.state.Epoch != epoch || a.callbackUsed || time.Now().After(a.expires) {
+	if a == nil || a.email != "" || m.state.Status != "authorizing" || m.state.Epoch != epoch || a.callbackUsed || time.Now().After(a.expires) {
 		m.mu.Unlock()
 		return false
 	}
