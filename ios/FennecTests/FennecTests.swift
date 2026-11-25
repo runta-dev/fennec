@@ -238,6 +238,8 @@ final class FennecTests: XCTestCase {
     func testLauncherAgentIDs() {
         XCTAssertEqual(AgentKind(launcherID: "claude"), .claudeCode)
         XCTAssertEqual(AgentKind(launcherID: "grok"), .grokBuild)
+        XCTAssertEqual(AgentKind(launcherID: "agy"), .antigravity)
+        XCTAssertEqual(AgentKind.antigravity.launcherID, "agy")
         XCTAssertNil(AgentKind(launcherID: "gemini"))
     }
 

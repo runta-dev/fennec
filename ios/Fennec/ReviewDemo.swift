@@ -39,7 +39,7 @@ struct DemoScript {
         let first: Int = switch agent {
         case .codex, .cursor: 0
         case .claudeCode, .kimiCode: 1
-        case .pi, .grokBuild, .openCode: 2
+        case .pi, .grokBuild, .openCode, .antigravity: 2
         }
         return all[(first + max(turn - 1, 0)) % all.count]
     }

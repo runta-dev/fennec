@@ -11,12 +11,13 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
         case "pi": self = .pi
         case "cursor": self = .cursor
         case "opencode": self = .openCode
+        case "agy": self = .antigravity
         default: return nil
         }
     }
 
     // Display order: Codex first (the default), then Claude Code, then Pi.
-    case codex, claudeCode, pi, grokBuild, kimiCode, cursor, openCode
+    case codex, claudeCode, pi, grokBuild, kimiCode, cursor, openCode, antigravity
 
     /// The id internal/launcher uses.
     var launcherID: String {
@@ -28,6 +29,7 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
         case .pi: "pi"
         case .cursor: "cursor"
         case .openCode: "opencode"
+        case .antigravity: "agy"
         }
     }
 
@@ -42,6 +44,7 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
         case .pi: "Pi"
         case .cursor: "Cursor CLI"
         case .openCode: "OpenCode"
+        case .antigravity: "Antigravity CLI"
         }
     }
 
@@ -55,6 +58,7 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
         case .pi: "agent-pi"
         case .cursor: "agent-cursor"
         case .openCode: "agent-opencode"
+        case .antigravity: "agent-antigravity"
         }
     }
 }

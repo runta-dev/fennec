@@ -25,6 +25,9 @@ import (
 //   - Kimi Code lists sessions in <KIMI_CODE_HOME or ~/.kimi-code>/session_index.jsonl
 //     ({"sessionDir","workDir"}); the latest one for the agent's cwd is its
 //     session, logged to <sessionDir>/agents/main/wire.jsonl.
+//   - Antigravity CLI lists conversations with their folder in
+//     ~/.gemini/antigravity-cli/conversation_summaries.db; `fennec-terminal
+//     agy-transcript <cwd>` prints the newest one's transcript_full.jsonl.
 
 const (
 	maxTranscriptRead = 2 << 20 // bytes of new lines per read
@@ -88,6 +91,11 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 		p := strconv.Itoa(pids[len(pids)-1])
 		fmt.Fprintf(&script, `c=$(readlink /proc/%s/cwd); h=$(tr '\0' '\n' < /proc/%s/environ 2>/dev/null | sed -n 's/^KIMI_CODE_HOME=//p'); h=${h:-$HOME/.kimi-code}; grep -F "\"workDir\":\"$c\"" "$h/session_index.jsonl" 2>/dev/null | tail -n 1 | sed -n 's/.*"sessionDir":"\([^"]*\)".*/kimi \1/p'; `, p, p)
 	}
+	if terminal.Labels["fennec.agent"] == "agy" {
+		// agy's own index names the newest conversation of its folder.
+		p := strconv.Itoa(pids[len(pids)-1])
+		fmt.Fprintf(&script, `c=$(readlink /proc/%s/cwd); "$HOME/.local/fennec/bin/fennec-terminal" agy-transcript "$c" 2>/dev/null | sed -n 's|^/|agy /|p'; `, p)
+	}
 	if terminal.Labels["fennec.agent"] == "pi" {
 		// The deepest process is Pi itself; its cwd names the sessions folder.
 		p := strconv.Itoa(pids[len(pids)-1])
@@ -106,6 +114,11 @@ func (s *Sessions) transcriptPath(address, sessionID string) (string, error) {
 	for _, line := range strings.Split(string(out), "\n") {
 		if dir, ok := strings.CutPrefix(line, "kimi "); ok && path == "" && strings.HasPrefix(dir, "/") && !strings.Contains(dir, "..") {
 			path = strings.TrimSpace(dir) + "/agents/main/wire.jsonl"
+		}
+		if log, ok := strings.CutPrefix(line, "agy "); ok && path == "" {
+			if log = strings.TrimSpace(log); strings.HasPrefix(log, "/") && !strings.Contains(log, "..") && strings.HasSuffix(log, "/.system_generated/logs/transcript_full.jsonl") {
+				path = log
+			}
 		}
 	}
 	if dir := piSessions(string(out)); path == "" && dir != "" {

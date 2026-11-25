@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/agylog"
 	"fennec/internal/board"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/cloudarchive"
@@ -108,6 +109,17 @@ func run() (int, error) {
 		}
 		defer output.Close()
 		return 0, serveSFTP(ctx, home, input, output)
+	}
+	// The phone finds an Antigravity CLI session's log through this (mobile/transcript.go).
+	if len(os.Args) == 3 && os.Args[1] == "agy-transcript" {
+		path, err := agylog.Transcript(home, os.Args[2])
+		if err != nil {
+			return 1, err
+		}
+		if path != "" {
+			fmt.Println(path)
+		}
+		return 0, nil
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "preview" {
 		return 0, preview.Command(home, os.Args[2:], os.Stdout)

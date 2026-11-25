@@ -1,8 +1,9 @@
 // Package transcript turns a coding agent's own session log (Claude Code
 // projects/*.jsonl, Codex sessions/**/rollout-*.jsonl, Pi
 // ~/.pi/agent/sessions/--<cwd>--/*.jsonl, Kimi Code
-// ~/.kimi-code/sessions/*/session_*/agents/main/wire.jsonl) into chat items
-// for Fennec clients.
+// ~/.kimi-code/sessions/*/session_*/agents/main/wire.jsonl, Antigravity CLI
+// ~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript_full.jsonl)
+// into chat items for Fennec clients.
 //
 // Parse reads one line at a time, so callers can feed new lines as a log
 // grows, and it reports only what the agent itself recorded:
@@ -32,7 +33,7 @@ import (
 
 // Version changes whenever Parse reads a log differently. Clients that cache
 // parsed items drop a cache made by another version and read the log again.
-const Version = 7
+const Version = 8
 
 // Item is one entry in the conversation. Consecutive tool items are grouped
 // by the client into one collapsed step.
@@ -71,6 +72,9 @@ func Parse(line []byte, offset int64) []Item {
 		items = codex(kind, record["payload"])
 	case "message", "compaction":
 		items = pi(kind, record["message"])
+	case "USER_INPUT", "PLANNER_RESPONSE", "GENERIC", "SYSTEM_MESSAGE", "ERROR_MESSAGE":
+		items = agy(kind, record)
+		when = timestamp(record["created_at"])
 	case "context.append_message", "context.append_loop_event", "turn.ended":
 		items = kimi(kind, record)
 		var ms int64

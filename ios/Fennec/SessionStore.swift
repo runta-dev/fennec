@@ -137,7 +137,7 @@ final class SessionStore {
     @ObservationIgnored private var sessionListRevision = 0
 
     init(sessions: [Session], macOnline: Bool = true, cloudRunning: Bool = true,
-         enabledAgents: Set<AgentKind> = [.claudeCode, .codex, .grokBuild, .kimiCode, .pi],
+         enabledAgents: Set<AgentKind> = [.claudeCode, .codex, .grokBuild, .kimiCode, .pi, .antigravity],
          core: FennecmobileSessions? = nil) {
         self.core = core
         self.loaded = core == nil
