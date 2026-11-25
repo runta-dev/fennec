@@ -4,6 +4,7 @@ use base64::Engine as _;
 use std::collections::HashSet;
 use std::io::{Cursor, Write};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 #[derive(Default)]
 pub(super) struct Drafts {
@@ -15,10 +16,30 @@ pub(super) struct Drafts {
 /// The window's own full-size view of a request's images.
 pub(super) struct Viewer {
     ids: Vec<String>,
+    /// Pixel size of each image (0×0 when the attachment didn't record one).
+    sizes: Vec<(u32, u32)>,
     index: usize,
     /// The shown image on disk, once the daemon has resolved it.
     path: Option<PathBuf>,
     failed: bool,
+    /// Where the image stage was last laid out, to tell a click on the image
+    /// from a click on the backdrop around it.
+    stage: Rc<std::cell::Cell<Bounds<Pixels>>>,
+}
+
+/// Whether `click` lands on the picture itself, as `ObjectFit::Contain` draws an
+/// image of `size` pixels inside `stage`. Clicks on the letterbox around it are
+/// backdrop clicks and close the viewer. Without a recorded size the whole stage
+/// counts as the picture.
+fn hits_image(stage: Bounds<Pixels>, size: (u32, u32), click: Point<Pixels>) -> bool {
+    if size.0 == 0 || size.1 == 0 {
+        return stage.contains(&click);
+    }
+    let fitted = ObjectFit::Contain.get_bounds(
+        stage,
+        gpui::size(DevicePixels::from(size.0 as i32), DevicePixels::from(size.1 as i32)),
+    );
+    fitted.contains(&click)
 }
 
 enum PasteSource {
@@ -233,7 +254,8 @@ impl FennecWindow {
                     images.iter().cloned().enumerate().map(|(index, image)| {
                         let project = project.to_owned();
                         let remove = image.id.clone();
-                        let ids: Vec<String> = images.iter().map(|a| a.id.clone()).collect();
+                        let ids: Vec<(String, (u32, u32))> =
+                    images.iter().map(|a| (a.id.clone(), (a.width, a.height))).collect();
                         let (width, height) = (80.0, 80.0);
                         div()
                             .id(SharedString::from(format!("draft-image-{}", image.id)))
@@ -305,7 +327,8 @@ impl FennecWindow {
             .mt(px(6.0))
             .children(images.iter().enumerate().map(|(index, image)| {
                 let id = image.id.clone();
-                let ids: Vec<String> = images.iter().map(|a| a.id.clone()).collect();
+                let ids: Vec<(String, (u32, u32))> =
+                    images.iter().map(|a| (a.id.clone(), (a.width, a.height))).collect();
                 let (width, height) = (96.0, 96.0);
                 div()
                     .id(SharedString::from(format!("request-image-{key}-{id}")))
@@ -327,19 +350,22 @@ impl FennecWindow {
     /// Opens `ids[index]` in the window's own image viewer, never in another app.
     fn open_request_image(
         &mut self,
-        ids: Vec<String>,
+        images: Vec<(String, (u32, u32))>,
         index: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if crate::preview::active() || index >= ids.len() {
+        if crate::preview::active() || index >= images.len() {
             return;
         }
+        let (ids, sizes) = images.into_iter().unzip();
         self.image_viewer = Some(Viewer {
             ids,
+            sizes,
             index,
             path: None,
             failed: false,
+            stage: Rc::default(),
         });
         // Keys go to the window while the viewer is up, not to the reply field.
         self.focus.focus(window, cx);
@@ -417,6 +443,10 @@ impl FennecWindow {
         let viewer = self.image_viewer.as_ref()?;
         let count = viewer.ids.len();
         let (index, path, failed) = (viewer.index, viewer.path.clone(), viewer.failed);
+        let has_image = path.is_some();
+        let size = viewer.sizes.get(index).copied().unwrap_or_default();
+        let stage = viewer.stage.clone();
+        let measured = viewer.stage.clone();
         let on_dark = hsla(0.0, 0.0, 1.0, 0.92);
         let button = |id: &'static str, icon: &'static str| {
             div()
@@ -467,7 +497,18 @@ impl FennecWindow {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .on_click(|_, _, cx| cx.stop_propagation())
+                        // Only the picture itself keeps a click; the letterbox
+                        // around it is backdrop and closes the viewer.
+                        .on_click(move |event, _, cx| {
+                            if has_image && hits_image(stage.get(), size, event.position()) {
+                                cx.stop_propagation();
+                            }
+                        })
+                        .child(
+                            canvas(move |bounds, _, _| measured.set(bounds), |_, _, _, _| {})
+                                .absolute()
+                                .size_full(),
+                        )
                         .child(body),
                 )
                 .child(
@@ -558,8 +599,22 @@ fn file_url_path(url: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::file_url_path;
+    use super::{file_url_path, hits_image};
+    use gpui::{bounds, point, px, size};
     use std::path::PathBuf;
+
+    #[test]
+    fn letterbox_clicks_miss_the_image() {
+        // A 2:1 screenshot in a 1000×1000 stage is drawn 1000×500, centered.
+        let stage = bounds(point(px(0.0), px(0.0)), size(px(1000.0), px(1000.0)));
+        assert!(hits_image(stage, (3024, 1512), point(px(500.0), px(500.0))));
+        assert!(!hits_image(stage, (3024, 1512), point(px(500.0), px(100.0))));
+        assert!(!hits_image(stage, (3024, 1512), point(px(500.0), px(900.0))));
+        // A tall image leaves the sides as backdrop instead.
+        assert!(!hits_image(stage, (500, 1000), point(px(100.0), px(500.0))));
+        // No recorded size: the whole stage counts as the image.
+        assert!(hits_image(stage, (0, 0), point(px(500.0), px(100.0))));
+    }
 
     #[test]
     fn file_urls_decode_to_paths() {
