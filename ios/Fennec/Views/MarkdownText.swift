@@ -11,7 +11,7 @@ struct MarkdownText: View {
     var body: some View {
         if let lineLimit {
             // A folded note: plain inline Markdown, a few lines.
-            Text(MarkdownBlock.inline(text)).lineLimit(lineLimit)
+            MarkdownBlock.inlineText(text).lineLimit(lineLimit)
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(MarkdownBlock.blocks(text).enumerated()), id: \.offset) { _, block in
@@ -51,6 +51,24 @@ enum MarkdownBlock: Equatable {
         if inlineCache.count > 4000 { inlineCache.removeAll() }
         inlineCache[text] = value
         return value
+    }
+
+    /// Inline Markdown as Text, with `**bold**` drawn at semibold like the rest of
+    /// Fennec (THI-187); SwiftUI would draw the strong intent at full bold.
+    @MainActor static func inlineText(_ text: String) -> Text {
+        let value = inline(text)
+        var out = Text(verbatim: "")
+        for run in value.runs {
+            var piece = AttributedString(value[run.range])
+            guard var intent = run.inlinePresentationIntent, intent.contains(.stronglyEmphasized) else {
+                out = Text("\(out)\(Text(piece))")
+                continue
+            }
+            intent.remove(.stronglyEmphasized)
+            piece.inlinePresentationIntent = intent.isEmpty ? nil : intent
+            out = Text("\(out)\(Text(piece).fontWeight(.semibold))")
+        }
+        return out
     }
 
     @MainActor static func blocks(_ text: String) -> [MarkdownBlock] {
@@ -165,9 +183,9 @@ private struct BlockView: View {
     var body: some View {
         switch block {
         case .paragraph(let text):
-            Text(MarkdownBlock.inline(text)).lineSpacing(3)
+            MarkdownBlock.inlineText(text).lineSpacing(3)
         case .heading(let level, let text):
-            Text(MarkdownBlock.inline(text))
+            MarkdownBlock.inlineText(text)
                 .font(.system(size: level == 1 ? 20 : level == 2 ? 18 : 16, weight: .semibold))
                 .padding(.top, 4)
         case .list(let items):
@@ -176,14 +194,14 @@ private struct BlockView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(item.marker).foregroundStyle(Theme.fg2).monospacedDigit()
                             .frame(minWidth: 14, alignment: .trailing)
-                        Text(MarkdownBlock.inline(item.text)).lineSpacing(3)
+                        MarkdownBlock.inlineText(item.text).lineSpacing(3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.leading, CGFloat(item.depth) * 18)
                 }
             }
         case .quote(let text):
-            Text(MarkdownBlock.inline(text)).foregroundStyle(Theme.fg2).lineSpacing(3)
+            MarkdownBlock.inlineText(text).foregroundStyle(Theme.fg2).lineSpacing(3)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 2) }
         case .code(let code):
@@ -224,7 +242,7 @@ private struct TableBlock: View {
         Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
                     ForEach(header.indices, id: \.self) { column in
-                        Text(MarkdownBlock.inline(header[column])).font(.system(size: 14, weight: .semibold))
+                        MarkdownBlock.inlineText(header[column]).font(.system(size: 14, weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 8)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: column == header.count - 1 ? .infinity : nil, alignment: alignment(column))
@@ -235,7 +253,7 @@ private struct TableBlock: View {
                     Divider().gridCellUnsizedAxes(.horizontal)
                     GridRow {
                         ForEach(header.indices, id: \.self) { column in
-                            Text(MarkdownBlock.inline(cell(rows[index], column))).font(.system(size: 14))
+                            MarkdownBlock.inlineText(cell(rows[index], column)).font(.system(size: 14))
                                 .padding(.horizontal, 10).padding(.vertical, 8)
                                 .fixedSize(horizontal: false, vertical: true)
                                 // Columns take their content's width; the last one takes the rest.

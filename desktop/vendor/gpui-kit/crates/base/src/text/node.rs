@@ -2391,7 +2391,8 @@ impl PartialEq for NodeContext {
 fn mark_highlight(mark: &TextMark, node_cx: &NodeContext, cx: &App) -> InlineHighlight {
     let mut highlight = HighlightStyle::default();
     if mark.bold {
-        highlight.font_weight = Some(FontWeight::BOLD);
+        // Fennec draws every bold at semibold (600), like its headings (THI-187).
+        highlight.font_weight = Some(FontWeight::SEMIBOLD);
     }
     if mark.italic {
         highlight.font_style = Some(FontStyle::Italic);
@@ -4272,7 +4273,7 @@ mod tests {
             let InlineFlowItem::Object { style, link, .. } = &items[0] else {
                 panic!()
             };
-            assert_eq!(style.font_weight, Some(FontWeight::BOLD));
+            assert_eq!(style.font_weight, Some(FontWeight::SEMIBOLD));
             assert_eq!(style.font_style, Some(FontStyle::Italic));
             assert!(style.strikethrough.is_some());
             assert_eq!(link.as_ref().unwrap().url.as_ref(), "https://example.com");

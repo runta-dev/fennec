@@ -646,7 +646,7 @@ struct ImageDraftStrip: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(alignment: .topTrailing) {
                             Button { draft.done.removeAll { $0.id == a.id } } label: {
-                                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
                                     .frame(width: 18, height: 18)
                                     .foregroundStyle(Theme.bg).background(Theme.fg, in: Circle())
                             }

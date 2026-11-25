@@ -60,6 +60,18 @@ button svg {
 p {
   line-height: 1.6;
 }
+/* Bold is semibold everywhere (THI-187); more specific rules can still lower it. */
+b,
+strong,
+th,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
 h1,
 h2,
 h3,
