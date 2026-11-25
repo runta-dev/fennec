@@ -10,6 +10,7 @@ mod glide;
 mod knowledge_links;
 mod local_state;
 mod pending_reply;
+mod ref_complete;
 mod row_motion;
 mod segment_slide;
 mod session_modal;
@@ -152,6 +153,10 @@ pub struct FennecWindow {
     /// THI-103: the Link request menu's filter, and the kind it links as.
     link_search: Entity<InputState>,
     link_kind: &'static str,
+    /// The highlighted `#` suggestion in the New Request box (THI-209).
+    ref_pick: usize,
+    /// The `#` whose suggestions Esc hid.
+    ref_closed: Option<usize>,
     /// THI-93: sent replies the board hasn't confirmed yet, drawn at once.
     pending_replies: Vec<pending_reply::PendingReply>,
     /// Numbers the next pending reply.
@@ -290,7 +295,10 @@ impl FennecWindow {
                 window,
                 |this, _, ev: &InputEvent, window, cx| match ev {
                     InputEvent::PressEnter { shift: false, .. } => this.post(window, cx),
-                    InputEvent::Change => cx.notify(),
+                    InputEvent::Change => {
+                        this.ref_pick = 0;
+                        cx.notify()
+                    }
                     _ => {}
                 },
             ),
@@ -384,6 +392,8 @@ impl FennecWindow {
             thread_jump_frames: Default::default(),
             link_search,
             link_kind: "related",
+            ref_pick: 0,
+            ref_closed: None,
             pending_replies: Vec::new(),
             reply_token: 0,
             fresh_messages: Default::default(),
@@ -2740,6 +2750,8 @@ impl FennecWindow {
         };
         let now = sessions::now_ms();
         let image_status = self.request_image_status(&p.id);
+        let composer_box = self.composer_box(cx);
+        let ref_list = self.ref_list(window, cx);
         let composer_has = !self.composer.read(cx).value().trim().is_empty()
             || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
         // The chosen tab's background is the sliding highlight once the tabs
@@ -3079,7 +3091,8 @@ impl FennecWindow {
                             .min_h(px(84.0))
                             .text_size(px(13.5))
                             .line_height(relative(1.6))
-                            .child(div().w_full().flex_none().child(Textarea::new(&self.composer)))
+                            .child(composer_box)
+                            .children(ref_list)
                             .when_some(self.draft_images(&p.id,cx),|d,images|d.child(images))
                             .when_some(image_status, |d, key| d.child(div().absolute().left(px(13.0)).right(px(80.0)).bottom(px(8.0)).h(px(16.0)).truncate().text_size(px(11.0)).text_color(c("f_muted")).child(t(key))))
                             .when(!composer_has && image_status.is_none(), |d| {
