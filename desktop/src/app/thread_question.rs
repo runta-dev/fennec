@@ -4,7 +4,7 @@
 //! typing in the reply box) answers it: the board stores the answer and the
 //! scheduler running the session types it there, so no new run starts.
 use super::*;
-use crate::board::Question;
+use crate::board::{PermissionAnswer, Question};
 
 /// The card's preview line for an asking request: the question and its
 /// options, or the command a permission prompt wants to run.
@@ -441,6 +441,105 @@ impl FennecWindow {
                 )
                 .into_any_element(),
         )
+    }
+}
+
+impl FennecWindow {
+    /// A person's answer to a permission prompt in the thread (THI-197): a
+    /// quiet status line, not a message in their name. The command sits in a
+    /// one-line code box that opens to its full text on click.
+    pub(super) fn permission_answer(
+        &self,
+        key: &str,
+        name: &str,
+        time: &str,
+        answer: &PermissionAnswer,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let open = self.open_permission_commands.contains(key);
+        let (label, dot) = if answer.allow {
+            (tf("permission_allowed", &[("name", name)]), c("ok"))
+        } else {
+            (tf("permission_denied", &[("name", name)]), c("bug"))
+        };
+        let command = if open {
+            answer.command.clone()
+        } else {
+            first_line(&answer.command)
+        };
+        let toggle = key.to_owned();
+        h_flex()
+            .items_start()
+            .gap(px(12.0))
+            .py(px(6.0))
+            .child(
+                div()
+                    .w(px(32.0))
+                    .flex_none()
+                    .flex()
+                    .justify_center()
+                    .pt(px(5.0))
+                    .child(div().size(px(7.0)).rounded_full().bg(dot)),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(5.0))
+                    .child(
+                        h_flex()
+                            .gap(px(6.0))
+                            .text_color(c("f_muted"))
+                            .child(div().text_size(px(12.5)).child(label))
+                            .child(div().text_size(px(11.0)).child(time.to_owned())),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("permission-{key}")))
+                            .debug_selector({
+                                let key = key.to_owned();
+                                move || format!("permission-command-{key}")
+                            })
+                            .cursor_pointer()
+                            .rounded(px(7.0))
+                            .bg(c("f_card"))
+                            .border_1()
+                            .border_color(c("f_line"))
+                            .px(px(9.0))
+                            .py(px(5.0))
+                            .font_family(crate::settings::get().font_family.clone())
+                            .text_size(px(12.0))
+                            .text_color(c("f_muted"))
+                            .hover(|s| s.text_color(c("f_text")))
+                            .when(!open, |d| d.truncate())
+                            .child(command)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if !this.open_permission_commands.remove(&toggle) {
+                                    this.open_permission_commands.insert(toggle.clone());
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .when(!answer.text.is_empty(), |d| {
+                        d.child(
+                            gpui_base::text::TextView::markdown(
+                                SharedString::from(format!("{key}:instead")),
+                                answer.text.clone(),
+                            )
+                            .style(ui::markdown_style())
+                            .text_size(px(13.5))
+                            .text_color(c("f_text")),
+                        )
+                    }),
+            )
+    }
+}
+
+/// The first line of a command, marked when more follows.
+fn first_line(command: &str) -> String {
+    match command.split_once('\n') {
+        Some((first, _)) => format!("{first} …"),
+        None => command.to_owned(),
     }
 }
 

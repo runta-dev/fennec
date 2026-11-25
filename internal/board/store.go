@@ -82,6 +82,19 @@ type Message struct {
 	Agent       string       `json:"agent,omitempty"`
 	Body        string       `json:"body"`
 	At          time.Time    `json:"at"`
+	// Permission marks a person's answer to an agent's permission prompt
+	// (THI-197). Clients that know it draw a status line from it; Body keeps
+	// a plain-text version for the rest.
+	Permission *PermissionAnswer `json:"permission,omitempty"`
+}
+
+// PermissionAnswer is what a person decided about a permission prompt.
+type PermissionAnswer struct {
+	Allow bool `json:"allow"`
+	// Command is what the agent asked to run, e.g. "Bash: rm -rf build".
+	Command string `json:"command"`
+	// Text is what to do instead, given with a denial.
+	Text string `json:"text,omitempty"`
 }
 
 type Request struct {

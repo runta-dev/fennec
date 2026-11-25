@@ -42,6 +42,8 @@
     "desktop.asking_allow": {"en-GB":"Allow","en-US":"Allow","zh-CN":"允许"},
     "desktop.asking_deny": {"en-GB":"Deny","en-US":"Deny","zh-CN":"拒绝"},
     "desktop.answer_question": {"en-GB":"Answer question","en-US":"Answer question","zh-CN":"回答问题"},
+    "desktop.permission_allowed": {"en-GB":"{name} allowed the agent to run","en-US":"{name} allowed the agent to run","zh-CN":"{name} 允许 Agent 运行"},
+    "desktop.permission_denied": {"en-GB":"{name} didn't let the agent run","en-US":"{name} didn't let the agent run","zh-CN":"{name} 拒绝 Agent 运行"},
     "desktop.asking_answered": {"en-GB":"Answered · the agent will continue shortly","en-US":"Answered · the agent will continue shortly","zh-CN":"已回答，Agent 马上继续"},
     "desktop.asking_in_session": {"en-GB":"Answer this in the agent's session","en-US":"Answer this in the agent's session","zh-CN":"这个问题需要去会话里回答"},
     "desktop.asking_permission_hint": {"en-GB":"To have it do something else instead, write that below","en-US":"To have it do something else instead, write that below","zh-CN":"想让它换个做法，就在下面写给它"},

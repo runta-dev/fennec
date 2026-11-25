@@ -159,6 +159,13 @@ func (s Store) Answer(project string, n int, a Answer) (Request, error) {
 		id = r.Messages[len(r.Messages)-1].ID + 1
 	}
 	m := Message{UID: randomID(), ID: id, Author: a.Author, Body: AnswerSummary(*q, a), At: now}
+	if q.Kind == "permission" {
+		allow := a.Allow != nil && *a.Allow
+		m.Permission = &PermissionAnswer{Allow: allow, Command: PermissionCommand(*q)}
+		if !allow {
+			m.Permission.Text = a.Text
+		}
+	}
 	r.Messages = append(r.Messages, m)
 	// The answer reaches the agent through its dialog, not as the next
 	// run's input.
@@ -187,19 +194,26 @@ func (s Store) AnswerSent(project string, n int, uid string) (Request, error) {
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
+// PermissionCommand is what a permission prompt asks to run: "Bash: rm -rf build".
+func PermissionCommand(q Question) string {
+	return strings.TrimPrefix(q.Text, "approve ")
+}
+
 // AnswerSummary is the thread message for an answer, in the agent's words for
 // the choices (no UI language: the thread is read by people and agents alike).
+// A permission answer quotes the command in a code block, so markdown keeps
+// it verbatim (THI-197); clients that know Message.Permission draw it instead.
 func AnswerSummary(q Question, a Answer) string {
 	if q.Kind == "permission" {
-		cmd := strings.TrimPrefix(q.Text, "approve ")
-		switch {
-		case a.Allow != nil && *a.Allow:
-			return "✅ " + cmd
-		case a.Text != "":
-			return "⛔ " + cmd + "\n\n" + a.Text
-		default:
-			return "⛔ " + cmd
+		verdict := "Denied"
+		if a.Allow != nil && *a.Allow {
+			verdict = "Allowed"
 		}
+		body := verdict + ":\n\n" + codeBlock(PermissionCommand(q))
+		if verdict == "Denied" && a.Text != "" {
+			body += "\n\n" + a.Text
+		}
+		return body
 	}
 	lines := []string{}
 	for i, item := range q.Items {
@@ -226,4 +240,20 @@ func AnswerSummary(q Question, a Answer) string {
 // clearQuestion drops a question once its run is no longer asking.
 func clearQuestion(r *Request) {
 	r.Question, r.Answer = nil, nil
+}
+
+// codeBlock fences text so markdown shows it as is, with a fence longer than
+// any backtick run inside it.
+func codeBlock(text string) string {
+	fence, run := "```", 0
+	for _, r := range text {
+		if r != '`' {
+			run = 0
+			continue
+		}
+		if run++; run >= len(fence) {
+			fence += "`"
+		}
+	}
+	return fence + "\n" + text + "\n" + fence
 }

@@ -186,6 +186,12 @@ func TestPermissionPromptIsShownAndAnswered(t *testing.T) {
 	if _, err := s.Store.Answer(p.ID, r.Number, board.Answer{Author: "me", Allow: &allow}); err != nil {
 		t.Fatal(err)
 	}
+	got, _ = s.Store.Request(p.ID, r.Number)
+	last := got.Messages[len(got.Messages)-1]
+	if last.Permission == nil || !last.Permission.Allow || last.Permission.Command != "Bash: rm -rf build" ||
+		last.Body != "Allowed:\n\n```\nBash: rm -rf build\n```" {
+		t.Fatalf("answer message %+v %+v", last, last.Permission)
+	}
 	step(t, s)
 	if want := []string{"keys 1"}; !reflect.DeepEqual(te.calls, want) {
 		t.Fatalf("typed %q", te.calls)

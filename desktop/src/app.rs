@@ -159,6 +159,8 @@ pub struct FennecWindow {
     /// Keys of the open thread's messages that arrived while it was shown;
     /// they ease in. Cleared when another thread opens.
     fresh_messages: std::collections::HashSet<String>,
+    /// Keys of permission answers whose command is shown in full (THI-197).
+    open_permission_commands: std::collections::HashSet<String>,
     /// Counts thread switches; each one eases the new thread in (THI-135).
     thread_switches: u64,
     /// The latest lines the open thread's working agent printed.
@@ -385,6 +387,7 @@ impl FennecWindow {
             pending_replies: Vec::new(),
             reply_token: 0,
             fresh_messages: Default::default(),
+            open_permission_commands: Default::default(),
             thread_switches: 0,
             thread_cache: HashMap::new(),
             status_override: HashMap::new(),
@@ -3254,7 +3257,12 @@ impl FennecWindow {
                 jump_item = Some(items.len());
             }
             let fresh = self.fresh_messages.contains(&key);
-            let item =
+            let item = if let Some(answer) = m.permission.as_ref() {
+                self.permission_answer(&key, &name, &time, answer, cx)
+                    .when(jumped, |d| {
+                        d.bg(c("tint")).rounded(px(8.0)).mx(px(-8.0)).px(px(8.0))
+                    })
+            } else {
                 h_flex()
                     .when(jumped, |d| {
                         d.bg(c("tint")).rounded(px(8.0)).mx(px(-8.0)).px(px(8.0))
@@ -3359,7 +3367,8 @@ impl FennecWindow {
                             .when(!m.attachments.is_empty(), |d| {
                                 d.child(self.stored_images(&m.attachments, m.id, cx))
                             }),
-                    );
+                    )
+            };
             items.push(if fresh {
                 pending_reply::ease_in(&key, item)
             } else {

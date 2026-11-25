@@ -84,6 +84,19 @@ pub struct Message {
     pub body: String,
     pub at: String,
     pub attachments: Vec<Attachment>,
+    /// Set on a person's answer to a permission prompt (THI-197): the thread
+    /// draws it as a status line instead of the body.
+    pub permission: Option<PermissionAnswer>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct PermissionAnswer {
+    pub allow: bool,
+    /// What the agent asked to run: "Bash: rm -rf build".
+    pub command: String,
+    /// What to do instead, given with a denial.
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
