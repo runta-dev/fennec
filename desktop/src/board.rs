@@ -344,6 +344,11 @@ mod thread_tests {
             serde_json::from_value(serde_json::json!({"tag":"bug","tags":["bug","desktop"]}))
                 .unwrap();
         assert_eq!(r.tag_list(), ["bug", "desktop"]);
+        assert!(r.has_tag("desktop") && !r.has_tag("ios"));
+        r.tag = "ios".into(); // changed by a build without tags
+        assert_eq!(r.tag_list(), ["ios"]);
+        r.set_tags(&["feature".into()]);
+        assert!(r.tags.is_empty() && r.tag == "feature");
     }
 
     #[test]
@@ -353,11 +358,6 @@ mod thread_tests {
         assert_eq!(call("Edit"), Some(("Edit".into(), String::new())));
         assert_eq!(call("trust this folder"), Some((String::new(), "trust this folder".into())));
         assert_eq!(call("permission prompt"), None);
-        assert!(r.has_tag("desktop") && !r.has_tag("ios"));
-        r.tag = "ios".into(); // changed by a build without tags
-        assert_eq!(r.tag_list(), ["ios"]);
-        r.set_tags(&["feature".into()]);
-        assert!(r.tags.is_empty() && r.tag == "feature");
     }
 }
 
