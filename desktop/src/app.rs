@@ -18,7 +18,7 @@ mod reply_tests;
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
 use crate::i18n::{t, tf};
-use crate::sessions::{self, Session, State};
+use crate::sessions::{self, Session, State, thread_sessions_to_end};
 use crate::terminal::{TerminalEvent, TerminalView};
 use crate::ui::{self, c};
 use gpui::prelude::FluentBuilder as _;
@@ -1049,14 +1049,32 @@ impl FennecWindow {
             return;
         };
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let changed = project.clone();
             let done = cx
-                .background_spawn(async move { board::set_status(&project, n, status) })
+                .background_spawn(async move { board::set_status(&changed, n, status) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| match done {
-                Ok(_) => this.refresh_now(window, cx),
+                Ok(_) => {
+                    if status == "resolved" {
+                        this.end_thread_sessions(&project, n, window, cx);
+                    }
+                    this.refresh_now(window, cx)
+                }
                 Err(e) => this.say(format!("{e:#}"), cx),
             });
         }));
+    }
+
+    /// THI-47: the queue ends a done thread's sessions (queuescheduler
+    /// reclaim), but only after the Mac's board syncs to the cloud and the
+    /// cloud's scheduler and session list catch up, so the sidebar kept the
+    /// row for several seconds. End them here, the way closing the tab does,
+    /// so the row goes at once. A working agent is left to finish its turn,
+    /// as the queue does; the queue ends it afterwards.
+    fn end_thread_sessions(&mut self, project: &str, n: u64, window: &mut Window, cx: &mut Context<Self>) {
+        for key in thread_sessions_to_end(&self.sessions, project, n) {
+            self.close_tab_key(key, window, cx);
+        }
     }
 
     fn move_request(

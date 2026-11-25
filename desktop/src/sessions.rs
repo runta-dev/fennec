@@ -42,6 +42,16 @@ impl Session {
     }
 }
 
+/// The sidebar sessions of request `n` in queue `project` that Mark done
+/// ends now: every one but a working agent's, which finishes its turn first.
+pub fn thread_sessions_to_end(sessions: &[Session], project: &str, n: u64) -> Vec<String> {
+    sessions
+        .iter()
+        .filter(|s| s.queue == project && s.request == Some(n) && s.state != State::Working)
+        .map(|s| s.address.clone())
+        .collect()
+}
+
 pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
     let mut out: Vec<Session> = terminals
         .iter()
@@ -269,5 +279,32 @@ mod title_tests {
         );
         child["status"]["app"] = json!("zsh");
         assert_eq!(agent_terminal_title(&child), None);
+    }
+}
+
+#[cfg(test)]
+mod mark_done_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn terminal(address: &str, request: &str, status: &str) -> Value {
+        json!({"address": address, "state": "live", "status": {"app": "claude-code", "state": status},
+               "labels": {"fennec.session": address, "fennec.queue": "this", "fennec.request": request}})
+    }
+
+    // THI-47: Mark done ends the thread's own sessions at once, except an agent
+    // still working, which the queue ends after its turn.
+    #[test]
+    fn mark_done_ends_only_the_threads_idle_sessions() {
+        let sessions = from_terminals(&[
+            terminal("t1", "47", "done"),
+            terminal("t2", "47", "working"),
+            terminal("t3", "48", "done"),
+            terminal("t4", "47", "blocked"),
+        ]);
+        let mut keys = thread_sessions_to_end(&sessions, "this", 47);
+        keys.sort();
+        assert_eq!(keys, ["t1", "t4"]);
+        assert!(thread_sessions_to_end(&sessions, "other", 47).is_empty());
     }
 }
