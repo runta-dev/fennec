@@ -32,7 +32,7 @@ func TestDiscoveryEvidence(t *testing.T) {
 }
 
 func TestCloudCatalogDoesNotDependOnInstallation(t *testing.T) {
-	expected := []string{"claude", "codex", "pi", "kimi", "opencode", "grok", "cursor"}
+	expected := []string{"claude", "codex", "pi", "kimi", "opencode", "grok", "cursor", "agy"}
 	empty := PanelCatalog(nil)
 	if len(empty) != len(expected) {
 		t.Fatal(empty)

@@ -32,6 +32,27 @@ tar -xzf "$stage/package.tar.gz" --strip-components=1 -C "$stage/package"
 source="$stage/package/cursor-agent"
 `
 	}
+	if id == "agy" {
+		// Google's installer (antigravity.google/cli/install.sh) reads the same
+		// manifest, but also edits shell profiles through `agy install`.
+		name = "agy"
+		download = `case "$(uname -m)" in
+ x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) exit 69 ;; esac
+platform=linux_$arch
+if [ -f /lib/libc.musl-x86_64.so.1 ] || [ -f /lib/libc.musl-aarch64.so.1 ]; then platform=${platform}_musl; fi
+manifest=$(curl -fsSL --retry 2 --max-time 30 "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/$platform.json")
+field() { printf '%s' "$manifest" | tr -d '\n' | sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'; }
+url=$(field url)
+sha512=$(field sha512)
+case "$url" in https://storage.googleapis.com/antigravity-public/*.tar.gz) ;; *) exit 65 ;; esac
+printf '%s' "$sha512" | grep -Eq '^[0-9a-f]{128}$'
+curl -fsSL --retry 2 --max-time 300 "$url" -o "$stage/agy.tar.gz"
+printf '%s  %s\n' "$sha512" "$stage/agy.tar.gz" | sha512sum -c - >/dev/null
+tar -xzf "$stage/agy.tar.gz" -C "$stage" antigravity
+chmod 700 "$stage/antigravity"
+source="$stage/antigravity"
+`
+	}
 	return strings.ReplaceAll(`set -eu
 export PATH="$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
 umask 077

@@ -44,6 +44,7 @@ function gatewayProviderIconSpec(provider) {
     kimi: { src: 'icons/kimi-color.svg', mono: false },
     xai: { src: 'icons/xai.svg', mono: true },
     grok: { src: 'icons/xai.svg', mono: true },
+    agy: { src: 'icons/antigravity.svg', mono: false },
     devin: { src: 'icons/devin.svg', mono: false },
     copilot: { src: 'icons/copilot-color.svg', mono: false },
     'github-copilot': { src: 'icons/copilot-color.svg', mono: false },
@@ -214,7 +215,7 @@ window.renderAgents = agents => {
     // for the computer it runs on.
     const configAgent = desktop ? 'codex' : agent.id;
     const nativeOnly = configAgent === 'cursor';
-    const nativeModelPicker = !['cursor','grok','opencode'].includes(configAgent);
+    const nativeModelPicker = !['cursor','grok','opencode','agy'].includes(configAgent);
     // Magpie can be on in Settings yet turned off for this agent alone.
     const magpieAvailable = magpieEnabled && !nativeOnly;
     const agentMagpie = magpieAvailable && !magpieOffAgents.has(configAgent);
@@ -242,7 +243,7 @@ window.renderAgents = agents => {
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
       if(expandedAgent && agentMagpie && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
-      if(expandedAgent && !agentMagpie){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&nativeModelPicker)loadNativeModel(configAgent);}
+      if(expandedAgent && !agentMagpie && configAgent!=='agy'){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&nativeModelPicker)loadNativeModel(configAgent);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -335,8 +336,11 @@ window.renderAgents = agents => {
         const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(agentMagpie));
         toggle.onclick=()=>toggleAgentMagpie(configAgent,!agentMagpie);
         if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
+        // Also shown when Magpie reached agy through the Settings switch.
+        if(configAgent==='agy'&&agentMagpie){const risk=document.createElement('div');risk.className='agent-risk-note';risk.setAttribute('role','note');risk.textContent="[[i18n:ui.agy_magpie_risk_warning]]";detail.append(risk);}
       }
-      if(!agentMagpie){
+      if(configAgent==='agy'&&!agentMagpie){const hint=document.createElement('div');hint.className='agent-risk-note is-info';hint.textContent="[[i18n:ui.agy_sign_in_in_session]]";detail.append(hint);}
+      if(!agentMagpie&&configAgent!=='agy'){
         const location=enabled?'cloud':'local';const key=configAgent+':'+location;const account=nativeAccountStates.get(key);
         if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(configAgent,location);
         statusNode.hidden=true;statusNode.textContent='';
@@ -603,7 +607,7 @@ window.renderRuntimes = (rows, message) => {
       item.append(disclosure);
     }
     info.append(name);
-    const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi-color.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg"};
+    const agentIcons={claude:"claudecode-color.svg",codex:"codex-color.svg",pi:"pi.svg",opencode:"opencode.svg",kimi:"kimi-color.svg",devin:"devin.svg",grok:"xai.svg",cursor:"cursor.svg",agy:"antigravity.svg"};
     const identity=document.createElement('span');identity.className='session-agent-identity';
     if(agentIcons[row.agent]){const icon=document.createElement("img");icon.className="agent-icon session-agent-icon";icon.src="icons/"+agentIcons[row.agent];icon.alt=row.agent;icon.title=row.agent;icon.draggable=false;identity.append(icon);}
     else{identity.innerHTML='<svg class="session-agent-fallback" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="3"/><path d="m5 7 3 3-3 3m6 0h4"/></svg>';}
@@ -1544,6 +1548,9 @@ function toggleMagpie() {
 // Connects or disconnects one agent; Magpie keeps serving every other agent.
 function toggleAgentMagpie(agent, enabled) {
   const change = () => send('settings:' + JSON.stringify({magpie_agent: {agent, enabled}}));
+  // Magpie serves agy as a reverse proxy of Google's Gemini API; Google may
+  // suspend an account it sees used that way, so turning it on asks first.
+  if (agent === 'agy' && enabled) { confirmChatGPT({title: "[[i18n:ui.agy_magpie_risk_title]]", body: "[[i18n:ui.agy_magpie_risk_warning]]", action: "[[i18n:ui.agy_magpie_risk_confirm]]"}, change); return; }
   if (agent !== 'codex' || !takeoverAgents.has('codex-desktop')) { change(); return; }
   confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: enabled ? "[[i18n:ui.chatgpt_reconnect_with_magpie]]" : "[[i18n:ui.chatgpt_reconnect_without_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
 }

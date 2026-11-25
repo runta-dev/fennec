@@ -168,6 +168,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("programs/zig.svg", include_bytes!("../assets/programs/zig.svg")),
 
     ("agents/xai.svg", include_bytes!("../assets/agents/xai.svg")),
+    ("agents/antigravity.svg", include_bytes!("../assets/agents/antigravity.svg")),
     ("agents/cursor.svg", include_bytes!("../assets/agents/cursor.svg")),
     ("agents/opencode.svg", include_bytes!("../assets/agents/opencode.svg")),
     ("agents/pi.svg", include_bytes!("../assets/agents/pi.svg")),
@@ -235,7 +236,7 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
 pub fn agent_icon(agent: &str, size: f32) -> AnyElement {
     match crate::sessions::agent_icon(agent) {
         Some(name) => {
-            if ["pi", "opencode", "cursor", "xai"].contains(&name) {
+            if ["pi", "opencode", "cursor", "xai", "antigravity"].contains(&name) {
                 return svg()
                     .path(SharedString::from(format!("agents/{name}.svg")))
                     .size(px(size))

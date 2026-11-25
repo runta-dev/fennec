@@ -38,9 +38,11 @@ Cloud sessions can keep working around the clock while their cloud computer is r
 
 Cloud execution needs a Runta account and model access configured for the agent. Cloud compute and model-provider charges are separate. To run on a server of your own instead, without a Runta account, see [Use your own server](#use-your-own-server).
 
-Cloud controls are currently available for **Claude Code, Codex, Pi, Kimi Code, Cursor CLI, Grok Build, and OpenCode**. Other discovered agents are shown as **Coming soon** at the end of the list. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
+Cloud controls are currently available for **Claude Code, Codex, Pi, Kimi Code, Cursor CLI, Grok Build, OpenCode, and Antigravity CLI**. Other discovered agents are shown as **Coming soon** at the end of the list. Fennec synchronizes supported local model settings and credentials; it doesn't require matching local and cloud CLI versions.
 
 Cursor CLI uses `cursor-agent` and Grok Build uses `grok`; Fennec leaves the Cursor editor's `cursor` command and the shared `agent` alias alone. Grok Build uses Magpie and Fennec's model picker when Magpie is enabled, or its native account when disabled. Cursor CLI retains its native account because Magpie does not support routing it; sign in from its agent card or with `fen agent login cursor`, and choose models inside Cursor with `/model` or `--model`.
+
+Antigravity CLI (`agy`) is installed on the cloud computer from Google's release manifest. Without Magpie it uses the Google account you sign in with in its first cloud session; Fennec does not copy its sign-in from the Mac. With Magpie on, Fennec starts it through `magpie agy run` on the model you pick. Magpie then reverse-proxies Google's Gemini service, and Google may suspend accounts used this way, so Fennec asks before connecting it and keeps a warning on its card.
 
 OpenCode supports cloud launch, Magpie model selection, and persistent terminal sessions with both CLI generations. Version 2 runs a private server for each Fennec session. Native credential migration currently covers the legacy `auth.json` format; credentials stored only in OpenCode 2's database are not synchronized. Use Magpie for OpenCode 2 accounts.
 

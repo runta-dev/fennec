@@ -1998,7 +1998,7 @@ impl FennecWindow {
                     .into_any_element(),
             ];
         for (i, agent) in [
-            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi",
+            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi", "agy",
         ]
         .iter()
         .enumerate()
@@ -3739,7 +3739,7 @@ impl Render for FennecWindow {
                     }
                     if let Ok(n) = k.key.parse::<usize>() {
                         if let Some(agent) = [
-                            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi",
+                            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi", "agy",
                         ]
                         .get(n.wrapping_sub(1))
                         {

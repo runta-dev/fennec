@@ -39,7 +39,7 @@ var (
 )
 
 // Agents that can work on requests (the cloud runtime's launchable agents).
-var Agents = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}
+var Agents = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true, "agy": true}
 
 type Tag struct {
 	ID    string `json:"id"`

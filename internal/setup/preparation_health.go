@@ -31,7 +31,7 @@ func (h PreparationHealth) Validate() error {
 	}
 	for _, id := range h.Agents {
 		switch id {
-		case "claude", "codex", "pi", "opencode", "kimi", "cursor", "grok":
+		case "claude", "codex", "pi", "opencode", "kimi", "cursor", "grok", "agy":
 		default:
 			return fmt.Errorf("invalid preparation agent")
 		}

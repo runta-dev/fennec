@@ -310,3 +310,52 @@ func TestLaunchAllowsEmptyMacDirectory(t *testing.T) {
 		}
 	}
 }
+
+// agy runs as it is in native mode (its Google sign-in stays in the cloud's
+// ~/.gemini), and through `magpie agy run` on Magpie, which hands agy the
+// gateway in its environment and Magpie's --settings file.
+func TestAgyLaunchRoutesThroughMagpieRun(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		home := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(home, ".local/fennec"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".local/fennec/agent-mode.json"), []byte(fmt.Sprintf(`{"native":%v}`, native)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(home, ".local/bin"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		magpie := filepath.Join(home, ".local/bin/magpie")
+		if err := os.WriteFile(magpie, []byte("#!/bin/sh\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", "")
+		var command []string
+		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/agy", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+			if args[0] == "ls" {
+				return []byte(`{"terminals":[]}`), nil
+			}
+			for i, arg := range args {
+				if arg == "--" {
+					command = append([]string{}, args[i+1:]...)
+				}
+			}
+			return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+		}}
+		request := LocalLaunch{ID: strings.Repeat("a", 32), Agent: "agy", LocalDirectory: "/project", Device: "1234abcd"}
+		if _, err := backend.Launch(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(command, " ")
+		if !strings.Contains(joined, "--dangerously-skip-permissions") || strings.Contains(joined, "native-agent") {
+			t.Fatalf("native=%v agy command %q", native, joined)
+		}
+		if routed := strings.Contains(joined, magpie+" agy run "); routed == native {
+			t.Fatalf("native=%v agy command %q", native, joined)
+		}
+		if native && !strings.Contains(joined, "/usr/bin/agy --dangerously-skip-permissions") {
+			t.Fatalf("native agy command %q", joined)
+		}
+	}
+}

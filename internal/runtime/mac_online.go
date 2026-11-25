@@ -164,12 +164,12 @@ func onlineTarget(t LocalTerminal) bool {
 // the fennec.agent name: Claude Code reports "claude-code" (herdr's
 // programs.json lists the same aliases).
 func reportedAgent(app string) string {
-	if agent, ok := map[string]string{"claude-code": "claude", "agent": "cursor", "cursor-agent": "cursor", "grok-build": "grok", "kimi-code": "kimi", "kimicodecli": "kimi"}[app]; ok {
+	if agent, ok := map[string]string{"claude-code": "claude", "agent": "cursor", "cursor-agent": "cursor", "grok-build": "grok", "kimi-code": "kimi", "kimicodecli": "kimi", "antigravity": "agy", "antigravity-cli": "agy"}[app]; ok {
 		return agent
 	}
 	return app
 }
 
 func notificationAgent(agent string) bool {
-	return map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[agent]
+	return map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true, "agy": true}[agent]
 }

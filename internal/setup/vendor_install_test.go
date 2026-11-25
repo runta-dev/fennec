@@ -12,7 +12,7 @@ func TestVendorInstallReusesBinaryWithoutNetwork(t *testing.T) {
 	if _, err := exec.LookPath("flock"); err != nil {
 		t.Skip("Linux cloud installer requires flock")
 	}
-	for _, id := range []string{"cursor", "grok"} {
+	for _, id := range []string{"cursor", "grok", "agy"} {
 		t.Run(id, func(t *testing.T) {
 			home := t.TempDir()
 			name := id

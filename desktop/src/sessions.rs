@@ -130,6 +130,7 @@ pub fn agent_icon(agent: &str) -> Option<&'static str> {
         _ if a.contains("opencode") => "opencode",
         _ if a.contains("grok") || a.contains("xai") => "xai",
         _ if a == "pi" => "pi",
+        _ if a == "agy" || a.contains("antigravity") => "antigravity",
         _ => return None,
     })
 }
@@ -146,6 +147,7 @@ pub fn agent_name(agent: &str) -> &str {
         Some("opencode") => "OpenCode",
         Some("xai") => "Grok",
         Some("pi") => "Pi",
+        Some("antigravity") => "Antigravity CLI",
         _ => agent,
     }
 }

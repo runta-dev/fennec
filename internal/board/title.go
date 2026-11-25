@@ -24,7 +24,7 @@ var (
 	defaultTitles = map[string]bool{
 		"claude": true, "claude code": true, "claude-code": true, "codex": true, "openai codex": true,
 		"pi": true, "opencode": true, "kimi": true, "kimi code": true, "cursor": true, "cursor agent": true,
-		"cursor-agent": true, "grok": true, "grok cli": true, "fennec-queue": true, "fennec": true,
+		"cursor-agent": true, "grok": true, "grok cli": true, "agy": true, "antigravity": true, "antigravity cli": true, "fennec-queue": true, "fennec": true,
 		"bash": true, "zsh": true, "sh": true, "fish": true, "node": true,
 	}
 )

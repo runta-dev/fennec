@@ -36,6 +36,8 @@ var catalog = []definition{
 	{"gemini", "Gemini CLI", "geminicli-color.svg", []string{"gemini"}, []string{".gemini/settings.json"}, nil, false},
 	{"cursor", "Cursor CLI", "cursor.svg", []string{"cursor-agent"}, []string{".cursor/cli-config.json"}, nil, true},
 	{"copilot", "Copilot CLI", "copilot-color.svg", []string{"copilot"}, []string{".copilot/config.json"}, nil, false},
+	// Antigravity CLI keeps its files in ~/.gemini/antigravity-cli; ~/.gemini alone is also Gemini CLI's.
+	{"agy", "Antigravity CLI", "antigravity.svg", []string{"agy"}, []string{".gemini/antigravity-cli/settings.json"}, nil, true},
 }
 
 func searchPaths(home string) []string {
@@ -104,7 +106,7 @@ func Discover() []Agent {
 // Local-only Claude Desktop and Devin require an installed application/binary;
 // a saved configuration or placeholder must not advertise them to every user.
 func PanelCatalog(discovered []Agent) []Agent {
-	fixed := map[string]bool{"claude": true, "codex": true, "pi": true, "kimi": true, "opencode": true, "grok": true, "cursor": true}
+	fixed := map[string]bool{"claude": true, "codex": true, "pi": true, "kimi": true, "opencode": true, "grok": true, "cursor": true, "agy": true}
 	byID := map[string]Agent{}
 	for _, item := range discovered {
 		if item.ID == "claude-desktop" && (!item.Installed || item.Evidence != "application") || item.ID == "devin" && (!item.Installed || item.Evidence != "executable") {
@@ -125,7 +127,7 @@ func PanelCatalog(discovered []Agent) []Agent {
 
 // These cloud agents are available even when this Mac has no CLI installation.
 func CloudAgentIDs() []string {
-	return []string{"claude", "codex", "pi", "kimi", "cursor", "grok", "opencode"}
+	return []string{"claude", "codex", "pi", "kimi", "cursor", "grok", "opencode", "agy"}
 }
 
 // CodexDesktopID is ChatGPT.app's Codex (bundle com.openai.codex). Its codex

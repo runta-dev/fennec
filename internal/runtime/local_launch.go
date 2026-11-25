@@ -77,7 +77,7 @@ func (request LocalLaunch) Validate() error {
 		(request.LocalDirectory != "" && !filepath.IsAbs(request.LocalDirectory)) || strings.ContainsAny(request.LocalDirectory, "\x00\r\n") {
 		return fmt.Errorf("invalid local session identity")
 	}
-	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[request.Agent] {
+	if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true, "agy": true}[request.Agent] {
 		return fmt.Errorf("unsupported agent")
 	}
 	size := 0
@@ -213,6 +213,8 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append(command, "--force", "--trust", "--sandbox", "disabled")
 	case "grok":
 		command = append(command, "--always-approve")
+	case "agy":
+		command = append(command, "--dangerously-skip-permissions")
 	case "codex":
 		command = append(command, "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`)
 	case "claude":
@@ -244,7 +246,20 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
-	if setup.NativeAgent(runtime.Home, request.Agent) {
+	if request.Agent == "agy" {
+		// agy keeps its Google sign-in in the cloud's ~/.gemini/antigravity-cli;
+		// Fennec syncs no agy credentials, so native mode runs it as it is.
+		// On Magpie, agy takes the gateway only from its environment and a
+		// --settings file of Magpie's: `magpie agy run` adds both, or starts
+		// plain agy while no Magpie model is picked for it.
+		if !setup.NativeAgent(runtime.Home, request.Agent) {
+			magpie := setup.LocalMagpieBinary(runtime.Home)
+			if magpie == "" {
+				return LocalTerminal{}, ErrAgentExecutableMissing
+			}
+			command = append([]string{magpie, "agy", "run"}, command[1:]...)
+		}
+	} else if setup.NativeAgent(runtime.Home, request.Agent) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]

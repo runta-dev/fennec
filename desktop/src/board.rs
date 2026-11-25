@@ -403,5 +403,5 @@ pub fn local_folder(agent: &str, name: &str) -> Option<String> {
 
 /// The agents a session or worker can run (internal/board Agents).
 pub const AGENTS: &[&str] = &[
-    "claude", "codex", "kimi", "opencode", "cursor", "grok", "pi",
+    "claude", "codex", "kimi", "opencode", "cursor", "grok", "pi", "agy",
 ];

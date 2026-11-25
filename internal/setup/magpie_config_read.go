@@ -66,6 +66,18 @@ func readConfiguredMagpieModel(home, agentID string) (string, bool) {
 		return model, err == nil
 	case "opencode":
 		return readConfiguredOpenCodeModel(home)
+	case "agy":
+		// Magpie keeps agy's model in a file of its own beside settings.json,
+		// handed to agy as --settings by `magpie agy run`.
+		data, err := readNativeFile(filepath.Join(home, ".gemini/antigravity-cli/magpie-settings.json"))
+		var cfg struct {
+			Model string `json:"model"`
+		}
+		if err != nil || json.Unmarshal(data, &cfg) != nil || !strings.HasPrefix(cfg.Model, "magpie/") {
+			return "", false
+		}
+		model, err := ParseAgentModel("Antigravity CLI model " + cfg.Model)
+		return model, err == nil
 	case "grok":
 		path := filepath.Join(resolveAgentConfigDir(home, "GROK_HOME", ".grok"), "config.toml")
 		data, err := readNativeFile(path)

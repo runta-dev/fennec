@@ -52,7 +52,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 	versions := []setup.Agent{}
 	var ids []string
 	for _, id := range agent.CloudAgentIDs() {
-		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && id != "cursor" && id != "grok" && id != "opencode" {
+		if len(discoveredInstalled) > 0 && !discoveredInstalled[id] && id != "cursor" && id != "grok" && id != "opencode" && id != "agy" {
 			continue
 		}
 		ids = append(ids, id)

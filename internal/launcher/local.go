@@ -12,7 +12,7 @@ import (
 	"syscall"
 )
 
-var Supported = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}
+var Supported = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true, "agy": true}
 
 // ResolveOriginal excludes the shim directory and every alias of the running
 // executable, including symlinks and hard links. Relative PATH entries are
