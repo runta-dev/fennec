@@ -86,6 +86,13 @@ impl FennecWindow {
                 Some(Route::Session(a)) => {
                     self.shown_tab(a).trim_start_matches("local:").to_owned()
                 }
+                // An open queue thread shows its agent's reply (and peek), so
+                // opening the thread counts as looking at that agent, the same
+                // as opening its session: a finished agent goes done → idle.
+                Some(Route::Project(_)) => self
+                    .thread_looking_session()
+                    .map(|a| self.shown_tab(&a).trim_start_matches("local:").to_owned())
+                    .unwrap_or_default(),
                 _ => String::new(),
             }
         } else {

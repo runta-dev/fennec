@@ -69,6 +69,13 @@ impl FennecWindow {
         r.active_session(&self.sessions)
     }
 
+    /// The address of the open thread's agent session in any status, review
+    /// included (that is when a finished agent is usually `done`).
+    pub(super) fn thread_looking_session(&self) -> Option<String> {
+        let r = self.thread.as_ref().filter(|t| Some(t.number) == self.open)?;
+        Some(r.active_session(&self.sessions)?.address.clone())
+    }
+
     /// Read the agent's screen a few times a second while its thread is open.
     /// Every read runs on its own: a newly opened thread's agent is read on
     /// the next tick instead of after the previous thread's read comes back
