@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fennec/internal/board"
 	"fennec/internal/queuescheduler"
 	"fennec/internal/runta"
@@ -117,6 +118,14 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			outbound, err := store.Sync(board.Exchange{Seen: peerSeen})
 			caughtUp := !outbound.More
+			if peerSeen == nil {
+				// Without the cloud's cursor every event qualifies, so the first
+				// exchange after a daemon restart would resend the whole journal.
+				// On a slow channel that never fits the step timeout and each
+				// retry starts over, wedging the queue. Learn the cursor first.
+				outbound.Events, outbound.More = nil, false
+				caughtUp = false
+			}
 			if err == nil {
 				raw, e := (boardClient{s: s}).call(step, "POST", "/v1/sync", outbound)
 				err = e
@@ -146,7 +155,11 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 					err = store.SetPrimary(true)
 				}
 			} else {
-				health.failed("sync: " + err.Error())
+				reason := "sync: " + err.Error()
+				if cause := errors.Unwrap(err); cause != nil {
+					reason += " (" + cause.Error() + ")"
+				}
+				health.failed(reason)
 				if last.IsZero() || time.Since(last) > 10*time.Second {
 					_ = store.SetPrimary(false)
 				}

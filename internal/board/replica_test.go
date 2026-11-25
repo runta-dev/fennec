@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,63 @@ func TestReplicaRejectsTraversal(t *testing.T) {
 	_, err := s.Sync(Exchange{Events: []Mutation{{Version: Version{1, "01234567890123456789012345678901"}, Object: "../private.json", Fields: map[string]json.RawMessage{"x": json.RawMessage(`true`)}}}})
 	if err == nil {
 		t.Fatal("accepted traversal")
+	}
+}
+
+// A peer restarting without a cursor learns it from an event-free exchange,
+// then sends only the delta in pages small enough for one sync step.
+func TestReplicaCursorHandshakeSendsOnlyDelta(t *testing.T) {
+	a := testStore(t)
+	b := testStore(t)
+	a.Role = "local"
+	b.Role = "cloud"
+	p, _ := a.CreateProject(Project{Name: "Work"})
+	big := strings.Repeat("x", 40<<10)
+	for i := 0; i < 8; i++ {
+		if _, err := a.CreateRequest(p.ID, "me", "Old", "", big); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pages := 0
+	for more, seen := true, map[string]uint64{}; more; pages++ {
+		out, err := a.Sync(Exchange{Seen: seen})
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := b.Sync(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = a.Sync(in); err != nil {
+			t.Fatal(err)
+		}
+		more, seen = out.More, in.Seen
+		size, _ := json.Marshal(out.Events)
+		if len(size) > syncBatchBytes+(64<<10) {
+			t.Fatalf("batch of %d bytes", len(size))
+		}
+	}
+	if pages < 2 {
+		t.Fatalf("backlog sent in %d page(s)", pages)
+	}
+	a.CreateRequest(p.ID, "me", "New", "", "")
+	// Restart: no cursor. The handshake carries no events.
+	cursor, err := b.Sync(Exchange{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := a.Sync(Exchange{Seen: cursor.Seen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Events) == 0 || len(out.Events) > 3 {
+		t.Fatalf("delta has %d events", len(out.Events))
+	}
+	if _, err = b.Sync(out); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := b.Requests(p.ID)
+	if len(list) != 9 {
+		t.Fatalf("cloud has %d requests", len(list))
 	}
 }

@@ -18,9 +18,12 @@ type Fault struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	Retryable bool   `json:"retryable,omitempty"`
+	// Cause is the underlying error, kept for daemon logs; it is not sent.
+	Cause error `json:"-"`
 }
 
 func (fault *Fault) Error() string { return fault.Message }
+func (fault *Fault) Unwrap() error { return fault.Cause }
 
 type Response struct {
 	Version int             `json:"version"`

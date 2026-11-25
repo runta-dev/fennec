@@ -109,7 +109,7 @@ func (b boardClient) do(ctx context.Context, method, path string, body any) (int
 		if errors.As(err, &unwrapped) {
 			return 0, nil, unwrapped
 		}
-		return 0, nil, &control.Fault{Code: "not_ready", Message: "Connecting to the cloud computer", Retryable: true}
+		return 0, nil, &control.Fault{Code: "not_ready", Message: "Connecting to the cloud computer", Retryable: true, Cause: err}
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 16<<20))

@@ -314,6 +314,8 @@ func (s Store) materialize(state ReplicaState) error {
 
 // Sync is private to the paired resident channel. Contiguous per-origin batches
 // avoid acknowledging gaps. Callers send all events after the peer's cursor.
+const syncBatchBytes = 128 << 10
+
 func (s Store) Sync(in Exchange) (Exchange, error) {
 	unlock, err := s.lock()
 	if err != nil {
@@ -393,11 +395,13 @@ func (s Store) Sync(in Exchange) (Exchange, error) {
 		}
 	}
 	out := Exchange{Seen: state.Seen, Missing: s.MissingAttachments()}
+	// Each batch must cross the resident channel within one sync step;
+	// larger backlogs page through More instead of one oversized request.
 	batchBytes := 0
 	for _, event := range state.Events {
 		if event.Clock > in.Seen[event.Origin] {
 			encoded, _ := json.Marshal(event)
-			if len(out.Events) > 0 && batchBytes+len(encoded) > 1<<20 {
+			if len(out.Events) > 0 && batchBytes+len(encoded) > syncBatchBytes {
 				out.More = true
 				break
 			}
