@@ -140,6 +140,9 @@ pub struct FennecWindow {
     thread_scroll: ScrollHandle,
     /// Scroll the thread to its newest message once a sent reply shows up.
     thread_follow: bool,
+    /// A jump to the newest message is queued for the next layout, so the
+    /// scroll offsets read during render are stale until the user scrolls.
+    thread_jump_pending: bool,
     /// THI-103: the message a mention row jumped to, as (request, message
     /// id). The thread scrolls to it and highlights it until another thread
     /// opens.
@@ -374,6 +377,7 @@ impl FennecWindow {
             answering: false,
             thread_scroll: ScrollHandle::new(),
             thread_follow: false,
+            thread_jump_pending: false,
             thread_jump: None,
             thread_jump_frames: Default::default(),
             link_search,
@@ -772,7 +776,7 @@ impl FennecWindow {
             }
             if grew {
                 if self.thread_follow || self.thread.is_none() || self.thread_at_bottom() {
-                    self.thread_scroll.scroll_to_bottom();
+                    self.scroll_thread_to_bottom();
                 }
                 self.thread_follow = false;
             }
@@ -785,6 +789,18 @@ impl FennecWindow {
                 .map(|p| Route::Project(p.id.clone()));
         }
         cx.notify();
+    }
+
+    /// Jumps the thread's message list to its newest message on the next layout.
+    pub(crate) fn scroll_thread_to_bottom(&mut self) {
+        self.thread_jump_pending = true;
+        self.thread_scroll.scroll_to_bottom();
+    }
+
+    /// Whether to offer the jump-to-newest button (THI-199): the user has
+    /// scrolled up away from the newest message.
+    fn show_thread_jump(&self) -> bool {
+        !self.thread_jump_pending && !self.thread_at_bottom()
     }
 
     /// Whether the thread's message list shows its newest message.
@@ -958,7 +974,7 @@ impl FennecWindow {
         }
         if let Some(t) = thread {
             if self.thread.as_ref().is_none_or(|old| old.number != n) {
-                self.thread_scroll.scroll_to_bottom();
+                self.scroll_thread_to_bottom();
                 self.thread_switches += 1;
             }
             self.thread = Some(t);
@@ -1148,7 +1164,7 @@ impl FennecWindow {
         }
         self.replying = true;
         self.thread_follow = true;
-        self.thread_scroll.scroll_to_bottom();
+        self.scroll_thread_to_bottom();
         let me = self.me.clone();
         let submitted = text.clone();
         let submitted_images: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
@@ -1205,7 +1221,7 @@ impl FennecWindow {
                                     this.fresh_messages
                                         .extend(pending_reply::grown_keys(old, &updated));
                                 }
-                                this.thread_scroll.scroll_to_bottom();
+                                this.scroll_thread_to_bottom();
                                 this.thread_follow = false;
                                 this.thread = Some(updated.clone());
                             }
@@ -3474,20 +3490,30 @@ impl FennecWindow {
                         )
                     }),
             )
-            .child(thread_enter::ease_in(
-                self.thread_switches,
+            .child(
                 v_flex()
-                    .id("thread")
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.thread_scroll)
-                    .px(px(22.0))
-                    .py(px(14.0))
-                    .children(items)
-                    .when_some(question, |d, card| d.child(card))
-                    .when_some(peek, |d, card| d.child(card)),
-            ))
+                    .child(thread_enter::ease_in(
+                        self.thread_switches,
+                        v_flex()
+                            .id("thread")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.thread_scroll)
+                            .on_scroll_wheel(cx.listener(|this, _, _, _| {
+                                this.thread_jump_pending = false;
+                            }))
+                            .px(px(22.0))
+                            .py(px(14.0))
+                            .children(items)
+                            .when_some(question, |d, card| d.child(card))
+                            .when_some(peek, |d, card| d.child(card)),
+                    ))
+                    .when(self.show_thread_jump(), |d| d.child(self.thread_jump_button(cx))),
+            )
             .child(
                 div().flex_none().px(px(18.0)).pb(px(16.0)).child(
                     v_flex()
@@ -3550,6 +3576,51 @@ impl FennecWindow {
                 ),
             )
             .into_any_element()
+    }
+
+    /// THI-199: a round button over the bottom of the message list that jumps
+    /// back to the newest message, shown while the user reads older ones.
+    fn thread_jump_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .absolute()
+            .bottom(px(10.0))
+            .left_0()
+            .right_0()
+            .justify_center()
+            .child(
+                div()
+                    .id("thread-jump-bottom")
+                    .group("thread-jump")
+                    .size(px(32.0))
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(c("f_card"))
+                    .border_1()
+                    .border_color(c("f_line"))
+                    .shadow(vec![BoxShadow {
+                        color: gpui::black().opacity(0.18),
+                        offset: point(px(0.0), px(2.0)),
+                        blur_radius: px(8.0),
+                        spread_radius: px(0.0),
+                        inset: false,
+                    }])
+                    .cursor_pointer()
+                    .hover(|s| s.bg(c("f_expanded")))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.scroll_thread_to_bottom();
+                        cx.notify();
+                    }))
+                    .child(
+                        svg()
+                            .path("icons/arrow-down.svg")
+                            .size(px(15.0))
+                            .text_color(c("f_muted"))
+                            .group_hover("thread-jump", |s| s.text_color(c("f_text"))),
+                    ),
+            )
     }
 
     // ---------- session ----------

@@ -122,7 +122,7 @@ impl FennecWindow {
                                     this.fresh_messages
                                         .extend(pending_reply::grown_keys(old, &updated));
                                 }
-                                this.thread_scroll.scroll_to_bottom();
+                                this.scroll_thread_to_bottom();
                                 this.thread = Some(updated.clone());
                             }
                             this.thread_cache.insert((origin.clone(), n), updated);
