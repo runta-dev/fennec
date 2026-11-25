@@ -28,6 +28,8 @@ mod reply_tests;
 #[cfg(test)]
 mod queue_resize_tests;
 #[cfg(test)]
+mod sidebar_row_tests;
+#[cfg(test)]
 mod copy_tests;
 
 use crate::board::{self, Project, Request};
@@ -2381,9 +2383,12 @@ impl FennecWindow {
                 .when(open, |d| d.bg(c("f_line")))
         };
         let row = |id: SharedString, selected: bool| {
+            // flex_none: the scroll column is a flex column, and without it
+            // queue rows shrink to their text height once sessions overflow it (THI-195).
             h_flex()
                 .id(id)
                 .h(px(ROW_HEIGHT))
+                .flex_none()
                 .mb(px(ROW_GAP))
                 .px(px(8.0))
                 .gap(px(9.0))
@@ -2399,9 +2404,10 @@ impl FennecWindow {
         let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q)).map(|p| {
             let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
             let id = p.id.clone();
-            self.context_row(row(SharedString::from(format!("p-{}", p.id)), selected), context_menu::Target::Project(p.id.clone()), cx)
+            self.context_row(row(SharedString::from(format!("p-{}", p.id)), selected).debug_selector(|| format!("project-row-{}", p.id)), context_menu::Target::Project(p.id.clone()), cx)
                 .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| { if !event.is_right_click() && !event.modifiers().control { this.go(Route::Project(id.clone()), window, cx); } }))
-                .child(ui::project_icon(p, 18.0))
+                // Same 16 px as session icons so queue and session names start at one x.
+                .child(ui::project_icon(p, 16.0))
                 .child(div().flex_1().min_w_0().truncate().child(p.name.clone()))
                 .when(p.needs_you > 0, |d| {
                     d.child(div().min_w(px(18.0)).h(px(17.0)).px(px(5.0)).rounded(px(9.0)).bg(c("tint")).border_1().border_color(c("orange").opacity(0.3)).text_color(c("accent_text")).text_size(px(10.5)).font_weight(FontWeight::MEDIUM).flex().items_center().justify_center().child(p.needs_you.to_string()))
@@ -2469,7 +2475,7 @@ impl FennecWindow {
             let id = row_key(r);
             groups.push(
                 self.context_row(
-                    row(SharedString::from(id), selected).flex_none().debug_selector(||format!("session-row-{}",tab)),
+                    row(SharedString::from(id), selected).debug_selector(||format!("session-row-{}",tab)),
                     context_menu::Target::Terminal {
                         session: s.address.clone(),
                         tab: tab.clone(),

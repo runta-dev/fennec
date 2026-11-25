@@ -447,6 +447,8 @@ impl FennecWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // An explicit import beats the glob: `gpui::*` brings gpui's own `test`, which expands to `#[test]` again forever.
+    use std::prelude::v1::test;
 
     fn q(items: serde_json::Value) -> Question {
         serde_json::from_value(
