@@ -43,7 +43,7 @@ func TestCloudFollowUpReusesActiveTerminalAndFencesDelivery(t *testing.T) {
 	}
 	executor := CloudExecutor{Runtime: backend, Store: store}
 	for i := 0; i < 2; i++ {
-		if err = executor.Start(context.Background(), p, request, "Follow up"); err != nil {
+		if err = executor.Start(context.Background(), p, request, board.Prompt{Full: "Follow up"}); err != nil {
 			t.Fatal(err)
 		}
 	}

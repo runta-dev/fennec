@@ -150,7 +150,7 @@ func asking(status string) bool { return status == "blocked" }
 
 type Executor interface {
 	List(context.Context) ([]Session, error)
-	Start(context.Context, board.Project, board.Request, string) error
+	Start(context.Context, board.Project, board.Request, board.Prompt) error
 }
 type Scheduler struct {
 	Store    board.Store
@@ -321,7 +321,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 					return e
 				}
 				attempt, cancel := context.WithTimeout(ctx, 2*time.Minute)
-				e = s.Executor.Start(attempt, p, r, board.RunPrompt(p, r, s.Command))
+				e = s.Executor.Start(attempt, p, r, board.RunPrompts(p, r, s.Command))
 				cancel()
 				if e != nil {
 					s.report(e)
@@ -411,7 +411,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			prompt := board.RunPrompt(p, claimed, s.Command)
+			prompt := board.RunPrompts(p, claimed, s.Command)
 			attempt, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			err = s.Executor.Start(attempt, p, claimed, prompt)
 			cancel()

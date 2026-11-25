@@ -21,7 +21,7 @@ func (e *executorFixture) List(context.Context) ([]Session, error) {
 	}
 	return e.sessions, nil
 }
-func (e *executorFixture) Start(_ context.Context, _ board.Project, r board.Request, _ string) error {
+func (e *executorFixture) Start(_ context.Context, _ board.Project, r board.Request, _ board.Prompt) error {
 	e.starts++
 	e.sessions = append(e.sessions, Session{ID: r.Session, State: "live"})
 	if e.lost {

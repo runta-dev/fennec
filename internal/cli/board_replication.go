@@ -327,10 +327,10 @@ func (e queueMacExecutor) End(ctx context.Context, address string) error {
 	_, err := e.core.call(ctx, "terminal.kill", map[string]any{"terminal": address})
 	return err
 }
-func (e queueMacExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt string) error {
-	terminal, err := e.threadSession(ctx, p.ID, request.Number)
+func (e queueMacExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt board.Prompt) error {
+	terminal, continued, err := e.continueThread(ctx, p.ID, request.Number)
 	if err != nil {
 		return err
 	}
-	return queuescheduler.SendRequest(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, request, prompt)
+	return queuescheduler.SendRequest(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, request, prompt.For(continued))
 }

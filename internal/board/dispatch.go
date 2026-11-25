@@ -258,3 +258,94 @@ func tagIDs(p Project) string {
 	}
 	return strings.Join(ids, ", ")
 }
+
+// Prompt is what a run delivers to its agent. Full is RunPrompt: the whole
+// thread and the queue's standing instructions. FollowUp, when set, is only
+// the person's new messages and this run's reply command; the executor uses it
+// when the run actually continues the agent's earlier conversation (a live
+// terminal or a successful resume), where everything else is already in
+// context (THI-212).
+type Prompt struct {
+	Full     string
+	FollowUp string
+}
+
+// For picks the prompt for a run that did or did not continue the agent's
+// earlier conversation.
+func (p Prompt) For(continued bool) string {
+	if continued && p.FollowUp != "" {
+		return p.FollowUp
+	}
+	return p.Full
+}
+
+// RunPrompts is RunPrompt plus, when the thread has one, its follow-up form.
+func RunPrompts(p Project, r Request, command string) Prompt {
+	return Prompt{Full: RunPrompt(p, r, command), FollowUp: FollowUpPrompt(p, r, command)}
+}
+
+// FollowUpPrompt is the new input of a follow-up run on its own: the person's
+// messages the agent has not been given, then one line with this run's reply
+// command (each run has its own id). It is empty when the agent has not yet
+// replied in this thread at this location — then its conversation may never
+// have held the full prompt — or when there is no new person message.
+//
+// A message counts as given only when an earlier run that it was part of got
+// a reply from the agent; input of runs that failed or stalled is repeated.
+func FollowUpPrompt(p Project, r Request, command string) string {
+	if len(r.Runs) < 2 {
+		return ""
+	}
+	current := r.Runs[len(r.Runs)-1]
+	agent, location := r.Agent, r.RunLocation
+	if agent == "" {
+		agent = current.Agent
+	}
+	if location == "" {
+		location = current.Location
+	}
+	answered := map[string]int{}
+	for _, m := range r.Messages {
+		if m.Agent != "" && m.RunID != "" && answered[m.RunID] == 0 {
+			answered[m.RunID] = m.ID
+		}
+	}
+	// Runs from before InputUIDs was recorded were given everything that
+	// preceded their reply.
+	given, replied, legacy := map[string]bool{}, false, 0
+	for _, run := range r.Runs[:len(r.Runs)-1] {
+		reply := answered[run.ID]
+		if reply == 0 {
+			continue
+		}
+		if len(run.InputUIDs) == 0 && reply-1 > legacy {
+			legacy = reply - 1
+		}
+		if run.Agent == agent && run.Location == location {
+			replied = true
+		}
+		for _, uid := range run.InputUIDs {
+			given[uid] = true
+		}
+	}
+	if !replied {
+		return ""
+	}
+	bodies := []string{}
+	images := false
+	for _, m := range r.Messages {
+		if m.Agent != "" || given[m.UID] || m.ID <= legacy {
+			continue
+		}
+		if len(m.Attachments) > 0 {
+			images = true
+		}
+		if body := strings.TrimSpace(m.Body); body != "" {
+			bodies = append(bodies, body)
+		}
+	}
+	if len(bodies) == 0 && !images {
+		return ""
+	}
+	return fmt.Sprintf("%s\n\n[%s-%d · report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
+}

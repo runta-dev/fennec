@@ -37,12 +37,12 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	}
 	return out, nil
 }
-func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt string) error {
-	terminal, err := c.Runtime.ThreadSession(ctx, c.Store, p.ID, request.Number)
+func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt board.Prompt) error {
+	terminal, continued, err := c.Runtime.ContinueThread(ctx, c.Store, p.ID, request.Number)
 	if err != nil {
 		return err
 	}
-	return SendRequest(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt)
+	return SendRequest(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt.For(continued))
 }
 
 // Query calls the cloud computer's herdr-core (types answers, THI-176).

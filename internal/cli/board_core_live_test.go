@@ -67,7 +67,7 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executor.Start(ctx, p, r, "No inference: subprocess fixture"); err != nil {
+	if err := executor.Start(ctx, p, r, board.Prompt{Full: "No inference: subprocess fixture"}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := core.call(ctx, "terminal.list", map[string]any{})
@@ -104,7 +104,7 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := executor.Start(ctx, p, r, "duplicate"); err != nil {
+	if err := executor.Start(ctx, p, r, board.Prompt{Full: "duplicate"}); err != nil {
 		t.Fatal("idempotent delivery failed", err)
 	}
 	if _, err = os.Stat(filepath.Join(home, ".fen/board/launches", r.Session+".json")); err != nil {
@@ -120,7 +120,7 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = executor.Start(ctx, p, r, "Follow-up fixture"); err != nil {
+	if err = executor.Start(ctx, p, r, board.Prompt{Full: "Follow-up fixture"}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err = core.call(ctx, "terminal.list", map[string]any{})
