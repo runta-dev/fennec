@@ -143,14 +143,9 @@ func buildAudio(root, out, stems string) error {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return err
 	}
-	raw := strings.TrimSuffix(out, ".wav") + "-raw.wav"
-	if err := mixAudio(root, tl, raw, stems); err != nil {
+	if err := mixAudio(root, tl, out, stems); err != nil {
 		return err
 	}
-	if err := normalizeLoudness(raw, out); err != nil {
-		return err
-	}
-	os.Remove(raw)
 	fmt.Println("wrote", out)
 	return nil
 }
@@ -259,14 +254,9 @@ func render(root, out string, captions bool, workers int) error {
 		return err
 	}
 	wav := strings.TrimSuffix(out, filepath.Ext(out)) + ".wav"
-	raw := strings.TrimSuffix(wav, ".wav") + "-raw.wav"
-	if err := mixAudio(root, tl, raw, ""); err != nil {
+	if err := mixAudio(root, tl, wav, ""); err != nil {
 		return err
 	}
-	if err := normalizeLoudness(raw, wav); err != nil {
-		return err
-	}
-	os.Remove(raw)
 	if !tl.Recorded {
 		fmt.Println("note: no voice-over for this script yet; run `vo` to record it")
 	}

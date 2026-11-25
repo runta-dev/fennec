@@ -60,9 +60,17 @@ Changing any sentence changes the script, so the take no longer matches and
 the timeline falls back to estimated timings (and no voice) until `vo` is run
 again.
 
-The final mix is normalized to -14 LUFS. Under speech the music ducks so the
-voice sits roughly 4-9 dB above the bed; check this with `audio -stems`
-rather than by ear alone. The video is 1920x1080 at 30 fps, H.264 with AAC
+The mix is mastered in Go to -16 LUFS: one gain from a loudness measurement,
+then a look-ahead limiter at -2 dBFS (it prints how hard it worked; a few dB
+on a few percent of samples is fine). Nothing is clipped or soft-saturated.
+Under speech the music and effects duck (25 ms RMS follower, smoothed gain)
+so the voice sits roughly 6-9 dB above the bed; check this with
+`audio -stems` rather than by ear alone.
+
+Place audio with whole-sample offsets (`j := i + offset`). Deriving the
+sample index from float time drops or doubles samples where it truncates;
+in v2 that left 42,000 single-sample holes in the voice and sounded like an
+electrical buzz. The video is 1920x1080 at 30 fps, H.264 with AAC
 audio. A full render takes about a minute on 8 cores.
 
 ## Voice

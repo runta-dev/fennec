@@ -3,13 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 type chord struct {
@@ -216,7 +214,6 @@ func mixAudio(root string, tl *Timeline, path, stems string) error {
 
 	// Voice-over, one continuous take.
 	vo := newStereo(length)
-	env := make([]float32, vo.len())
 	if tl.Recorded {
 		s, err := decodeVO(filepath.Join(root, "assets", "vo", "take.mp3"))
 		if err != nil {
@@ -237,7 +234,6 @@ func mixAudio(root string, tl *Timeline, path, stems string) error {
 		// Place the take, opening the pauses at the split points. Each cut
 		// sits between sentences and gets a short fade so it doesn't click.
 		const fade = 0.008
-		e := 0.0
 		for i, v := range s {
 			tau := float64(i) / sampleRate
 			shift := 0.0
@@ -251,23 +247,23 @@ func mixAudio(root string, tl *Timeline, path, stems string) error {
 				}
 			}
 			x := float64(v) * gain * g
-			j := int((tl.VOStart + shift + tau) * sampleRate)
+			// Whole-sample offsets: deriving j from float time drops or doubles
+			// samples where it truncates, which crackles like an electrical buzz.
+			j := i + int(math.Round((tl.VOStart+shift)*sampleRate))
 			vo.add(j, x, 0)
-			a := math.Abs(x)
-			if a > e {
-				e += (a - e) * 0.01
-			} else {
-				e += (a - e) * 0.0002
-			}
-			if j >= 0 && j < len(env) {
-				env[j] = float32(e)
-			}
 		}
 	}
+	// Tame plosive peaks so the voice keeps its level without the master
+	// limiter having to squash it.
+	if tl.Recorded {
+		gr, share := limit(vo, 0.22*math.Pow(10, 15.0/20), 0.004, 0.08)
+		fmt.Printf("audio: voice peaks limited by up to %.1f dB (%.1f%% of samples >1 dB)\n", gr, share*100)
+	}
+	env := duckEnvelope(vo.L)
 
 	master := newStereo(length)
 	for i := range master.L {
-		duck := 1 - 0.75*math.Min(1, float64(env[i])/0.06)
+		duck := float64(env[i])
 		for _, p := range []struct {
 			bus   *stereo
 			gain  float64
@@ -303,91 +299,13 @@ func mixAudio(root string, tl *Timeline, path, stems string) error {
 	master.mix(reverb(vo, 0.3, 0.5, 1), 0.05)
 
 	fadeFrom := int((tl.Duration - 0.8) * sampleRate)
-	peak := 0.0
-	for i := range master.L {
-		g := 1.0
-		if i > fadeFrom {
-			g = math.Max(0, 1-float64(i-fadeFrom)/(0.8*sampleRate))
+	for i := fadeFrom; i < master.len(); i++ {
+		if i < 0 {
+			continue
 		}
-		for _, ch := range [][]float32{master.L, master.R} {
-			x := math.Tanh(float64(ch[i])*g*1.2) / 1.2
-			ch[i] = float32(x)
-			peak = math.Max(peak, math.Abs(x))
-		}
+		g := float32(math.Max(0, 1-float64(i-fadeFrom)/(0.8*sampleRate)))
+		master.L[i] *= g
+		master.R[i] *= g
 	}
-	norm := 1.0
-	if peak > 0.89 {
-		norm = 0.89 / peak
-	}
-	fmt.Printf("audio: peak %.2f, voice-over %v\n", peak, tl.Recorded)
-	return writeWAV(path, master, norm)
-}
-
-func writeWAV(path string, s *stereo, gain float64) error {
-	n := s.len()
-	var b bytes.Buffer
-	w := func(v any) { binary.Write(&b, binary.LittleEndian, v) }
-	b.WriteString("RIFF")
-	w(uint32(36 + n*4))
-	b.WriteString("WAVEfmt ")
-	w(uint32(16))
-	w(uint16(1))
-	w(uint16(2))
-	w(uint32(sampleRate))
-	w(uint32(sampleRate * 4))
-	w(uint16(4))
-	w(uint16(16))
-	b.WriteString("data")
-	w(uint32(n * 4))
-	pcm := make([]int16, 2*n)
-	for i := 0; i < n; i++ {
-		pcm[2*i] = int16(math.Max(-1, math.Min(1, float64(s.L[i])*gain)) * 32767)
-		pcm[2*i+1] = int16(math.Max(-1, math.Min(1, float64(s.R[i])*gain)) * 32767)
-	}
-	w(pcm)
-	return os.WriteFile(path, b.Bytes(), 0o644)
-}
-
-// normalizeLoudness brings the mix to -14 LUFS with a two-pass, linear
-// ffmpeg loudnorm, the usual level for online video.
-func normalizeLoudness(in, out string) error {
-	const target = "I=-14:TP=-1.0:LRA=11"
-	measure := exec.Command("ffmpeg", "-hide_banner", "-nostats", "-i", in,
-		"-af", "loudnorm="+target+":print_format=json", "-f", "null", "-")
-	var stderr bytes.Buffer
-	measure.Stderr = &stderr
-	if err := measure.Run(); err != nil {
-		return fmt.Errorf("measure loudness: %w", err)
-	}
-	s := stderr.String()
-	i := strings.LastIndex(s, "{")
-	j := strings.LastIndex(s, "}")
-	if i < 0 || j < i {
-		return fmt.Errorf("measure loudness: no result")
-	}
-	var m map[string]string
-	if err := json.Unmarshal([]byte(s[i:j+1]), &m); err != nil {
-		return err
-	}
-	af := fmt.Sprintf("loudnorm=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true",
-		target, m["input_i"], m["input_tp"], m["input_lra"], m["input_thresh"], m["target_offset"])
-	apply := exec.Command("ffmpeg", "-y", "-v", "error", "-i", in, "-af", af, "-ar", fmt.Sprint(sampleRate), "-c:a", "pcm_s16le", out)
-	apply.Stderr = os.Stderr
-	if err := apply.Run(); err != nil {
-		return fmt.Errorf("normalize loudness: %w", err)
-	}
-	fmt.Printf("audio: loudness %s LUFS -> -14 LUFS\n", m["input_i"])
-	return nil
-}
-
-// writeStems saves the music-and-effects bed and the voice separately, at
-// the same gain and before limiting, so their balance can be measured.
-func writeStems(dir string, bed, vo *stereo) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	if err := writeWAV(filepath.Join(dir, "bed.wav"), bed, 1); err != nil {
-		return err
-	}
-	return writeWAV(filepath.Join(dir, "voice.wav"), vo, 1)
+	return master2file(master, path)
 }
