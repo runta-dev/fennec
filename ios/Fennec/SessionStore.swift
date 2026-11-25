@@ -347,6 +347,7 @@ extension SessionStore {
                     location: .mac, state: .idle, updatedAt: ago(60 * 50),
                     messages: [.init(kind: .agent("Drafted notes for v0.9.2"))]),
         ])
+        store.sessions.append(DemoPreviews.session(updatedAt: ago(90)))
         store.sessions.append(wideSession(updatedAt: ago(60 * 70)))
         store.sessions.append(longSession(updatedAt: ago(60 * 80)))
         return store

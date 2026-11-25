@@ -45,7 +45,8 @@ struct FennecApp: App {
                 switch FennecmobileDeepLinkRoute(url.absoluteString) {
                 case "auth/callback": app.auth.handleCallback(url, epoch: app.auth.epoch)
                 case "pair":
-                    if app.auth.status != .signedIn && !app.auth.isAuthorizing { app.signIn(pairing: url.absoluteString) }
+                    // Not in the demo: it stays on the phone until Sign out.
+                    if app.auth.status != .signedIn && !app.auth.isAuthorizing && !app.preview { app.signIn(pairing: url.absoluteString) }
                 default: break
                 }
             }

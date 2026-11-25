@@ -98,7 +98,8 @@ final class LinkMetadataCache {
 struct LinkCardList: View {
     var text: String
     var body: some View {
-        let urls = LinkCards.urls(in: text)
+        // The App Review demo makes no network requests, so no cards.
+        let urls = ReviewDemo.enabled ? [] : LinkCards.urls(in: text)
         if !urls.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(urls, id: \.self) { LinkCard(url: $0) }

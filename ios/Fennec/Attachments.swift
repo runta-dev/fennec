@@ -130,7 +130,7 @@ extension SessionStore {
     }
 
     func preview(_ file: WorkspaceFile, sessionID: String) async throws -> URL {
-        guard let core else { throw AttachmentError.unavailable }
+        guard let core else { return try DemoPreviews.file(file.ref) }
         let key = sessionID + "\n" + file.ref
         if let task = previewDownloads[key] { return try await task.value }
         let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -150,7 +150,7 @@ extension SessionStore {
     }
 
     func previewMetadata(_ ref: String, sessionID: String) async throws -> WorkspaceFile {
-        guard let core else { throw AttachmentError.unavailable }
+        guard let core else { return try DemoPreviews.metadata(ref) }
         let json = try await Task.detached { try goCall { core.previewMetadata(sessionID, ref: ref, error: $0) } }.value
         return try JSONDecoder().decode(WorkspaceFile.self, from: Data(json.utf8))
     }

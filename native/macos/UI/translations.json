@@ -386,6 +386,7 @@
     "ios.error_details": {"en-US": "Details", "zh-CN": "详情"},
     "ios.conversation_unavailable": {"en-US": "Couldn't load this conversation", "zh-CN": "无法加载此对话"},
     "ios.terminal_closed": {"en-US": "The terminal closed.", "zh-CN": "终端已关闭。"},
+    "ios.demo_terminal": {"en-US": "Sample terminal, read only", "zh-CN": "示例终端，只读"},
     "ios.choose_photos": {"en-US": "Photo Library", "zh-CN": "照片图库"},
     "ios.choose_files": {"en-US": "Choose Files", "zh-CN": "选择文件"},
     "ios.remove_attachment": {"en-US": "Remove attachment", "zh-CN": "移除附件"},

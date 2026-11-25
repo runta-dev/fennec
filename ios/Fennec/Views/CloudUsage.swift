@@ -56,7 +56,7 @@ final class AccountUsage {
                           disk_used_bytes: 18.6 * 1_073_741_824, disk_total_bytes: 64 * 1_073_741_824,
                           net_rx_bytes: 1.31 * 1_073_741_824, net_tx_bytes: 286 * 1_048_576,
                           cpu_history: cpu, mem_history: cpu.map { 26 + $0 / 4 })
-        billing = Billing(currency: "USD", balance: 2500, spend: 418)
+        billing = Billing(currency: "USD", balance: 2500, spend: 418, cpu: "61.40 vCPU-h", memory: "122.80 GiB-h", disk: "1,190.40 GiB-h")
         billingFailed = false
     }
 

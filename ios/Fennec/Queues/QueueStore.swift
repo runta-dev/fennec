@@ -1,6 +1,8 @@
+import CryptoKit
 import FennecCore
 import Foundation
 import Observation
+import UIKit
 
 /// Queues on the iPhone (THI-124): the same board the desktop shows, read
 /// and changed through `fennec-terminal board-call` on the cloud computer
@@ -22,6 +24,8 @@ final class QueueStore {
     /// What the last change failed with, shown as an alert.
     var actionError: String?
     @ObservationIgnored private let defaults = UserDefaults.standard
+    /// Images added in the demo, kept on the phone by ID.
+    @ObservationIgnored fileprivate var demoImages: [String: Data] = [:]
     /// Who requests and replies are from. The desktop uses the Mac's user
     /// name; the phone uses the name most of this board's requests carry.
     var me = ""
@@ -148,22 +152,26 @@ final class QueueStore {
     /// A reply; it sends the request back to the queue (the desktop's
     /// continue_request). An empty reply is Retry.
     func reply(_ project: String, _ number: Int, text: String, images: [BoardAttachment] = []) async -> Bool {
-        await change(project, number: number) {
+        if core == nil { demoReply(project, number, text: text, images: images); return true }
+        return await change(project, number: number) {
             _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/continue",
                                ["body": text.trimmingCharacters(in: .whitespacesAndNewlines), "author": author, "attachments": attachmentsJSON(images)])
         }
     }
 
     func markDone(_ project: String, _ number: Int) async {
+        if core == nil { demoUpdate(project, number) { $0.status = "resolved" }; return }
         await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["status": "resolved"]) }
     }
 
     /// Reopen: back to Needs you, as on the desktop.
     func reopen(_ project: String, _ number: Int) async {
+        if core == nil { demoUpdate(project, number) { $0.status = "you" }; return }
         await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["status": "you"]) }
     }
 
     func setTag(_ project: String, _ number: Int, _ tag: String) async {
+        if core == nil { demoUpdate(project, number) { $0.tag = tag }; return }
         await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["tag": tag]) }
     }
 
@@ -175,6 +183,7 @@ final class QueueStore {
 
     /// Links `number` to `to` as "related" or "duplicate"; "" removes the link.
     func link(_ project: String, _ number: Int, to: Int, kind: String) async {
+        if core == nil { demoLink(project, number, to: to, kind: kind); return }
         await change(project, number: number) {
             _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/links", ["number": to, "kind": kind, "author": author])
         }
@@ -251,13 +260,16 @@ final class QueueStore {
     // MARK: Images
 
     func upload(_ data: Data) async throws -> BoardAttachment {
-        guard let core else { throw QueueError.demo }
+        guard let core else { return try demoUpload(data) }
         let json = try await Task.detached { try goCall { core.uploadImage(data, error: $0) } }.value
         return try JSONDecoder().decode(BoardAttachment.self, from: Data(json.utf8))
     }
 
     func imageData(_ attachment: BoardAttachment) async throws -> Data {
-        guard let core else { throw QueueError.demo }
+        guard let core else {
+            guard let data = demoImages[attachment.id] else { throw QueueError.demo }
+            return data
+        }
         return try await Task.detached { try core.imageData(attachment.id, size: attachment.size) }.value
     }
 
@@ -307,7 +319,10 @@ extension QueueStore {
         }
         store.requests["fennec"] = [
             request(117, "Recognize linked requests", "review", "bug", agent: "claude", minutes: 12, latest: "References now show by title."),
-            request(121, "Reopen the last queue and keep drafts", "working", "feature", agent: "claude", minutes: 16, latest: "Reopening the last queue on launch…"),
+            { () -> BoardRequest in
+              var r = request(121, "Reopen the last queue and keep drafts", "working", "feature", agent: "claude", minutes: 16, latest: "Reopening the last queue on launch…")
+              r.session = "s3"  // the sample session that is working: its live card
+              return r }(),
             request(119, "Show times in the local time zone", "working", "bug", agent: "claude", minutes: 18, latest: "Running go test ./internal/board…"),
             request(125, "Menu bar session count", "working", "bug", agent: "codex", minutes: 20, latest: "Reading Panel.swift…"),
             request(124, "Waiting card on the iPhone thread", "queued", "ios", minutes: 2, latest: "Show the same waiting card as the desktop."),
@@ -334,6 +349,80 @@ extension QueueStore {
         requests[project, default: []].append(r)
         return r
     }
+
+    /// Changes a demo request in the list and in its open thread.
+    fileprivate func demoUpdate(_ project: String, _ number: Int, _ change: (inout BoardRequest) -> Void) {
+        let at = ISO8601DateFormatter().string(from: .now)
+        if var thread = threads["\(project)/\(number)"] {
+            change(&thread)
+            thread.updated = at
+            threads["\(project)/\(number)"] = thread
+        }
+        if var list = requests[project], let i = list.firstIndex(where: { $0.number == number }) {
+            change(&list[i])
+            list[i].updated = at
+            requests[project] = list
+        }
+    }
+
+    /// A reply in the demo goes back to the queue, as on the board; then an
+    /// agent picks it up and answers, like the sample sessions do.
+    fileprivate func demoReply(_ project: String, _ number: Int, text: String, images: [BoardAttachment]) {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let agent = self.project(project)?.workers.first(where: \.on)?.agent ?? "claude"
+        func append(_ message: (Int) -> BoardMessage) {
+            demoUpdate(project, number) { r in
+                var messages = r.messages ?? []
+                messages.append(message((messages.map(\.id).max() ?? 0) + 1))
+                r.messages = messages
+                r.latest = messages.last
+            }
+        }
+        let at = { ISO8601DateFormatter().string(from: .now) }
+        if !body.isEmpty || !images.isEmpty {
+            append { BoardMessage(id: $0, author: author, body: body, at: at(), attachments: images.isEmpty ? nil : images) }
+        }
+        demoUpdate(project, number) { $0.status = "queued"; $0.failure = nil }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            self?.demoUpdate(project, number) { $0.status = "working"; $0.agent = agent }
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, self.thread(project, number)?.status == "working" else { return }
+            append { BoardMessage(id: $0, agent: agent, body: "Done. I made the change you asked for and ran the tests; they pass. Ready for your review.", at: at()) }
+            self.demoUpdate(project, number) { $0.status = "review" }
+        }
+    }
+
+    fileprivate func demoLink(_ project: String, _ number: Int, to other: Int, kind: String) {
+        guard let from = thread(project, number), let target = thread(project, other) else { return }
+        demoUpdate(project, number) { r in
+            r.related = (r.related ?? []).filter { $0.number != other || $0.incoming == true }
+            if !kind.isEmpty { r.related?.append(BoardRelated(number: other, title: target.title, status: target.status, kind: kind)) }
+        }
+        demoUpdate(project, other) { r in
+            r.related = (r.related ?? []).filter { $0.number != number || $0.incoming != true }
+            if !kind.isEmpty { r.related?.append(BoardRelated(number: number, title: from.title, status: from.status, kind: kind, incoming: true)) }
+        }
+    }
+
+    /// An image added in the demo stays on the phone; its thumbnail is made
+    /// here, as board.NewAttachment does before an upload.
+    fileprivate func demoUpload(_ data: Data) throws -> BoardAttachment {
+        guard let image = UIImage(data: data) else { throw QueueError.demo }
+        let id = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let side: CGFloat = 160
+        let scale = side / max(image.size.width, image.size.height, 1)
+        let size = CGSize(width: image.size.width * min(scale, 1), height: image.size.height * min(scale, 1))
+        let thumb = UIGraphicsImageRenderer(size: size).jpegData(withCompressionQuality: 0.7) { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        demoImages[id] = data
+        return BoardAttachment(id: id, name: "image", media_type: Self.isPNG(data) ? "image/png" : "image/jpeg",
+                               size: Int64(data.count), width: Int(image.size.width), height: Int(image.size.height),
+                               thumbnail: "data:image/jpeg;base64," + thumb.base64EncodedString())
+    }
+
+    private static func isPNG(_ data: Data) -> Bool { data.starts(with: [0x89, 0x50, 0x4E, 0x47]) }
 
     fileprivate func demoMove(_ project: String, _ number: Int, before: Int) {
         guard var list = requests[project], let from = list.firstIndex(where: { $0.number == number }) else { return }

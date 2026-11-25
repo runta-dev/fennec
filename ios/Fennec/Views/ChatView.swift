@@ -257,13 +257,15 @@ struct ChatView: View {
             }
         }
         .navigationDestination(isPresented: $showTerminal) {
-            if let address = session.address { TerminalPage(session: session, address: address) }
+            // The demo has no cloud computer: its terminal is a recording.
+            if store.core == nil { DemoTerminalPage(session: session) }
+            else if let address = session.address { TerminalPage(session: session, address: address) }
         }
         .sheet(isPresented: $showMenu) {
             SessionMenu(session: session, onStop: {
                 store.stop(session.id)
                 dismiss()
-            }, onOpenTerminal: session.address == nil || store.core == nil ? nil : {
+            }, onOpenTerminal: session.address == nil && store.core != nil ? nil : {
                 showMenu = false
                 showTerminal = true
             })
@@ -349,9 +351,14 @@ struct ChatView: View {
             SessionMenu(session: session, onStop: {
                 store.stop(session.id)
                 dismiss()
+            }, onOpenTerminal: {
+                // Demo sessions: the recorded, read-only terminal.
+                showMenu = false
+                showTerminal = true
             })
             .presentationDetents([.height(360)])
         }
+        .navigationDestination(isPresented: $showTerminal) { DemoTerminalPage(session: session) }
     }
 
     private func composer(_ session: Session) -> some View {
