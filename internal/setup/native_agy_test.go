@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,5 +176,36 @@ func TestAgyNativeReadyWithMigratedSignIn(t *testing.T) {
 	}
 	if !nativeHasCredentials(root, "agy") {
 		t.Fatal("migrated sign-in not counted")
+	}
+}
+
+func TestTrustAgyWorkspaceKeepsSettings(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".gemini/antigravity-cli/settings.json")
+	if err := TrustAgyWorkspace(home, "/root/.fen/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"model":"Gemini 4 Neon (Medium)","trustedWorkspaces":["/root/.fen/a"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"/root/.fen/b/", "/root/.fen/a", "relative"} {
+		if err := TrustAgyWorkspace(home, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, _ := os.ReadFile(path)
+	var settings struct {
+		Model   string   `json:"model"`
+		Trusted []string `json:"trustedWorkspaces"`
+	}
+	if json.Unmarshal(data, &settings) != nil || settings.Model != "Gemini 4 Neon (Medium)" || strings.Join(settings.Trusted, ",") != "/root/.fen/a,/root/.fen/b" {
+		t.Fatalf("%s", data)
+	}
+	os.WriteFile(path, []byte(`{broken`), 0600)
+	if err := TrustAgyWorkspace(home, "/root/.fen/c"); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != `{broken` {
+		t.Fatal("rewrote a file it could not read")
 	}
 }

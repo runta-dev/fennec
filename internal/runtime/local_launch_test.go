@@ -339,6 +339,9 @@ func TestAgyLaunchStaysNativeWithMagpieOn(t *testing.T) {
 		if _, err := backend.Launch(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
+		if data, _ := os.ReadFile(filepath.Join(home, ".gemini/antigravity-cli/settings.json")); !strings.Contains(string(data), filepath.Join(home, ".fen", request.ID)) {
+			t.Fatalf("session folder not trusted: %s", data)
+		}
 		joined := strings.Join(command, " ")
 		if !strings.Contains(joined, "fennec-terminal native-agent agy --dangerously-skip-permissions") || strings.Contains(joined, "magpie") || strings.Contains(joined, gateway.DependencyEnv) {
 			t.Fatalf("native=%v agy command %q", native, joined)

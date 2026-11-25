@@ -166,3 +166,47 @@ func installAgyToken(home, root string) error {
 	}
 	return atomicCredential(path, token)
 }
+
+// TrustAgyWorkspace adds dir to agy's trustedWorkspaces in
+// ~/.gemini/antigravity-cli/settings.json. agy asks "trust this folder?"
+// before its first prompt in every folder not listed there (a trusted parent
+// does not cover a subfolder), and each Fennec session has a folder of its
+// own, so a session started from the phone or a queue would wait on it.
+// The rest of the file is kept; a file that doesn't parse is left alone.
+func TrustAgyWorkspace(home, dir string) error {
+	if !filepath.IsAbs(dir) {
+		return nil
+	}
+	dir = filepath.Clean(dir)
+	path := filepath.Join(home, ".gemini", "antigravity-cli", "settings.json")
+	settings := map[string]any{}
+	if data, err := readNativeFile(path); err == nil {
+		if json.Unmarshal(data, &settings) != nil || settings == nil {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	var trusted []any
+	switch list := settings["trustedWorkspaces"].(type) {
+	case nil:
+	case []any:
+		trusted = list
+	default:
+		return nil
+	}
+	for _, entry := range trusted {
+		if value, ok := entry.(string); ok && filepath.Clean(value) == dir {
+			return nil
+		}
+	}
+	settings["trustedWorkspaces"] = append(trusted, dir)
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := ensureNativeDirectory(home, ".gemini/antigravity-cli"); err != nil {
+		return err
+	}
+	return atomicCredential(path, append(data, '\n'))
+}

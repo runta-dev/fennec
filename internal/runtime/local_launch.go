@@ -206,6 +206,13 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
+	if request.Agent == "agy" && !request.NativeLogin {
+		// Fennec made this folder: trust it, as agy otherwise stops at
+		// "trust this folder?" before the first prompt (like Kimi).
+		if err := setup.TrustAgyWorkspace(runtime.Home, cwd); err != nil {
+			return LocalTerminal{}, err
+		}
+	}
 	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, inputArguments, request.ClaudeSettings)
 	if err != nil {
 		return LocalTerminal{}, err
