@@ -277,6 +277,8 @@ struct Session: Identifiable, Hashable {
     var location: Location
     var state: SessionState
     var updatedAt: Date
+    /// When the session was started; new sessions list first within their group.
+    var createdAt: Date? = nil
     var pinned = false
     var messages: [ChatMessage]
     var approval: ApprovalRequest?

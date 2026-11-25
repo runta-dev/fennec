@@ -28,6 +28,8 @@ pub struct Session {
     pub activity: String,
     /// When the status last changed, in ms since the epoch.
     pub since_ms: u64,
+    /// When the terminal was created, in ms since the epoch (0 if unknown).
+    pub created_ms: u64,
 }
 
 impl Session {
@@ -99,6 +101,7 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                     .as_u64()
                     .or_else(|| t["created_ms"].as_u64())
                     .unwrap_or(0),
+                created_ms: t["created_ms"].as_u64().unwrap_or(0),
             })
         })
         .collect();

@@ -525,16 +525,18 @@ func (s *Sessions) List() (out0 string, err error) {
 	// Herdr's own line about what the agent is doing, and since when.
 	var listing struct {
 		Terminals []struct {
-			Address  string          `json:"address"`
-			Status   json.RawMessage `json:"status"`
-			StatusMS int64           `json:"status_ms"`
+			Address   string          `json:"address"`
+			Status    json.RawMessage `json:"status"`
+			StatusMS  int64           `json:"status_ms"`
+			CreatedMS int64           `json:"created_ms"`
 		} `json:"terminals"`
 	}
 	json.Unmarshal(raw, &listing)
 	type row struct {
 		cli.SessionSummary
-		Activity string `json:"activity,omitempty"`
-		StatusMS int64  `json:"status_ms,omitempty"`
+		Activity  string `json:"activity,omitempty"`
+		StatusMS  int64  `json:"status_ms,omitempty"`
+		CreatedMS int64  `json:"created_ms,omitempty"`
 	}
 	rows := make([]row, 0, len(sessions))
 	for _, session := range sessions {
@@ -547,7 +549,7 @@ func (s *Sessions) List() (out0 string, err error) {
 				Msg string `json:"msg"`
 			}
 			json.Unmarshal(t.Status, &status)
-			r.Activity, r.StatusMS = strings.TrimSpace(status.Msg), t.StatusMS
+			r.Activity, r.StatusMS, r.CreatedMS = strings.TrimSpace(status.Msg), t.StatusMS, t.CreatedMS
 		}
 		rows = append(rows, r)
 	}

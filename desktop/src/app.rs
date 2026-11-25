@@ -1640,10 +1640,12 @@ impl FennecWindow {
             })
             .collect();
         // Activity timestamps and snapshot order change independently of the
-        // visible group. Keep peers stable rather than shuffling every poll.
+        // visible group. Keep peers stable rather than shuffling every poll:
+        // newest-created first, so a new session opens at the top of its group.
         list.sort_by(|a, b| {
             (a.agent, if a.agent { a.state } else { State::Unknown })
                 .cmp(&(b.agent, if b.agent { b.state } else { State::Unknown }))
+                .then_with(|| b.session.created_ms.cmp(&a.session.created_ms))
                 .then_with(|| a.session.address.cmp(&b.session.address))
                 .then_with(|| a.tab.cmp(&b.tab))
         });

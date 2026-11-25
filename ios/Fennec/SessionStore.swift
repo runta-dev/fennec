@@ -149,7 +149,11 @@ final class SessionStore {
         SessionState.allCases.compactMap { state in
             let items = sessions
                 .filter { $0.state == state }
-                .sorted { ($0.pinned ? 1 : 0, $0.updatedAt) > ($1.pinned ? 1 : 0, $1.updatedAt) }
+                // Newest-created first, so a new session opens at the top of its group.
+                .sorted {
+                    ($0.pinned ? 1 : 0, $0.createdAt ?? $0.updatedAt, $0.updatedAt)
+                        > ($1.pinned ? 1 : 0, $1.createdAt ?? $1.updatedAt, $1.updatedAt)
+                }
             return items.isEmpty ? nil : (state, items)
         }
     }
@@ -262,7 +266,7 @@ final class SessionStore {
             throw NSError(domain: "Fennec", code: 1, userInfo: [NSLocalizedDescriptionKey: "Couldn't start the session."])
         }
         var session = Session(id: id, title: "Untitled session", agent: agent, model: "", project: "",
-                              location: .cloud, state: .idle, updatedAt: .now, messages: [])
+                              location: .cloud, state: .idle, updatedAt: .now, createdAt: .now, messages: [])
         session.address = launched.address
         // A newly launched session has no history to wait for. Live reads still
         // run on the chat page and fill in messages as they arrive.
@@ -277,7 +281,7 @@ final class SessionStore {
     func create(agent: AgentKind, model: String, project: String, location: Location, prompt: String) -> Session {
         let session = Session(
             id: UUID().uuidString, title: "Untitled session", agent: agent, model: model,
-            project: project, location: location, state: prompt.isEmpty ? .idle : .working, updatedAt: .now,
+            project: project, location: location, state: prompt.isEmpty ? .idle : .working, updatedAt: .now, createdAt: .now,
             messages: prompt.isEmpty ? [] : [.init(kind: .user(prompt))])
         sessions.append(session)
         return session
@@ -431,6 +435,7 @@ struct SessionSummary: Codable {
     var status: String
     var activity: String?
     var status_ms: Int64?
+    var created_ms: Int64?
 }
 
 /// transcript.Item from internal/transcript.
@@ -566,6 +571,7 @@ extension SessionStore {
             session.address = row.address
             session.activity = row.activity
             session.statusSince = row.status_ms.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
+            if let created = row.created_ms { session.createdAt = Date(timeIntervalSince1970: TimeInterval(created) / 1000) }
             // Seen working, or done after the message: the real state takes over.
             if let sent = awaitingWork[row.session_id], state == .working || (session.statusSince ?? .distantPast) > sent {
                 awaitingWork[row.session_id] = nil
