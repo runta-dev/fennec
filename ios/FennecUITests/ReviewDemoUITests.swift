@@ -197,9 +197,13 @@ final class ReviewDemoUITests: XCTestCase {
         signInLink.tap()
         assertSafariOpensPrivacyPolicy()
         app.activate()
-
-        app.buttons["Sign in with email"].tap()
+        // Back from Safari: a tap before Fennec is in front again is lost.
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        let email = app.buttons["Sign in with email"]
+        wait(for: [expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: email)], timeout: 10)
+        email.tap()
         let address = app.textFields["login-email-address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
         address.tap()
         address.typeText("appreview@runta.com")
         app.buttons["Send code"].tap()
