@@ -50,7 +50,7 @@ export default function Privacy() {
           <li><b>Agent sign-ins:</b> Fennec for Mac copies the sign-in and model settings of the agents you use on your Mac to an isolated, private folder on your cloud computer, so those agents can run there under your own accounts.</li>
           <li><b>Access to your Mac:</b> when an agent in the cloud needs a file or command on your Mac, Fennec asks for your approval, depending on your Governance setting. Only what you approve is sent.</li>
         </ul>
-        <p>We use this content only to provide the service to you: running, showing and resuming your sessions on your devices. We don&apos;t use it for advertising or sell it, and we don&apos;t use it to train AI models. Fennec does not turn on Runta&apos;s optional LLM tool capture (Token Analyze) for your cloud computer.</p>
+        <p>We use this content only to provide the service to you: running, showing and resuming your sessions on your devices. We don&apos;t use it for advertising or sell it. Fennec does not turn on Runta&apos;s optional LLM tool capture (Token Analyze) for your cloud computer.</p>
         <p>The agents themselves send your prompts and code to the model provider you chose (for example Anthropic or OpenAI), under your account with that provider. That provider&apos;s privacy policy applies to what it receives.</p>
         <p>If you pair Fennec with your own server instead of a Runta cloud computer, sessions, files and agent sign-ins stay on that server, and you don&apos;t need a Runta account.</p>
       </Section>
