@@ -64,7 +64,8 @@ const LIST_SEPS: [&str; 13] = [
 /// Separators that need spaces on both sides.
 const LIST_WORDS: [&str; 2] = ["and", "or"];
 
-/// Words that make a number after a reference a count ("THI-41、3 个文件").
+/// Words that make a number after a reference a count ("THI-41、3 files"
+/// written with a Chinese measure word).
 const UNITS: &str = "个条次份行项天秒分时处位张件列页字号年月日周倍万千百元块台名人遍轮步%‰°";
 
 fn word(c: u8) -> bool {
@@ -128,7 +129,8 @@ fn list_end(s: &str, i: usize) -> bool {
 }
 
 /// Reads the requests after "KEY-" (THI-117, THI-131): "73", the shorthand
-/// "73/103/107", or a list "107、117、119", "41, 59 and 61", "117 和 119",
+/// "73/103/107", or a list "107、117、119", "41, 59 and 61", "117 and 119" (also
+/// with the Chinese conjunctions),
 /// "107~121" (both ends), whose items may repeat the key or start with '#'.
 /// Returns each number with the bytes of its text, and the bytes used. A
 /// number must end at a non-word character ("42x" is not a reference); a

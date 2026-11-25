@@ -1,7 +1,7 @@
 //! The one-line preview under a queue card's title (THI-171).
 //!
 //! The card shows the first line of the request's latest message. Messages
-//! are markdown, so showing that line verbatim put `**结论：…**` markers on
+//! are markdown, so showing that line verbatim put `**Conclusion: …**` markers on
 //! the card. This turns the line into plain text plus the inline styles
 //! (bold, italic, code, strikethrough) to draw it with, and drops the block
 //! markers (headings, quotes, list bullets) that mean nothing on one line.

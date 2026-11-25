@@ -14,12 +14,12 @@ import (
 //   - "THI-73/103/107": a slash right after a number. Each number only has to
 //     end at a non-word character, as a lone KEY-n does.
 //   - Lists: "THI-107、117、119、121", "THI-41, 59, 61", "THI-39 / 63 / 69",
-//     "THI-117 和 119", "THI-41, 59 and 61", ranges "THI-107~121" (only the
+//     "THI-117 and 119" (also with the Chinese conjunctions), "THI-41, 59 and 61", ranges "THI-107~121" (only the
 //     two ends count). A later item may repeat the key ("THI-5, THI-7") or
 //     start with '#'.
 //   - A bare list item must look like the end of a reference, so counts,
 //     dates and versions after a reference are not read: "THI-41, 3 files",
-//     "THI-41、3 个文件", "THI-131, 2026-11-25", "THI-41, 0.1.13" keep only
+//     "THI-41、3" followed by a Chinese unit word, "THI-131, 2026-11-25", "THI-41, 0.1.13" keep only
 //     THI-41. The list stops at the first item that fails.
 //   - The key is case-sensitive: lowercase thi-35 is a branch or worktree
 //     name (fix/thi-35-…), not a reference.
@@ -31,7 +31,7 @@ var refListSeps = []string{",", "，", "、", "/", "&", "~", "～", "–", "—"
 var refListWords = []string{"and", "or"}
 
 // refUnits are words that make a number after a reference a count, not a
-// request ("THI-41、3 个文件").
+// request ("THI-41、3 files" written with a Chinese measure word).
 const refUnits = "个条次份行项天秒分时处位张件列页字号年月日周倍万千百元块台名人遍轮步%‰°"
 
 func refWord(c byte) bool {

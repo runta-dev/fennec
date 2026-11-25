@@ -21,6 +21,11 @@ var fixtures = map[string]string{
 	"desktop/src/terminal.rs":                   "upstream herdr-app multilingual shaping fixtures",
 	"desktop/src/vt.rs":                         "upstream herdr-app multilingual terminal fixtures",
 	"desktop/src/links.rs":                      "upstream herdr-app multilingual file URL fixture",
+	"desktop/src/app/knowledge_links.rs":        "multilingual agent reply fixtures",
+	"desktop/src/app/thread_links.rs":           "Chinese list separators and unit words in request references",
+	"internal/board/refs.go":                    "Chinese list separators and unit words in request references",
+	"internal/board/links_test.go":              "multilingual request reference fixtures",
+	"desktop/src/app/card_preview.rs":           "multilingual queue card preview fixtures",
 	"internal/board/title_test.go":              "multilingual session title fixtures",
 	"internal/queuescheduler/scheduler_test.go": "multilingual request text fixtures",
 	"internal/transcript/transcript_test.go":    "multilingual user messages in agent transcripts",
@@ -56,6 +61,11 @@ func sourceLanguage(path string, data []byte) error {
 	// Recorded terminal sessions (agents' screens, including Chinese typed
 	// through an input method) for the predictive echo replay tests.
 	if strings.HasPrefix(path, "internal/predict/testdata/traces/") {
+		return nil
+	}
+	// The iPhone design mockup shows queues with user-written (Chinese)
+	// request titles and messages as sample content.
+	if path == "ios/DESIGN.html" {
 		return nil
 	}
 	if path == "README.md" {
