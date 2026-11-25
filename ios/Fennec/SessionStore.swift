@@ -131,6 +131,9 @@ final class SessionStore {
     var loaded = false
     /// Sessions whose log is being read now.
     @ObservationIgnored var transcriptReads: Set<String> = []
+    /// Sessions that changed (or work) since their log was last read. A list
+    /// refreshed from a chat leaves them for the home list to read.
+    @ObservationIgnored var transcriptsBehind: Set<String> = []
     @ObservationIgnored private var sessionListRevision = 0
 
     init(sessions: [Session], macOnline: Bool = true, cloudRunning: Bool = true,
@@ -531,7 +534,11 @@ extension SessionStore {
         }
     }
 
-    func refresh() async {
+    /// Reads the list, then (with `transcripts`) every changed or working
+    /// session's log, one after another. A chat passes false: over a long
+    /// link those reads take many seconds, and its own log must not wait
+    /// behind them (THI-73); the sessions it skips stay behind for the home list.
+    func refresh(transcripts: Bool = true) async {
         guard let core else { return }
         let revision = sessionListRevision
         guard let json = await live({ try goCall { core.list($0) } }), let data = json.data(using: .utf8),
@@ -545,9 +552,32 @@ extension SessionStore {
         loaded = true
         // Keep each session's log current so the list shows its latest update.
         // The first read takes the tail of the log; later reads only new lines.
-        for session in sessions where !session.transcriptLoaded || session.state != previous[session.id]?.state || session.state == .working {
+        for session in sessions where session.state != previous[session.id]?.state || session.state == .working {
+            transcriptsBehind.insert(session.id)
+        }
+        guard transcripts else { return }
+        for session in sessions where !session.transcriptLoaded || transcriptsBehind.contains(session.id) {
             await loadTranscript(session.id)
         }
+    }
+
+    /// One pass of an open chat: its own log first, then the list (Herdr's
+    /// state ends the working indicator) and any question on screen.
+    /// Returns how long to wait before the next pass.
+    func pollChat(_ id: String) async -> Duration {
+        await loadTranscript(id)
+        await refresh(transcripts: false)
+        await loadPrompt(id)
+        // A short turn (Pi answers "hello" in 2 s) may never show as working
+        // in the list, so a sent message awaiting its reply also polls fast.
+        let busy = pendingSends[id] != nil || session(id).map(workingOrStarting) ?? false
+        return .seconds(busy ? 1.5 : 4)
+    }
+
+    /// The log recorded that the agent stopped after your latest message.
+    nonisolated static func endedAfterLastPrompt(_ messages: [ChatMessage]) -> Bool {
+        guard let end = messages.lastIndex(where: \.isEnd) else { return false }
+        return messages.lastIndex(where: \.isUser).map { $0 < end } ?? true
     }
 
     /// Replaces the list with these rows, keeping what is known of each
@@ -589,6 +619,7 @@ extension SessionStore {
         guard let core, !transcriptReads.contains(id), let index = sessions.firstIndex(where: { $0.id == id }),
               let address = sessions[index].address else { return }
         transcriptReads.insert(id)
+        transcriptsBehind.remove(id)
         defer { transcriptReads.remove(id) }
         if sessions[index].transcriptOffset < 0, sessions[index].messages.isEmpty,
            let found = await Self.restoreCached(id),
@@ -634,6 +665,11 @@ extension SessionStore {
             for item in chunk.items { Self.append(item, to: &updated) }
             updated.transcriptItems += chunk.items
             reconcilePendingSend(id, items: updated.transcriptItems, path: chunk.path ?? updated.transcriptPath)
+            // The reply is in: stop showing "Working". Herdr's status time
+            // can't say so when the cloud computer's clock runs behind.
+            if awaitingWork[id] != nil, pendingSends[id] == nil, Self.endedAfterLastPrompt(updated.messages) {
+                awaitingWork[id] = nil
+            }
             updated.transcriptOffset = chunk.offset
             updated.transcriptPath = chunk.path ?? updated.transcriptPath
             updated.transcriptLoaded = true

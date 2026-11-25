@@ -237,13 +237,10 @@ struct ChatView: View {
         }
         .task(id: session.id) {
             while !Task.isCancelled {
-                // The home list's refresh stops while this page is in front, so
-                // Keep Herdr's state current here: it ends the working indicator.
-                await store.refresh()
-                await store.loadTranscript(session.id)
-                await store.loadPrompt(session.id)
-                // New lines arrive fast while the agent works; idle logs rarely change.
-                try? await Task.sleep(for: .seconds(store.session(session.id)?.state == .working ? 1.5 : 4))
+                // The home list's refresh stops while this page is in front;
+                // this keeps the chat's log and Herdr's state current.
+                let wait = await store.pollChat(session.id)
+                try? await Task.sleep(for: wait)
             }
         }
         .sheet(isPresented: Binding(
