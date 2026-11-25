@@ -12,6 +12,8 @@ mod sidebar_resize;
 mod tab_close;
 mod tabs;
 mod thread_peek;
+#[cfg(test)]
+mod reply_tests;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -3052,7 +3054,7 @@ impl FennecWindow {
                     .when_some(peek, |d, card| d.child(card)),
             )
             .child(
-                div().px(px(18.0)).pb(px(16.0)).child(
+                div().flex_none().px(px(18.0)).pb(px(16.0)).child(
                     v_flex()
                         .relative()
                         .on_mouse_down(
@@ -3075,7 +3077,15 @@ impl FennecWindow {
                         .text_size(px(13.5))
                         .line_height(relative(1.6))
                         .pb(px(38.0))
-                        .child(div().w_full().min_h(px(24.0)).child(Textarea::new(&self.reply)))
+                        // No min height here: the textarea's root is h_full and clips, so a
+                        // definite min height on this wrapper would cap it at one line.
+                        .child(
+                            div()
+                                .w_full()
+                                .flex_none()
+                                .debug_selector(|| "thread-reply-text".into())
+                                .child(Textarea::new(&self.reply)),
+                        )
                         .when_some(self.draft_images(&reply_key, cx), |d, images| {
                             d.child(images)
                         })
