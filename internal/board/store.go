@@ -87,7 +87,11 @@ type Message struct {
 type Request struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
-	Tag    string `json:"tag"`
+	// Tag is the request's first tag; builds before THI-133 know only it.
+	Tag string `json:"tag"`
+	// Tags are all of the request's tags, Tag first, in the project's tag
+	// order; empty while it has just Tag. Read them with TagList.
+	Tags []string `json:"tags,omitempty"`
 	// TagAuto marks a tag nobody chose: the project's first tag, given when
 	// the request was posted without one. The agent working on the request
 	// replaces it with the tag that fits (see AutoTag); a person's choice
@@ -482,21 +486,18 @@ func validText(text string, limit int) bool {
 	return strings.TrimSpace(text) != "" && len(text) <= limit && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }
 
-func hasTag(p Project, tag string) bool {
-	for _, t := range p.Tags {
-		if t.ID == tag {
-			return true
-		}
-	}
-	return false
-}
-
 // CreateRequest posts a request; it waits as Queued for a worker.
 func (s Store) CreateRequest(project, author, title, tag, body string) (Request, error) {
-	return s.CreateRequestWithAttachments(project, author, title, tag, body, nil)
+	var tags []string
+	if tag != "" {
+		tags = []string{tag}
+	}
+	return s.CreateRequestWithAttachments(project, author, title, tags, body, nil)
 }
 
-func (s Store) CreateRequestWithAttachments(project, author, title, tag, body string, images []Attachment) (Request, error) {
+// CreateRequestWithAttachments posts a request with tags (ids or labels); no
+// tags leave a placeholder for the agent that takes it (TagAuto).
+func (s Store) CreateRequestWithAttachments(project, author, title string, tags []string, body string, images []Attachment) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -511,12 +512,13 @@ func (s Store) CreateRequestWithAttachments(project, author, title, tag, body st
 		return Request{}, err
 	}
 	title = strings.TrimSpace(title)
-	auto := tag == ""
+	auto := len(tags) == 0
 	if auto {
-		tag = p.Tags[0].ID
+		tags = []string{p.Tags[0].ID}
 	}
-	if !validText(title, maxTitle*4) || utf8.RuneCountInString(title) > maxTitle || strings.ContainsAny(title, "\r\n") ||
-		!validText(author, 80) || !hasTag(p, tag) || (body != "" && !validText(body, maxBody)) {
+	tags, ok := TagsFor(p, tags)
+	if !ok || !validText(title, maxTitle*4) || utf8.RuneCountInString(title) > maxTitle || strings.ContainsAny(title, "\r\n") ||
+		!validText(author, 80) || (body != "" && !validText(body, maxBody)) {
 		return Request{}, ErrInvalid
 	}
 	if body == "" {
@@ -541,8 +543,9 @@ func (s Store) CreateRequestWithAttachments(project, author, title, tag, body st
 			p.Next++
 		}
 	}
-	r := Request{Number: p.Next, Title: title, Tag: tag, TagAuto: auto, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
+	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
 		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
+	r.setTags(tags)
 	p.Next++
 	if err = s.commit(s.requestPath(project, r.Number), r); err != nil {
 		return r, err
@@ -589,9 +592,10 @@ func (s Store) Reply(project string, n int, author, agent, body string) (Request
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
-// Change sets a request's tag or status (resolve, reopen). Reopening returns
-// it to Needs you; a reply puts it back in the queue.
-func (s Store) Change(project string, n int, tag, status string) (Request, error) {
+// Change sets a request's tags (all of them, ids or labels; nil keeps them)
+// or status (resolve, reopen). Reopening returns it to Needs you; a reply puts
+// it back in the queue.
+func (s Store) Change(project string, n int, tags []string, status string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -605,11 +609,13 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 	if err != nil {
 		return r, err
 	}
-	if tag != "" {
-		if !hasTag(p, tag) {
+	if tags != nil {
+		ids, ok := TagsFor(p, tags)
+		if !ok {
 			return r, ErrInvalid
 		}
-		r.Tag, r.TagAuto = tag, false
+		r.setTags(ids)
+		r.TagAuto = false
 	}
 	switch status {
 	case "":

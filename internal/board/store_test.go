@@ -53,10 +53,10 @@ func TestRequestLifecycle(t *testing.T) {
 	if r, err = s.Release("fennec", 1, "cone-leaf"); err != nil || r.Session != "" || r.Status != NeedsYou {
 		t.Fatal(r, err)
 	}
-	if r, err = s.Change("fennec", 1, "", Resolved); err != nil || r.Status != Resolved {
+	if r, err = s.Change("fennec", 1, nil, Resolved); err != nil || r.Status != Resolved {
 		t.Fatal(r, err)
 	}
-	if r, err = s.Change("fennec", 1, "", NeedsYou); err != nil || r.Status != NeedsYou {
+	if r, err = s.Change("fennec", 1, nil, NeedsYou); err != nil || r.Status != NeedsYou {
 		t.Fatal(r, err)
 	}
 	list, err := s.Requests("fennec")

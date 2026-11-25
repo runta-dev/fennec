@@ -107,7 +107,10 @@ pub const STALLED_FAILURE: &str = "The agent stopped without reporting back";
 pub struct Request {
     pub number: u64,
     pub title: String,
+    /// The first tag; `tags` has them all once there are several (THI-133).
+    /// Read them with `tag_list`.
     pub tag: String,
+    pub tags: Vec<String>,
     pub status: String,
     pub author: String,
     pub created: String,
@@ -166,6 +169,30 @@ impl Request {
         self.status == "resolved"
     }
 
+    /// All of the request's tags, `tag` first (board.Request.TagList): just
+    /// `tag` when `tags` is empty or a build without it changed `tag` since.
+    pub fn tag_list(&self) -> Vec<String> {
+        if self.tags.first() == Some(&self.tag) {
+            self.tags.clone()
+        } else {
+            vec![self.tag.clone()]
+        }
+    }
+
+    pub fn has_tag(&self, id: &str) -> bool {
+        self.tag_list().iter().any(|t| t == id)
+    }
+
+    /// Stores `tags` (non-empty) the way the board does.
+    pub fn set_tags(&mut self, tags: &[String]) {
+        self.tag = tags[0].clone();
+        self.tags = if tags.len() > 1 {
+            tags.to_vec()
+        } else {
+            Vec::new()
+        };
+    }
+
     pub fn active_session<'a>(
         &self,
         sessions: &'a [crate::sessions::Session],
@@ -196,6 +223,21 @@ mod thread_tests {
             "t1"
         );
         assert!(request.active_session(&[]).is_none());
+    }
+
+    #[test]
+    fn tag_list_reads_old_and_new_requests() {
+        let old: super::Request = serde_json::from_value(serde_json::json!({"tag":"bug"})).unwrap();
+        assert_eq!(old.tag_list(), ["bug"]);
+        let mut r: super::Request =
+            serde_json::from_value(serde_json::json!({"tag":"bug","tags":["bug","desktop"]}))
+                .unwrap();
+        assert_eq!(r.tag_list(), ["bug", "desktop"]);
+        assert!(r.has_tag("desktop") && !r.has_tag("ios"));
+        r.tag = "ios".into(); // changed by a build without tags
+        assert_eq!(r.tag_list(), ["ios"]);
+        r.set_tags(&["feature".into()]);
+        assert!(r.tags.is_empty() && r.tag == "feature");
     }
 }
 
@@ -316,6 +358,15 @@ pub fn move_request(project: &str, n: u64, before: u64) -> Result<Value> {
         "POST",
         &format!("/v1/projects/{project}/requests/{n}/move"),
         Some(json!({"before":before})),
+    )
+}
+
+/// THI-133: replaces all of request `n`'s tags.
+pub fn set_tags(project: &str, n: u64, tags: &[String]) -> Result<Value> {
+    call(
+        "PATCH",
+        &format!("/v1/projects/{project}/requests/{n}"),
+        Some(json!({"tags": tags})),
     )
 }
 

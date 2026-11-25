@@ -114,10 +114,14 @@ func (s Store) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/projects/{id}/requests", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Author, Title, Tag, Body string
+			Tags                     []string     `json:"tags"`
 			Attachments              []Attachment `json:"attachments"`
 		}
 		if decode(w, r, &body) {
-			req, err := s.CreateRequestWithAttachments(r.PathValue("id"), body.Author, body.Title, body.Tag, body.Body, body.Attachments)
+			if len(body.Tags) == 0 && body.Tag != "" {
+				body.Tags = []string{body.Tag}
+			}
+			req, err := s.CreateRequestWithAttachments(r.PathValue("id"), body.Author, body.Title, body.Tags, body.Body, body.Attachments)
 			reply(w, req, err)
 		}
 	})
@@ -155,9 +159,17 @@ func (s Store) Handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("PATCH /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Tag, Status string }
+		// "tags" replaces all of the request's tags (THI-133); "tag", from
+		// builds before it, replaces them with that one.
+		var body struct {
+			Tag, Status string
+			Tags        []string `json:"tags"`
+		}
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
-			req, err := s.Change(r.PathValue("id"), n, body.Tag, body.Status)
+			if body.Tags == nil && body.Tag != "" {
+				body.Tags = []string{body.Tag}
+			}
+			req, err := s.Change(r.PathValue("id"), n, body.Tags, body.Status)
 			reply(w, req, err)
 		}
 	})

@@ -44,7 +44,7 @@ func TestRequestImagesPersistAndResumeAcrossReplicas(t *testing.T) {
 		t.Fatal("image import did not deduplicate")
 	}
 	p, _ := a.CreateProject(Project{Name: "Images"})
-	request, err := a.CreateRequestWithAttachments(p.ID, "me", "Inspect this screenshot", "", "", []Attachment{image})
+	request, err := a.CreateRequestWithAttachments(p.ID, "me", "Inspect this screenshot", nil, "", []Attachment{image})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestImageInputRequiresResultConfirmationAndHidesThumbnailFromAgent(t *testi
 		t.Fatal(err)
 	}
 	p, _ := s.CreateProject(Project{Name: "Input"})
-	r, err := s.CreateRequestWithAttachments(p.ID, "me", "Check image", "", "", []Attachment{a})
+	r, err := s.CreateRequestWithAttachments(p.ID, "me", "Check image", nil, "", []Attachment{a})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestPartialRequestMetadataCannotStartBeforeImageReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, _ := a.CreateProject(Project{Name: "Partial"})
-	request, err := a.CreateRequestWithAttachments(p.ID, "me", "Inspect image", "", "", []Attachment{image})
+	request, err := a.CreateRequestWithAttachments(p.ID, "me", "Inspect image", nil, "", []Attachment{image})
 	if err != nil {
 		t.Fatal(err)
 	}

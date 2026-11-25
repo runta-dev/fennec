@@ -304,7 +304,7 @@
     "desktop.tag_discussion": {"en-US": "Discussion", "zh-CN": "Discussion"},
     "desktop.tag_feature": {"en-US": "Feature", "zh-CN": "Feature"},
     "desktop.tags": {"en-US": "Tags", "zh-CN": "标签"},
-    "desktop.tags_hint": {"en-US": "Every request gets one tag, the request list can be filtered by tag", "zh-CN": "每个 request 有一个标签，列表可以按标签筛选"},
+    "desktop.tags_hint": {"en-US": "A request can have several tags, the request list can be filtered by tag", "zh-CN": "每个 request 可以有多个标签，列表可以按标签筛选"},
     "desktop.terminal_closed": {"en-US": "Disconnected", "zh-CN": "已断开"},
     "desktop.terminal_failed": {"en-US": "Could not open the terminal, close this tab and try again", "zh-CN": "无法打开终端，请关闭此标签页后重试"},
     "desktop.try_again": {"en-US": "That didn't work, try again", "zh-CN": "操作失败，请重试"},

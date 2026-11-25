@@ -19,6 +19,7 @@ mod tabs;
 mod thread_enter;
 mod thread_peek;
 mod thread_links;
+mod thread_tags;
 mod thread_wait;
 #[cfg(test)]
 mod reply_tests;
@@ -65,6 +66,8 @@ enum Menu {
     RequestTag,
     /// THI-103: pick a request to link the open thread to.
     LinkRequest,
+    /// THI-133: check and uncheck the open thread's tags.
+    ThreadTags,
 }
 
 /// The New project dialog's fields.
@@ -1923,6 +1926,9 @@ impl FennecWindow {
         if self.menu == Some(Menu::LinkRequest) {
             return self.link_menu(cx);
         }
+        if self.menu == Some(Menu::ThreadTags) {
+            return self.tag_menu(cx);
+        }
         if self.menu == Some(Menu::RequestTag) {
             let p = self
                 .project_id()
@@ -2661,7 +2667,7 @@ impl FennecWindow {
         let mut shown: Vec<&Request> = all
             .iter()
             .filter(|r| r.resolved() == self.resolved)
-            .filter(|r| self.tag.as_ref().is_none_or(|t| &r.tag == t))
+            .filter(|r| self.tag.as_ref().is_none_or(|t| r.has_tag(t)))
             .filter(|r| q.is_empty() || r.title.to_lowercase().contains(&q))
             .collect();
         let group = |status: &str| match status {
@@ -2830,7 +2836,11 @@ impl FennecWindow {
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
                         .child(format!("{}-{}", p.key, r.number))
-                        .child(ui::tag_chip(&r.tag, &tag_label(&r.tag)))
+                        .child(
+                            h_flex().gap(px(4.0)).children(
+                                r.tag_list().iter().map(|id| ui::tag_chip(id, &tag_label(id))),
+                            ),
+                        )
                         .when(!r.agent.is_empty(), |d| {
                             d.child(ui::agent_icon(&r.agent, 14.0))
                         })
@@ -3124,12 +3134,13 @@ impl FennecWindow {
                 .child(ui::icon("chat", 16.0, c("f_muted").opacity(0.5)))
                 .into_any_element();
         };
-        let tag = p
-            .tags
-            .iter()
-            .find(|t| t.id == r.tag)
-            .map(|t| t.label.clone())
-            .unwrap_or_else(|| r.tag.clone());
+        let tag_label = |id: &str| {
+            p.tags
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| t.label.clone())
+                .unwrap_or_else(|| id.to_owned())
+        };
         // KEY-n in a message opens that request (THI-103).
         let known: std::collections::HashSet<u64> = self
             .requests
@@ -3332,7 +3343,21 @@ impl FennecWindow {
                             .truncate()
                             .child(r.title.clone()),
                     )
-                    .child(ui::tag_chip(&r.tag, &tag))
+                    .child(
+                        h_flex()
+                            .id("thread-tags")
+                            .flex_none()
+                            .gap(px(4.0))
+                            .p(px(2.0))
+                            .rounded(px(7.0))
+                            .hover(|s| s.bg(c("f_expanded")))
+                            .children(
+                                r.tag_list().iter().map(|id| ui::tag_chip(id, &tag_label(id))),
+                            )
+                            .on_click(cx.listener(|this, event: &ClickEvent, _, cx| {
+                                this.toggle_tag_menu(event, cx)
+                            })),
+                    )
                     .child(ui::status_pill(&r.status))
                     .child(div().flex_1())
                     .child(

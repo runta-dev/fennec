@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag> | queue new <queue> <number> <agent> <run> <tag|auto> (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue threads <queue>"
+const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag>[,<tag>...] | queue new <queue> <number> <agent> <run> <tag>[,<tag>...]|auto (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue threads <queue>"
 
 func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error {
 	s := Store{Home: home, Role: "cloud"}
@@ -37,9 +37,9 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 	if args[0] == "tag" && len(args) == 6 {
 		r, err := s.AutoTag(args[1], n, args[4], args[3], args[5])
 		if errors.Is(err, ErrInvalid) {
-			return fmt.Errorf("unknown tag %q", args[5])
+			return fmt.Errorf("unknown tag in %q", args[5])
 		} else if errors.Is(err, ErrConflict) {
-			return fmt.Errorf("the tag of %s %d is not yours to set: a person chose it, or this run no longer owns the request", args[1], n)
+			return fmt.Errorf("the tags of %s %d are not yours to set: a person chose it, or this run no longer owns the request", args[1], n)
 		} else if err != nil {
 			return err
 		}

@@ -60,7 +60,7 @@ func TestMarkDoneEndsTheThreadSession(t *testing.T) {
 	if len(ex.ended) != 0 {
 		t.Fatal("ended a session of a request awaiting review")
 	}
-	if _, err := store.Change(p.ID, r.Number, "", board.Resolved); err != nil {
+	if _, err := store.Change(p.ID, r.Number, nil, board.Resolved); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Step(context.Background()); err != nil {
@@ -81,7 +81,7 @@ func TestMarkDoneEndsTheThreadSession(t *testing.T) {
 func TestMarkDoneWaitsForAWorkingAgent(t *testing.T) {
 	store, p, r, ex := finishedRequest(t, "working")
 	s := Scheduler{Store: store, Executor: ex}
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	reclaimStep(t, s)
 	if len(ex.ended) != 0 {
 		t.Fatal("ended a working agent")
@@ -103,7 +103,7 @@ func TestMarkDoneEndsAnAgentIdleBehindBackgroundShells(t *testing.T) {
 	store, p, r, ex := finishedRequest(t, "working")
 	ex.sessions[0].Background = BackgroundOnly(json.RawMessage(`{"app":"claude-code","msg":"2 shells still running","state":"working"}`))
 	s := Scheduler{Store: store, Executor: ex}
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	reclaimStep(t, s)
 	if len(ex.ended) != 1 || ex.ended[0] != "t1" {
 		t.Fatal("kept a session that only has background shells open", ex.ended)
@@ -131,16 +131,16 @@ func TestBackgroundOnly(t *testing.T) {
 func TestSessionsResolvedBeforeOrReopenedAreKept(t *testing.T) {
 	store, p, r, ex := finishedRequest(t, "done")
 	s := Scheduler{Store: store, Executor: ex}
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	// Reopened before the scheduler got to it.
-	if got, _ := store.Change(p.ID, r.Number, "", board.NeedsYou); got.Reclaim {
+	if got, _ := store.Change(p.ID, r.Number, nil, board.NeedsYou); got.Reclaim {
 		t.Fatal("reopen kept the reclaim flag")
 	}
 	reclaimStep(t, s)
 	// Marking an already-done request done again is not a new mark.
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	store.Reclaimed(p.ID, r.Number)
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	reclaimStep(t, s)
 	if len(ex.ended) != 0 {
 		t.Fatal("ended a session that was not newly marked done", ex.ended)
@@ -155,7 +155,7 @@ func TestSessionSharedWithAnOpenRequestIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.Role = "cloud"
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	reclaimStep(t, Scheduler{Store: store, Executor: ex})
 	if len(ex.ended) != 0 {
 		t.Fatal("ended a session an unfinished request uses")
@@ -167,7 +167,7 @@ func TestOtherSideKeepsTheReclaimFlag(t *testing.T) {
 	// request ran in the cloud. Clearing the flag there would leave the cloud
 	// session open forever (THI-87: THI-77's terminal outlived its Mark done).
 	store, p, r, ex := finishedRequest(t, "done")
-	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Change(p.ID, r.Number, nil, board.Resolved)
 	store.Role = "local"
 	reclaimStep(t, Scheduler{Store: store, Executor: ex})
 	if got, _ := store.Request(p.ID, r.Number); !got.Reclaim {

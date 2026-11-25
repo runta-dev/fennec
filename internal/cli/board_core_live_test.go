@@ -59,7 +59,7 @@ func TestLiveQueueUsesRealHerdrSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := store.CreateRequestWithAttachments(p.ID, "me", "Fixture", "", "", []board.Attachment{attachment})
+	r, err := store.CreateRequestWithAttachments(p.ID, "me", "Fixture", nil, "", []board.Attachment{attachment})
 	if err != nil {
 		t.Fatal(err)
 	}

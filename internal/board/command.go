@@ -83,13 +83,11 @@ func Thread(p Project, r Request) string {
 	if p.Repository != "" {
 		fmt.Fprintf(&b, " (github.com/%s)", p.Repository)
 	}
-	tag := r.Tag
-	for _, t := range p.Tags {
-		if t.ID == r.Tag {
-			tag = t.Label
-		}
+	label := "Tag"
+	if len(r.TagList()) > 1 {
+		label = "Tags"
 	}
-	fmt.Fprintf(&b, "\nTag: %s\nStatus: %s\n", tag, r.Status)
+	fmt.Fprintf(&b, "\n%s: %s\nStatus: %s\n", label, TagLabels(p, r), r.Status)
 	for _, m := range r.Messages {
 		who := m.Author
 		if m.Agent != "" {

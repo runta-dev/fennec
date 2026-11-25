@@ -85,7 +85,7 @@ func TestLocalImageRunDoesNotWaitForCloudBlobCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, _ := local.CreateProject(board.Project{Name: "Local images", Queue: 1})
-	if _, err = local.CreateRequestWithAttachments(p.ID, "me", "Inspect", "", "", []board.Attachment{attachment}); err != nil {
+	if _, err = local.CreateRequestWithAttachments(p.ID, "me", "Inspect", nil, "", []board.Attachment{attachment}); err != nil {
 		t.Fatal(err)
 	}
 	local.SetPrimary(true)

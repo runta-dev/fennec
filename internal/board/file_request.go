@@ -10,8 +10,8 @@ import (
 // follow-up the person asked for in that thread. The new request is the
 // person's own (author of `from`), so it queues and runs like one they
 // posted, and `from` links to it as related so both threads show where it came
-// from. tag is a tag id or label, or "" / "auto" to leave it for the agent
-// that takes the request (TagAuto). Text is the title on its first line and
+// from. tag is one or more tag ids or labels separated by commas, or "" /
+// "auto" to leave it for the agent that takes the request (TagAuto). Text is the title on its first line and
 // the body after it.
 func (s Store) FileRequest(project string, from int, session, agent, tag, text string) (Request, error) {
 	if !Agents[agent] {
@@ -28,16 +28,16 @@ func (s Store) FileRequest(project string, from int, session, agent, tag, text s
 	if session == "" || origin.Session != session || origin.Agent != agent {
 		return Request{}, ErrConflict
 	}
-	if t := strings.TrimSpace(tag); t == "" || strings.EqualFold(t, "auto") {
-		tag = ""
-	} else if id, ok := TagFor(p, t); ok {
-		tag = id
-	} else {
-		return Request{}, fmt.Errorf("%w: unknown tag %q", ErrInvalid, tag)
+	var tags []string
+	if t := strings.TrimSpace(tag); t != "" && !strings.EqualFold(t, "auto") {
+		ok := false
+		if tags, ok = TagsFor(p, SplitTags(t)); !ok {
+			return Request{}, fmt.Errorf("%w: unknown tag in %q", ErrInvalid, tag)
+		}
 	}
 	title, body, _ := strings.Cut(strings.TrimLeft(text, "\r\n"), "\n")
 	title, body = strings.TrimSpace(title), strings.TrimSpace(body)
-	r, err := s.CreateRequest(project, origin.Author, title, tag, body)
+	r, err := s.CreateRequestWithAttachments(project, origin.Author, title, tags, body, nil)
 	if err != nil {
 		return r, err
 	}

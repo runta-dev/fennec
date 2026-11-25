@@ -52,7 +52,7 @@ func (s Store) MirrorThreads(project string) error {
 		r := requests[numbers[i]]
 		name := fmt.Sprintf("%s-%d.md", p.Key, r.Number)
 		keep[name] = true
-		fmt.Fprintf(&index, "- %s-%d [%s] [%s] %s\n", p.Key, r.Number, r.Status, r.Tag, r.Title)
+		fmt.Fprintf(&index, "- %s-%d [%s] [%s] %s\n", p.Key, r.Number, r.Status, strings.Join(r.TagList(), ","), r.Title)
 		if err := writeIfChanged(filepath.Join(dir, name), []byte(threadMarkdown(p, r, relatedFor(r.Number, requests, all)))); err != nil {
 			return err
 		}
@@ -82,6 +82,7 @@ func threadMarkdown(p Project, r Request, related []Related) string {
 	fmt.Fprintf(&b, "title: %s\n", strconv.Quote(r.Title))
 	fmt.Fprintf(&b, "status: %s\n", r.Status)
 	fmt.Fprintf(&b, "tag: %s\n", r.Tag)
+	fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(r.TagList(), ", "))
 	fmt.Fprintf(&b, "author: %s\n", strconv.Quote(r.Author))
 	if r.Agent != "" {
 		fmt.Fprintf(&b, "agent: %s\n", r.Agent)

@@ -92,7 +92,7 @@ func TestAgentResultAwaitsUserReview(t *testing.T) {
 	if _, err := s.Complete(p.ID, 1, "calm-fox", "codex", "Fixed again", Resolved); err != nil {
 		t.Fatal(err)
 	}
-	if r, err = s.Change(p.ID, 1, "", Resolved); err != nil || r.Status != Resolved {
+	if r, err = s.Change(p.ID, 1, nil, Resolved); err != nil || r.Status != Resolved {
 		t.Fatal("mark done from review", r.Status, err)
 	}
 }
