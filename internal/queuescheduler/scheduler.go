@@ -20,6 +20,7 @@ import (
 // title, and the agent's own status word with when that word last changed.
 type Session struct {
 	ID, State, Title, Status string
+	App                      string // herdr-core's status app, e.g. "claude-code"
 	Address                  string // herdr-core terminal address, for ending it
 	StatusAt                 time.Time
 	// Background: the agent finished its turn and only reports working because
@@ -51,6 +52,15 @@ func BackgroundOnly(raw json.RawMessage) bool {
 	return status.State == "working" && backgroundOnly.MatchString(strings.TrimSpace(status.Msg))
 }
 
+// AgentApp extracts which agent reported a herdr-core status record.
+func AgentApp(raw json.RawMessage) string {
+	var status struct {
+		App string `json:"app"`
+	}
+	_ = json.Unmarshal(raw, &status)
+	return status.App
+}
+
 // AgentStatus extracts the agent's status word from a herdr-core status record.
 func AgentStatus(raw json.RawMessage) string {
 	var status struct {
@@ -73,6 +83,24 @@ func StatusTime(ms int64) time.Time {
 // while waiting on a background job and resume when it reports back, so this
 // leaves room for that; a resumed agent puts the request back to running.
 var StallAfter = 15 * time.Minute
+
+// QuietStallAfter replaces StallAfter for agents whose "done" means nothing
+// can wake them. Claude Code reports working ("1 shell still running", "1
+// monitor still running") while anything it started in the background is
+// open, so a Claude Code agent that is done for this long ended its turn
+// without `queue reply` and is not coming back on its own (THI-141: THI-125's
+// agent said it was waiting on an SSH check it never started).
+var QuietStallAfter = 2 * time.Minute
+
+// quietWhenDone lists agents whose done status rules out background work.
+var quietWhenDone = map[string]bool{"claude-code": true}
+
+func stallAfter(app string) time.Duration {
+	if quietWhenDone[app] {
+		return QuietStallAfter
+	}
+	return StallAfter
+}
 
 // stopped reports an agent that is not working and not asking for anything:
 // its turn ended. "blocked" (asking for input) is visible in the session.
@@ -151,6 +179,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 	}
 	states, titles, agents := map[string]string{}, map[string]string{}, map[string]string{}
 	since := map[string]time.Time{}
+	apps := map[string]string{}
 	for _, v := range listed {
 		// The listing includes finished terminals. A reused thread session can
 		// have an earlier finished terminal beside its live one; live wins.
@@ -161,6 +190,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 		titles[v.ID] = v.Title
 		agents[v.ID] = v.Status
 		since[v.ID] = v.StatusAt
+		apps[v.ID] = v.App
 	}
 	s.reclaim(ctx, listed)
 	now := time.Now()
@@ -205,7 +235,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 				if at := since[r.ExecutionSession()]; at.After(idle) {
 					idle = at
 				}
-				if now.Sub(idle) >= StallAfter {
+				if now.Sub(idle) >= stallAfter(apps[r.ExecutionSession()]) {
 					_, err := s.Store.Stall(q.Project, r.Number, r.Session)
 					s.report(err)
 				}

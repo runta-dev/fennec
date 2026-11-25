@@ -176,3 +176,38 @@ func TestUnavailableListingNeverEndsARun(t *testing.T) {
 		t.Fatalf("failed listing ended a run: %+v", got)
 	}
 }
+
+func TestDoneClaudeCodeStallsQuickly(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	// THI-141: THI-125's agent said it would continue after an SSH check it
+	// never started. Claude Code shows working while anything it started in
+	// the background is open, so done means nothing will wake it.
+	stopped := time.Now().Add(time.Minute)
+	ex.sessions = []Session{{ID: r.Session, State: "live", Status: "done", App: "claude-code", StatusAt: stopped}}
+	s.Now = func() time.Time { return stopped.Add(QuietStallAfter - 10*time.Second) }
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+		t.Fatalf("stalled before the quiet grace period: %+v", got)
+	}
+	s.Now = func() time.Time { return stopped.Add(QuietStallAfter + 10*time.Second) }
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.NeedsYou || got.Failure != board.StalledFailure {
+		t.Fatalf("done Claude Code still shown as running: %+v", got)
+	}
+}
+
+func TestClaudeCodeWithBackgroundWorkNeverStalls(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	ex.sessions = []Session{{ID: r.Session, State: "live", Status: "working", App: "claude-code", Background: true, StatusAt: time.Now()}}
+	later(&s, 24*time.Hour)
+	step(t, s)
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Working {
+		t.Fatalf("agent waiting on a background shell stalled: %+v", got)
+	}
+}
+
+func TestAgentApp(t *testing.T) {
+	if got := AgentApp([]byte(`{"app":"claude-code","state":"done"}`)); got != "claude-code" {
+		t.Fatalf("AgentApp = %q", got)
+	}
+}

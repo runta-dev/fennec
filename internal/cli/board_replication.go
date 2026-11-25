@@ -293,7 +293,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS), Background: queuescheduler.BackgroundOnly(t.Status)})
+		out = append(out, queuescheduler.Session{ID: t.Labels["fennec.session"], Address: t.Address, State: t.State, Title: t.Title, Status: queuescheduler.AgentStatus(t.Status), App: queuescheduler.AgentApp(t.Status), StatusAt: queuescheduler.StatusTime(t.StatusMS), Background: queuescheduler.BackgroundOnly(t.Status)})
 	}
 	return out, nil
 }
