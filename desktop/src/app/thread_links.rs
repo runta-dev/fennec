@@ -283,7 +283,8 @@ mod tests {
                 title: "Sync stalls".into(),
                 status: "resolved".into(),
                 kind: "duplicate".into(),
-                incoming: false
+                incoming: false,
+                mentions: vec![],
             }]
         );
     }
