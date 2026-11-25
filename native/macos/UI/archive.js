@@ -256,6 +256,9 @@
     render();
   };
 
-  document.querySelector('#archive-export')?.addEventListener('click', openExport);
-  document.querySelector('#archive-import')?.addEventListener('click', openImport);
+  // The whole row (title and description) is the target, and it highlights
+  // on hover like the other Settings rows.
+  for (const entry of document.querySelectorAll('#archive-card .archive-entry')) {
+    entry.addEventListener('click', entry.dataset.archive === 'export' ? openExport : openImport);
+  }
 })();

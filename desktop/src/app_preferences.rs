@@ -549,7 +549,11 @@ fn archive_row(
             .min_h(px(52.0))
             .py(px(8.0))
             .gap(px(14.0))
+            .mx(px(-8.0))
+            .px(px(8.0))
+            .rounded(px(7.0))
             .cursor_pointer()
+            .hover(|s| s.bg(c("f_expanded")))
             .on_click(cx.listener(move |this, _, window, cx| this.open_archive(mode, window, cx)))
             .child(
                 v_flex()

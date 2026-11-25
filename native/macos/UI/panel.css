@@ -680,7 +680,7 @@ nav button{padding:3px 7px}
 #export-logs[aria-busy=true] .magpie-panel-spinner{display:block;animation:refresh-rotate .9s linear infinite}
 @media(prefers-reduced-motion:reduce){#export-logs[aria-busy=true] .magpie-panel-spinner{animation:none}}
 /* Settings › Cloud computer export and import (THI-188) */
-#archive-card .archive-row{border-top:1px solid var(--line)}
+#archive-card .archive-entry{cursor:pointer}#archive-card .archive-entry+.archive-entry{border-top:1px solid var(--line)}#archive-card .archive-entry:hover{background:var(--expanded)}#archive-card .archive-entry .preference-action{min-height:40px;box-shadow:none;font-weight:400}#archive-card .archive-entry .preference-action:hover{filter:none}#archive-card .archive-entry .preference-action:focus-visible{outline-offset:-3px}
 .archive-dialog{width:min(380px,calc(100vw - 24px))}
 .archive-body{display:flex;flex-direction:column;gap:8px}
 .archive-body p{margin:0}
