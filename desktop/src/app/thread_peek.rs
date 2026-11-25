@@ -252,13 +252,6 @@ impl FennecWindow {
                             )
                             .child(
                                 div()
-                                    .flex_none()
-                                    .size(px(6.0))
-                                    .rounded_full()
-                                    .bg(status_dot(status)),
-                            )
-                            .child(
-                                div()
                                     .min_w_0()
                                     .truncate()
                                     .text_size(px(11.5))
@@ -358,16 +351,6 @@ fn run_element(run: Run) -> Div {
         d = d.line_through();
     }
     d
-}
-
-/// The dot beside the agent's name: the request's state, colored as its pill.
-fn status_dot(status: &str) -> Hsla {
-    match status {
-        "working" => c("ok"),
-        "failed" => c("bug"),
-        "needs_you" | "you" | "stalled" | "review" => c("orange"),
-        _ => c("f_muted"),
-    }
 }
 
 fn status_label(status: &str) -> String {
