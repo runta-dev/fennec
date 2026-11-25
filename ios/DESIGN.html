@@ -343,6 +343,41 @@ figcaption .q{display:block;margin-top:6px;color:#d9a46d}
 .macstack{display:flex;flex-direction:column;gap:14px}
 .scantop .photo{position:absolute;right:16px;top:50%;transform:translateY(-50%);color:#f4f1ed;background:rgba(40,37,34,.5);border-color:rgba(255,255,255,.16)}
 .psteps{display:flex;flex-direction:column;gap:7px;font-size:11.5px;width:100%}.psteps div{display:flex;align-items:center;gap:7px;white-space:nowrap}.psteps b{width:16px;height:16px;flex:none;border:1px solid var(--line);border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:400;color:var(--fg2)}.psteps span{margin-left:auto;padding-left:6px;color:var(--accent);font-size:11px}.pfoot{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);color:var(--fg2);font-size:12px}
+
+/* queues (THI-124): off by default, turned on in Account */
+.qseg{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.qseg span{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:500;color:var(--fg2)}
+.qseg span.on{background:var(--fg);color:var(--bg)}
+.qhead{display:flex;align-items:center;gap:8px;padding:2px 18px 4px;font-size:13px;color:var(--fg2)}
+.qhead b{color:var(--fg);font-weight:500;font-size:15px;display:flex;align-items:center;gap:4px}
+.qhead .r{margin-left:auto;font-size:12px;color:var(--fg3);font-variant-numeric:tabular-nums}
+.qref{font-family:var(--f-mono);font-size:11.5px;color:var(--fg3);flex:none}
+.qtag{font-size:11px;color:var(--fg2);background:var(--s1);border-radius:6px;padding:1px 6px;flex:none}
+.qclock{width:30px;height:30px;border-radius:9px;background:var(--s1);border:1px solid var(--line);display:grid;place-items:center;color:var(--fg2);flex:none}
+.qclock .ico{width:15px;height:15px}
+.qmore{display:flex;align-items:center;gap:6px;padding:10px 18px;color:var(--fg2);font-size:13.5px}
+.qmore span{color:var(--fg3);font-variant-numeric:tabular-nums}
+.qmore .ico{margin-left:auto;color:var(--fg3)}
+.wait{display:flex;gap:12px;align-items:flex-start;padding:4px 0 2px}
+.wait .wi{width:34px;height:34px;border-radius:10px;background:var(--s1);border:1px solid var(--line);display:grid;place-items:center;color:var(--fg2);flex:none}
+.wait .wi img{width:20px;height:20px}
+.wait .wi .ico{width:17px;height:17px}
+.wait .wt{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500}
+.wait .wt i{width:6px;height:6px;border-radius:50%;background:var(--fg3);flex:none}
+.wait .wt i.ok{background:var(--ok)}
+.wait .wt span{font-weight:400;font-size:12.5px;color:var(--fg2)}
+.wait .wd{font-size:12.5px;color:var(--fg2);margin-top:2px;font-variant-numeric:tabular-nums}
+.wait .wh{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;color:var(--fg3);margin-top:6px;line-height:1.45}
+.wait .wh img{width:14px;height:14px;margin-top:2px;flex:none}
+.peek{background:var(--s1);border:1px solid var(--line);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:7px}
+.peek .ph{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500}
+.peek .ph img{width:16px;height:16px}
+.peek .ph span{margin-left:auto;font-weight:400;color:var(--fg3);font-size:12px;display:flex;align-items:center;gap:3px}
+.peek pre{margin:0;font-family:var(--f-mono);font-size:11px;line-height:1.5;color:var(--fg2);white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.qst{display:inline-flex;align-items:center;gap:5px}
+.qbar{flex:none;display:flex;gap:8px;justify-content:center;padding:0 12px;margin-bottom:-2px;position:relative;z-index:4}
+.qbar span{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:var(--glass);border:1px solid var(--line);font-size:13px;font-weight:500;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.qnote{font-size:12px;color:var(--fg3);line-height:1.45;padding:0 4px}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -396,6 +431,8 @@ figcaption .q{display:block;margin-top:6px;color:#d9a46d}
   <symbol id="i-thumb" viewBox="0 0 24 24"><path d="M7.5 10.5v9h-3v-9zM7.5 10.5l3.5-6.5a2 2 0 0 1 2.5 2.4l-.8 3.6h5.1a2 2 0 0 1 2 2.4l-1.3 5.6a2 2 0 0 1-2 1.5H7.5"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5.5 13v5a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-5"/></symbol>
   <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="8" r="2"/><path d="M7 8v8M17 10c0 4-10 2-10 6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
   <symbol id="i-sig" viewBox="0 0 16 11"><rect x="0" y="7" width="3" height="4" rx=".8" fill="currentColor" stroke="none"/><rect x="4.3" y="5" width="3" height="6" rx=".8" fill="currentColor" stroke="none"/><rect x="8.6" y="2.6" width="3" height="8.4" rx=".8" fill="currentColor" stroke="none"/><rect x="12.9" y="0" width="3" height="11" rx=".8" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-wifi" viewBox="0 0 16 11"><path d="M8 10.6l2.3-2.6a3.3 3.3 0 0 0-4.6 0zM3.8 6.1a6 6 0 0 1 8.4 0l1.4-1.6a8.2 8.2 0 0 0-11.2 0zM.6 2.9a10.6 10.6 0 0 1 14.8 0L16 2.2A11.6 11.6 0 0 0 0 2.2z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-bat" viewBox="0 0 26 12"><rect x=".7" y=".7" width="21.6" height="10.6" rx="3.2" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.2"/><rect x="2.4" y="2.4" width="16" height="7.2" rx="1.8" fill="currentColor" stroke="none"/><rect x="23.4" y="4" width="1.8" height="4" rx=".9" fill="currentColor" fill-opacity=".45" stroke="none"/></symbol>
@@ -981,6 +1018,199 @@ figcaption .q{display:block;margin-top:6px;color:#d9a46d}
   </div>
 </section>
 
+
+<!-- ================= QUEUES ================= -->
+<section class="sec">
+  <div class="sec-h"><b>17–23</b> Queues · off by default</div>
+  <p class="lede" style="margin-top:0;margin-bottom:28px">Requests sent to a queue, and their threads, the same ones the desktop shows. Hidden until the user turns on Show Queues in Account. The data comes from the cloud board through the daemon's <code class="mono-in">board.call</code> relay, the same path the desktop uses. Status words and copy are shared with the desktop: Queued, Running, Needs you, In review, Failed, Done.</p>
+  <div class="grid">
+    <figure>
+      <div class="label"><span>17</span> account · Queues off (default)</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav"><span class="cbtn solid"><svg class="ico"><use href="#i-x"/></svg></span><span style="font-weight:500">Account</span><span style="width:42px"></span></div>
+        <div class="body" style="gap:12px">
+          <div class="menu">
+            <div class="mi"><svg class="ico" style="color:var(--ok)"><use href="#i-cloud"/></svg><div><div>Cloud computer</div><div style="font-size:12px;color:var(--fg3)">Running · 6 live sessions</div></div><svg class="ico sm" style="margin-left:auto;color:var(--fg3)"><use href="#i-chev"/></svg></div>
+            <div class="mi"><svg class="ico" style="color:var(--fg2)"><use href="#i-term"/></svg><div><div>Agents</div><div style="font-size:12px;color:var(--fg3)">5 on cloud computer</div></div><svg class="ico sm" style="margin-left:auto;color:var(--fg3)"><use href="#i-chev"/></svg></div>
+          </div>
+          <div class="gh" style="padding:4px 4px 0">Notify me when</div>
+          <div class="menu">
+            <div class="mi">An agent needs approval<i class="sw on"></i></div>
+            <div class="mi">An agent asks a question<i class="sw on"></i></div>
+            <div class="mi">A session finishes<i class="sw"></i></div>
+          </div>
+          <div class="gh" style="padding:4px 4px 0">Queues</div>
+          <div class="menu">
+            <div class="mi"><svg class="ico" style="color:var(--fg2)"><use href="#i-grid"/></svg>Show Queues<i class="sw"></i></div>
+          </div>
+          <div class="qnote">Adds a Queues tab to home, with your requests, their threads and replies. Off by default.</div>
+          <div class="menu"><div class="mi danger"><svg class="ico"><use href="#i-logout"/></svg>Sign out</div></div>
+        </div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>Queues are opt-in.</em> A new switch in Account (14), under its own Queues group, off by default. While it is off, the app looks exactly as it does today: no tab, no badge, no queue notifications, and the board is never read. Turning it on adds the Queues tab (18) and one more notification row, "A request needs you". The setting is per device and is not shared with the Mac.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>18</span> home · Queues tab</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn solid" style="font-size:13px;font-weight:500">SM</span>
+          <span class="qseg"><span>Sessions</span><span class="on">Queues</span></span>
+          <span class="cbtn solid"><svg class="ico"><use href="#i-plus"/></svg></span>
+        </div>
+        <div class="qhead"><b>Fennec<svg class="ico xs"><use href="#i-chevd"/></svg></b><span class="r">3/3 agents busy</span></div>
+        <div style="flex:1;min-height:0;overflow:hidden">
+          <div class="sg">Needs you <span>1</span></div>
+          <div class="hrow"><span class="aic"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt=""><i class="sd ac"></i></span>
+            <div class="m"><div class="l1"><span class="qref">THI-117</span><span class="nm">Linked requests 识别模式</span><span class="tm">11:24</span></div><div class="pv">In review · References now show by title…</div></div></div>
+          <div class="sg">Running <span>3</span></div>
+          <div class="hrow"><span class="aic"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt=""><i class="sd ok"></i></span>
+            <div class="m"><div class="l1"><span class="qref">THI-121</span><span class="nm">默认队列与草稿持久化</span><span class="tm">11:20</span></div><div class="pv">Reopening the last queue on launch…</div></div></div>
+          <div class="hrow"><span class="aic"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt=""><i class="sd ok"></i></span>
+            <div class="m"><div class="l1"><span class="qref">THI-119</span><span class="nm">时间显示本地化</span><span class="tm">11:18</span></div><div class="pv">Running go test ./internal/board…</div></div></div>
+          <div class="hrow"><span class="aic"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNvZGV4PC90aXRsZT48cGF0aCBkPSJNOS4wNjQgMy4zNDRhNC41NzggNC41NzggMCAwMTIuMjg1LS4zMTJjMSAuMTE1IDEuODkxLjU0IDIuNjczIDEuMjc1LjAxLjAxLjAyNC4wMTcuMDM3LjAyMWEuMDkuMDkgMCAwMC4wNDMgMCA0LjU1IDQuNTUgMCAwMTMuMDQ2LjI3NWwuMDQ3LjAyMi4xMTYuMDU3YTQuNTgxIDQuNTgxIDAgMDEyLjE4OCAyLjM5OWMuMjA5LjUxLjMxMyAxLjA0MS4zMTUgMS41OTVhNC4yNCA0LjI0IDAgMDEtLjEzNCAxLjIyMy4xMjMuMTIzIDAgMDAuMDMuMTE1Yy41OTQuNjA3Ljk4OCAxLjMzIDEuMTgzIDIuMTcuMjg5IDEuNDI1LS4wMDcgMi43MS0uODg3IDMuODU0bC0uMTM2LjE2NmE0LjU0OCA0LjU0OCAwIDAxLTIuMjAxIDEuMzg4LjEyMy4xMjMgMCAwMC0uMDgxLjA3NmMtLjE5MS41NTEtLjM4MyAxLjAyMy0uNzQgMS40OTQtLjkgMS4xODctMi4yMjIgMS44NDYtMy43MTEgMS44MzgtMS4xODctLjAwNi0yLjIzOS0uNDQtMy4xNTctMS4zMDJhLjEwNy4xMDcgMCAwMC0uMTA1LS4wMjRjLS4zODguMTI1LS43OC4xNDMtMS4yMDQuMTM4YTQuNDQxIDQuNDQxIDAgMDEtMS45NDUtLjQ2NiA0LjU0NCA0LjU0NCAwIDAxLTEuNjEtMS4zMzVjLS4xNTItLjIwMi0uMzAzLS4zOTItLjQxNC0uNjE3YTUuODEgNS44MSAwIDAxLS4zNy0uOTYxIDQuNTgyIDQuNTgyIDAgMDEtLjAxNC0yLjI5OC4xMjQuMTI0IDAgMDAuMDA2LS4wNTYuMDg1LjA4NSAwIDAwLS4wMjctLjA0OCA0LjQ2NyA0LjQ2NyAwIDAxLTEuMDM0LTEuNjUxIDMuODk2IDMuODk2IDAgMDEtLjI1MS0xLjE5MiA1LjE4OSA1LjE4OSAwIDAxLjE0MS0xLjZjLjMzNy0xLjExMi45ODItMS45ODUgMS45MzMtMi42MTguMjEyLS4xNDEuNDEzLS4yNTEuNjAxLS4zMy4yMTUtLjA4OS40My0uMTY0LjY0Ni0uMjI3YS4wOTguMDk4IDAgMDAuMDY1LS4wNjYgNC41MSA0LjUxIDAgMDEuODI5LTEuNjE1IDQuNTM1IDQuNTM1IDAgMDExLjgzNy0xLjM4OHptMy40ODIgMTAuNTY1YS42MzcuNjM3IDAgMDAwIDEuMjcyaDMuNjM2YS42MzcuNjM3IDAgMTAwLTEuMjcyaC0zLjYzNnpNOC40NjIgOS4yM2EuNjM3LjYzNyAwIDAwLTEuMTA2LjYzMWwxLjI3MiAyLjIyNC0xLjI2NiAyLjEzNmEuNjM2LjYzNiAwIDEwMS4wOTUuNjQ5bDEuNDU0LTIuNDU1YS42MzYuNjM2IDAgMDAuMDA1LS42NEw4LjQ2MiA5LjIzeiIgZmlsbD0idXJsKCNsb2JlLWljb25zLWNvZGV4LV9SXzBfKSI+PC9wYXRoPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgaWQ9ImxvYmUtaWNvbnMtY29kZXgtX1JfMF8iIHgxPSIxMiIgeDI9IjEyIiB5MT0iMyIgeTI9IjIxIj48c3RvcCBzdG9wLWNvbG9yPSIjQjFBN0ZGIj48L3N0b3A+PHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iIzdBOURGRiI+PC9zdG9wPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzM5NDFGRiI+PC9zdG9wPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjwvc3ZnPg==" alt=""><i class="sd ok"></i></span>
+            <div class="m"><div class="l1"><span class="qref">THI-125</span><span class="nm">Menubar 会话计数</span><span class="tm">11:16</span></div><div class="pv">Reading native/macos/UI/Panel.swift…</div></div></div>
+          <div class="sg">Queued <span>2</span></div>
+          <div class="hrow"><span class="aic"><span class="qclock"><svg class="ico"><use href="#i-clock"/></svg></span></span>
+            <div class="m"><div class="l1"><span class="qref">THI-124</span><span class="nm">iOS 会话页等待卡片</span><span class="tm">11:36</span></div><div class="pv">Next up · 3/3 agents busy</div></div></div>
+          <div class="hrow"><span class="aic"><span class="qclock"><svg class="ico"><use href="#i-clock"/></svg></span></span>
+            <div class="m"><div class="l1"><span class="qref">THI-126</span><span class="nm">Website changelog page</span><span class="tm">11:38</span></div><div class="pv">1 ahead</div></div></div>
+          <div class="qmore">Done <span>58</span><svg class="ico sm"><use href="#i-chev"/></svg></div>
+        </div>
+        <div class="fade-b"></div>
+        <div class="bottombar"><span class="searchpill"><svg class="ico"><use href="#i-search"/></svg>Search requests</span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>Sessions | Queues at the top of home, only when the switch is on.</em> The queue name is a menu for switching between queues and remembers the last one, like the desktop app (THI-121). Groups follow the desktop board: <em>Needs you</em> (In review, Needs you, Failed), <em>Running</em>, <em>Queued</em> in start order, and Done collapsed into one row. Each row starts with the agent icon, or a clock while queued; the reference (THI-124) sits before the title. The second line of a queued row is its place in line. + makes a new request (23). Swipe actions: Mark done, Reopen.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>19</span> thread · queued</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn"><svg class="ico"><use href="#i-back"/></svg></span>
+          <span class="titlepill" style="padding-left:14px"><span style="min-width:0"><span class="t" style="display:block">iOS 会话页等待卡片</span><span class="st"><span class="qref" style="font-size:10.5px">THI-124</span>· <span class="qst"><i class="dot"></i>Queued</span></span></span></span>
+          <span class="cbtn"><svg class="ico"><use href="#i-more"/></svg></span>
+        </div>
+        <div class="msgs">
+          <div class="ub">iOS 端也加上和桌面端同样的等待卡片。新发的 request 在 Queued 状态下，会话页只有一条用户消息，像是渲染 bug。</div>
+          <div class="wait"><span class="wi"><svg class="ico"><use href="#i-clock"/></svg></span><div style="flex:1;min-width:0">
+            <div class="wt">Waiting for an agent<i></i></div>
+            <div class="wd">Next up · 3/3 agents busy</div>
+            <div class="wh"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt="">It starts when an agent is free. Its replies and live output will show here.</div>
+          </div></div>
+        </div>
+        <div class="composer"><span class="r plus"><svg class="ico"><use href="#i-plus"/></svg></span><span class="in">Add to this request</span><span class="r"><svg class="ico"><use href="#i-mic"/></svg></span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>The thread ends with a waiting card, the same one as on the desktop (THI-95).</em> A clock, "Waiting for an agent", then "Next up" or "{n} ahead" and "{working}/{limit} agents busy". The hint shows the icon of the queue's first enabled agent. The place in line uses the scheduler's start rule in internal/board/store.go: the first queued request in list order starts when the queue isn't paused and fewer than the limit are running. Unknown counts as running. Messages sent here are added to the request before it starts.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>19b</span> thread · queue paused</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn"><svg class="ico"><use href="#i-back"/></svg></span>
+          <span class="titlepill" style="padding-left:14px"><span style="min-width:0"><span class="t" style="display:block">iOS 会话页等待卡片</span><span class="st"><span class="qref" style="font-size:10.5px">THI-124</span>· <span class="qst"><i class="dot"></i>Queued</span></span></span></span>
+          <span class="cbtn"><svg class="ico"><use href="#i-more"/></svg></span>
+        </div>
+        <div class="msgs">
+          <div class="ub">iOS 端也加上和桌面端同样的等待卡片。新发的 request 在 Queued 状态下，会话页只有一条用户消息，像是渲染 bug。</div>
+          <div class="wait"><span class="wi"><svg class="ico"><use href="#i-clock"/></svg></span><div style="flex:1;min-width:0">
+            <div class="wt">Waiting for an agent<i></i></div>
+            <div class="wd">Queue paused</div>
+            <div class="wh"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt="">It starts once the queue is resumed. Its replies and live output will show here.</div>
+          </div></div>
+        </div>
+        <div class="composer"><span class="r plus"><svg class="ico"><use href="#i-plus"/></svg></span><span class="in">Add to this request</span><span class="r"><svg class="ico"><use href="#i-mic"/></svg></span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>A paused queue says so instead of a place in line.</em> Same card and copy as the desktop. Pausing and resuming stay on the Mac for now. The queue menu on 18 shows "Paused" next to the name.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>20</span> thread · starting</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn"><svg class="ico"><use href="#i-back"/></svg></span>
+          <span class="titlepill" style="padding-left:14px"><span style="min-width:0"><span class="t" style="display:block">iOS 会话页等待卡片</span><span class="st"><span class="qref" style="font-size:10.5px">THI-124</span>· <span class="qst"><i class="dot ok"></i>Running</span></span></span></span>
+          <span class="cbtn"><svg class="ico"><use href="#i-more"/></svg></span>
+        </div>
+        <div class="msgs">
+          <div class="ub">iOS 端也加上和桌面端同样的等待卡片。新发的 request 在 Queued 状态下，会话页只有一条用户消息，像是渲染 bug。</div>
+          <div class="wait"><span class="wi"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt=""></span><div style="flex:1;min-width:0">
+            <div class="wt">Claude Code<i class="ok"></i><span>Starting…</span></div>
+          </div></div>
+        </div>
+        <div class="composer"><span class="r plus"><svg class="ico"><use href="#i-plus"/></svg></span><span class="in">Reply</span><span class="r"><svg class="ico"><use href="#i-mic"/></svg></span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>Dispatched, but its session isn't visible yet.</em> The card switches to the dispatched agent's icon and name with a green dot and "Starting…". This shows when the request is Running or Unknown, has no visible session, and its last run is <code class="mono-in">starting</code>. When the session appears, the live card (21) replaces it.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>21</span> thread · running</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn"><svg class="ico"><use href="#i-back"/></svg></span>
+          <span class="titlepill" style="padding-left:14px"><span style="min-width:0"><span class="t" style="display:block">iOS 会话页等待卡片</span><span class="st"><span class="qref" style="font-size:10.5px">THI-124</span>· <span class="qst"><i class="dot ok"></i>Running</span></span></span></span>
+          <span class="cbtn"><svg class="ico"><use href="#i-more"/></svg></span>
+        </div>
+        <div class="msgs">
+          <div class="ub">iOS 端也加上和桌面端同样的等待卡片。新发的 request 在 Queued 状态下，会话页只有一条用户消息，像是渲染 bug。</div>
+          <div class="peek">
+            <div class="ph"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" alt="">Claude Code<span>Open session<svg class="ico xs"><use href="#i-chev"/></svg></span></div>
+            <pre>Reading ios/Fennec/Views/ChatView.swift
+Editing ios/DESIGN.html (+212 −0)
+Running make ios…</pre>
+          </div>
+        </div>
+        <div class="composer"><span class="r plus"><svg class="ico"><use href="#i-plus"/></svg></span><span class="in">Reply</span><span class="r"><svg class="ico"><use href="#i-mic"/></svg></span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>Live output, the same card as the desktop peek.</em> The last few lines of the agent's session, updated live. "Open session" opens the existing chat view (06) for that session, where approvals and questions are answered as usual. A reply sent here goes to the request and reaches the agent through the queue.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>22</span> thread · in review</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="nav">
+          <span class="cbtn"><svg class="ico"><use href="#i-back"/></svg></span>
+          <span class="titlepill" style="padding-left:14px"><span style="min-width:0"><span class="t" style="display:block">iOS 会话页等待卡片</span><span class="st"><span class="qref" style="font-size:10.5px">THI-124</span>· <span class="qst"><i class="dot ac"></i>In review</span></span></span></span>
+          <span class="cbtn"><svg class="ico"><use href="#i-more"/></svg></span>
+        </div>
+        <div class="msgs">
+          <div class="ub">iOS 端也加上和桌面端同样的等待卡片。新发的 request 在 Queued 状态下，会话页只有一条用户消息，像是渲染 bug。</div>
+          <div style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--fg2)"><img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjFlbSIgc3R5bGU9ImZsZXg6bm9uZTtsaW5lLWhlaWdodDoxIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxZW0iIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHRpdGxlPkNsYXVkZSBDb2RlPC90aXRsZT48cGF0aCBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0yMC45OTggMTAuOTQ5SDI0djMuMTAyaC0zdjMuMDI4aC0xLjQ4N1YyMEgxOHYtMi45MjFoLTEuNDg3VjIwSDE1di0yLjkyMUg5VjIwSDcuNDg4di0yLjkyMUg2VjIwSDQuNDg3di0yLjkyMUgzVjE0LjA1SDBWMTAuOTVoM1Y1aDE3Ljk5OHY1Ljk0OXpNNiAxMC45NDloMS40ODhWOC4xMDJINnYyLjg0N3ptMTAuNTEgMEgxOFY4LjEwMmgtMS40OXYyLjg0N3oiIGZpbGw9IiNEOTc3NTciIGZpbGwtcnVsZT0iZXZlbm9kZCI+PC9wYXRoPjwvc3ZnPg==" style="width:16px;height:16px" alt="">Claude Code · 11:52</div>
+          <div class="ab">Added the waiting card to the iOS thread page. The place in line follows the board's start rule, and it has unit tests. Merged to main as <code>4e1c0aa</code>.</div>
+        </div>
+        <div class="qbar"><span><svg class="ico sm"><use href="#i-check"/></svg>Mark done</span></div>
+        <div class="composer"><span class="r plus"><svg class="ico"><use href="#i-plus"/></svg></span><span class="in">Reply</span><span class="r"><svg class="ico"><use href="#i-mic"/></svg></span></div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>Agent replies read like chat replies.</em> Each one shows the agent and time. In review, Needs you and Failed put a glass <em>Mark done</em> button above the composer. Replying sends the request back to Queued, as on the desktop. A notification, "A request needs you", opens this thread.</figcaption>
+    </figure>
+    <figure>
+      <div class="label"><span>23</span> new request</div>
+      <div class="phone"><div class="app">
+        <div class="sb"><span>9:41</span><i class="isl"></i><span class="sig"><svg><use href="#i-sig"/></svg><svg><use href="#i-wifi"/></svg><svg style="width:24px"><use href="#i-bat"/></svg></span></div>
+        <div class="scrim"></div>
+        <div class="sheet" style="top:54px;gap:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px"><span style="font-weight:500">Cancel</span><span style="font-weight:500">New request</span><span style="width:44px"></span></div>
+          <div class="pick"><span class="on"><svg class="ico xs"><use href="#i-grid"/></svg>Fennec</span><span>Auto tag</span><span>Bug</span><span>iOS</span></div>
+          <div style="flex:1;font-size:15px;line-height:1.5;color:var(--fg)">Changelog 页面按版本分组，每条链接到对应的 request<span class="caret"></span></div>
+          <div class="qnote">Goes to the end of the Fennec queue · 3/3 agents busy</div>
+          <div class="btn pri">Send to queue</div>
+        </div>
+        <i class="hi"></i>
+      </div></div>
+      <figcaption><em>The + on the Queues tab opens a sheet, not a new screen.</em> The queue defaults to the one on screen; the tag defaults to Auto, like the desktop. The line above Send says where the request lands before you send it. After Send, its thread opens with the waiting card (19).</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="sec">
   <div class="sec-h"><b>LG</b> Liquid Glass</div>
   <p class="lede" style="margin-top:0">Follows the iOS 26 layering: controls are Liquid Glass floating over content, and content stays opaque. Glass only reads when content passes beneath it (blur, refraction, edge highlights), so every screen is drawn with "content under the controls". Glass never stacks on glass.</p>
@@ -1029,6 +1259,7 @@ figcaption .q{display:block;margin-top:6px;color:#d9a46d}
     <div class="qq"><h4><span>Q3</span>List titles</h4><p>Decided: use the session's existing title, as the Mac panel does, or Untitled session when there is none. Session IDs (like free-bone) never appear in the phone UI.</p></div>
     <div class="qq"><h4><span>Q4</span>Theme</h4><p>Grok is dark only. Fennec follows the system setting, with dark as the primary look. Buttons and user bubbles are neutral (Mono); orange marks state and selection. The toggle at the top right compares Warm (tinted bubbles) and Ember (deep orange buttons).</p></div>
         <div class="qq"><h4><span>Q6</span>Push</h4><p>Lock Screen approval and Live Activities need the Runta server to send APNs pushes, plus a state channel from the cloud computer to the push service. Without push, the app refreshes state only while open.</p></div>
+    <div class="qq"><h4><span>Q7</span>Queues on iPhone</h4><p>Off by default (17). First version: read queues, open threads, reply, Mark done, new request. Pause/resume, reordering, tag and project settings stay on the Mac. Open: should a queue reply also be a push notification while the app is closed? That depends on push (Q6).</p></div>
   </div>
 </section>
 </div>
