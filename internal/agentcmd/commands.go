@@ -10,4 +10,6 @@ func BinaryName(id string) string {
 }
 
 // NativeOnly agents use their own accounts even when Magpie serves other agents.
-func NativeOnly(id string) bool { return id == "cursor" }
+// agy is one by choice: Magpie would serve it by reverse-proxying Google's Gemini
+// service, which can get the Google account suspended (THI-123).
+func NativeOnly(id string) bool { return id == "cursor" || id == "agy" }

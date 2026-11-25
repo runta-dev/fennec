@@ -119,6 +119,8 @@ func nativeAccountView(agent string, read func(string) []byte) NativeAccountView
 		}
 	case "cursor", "grok":
 		view.Accounts = vendorAccounts(agent, read)
+	case "agy":
+		view.Accounts = agyAccounts(read)
 	case "codex":
 		auth := jsonObject(read("codex/auth.json"))
 		var config map[string]any

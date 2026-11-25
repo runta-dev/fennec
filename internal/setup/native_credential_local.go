@@ -128,6 +128,13 @@ func (st NativeCredentialStore) Locations(agents []string) []NativeCredentialLoc
 			out = append(out, NativeCredentialLocation{Name: "pi/auth.json", File: filepath.Join(s.dir("PI_CODING_AGENT_DIR", ".pi/agent"), "auth.json")})
 		case "kimi":
 			out = append(out, NativeCredentialLocation{Name: kimiCredentialFile, File: filepath.Join(s.dir(kimiHomeEnv, kimiHomeDefault), "credentials", "kimi-code.json")})
+		case "agy":
+			// Fennec never writes agy's own sign-in back: the Mac's copy is the source.
+			location := NativeCredentialLocation{Name: agyAuthFile, File: agyTokenPath(s.Home), ReadOnly: true}
+			if s.Keychain != nil {
+				location.Service, location.Account = agyKeychainService, agyKeychainAccount
+			}
+			out = append(out, location)
 		case "opencode":
 			out = append(out, NativeCredentialLocation{Name: "opencode/data/opencode/auth.json", File: filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json")})
 		}

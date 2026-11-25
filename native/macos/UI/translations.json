@@ -1450,37 +1450,13 @@
       "zh-CN": "授权码已过期，请重新登录。",
       "zh-TW": "授權碼已過期，請重新登入。"
     },
-    "ui.agy_magpie_risk_title": {
-      "en-GB": "Use Antigravity CLI through Magpie?",
-      "en-US": "Use Antigravity CLI through Magpie?",
-      "ja": "Magpie 経由で Antigravity CLI を使いますか？",
-      "ko": "Magpie를 통해 Antigravity CLI를 사용할까요?",
-      "zh-CN": "通过 Magpie 使用 Antigravity CLI？",
-      "zh-TW": "透過 Magpie 使用 Antigravity CLI？"
-    },
-    "ui.agy_magpie_risk_warning": {
-      "en-GB": "Magpie reverse-proxies Google's Gemini service for Antigravity CLI. Google may suspend accounts used this way, so use it with caution.",
-      "en-US": "Magpie reverse-proxies Google's Gemini service for Antigravity CLI. Google may suspend accounts used this way, so use it with caution.",
-      "ja": "Magpie は Antigravity CLI のために Google の Gemini サービスをリバースプロキシします。この使い方はアカウント停止につながる可能性があるため、慎重にご利用ください。",
-      "ko": "Magpie는 Antigravity CLI를 위해 Google Gemini 서비스를 리버스 프록시합니다. 이렇게 사용하면 계정이 정지될 수 있으니 주의해서 사용하세요.",
-      "zh-CN": "Magpie 会为 Antigravity CLI 反向代理 Google 的 Gemini 服务，这样使用可能导致账号被封禁，建议谨慎使用。",
-      "zh-TW": "Magpie 會為 Antigravity CLI 反向代理 Google 的 Gemini 服務，這樣使用可能導致帳號被停權，建議謹慎使用。"
-    },
-    "ui.agy_magpie_risk_confirm": {
-      "en-GB": "Use Magpie",
-      "en-US": "Use Magpie",
-      "ja": "Magpie を使う",
-      "ko": "Magpie 사용",
-      "zh-CN": "仍然使用",
-      "zh-TW": "仍然使用"
-    },
-    "ui.agy_sign_in_in_session": {
-      "en-GB": "Sign in with your Google account in the first Antigravity CLI session on the cloud computer.",
-      "en-US": "Sign in with your Google account in the first Antigravity CLI session on the cloud computer.",
-      "ja": "クラウドコンピューターで最初に開いた Antigravity CLI セッションで Google アカウントにログインしてください。",
-      "ko": "클라우드 컴퓨터에서 처음 여는 Antigravity CLI 세션에서 Google 계정으로 로그인하세요.",
-      "zh-CN": "在云电脑上首次打开 Antigravity CLI 会话时，用你的 Google 账号登录。",
-      "zh-TW": "在雲端電腦上首次開啟 Antigravity CLI 工作階段時，用你的 Google 帳號登入。"
+    "ui.agy_sign_in_on_mac": {
+      "en-GB": "Sign in to Antigravity CLI on this Mac, and Fennec will copy that sign-in to the cloud computer.",
+      "en-US": "Sign in to Antigravity CLI on this Mac, and Fennec will copy that sign-in to the cloud computer.",
+      "ja": "この Mac で Antigravity CLI にログインすると、Fennec がそのログイン情報をクラウドコンピューターにコピーします。",
+      "ko": "이 Mac에서 Antigravity CLI에 로그인하면 Fennec이 그 로그인 정보를 클라우드 컴퓨터로 복사합니다.",
+      "zh-CN": "在这台 Mac 上登录 Antigravity CLI 后，Fennec 会把登录信息迁移到云电脑。",
+      "zh-TW": "在這台 Mac 上登入 Antigravity CLI 後，Fennec 會把登入資訊遷移到雲端電腦。"
     },
     "ui.chatgpt_reconnect_title": {
       "en-GB": "Reconnect ChatGPT?",

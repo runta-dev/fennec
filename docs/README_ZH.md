@@ -70,7 +70,7 @@ Fennec 将编程代理的工作循环放到云电脑上运行，让它按你的�
 
 Cursor CLI 使用 `cursor-agent`，Grok Build 使用 `grok`；Fennec 不接管 Cursor 编辑器的 `cursor` 命令或共用的 `agent` 别名。开启 Magpie 时，Grok Build 通过 Magpie 接管，并可在 Fennec 中选择模型；关闭时使用原生账号。Magpie 尚不支持接管 Cursor CLI，因此 Cursor 保留原生账号：可以从代理卡片或通过 `fen agent login cursor` 登录，并在 Cursor 内通过 `/model` 或 `--model` 选择模型。
 
-Antigravity CLI（`agy`）会按 Google 的发布清单安装到云电脑。关闭 Magpie 时，它使用你在云端首个会话里登录的 Google 账号；Fennec 不会从 Mac 复制它的登录信息。开启 Magpie 时，Fennec 通过 `magpie agy run` 用你选的模型启动它。这时 Magpie 会反向代理 Google 的 Gemini 服务，这样使用可能导致账号被封禁，所以 Fennec 会在接入前确认，并在代理卡片上保留警告。
+Antigravity CLI（`agy`）会按 Google 的发布清单安装到云电脑，并且始终使用从这台 Mac 迁移过去的 Google 登录信息（agy 保存在钥匙串里的条目，或 `~/.gemini/antigravity-cli/antigravity-oauth-token`）。Fennec 不会让它通过 Magpie 接管：那等于反向代理 Google 的 Gemini 服务，可能导致账号被封禁。请先在 Mac 上登录 agy，Fennec 会把登录信息迁移到云端。
 
 OpenCode 的两个 CLI 版本均支持云端启动、Magpie 模型选择和持久终端会话。版本 2 为每个 Fennec 会话启动独立服务。原生凭据迁移目前支持旧版 `auth.json` 格式，不同步仅存于 OpenCode 2 数据库中的凭据；OpenCode 2 账号请使用 Magpie。尚未支持的 Coming soon 项统一排在列表末尾。
 

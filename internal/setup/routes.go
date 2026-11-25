@@ -47,7 +47,7 @@ func LocalAgentRoutes(ctx context.Context, agents []Agent) []AgentRoute {
 			routes = append(routes, route)
 			continue
 		}
-		if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true, "agy": true}[agent.ID] {
+		if !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}[agent.ID] {
 			route.Problem = "unsupported_agent"
 			routes = append(routes, route)
 			continue
@@ -99,7 +99,7 @@ func ConfiguredAgentRoutes(home string, agents []Agent) []AgentRoute {
 		switch {
 		case binary == "":
 			route.Problem = "local_gateway_not_found"
-		case !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true, "agy": true}[agent.ID]:
+		case !map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true, "kimi": true, "grok": true}[agent.ID]:
 			route.Problem = "unsupported_agent"
 		default:
 			if model, ok := readConfiguredMagpieModel(home, agent.ID); ok {

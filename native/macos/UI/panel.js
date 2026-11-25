@@ -214,7 +214,9 @@ window.renderAgents = agents => {
     // ChatGPT (Codex Desktop) shares Codex's Magpie, account and model settings
     // for the computer it runs on.
     const configAgent = desktop ? 'codex' : agent.id;
-    const nativeOnly = configAgent === 'cursor';
+    // agy only uses its own (the Mac's) Google sign-in: through Magpie it would be a
+    // reverse proxy of Google's Gemini service, which can get the account suspended.
+    const nativeOnly = configAgent === 'cursor' || configAgent === 'agy';
     const nativeModelPicker = !['cursor','grok','opencode','agy'].includes(configAgent);
     // Magpie can be on in Settings yet turned off for this agent alone.
     const magpieAvailable = magpieEnabled && !nativeOnly;
@@ -243,7 +245,7 @@ window.renderAgents = agents => {
     head.onclick = () => {
       expandedAgent = expandedAgent === agent.id ? null : agent.id;
       if(expandedAgent && agentMagpie && !takeoverAgents.has(agent.id))loadLocalGatewayModel(configAgent);
-      if(expandedAgent && !agentMagpie && configAgent!=='agy'){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&nativeModelPicker)loadNativeModel(configAgent);}
+      if(expandedAgent && !agentMagpie){loadNativeAccount(configAgent,takeoverAgents.has(agent.id)?'cloud':'local');if(takeoverAgents.has(agent.id)&&nativeModelPicker)loadNativeModel(configAgent);}
       list.querySelectorAll('.agent-head').forEach(button => {
         const body = document.getElementById(button.getAttribute('aria-controls'));
         if (!body) return;
@@ -335,12 +337,8 @@ window.renderAgents = agents => {
         if(info){const tooltip=info.querySelector('[role="tooltip"]');const button=info.querySelector('.setting-info-button');if(tooltip&&button){tooltip.id='magpie-info-'+agent.id;button.setAttribute('aria-describedby',tooltip.id);}}
         const toggle=document.createElement('button');toggle.className='switch';toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-label','Magpie');toggle.setAttribute('aria-checked',String(agentMagpie));
         toggle.onclick=()=>toggleAgentMagpie(configAgent,!agentMagpie);
-        if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);
-        // Also shown when Magpie reached agy through the Settings switch.
-        if(configAgent==='agy'&&agentMagpie){const risk=document.createElement('div');risk.className='agent-risk-note';risk.setAttribute('role','note');risk.textContent="[[i18n:ui.agy_magpie_risk_warning]]";detail.append(risk);}
-      }
-      if(configAgent==='agy'&&!agentMagpie){const hint=document.createElement('div');hint.className='agent-risk-note is-info';hint.textContent="[[i18n:ui.agy_sign_in_in_session]]";detail.append(hint);}
-      if(!agentMagpie&&configAgent!=='agy'){
+        if(icon)row.append(icon);row.append(label);if(info)row.append(info);row.append(toggle);detail.append(row);      }
+      if(!agentMagpie){
         const location=enabled?'cloud':'local';const key=configAgent+':'+location;const account=nativeAccountStates.get(key);
         if(expandedAgent===agent.id&&!account&&!nativeAccountPending.has(key))loadNativeAccount(configAgent,location);
         statusNode.hidden=true;statusNode.textContent='';
@@ -359,10 +357,12 @@ window.renderAgents = agents => {
           const refresh=document.createElement('button');refresh.type='button';refresh.className='native-account-refresh';refresh.setAttribute('aria-label',"[[i18n:ui.refresh_account]]");refresh.title="[[i18n:ui.refresh_account]]";refresh.disabled=nativeAccountPending.has(key);
           refresh.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg>';
           refresh.onclick=()=>{loadNativeAccount(configAgent,location,true);refresh.disabled=true;};accountRow.append(refresh);
-          if(enabled&&configAgent!=='opencode'&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=configAgent;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;window.configureAgentLoginControl?.(login,!!route);login.onclick=()=>window.startAgentLogin(configAgent);accountRow.append(login);}
+          if(enabled&&!['opencode','agy'].includes(configAgent)&&account?.status==='signed_out'){const login=document.createElement('button');login.type='button';login.className='native-account-login';login.dataset.agent=configAgent;login.textContent="[[i18n:ui.sign_in]]";login.disabled=!route;window.configureAgentLoginControl?.(login,!!route);login.onclick=()=>window.startAgentLogin(configAgent);accountRow.append(login);}
           card.append(accountRow);
         }
         detail.append(card);
+        // agy's cloud sign-in only ever comes from this Mac.
+        if(configAgent==='agy'&&account?.status==='signed_out'){const hint=document.createElement('div');hint.className='agent-account-hint';hint.textContent="[[i18n:ui.agy_sign_in_on_mac]]";detail.append(hint);}
       }
       if (agentMagpie || (enabled && ['codex','claude','pi','kimi'].includes(configAgent))) {
         const native=nativeModelStates.get(configAgent);
@@ -1548,9 +1548,6 @@ function toggleMagpie() {
 // Connects or disconnects one agent; Magpie keeps serving every other agent.
 function toggleAgentMagpie(agent, enabled) {
   const change = () => send('settings:' + JSON.stringify({magpie_agent: {agent, enabled}}));
-  // Magpie serves agy as a reverse proxy of Google's Gemini API; Google may
-  // suspend an account it sees used that way, so turning it on asks first.
-  if (agent === 'agy' && enabled) { confirmChatGPT({title: "[[i18n:ui.agy_magpie_risk_title]]", body: "[[i18n:ui.agy_magpie_risk_warning]]", action: "[[i18n:ui.agy_magpie_risk_confirm]]"}, change); return; }
   if (agent !== 'codex' || !takeoverAgents.has('codex-desktop')) { change(); return; }
   confirmChatGPT({title: "[[i18n:ui.chatgpt_reconnect_title]]", body: enabled ? "[[i18n:ui.chatgpt_reconnect_with_magpie]]" : "[[i18n:ui.chatgpt_reconnect_without_magpie]]", action: "[[i18n:ui.reconnect_chatgpt]]"}, change);
 }

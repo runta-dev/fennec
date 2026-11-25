@@ -246,20 +246,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
-	if request.Agent == "agy" {
-		// agy keeps its Google sign-in in the cloud's ~/.gemini/antigravity-cli;
-		// Fennec syncs no agy credentials, so native mode runs it as it is.
-		// On Magpie, agy takes the gateway only from its environment and a
-		// --settings file of Magpie's: `magpie agy run` adds both, or starts
-		// plain agy while no Magpie model is picked for it.
-		if !setup.NativeAgent(runtime.Home, request.Agent) {
-			magpie := setup.LocalMagpieBinary(runtime.Home)
-			if magpie == "" {
-				return LocalTerminal{}, ErrAgentExecutableMissing
-			}
-			command = append([]string{magpie, "agy", "run"}, command[1:]...)
-		}
-	} else if setup.NativeAgent(runtime.Home, request.Agent) {
+	if setup.NativeAgent(runtime.Home, request.Agent) {
 		// The launcher reads secrets from private files, never command arguments.
 		if request.Agent == "claude" || request.Agent == "kimi" {
 			command = command[2:]

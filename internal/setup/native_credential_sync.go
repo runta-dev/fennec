@@ -40,6 +40,7 @@ var nativeCredentialFiles = map[string]string{
 	"pi/auth.json":                     "pi",
 	"opencode/data/opencode/auth.json": "opencode",
 	kimiCredentialFile:                 "kimi",
+	agyAuthFile:                        "agy",
 }
 
 // NativeCredentialNames lists the credential files in a stable order.

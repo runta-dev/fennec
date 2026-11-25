@@ -30,6 +30,7 @@ import (
 // shell hooks, MCP commands, or arbitrary local directories are copied.
 var nativeFiles = map[string]bool{
 	cursorAuthFile: true, cursorConfigFile: true, grokAuthFile: true, grokConfigFile: true,
+	agyAuthFile: true,
 	"codex/auth.json": true, "codex/config.toml": true,
 	"claude/.credentials.json": true, "claude/settings.json": true, "claude/.claude.json": true,
 	"pi/auth.json": true, "pi/settings.json": true, "pi/models.json": true,
@@ -489,6 +490,16 @@ func (s NativeSource) Gather(ctx context.Context, agents []string) (ModelAccount
 				}
 			} else if !os.IsNotExist(err) {
 				return r, err
+			}
+		case "agy":
+			data, err := s.agyCredentials(ctx)
+			if err != nil {
+				return r, err
+			}
+			if len(data) > 0 {
+				if err := add(agyAuthFile, data); err != nil {
+					return r, err
+				}
 			}
 		case "opencode":
 			if e := read("opencode/data/opencode/auth.json", filepath.Join(s.dir("XDG_DATA_HOME", ".local/share"), "opencode/auth.json"), nil); e != nil {

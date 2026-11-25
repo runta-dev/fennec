@@ -120,6 +120,8 @@ func resolveNativeCredential(ctx context.Context, name string, cloud, local []by
 		return pick(chooseNativeCredential(ctx, codexEntry(c), codexEntry(l)))
 	case kimiCredentialFile:
 		return pick(chooseNativeCredential(ctx, kimiEntry(c), kimiEntry(l)))
+	case agyAuthFile:
+		return pick(chooseNativeCredential(ctx, agyEntry(c), agyEntry(l)))
 	case "pi/auth.json", "opencode/data/opencode/auth.json":
 		merged := map[string]any{}
 		for key, value := range l {

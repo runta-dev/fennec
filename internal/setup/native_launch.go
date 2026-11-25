@@ -66,7 +66,7 @@ func readAgentMode(home string) (agentMode, bool) {
 	return mode, e == nil && json.Unmarshal(b, &mode) == nil
 }
 func ExecNativeAgent(home, agent string, args []string) error {
-	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true}[agent] {
+	if !map[string]bool{"codex": true, "claude": true, "pi": true, "opencode": true, "kimi": true, "cursor": true, "grok": true, "agy": true}[agent] {
 		return fmt.Errorf("unsupported native agent")
 	}
 	ensureCloudSearchTools(home)
@@ -120,6 +120,11 @@ func nativeAgentEnvironment(home, agent string) ([]string, error) {
 		env = append(env, "CURSOR_CONFIG_DIR="+filepath.Join(root, "cursor"), "XDG_CONFIG_HOME="+root, "AGENT_CLI_CREDENTIAL_STORE=file", "CURSOR_DATA_DIR="+filepath.Join(root, "cursor"))
 	case "grok":
 		env = append(env, "GROK_HOME="+filepath.Join(root, "grok"))
+	case "agy":
+		// agy reads only $HOME/.gemini; put the Mac's sign-in there.
+		if err := installAgyToken(home, root); err != nil {
+			return nil, err
+		}
 	case "codex":
 		env = append(env, "CODEX_HOME="+filepath.Join(root, "codex"))
 	case "claude":
