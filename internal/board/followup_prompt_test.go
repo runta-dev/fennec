@@ -17,13 +17,13 @@ func TestFollowUpPromptIsOnlyTheNewMessages(t *testing.T) {
 		t.Fatal("the first run must get the full prompt")
 	}
 	store.Complete(p.ID, r.Number, "calm-fox", "claude", "A very long agent reply", NeedsYou)
-	store.FollowUp(p.ID, r.Number, "me", "发新的 testflight", nil)
+	store.FollowUp(p.ID, r.Number, "me", "\u53d1\u65b0\u7684 testflight", nil)
 	r, err := store.ClaimAt(p.ID, r.Number, "green-leaf", "claude", "cloud")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := FollowUpPrompt(p, r, "fen")
-	if !strings.HasPrefix(got, "发新的 testflight\n\n") || !strings.Contains(got, "fen reply "+p.ID+" 1 claude green-leaf resolved|you|failed") {
+	if !strings.HasPrefix(got, "\u53d1\u65b0\u7684 testflight\n\n") || !strings.Contains(got, "fen reply "+p.ID+" 1 claude green-leaf resolved|you|failed") {
 		t.Fatalf("%q", got)
 	}
 	for _, old := range []string{"First ask", "agent reply", "Queue knowledge"} {
