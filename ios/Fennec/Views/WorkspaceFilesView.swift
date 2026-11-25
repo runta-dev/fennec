@@ -33,7 +33,17 @@ struct WorkspaceFileCard: View {
     @State private var failed = false
 
     /// Images and web pages show what they look like; other files their name.
-    private var visual: Bool { file?.kind == "image" || file?.isWebPage == true }
+    private var visual: Bool { shownFile?.kind == "image" || shownFile?.isWebPage == true }
+
+    /// The conversation is lazy: a card scrolled away and back is a new view.
+    /// What an earlier one loaded is read here, in its first layout, so it
+    /// comes back at its full height at once instead of growing a frame
+    /// later (`.task` runs after the first layout) and moving the page.
+    private var cached: WorkspacePreviewCache.Entry? {
+        file == nil || thumbnail == nil ? WorkspacePreviewCache.shared[cacheKey] : nil
+    }
+    private var shownFile: WorkspaceFile? { file ?? cached?.file }
+    private var shownThumbnail: UIImage? { thumbnail ?? cached?.thumbnail }
 
     var body: some View {
         Button {
@@ -49,8 +59,8 @@ struct WorkspaceFileCard: View {
                 if visual {
                     ZStack {
                         Theme.surface2
-                        if let thumbnail {
-                            if file?.isWebPage == true {
+                        if let thumbnail = shownThumbnail {
+                            if shownFile?.isWebPage == true {
                                 // The top of the page, as it is laid out.
                                 Image(uiImage: thumbnail).resizable().scaledToFill()
                                     .frame(maxHeight: .infinity, alignment: .top)
@@ -61,7 +71,7 @@ struct WorkspaceFileCard: View {
                             ProgressView()
                         }
                     }
-                    .frame(maxWidth: .infinity).frame(height: file?.isWebPage == true ? 220 : 180)
+                    .frame(maxWidth: .infinity).frame(height: shownFile?.isWebPage == true ? 220 : 180)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 Text(caption)
@@ -81,9 +91,7 @@ struct WorkspaceFileCard: View {
         .accessibilityLabel(L10n.text("ios.preview_file", values: ["name": caption]))
         .accessibilityIdentifier("workspace-file-preview")
         .task(id: ref) {
-            // The conversation is lazy: a card scrolled away and back is a
-            // new view. Take what an earlier one loaded, so it comes back at
-            // its full height at once instead of loading (and growing) again.
+            // Take what an earlier card loaded instead of loading it again.
             if file == nil, let cached = WorkspacePreviewCache.shared[cacheKey] {
                 file = cached.file
                 localURL = cached.localURL
@@ -99,21 +107,33 @@ struct WorkspaceFileCard: View {
     }
 
     private var caption: String {
-        guard let file else { return L10n.text("ios.attachments") }
+        guard let file = shownFile else { return L10n.text("ios.attachments") }
         return file.title.isEmpty ? file.name : file.title
     }
 
     private var cacheKey: String { sessionID + "\n" + ref }
+
+    private func remember() {
+        guard let file else { return }
+        let earlier = WorkspacePreviewCache.shared[cacheKey]
+        WorkspacePreviewCache.shared[cacheKey] = .init(file: file, localURL: localURL ?? earlier?.localURL,
+                                                       thumbnail: thumbnail ?? earlier?.thumbnail)
+    }
 
     private func load(download: Bool) async {
         guard !loading else { return }
         loading = true
         defer {
             loading = false
-            if let file { WorkspacePreviewCache.shared[cacheKey] = .init(file: file, localURL: localURL, thumbnail: thumbnail) }
+            remember()
         }
         do {
-            if file == nil { file = try await store.previewMetadata(ref, sessionID: sessionID) }
+            if file == nil {
+                file = try await store.previewMetadata(ref, sessionID: sessionID)
+                // Known now, not only when the thumbnail is done (a web page
+                // takes seconds): a card rebuilt meanwhile keeps its height.
+                remember()
+            }
             guard let file else { return }
             let visual = file.kind == "image" || file.isWebPage
             if localURL == nil && (download || visual) {

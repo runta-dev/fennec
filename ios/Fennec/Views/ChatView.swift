@@ -179,13 +179,15 @@ struct ChatView: View {
                 // start scrolling up must not pull you back to the bottom
                 // (the phase change that stops following can come later).
                 let wasAtBottom = old.visibleRect.maxY >= old.contentSize.height - 80
-                if followBottom, wasAtBottom, !scrollFacts.phase.isScrolling { proxy.scrollTo("bottom", anchor: .bottom) }
+                if followBottom, wasAtBottom, scrollFacts.phase == .idle { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { _, height in
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.containerSize.height }) { old, height in
                 scrollFacts.containerHeight = height
                 // Dragging the keyboard away resizes the list; keep your scroll.
-                guard !scrollFacts.phase.isScrolling else { return }
-                if followBottom || composerFocused { proxy.scrollTo("bottom", anchor: .bottom) }
+                guard scrollFacts.phase == .idle else { return }
+                // The keyboard rising over the composer shows the newest
+                // message; the keyboard going away leaves where you read.
+                if followBottom || (composerFocused && height < old) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: store.pendingSends[session.id]?.message.id) {
                 followBottom = true
@@ -193,10 +195,11 @@ struct ChatView: View {
             }
             .onScrollPhaseChange { _, phase, context in
                 scrollFacts.phase = phase
-                // Your finger on the list stops following at once, so content
-                // settling while you scroll (a preview loading) can't pull the
-                // page back to the newest message.
-                if phase == .interacting { followBottom = false }
+                // Your finger touching the list stops following at once, before
+                // it moves, so content settling under it (a preview loading)
+                // can't pull the page back to the newest message. Lifting it
+                // near the bottom follows again.
+                if phase == .tracking || phase == .interacting { followBottom = false }
                 guard phase == .idle else { return }
                 let geometry = context.geometry
                 followBottom = geometry.visibleRect.maxY >= geometry.contentSize.height - 80
@@ -207,7 +210,7 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: session.messages.count) {
-                if followBottom, !scrollFacts.phase.isScrolling { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if followBottom, scrollFacts.phase == .idle { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
             .onChange(of: session.transcriptLoaded) {
                 proxy.scrollTo("bottom", anchor: .bottom)
@@ -871,11 +874,6 @@ extension EnvironmentValues {
 
 /// What the conversation's scroll view last reported. A plain class: written
 /// on every scroll, read only when a turn opens, never redraws anything.
-private extension ScrollPhase {
-    /// A finger on the list, or the list still moving from one.
-    var isScrolling: Bool { self == .tracking || self == .interacting || self == .decelerating }
-}
-
 private final class ScrollFacts {
     var phase: ScrollPhase = .idle
     var containerHeight: CGFloat = 0
