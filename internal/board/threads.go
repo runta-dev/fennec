@@ -116,6 +116,13 @@ func threadMarkdown(p Project, r Request, related []Related) string {
 				verb = map[string]string{LinkRelated: "related to", LinkDuplicate: "has duplicate", "mention": "mentioned by"}[rel.Kind]
 			}
 			fmt.Fprintf(&b, "- %s %s [%s] %s\n", verb, ref(rel.Number), rel.Status, rel.Title)
+			for _, m := range rel.Mentions {
+				who := m.Author
+				if m.Agent != "" {
+					who = m.Agent + " (agent)"
+				}
+				fmt.Fprintf(&b, "  - %s, %s: %s\n", who, m.At.UTC().Format("2006-01-02 15:04 UTC"), m.Excerpt)
+			}
 		}
 	}
 	for _, m := range r.Messages {

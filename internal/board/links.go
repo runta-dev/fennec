@@ -36,7 +36,9 @@ type Link struct {
 	At     time.Time `json:"at"`
 }
 
-// Related is one link as a thread shows it.
+// Related is one linked request as a thread shows it. Like GitHub, a thread
+// lists the requests that mention it (with where), not the ones it mentions:
+// those are visible, and clickable, in its own text.
 type Related struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
@@ -45,6 +47,19 @@ type Related struct {
 	Kind string `json:"kind"`
 	// Incoming: the other request links to this one (a backlink).
 	Incoming bool `json:"incoming,omitempty"`
+	// Mentions are where an incoming mention was written, oldest first.
+	Mentions []Mention `json:"mentions,omitempty"`
+}
+
+// Mention is one place a request was mentioned: a message of another
+// request (Message 0 is that request's title).
+type Mention struct {
+	Message int       `json:"message"`
+	Author  string    `json:"author"`
+	Agent   string    `json:"agent,omitempty"`
+	At      time.Time `json:"at"`
+	// Excerpt is the line holding the reference, shortened around it.
+	Excerpt string `json:"excerpt"`
 }
 
 // mentionPattern matches a reference to a request of the queue with this key.
@@ -52,23 +67,58 @@ func mentionPattern(key string) *regexp.Regexp {
 	return regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])` + regexp.QuoteMeta(key) + `-([0-9]{1,7})\b`)
 }
 
-// mentions lists the request numbers a text refers to as KEY-n.
-func mentions(pattern *regexp.Regexp, text string) []int {
+// mentions lists the request numbers a text refers to as KEY-n, each with
+// the byte offset of its first reference.
+func mentions(pattern *regexp.Regexp, text string) [][2]int {
 	seen := map[int]bool{}
-	out := []int{}
-	for _, m := range pattern.FindAllStringSubmatch(text, -1) {
-		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 && !seen[n] {
+	out := [][2]int{}
+	for _, m := range pattern.FindAllStringSubmatchIndex(text, -1) {
+		if n, err := strconv.Atoi(text[m[2]:m[3]]); err == nil && n > 0 && !seen[n] {
 			seen[n] = true
-			out = append(out, n)
+			out = append(out, [2]int{n, m[2]})
 		}
 	}
 	return out
 }
 
-// edge is one link between two requests; mention edges come from messages.
+const excerptRunes = 140
+
+// excerpt is the line of text around offset, without list or quote markers,
+// cut to excerptRunes around the reference.
+func excerpt(text string, offset int) string {
+	start := strings.LastIndexByte(text[:offset], '\n') + 1
+	end := len(text)
+	if i := strings.IndexByte(text[offset:], '\n'); i >= 0 {
+		end = offset + i
+	}
+	before := []rune(text[start:offset])
+	after := []rune(text[offset:end])
+	cut := false
+	if len(before) > excerptRunes/3 {
+		before, cut = before[len(before)-excerptRunes/3:], true
+	}
+	line := string(before)
+	if !cut {
+		line = strings.TrimLeft(line, " \t-*>#0123456789.")
+	}
+	rest := excerptRunes - len([]rune(line))
+	tail := ""
+	if len(after) > rest {
+		after, tail = after[:rest], "…"
+	}
+	line = strings.TrimSpace(strings.NewReplacer("**", "", "`", "").Replace(line + string(after)))
+	if cut {
+		line = "…" + line
+	}
+	return line + tail
+}
+
+// edge is one link between two requests; mention edges carry where the
+// mentions were written.
 type edge struct {
 	From, To int
 	Kind     string
+	Sources  []Mention
 }
 
 // edges lists every link among a queue's requests: explicit ones, then
@@ -80,7 +130,7 @@ func edges(p Project, requests map[int]Request) []edge {
 	for _, n := range sortedNumbers(requests) {
 		for _, l := range requests[n].Links {
 			if _, ok := requests[l.Number]; ok && l.Number != n {
-				out = append(out, edge{n, l.Number, l.Kind})
+				out = append(out, edge{From: n, To: l.Number, Kind: l.Kind})
 				explicit[[2]int{n, l.Number}] = true
 			}
 		}
@@ -88,18 +138,22 @@ func edges(p Project, requests map[int]Request) []edge {
 	pattern := mentionPattern(p.Key)
 	for _, n := range sortedNumbers(requests) {
 		r := requests[n]
-		seen := map[int]bool{}
-		texts := []string{r.Title}
-		for _, m := range r.Messages {
-			texts = append(texts, m.Body)
-		}
-		for _, text := range texts {
-			for _, to := range mentions(pattern, text) {
-				if _, ok := requests[to]; !ok || to == n || seen[to] || explicit[[2]int{n, to}] {
+		texts := []Message{{ID: 0, Author: r.Author, Body: r.Title, At: r.Created}}
+		texts = append(texts, r.Messages...)
+		index := map[int]int{}
+		for _, m := range texts {
+			for _, found := range mentions(pattern, m.Body) {
+				to := found[0]
+				if _, ok := requests[to]; !ok || to == n || explicit[[2]int{n, to}] {
 					continue
 				}
-				seen[to] = true
-				out = append(out, edge{n, to, "mention"})
+				source := Mention{Message: m.ID, Author: m.Author, Agent: m.Agent, At: m.At, Excerpt: excerpt(m.Body, found[1]-len(p.Key)-1)}
+				if i, ok := index[to]; ok {
+					out[i].Sources = append(out[i].Sources, source)
+					continue
+				}
+				index[to] = len(out)
+				out = append(out, edge{From: n, To: to, Kind: "mention", Sources: []Mention{source}})
 			}
 		}
 	}
@@ -115,12 +169,13 @@ func sortedNumbers(requests map[int]Request) []int {
 	return numbers
 }
 
-// relatedFor is what request n's thread shows: its links, then its
-// backlinks, one row per other request and direction.
+// relatedFor is what request n's thread shows: its explicit links, then
+// every request linking to or mentioning it, one row per other request and
+// direction. The requests n itself mentions are links in its own text.
 func relatedFor(n int, requests map[int]Request, all []edge) []Related {
 	out := []Related{}
 	seen := map[[2]int]bool{}
-	add := func(other int, kind string, incoming bool) {
+	add := func(e edge, other int, incoming bool) {
 		dir := 0
 		if incoming {
 			dir = 1
@@ -130,16 +185,16 @@ func relatedFor(n int, requests map[int]Request, all []edge) []Related {
 		}
 		seen[[2]int{other, dir}] = true
 		r := requests[other]
-		out = append(out, Related{Number: other, Title: r.Title, Status: r.Status, Kind: kind, Incoming: incoming})
+		out = append(out, Related{Number: other, Title: r.Title, Status: r.Status, Kind: e.Kind, Incoming: incoming, Mentions: e.Sources})
 	}
 	for _, e := range all {
-		if e.From == n {
-			add(e.To, e.Kind, false)
+		if e.From == n && e.Kind != "mention" {
+			add(e, e.To, false)
 		}
 	}
 	for _, e := range all {
 		if e.To == n {
-			add(e.From, e.Kind, true)
+			add(e, e.From, true)
 		}
 	}
 	return out

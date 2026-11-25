@@ -3022,6 +3022,13 @@ impl FennecWindow {
             .find(|t| t.id == r.tag)
             .map(|t| t.label.clone())
             .unwrap_or_else(|| r.tag.clone());
+        // KEY-n in a message opens that request (THI-103).
+        let known: std::collections::HashSet<u64> = self
+            .requests
+            .get(&p.id)
+            .map(|list| list.iter().map(|r| r.number).collect())
+            .unwrap_or_default();
+        let window_handle = cx.weak_entity();
         let mut last_agent = String::new();
         let mut items = Vec::new();
         // THI-93: replies on their way to the board follow the thread's own.
@@ -3122,8 +3129,21 @@ impl FennecWindow {
                             .child(
                                 gpui_base::text::TextView::markdown(
                                     SharedString::from(key.clone()),
-                                    m.body.clone(),
+                                    thread_links::link_refs(&m.body, &p.key, &known),
                                 )
+                                .on_link_click({
+                                    let window_handle = window_handle.clone();
+                                    move |url, _, window, cx| {
+                                        match thread_links::request_link(url) {
+                                            Some(n) => {
+                                                let _ = window_handle.update(cx, |this, cx| {
+                                                    this.open_request(n, window, cx)
+                                                });
+                                            }
+                                            None => cx.open_url(url),
+                                        }
+                                    }
+                                })
                                 .style(ui::markdown_style())
                                 .text_size(px(13.5))
                                 .text_color(c("f_text")),

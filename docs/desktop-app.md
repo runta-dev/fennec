@@ -185,8 +185,9 @@ requests. The working run can also add an explicit link with
 `queue link <queue> <n> <agent> <run> KEY-m [related|duplicate|none]`, or
 merge its request into an earlier one with `queue merge … KEY-m`. A request is
 a duplicate of at most one other. Backlinks are derived, so every link shows on
-both threads. `GET …/requests/{n}` returns them as `related`, and the desktop
-thread lists them under the opening message.
+both threads (a thread lists who mentions it, with the message excerpt; what it
+mentions itself is a link in its own text). `GET …/requests/{n}` returns them
+as `related`, and the desktop thread lists them under the opening message.
 
 ## The window and the menu bar
 

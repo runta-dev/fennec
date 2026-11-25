@@ -136,6 +136,20 @@ pub struct Related {
     pub status: String,
     pub kind: String,
     pub incoming: bool,
+    /// Where an incoming mention was written (board.Mention), oldest first.
+    pub mentions: Vec<Mention>,
+}
+
+/// One message of another request that mentions this one; message 0 is
+/// that request's title.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Mention {
+    pub message: u64,
+    pub author: String,
+    pub agent: String,
+    pub at: String,
+    pub excerpt: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

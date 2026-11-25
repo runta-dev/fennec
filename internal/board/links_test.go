@@ -14,7 +14,7 @@ import (
 func TestMentionsMatchOnlyWholeReferences(t *testing.T) {
 	pattern := mentionPattern("THI")
 	got := mentions(pattern, "See THI-42 and (THI-7), not XTHI-9 or THI-42x; THI-42 again.\nTHI-3")
-	if len(got) != 3 || got[0] != 42 || got[1] != 7 || got[2] != 3 {
+	if len(got) != 3 || got[0][0] != 42 || got[1][0] != 7 || got[2][0] != 3 || got[0][1] != 8 {
 		t.Fatal(got)
 	}
 }
@@ -64,7 +64,7 @@ func TestLinksShowOnBothThreadsAndInTheMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"id: DEL-2\n", "status: queued\n", "links: [DEL-1 (mention)]\n", "backlinks: [DEL-3 (duplicate)]\n", "- has duplicate DEL-3 [queued] Sync stall, again\n", "Looks like DEL-1 again"} {
+	for _, want := range []string{"id: DEL-2\n", "status: queued\n", "backlinks: [DEL-3 (duplicate)]\n", "- has duplicate DEL-3 [queued] Sync stall, again\n", "Looks like DEL-1 again"} {
 		if !strings.Contains(string(thread), want) {
 			t.Fatalf("DEL-2.md lacks %q:\n%s", want, thread)
 		}
@@ -169,5 +169,38 @@ func TestThreadAPICarriesRelatedAndSetsLinks(t *testing.T) {
 	}
 	if w := call("POST", "/v1/projects/"+p.ID+"/requests/2/links", `{"number":1,"kind":"blocks","author":"me"}`); w.Code != 400 {
 		t.Fatal("unknown kind accepted", w.Code)
+	}
+}
+
+func TestExcerptShowsTheLineAroundAMention(t *testing.T) {
+	text := "Intro line\n- **Waiting on you** (`you`): THI-41, 59, 61\nlast"
+	if got := excerpt(text, strings.Index(text, "THI-41")); got != "Waiting on you (you): THI-41, 59, 61" {
+		t.Fatalf("%q", got)
+	}
+	long := strings.Repeat("a", 100) + " THI-41 " + strings.Repeat("b", 200)
+	got := excerpt(long, strings.Index(long, "THI-41"))
+	if !strings.HasPrefix(got, "…") || !strings.HasSuffix(got, "…") || !strings.Contains(got, "THI-41") || len([]rune(got)) > excerptRunes+2 {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestMentionsShowWhereTheyWereWritten(t *testing.T) {
+	s := testStore(t)
+	p, _ := s.CreateProject(Project{Name: "Delivery", Key: "DEL"})
+	a, _ := s.CreateRequest(p.ID, "me", "Sync stalls", "bug", "")
+	b, _ := s.CreateRequest(p.ID, "me", "Queue freezes", "bug", "Looks like DEL-1")
+	s.Reply(p.ID, b.Number, "me", "", "Notes\n- waiting on DEL-1 still")
+	// DEL-1 lists DEL-2 once, with both places it was mentioned.
+	related, _ := s.Related(p.ID, a.Number)
+	if len(related) != 1 || len(related[0].Mentions) != 2 || related[0].Mentions[0].Message != 1 || related[0].Mentions[1].Excerpt != "waiting on DEL-1 still" {
+		t.Fatalf("%+v", related)
+	}
+	// DEL-2's own mention is a link in its text, not a row.
+	if related, _ = s.Related(p.ID, b.Number); len(related) != 0 {
+		t.Fatalf("%+v", related)
+	}
+	thread, _ := os.ReadFile(filepath.Join(s.ThreadsPath(p.ID), "DEL-1.md"))
+	if !strings.Contains(string(thread), "- mentioned by DEL-2 [queued] Queue freezes\n  - me, ") || !strings.Contains(string(thread), ": waiting on DEL-1 still\n") {
+		t.Fatal(string(thread))
 	}
 }
