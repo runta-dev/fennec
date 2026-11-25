@@ -118,6 +118,17 @@ xcodebuild -project ios/Fennec.xcodeproj -scheme Fennec -configuration Release \
   MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build" "${signing[@]}" \
   archive
 
+# -exportArchive signs with the entitlements it finds in the archived app, and
+# an unsigned archive has none. Give the app an ad hoc signature with the
+# target's entitlements first, so the App Store signature (and the profile
+# that automatic signing makes) includes Sign in with Apple.
+app="$archive/Products/Applications/Fennec.app"
+if ! $manual; then
+  codesign --force --sign - --timestamp=none --entitlements ios/Fennec/Fennec.entitlements "$app"
+fi
+codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q com.apple.developer.applesignin \
+  || { echo '::error::The archived app has no Sign in with Apple entitlement (com.apple.developer.applesignin)' >&2; exit 1; }
+
 options="$work/ExportOptions.plist"
 cat > "$options" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

@@ -4,3 +4,4 @@ DerivedData/
 Frameworks/
 *.xcuserstate
 Fennec/Info.plist
+Fennec/Fennec.entitlements

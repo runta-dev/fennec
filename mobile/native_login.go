@@ -23,6 +23,23 @@ func (a *Auth) EmailLogin(email, turnstileToken string) (string, error) {
 	state, err := a.manager.LoginEmail(email, turnstileToken, config)
 	return snapshotJSON(state), err
 }
+
+// AppleLogin starts Sign in with Apple; the app shows Apple's sheet and then
+// calls CompleteAppleLogin with its identity token.
+func (a *Auth) AppleLogin() (string, error) {
+	config, err := a.nativeConfig()
+	if err != nil {
+		return "", err
+	}
+	state, err := a.manager.LoginApple(config)
+	return snapshotJSON(state), err
+}
+
+// CompleteAppleLogin takes the Apple identity token, the raw nonce whose
+// SHA-256 was in the Apple request, and the name Apple shared (or "").
+func (a *Auth) CompleteAppleLogin(idToken, nonce, fullName string, epoch int64) bool {
+	return epoch > 0 && a.manager.CompleteApple(idToken, nonce, fullName, uint64(epoch))
+}
 func (a *Auth) VerifyEmail(code string, epoch int64) bool {
 	return epoch > 0 && a.manager.VerifyEmail(code, uint64(epoch))
 }

@@ -23,6 +23,10 @@ targets:
       - path: Fennec
       - path: ../native/macos/UI/translations.json
         buildPhase: resources
+    entitlements:
+      path: Fennec/Fennec.entitlements
+      properties:
+        com.apple.developer.applesignin: [Default]
     info:
       path: Fennec/Info.plist
       properties:
