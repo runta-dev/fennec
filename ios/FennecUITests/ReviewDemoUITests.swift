@@ -46,6 +46,57 @@ final class ReviewDemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Sign in with email"].waitForExistence(timeout: 10))
     }
 
+    /// The privacy policy App Store Connect points to opens from sign-in and
+    /// from Account (in the demo, as App Review sees it).
+    func testPrivacyPolicyLinksOpenInSafari() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-RuntaEnvironment", "production", "-appLanguage", "en-US"]
+        app.launch()
+        signOutIfSignedIn(app)
+
+        let signInLink = privacyLink(app)
+        XCTAssertTrue(signInLink.waitForExistence(timeout: 10))
+        attach(app, "Privacy-Link-Sign-In")
+        signInLink.tap()
+        assertSafariOpensPrivacyPolicy()
+        app.activate()
+
+        app.buttons["Sign in with email"].tap()
+        let address = app.textFields["login-email-address"]
+        address.tap()
+        address.typeText("appreview@runta.com")
+        app.buttons["Send code"].tap()
+        let code = app.textFields["login-email-code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 2))
+        code.tap()
+        code.typeText("1")
+        app.buttons["login-email-verify"].tap()
+        XCTAssertTrue(app.buttons["new-session-menu"].waitForExistence(timeout: 10))
+
+        app.buttons["Account"].tap()
+        let accountLink = privacyLink(app)
+        for _ in 0..<4 { if accountLink.isHittable { break }; app.swipeUp() }
+        attach(app, "Privacy-Link-Account")
+        accountLink.tap()
+        assertSafariOpensPrivacyPolicy()
+        app.activate()
+        signOutIfSignedIn(app)
+    }
+
+    /// SwiftUI's Link is a link, not a button, to accessibility.
+    private func privacyLink(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "privacy-policy").firstMatch
+    }
+
+    private func assertSafariOpensPrivacyPolicy() {
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+        // The page's own heading, once it has loaded from runfennec.com.
+        let heading = safari.staticTexts["Privacy Policy"].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 30))
+        attach(safari, "Privacy-Policy-Safari")
+    }
+
     private func text(_ app: XCUIApplication, _ fragment: String) -> XCUIElement {
         app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", fragment)).firstMatch
     }

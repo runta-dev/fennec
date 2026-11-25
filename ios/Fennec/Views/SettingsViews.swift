@@ -122,6 +122,15 @@ struct AccountView: View {
                 }
                 Text(L10n.text("ios.show_queues_hint")).font(.system(size: 12.5)).foregroundStyle(Theme.fg3).padding(.horizontal, 4)
                 ListCard {
+                    Link(destination: PrivacyPolicy.url) {
+                        ListRow(icon: "hand.raised", title: L10n.text("ios.privacy_policy"), showDivider: false) {
+                            Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.fg3)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("privacy-policy")
+                }
+                ListCard {
                     Button { if ReviewDemo.enabled { app.exitReviewDemo() } else { auth.signOut() } } label: {
                         ListRow(icon: "rectangle.portrait.and.arrow.right", iconColor: Theme.danger, title: L10n.text("ui.sign_out"), titleColor: Theme.danger, showDivider: false)
                     }

@@ -58,7 +58,11 @@ struct ScanSignInView: View {
                         .font(.system(size: 28, weight: .medium)).padding(.top, 20)
                     Spacer()
                     if mode == "email" { emailPanel } else { choicesPanel }
-                    Spacer().frame(height: 48)
+                    Link(L10n.text("ios.privacy_policy"), destination: PrivacyPolicy.url)
+                        .font(.system(size: 13)).foregroundStyle(Theme.fg3)
+                        .frame(minHeight: 44).padding(.top, 12)
+                        .accessibilityIdentifier("privacy-policy")
+                    Spacer().frame(height: 36)
                 }
             }
             .foregroundStyle(mode == "scan" ? .white : Theme.fg)

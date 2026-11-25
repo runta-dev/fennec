@@ -686,6 +686,10 @@
       "en-US": "Sign in with email",
       "zh-CN": "使用邮箱登录"
     },
+    "ios.privacy_policy": {
+      "en-US": "Privacy Policy",
+      "zh-CN": "隐私政策"
+    },
     "ios.approve_mac": {
       "en-US": "Approve on your Mac",
       "zh-CN": "在 Mac 上授权"

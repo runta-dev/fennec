@@ -3,6 +3,12 @@ import Foundation
 import Observation
 import SwiftUI
 
+/// The privacy policy on the Fennec website (website/app/privacy), linked from
+/// sign-in and Account, and given to App Store Connect.
+enum PrivacyPolicy {
+    static let url = URL(string: "https://runfennec.com/privacy/")!
+}
+
 /// Runta deployment zones, named as in internal/runta (ResolveEnvironment).
 enum RuntaEnvironment: String, CaseIterable, Identifiable {
     case production, integration
