@@ -30,7 +30,7 @@ export default function Privacy() {
 
       <p>Fennec is made by Runta Inc. (&ldquo;Runta&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy covers Fennec for Mac, Fennec for iPhone, the Fennec cloud computer that Runta runs for your account, and this website. It explains what we collect, why, who else handles it, and how to delete it.</p>
       <p>Fennec is part of Runta&apos;s services, so the <a href={runtaNotice}>Runta Privacy Notice</a> also applies to it. This page adds what is specific to Fennec.</p>
-      <p>The short version: we collect what we need to sign you in and run your agents. We don&apos;t sell your data, we don&apos;t show ads, and the apps contain no third-party analytics or tracking.</p>
+      <p>The short version: we collect what we need to sign you in, run your agents and operate the service.</p>
 
       <Section id="account" title="Your Runta account">
         <p>Fennec uses a Runta account. When you sign in we receive:</p>
@@ -70,7 +70,7 @@ export default function Privacy() {
       </Section>
 
       <Section id="technical" title="Technical and website data">
-        <p>Like most online services, our servers and Cloudflare, which hosts this website and app downloads, log technical data such as IP addresses, request times, app version and errors. We use it to run, secure and fix the service. This website sets no cookies of its own and no advertising or analytics cookies. Fennec doesn&apos;t respond to browser Do Not Track signals, because it doesn&apos;t track you.</p>
+        <p>Like most online services, our servers and Cloudflare, which hosts this website and app downloads, log technical data such as IP addresses, request times, app version and errors. We use it to run, secure and fix the service. Our use of cookies and similar technologies is described in the <a href={runtaNotice}>Runta Privacy Notice</a>.</p>
         <p>If you install a beta through TestFlight and choose to send feedback or crash reports, Apple shares them with us.</p>
       </Section>
 
@@ -85,7 +85,7 @@ export default function Privacy() {
           <li>Stripe for payments and Metronome for usage billing.</li>
           <li>The AI providers you choose, such as Anthropic or OpenAI, when your agents send them requests.</li>
         </ul>
-        <p>We may also disclose data to professional advisers, auditors and insurers; to law enforcement, regulators or courts when required by law or reasonably necessary to protect rights, safety and security; and to a successor in a merger, acquisition, financing, reorganization or sale of assets. We don&apos;t sell personal information or share it for cross-context behavioral advertising.</p>
+        <p>We may also disclose data to professional advisers, auditors and insurers; to law enforcement, regulators or courts when required by law or reasonably necessary to protect rights, safety and security; and to a successor in a merger, acquisition, financing, reorganization or sale of assets.</p>
       </Section>
 
       <Section id="retention" title="Keeping and deleting your data">
