@@ -46,12 +46,13 @@ enum Screen {
 }
 
 impl FennecWindow {
-    /// The open thread's agent session, whatever the request's status.
+    /// The open thread's agent session. Hidden once the request is in
+    /// review: the agent's work is handed off and its reply is in the thread.
     pub(super) fn peek_target(&self) -> Option<&Session> {
         let r = self
             .thread
             .as_ref()
-            .filter(|t| Some(t.number) == self.open)?;
+            .filter(|t| Some(t.number) == self.open && t.status != "review")?;
         r.active_session(&self.sessions)
     }
 
