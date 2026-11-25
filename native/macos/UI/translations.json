@@ -133,11 +133,11 @@
     "desktop.app_prev_tab": {"en-US":"Previous tab","zh-CN":"上一个标签"},
     "desktop.app_next_tab": {"en-US":"Next tab","zh-CN":"下一个标签"},
     "desktop.app_troubleshooting": {"en-US":"Troubleshooting","zh-CN":"故障排查"},
-    "desktop.export_logs_label": {"en-US":"Logs from the last 7 days","zh-CN":"最近 7 天的日志"},
+    "desktop.export_logs_label": {"en-US":"Something not working? Send us your logs","zh-CN":"遇到问题？导出日志发给我们"},
     "desktop.export_logs": {"en-US":"Export…","zh-CN":"导出…"},
     "desktop.export_logs_collecting": {"en-US":"Collecting…","zh-CN":"正在收集…"},
     "desktop.export_logs_saved": {"en-US":"Saved","zh-CN":"已保存"},
-    "desktop.export_logs_retry": {"en-US":"Couldn’t export, try again","zh-CN":"导出失败，请重试"},
+    "desktop.export_logs_retry": {"en-US":"Couldn’t export. Try again","zh-CN":"导出失败，请重试"},
     "desktop.compose_shortcuts": {"en-US":"↵ Send · ⇧↵ New line", "zh-CN":"↵ 发送 · ⇧↵ 换行"},
     "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
     "desktop.close_other_tabs_action": {"en-US":"Close other tabs", "zh-CN":"关闭其他标签页"},
@@ -904,12 +904,12 @@
       "ko": "로그 내보내기"
     },
     "ui.export_logs_description": {
-      "en-US": "Save the last 7 days of logs as a zip file to send when something goes wrong",
-      "en-GB": "Save the last 7 days of logs as a zip file to send when something goes wrong",
-      "zh-CN": "将最近 7 天的日志保存为 zip 文件，出现问题时可发送给我们",
-      "zh-TW": "將最近 7 天的日誌儲存為 zip 檔案，出現問題時可傳送給我們",
-      "ja": "問題が起きたときに送れるよう、過去 7 日間のログを zip ファイルとして保存します",
-      "ko": "문제가 생겼을 때 보낼 수 있도록 최근 7일간의 로그를 zip 파일로 저장합니다"
+      "en-US": "If something isn’t working, send this file to us so we can help",
+      "en-GB": "If something isn’t working, send this file to us so we can help",
+      "zh-CN": "遇到问题时导出，发给我们帮你排查",
+      "zh-TW": "遇到問題時匯出，傳給我們協助排查",
+      "ja": "うまく動かないときは、このファイルを送っていただければ調査します",
+      "ko": "문제가 있으면 이 파일을 보내 주세요. 원인을 찾아 드릴게요"
     },
     "ui.export_logs_collecting": {
       "en-US": "Collecting…",
