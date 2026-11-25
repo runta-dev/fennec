@@ -766,6 +766,9 @@ func nativeHasCredentials(root, agent string) bool {
 	if agent == "cursor" || agent == "grok" {
 		return len(vendorAccounts(agent, func(name string) []byte { data, _ := readNativeFile(filepath.Join(root, name)); return data })) > 0
 	}
+	if agent == "agy" {
+		return len(agyAccounts(func(name string) []byte { data, _ := readNativeFile(filepath.Join(root, name)); return data })) > 0
+	}
 	env := map[string]string{}
 	b, _ := os.ReadFile(filepath.Join(root, "env.json"))
 	_ = json.Unmarshal(b, &env)

@@ -159,3 +159,21 @@ func TestAgyGCPSignInKeepsProject(t *testing.T) {
 		t.Fatal("copied a field that is not the sign-in's")
 	}
 }
+
+// Preparation marks agy ready to run on the cloud once its sign-in is there;
+// without it the Mac's launcher refuses with "cloud credentials need attention".
+func TestAgyNativeReadyWithMigratedSignIn(t *testing.T) {
+	root := t.TempDir()
+	if nativeHasCredentials(root, "agy") {
+		t.Fatal("ready without a sign-in")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "agy"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(agyAuthFile)), []byte(agyGCPToken), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !nativeHasCredentials(root, "agy") {
+		t.Fatal("migrated sign-in not counted")
+	}
+}
