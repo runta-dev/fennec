@@ -373,6 +373,39 @@ func (s Store) CreateProject(p Project) (Project, error) {
 		}
 		p.ID = fmt.Sprintf("%s-%d", base, i)
 	}
+	return s.addProject(p)
+}
+
+// StarterProjectID is the queue a new board starts with (THI-177), so a new
+// user sees where requests go before creating a queue of their own. The id is
+// fixed: two devices that both add it end up with one queue, and once it is
+// deleted its tombstone keeps it deleted everywhere.
+const StarterProjectID = "starter"
+
+// AddStarterProject adds the starter queue when the board has never had a
+// queue, deleted ones included, and reports whether it did.
+func (s Store) AddStarterProject(name, description string) (bool, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	entries, err := os.ReadDir(filepath.Join(s.root(), "projects"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && projectID.MatchString(entry.Name()) {
+			return false, nil
+		}
+	}
+	_, err = s.addProject(Project{ID: StarterProjectID, Key: "TASK", Name: name, Description: description})
+	return err == nil, err
+}
+
+// addProject fills a new project's defaults and saves it. It runs under the
+// board lock with p.ID already chosen.
+func (s Store) addProject(p Project) (Project, error) {
 	if p.Key == "" {
 		p.Key = KeyFrom(p.Name)
 	}
@@ -394,7 +427,7 @@ func (s Store) CreateProject(p Project) (Project, error) {
 			p.Slots = append(p.Slots, Slot{ID: fmt.Sprintf("slot-%d", i), Index: i, Owner: s.Role})
 		}
 	}
-	if err = validProject(p); err != nil {
+	if err := validProject(p); err != nil {
 		return p, err
 	}
 	return p, s.commit(filepath.Join(s.projectDir(p.ID), "project.json"), p)
