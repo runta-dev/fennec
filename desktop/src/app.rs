@@ -6,6 +6,7 @@ mod activity;
 mod cloud;
 mod context_menu;
 mod glide;
+mod pending_reply;
 mod row_motion;
 mod request_attachments;
 mod sidebar_resize;
@@ -113,6 +114,13 @@ pub struct FennecWindow {
     thread_scroll: ScrollHandle,
     /// Scroll the thread to its newest message once a sent reply shows up.
     thread_follow: bool,
+    /// THI-93: sent replies the board hasn't confirmed yet, drawn at once.
+    pending_replies: Vec<pending_reply::PendingReply>,
+    /// Numbers the next pending reply.
+    reply_token: u64,
+    /// Keys of the open thread's messages that arrived while it was shown;
+    /// they ease in. Cleared when another thread opens.
+    fresh_messages: std::collections::HashSet<String>,
     /// The latest lines the open thread's working agent printed.
     /// Each agent's last peek, by session address: a thread switched back to
     /// shows it at once instead of growing when the first read lands.
@@ -299,6 +307,9 @@ impl FennecWindow {
             replying: false,
             thread_scroll: ScrollHandle::new(),
             thread_follow: false,
+            pending_replies: Vec::new(),
+            reply_token: 0,
+            fresh_messages: Default::default(),
             thread_cache: HashMap::new(),
             opening: None,
             reply,
@@ -667,6 +678,10 @@ impl FennecWindow {
             let grew = self.thread.as_ref().is_none_or(|old| {
                 old.number != t.number || t.messages.len() > old.messages.len()
             });
+            if let Some(old) = &self.thread {
+                self.fresh_messages
+                    .extend(pending_reply::grown_keys(old, &t));
+            }
             if grew {
                 if self.thread_follow || self.thread.is_none() || self.thread_at_bottom() {
                     self.thread_scroll.scroll_to_bottom();
@@ -829,6 +844,7 @@ impl FennecWindow {
         if self.open != Some(n) {
             self.save_reply_draft(cx);
             self.open = Some(n);
+            self.fresh_messages.clear();
             let draft = self
                 .project_id()
                 .and_then(|p| self.reply_drafts.get(&format!("reply:{p}:{n}")).cloned())
@@ -1018,38 +1034,81 @@ impl FennecWindow {
         let submitted = text.clone();
         let submitted_images: Vec<String> = images.iter().map(|image| image.id.clone()).collect();
         let origin = project.clone();
+        // THI-93: show the reply now and clear the box, instead of after the
+        // board call and a full refresh (about a second).
+        self.reply_token += 1;
+        let token = self.reply_token;
+        let pending = pending_reply::PendingReply::new(
+            project.clone(),
+            self.thread.as_ref(),
+            &self.pending_replies,
+            n,
+            token,
+            me.clone(),
+            text.clone(),
+            images.clone(),
+        );
+        self.fresh_messages
+            .insert(pending_reply::message_key(n, pending.message.id));
+        self.pending_replies.push(pending);
+        if let Some(draft) = self.request_images.by_queue.get_mut(&key) {
+            draft.retain(|image| !submitted_images.contains(&image.id));
+        }
+        self.reply_drafts.remove(&key);
+        self.reply.update(cx, |s, cx| s.set_value("", window, cx));
+        cx.notify();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let sent_images = images.clone();
             let sent = cx
                 .background_spawn(async move {
-                    board::continue_request(&project, n, &text, &me, &images)
+                    board::continue_request(&project, n, &text, &me, &sent_images)
                 })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 this.replying = false;
+                this.pending_replies.retain(|p| p.token != token);
+                let here = this.project_id().as_deref() == Some(&origin) && this.open == Some(n);
                 match sent {
-                    Ok(_) => {
-                        if let Some(images) = this.request_images.by_queue.get_mut(&key) {
-                            images.retain(|image| !submitted_images.contains(&image.id));
-                        }
-                        if this
-                            .reply_drafts
-                            .get(&key)
-                            .is_some_and(|draft| draft == &submitted)
+                    Ok(value) => {
+                        // The board answers with the updated request: show it
+                        // now; the refresh below catches up the list.
+                        if let Ok(updated) = serde_json::from_value::<Request>(value)
+                            && updated.number == n
+                            && !updated.messages.is_empty()
                         {
-                            this.reply_drafts.remove(&key);
+                            if here {
+                                if let Some(old) = &this.thread {
+                                    this.fresh_messages
+                                        .extend(pending_reply::grown_keys(old, &updated));
+                                }
+                                this.thread_scroll.scroll_to_bottom();
+                                this.thread_follow = false;
+                                this.thread = Some(updated.clone());
+                            }
+                            this.thread_cache.insert((origin.clone(), n), updated);
                         }
-                        if this.project_id().as_deref() == Some(&origin)
-                            && this.open == Some(n)
-                            && this.reply.read(cx).value().as_ref() == submitted
-                        {
-                            this.reply.update(cx, |s, cx| s.set_value("", window, cx));
-                        }
-                        if this.project_id().as_deref() == Some(&origin) && this.open == Some(n) {
+                        if here {
                             this.refresh_now(window, cx);
                         }
                     }
                     Err(e) => {
                         this.thread_follow = false;
+                        // Put the reply back where it was written, unless
+                        // something new was typed there meanwhile.
+                        if let Some(draft) = this.request_images.by_queue.get_mut(&key) {
+                            draft.retain(|image| !submitted_images.contains(&image.id));
+                            draft.splice(0..0, images);
+                        } else {
+                            this.request_images.by_queue.insert(key.clone(), images);
+                        }
+                        if here {
+                            if this.reply.read(cx).value().trim().is_empty() {
+                                this.reply
+                                    .update(cx, |s, cx| s.set_value(submitted.clone(), window, cx));
+                            }
+                        } else if this.reply_drafts.get(&key).is_none_or(|d| d.trim().is_empty()) {
+                            this.reply_drafts.insert(key.clone(), submitted.clone());
+                        }
                         this.say(format!("{e:#}"), cx)
                     }
                 }
@@ -2895,7 +2954,13 @@ impl FennecWindow {
             .unwrap_or_else(|| r.tag.clone());
         let mut last_agent = String::new();
         let mut items = Vec::new();
-        for (i, m) in r.messages.iter().enumerate() {
+        // THI-93: replies on their way to the board follow the thread's own.
+        let pending = self
+            .pending_replies
+            .iter()
+            .filter(|reply| Some(&reply.project) == self.project_id().as_ref() && !reply.confirmed_in(r))
+            .map(|reply| &reply.message);
+        for (i, m) in r.messages.iter().chain(pending).enumerate() {
             let agent = !m.agent.is_empty();
             if agent && m.agent != last_agent {
                 items.push(
@@ -2916,7 +2981,9 @@ impl FennecWindow {
                 m.author.clone()
             };
             let time = m.at.get(11..16).unwrap_or_default().to_owned();
-            items.push(
+            let key = pending_reply::message_key(r.number, m.id);
+            let fresh = self.fresh_messages.contains(&key);
+            let item =
                 h_flex()
                     .items_start()
                     .gap(px(12.0))
@@ -2984,7 +3051,7 @@ impl FennecWindow {
                             )
                             .child(
                                 gpui_base::text::TextView::markdown(
-                                    SharedString::from(format!("m-{}-{}", r.number, m.id)),
+                                    SharedString::from(key.clone()),
                                     m.body.clone(),
                                 )
                                 .style(ui::markdown_style())
@@ -2994,9 +3061,12 @@ impl FennecWindow {
                             .when(!m.attachments.is_empty(), |d| {
                                 d.child(self.stored_images(&m.attachments, m.id, cx))
                             }),
-                    )
-                    .into_any_element(),
-            );
+                    );
+            items.push(if fresh {
+                pending_reply::ease_in(&key, item)
+            } else {
+                item.into_any_element()
+            });
         }
         let reply_key = format!("reply:{}:{}", p.id, r.number);
         let reply_has = !self.replying
