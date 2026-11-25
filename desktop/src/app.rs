@@ -3,6 +3,7 @@
 //! on the right.
 
 mod activity;
+mod card_preview;
 mod cloud;
 mod context_menu;
 mod glide;
@@ -2741,22 +2742,16 @@ impl FennecWindow {
             let latest = r
                 .latest
                 .as_ref()
-                .map(|m| {
-                    m.body
-                        .lines()
-                        .find(|l| !l.trim().is_empty())
-                        .unwrap_or_default()
-                        .to_owned()
-                })
+                .map(|m| card_preview::preview(&m.body))
                 .unwrap_or_default();
             // Why an open request is not progressing (stalled agent,
             // unconfirmed delivery) says more than its last message.
             let latest = match r.failure.as_str() {
                 _ if r.resolved() => latest,
                 "" => latest,
-                board::STALLED_FAILURE => t("stalled"),
-                board::ASKING_FAILURE => t("asking"),
-                failure => failure.to_owned(),
+                board::STALLED_FAILURE => card_preview::Preview::plain(t("stalled")),
+                board::ASKING_FAILURE => card_preview::Preview::plain(t("asking")),
+                failure => card_preview::Preview::plain(failure.to_owned()),
             };
             let project = p.id.clone();
             let drop_project = project.clone();
@@ -2827,13 +2822,13 @@ impl FennecWindow {
                         )
                         .child(ui::status_pill(&r.status)),
                 )
-                .when(!latest.is_empty(), |d| {
+                .when(!latest.text.is_empty(), |d| {
                     d.child(
                         div()
                             .text_size(px(12.0))
                             .text_color(c("f_muted"))
                             .truncate()
-                            .child(latest),
+                            .child(latest.styled()),
                     )
                 })
                 .child(
