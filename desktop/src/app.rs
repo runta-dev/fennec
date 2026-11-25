@@ -59,6 +59,8 @@ struct SidebarRow<'a> {
 enum Menu {
     NewSession,
     RequestTag,
+    /// THI-103: pick a request to link the open thread to.
+    LinkRequest,
 }
 
 /// The New project dialog's fields.
@@ -121,6 +123,15 @@ pub struct FennecWindow {
     thread_scroll: ScrollHandle,
     /// Scroll the thread to its newest message once a sent reply shows up.
     thread_follow: bool,
+    /// THI-103: the message a mention row jumped to, as (request, message
+    /// id). The thread scrolls to it and highlights it until another thread
+    /// opens.
+    thread_jump: Option<(u64, u64)>,
+    /// Frames left to keep scrolling to `thread_jump` while layout settles.
+    thread_jump_frames: std::cell::Cell<u8>,
+    /// THI-103: the Link request menu's filter, and the kind it links as.
+    link_search: Entity<InputState>,
+    link_kind: &'static str,
     /// THI-93: sent replies the board hasn't confirmed yet, drawn at once.
     pending_replies: Vec<pending_reply::PendingReply>,
     /// Numbers the next pending reply.
@@ -220,7 +231,17 @@ impl FennecWindow {
                 .submit_on_enter(true)
                 .placeholder(t("reply"))
         });
+        let link_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t("link_search"))
+                .clean_on_escape()
+        });
         let mut subs = vec![
+            cx.subscribe_in(&link_search, window, |_, _, ev: &InputEvent, _, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
             cx.subscribe_in(&search, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -317,6 +338,10 @@ impl FennecWindow {
             replying: false,
             thread_scroll: ScrollHandle::new(),
             thread_follow: false,
+            thread_jump: None,
+            thread_jump_frames: Default::default(),
+            link_search,
+            link_kind: "related",
             pending_replies: Vec::new(),
             reply_token: 0,
             fresh_messages: Default::default(),
@@ -811,6 +836,7 @@ impl FennecWindow {
         let Some(project) = self.project_id() else {
             return;
         };
+        self.thread_jump = None;
         // Opening a thread puts the cursor in its reply box (THI-99), except
         // right after posting a new request, where the composer keeps focus.
         // The box keeps its focus handle while the thread loads, so this holds
@@ -1848,6 +1874,9 @@ impl FennecWindow {
 
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.menu?;
+        if self.menu == Some(Menu::LinkRequest) {
+            return self.link_menu(cx);
+        }
         if self.menu == Some(Menu::RequestTag) {
             let p = self
                 .project_id()
@@ -3037,6 +3066,7 @@ impl FennecWindow {
             .map(|list| list.iter().map(|r| r.number).collect())
             .unwrap_or_default();
         let window_handle = cx.weak_entity();
+        let mut jump_item = None;
         let mut items = Vec::new();
         // THI-93: replies on their way to the board follow the thread's own.
         let pending = self
@@ -3053,9 +3083,17 @@ impl FennecWindow {
             };
             let time = m.at.get(11..16).unwrap_or_default().to_owned();
             let key = pending_reply::message_key(r.number, m.id);
+            // THI-103: the message a mention row jumped to.
+            let jumped = self.thread_jump == Some((r.number, m.id)) && i < r.messages.len();
+            if jumped {
+                jump_item = Some(items.len());
+            }
             let fresh = self.fresh_messages.contains(&key);
             let item =
                 h_flex()
+                    .when(jumped, |d| {
+                        d.bg(c("tint")).rounded(px(8.0)).mx(px(-8.0)).px(px(8.0))
+                    })
                     .items_start()
                     .gap(px(12.0))
                     .py(px(10.0))
@@ -3156,6 +3194,15 @@ impl FennecWindow {
                 items.extend(self.thread_links(p, r, cx));
             }
         }
+        // Keep scrolling to a jumped-to message for a few frames: the open
+        // scrolls to the bottom first, and item bounds come from the last layout.
+        if let Some(ix) = jump_item
+            && self.thread_jump_frames.get() > 0
+        {
+            self.thread_jump_frames.set(self.thread_jump_frames.get() - 1);
+            self.thread_scroll.scroll_to_top_of_item(ix);
+            window.request_animation_frame();
+        }
         let reply_key = format!("reply:{}:{}", p.id, r.number);
         let reply_has = !self.replying
             && !self.request_images.busy.contains(&reply_key)
@@ -3208,6 +3255,13 @@ impl FennecWindow {
                     .child(ui::tag_chip(&r.tag, &tag))
                     .child(ui::status_pill(&r.status))
                     .child(div().flex_1())
+                    .child(
+                        secondary_button("link-request", t("link_request"), false).on_click(
+                            cx.listener(|this, event: &ClickEvent, window, cx| {
+                                this.toggle_link_menu(event, window, cx)
+                            }),
+                        ),
+                    )
                     .when(session_route.is_none() && !r.runs.is_empty(), |d| {
                         d.child(
                             secondary_button("resume-thread-session", t("view_session"), false)

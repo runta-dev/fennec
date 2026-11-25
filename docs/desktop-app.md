@@ -187,7 +187,10 @@ merge its request into an earlier one with `queue merge … KEY-m`. A request is
 a duplicate of at most one other. Backlinks are derived, so every link shows on
 both threads (a thread lists who mentions it, with the message excerpt; what it
 mentions itself is a link in its own text). `GET …/requests/{n}` returns them
-as `related`, and the desktop thread lists them under the opening message.
+as `related`, and the desktop thread lists them under the opening message. A
+mention line opens its source thread scrolled to that message, highlighted. The
+thread header's Link button adds a Related or Duplicate-of link to a request
+picked by number or title, and explicit link rows have a remove button.
 
 ## The window and the menu bar
 

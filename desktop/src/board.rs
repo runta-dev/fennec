@@ -327,6 +327,16 @@ pub fn set_status(project: &str, n: u64, status: &str) -> Result<Value> {
     )
 }
 
+/// THI-103: link request `n` to request `to` of the same queue as `kind`
+/// ("related" or "duplicate"), or remove that link (kind "").
+pub fn set_link(project: &str, n: u64, to: u64, kind: &str, author: &str) -> Result<Value> {
+    call(
+        "POST",
+        &format!("/v1/projects/{project}/requests/{n}/links"),
+        Some(json!({"number": to, "kind": kind, "author": author})),
+    )
+}
+
 pub fn create_project(
     name: &str,
     org: &str,
