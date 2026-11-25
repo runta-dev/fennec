@@ -196,8 +196,10 @@ impl FennecWindow {
         &self,
         session: &Session,
         status: &str,
+        permission: Option<AnyElement>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let asking = permission.is_some();
         let address = session.address.clone();
         let peek = self
             .thread_peek
@@ -261,14 +263,17 @@ impl FennecWindow {
                                     .truncate()
                                     .text_size(px(11.5))
                                     .text_color(c("f_muted"))
-                                    .child(if session.activity.is_empty() {
+                                    .child(if asking {
+                                        // Not Claude Code's "permission prompt": the bar says what.
+                                        t("asking_permission_status")
+                                    } else if session.activity.is_empty() {
                                         status_label(status)
                                     } else {
                                         session.activity.clone()
                                     }),
                             ),
                     )
-                    .when(!lines.is_empty(), |d| {
+                    .when(!lines.is_empty() && !asking, |d| {
                         d.child(
                             v_flex()
                                 .rounded(px(8.0))
@@ -281,13 +286,46 @@ impl FennecWindow {
                                 .text_size(px(11.5))
                                 .line_height(relative(1.45))
                                 .text_color(c("f_muted"))
-                                .children(lines.into_iter().map(|line| {
+                                .children(lines.clone().into_iter().map(|line| {
                                     h_flex()
                                         .min_w_0()
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .children(line.into_iter().map(run_element))
                                 })),
+                        )
+                    })
+                    // THI-205: the agent's screen and, under it, what it
+                    // asks to run with Allow / Deny, in one orange frame.
+                    .when_some(permission, |d, bar| {
+                        d.child(
+                            v_flex()
+                                .rounded(px(8.0))
+                                .overflow_hidden()
+                                .border_1()
+                                .border_color(c("orange").opacity(0.45))
+                                .when(!lines.is_empty(), |d| {
+                                    d.child(
+                                        v_flex()
+                                            .bg(bg)
+                                            .border_b_1()
+                                            .border_color(c("f_line"))
+                                            .px(px(10.0))
+                                            .py(px(7.0))
+                                            .font_family(font.clone())
+                                            .text_size(px(11.5))
+                                            .line_height(relative(1.45))
+                                            .text_color(c("f_muted"))
+                                            .children(lines.iter().cloned().map(|line| {
+                                                h_flex()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .whitespace_nowrap()
+                                                    .children(line.into_iter().map(run_element))
+                                            })),
+                                    )
+                                })
+                                .child(bar),
                         )
                     }),
             )

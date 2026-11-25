@@ -3258,7 +3258,7 @@ impl FennecWindow {
             }
             let fresh = self.fresh_messages.contains(&key);
             let item = if let Some(answer) = m.permission.as_ref() {
-                self.permission_answer(&key, &name, &time, answer, cx)
+                self.permission_answer(&key, &time, answer, cx)
                     .when(jumped, |d| {
                         d.bg(c("tint")).rounded(px(8.0)).mx(px(-8.0)).px(px(8.0))
                     })
@@ -3401,12 +3401,21 @@ impl FennecWindow {
         let session_route = r
             .active_session(&self.sessions)
             .map(|s| s.address.clone());
-        let peek = self
-            .peek_target()
-            .map(|s| self.thread_peek_card(s, &r.status, cx))
+        // THI-205: a permission prompt is answered at the bottom of the
+        // agent's live view, so it isn't also a card of its own.
+        let permission = r.asking().filter(|q| q.permission()).cloned();
+        let peek_session = self.peek_target();
+        let in_peek = peek_session.is_some() && permission.is_some();
+        let peek = peek_session
+            .map(|s| {
+                let bar = permission
+                    .as_ref()
+                    .map(|q| self.permission_bar(r, q, cx).into_any_element());
+                self.thread_peek_card(s, &r.status, bar, cx)
+            })
             .or_else(|| self.thread_wait_card(p, r));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
-        let question = self.thread_question_card(r, cx);
+        let question = if in_peek { None } else { self.thread_question_card(r, cx) };
         let answers = r.answerable().is_some();
         v_flex()
             .flex_1()

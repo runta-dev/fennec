@@ -184,6 +184,8 @@ pub struct QuestionOption {
 pub struct Answer {
     pub question: String,
     pub sent: bool,
+    /// A permission prompt's answer: allowed or denied.
+    pub allow: Option<bool>,
 }
 
 impl Question {
@@ -199,6 +201,28 @@ impl Question {
     /// What a permission prompt wants to run: "Bash: rm -rf build".
     pub fn command(&self) -> &str {
         self.text.strip_prefix("approve ").unwrap_or(&self.text)
+    }
+
+    /// The tool a permission prompt asks about and what it runs or touches.
+    pub fn call(&self) -> Option<(String, String)> {
+        split_call(self.command())
+    }
+}
+
+/// "Bash: rm -rf build" as ("Bash", "rm -rf build"); a bare tool name has
+/// nothing after it. None when the prompt didn't name its call: Claude Code's
+/// status can say only "permission prompt" (THI-205), and answers stored
+/// before the scheduler read the transcript keep those words.
+pub fn split_call(command: &str) -> Option<(String, String)> {
+    let command = command.trim();
+    if command.is_empty() || command == "permission prompt" {
+        return None;
+    }
+    let tool_name = |t: &str| !t.is_empty() && !t.contains(char::is_whitespace);
+    match command.split_once(": ") {
+        Some((tool, what)) if tool_name(tool) => Some((tool.to_owned(), what.to_owned())),
+        _ if tool_name(command) => Some((command.to_owned(), String::new())),
+        _ => Some((String::new(), command.to_owned())),
     }
 }
 
@@ -320,6 +344,15 @@ mod thread_tests {
             serde_json::from_value(serde_json::json!({"tag":"bug","tags":["bug","desktop"]}))
                 .unwrap();
         assert_eq!(r.tag_list(), ["bug", "desktop"]);
+    }
+
+    #[test]
+    fn permission_calls_split_into_tool_and_subject() {
+        let call = |s: &str| super::split_call(s);
+        assert_eq!(call("Bash: rm -f \"$D\""), Some(("Bash".into(), "rm -f \"$D\"".into())));
+        assert_eq!(call("Edit"), Some(("Edit".into(), String::new())));
+        assert_eq!(call("trust this folder"), Some((String::new(), "trust this folder".into())));
+        assert_eq!(call("permission prompt"), None);
         assert!(r.has_tag("desktop") && !r.has_tag("ios"));
         r.tag = "ios".into(); // changed by a build without tags
         assert_eq!(r.tag_list(), ["ios"]);

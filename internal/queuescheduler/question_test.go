@@ -255,3 +255,34 @@ func TestTypeAnswerKeys(t *testing.T) {
 		}
 	}
 }
+
+// THI-205: Claude Code's status may say only "permission prompt"; the card
+// shows the call from the transcript, and each prompt gets its own id.
+func TestPermissionPromptNamesTheTranscriptCall(t *testing.T) {
+	home := t.TempDir()
+	done := `{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_ls","name":"Bash","input":{"command":"ls"}}]}}`
+	doneResult := `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_ls","content":"ok"}]}}`
+	first := `{"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"toolu_rm","name":"Bash","input":{"command":"rm -f \"$D/$M.jsonl\"","description":"Remove"}}]}}`
+	second := `{"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"toolu_edit","name":"Edit","input":{"file_path":"/a/b.go","old_string":"x"}}]}}`
+	writeTranscript(t, home, done, doneResult, first, second)
+	s := Session{App: "claude-code", Kind: "permission", Msg: "permission prompt", Cwd: askCwd}
+	q := QuestionFor(home, s)
+	if q.ID != "toolu_rm" || q.Text != `approve Bash: rm -f "$D/$M.jsonl"` {
+		t.Fatalf("%+v", q)
+	}
+	firstResult := `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_rm","content":"ok"}]}}`
+	writeTranscript(t, home, done, doneResult, first, second, firstResult)
+	if q := QuestionFor(home, s); q.ID != "toolu_edit" || q.Text != "approve Edit: /a/b.go" {
+		t.Fatalf("%+v", q)
+	}
+	// A status that names another tool keeps its own words.
+	s.Msg = "approve WebFetch: https://x"
+	if q := QuestionFor(home, s); q.ID != s.Msg || q.Text != s.Msg {
+		t.Fatalf("%+v", q)
+	}
+	// The folder-trust dialog is not a tool call.
+	s.Msg = "trust this folder"
+	if q := QuestionFor(home, s); q.Text != "trust this folder" {
+		t.Fatalf("%+v", q)
+	}
+}

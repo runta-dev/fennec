@@ -13,7 +13,15 @@ pub(super) fn question_preview(q: Option<&Question>) -> String {
         return t("asking");
     };
     if q.permission() {
-        return tf("asking_permission_preview", &[("command", q.command())]);
+        return match q.call() {
+            Some((_, what)) if !what.is_empty() => {
+                tf("asking_permission_preview", &[("command", &what)])
+            }
+            Some((tool, _)) if !tool.is_empty() => {
+                tf("asking_permission_preview", &[("command", &tool)])
+            }
+            _ => t("asking_unknown_tool"),
+        };
     }
     if let Some(first) = q.items.first() {
         let options = first
@@ -173,6 +181,41 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let q = r.asking()?.clone();
+        if q.permission() {
+            // THI-205: with the agent's live view on screen the bar sits in
+            // it (thread_peek_card); this is for when there is none.
+            return Some(
+                h_flex()
+                    .id("thread-question")
+                    .items_start()
+                    .gap(px(12.0))
+                    .py(px(10.0))
+                    .child(
+                        div()
+                            .size(px(32.0))
+                            .flex_none()
+                            .rounded(px(9.0))
+                            .bg(c("f_expanded"))
+                            .border_1()
+                            .border_color(c("f_line"))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(ui::agent_icon(&r.agent, 19.0)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .rounded(px(8.0))
+                            .overflow_hidden()
+                            .border_1()
+                            .border_color(c("orange").opacity(0.45))
+                            .child(self.permission_bar(r, &q, cx)),
+                    )
+                    .into_any_element(),
+            );
+        }
         let answered = r.answer.as_ref().is_some_and(|a| a.question == q.id);
         let answerable = q.answerable() && !answered;
         let key = self.question_key(r.number, &q);
@@ -445,94 +488,222 @@ impl FennecWindow {
 }
 
 impl FennecWindow {
-    /// A person's answer to a permission prompt in the thread (THI-197): a
-    /// quiet status line, not a message in their name. The command sits in a
-    /// one-line code box that opens to its full text on click.
+    /// THI-205: what a permission prompt asks, with Allow / Deny, drawn as
+    /// the bottom of the agent's live view (or alone when there is none).
+    /// Once answered it says so until the agent moves on.
+    pub(super) fn permission_bar(
+        &self,
+        r: &Request,
+        q: &Question,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let answer = r.answer.as_ref().filter(|a| a.question == q.id);
+        let busy = self.answering;
+        let answerable = q.answerable() && answer.is_none();
+        let call = q.call();
+        let (tool, what) = call.clone().unwrap_or_default();
+        let title = match call {
+            None => t("asking_unknown_tool"),
+            Some(_) if tool == "Bash" || tool.is_empty() => t("asking_run_command"),
+            Some(_) => tf("asking_use_tool", &[("tool", &tool)]),
+        };
+        let font = crate::settings::get().font_family.clone();
+        let footer = if answerable && !busy {
+            h_flex()
+                .gap(px(8.0))
+                .child(
+                    primary_button("question-allow", t("asking_allow")).cursor_pointer().on_click(
+                        cx.listener(|this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.submit_answer(Vec::new(), Some(true), String::new(), window, cx)
+                        }),
+                    ),
+                )
+                .child(
+                    secondary_button("question-deny", t("asking_deny"), false).on_click(
+                        cx.listener(|this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.submit_answer(Vec::new(), Some(false), String::new(), window, cx)
+                        }),
+                    ),
+                )
+                .child(
+                    div()
+                        .ml_auto()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(11.5))
+                        .text_color(c("f_muted"))
+                        .child(t("asking_permission_short_hint")),
+                )
+        } else {
+            let (label, dot) = match answer.and_then(|a| a.allow) {
+                Some(false) => (t("asking_denied_continuing"), c("bug")),
+                _ if answer.is_some() || busy => (t("asking_allowed_continuing"), c("ok")),
+                _ => (t("asking_in_session"), c("f_muted")),
+            };
+            h_flex()
+                .gap(px(7.0))
+                .text_size(px(12.0))
+                .text_color(c("f_muted"))
+                .child(div().flex_none().size(px(6.0)).rounded_full().bg(dot))
+                .child(label)
+        };
+        v_flex()
+            .id("permission-bar")
+            // Clicks here answer or select; they don't open the session.
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .cursor_default()
+            .gap(px(8.0))
+            .px(px(12.0))
+            .py(px(10.0))
+            .bg(c("f_card"))
+            .child(
+                h_flex()
+                    .gap(px(7.0))
+                    .min_w_0()
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(c("f_text"))
+                            .child(title),
+                    )
+                    .when(!tool.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .flex_none()
+                                .px(px(6.0))
+                                .rounded(px(5.0))
+                                .bg(c("f_expanded"))
+                                .border_1()
+                                .border_color(c("f_line"))
+                                .text_size(px(11.0))
+                                .text_color(c("f_muted"))
+                                .child(tool.clone()),
+                        )
+                    }),
+            )
+            .when(!what.is_empty(), |d| {
+                d.child(
+                    div()
+                        .font_family(font)
+                        .text_size(px(12.0))
+                        .line_height(relative(1.45))
+                        .text_color(c("f_text"))
+                        .child(clip_lines(&what, 8)),
+                )
+            })
+            .child(footer)
+    }
+
+    /// A person's answer to a permission prompt in the thread (THI-197,
+    /// THI-205): one quiet line, "✓ Allowed <command> 18:01", not a message
+    /// in their name. The command is cut to one line; a click shows it all.
     pub(super) fn permission_answer(
         &self,
         key: &str,
-        name: &str,
         time: &str,
         answer: &PermissionAnswer,
         cx: &mut Context<Self>,
     ) -> Div {
         let open = self.open_permission_commands.contains(key);
-        let (label, dot) = if answer.allow {
-            (tf("permission_allowed", &[("name", name)]), c("ok"))
-        } else {
-            (tf("permission_denied", &[("name", name)]), c("bug"))
+        let call = crate::board::split_call(&answer.command);
+        let (label, mark, color) = match (answer.allow, call.is_some()) {
+            (true, true) => (t("permission_allowed_short"), "✓", c("ok")),
+            (true, false) => (t("permission_allowed_unknown"), "✓", c("ok")),
+            (false, true) => (t("permission_denied_short"), "✕", c("bug")),
+            (false, false) => (t("permission_denied_unknown"), "✕", c("bug")),
         };
-        let command = if open {
-            answer.command.clone()
-        } else {
-            first_line(&answer.command)
-        };
+        let command = call
+            .map(|(tool, what)| if what.is_empty() { tool } else { what })
+            .unwrap_or_default();
         let toggle = key.to_owned();
-        h_flex()
-            .items_start()
-            .gap(px(12.0))
-            .py(px(6.0))
+        let font = crate::settings::get().font_family.clone();
+        v_flex()
+            .py(px(3.0))
+            .pl(px(44.0))
+            .gap(px(4.0))
             .child(
-                div()
-                    .w(px(32.0))
-                    .flex_none()
-                    .flex()
-                    .justify_center()
-                    .pt(px(5.0))
-                    .child(div().size(px(7.0)).rounded_full().bg(dot)),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
+                h_flex()
+                    .id(SharedString::from(format!("permission-{key}")))
+                    .debug_selector({
+                        let key = key.to_owned();
+                        move || format!("permission-command-{key}")
+                    })
+                    .items_start()
+                    .gap(px(7.0))
                     .min_w_0()
-                    .gap(px(5.0))
-                    .child(
-                        h_flex()
-                            .gap(px(6.0))
-                            .text_color(c("f_muted"))
-                            .child(div().text_size(px(12.5)).child(label))
-                            .child(div().text_size(px(11.0)).child(time.to_owned())),
-                    )
+                    .text_size(px(12.0))
+                    .text_color(c("f_muted"))
                     .child(
                         div()
-                            .id(SharedString::from(format!("permission-{key}")))
-                            .debug_selector({
-                                let key = key.to_owned();
-                                move || format!("permission-command-{key}")
-                            })
-                            .cursor_pointer()
-                            .rounded(px(7.0))
-                            .bg(c("f_card"))
-                            .border_1()
-                            .border_color(c("f_line"))
-                            .px(px(9.0))
-                            .py(px(5.0))
-                            .font_family(crate::settings::get().font_family.clone())
-                            .text_size(px(12.0))
-                            .text_color(c("f_muted"))
-                            .hover(|s| s.text_color(c("f_text")))
-                            .when(!open, |d| d.truncate())
-                            .child(command)
+                            .flex_none()
+                            .mt(px(2.0))
+                            .size(px(14.0))
+                            .rounded_full()
+                            .bg(color.opacity(0.16))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(9.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(color)
+                            .child(mark),
+                    )
+                    .child(div().flex_none().child(label))
+                    .when(!command.is_empty(), |d| {
+                        d.cursor_pointer()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .font_family(font)
+                                    .text_color(c("f_text").opacity(0.8))
+                                    .hover(|s| s.text_color(c("f_text")))
+                                    .when(!open, |d| d.truncate())
+                                    .child(if open { command.clone() } else { first_line(&command) }),
+                            )
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 if !this.open_permission_commands.remove(&toggle) {
                                     this.open_permission_commands.insert(toggle.clone());
                                 }
                                 cx.notify();
-                            })),
-                    )
-                    .when(!answer.text.is_empty(), |d| {
-                        d.child(
-                            gpui_base::text::TextView::markdown(
-                                SharedString::from(format!("{key}:instead")),
-                                answer.text.clone(),
-                            )
-                            .style(ui::markdown_style())
-                            .text_size(px(13.5))
-                            .text_color(c("f_text")),
-                        )
-                    }),
+                            }))
+                    })
+                    .child(
+                        div()
+                            .flex_none()
+                            .ml_auto()
+                            .pl(px(8.0))
+                            .text_size(px(11.0))
+                            .child(time.to_owned()),
+                    ),
             )
+            .when(!answer.text.is_empty(), |d| {
+                d.child(
+                    div().pl(px(21.0)).child(
+                        gpui_base::text::TextView::markdown(
+                            SharedString::from(format!("{key}:instead")),
+                            answer.text.clone(),
+                        )
+                        .style(ui::markdown_style())
+                        .text_size(px(13.0))
+                        .text_color(c("f_text")),
+                    ),
+                )
+            })
     }
+}
+
+/// At most `n` lines of a command, marked when more follows.
+fn clip_lines(command: &str, n: usize) -> String {
+    let lines: Vec<&str> = command.lines().collect();
+    if lines.len() <= n {
+        return command.to_owned();
+    }
+    format!("{}\n…", lines[..n].join("\n"))
 }
 
 /// The first line of a command, marked when more follows.

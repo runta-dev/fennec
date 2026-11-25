@@ -65,15 +65,23 @@ func ClaudeProjectDir(home, cwd string) string {
 	return filepath.Join(home, ".claude", "projects", string(b))
 }
 
-// transcriptTail is how much of the newest transcript is searched for the
-// pending AskUserQuestion; the call is among the last few entries.
+// transcriptTail is how much of the newest transcript is searched for a
+// pending tool call; the call is among the last few entries.
 const transcriptTail = 1 << 20
 
-// TranscriptQuestion returns the AskUserQuestion call that has no result yet
-// in the newest Claude Code transcript for cwd.
-func TranscriptQuestion(home, cwd string) (id string, items []board.QuestionItem, ok bool) {
+// pendingCall is a tool call in a Claude Code transcript with no result yet.
+// msg is the assistant message it belongs to (Claude Code writes each block
+// of a message as its own line under the same message id).
+type pendingCall struct {
+	id, name, msg string
+	input         json.RawMessage
+}
+
+// pendingCalls returns the tool calls without a result in the newest Claude
+// Code transcript for cwd, oldest first.
+func pendingCalls(home, cwd string) []pendingCall {
 	if home == "" || cwd == "" {
-		return "", nil, false
+		return nil
 	}
 	var newest string
 	var at time.Time
@@ -91,28 +99,25 @@ func TranscriptQuestion(home, cwd string) (id string, items []board.QuestionItem
 		}
 	}
 	if newest == "" {
-		return "", nil, false
+		return nil
 	}
 	file, err := os.Open(newest)
 	if err != nil {
-		return "", nil, false
+		return nil
 	}
 	defer file.Close()
 	if info, err := file.Stat(); err == nil && info.Size() > transcriptTail {
 		_, _ = file.Seek(info.Size()-transcriptTail, io.SeekStart)
 	}
 	data, _ := io.ReadAll(file)
-	type call struct {
-		id    string
-		items []board.QuestionItem
-	}
-	var pending []call
+	var pending []pendingCall
 	for _, line := range bytes.Split(data, []byte("\n")) {
-		if !bytes.Contains(line, []byte("AskUserQuestion")) && !bytes.Contains(line, []byte("tool_result")) {
+		if !bytes.Contains(line, []byte("tool_")) {
 			continue
 		}
 		var entry struct {
 			Message struct {
+				ID      string          `json:"id"`
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
@@ -120,31 +125,20 @@ func TranscriptQuestion(home, cwd string) (id string, items []board.QuestionItem
 			continue
 		}
 		var blocks []struct {
-			Type      string `json:"type"`
-			ID        string `json:"id"`
-			Name      string `json:"name"`
-			ToolUseID string `json:"tool_use_id"`
-			Input     struct {
-				Questions []struct {
-					Header      string                 `json:"header"`
-					Question    string                 `json:"question"`
-					MultiSelect bool                   `json:"multiSelect"`
-					Options     []board.QuestionOption `json:"options"`
-				} `json:"questions"`
-			} `json:"input"`
+			Type      string          `json:"type"`
+			ID        string          `json:"id"`
+			Name      string          `json:"name"`
+			ToolUseID string          `json:"tool_use_id"`
+			Input     json.RawMessage `json:"input"`
 		}
 		if json.Unmarshal(entry.Message.Content, &blocks) != nil {
 			continue
 		}
 		for _, b := range blocks {
-			switch {
-			case b.Type == "tool_use" && b.Name == "AskUserQuestion" && len(b.Input.Questions) > 0:
-				c := call{id: b.ID}
-				for _, q := range b.Input.Questions {
-					c.items = append(c.items, board.QuestionItem{Header: q.Header, Question: q.Question, MultiSelect: q.MultiSelect, Options: q.Options})
-				}
-				pending = append(pending, c)
-			case b.Type == "tool_result":
+			switch b.Type {
+			case "tool_use":
+				pending = append(pending, pendingCall{id: b.ID, name: b.Name, msg: entry.Message.ID, input: b.Input})
+			case "tool_result":
 				for i := range pending {
 					if pending[i].id == b.ToolUseID {
 						pending = append(pending[:i], pending[i+1:]...)
@@ -154,11 +148,77 @@ func TranscriptQuestion(home, cwd string) (id string, items []board.QuestionItem
 			}
 		}
 	}
-	if len(pending) == 0 {
-		return "", nil, false
+	return pending
+}
+
+// TranscriptQuestion returns the AskUserQuestion call that has no result yet
+// in the newest Claude Code transcript for cwd.
+func TranscriptQuestion(home, cwd string) (id string, items []board.QuestionItem, ok bool) {
+	calls := pendingCalls(home, cwd)
+	for i := len(calls) - 1; i >= 0; i-- {
+		if calls[i].name != "AskUserQuestion" {
+			continue
+		}
+		var input struct {
+			Questions []struct {
+				Header      string                 `json:"header"`
+				Question    string                 `json:"question"`
+				MultiSelect bool                   `json:"multiSelect"`
+				Options     []board.QuestionOption `json:"options"`
+			} `json:"questions"`
+		}
+		if json.Unmarshal(calls[i].input, &input) != nil || len(input.Questions) == 0 {
+			continue
+		}
+		for _, q := range input.Questions {
+			items = append(items, board.QuestionItem{Header: q.Header, Question: q.Question, MultiSelect: q.MultiSelect, Options: q.Options})
+		}
+		return calls[i].id, items, true
 	}
-	last := pending[len(pending)-1]
-	return last.id, last.items, true
+	return "", nil, false
+}
+
+// TranscriptPermission returns the tool call a Claude Code permission prompt
+// is about, as "approve <Tool>: <what it runs or touches>" (the shape of
+// herdr-core's status message when it names the call). Calls of one message
+// are asked about in order, so it is the first call without a result in the
+// newest message that still has one.
+func TranscriptPermission(home, cwd string) (id, text string, ok bool) {
+	calls := pendingCalls(home, cwd)
+	if len(calls) == 0 {
+		return "", "", false
+	}
+	last := calls[len(calls)-1].msg
+	call := calls[len(calls)-1]
+	for _, c := range calls {
+		if c.msg == last && last != "" {
+			call = c
+			break
+		}
+	}
+	if call.name == "" || call.name == "AskUserQuestion" {
+		return "", "", false
+	}
+	text = "approve " + call.name
+	if what := callSubject(call.input); what != "" {
+		text += ": " + what
+	}
+	return call.id, text, true
+}
+
+// callSubject is the part of a tool call's input a person approves: the
+// shell command, the file, the URL, the search.
+func callSubject(input json.RawMessage) string {
+	var fields map[string]any
+	if json.Unmarshal(input, &fields) != nil {
+		return ""
+	}
+	for _, key := range []string{"command", "file_path", "notebook_path", "url", "pattern", "query", "path", "prompt"} {
+		if v, ok := fields[key].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // sameQuestion reports whether a transcript question is the one herdr-core's
@@ -173,11 +233,35 @@ func sameQuestion(items []board.QuestionItem, msg string) bool {
 	return n > 0 && string(a[:n]) == string(b[:n])
 }
 
+// samePermission reports whether a transcript call can be the one a
+// permission status message names: any call when the message doesn't name
+// one, else the same tool.
+func samePermission(text, msg string) bool {
+	named, ok := strings.CutPrefix(msg, "approve ")
+	if !ok {
+		return true
+	}
+	tool, _, _ := strings.Cut(named, ":")
+	call, _, _ := strings.Cut(strings.TrimPrefix(text, "approve "), ":")
+	return strings.TrimSpace(tool) == call
+}
+
 // QuestionFor describes what a blocked agent is asking: AskUserQuestion's
 // questions and options from the Claude Code transcript when it matches the
 // status, else what the status message says.
 func QuestionFor(home string, s Session) board.Question {
 	q := board.Question{ID: s.Msg, App: s.App, Kind: s.Kind, Text: s.Msg}
+	if s.Kind == "permission" {
+		// THI-205: Claude Code's status can say only "permission prompt";
+		// the transcript names the call (and gives each prompt its own id,
+		// so an answer to the last prompt doesn't count for the next one).
+		if s.App == "claude-code" && s.Msg != "trust this folder" {
+			if id, text, ok := TranscriptPermission(home, s.Cwd); ok && samePermission(text, s.Msg) {
+				q.ID, q.Text = id, text
+			}
+		}
+		return q
+	}
 	if s.Kind != "question" {
 		return q
 	}
