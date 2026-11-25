@@ -24,7 +24,9 @@ type preparationCheckpoint struct {
 // checkpoint. Remote implementations and setup scripts are hashed separately;
 // unrelated UI, diagnostics, signing, and local daemon edits must not reinstall
 // an already prepared cloud environment on every application update.
-const preparationSchema = "fennec-preparation-v2"
+// v3 (THI-123): Antigravity CLI counts its migrated sign-in, so a checkpoint
+// that recorded its route as credentials_required is stale.
+const preparationSchema = "fennec-preparation-v3"
 
 // A credential or model change does not change an installed gateway. Keep its
 // installation/service rules and authenticated scope independent of account data.
