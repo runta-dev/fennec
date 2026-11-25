@@ -27,8 +27,8 @@ fn queue_rows_match_session_rows_when_sessions_overflow(cx: &mut TestAppContext)
     cx.simulate_resize(gpui::size(px(1000.0), px(500.0)));
     cx.run_until_parked();
     let session = cx.debug_bounds("session-row-s0").expect("session row");
-    for id in ["this", "test"] {
-        let row = cx.debug_bounds(&format!("project-row-{id}")).expect("project row");
+    for id in ["project-row-this", "project-row-test"] {
+        let row = cx.debug_bounds(id).expect("project row");
         assert_eq!(row.size.height, px(ROW_HEIGHT), "queue row {id} shrank");
         assert_eq!(row.size.height, session.size.height);
         assert_eq!(row.left(), session.left());
