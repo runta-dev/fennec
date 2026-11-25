@@ -219,6 +219,7 @@ impl FennecWindow {
                     if matches!(&this.route, Some(Route::Project(p) | Route::Settings(p, _)) if p == &id) {
                         this.route = None;
                         this.open = None;
+                        this.opening = None;
                         this.thread = None;
                         this.settings = Default::default();
                     }
