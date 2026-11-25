@@ -2301,7 +2301,10 @@ impl FennecWindow {
         let now = sessions::now_ms();
         let mut groups = Vec::new();
         let list = self.session_list(&q);
+        // Measure in the font the rows draw with (the root's UI font), or the
+        // column is narrower than "now" and the age slides under the spinner (THI-111).
         let mut age_font = window.text_style().font();
+        age_font.family = crate::settings::get().ui_font_family.clone().into();
         age_font.weight = FontWeight::MEDIUM;
         let age_width = list.iter().map(|row| {
             let age = sessions::age(row.since_ms, now);

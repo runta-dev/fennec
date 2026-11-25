@@ -207,9 +207,9 @@ impl FennecWindow {
                 .with_animation(
                     ElementId::Name(format!("working-{address}").into()),
                     Animation::new(Duration::from_millis(900)).repeat(),
-                    |icon, delta| {
-                        icon.with_transformation(Transformation::rotate(percentage(delta)))
-                    },
+                    // One shared phase: every running spinner turns in step,
+                    // however late its row appeared (THI-111).
+                    |icon, _| icon.with_transformation(Transformation::rotate(percentage(spinner_phase()))),
                 )
                 .into_any_element();
         }
@@ -306,4 +306,11 @@ pub(super) fn state(word: &str) -> State {
         "idle" => State::Idle,
         _ => State::Unknown,
     }
+}
+
+/// Where every activity spinner is in its 900 ms turn, from one shared clock.
+fn spinner_phase() -> f32 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let elapsed = START.get_or_init(std::time::Instant::now).elapsed().as_millis();
+    (elapsed % 900) as f32 / 900.0
 }
