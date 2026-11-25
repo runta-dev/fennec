@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fennec/internal/board"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/commandstream"
@@ -124,6 +125,15 @@ func run() (int, error) {
 		if os.Args[2] != "run" {
 			return 1, fmt.Errorf("invalid queue service command")
 		}
+		release, err := queuescheduler.LockService(home)
+		if errors.Is(err, queuescheduler.ErrServiceRunning) {
+			log.Printf("queue scheduler: already running")
+			return 0, nil
+		}
+		if err != nil {
+			return 1, err
+		}
+		defer release()
 		store := board.Store{Home: home, Role: "cloud"}
 		executor := queuescheduler.CloudExecutor{Runtime: cloudruntime.NewLocalRuntime(home), Store: store}
 		scheduler := queuescheduler.Scheduler{Store: store, Executor: executor, Command: filepath.Join(home, ".local/fennec/bin/fennec-terminal") + " queue", OnError: func(err error) { log.Printf("queue scheduler: %v", err) }}
@@ -410,9 +420,17 @@ func run() (int, error) {
 				return (preview.Store{Home: home}).Dial(ctx)
 			}
 			if target == terminalstream.SocketBoard {
-				queueServiceOnce.Do(func() { queueServiceError = queuescheduler.EnsureService(ctx, home) })
-				if queueServiceError != nil {
-					return nil, fmt.Errorf("queue scheduler startup failed: %w", queueServiceError)
+				// Without systemd nothing restarts an exited scheduler, so
+				// check its run lock on every board connection.
+				var err error
+				if queuescheduler.Systemd() {
+					queueServiceOnce.Do(func() { queueServiceError = queuescheduler.EnsureService(ctx, home) })
+					err = queueServiceError
+				} else {
+					err = queuescheduler.EnsureService(ctx, home)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("queue scheduler startup failed: %w", err)
 				}
 				return (board.Store{Home: home, Role: "cloud"}).Dial(ctx)
 			}
