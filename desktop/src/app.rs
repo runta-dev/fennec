@@ -2834,14 +2834,19 @@ impl FennecWindow {
                     )
                 })
                 .child(
+                    // Wraps instead of overflowing: with several tags the row is wider
+                    // than the card, and the agent/replies/age used to spill past its
+                    // right edge into the thread column (THI-181).
                     h_flex()
                         .mt(px(5.0))
-                        .gap(px(10.0))
+                        .flex_wrap()
+                        .gap_x(px(10.0))
+                        .gap_y(px(5.0))
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
                         .child(format!("{}-{}", p.key, r.number))
                         .child(
-                            h_flex().gap(px(4.0)).children(
+                            h_flex().min_w_0().flex_wrap().gap(px(4.0)).children(
                                 r.tag_list().iter().map(|id| ui::tag_chip(id, &tag_label(id))),
                             ),
                         )
