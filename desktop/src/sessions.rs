@@ -68,6 +68,10 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
             let state = match t["status"]["state"].as_str().unwrap_or_default() {
                 "blocked" | "error" => State::NeedsYou,
                 "working" => State::Working,
+                // A turn that ended while a background shell or monitor still
+                // reports working counts as working, as the queue counts it
+                // (THI-173, THI-193).
+                "idle" | "done" if background_working(t).is_some() => State::Working,
                 "idle" | "done" => State::Idle,
                 _ => State::Unknown,
             };
@@ -105,6 +109,8 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                 activity: t["status"]["msg"]
                     .as_str()
                     .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| background_working(t))
                     .unwrap_or_default()
                     .to_owned(),
                 since_ms: t["status_ms"]
@@ -117,6 +123,16 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
         .collect();
     out.sort_by(|a, b| a.state.cmp(&b.state).then(b.since_ms.cmp(&a.since_ms)));
     out
+}
+
+/// The title of a working background record (Claude Code reports each
+/// background shell or monitor as its own OSC 7501 record), if any.
+fn background_working(t: &Value) -> Option<&str> {
+    t["records"]
+        .as_object()?
+        .values()
+        .find(|r| r["state"] == "working")
+        .map(|r| r["title"].as_str().map(str::trim).unwrap_or_default())
 }
 
 /// The agent's icon in assets/agents (the iPhone app's), by agent or program name.
@@ -308,5 +324,19 @@ mod mark_done_tests {
         keys.sort();
         assert_eq!(keys, ["t1", "t4"]);
         assert!(thread_sessions_to_end(&sessions, "other", 47).is_empty());
+    }
+
+    // THI-193: the queue counted THI-160 as running while the sidebar listed
+    // its session as idle: Claude Code had left the root status at done with
+    // a background shell still reporting working in its own record.
+    #[test]
+    fn background_record_counts_as_working() {
+        let mut t = terminal("t1", "160", "done");
+        t["records"] = json!({"bnye50fsb": {"app": "claude-code", "state": "working", "title": "Wait for THI-150"}});
+        let s = &from_terminals(&[t.clone()])[0];
+        assert_eq!(s.state, State::Working);
+        assert_eq!(s.activity, "Wait for THI-150");
+        t["records"] = json!({"bnye50fsb": {"state": "done"}});
+        assert_eq!(from_terminals(&[t])[0].state, State::Idle);
     }
 }

@@ -177,3 +177,30 @@ func TestCloudInitialSnapshotDoesNotReplayNotifications(t *testing.T) {
 		t.Fatalf("cloud initialization affected alerts: %+v", out.Alerts)
 	}
 }
+
+// THI-193: a Claude Code agent whose turn ended while a background shell
+// still waits reports a done root status and a working record. The queue
+// counts that request as running, so the sidebar must too.
+func TestBackgroundRecordCountsAsWorking(t *testing.T) {
+	raw := `{"address":"t1","state":"live","labels":{"fennec.session":"test"},"status":{"app":"claude-code","state":"done"},"records":{"bnye50fsb":{"app":"claude-code","state":"working","title":"Wait for THI-150"}}}`
+	var term Terminal
+	if err := json.Unmarshal([]byte(raw), &term); err != nil {
+		t.Fatal(err)
+	}
+	first := Update(Input{Terminals: []Terminal{term}})
+	if first.Terminals["t1"].State != "working" {
+		t.Fatal(first)
+	}
+	// The shell finishes: the record goes and the turn's end rings once.
+	term.Records = json.RawMessage(`{}`)
+	in := Input{Terminals: []Terminal{term}, Previous: first.Previous}
+	done := Update(in)
+	if done.Terminals["t1"].State != "done" || len(done.Alerts) != 1 || done.Alerts[0].Kind != "done" {
+		t.Fatal(done)
+	}
+	// Unexpected record shapes fall back to the root status.
+	term.Records = json.RawMessage(`[1]`)
+	if w := term.Word(); w != "done" {
+		t.Fatal(w)
+	}
+}

@@ -21,8 +21,31 @@ type Terminal struct {
 		App   string `json:"app"`
 		State string `json:"state"`
 	} `json:"status"`
-	Turn uint64 `json:"turn"`
+	// Records are the terminal's other OSC 7501 status records, one per thing
+	// the program reports on (Claude Code: each background shell or monitor).
+	Records json.RawMessage `json:"records"`
+	Turn    uint64          `json:"turn"`
 }
+
+// Word is the agent's status word as the queue scheduler reads it: a turn
+// that ended while a background record is still working counts as working,
+// like Claude Code's "1 shell still running" root status (THI-173, THI-193).
+func (t Terminal) Word() string {
+	w := t.Status.State
+	if w == "done" || w == "idle" {
+		var records map[string]struct {
+			State string `json:"state"`
+		}
+		_ = json.Unmarshal(t.Records, &records)
+		for _, r := range records {
+			if r.State == "working" {
+				return "working"
+			}
+		}
+	}
+	return w
+}
+
 type Memory struct {
 	Written *uint64 `json:"written,omitempty"`
 	Word    string  `json:"word"`
@@ -118,7 +141,7 @@ func Update(in Input) Output {
 			m.Written = nil
 		}
 		looking := in.Looking == addr
-		word := t.Status.State
+		word := t.Word()
 		if word != old.Word {
 			if word == "working" || word == "blocked" {
 				m.Seen = true
