@@ -115,7 +115,7 @@ func (r *LocalRuntime) deliverMacOnline(ctx context.Context, h localssh.LinkHeal
 			State string `json:"state"`
 			App   string `json:"app"`
 		}
-		if json.Unmarshal(t.Status, &status) != nil || (status.State != "idle" && status.State != "working") || !notificationAgent(status.App) {
+		if json.Unmarshal(t.Status, &status) != nil || (status.State != "idle" && status.State != "working") || !notificationAgent(reportedAgent(status.App)) {
 			continue
 		}
 		if ctx.Err() != nil {
@@ -158,6 +158,16 @@ func (r *LocalRuntime) deliverMacOnline(ctx context.Context, h localssh.LinkHeal
 func onlineTarget(t LocalTerminal) bool {
 	return t.State == "live" && sessionIDPattern.MatchString(t.Labels["fennec.session"]) &&
 		notificationAgent(t.Labels["fennec.agent"])
+}
+
+// reportedAgent maps the name an agent gives in its OSC 7501 status report to
+// the fennec.agent name: Claude Code reports "claude-code" (herdr's
+// programs.json lists the same aliases).
+func reportedAgent(app string) string {
+	if agent, ok := map[string]string{"claude-code": "claude", "agent": "cursor", "cursor-agent": "cursor", "grok-build": "grok", "kimi-code": "kimi", "kimicodecli": "kimi"}[app]; ok {
+		return agent
+	}
+	return app
 }
 
 func notificationAgent(agent string) bool {

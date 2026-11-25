@@ -73,6 +73,24 @@ func TestMacOnlineOutboxDefersDeduplicatesAndFences(t *testing.T) {
 	}
 }
 
+func TestMacOnlineReachesAgentsByTheirReportedName(t *testing.T) {
+	// Claude Code reports app=claude-code while Fennec labels it claude.
+	claude := onlineFixture("t1", "idle", "claude")
+	claude.Status = json.RawMessage(`{"state":"idle","app":"claude-code"}`)
+	sent := 0
+	r := &LocalRuntime{Home: t.TempDir(), Query: func(_ context.Context, method string, _ any) (json.RawMessage, error) {
+		if method == "terminal.list" {
+			return json.Marshal(map[string]any{"terminals": []LocalTerminal{claude}})
+		}
+		sent++
+		return json.RawMessage(`{"started":true}`), nil
+	}}
+	h := localssh.LinkHealth{Device: "aabbccdd", Generation: strings.Repeat("a", 32), Since: 100}
+	if _, err := r.deliverMacOnline(context.Background(), h, func() error { return nil }); err != nil || sent != 1 {
+		t.Fatal(err, sent)
+	}
+}
+
 func TestMacOnlineNeverRetriesUncertainInput(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		t.Run(map[bool]string{false: "uncertain", true: "refused"}[known], func(t *testing.T) {
