@@ -25,6 +25,7 @@ gpui_platform = { package = "gpui-pre-platform", version = "=0.3.8", features = 
 gpui-shell = { package = "gpui-shell-native", path = "crates/gpui-shell-native" }
 gpui-base = { path = "vendor/gpui-kit/crates/base" }
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 futures = "0.3"
 async-channel = "2"
 base64 = "0.22"

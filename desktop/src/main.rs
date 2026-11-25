@@ -47,6 +47,7 @@ mod control;
 mod cursor;
 mod dispatch_env;
 mod i18n;
+mod local_time;
 mod project_settings;
 mod shot;
 mod sessions;

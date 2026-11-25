@@ -45,10 +45,7 @@ fn mention_source(m: &Mention) -> String {
     } else {
         sessions::agent_name(&m.agent).to_owned()
     };
-    let when =
-        m.at.get(5..16)
-            .map(|s| s.replace('T', " "))
-            .unwrap_or_default();
+    let when = crate::local_time::month_day_clock(&m.at);
     format!("{who} · {when}")
 }
 

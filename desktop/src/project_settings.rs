@@ -701,7 +701,7 @@ impl FennecWindow {
             let id = k.id.clone();
             let selected = current.is_some_and(|c| c.id == k.id);
             let gone = k.status == "deprecated";
-            let meta = [day(&k.generated_at), k.sources.join(", ")]
+            let meta = [crate::local_time::day(&k.generated_at), k.sources.join(", ")]
                 .into_iter()
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
@@ -741,7 +741,7 @@ impl FennecWindow {
             // Agents keep the status and there is no review step, so only a
             // retired entry is marked; everything else is simply live.
             let gone = k.status == "deprecated";
-            let written = [sessions_actor(&k.generated_by), stamp(&k.generated_at)]
+            let written = [sessions_actor(&k.generated_by), crate::local_time::stamp(&k.generated_at)]
                 .into_iter()
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
@@ -1431,18 +1431,3 @@ fn sessions_actor(value: &str) -> String {
     crate::sessions::agent_name(value.split('/').next().unwrap_or(value)).to_owned()
 }
 
-/// `2026-11-25T03:30:00Z` as `2026-11-25 03:30 UTC`; anything else as is.
-fn stamp(at: &str) -> String {
-    match (at.get(..10), at.get(11..16)) {
-        (Some(date), Some(time)) if at.as_bytes().get(10) == Some(&b'T') => {
-            let utc = at.ends_with('Z') || at.ends_with("+00:00");
-            format!("{date} {time}{}", if utc { " UTC" } else { "" })
-        }
-        _ => at.to_owned(),
-    }
-}
-
-/// The date part of an RFC 3339 time, for the list.
-fn day(at: &str) -> String {
-    at.get(..10).filter(|d| d.as_bytes().get(4) == Some(&b'-')).unwrap_or(at).to_owned()
-}

@@ -3100,7 +3100,7 @@ impl FennecWindow {
             } else {
                 m.author.clone()
             };
-            let time = m.at.get(11..16).unwrap_or_default().to_owned();
+            let time = crate::local_time::clock(&m.at);
             let key = pending_reply::message_key(r.number, m.id);
             // THI-103: the message a mention row jumped to.
             let jumped = self.thread_jump == Some((r.number, m.id)) && i < r.messages.len();
