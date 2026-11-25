@@ -54,26 +54,123 @@ pub(super) fn request_link(url: &str) -> Option<u64> {
     url.strip_prefix(REQUEST_URL)?.parse().ok()
 }
 
-/// Reads the numbers after "KEY-": "73" or the shorthand "73/103/107"
-/// (THI-117), returning them and the bytes they span. A number must end at a
-/// non-word character, so "42x" is not a reference.
-fn ref_chain(s: &str) -> Option<(Vec<u64>, usize)> {
-    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
-    let number = |at: usize| -> Option<(u64, usize)> {
-        let len = s[at..].bytes().take_while(u8::is_ascii_digit).count();
-        let ends = s[at + len..].chars().next().is_none_or(|c| !word(c));
-        (len > 0 && len <= 7 && ends)
-            .then(|| s[at..at + len].parse().ok().map(|n| (n, len)))
-            .flatten()
-    };
-    let (first, mut used) = number(0)?;
-    let mut numbers = vec![first];
-    while s[used..].starts_with('/') {
-        let Some((n, len)) = number(used + 1) else { break };
-        numbers.push(n);
-        used += 1 + len;
+/// Separators of a list of requests after a KEY-n ("THI-107、117、119"); spaces
+/// may surround them. The board reads the same grammar
+/// (internal/board/refs.go); keep the two in step.
+const LIST_SEPS: [&str; 13] = [
+    ",", "，", "、", "/", "&", "~", "～", "–", "—", "和", "及", "与", "或",
+];
+
+/// Separators that need spaces on both sides.
+const LIST_WORDS: [&str; 2] = ["and", "or"];
+
+/// Words that make a number after a reference a count ("THI-41、3 个文件").
+const UNITS: &str = "个条次份行项天秒分时处位张件列页字号年月日周倍万千百元块台名人遍轮步%‰°";
+
+fn word(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
+fn digit_at(s: &str, i: usize) -> bool {
+    s.as_bytes().get(i).is_some_and(u8::is_ascii_digit)
+}
+
+fn skip_blanks(s: &str, mut i: usize) -> usize {
+    while matches!(s.as_bytes().get(i), Some(b' ' | b'\t')) {
+        i += 1;
     }
-    Some((numbers, used))
+    i
+}
+
+/// 1 to 7 digits at `i`: the number and where it ends.
+fn number_at(s: &str, i: usize) -> Option<(u64, usize)> {
+    let len = s[i..].bytes().take_while(u8::is_ascii_digit).count();
+    (len > 0 && len <= 7)
+        .then(|| s[i..i + len].parse().ok().map(|n| (n, i + len)))
+        .flatten()
+}
+
+/// The length of the list separator at `i`, blanks around it included.
+fn list_sep(s: &str, i: usize) -> usize {
+    let j = skip_blanks(s, i);
+    if let Some(sep) = LIST_SEPS.iter().find(|sep| s[j..].starts_with(*sep)) {
+        return skip_blanks(s, j + sep.len()) - i;
+    }
+    if j > i {
+        for w in LIST_WORDS {
+            if s[j..].starts_with(w) && matches!(s.as_bytes().get(j + w.len()), Some(b' ' | b'\t'))
+            {
+                return skip_blanks(s, j + w.len()) - i;
+            }
+        }
+    }
+    0
+}
+
+/// Whether a bare list item may end at `i`: not before a word, a count, or
+/// the rest of a date, time or version.
+fn list_end(s: &str, i: usize) -> bool {
+    let Some(&c) = s.as_bytes().get(i) else {
+        return true;
+    };
+    if word(c) || (b".:-".contains(&c) && digit_at(s, i + 1)) {
+        return false;
+    }
+    if list_sep(s, i) > 0 {
+        return true;
+    }
+    let j = skip_blanks(s, i);
+    match s[j..].chars().next() {
+        None | Some('\n' | '\r') => true,
+        Some(c) if c.is_ascii() && word(c as u8) => false,
+        Some(c) => !UNITS.contains(c),
+    }
+}
+
+/// Reads the requests after "KEY-" (THI-117, THI-131): "73", the shorthand
+/// "73/103/107", or a list "107、117、119", "41, 59 and 61", "117 和 119",
+/// "107~121" (both ends), whose items may repeat the key or start with '#'.
+/// Returns each number with the bytes of its text, and the bytes used. A
+/// number must end at a non-word character ("42x" is not a reference); a
+/// bare list item must also not be a count, date or version ("THI-41, 3
+/// files"), and the list stops at the first one that is.
+fn ref_chain(s: &str, key: &str) -> Option<(Vec<(u64, usize, usize)>, usize)> {
+    let tight_end = |end: usize| s.as_bytes().get(end).is_none_or(|c| !word(*c));
+    let (first, end) = number_at(s, 0)?;
+    if !tight_end(end) {
+        return None;
+    }
+    let mut refs = vec![(first, 0, end)];
+    let mut used = end;
+    loop {
+        let (mut j, mut loose) = (used + 1, false);
+        if !s[used..].starts_with('/') {
+            let sep = list_sep(s, used);
+            if sep == 0 {
+                break;
+            }
+            (j, loose) = (used + sep, true);
+        }
+        let start = j;
+        if s[j..].starts_with(key) && s[j + key.len()..].starts_with('-') {
+            (j, loose) = (j + key.len() + 1, false);
+        } else if loose && s[j..].starts_with('#') {
+            j += 1;
+        }
+        let Some((n, end)) = number_at(s, j) else {
+            break;
+        };
+        if if loose {
+            !list_end(s, end)
+        } else {
+            !tight_end(end)
+        } {
+            break;
+        }
+        refs.push((n, start, end));
+        used = end;
+    }
+    Some((refs, used))
 }
 
 /// `body` with every reference to a known request of the queue (KEY-n, as
@@ -108,19 +205,24 @@ pub(super) fn link_refs(body: &str, key: &str, known: &HashSet<u64>) -> String {
                 && rest.starts_with(key)
                 && rest[key.len()..].starts_with('-')
                 && prev.is_none_or(|p| !word(p) && p != '-')
-                && let Some((numbers, used)) = ref_chain(&rest[key.len() + 1..])
-                && numbers.iter().any(|n| known.contains(n))
+                && let Some((refs, used)) = ref_chain(&rest[key.len() + 1..], key)
+                && refs.iter().any(|(n, _, _)| known.contains(n))
             {
-                for (j, n) in numbers.iter().enumerate() {
-                    if j > 0 {
-                        out.push('/');
-                    }
-                    let text = if j == 0 { format!("{key}-{n}") } else { n.to_string() };
+                let s = &rest[key.len() + 1..];
+                let mut from = 0;
+                for (j, (n, start, end)) in refs.iter().enumerate() {
+                    out.push_str(&s[from..*start]);
+                    let text = if j == 0 {
+                        &rest[..key.len() + 1 + end]
+                    } else {
+                        &s[*start..*end]
+                    };
                     if known.contains(n) {
                         out.push_str(&format!("[{text}]({REQUEST_URL}{n})"));
                     } else {
-                        out.push_str(&text);
+                        out.push_str(text);
                     }
+                    from = *end;
                 }
                 i += key.len() + 1 + used;
                 prev = Some('0');
@@ -611,8 +713,29 @@ mod tests {
         );
         let known: HashSet<u64> = [73, 103, 107].into_iter().collect();
         assert_eq!(
-            link_refs("正在跑的请求（THI-73/103/107）。THI-99/103x THI-99/107/", "THI", &known),
+            link_refs(
+                "正在跑的请求（THI-73/103/107）。THI-99/103x THI-99/107/",
+                "THI",
+                &known
+            ),
             "正在跑的请求（[THI-73](fennec://request/73)/[103](fennec://request/103)/[107](fennec://request/107)）。THI-99/103x THI-99/[107](fennec://request/107)/"
+        );
+        let known: HashSet<u64> = [107, 117, 119, 121].into_iter().collect();
+        assert_eq!(
+            link_refs("4 个提交（THI-107、117、119、121），全是 desktop", "THI", &known),
+            "4 个提交（[THI-107](fennec://request/107)、[117](fennec://request/117)、[119](fennec://request/119)、[121](fennec://request/121)），全是 desktop"
+        );
+        assert_eq!(
+            link_refs("THI-107 / 117 和 THI-119 都修了，THI-121, 3 files", "THI", &known),
+            "[THI-107](fennec://request/107) / [117](fennec://request/117) 和 [THI-119](fennec://request/119) 都修了，[THI-121](fennec://request/121), 3 files"
+        );
+        assert_eq!(
+            link_refs("THI-107~121，THI-117、2026-11-25，THI-119, 0.1.13", "THI", &known),
+            "[THI-107](fennec://request/107)~[121](fennec://request/121)，[THI-117](fennec://request/117)、2026-11-25，[THI-119](fennec://request/119), 0.1.13"
+        );
+        assert_eq!(
+            link_refs("THI-117, 5 and #119; fix/thi-117", "THI", &known),
+            "[THI-117](fennec://request/117), 5 and [#119](fennec://request/119); fix/thi-117"
         );
         assert_eq!(request_link("fennec://request/41"), Some(41));
         assert_eq!(request_link("https://example.com"), None);

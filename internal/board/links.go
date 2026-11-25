@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,28 +59,6 @@ type Mention struct {
 	At      time.Time `json:"at"`
 	// Excerpt is the line holding the reference, shortened around it.
 	Excerpt string `json:"excerpt"`
-}
-
-// mentionPattern matches a reference to a request of the queue with this key:
-// KEY-n, or the shorthand KEY-n/m/k for several requests (THI-117).
-func mentionPattern(key string) *regexp.Regexp {
-	return regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])` + regexp.QuoteMeta(key) + `-([0-9]{1,7}(?:/[0-9]{1,7})*)\b`)
-}
-
-// mentions lists the request numbers a text refers to as KEY-n (or KEY-n/m),
-// each with the byte offset of the first digit of its first reference's KEY-n.
-func mentions(pattern *regexp.Regexp, text string) [][2]int {
-	seen := map[int]bool{}
-	out := [][2]int{}
-	for _, m := range pattern.FindAllStringSubmatchIndex(text, -1) {
-		for _, part := range strings.Split(text[m[2]:m[3]], "/") {
-			if n, err := strconv.Atoi(part); err == nil && n > 0 && !seen[n] {
-				seen[n] = true
-				out = append(out, [2]int{n, m[2]})
-			}
-		}
-	}
-	return out
 }
 
 const excerptRunes = 140

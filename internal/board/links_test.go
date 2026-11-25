@@ -223,3 +223,48 @@ func TestMentionsShowWhereTheyWereWritten(t *testing.T) {
 		t.Fatal(string(thread))
 	}
 }
+
+func TestMentionsReadLists(t *testing.T) {
+	pattern := mentionPattern("THI")
+	cases := map[string][]int{
+		"之后 main 上又进了 4 个提交（THI-107、117、119、121），全是 desktop": {107, 117, 119, 121},
+		"THI-37、39、45、47 都停在 t":                              {37, 39, 45, 47},
+		"Waiting on you: THI-41, 59, 61":                     {41, 59, 61},
+		"THI-39 / 63 / 69 / 73 先在一边":                         {39, 63, 69, 73},
+		"THI-69 / 79 / 81，cloud":                             {69, 79, 81},
+		"THI-117 和 119 都修了":                                  {117, 119},
+		"THI-117和119":                                        {117, 119},
+		"THI-41, 59 and 61.":                                 {41, 59, 61},
+		"THI-41, #59 or 61":                                  {41, 59, 61},
+		"THI-107~121 之间":                                     {107, 121},
+		"THI-5、THI-7 和 9":                                    {5, 7, 9},
+		"**THI-13、17**":                                      {13, 17},
+		// Counts, dates, versions and words after a reference are not requests.
+		"THI-41, 3 files":          {41},
+		"THI-41、3 个文件":             {41},
+		"THI-41和3个提交":              {41},
+		"THI-131, 2026-11-25":      {131},
+		"THI-41, 0.1.13 (build)":   {41},
+		"THI-41, 59, 3 files":      {41, 59},
+		"THI-41 and 2 more":        {41},
+		"THI-41, 07:50 UTC":        {41},
+		"THI-41 59":                {41},
+		"see thi-35 and fix/thi-3": {},
+	}
+	for text, want := range cases {
+		got := mentions(pattern, text)
+		if len(got) != len(want) {
+			t.Errorf("%q: %v, want %v", text, got, want)
+			continue
+		}
+		for i, n := range want {
+			if got[i][0] != n {
+				t.Errorf("%q: %v, want %v", text, got, want)
+			}
+		}
+	}
+	text := "x THI-107、117"
+	if got := mentions(pattern, text); got[1][1] != strings.Index(text, "THI-107")+4 {
+		t.Fatalf("offsets %v", got)
+	}
+}
