@@ -316,7 +316,8 @@ fn box_pass(src: &[[f32; 4]], w: usize, h: usize, horizontal: bool) -> Vec<[f32;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Not `super::*`: that brings gpui's `test` macro over the built-in one.
+    use super::blurred;
 
     #[test]
     fn blur_shrinks_and_swaps_to_bgra() {
