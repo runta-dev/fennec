@@ -128,3 +128,44 @@ func TestSessionSharedWithAnOpenRequestIsKept(t *testing.T) {
 		t.Fatal("ended a session an unfinished request uses")
 	}
 }
+
+func TestOtherSideKeepsTheReclaimFlag(t *testing.T) {
+	// The Mac sees a Mark done first (it is written to its replica), but the
+	// request ran in the cloud. Clearing the flag there would leave the cloud
+	// session open forever (THI-87: THI-77's terminal outlived its Mark done).
+	store, p, r, ex := finishedRequest(t, "done")
+	store.Change(p.ID, r.Number, "", board.Resolved)
+	store.Role = "local"
+	reclaimStep(t, Scheduler{Store: store, Executor: ex})
+	if got, _ := store.Request(p.ID, r.Number); !got.Reclaim {
+		t.Fatal("the side that did not run the request cleared the reclaim flag")
+	}
+	store.Role = "cloud"
+	reclaimStep(t, Scheduler{Store: store, Executor: ex})
+	if len(ex.ended) != 1 || ex.ended[0] != "t1" {
+		t.Fatal("cloud session not ended", ex.ended)
+	}
+	if got, _ := store.Request(p.ID, r.Number); got.Reclaim {
+		t.Fatal("reclaim flag kept after the session ended")
+	}
+}
+
+func TestSupersededSessionIsEnded(t *testing.T) {
+	// A request first ran in session calm-fox and then moved to bold-owl. Its
+	// earlier terminal is an extra sidebar session without a thread of its own.
+	store, p, r, ex := finishedRequest(t, "done")
+	store.Role = ""
+	r, err := store.FollowUp(p.ID, r.Number, "me", "Again", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ClaimAt(p.ID, r.Number, "bold-owl", "claude", "cloud"); err != nil {
+		t.Fatal(err)
+	}
+	store.Role = "cloud"
+	ex.sessions = append(ex.sessions, Session{ID: "bold-owl", Address: "t2", State: "live", Status: "working"})
+	reclaimStep(t, Scheduler{Store: store, Executor: ex})
+	if len(ex.ended) != 1 || ex.ended[0] != "t1" {
+		t.Fatal("expected only the superseded session t1 to end", ex.ended)
+	}
+}
