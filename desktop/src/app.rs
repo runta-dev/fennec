@@ -10,6 +10,7 @@ mod knowledge_links;
 mod local_state;
 mod pending_reply;
 mod row_motion;
+mod segment_slide;
 mod session_modal;
 mod request_attachments;
 mod sidebar_resize;
@@ -176,6 +177,8 @@ pub struct FennecWindow {
     sidebar_motion: Option<(bool, f32, std::time::Instant)>,
     /// Queue cards easing to a new place after their status moved them.
     queue_glide: glide::Shared,
+    /// The Active / Done highlight sliding between the tabs.
+    status_slide: segment_slide::Slide,
     pub(crate) sidebar_resize: sidebar_resize::State,
     focus: FocusHandle,
     pending_focus: Option<String>,
@@ -367,6 +370,7 @@ impl FennecWindow {
             sidebar_shown: 1.0,
             sidebar_motion: None,
             queue_glide: Default::default(),
+            status_slide: Default::default(),
             sidebar_resize: Default::default(),
             focus: cx.focus_handle(),
             pending_focus: None,
@@ -978,6 +982,15 @@ impl FennecWindow {
         }
     }
 
+    /// Shows the Active (false) or Done (true) requests; the tab highlight
+    /// slides over when that changes.
+    fn set_resolved(&mut self, resolved: bool) {
+        if self.resolved != resolved {
+            self.status_slide.switch(usize::from(self.resolved));
+            self.resolved = resolved;
+        }
+    }
+
     fn post(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.posting
             || self
@@ -1014,7 +1027,7 @@ impl FennecWindow {
                                 .update(cx, |s, cx| s.set_value("", window, cx));
                         }
                         if this.project_id().as_deref() == Some(&submitted_project) {
-                            this.resolved = false;
+                            this.set_resolved(false);
                             if !r.messages.is_empty() {
                                 this.thread_cache
                                     .insert((submitted_project.clone(), r.number), r.clone());
@@ -2669,6 +2682,9 @@ impl FennecWindow {
         let image_status = self.request_image_status(&p.id);
         let composer_has = !self.composer.read(cx).value().trim().is_empty()
             || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
+        // The chosen tab's background is the sliding highlight once the tabs
+        // were laid out; before that the tab draws it itself.
+        let slide_ready = self.status_slide.ready();
         let segment = |label: String, count: usize, on: bool, resolved: bool| {
             div()
                 .id(SharedString::from(format!("seg-{resolved}")))
@@ -2680,12 +2696,13 @@ impl FennecWindow {
                 .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(if on { c("f_text") } else { c("f_muted") })
-                .when(on, |d| {
-                    d.bg(c("f_card")).border_1().border_color(c("f_field"))
+                .border_1()
+                .border_color(transparent_black())
+                .when(on && !slide_ready, |d| {
+                    d.bg(c("f_card")).border_color(c("f_field"))
                 })
-                .when(!on, |d| d.border_1().border_color(transparent_black()))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.resolved = resolved;
+                    this.set_resolved(resolved);
                     cx.notify();
                 }))
                 .gap(px(6.0))
@@ -3005,16 +3022,37 @@ impl FennecWindow {
                             .gap(px(8.0))
                             .child(
                                 h_flex()
+                                    .relative()
                                     .p(px(2.0))
                                     .rounded(px(8.0))
                                     .bg(c("f_line"))
-                                    .child(segment(t("active"), open_count, !self.resolved, false))
-                                    .child(segment(
-                                        t("resolved"),
-                                        resolved_count,
-                                        self.resolved,
-                                        true,
-                                    )),
+                                    .children(self.status_slide.highlight(
+                                        usize::from(self.resolved),
+                                        2.0,
+                                        |d| {
+                                            d.rounded(px(6.0))
+                                                .bg(c("f_card"))
+                                                .border_1()
+                                                .border_color(c("f_field"))
+                                        },
+                                    ))
+                                    .child(
+                                        self.status_slide.track(
+                                            h_flex()
+                                                .child(segment(
+                                                    t("active"),
+                                                    open_count,
+                                                    !self.resolved,
+                                                    false,
+                                                ))
+                                                .child(segment(
+                                                    t("resolved"),
+                                                    resolved_count,
+                                                    self.resolved,
+                                                    true,
+                                                )),
+                                        ),
+                                    ),
                             )
                             .child(div().flex_1())
                             .child(
