@@ -294,6 +294,7 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 		Terminals []struct {
 			Address  string            `json:"address"`
 			State    string            `json:"state"`
+			Cwd      string            `json:"cwd"`
 			Title    string            `json:"title"`
 			Labels   map[string]string `json:"labels"`
 			Status   json.RawMessage   `json:"status"`
@@ -306,9 +307,16 @@ func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, e
 	}
 	out := []queuescheduler.Session{}
 	for _, t := range list.Terminals {
-		out = append(out, queuescheduler.NewSession(t.Labels["fennec.session"], t.Address, t.State, t.Title, t.Status, t.Records, t.StatusMS))
+		s := queuescheduler.NewSession(t.Labels["fennec.session"], t.Address, t.State, t.Title, t.Status, t.Records, t.StatusMS)
+		s.Cwd = t.Cwd
+		out = append(out, s)
 	}
 	return out, nil
+}
+
+// Query calls this Mac's herdr-core (types answers, THI-176).
+func (e queueMacExecutor) Query(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	return e.core.call(ctx, method, params)
 }
 func (e queueMacExecutor) End(ctx context.Context, address string) error {
 	_, err := e.core.call(ctx, "terminal.kill", map[string]any{"terminal": address})

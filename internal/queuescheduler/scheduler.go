@@ -22,7 +22,12 @@ type Session struct {
 	ID, State, Title, Status string
 	App                      string // herdr-core's status app, e.g. "claude-code"
 	Address                  string // herdr-core terminal address, for ending it
-	StatusAt                 time.Time
+	// Kind and Msg detail a blocked agent's status: "question" or
+	// "permission", and herdr-core's one-line summary of it (THI-176).
+	Kind, Msg string
+	// Cwd is the terminal's working directory (finds Claude Code's transcript).
+	Cwd      string
+	StatusAt time.Time
 	// Background: the agent finished its turn and only reports working because
 	// background shells it started are still open (see BackgroundOnly).
 	Background bool
@@ -77,6 +82,7 @@ func BackgroundRecords(raw json.RawMessage) bool {
 // running, but reclaim does not wait for it (Busy is false).
 func NewSession(id, address, state, title string, status, records json.RawMessage, statusMS int64) Session {
 	s := Session{ID: id, Address: address, State: state, Title: title, Status: AgentStatus(status), App: AgentApp(status), StatusAt: StatusTime(statusMS), Background: BackgroundOnly(status)}
+	s.Kind, s.Msg = statusDetail(status)
 	if stopped(s.Status) && BackgroundRecords(records) {
 		s.Status, s.Background = "working", true
 	}
@@ -216,6 +222,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 	states, titles, agents := map[string]string{}, map[string]string{}, map[string]string{}
 	since := map[string]time.Time{}
 	apps := map[string]string{}
+	sessions := map[string]Session{}
 	for _, v := range listed {
 		// The listing includes finished terminals. A reused thread session can
 		// have an earlier finished terminal beside its live one; live wins.
@@ -227,6 +234,7 @@ func (s Scheduler) Step(ctx context.Context) error {
 		agents[v.ID] = v.Status
 		since[v.ID] = v.StatusAt
 		apps[v.ID] = v.App
+		sessions[v.ID] = v
 	}
 	s.reclaim(ctx, listed)
 	now := time.Now()
@@ -241,7 +249,16 @@ func (s Scheduler) Step(ctx context.Context) error {
 		// An asking run whose agent is no longer asking either got its answer
 		// (working again) or the question was dismissed (stopped).
 		for _, r := range q.Stalled {
-			if r.RunLocation != s.Store.Role || states[r.ExecutionSession()] != "live" {
+			if r.RunLocation != s.Store.Role {
+				continue
+			}
+			// An asking run whose terminal ended (or is gone from a listing
+			// that includes finished terminals) has no question left (THI-176).
+			if state := states[r.ExecutionSession()]; state != "live" {
+				if r.Asking() {
+					_, err := s.Store.Reconcile(q.Project, r.Number, r.Session, "finished")
+					s.report(err)
+				}
 				continue
 			}
 			switch agent := agents[r.ExecutionSession()]; {
@@ -251,6 +268,8 @@ func (s Scheduler) Step(ctx context.Context) error {
 			case r.Asking() && stopped(agent):
 				_, err := s.Store.Stall(q.Project, r.Number, r.Session)
 				s.report(err)
+			case r.Asking() && asking(agent):
+				s.askingStep(ctx, q.Project, r, sessions[r.ExecutionSession()])
 			}
 		}
 		for _, r := range q.Active {
@@ -274,8 +293,11 @@ func (s Scheduler) Step(ctx context.Context) error {
 			// A running request whose agent is asking a question in its
 			// session needs the person now, not when the run ends (THI-163).
 			if r.Status == board.Working && state == "live" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && asking(agents[r.ExecutionSession()]) {
-				_, err := s.Store.Ask(q.Project, r.Number, r.Session)
+				asked, err := s.Store.Ask(q.Project, r.Number, r.Session)
 				s.report(err)
+				if err == nil {
+					s.askingStep(ctx, q.Project, asked, sessions[r.ExecutionSession()])
+				}
 				continue
 			}
 			// A running request whose agent ended its turn without `queue

@@ -31,7 +31,9 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	}
 	out := []Session{}
 	for _, t := range list.Terminals {
-		out = append(out, NewSession(t.Labels["fennec.session"], t.Address, t.State, t.Title, t.Status, t.Records, t.StatusMS))
+		s := NewSession(t.Labels["fennec.session"], t.Address, t.State, t.Title, t.Status, t.Records, t.StatusMS)
+		s.Cwd = t.Cwd
+		out = append(out, s)
 	}
 	return out, nil
 }
@@ -41,6 +43,11 @@ func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board
 		return err
 	}
 	return SendRequest(ctx, c.Store, c.Runtime.Query, terminal.Address, request, prompt)
+}
+
+// Query calls the cloud computer's herdr-core (types answers, THI-176).
+func (c CloudExecutor) Query(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	return c.Runtime.Query(ctx, method, params)
 }
 
 // End ends a herdr-core terminal; the agent's own session files stay, so a

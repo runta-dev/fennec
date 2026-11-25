@@ -180,6 +180,16 @@ func (s Store) Handler() http.Handler {
 			reply(w, req, err)
 		}
 	})
+	// THI-176: answer the question an asking run's agent waits on in its
+	// session. Body: {"author", "question" (its id), "picks": [[0], [1, 2]],
+	// "allow": true|false (permission prompts), "text"}.
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/answer", func(w http.ResponseWriter, r *http.Request) {
+		var body Answer
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			req, err := s.Answer(r.PathValue("id"), n, body)
+			reply(w, req, err)
+		}
+	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/links", func(w http.ResponseWriter, r *http.Request) {
 		// Body: {"number": 42, "kind": "related"|"duplicate"|		// Body: {"number": 42, "kind": "related"|"duplicate"|"" (removes), "author": "…"}.
 		// An agent also sends its "agent" and run "session"; only the run

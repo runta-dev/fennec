@@ -19,6 +19,7 @@ mod tab_close;
 mod tabs;
 mod thread_enter;
 mod thread_peek;
+mod thread_question;
 mod thread_links;
 mod thread_tags;
 mod thread_wait;
@@ -173,6 +174,10 @@ pub struct FennecWindow {
     session_modal: Option<session_modal::SessionModal>,
     posting: bool,
     replying: bool,
+    /// THI-176: options picked on an asking thread's question card, by
+    /// "project:number:question id", and whether an answer is on its way.
+    question_picks: HashMap<String, Vec<Vec<usize>>>,
+    answering: bool,
     pub(crate) reply: Entity<TextareaState>,
     pub(crate) reply_drafts: HashMap<String, String>,
     /// The last-saved queue and drafts, kept across restarts (THI-121).
@@ -361,6 +366,8 @@ impl FennecWindow {
             session_modal: None,
             posting: false,
             replying: false,
+            question_picks: HashMap::new(),
+            answering: false,
             thread_scroll: ScrollHandle::new(),
             thread_follow: false,
             thread_jump: None,
@@ -1127,6 +1134,11 @@ impl FennecWindow {
             .unwrap_or_default();
         if self.request_images.busy.contains(&key) || (text.trim().is_empty() && images.is_empty())
         {
+            return;
+        }
+        // An agent waiting on a question gets the reply as its answer, in
+        // the same run (THI-176).
+        if images.is_empty() && self.reply_answers(&text, window, cx) {
             return;
         }
         self.replying = true;
@@ -2752,7 +2764,9 @@ impl FennecWindow {
                 _ if r.resolved() => latest,
                 "" => latest,
                 board::STALLED_FAILURE => card_preview::Preview::plain(t("stalled")),
-                board::ASKING_FAILURE => card_preview::Preview::plain(t("asking")),
+                board::ASKING_FAILURE => {
+                    card_preview::Preview::plain(thread_question::question_preview(r.asking()))
+                }
                 failure => card_preview::Preview::plain(failure.to_owned()),
             };
             let project = p.id.clone();
@@ -2862,6 +2876,22 @@ impl FennecWindow {
                         .when(r.votes > 0, |d| d.child(format!("+{}", r.votes)))
                         .child(sessions::age(sessions::rfc3339_ms(&r.updated), now)),
                 )
+                // THI-176: a question the thread can answer.
+                .when(r.answerable().is_some(), |d| {
+                    d.child(
+                        h_flex().child(
+                            secondary_button(
+                                SharedString::from(format!("answer-{n}")),
+                                t("answer_question"),
+                                false,
+                            )
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.open_request(n, window, cx);
+                            })),
+                        ),
+                    )
+                })
                 .when(r.status == "queued", |d| {
                     d.child(
                         h_flex().child(
@@ -3339,6 +3369,8 @@ impl FennecWindow {
             .map(|s| self.thread_peek_card(s, &r.status, cx))
             .or_else(|| self.thread_wait_card(p, r));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
+        let question = self.thread_question_card(r, cx);
+        let answers = r.answerable().is_some();
         v_flex()
             .flex_1()
             .min_w_0()
@@ -3441,6 +3473,7 @@ impl FennecWindow {
                     .px(px(22.0))
                     .py(px(14.0))
                     .children(items)
+                    .when_some(question, |d, card| d.child(card))
                     .when_some(peek, |d, card| d.child(card)),
             ))
             .child(
@@ -3494,7 +3527,8 @@ impl FennecWindow {
                                 .bottom(px(8.0))
                                 .gap(px(8.0))
                                 .when(reply_has, |d| {
-                                    d.child(primary_button("send", t("send")).on_click(
+                                    let label = if answers { t("answer_question") } else { t("send") };
+                                    d.child(primary_button("send", label).on_click(
                                         cx.listener(|this, _, window, cx| {
                                             this.send_reply(window, cx)
                                         }),

@@ -116,6 +116,10 @@ type Request struct {
 	// Reclaim is set when a person marks the request done: its agent sessions
 	// are ended once their agents stop. Requests resolved earlier keep theirs.
 	Reclaim bool `json:"reclaim,omitempty"`
+	// Question is what the agent of an asking run is asking in its session,
+	// and Answer a person's answer to it on its way there (THI-176).
+	Question *Question `json:"question,omitempty"`
+	Answer   *Answer   `json:"answer,omitempty"`
 	// Messages up to this ID have reached Session.
 	Delivered int       `json:"delivered,omitempty"`
 	Messages  []Message `json:"messages,omitempty"`
@@ -658,6 +662,7 @@ func (s Store) Change(project string, n int, tags []string, status string) (Requ
 		}
 		r.Reclaim = r.Reclaim || r.Status != Resolved
 		r.Status = Resolved
+		clearQuestion(&r)
 	case NeedsYou:
 		if r.Status != Resolved {
 			return r, ErrConflict

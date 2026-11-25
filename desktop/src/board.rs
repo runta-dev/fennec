@@ -131,6 +131,62 @@ pub struct Request {
     /// Links and backlinks to other requests of the queue (THI-103); only
     /// a single-request fetch carries them.
     pub related: Vec<Related>,
+    /// What the agent of an asking run is asking in its session, and the
+    /// answer given to it from the thread (board.Question/Answer, THI-176).
+    pub question: Option<Question>,
+    pub answer: Option<Answer>,
+}
+
+/// An agent's question in its session (board.Question): AskUserQuestion's
+/// questions (`items`) or a permission prompt (`kind` "permission", `text`
+/// "approve Bash: …").
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Question {
+    pub id: String,
+    pub app: String,
+    pub kind: String,
+    pub text: String,
+    pub items: Vec<QuestionItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct QuestionItem {
+    pub header: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub options: Vec<QuestionOption>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct QuestionOption {
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Answer {
+    pub question: String,
+    pub sent: bool,
+}
+
+impl Question {
+    /// The scheduler can type an answer into the session (board.Question.Answerable).
+    pub fn answerable(&self) -> bool {
+        self.app == "claude-code" && matches!(self.kind.as_str(), "question" | "permission")
+    }
+
+    pub fn permission(&self) -> bool {
+        self.kind == "permission"
+    }
+
+    /// What a permission prompt wants to run: "Bash: rm -rf build".
+    pub fn command(&self) -> &str {
+        self.text.strip_prefix("approve ").unwrap_or(&self.text)
+    }
 }
 
 /// One linked request as the board reports it (board.Related): kind is
@@ -171,6 +227,20 @@ pub struct Run {
 impl Request {
     pub fn resolved(&self) -> bool {
         self.status == "resolved"
+    }
+
+    /// The question an asking run's agent waits on (THI-176): only while the
+    /// request needs you and its run is "asking", so a stale one never shows.
+    pub fn asking(&self) -> Option<&Question> {
+        (self.status == "you" && self.runs.last().is_some_and(|run| run.state == "asking"))
+            .then_some(self.question.as_ref())
+            .flatten()
+    }
+
+    /// The asking question the thread can answer, unless already answered.
+    pub fn answerable(&self) -> Option<&Question> {
+        self.asking()
+            .filter(|q| q.answerable() && self.answer.as_ref().is_none_or(|a| a.question != q.id))
     }
 
     /// All of the request's tags, `tag` first (board.Request.TagList): just
@@ -354,6 +424,25 @@ pub fn continue_request(
         "POST",
         &format!("/v1/projects/{project}/requests/{n}/continue"),
         Some(json!({"body":text.trim(),"author":author,"attachments":images})),
+    )
+}
+
+/// THI-176: answers the question request `n`'s agent is asking in its
+/// session; `picks` holds the chosen option indexes per question, `allow`
+/// answers a permission prompt, `text` is typed. No new run starts.
+pub fn answer(
+    project: &str,
+    n: u64,
+    author: &str,
+    question: &str,
+    picks: &[Vec<usize>],
+    allow: Option<bool>,
+    text: &str,
+) -> Result<Value> {
+    call(
+        "POST",
+        &format!("/v1/projects/{project}/requests/{n}/answer"),
+        Some(json!({"author": author, "question": question, "picks": picks, "allow": allow, "text": text.trim()})),
     )
 }
 

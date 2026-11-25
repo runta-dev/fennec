@@ -45,6 +45,7 @@ type LocalTerminal struct {
 	Agent    string             `json:"agent,omitempty"`
 	Address  string             `json:"address"`
 	State    string             `json:"state"`
+	Cwd      string             `json:"cwd,omitempty"`
 	ExitCode *int               `json:"exit_code,omitempty"`
 	Labels   map[string]string  `json:"labels,omitempty"`
 	Cols     int                `json:"cols,omitempty"`

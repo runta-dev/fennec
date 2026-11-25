@@ -207,6 +207,7 @@ func (s Store) FollowUp(project string, n int, author, body string, attachments 
 	}
 	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
 	r.Reclaim = false
+	clearQuestion(&r)
 	r.Session, r.RunLocation, r.Offer = "", "", nil
 	return r, s.commit(s.requestPath(project, n), r)
 }
@@ -254,6 +255,7 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
 	// The agent's reply proves the run started; an unconfirmed-input note is stale.
 	r.Status, r.Updated, r.Failure = status, now, ""
+	clearQuestion(&r)
 	if !pending {
 		r.Delivered = id
 	}
@@ -352,6 +354,9 @@ func (s Store) pause(project string, n int, session, state, failure string) (Req
 	r.Status, r.Failure, r.Updated = NeedsYou, failure, now
 	run := &r.Runs[len(r.Runs)-1]
 	run.State, run.Finished = state, &now
+	if state != "asking" {
+		clearQuestion(&r)
+	}
 	return r, s.commit(s.requestPath(project, n), r)
 }
 
@@ -376,6 +381,7 @@ func (s Store) ConfirmStarted(project string, n int, session string) (Request, e
 	}
 	now := s.now()
 	r.Status, r.Failure, r.Updated = Working, "", now
+	clearQuestion(&r)
 	run := &r.Runs[len(r.Runs)-1]
 	run.State, run.Finished = "running", nil
 	return r, s.commit(s.requestPath(project, n), r)
@@ -393,9 +399,11 @@ func (s Store) Reconcile(project string, n int, session, state string) (Request,
 	if err != nil {
 		return r, err
 	}
-	if r.Session != session || (r.Status != Working && r.Status != Unknown) {
+	// An asking run's terminal can end too (THI-176): its question goes with it.
+	if r.Session != session || (r.Status != Working && r.Status != Unknown && !(state == "finished" && r.Asking())) {
 		return r, ErrConflict
 	}
+	clearQuestion(&r)
 	switch state {
 	case "not_started":
 		// Only a pre-launch rejection proves this. An absent session in a
