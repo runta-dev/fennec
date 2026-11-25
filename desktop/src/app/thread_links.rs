@@ -106,7 +106,8 @@ impl FennecWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{link_label, ordered};
+    use crate::board::{Related, Request};
 
     fn link(n: u64, kind: &str, incoming: bool) -> Related {
         Related {
@@ -138,10 +139,9 @@ mod tests {
 
     #[test]
     fn a_thread_reads_its_links_from_the_board() {
-        let r: Request = serde_json::from_value(serde_json::json!({
-            "number": 7,
-            "related": [{"number": 3, "title": "Sync stalls", "status": "resolved", "kind": "duplicate"}]
-        }))
+        let r: Request = serde_json::from_str(
+            r#"{"number":7,"related":[{"number":3,"title":"Sync stalls","status":"resolved","kind":"duplicate"}]}"#,
+        )
         .unwrap();
         assert_eq!(
             r.related,
