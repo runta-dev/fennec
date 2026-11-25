@@ -41,13 +41,15 @@ func TestArchiveMovesToAnotherComputer(t *testing.T) {
 	h.startDaemon()
 	t.Cleanup(h.stopDaemon)
 	h.must("settings", "magpie", "off")
-	var key struct {
-		DeviceKey string `json:"device_key"`
-	}
-	if err := json.Unmarshal([]byte(h.must("cloud", "byoc", "key")), &key); err != nil {
-		t.Fatal(err)
-	}
 	computer := func() (container, string) {
+		// Unpairing forgets the device key, so each computer authorizes the
+		// current one.
+		var key struct {
+			DeviceKey string `json:"device_key"`
+		}
+		if err := json.Unmarshal([]byte(h.must("cloud", "byoc", "key")), &key); err != nil {
+			t.Fatal(err)
+		}
 		volume := randomName("fennec-byoc-archive-")
 		t.Cleanup(func() { _ = exec.Command("docker", "volume", "rm", "-f", volume).Run() })
 		free, err := net.Listen("tcp", "127.0.0.1:0")
