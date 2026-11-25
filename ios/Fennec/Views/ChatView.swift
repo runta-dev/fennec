@@ -1131,7 +1131,7 @@ private struct PastedImages: View {
 }
 
 /// A full-screen image: pinch or double-tap to zoom, drag to look around.
-private struct ZoomableImage: View {
+struct ZoomableImage: View {
     var image: UIImage
     @State private var scale: CGFloat = 1
     @State private var settled: CGFloat = 1

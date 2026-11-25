@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var renaming: Session?
     @State private var stopping: Session?
     @State private var menuFor: Session?
+    /// Inside the Queues tab bar, which has Search of its own.
+    var tabbed = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -44,7 +46,7 @@ struct HomeView: View {
                     if !store.macOnline { offlineBanner }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { searchBar }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !tabbed { searchBar } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.account) } label: {
@@ -68,9 +70,9 @@ struct HomeView: View {
             }
             .navigationDestination(for: Route.self) { route in
                 switch route {
-                case .chat(let id): ChatView(sessionID: id)
-                case .account: AccountView(openAgents: { path.append(.agents) })
-                case .agents: AgentsView()
+                case .chat(let id): ChatView(sessionID: id).toolbar(.hidden, for: .tabBar)
+                case .account: AccountView(openAgents: { path.append(.agents) }).toolbar(.hidden, for: .tabBar)
+                case .agents: AgentsView().toolbar(.hidden, for: .tabBar)
                 }
             }
             .sheet(isPresented: $showSearch) {

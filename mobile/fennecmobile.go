@@ -6,6 +6,7 @@
 package fennecmobile
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -448,6 +449,11 @@ func (s *Sessions) drop(client *ssh.Client) {
 // run executes a fennec-terminal script on the cloud computer, reconnecting
 // once if the cached SSH connection went stale.
 func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, string, error) {
+	return s.runInput(script, nil)
+}
+
+// runInput is run with bytes for the command's standard input.
+func (s *Sessions) runInput(script func(runtimeID string) (string, error), stdin []byte) ([]byte, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	var lastErr error
@@ -483,6 +489,9 @@ func (s *Sessions) run(script func(runtimeID string) (string, error)) ([]byte, s
 		stop := context.AfterFunc(ctx, func() { session.Close() })
 		var stderr strings.Builder
 		session.Stderr = &stderr
+		if stdin != nil {
+			session.Stdin = bytes.NewReader(stdin)
+		}
 		output, err := session.Output(command)
 		stop()
 		session.Close()

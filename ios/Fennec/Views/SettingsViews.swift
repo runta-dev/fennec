@@ -73,6 +73,8 @@ struct AccountView: View {
     @AppStorage("notifyApproval") private var notifyApproval = true
     @AppStorage("notifyQuestion") private var notifyQuestion = true
     @AppStorage("notifyFinished") private var notifyFinished = false
+    @AppStorage(QueueSettings.enabledKey) private var queuesEnabled = false
+    @AppStorage(QueueSettings.notifyKey) private var notifyRequest = true
 
     var body: some View {
         ScrollView {
@@ -103,8 +105,22 @@ struct AccountView: View {
                 ListCard {
                     toggleRow(L10n.text("ios.notify_approval"), $notifyApproval)
                     toggleRow(L10n.text("ios.notify_question"), $notifyQuestion)
-                    toggleRow(L10n.text("ios.notify_finished"), $notifyFinished, last: true)
+                    toggleRow(L10n.text("ios.notify_finished"), $notifyFinished, last: !queuesEnabled)
+                    if queuesEnabled { toggleRow(L10n.text("ios.notify_request"), $notifyRequest, last: true) }
                 }
+                GroupHeader(title: L10n.text("ios.queues")).padding(.horizontal, -18)
+                ListCard {
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $queuesEnabled) {
+                            Label(L10n.text("ios.show_queues"), systemImage: "square.stack")
+                        }
+                        .tint(Theme.accent)
+                        .font(.system(size: 15.5))
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .accessibilityIdentifier("show-queues")
+                    }
+                }
+                Text(L10n.text("ios.show_queues_hint")).font(.system(size: 12.5)).foregroundStyle(Theme.fg3).padding(.horizontal, 4)
                 ListCard {
                     Button { if ReviewDemo.enabled { app.exitReviewDemo() } else { auth.signOut() } } label: {
                         ListRow(icon: "rectangle.portrait.and.arrow.right", iconColor: Theme.danger, title: L10n.text("ui.sign_out"), titleColor: Theme.danger, showDivider: false)

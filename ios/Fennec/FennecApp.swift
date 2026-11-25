@@ -13,7 +13,7 @@ struct FennecApp: App {
                 if app.auth.status == .restoring && !app.preview {
                     Theme.bg.ignoresSafeArea()
                 } else if app.auth.status == .signedIn || app.preview {
-                    HomeView()
+                    MainView()
                 } else {
                     ScanSignInView()
                 }

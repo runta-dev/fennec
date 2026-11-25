@@ -82,7 +82,11 @@ func (s Store) ImportAttachment(path string) (Attachment, error) {
 	}
 	return s.SaveAttachment(data)
 }
-func (s Store) SaveAttachment(data []byte) (Attachment, error) {
+
+// NewAttachment describes an image for the board without storing it: its
+// content ID, size, dimensions and thumbnail. Clients that upload in chunks
+// (the iPhone app) send this with every chunk.
+func NewAttachment(data []byte) (Attachment, error) {
 	if len(data) == 0 || len(data) > MaxImageBytes {
 		return Attachment{}, ErrInvalid
 	}
@@ -91,8 +95,7 @@ func (s Store) SaveAttachment(data []byte) (Attachment, error) {
 		return Attachment{}, ErrInvalid
 	}
 	sum := sha256.Sum256(data)
-	id := hex.EncodeToString(sum[:])
-	a := Attachment{ID: id, Name: "image." + format, MediaType: "image/" + format, Size: int64(len(data)), Width: cfg.Width, Height: cfg.Height}
+	a := Attachment{ID: hex.EncodeToString(sum[:]), Name: "image." + format, MediaType: "image/" + format, Size: int64(len(data)), Width: cfg.Width, Height: cfg.Height}
 	if format == "jpeg" {
 		a.Name = "image.jpg"
 	}
@@ -106,6 +109,15 @@ func (s Store) SaveAttachment(data []byte) (Attachment, error) {
 	if !validAttachment(a) {
 		return Attachment{}, ErrInvalid
 	}
+	return a, nil
+}
+
+func (s Store) SaveAttachment(data []byte) (Attachment, error) {
+	a, err := NewAttachment(data)
+	if err != nil {
+		return Attachment{}, err
+	}
+	id := a.ID
 	if err = os.MkdirAll(s.attachmentDir(), 0700); err != nil {
 		return Attachment{}, err
 	}

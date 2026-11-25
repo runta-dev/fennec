@@ -1278,11 +1278,10 @@ mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;b
             <div class="pi"><svg class="ico sm"><use href="#i-grid"/></svg><span>Tag</span><small>Website <svg class="ico xs"><use href="#i-chev"/></svg></small></div>
             <div class="pi"><svg class="ico sm"><use href="#i-branch"/></svg><span>Link to request…</span></div>
             <div class="pi"><svg class="ico sm"><use href="#i-copy"/></svg><span>Copy THI-126</span></div></div>
-          <div class="pg"><div class="pi"><svg class="ico sm"><use href="#i-check"/></svg><span>Mark done</span></div></div>
         </div>
         <i class="hi"></i>
       </div></div>
-      <figcaption><em>Long-press a row for its actions</em>, the iOS context menu: the row lifts and the rest blurs. Queued requests get <em>Run next</em> (moves it to the front, as the desktop button does). Every request gets Tag, Link to request (31b), Copy reference and Mark done; finished ones get <em>Reopen</em> instead. Swipes give the two most common ones: swipe left for Mark done (green), swipe right on a queued row for Run next.</figcaption>
+      <figcaption><em>Long-press a row for its actions</em>, the iOS context menu: the row lifts and the rest blurs. Queued requests get <em>Run next</em> (moves it to the front, as the desktop button does). Every request gets Tag, Link to request (31b) and Copy reference. Needs you, In review and Failed add <em>Mark done</em>; done ones add <em>Reopen</em> (the board allows nothing else). Swipes give the two most common ones: swipe left for Mark done (green) where it is allowed, swipe right on a queued row for Run next.</figcaption>
     </figure>
     <figure>
       <div class="label"><span>22</span> reorder queued</div>
@@ -1507,11 +1506,10 @@ Running make ios…</pre>
             <div class="mi"><svg class="ico"><use href="#i-copy"/></svg>Copy THI-124</div>
             <div class="mi" style="color:var(--fg3)"><svg class="ico"><use href="#i-term"/></svg>Open session<span class="sub">After it starts</span></div>
           </div>
-          <div class="menu"><div class="mi"><svg class="ico"><use href="#i-check"/></svg>Mark done</div></div>
         </div>
         <i class="hi"></i>
       </div></div>
-      <figcaption><em>"…" on a thread opens its sheet</em>, built like the session menu (11): which request (reference, queue, status, author), what you can do, then Mark done on its own. Items follow the status: Run next only while queued, Open session once a run exists, <em>Reopen</em> instead of Mark done when it is done. Changing the tag here clears the agent's auto tag, as on the desktop.</figcaption>
+      <figcaption><em>"…" on a thread opens its sheet</em>, built like the session menu (11): which request (reference, queue, status, author), what you can do, then Mark done on its own once the agent has handed it back (not while queued, as here). Items follow the status: Run next only while queued, Open session once a run exists, <em>Reopen</em> instead of Mark done when it is done. Changing the tag here clears the agent's auto tag, as on the desktop.</figcaption>
     </figure>
     <figure>
       <div class="label"><span>31</span> thread · linked requests</div>

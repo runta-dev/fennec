@@ -109,10 +109,10 @@ func Call(home, method, path string, body io.Reader, out io.Writer) error {
 	if !strings.HasPrefix(path, "/v1/") || strings.Contains(path, "..") {
 		return fmt.Errorf("board-call: path must start with /v1/")
 	}
-	if method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch {
-		return fmt.Errorf("board-call: method must be GET, POST or PATCH")
+	if method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch && method != http.MethodDelete {
+		return fmt.Errorf("board-call: method must be GET, POST, PATCH or DELETE")
 	}
-	if method == http.MethodGet {
+	if method == http.MethodGet || method == http.MethodDelete {
 		body = nil
 	}
 	r := httptest.NewRequest(method, "http://board.fennec"+path, body)

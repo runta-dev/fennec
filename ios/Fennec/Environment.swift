@@ -40,7 +40,11 @@ enum RuntaEnvironment: String, CaseIterable, Identifiable {
 final class AppModel {
     private(set) var environment: RuntaEnvironment
     private(set) var auth: RuntaAuth
-    private(set) var store: SessionStore
+    private(set) var store: SessionStore {
+        didSet { queues = QueueStore.matching(store) }
+    }
+    /// Queues (THI-124); read only while Show Queues is on.
+    private(set) var queues: QueueStore
     /// Example sessions instead of the cloud computer: the App Review demo
     /// (ReviewDemo), or `-PreviewSignedIn YES` in Debug builds.
     private(set) var preview: Bool
@@ -57,7 +61,9 @@ final class AppModel {
         let auth = RuntaAuth(environment: environment)
         self.environment = environment
         self.auth = auth
-        self.store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
+        let store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
+        self.store = store
+        self.queues = QueueStore.matching(store)
         if ReviewDemo.enabled { auth.showDemoProfile(true) }
     }
 
