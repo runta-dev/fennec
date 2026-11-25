@@ -2887,7 +2887,7 @@ impl FennecWindow {
         let session_route = r
             .active_session(&self.sessions)
             .map(|s| s.address.clone());
-        let peek = self.peek_target().map(|s| self.thread_peek_card(s));
+        let peek = self.peek_target().map(|s| self.thread_peek_card(s, &r.status));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
         v_flex()
             .flex_1()

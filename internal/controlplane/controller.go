@@ -158,7 +158,7 @@ func (c *Controller) Handlers() map[string]control.Handler {
 		handlers[method] = handler
 	}
 	if c.Session != nil {
-		for _, operation := range []string{"list", "refresh", "launch", "read", "send", "stop", "attach", "resume"} {
+		for _, operation := range []string{"list", "refresh", "launch", "read", "peek", "send", "stop", "attach", "resume"} {
 			handlers["sessions."+operation] = c.sessionHandler(operation)
 		}
 	}

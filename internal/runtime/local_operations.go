@@ -118,7 +118,7 @@ func (o LocalOperation) Validate() error {
 	if o.Kind == "list" {
 		return nil
 	}
-	if o.Kind != "read" && o.Kind != "send" && o.Kind != "stop" {
+	if o.Kind != "read" && o.Kind != "peek" && o.Kind != "send" && o.Kind != "stop" {
 		return fmt.Errorf("unsupported operation")
 	}
 	if !regexp.MustCompile(`^t[0-9a-z]+$`).MatchString(o.Address) || !sessionIDPattern.MatchString(o.SessionID) {
@@ -292,7 +292,13 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	if err != nil {
 		return nil, err
 	}
-	if o.Kind == "read" {
+	if o.Kind == "peek" && terminal.State == "live" && r.Observe != nil {
+		// The screen as the terminal draws it, colors included: a thread shows it.
+		if paint, err := r.Observe(ctx, o.Address); err == nil && len(paint) > 0 {
+			return json.Marshal(map[string]any{"terminal": terminal, "vt": paint, "cols": terminal.Cols, "rows": terminal.Rows})
+		}
+	}
+	if o.Kind == "read" || o.Kind == "peek" {
 		raw, err := r.Run(ctx, "read", o.Address, "--json", "--lines", "0")
 		if err != nil {
 			return nil, err

@@ -46,6 +46,8 @@ type LocalTerminal struct {
 	State    string             `json:"state"`
 	ExitCode *int               `json:"exit_code,omitempty"`
 	Labels   map[string]string  `json:"labels,omitempty"`
+	Cols     int                `json:"cols,omitempty"`
+	Rows     int                `json:"rows,omitempty"`
 }
 
 type LocalRuntime struct {
@@ -53,6 +55,8 @@ type LocalRuntime struct {
 	Run    func(context.Context, ...string) ([]byte, error)
 	Query  func(context.Context, string, any) (json.RawMessage, error)
 	Lookup func(string) (string, error)
+	// Observe returns a live terminal's screen as escape sequences that repaint it.
+	Observe func(context.Context, string) ([]byte, error)
 }
 
 func (request LocalLaunch) Validate() error {
@@ -92,7 +96,7 @@ func (request LocalLaunch) Validate() error {
 var ErrAgentExecutableMissing = errors.New("cloud agent executable missing")
 
 func NewLocalRuntime(home string) *LocalRuntime {
-	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Query: herdrQuery(home), Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
+	return &LocalRuntime{Home: home, Lookup: exec.LookPath, Query: herdrQuery(home), Observe: herdrObserve(home), Run: func(ctx context.Context, arguments ...string) ([]byte, error) {
 		step, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		command := exec.CommandContext(step, filepath.Join(home, ".local/bin/herdr-core"), arguments...)
