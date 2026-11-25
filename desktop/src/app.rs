@@ -3032,7 +3032,6 @@ impl FennecWindow {
             .map(|list| list.iter().map(|r| r.number).collect())
             .unwrap_or_default();
         let window_handle = cx.weak_entity();
-        let mut last_agent = String::new();
         let mut items = Vec::new();
         // THI-93: replies on their way to the board follow the thread's own.
         let pending = self
@@ -3042,19 +3041,6 @@ impl FennecWindow {
             .map(|reply| &reply.message);
         for (i, m) in r.messages.iter().chain(pending).enumerate() {
             let agent = !m.agent.is_empty();
-            if agent && m.agent != last_agent {
-                items.push(
-                    div()
-                        .my(px(10.0))
-                        .flex()
-                        .justify_center()
-                        .text_size(px(11.5))
-                        .text_color(c("f_muted"))
-                        .child(sessions::agent_name(&m.agent).to_owned())
-                        .into_any_element(),
-                );
-                last_agent = m.agent.clone();
-            }
             let name = if agent {
                 sessions::agent_name(&m.agent).to_owned()
             } else {
