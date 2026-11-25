@@ -113,7 +113,12 @@ final class ReviewDemoUITests: XCTestCase {
     /// Queues: turned on in Account, then the list, a thread, a reply the
     /// sample agent answers, Mark done, and a working request's live card.
     func testDemoQueues() {
-        let app = signedInDemo(queuesOff: false)
+        // Signed in with queues off (whatever an earlier run left), then
+        // relaunched without that override; the demo stays signed in.
+        let app = signedInDemo()
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-queuesEnabled" || $0 == "NO" }
+        app.launch()
         setShowQueues(app, on: true)
         let queuesTab = app.tabBars.buttons["Queues"]
         if !queuesTab.isHittable { app.navigationBars.buttons.element(boundBy: 0).tap() }
@@ -288,7 +293,7 @@ final class ReviewDemoUITests: XCTestCase {
 
     private func signOutIfSignedIn(_ app: XCUIApplication) {
         if app.tabBars.buttons["Sessions"].exists { app.tabBars.buttons["Sessions"].tap() }
-        guard app.buttons["new-session-menu"].waitForExistence(timeout: 5) else { return }
+        guard app.descendants(matching: .any)["new-session-menu"].firstMatch.waitForExistence(timeout: 5) else { return }
         app.buttons["Account"].tap()
         let signOut = app.buttons["Sign out"]
         for _ in 0..<5 { if signOut.isHittable { break }; app.swipeUp() }
