@@ -34,10 +34,9 @@ impl Preview {
         use gpui::{FontStyle, FontWeight, HighlightStyle, StrikethroughStyle, px};
         let highlights = self.marks.into_iter().map(|(range, mark)| {
             let style = match mark {
-                // Bold also takes the full text color so it reads on the muted line.
+                // Weight only: bold keeps the line's muted color (THI-171).
                 Mark::Bold => HighlightStyle {
                     font_weight: Some(FontWeight::SEMIBOLD),
-                    color: Some(c("f_text")),
                     ..Default::default()
                 },
                 Mark::Italic => HighlightStyle {
