@@ -1,6 +1,7 @@
 package board
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -256,8 +257,10 @@ func (s Store) materialize(state ReplicaState) error {
 	}
 	for object, fields := range objects {
 		value := map[string]json.RawMessage{}
+		path := filepath.Join(s.root(), object)
 		// Fields predating the journal are retained until explicitly mutated.
-		_ = readJSON(filepath.Join(s.root(), object), &value)
+		current, _ := os.ReadFile(path)
+		_ = json.Unmarshal(current, &value)
 		for key, field := range fields {
 			if string(field.Value) == "null" {
 				delete(value, key)
@@ -305,7 +308,13 @@ func (s Store) materialize(state ReplicaState) error {
 			}
 			value[key], _ = json.Marshal(out)
 		}
-		if err := writeJSON(filepath.Join(s.root(), object), value); err != nil {
+		// THI-101: every commit replays the whole journal; rewriting (and
+		// fsyncing, F_FULLFSYNC on macOS) every object made each board write
+		// take ~0.5 s on the Mac. Only objects whose content changed are written.
+		if data, err := json.MarshalIndent(value, "", "  "); err == nil && bytes.Equal(append(data, '\n'), current) {
+			continue
+		}
+		if err := writeJSON(path, value); err != nil {
 			return err
 		}
 	}

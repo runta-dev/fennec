@@ -106,6 +106,11 @@ pub struct FennecWindow {
     /// Threads already fetched, by (project, number): switching back to one
     /// shows it at once while a refresh runs.
     thread_cache: HashMap<(String, u64), Request>,
+    /// THI-101: a status the user just set (Mark done / Reopen), shown at
+    /// once while the board write runs. Board fetches still report the old
+    /// status until the write lands, so it is applied over them until a
+    /// fetch agrees or the write fails.
+    status_override: HashMap<(String, u64), String>,
     /// A clicked request whose thread is still loading. The card is selected,
     /// but the pane keeps the current thread (and its actions) until the new
     /// one arrives, so the pane never blanks between threads.
@@ -311,6 +316,7 @@ impl FennecWindow {
             reply_token: 0,
             fresh_messages: Default::default(),
             thread_cache: HashMap::new(),
+            status_override: HashMap::new(),
             opening: None,
             reply,
             reply_drafts: HashMap::new(),
@@ -659,11 +665,17 @@ impl FennecWindow {
             Err(_) => {}
         }
         let fetched_project = requests.as_ref().map(|(id, _)| id.clone());
-        if let Some((id, Ok(list))) = requests {
+        if let Some((id, Ok(mut list))) = requests {
+            for r in &mut list {
+                self.apply_status_override(&id, r);
+            }
             self.requests.insert(id, list);
             self.prefetch_peeks(cx);
         }
-        let thread = thread.and_then(Result::ok);
+        let mut thread = thread.and_then(Result::ok);
+        if let (Some(project), Some(t)) = (&fetched_project, &mut thread) {
+            self.apply_status_override(project, t);
+        }
         if let (Some(project), Some(t)) = (&fetched_project, &thread) {
             self.thread_cache
                 .insert((project.clone(), t.number), t.clone());
@@ -1121,6 +1133,17 @@ impl FennecWindow {
         let (Some(project), Some(n)) = (self.project_id(), self.open) else {
             return;
         };
+        // THI-101: show the new status right away; the board write and the
+        // refresh after it take a moment.
+        let key = (project.clone(), n);
+        let previous = self
+            .thread
+            .as_ref()
+            .filter(|t| t.number == n)
+            .map(|t| t.status.clone());
+        self.status_override.insert(key.clone(), status.to_owned());
+        self.show_status(&project, n, status);
+        cx.notify();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let changed = project.clone();
             let done = cx
@@ -1133,9 +1156,50 @@ impl FennecWindow {
                     }
                     this.refresh_now(window, cx)
                 }
-                Err(e) => this.say(format!("{e:#}"), cx),
+                Err(e) => {
+                    if this.status_override.get(&key).map(String::as_str) == Some(status) {
+                        this.status_override.remove(&key);
+                        if let Some(previous) = previous {
+                            this.show_status(&project, n, &previous);
+                        }
+                        this.refresh_now(window, cx);
+                    }
+                    this.say(format!("{e:#}"), cx)
+                }
             });
         }));
+    }
+
+    /// Sets request `n`'s status everywhere the window shows it.
+    fn show_status(&mut self, project: &str, n: u64, status: &str) {
+        if self.project_id().as_deref() == Some(project)
+            && let Some(t) = self.thread.as_mut().filter(|t| t.number == n)
+        {
+            t.status = status.to_owned();
+        }
+        if let Some(t) = self.thread_cache.get_mut(&(project.to_owned(), n)) {
+            t.status = status.to_owned();
+        }
+        if let Some(r) = self
+            .requests
+            .get_mut(project)
+            .and_then(|list| list.iter_mut().find(|r| r.number == n))
+        {
+            r.status = status.to_owned();
+        }
+    }
+
+    /// A fetched request keeps the status the user just set until the board
+    /// reports it too.
+    fn apply_status_override(&mut self, project: &str, r: &mut Request) {
+        let key = (project.to_owned(), r.number);
+        match self.status_override.get(&key) {
+            Some(status) if *status == r.status => {
+                self.status_override.remove(&key);
+            }
+            Some(status) => r.status = status.clone(),
+            None => {}
+        }
     }
 
     /// THI-47: the queue ends a done thread's sessions (queuescheduler
