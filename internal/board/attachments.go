@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 )
 
@@ -99,25 +100,9 @@ func (s Store) SaveAttachment(data []byte) (Attachment, error) {
 	if err != nil {
 		return Attachment{}, ErrInvalid
 	}
-	width, height := cfg.Width, cfg.Height
-	scale := max(width, height)
-	if scale > 128 {
-		width = max(1, width*128/scale)
-		height = max(1, height*128/scale)
-	}
-	thumb := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			v := pixelcolor.NRGBAModel.Convert(decoded.At(decoded.Bounds().Min.X+x*cfg.Width/width, decoded.Bounds().Min.Y+y*cfg.Height/height)).(pixelcolor.NRGBA)
-			alpha := uint32(v.A)
-			thumb.SetRGBA(x, y, pixelcolor.RGBA{uint8((uint32(v.R)*alpha + 255*(255-alpha)) / 255), uint8((uint32(v.G)*alpha + 255*(255-alpha)) / 255), uint8((uint32(v.B)*alpha + 255*(255-alpha)) / 255), 255})
-		}
-	}
-	var out bytes.Buffer
-	if err = jpeg.Encode(&out, thumb, &jpeg.Options{Quality: 75}); err != nil {
+	if a.Thumbnail, err = thumbnail(decoded); err != nil {
 		return Attachment{}, err
 	}
-	a.Thumbnail = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
 	if !validAttachment(a) {
 		return Attachment{}, ErrInvalid
 	}
@@ -148,6 +133,144 @@ func (s Store) SaveAttachment(data []byte) (Attachment, error) {
 	}
 	return a, nil
 }
+
+// ThumbnailSide is the pixel side of the square thumbnail: the desktop shows
+// request images as 96 pt squares (object-fit cover) on 2x displays.
+const ThumbnailSide = 192
+
+const thumbnailPrefix = "data:image/jpeg;base64,"
+
+// thumbnail is a center-cropped square JPEG data URL, area-averaged so text in
+// screenshots stays legible, and small enough for validAttachment.
+func thumbnail(src image.Image) (string, error) {
+	b := src.Bounds()
+	crop := min(b.Dx(), b.Dy())
+	x0, y0 := b.Min.X+(b.Dx()-crop)/2, b.Min.Y+(b.Dy()-crop)/2
+	side := min(crop, ThumbnailSide)
+	// Area-average: each output pixel is the exact coverage-weighted mean of
+	// the source pixels under it, first across each row, then down columns.
+	weights := areaWeights(crop, side)
+	line := make([]float64, crop*3)
+	rows := make([]float64, side*crop*3)
+	for y := 0; y < crop; y++ {
+		for x := 0; x < crop; x++ {
+			// Composite on white, as before: JPEG has no alpha.
+			v := pixelcolor.NRGBAModel.Convert(src.At(x0+x, y0+y)).(pixelcolor.NRGBA)
+			a := float64(v.A) / 255
+			line[x*3] = float64(v.R)*a + 255*(1-a)
+			line[x*3+1] = float64(v.G)*a + 255*(1-a)
+			line[x*3+2] = float64(v.B)*a + 255*(1-a)
+		}
+		for x, ws := range weights {
+			for _, w := range ws {
+				for c := 0; c < 3; c++ {
+					rows[(y*side+x)*3+c] += line[w.index*3+c] * w.weight
+				}
+			}
+		}
+	}
+	thumb := image.NewRGBA(image.Rect(0, 0, side, side))
+	for y, ws := range weights {
+		for x := 0; x < side; x++ {
+			var rgb [3]float64
+			for _, w := range ws {
+				for c := 0; c < 3; c++ {
+					rgb[c] += rows[(w.index*side+x)*3+c] * w.weight
+				}
+			}
+			thumb.SetRGBA(x, y, pixelcolor.RGBA{uint8(min(255, rgb[0]+0.5)), uint8(min(255, rgb[1]+0.5)), uint8(min(255, rgb[2]+0.5)), 255})
+		}
+	}
+	var url string
+	for _, quality := range []int{90, 80, 70, 55, 40} {
+		var out bytes.Buffer
+		if err := jpeg.Encode(&out, thumb, &jpeg.Options{Quality: quality}); err != nil {
+			return "", err
+		}
+		url = thumbnailPrefix + base64.StdEncoding.EncodeToString(out.Bytes())
+		if len(url) <= 32<<10 {
+			return url, nil
+		}
+	}
+	return "", ErrInvalid
+}
+
+type areaWeight struct {
+	index  int
+	weight float64
+}
+
+// areaWeights maps each of out pixels to the in pixels it covers, weighted by
+// how much of each it covers; the weights of one output pixel sum to 1.
+func areaWeights(in, out int) [][]areaWeight {
+	scale := float64(in) / float64(out)
+	weights := make([][]areaWeight, out)
+	for o := range weights {
+		start, end := float64(o)*scale, float64(o+1)*scale
+		for i := int(start); i < in && float64(i) < end; i++ {
+			cover := min(end, float64(i+1)) - max(start, float64(i))
+			if cover > 0 {
+				weights[o] = append(weights[o], areaWeight{i, cover / scale})
+			}
+		}
+	}
+	return weights
+}
+
+// currentThumbnail reports whether a stored thumbnail is the square kind
+// thumbnail makes now. Older ones were 128 px on the long side, sampled
+// nearest-neighbor, and looked blurry and broken when shown as a 96 pt square.
+func currentThumbnail(a Attachment) bool {
+	data, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(a.Thumbnail, thumbnailPrefix))
+	if err != nil || !strings.HasPrefix(a.Thumbnail, thumbnailPrefix) {
+		return false
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(data))
+	return err == nil && cfg.Width == cfg.Height && cfg.Width == min(a.Width, a.Height, ThumbnailSide)
+}
+
+// RefreshThumbnail returns a's thumbnail, remade from the original when it was
+// stored by an older version. The remade one is saved with the attachment's
+// metadata; request files keep their copy so replication is unaffected.
+func (s Store) RefreshThumbnail(a Attachment) string {
+	if currentThumbnail(a) {
+		return a.Thumbnail
+	}
+	saved, err := s.attachment(a.ID)
+	if err != nil {
+		return a.Thumbnail
+	}
+	if currentThumbnail(saved) {
+		return saved.Thumbnail
+	}
+	data, err := os.ReadFile(s.AttachmentPath(saved))
+	if err != nil {
+		return a.Thumbnail
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return a.Thumbnail
+	}
+	if saved.Thumbnail, err = thumbnail(decoded); err != nil {
+		return a.Thumbnail
+	}
+	_ = writeJSON(filepath.Join(s.attachmentDir(), saved.ID+".json"), saved)
+	return saved.Thumbnail
+}
+
+// RequestForUI is r with every attachment's thumbnail brought up to date.
+func (s Store) RequestForUI(r Request) Request {
+	r.Messages = append([]Message(nil), r.Messages...)
+	for i := range r.Messages {
+		r.Messages[i].Attachments = append([]Attachment(nil), r.Messages[i].Attachments...)
+		for j := range r.Messages[i].Attachments {
+			a := &r.Messages[i].Attachments[j]
+			a.Thumbnail = s.RefreshThumbnail(*a)
+		}
+	}
+	return r
+}
+
 func (s Store) attachment(id string) (Attachment, error) {
 	var a Attachment
 	if !attachmentID.MatchString(id) {

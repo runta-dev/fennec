@@ -143,6 +143,9 @@ func (s Store) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
 		if n, ok := number(w, r); ok {
 			req, err := s.Request(r.PathValue("id"), n)
+			if err == nil {
+				req = s.RequestForUI(req)
+			}
 			reply(w, req, err)
 		}
 	})
