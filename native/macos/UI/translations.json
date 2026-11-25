@@ -53,6 +53,8 @@
     "desktop.asking_denied_continuing": {"en-GB":"Denied · telling the agent…","en-US":"Denied · telling the agent…","zh-CN":"已拒绝，正在告诉 Agent"},
     "desktop.permission_allowed_short": {"en-GB":"Allowed","en-US":"Allowed","zh-CN":"已允许"},
     "desktop.permission_denied_short": {"en-GB":"Denied","en-US":"Denied","zh-CN":"已拒绝"},
+    "desktop.permission_allowed_many": {"en-GB":"Allowed {count} commands","en-US":"Allowed {count} commands","zh-CN":"允许了 {count} 条命令"},
+    "desktop.permission_not_recorded": {"en-GB":"Command not recorded","en-US":"Command not recorded","zh-CN":"没有记下命令"},
     "desktop.permission_allowed_unknown": {"en-GB":"Allowed a command","en-US":"Allowed a command","zh-CN":"允许了一条命令"},
     "desktop.permission_denied_unknown": {"en-GB":"Denied a command","en-US":"Denied a command","zh-CN":"拒绝了一条命令"},
     "desktop.asking_answered": {"en-GB":"Answered · the agent will continue shortly","en-US":"Answered · the agent will continue shortly","zh-CN":"已回答，Agent 马上继续"},

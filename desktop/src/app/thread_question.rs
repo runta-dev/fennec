@@ -599,8 +599,10 @@ impl FennecWindow {
     }
 
     /// A person's answer to a permission prompt in the thread (THI-197,
-    /// THI-205): one quiet line, "✓ Allowed <command> 18:01", not a message
-    /// in their name. The command is cut to one line; a click shows it all.
+    /// THI-205 option A): a 6 px status dot centred in the avatar column (the
+    /// peek header's dot), then "Allowed <command>" from the text column and
+    /// the time at the right. The command is cut to one line; a click shows
+    /// it all. Deny text follows as a line of body text.
     pub(super) fn permission_answer(
         &self,
         key: &str,
@@ -610,80 +612,50 @@ impl FennecWindow {
     ) -> Div {
         let open = self.open_permission_commands.contains(key);
         let call = crate::board::split_call(&answer.command);
-        let (label, mark, color) = match (answer.allow, call.is_some()) {
-            (true, true) => (t("permission_allowed_short"), "✓", c("ok")),
-            (true, false) => (t("permission_allowed_unknown"), "✓", c("ok")),
-            (false, true) => (t("permission_denied_short"), "✕", c("bug")),
-            (false, false) => (t("permission_denied_unknown"), "✕", c("bug")),
+        let label = match (answer.allow, call.is_some()) {
+            (true, true) => t("permission_allowed_short"),
+            (true, false) => t("permission_allowed_unknown"),
+            (false, true) => t("permission_denied_short"),
+            (false, false) => t("permission_denied_unknown"),
         };
-        let command = call
-            .map(|(tool, what)| if what.is_empty() { tool } else { what })
-            .unwrap_or_default();
+        let dot = if answer.allow { c("ok") } else { c("bug") };
+        let command = call.map(|(tool, what)| if what.is_empty() { tool } else { what });
         let toggle = key.to_owned();
         let font = crate::settings::get().font_family.clone();
-        v_flex()
-            .py(px(3.0))
-            .pl(px(44.0))
-            .gap(px(4.0))
-            .child(
-                h_flex()
-                    .id(SharedString::from(format!("permission-{key}")))
-                    .debug_selector({
-                        let key = key.to_owned();
-                        move || format!("permission-command-{key}")
-                    })
-                    .items_start()
-                    .gap(px(7.0))
-                    .min_w_0()
-                    .text_size(px(12.0))
-                    .text_color(c("f_muted"))
+        let text = h_flex()
+            .id(SharedString::from(format!("permission-{key}")))
+            .debug_selector({
+                let key = key.to_owned();
+                move || format!("permission-command-{key}")
+            })
+            .flex_1()
+            .min_w_0()
+            .gap(px(6.0))
+            .child(div().flex_none().child(label))
+            .when_some(command, |d, command| {
+                d.cursor_pointer()
                     .child(
                         div()
-                            .flex_none()
-                            .mt(px(2.0))
-                            .size(px(14.0))
-                            .rounded_full()
-                            .bg(color.opacity(0.16))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(9.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(color)
-                            .child(mark),
+                            .min_w_0()
+                            .font_family(font)
+                            .text_size(px(11.5))
+                            .text_color(c("f_text").opacity(0.8))
+                            .hover(|s| s.text_color(c("f_text")))
+                            .when(!open, |d| d.truncate())
+                            .child(if open { command.clone() } else { first_line(&command) }),
                     )
-                    .child(div().flex_none().child(label))
-                    .when(!command.is_empty(), |d| {
-                        d.cursor_pointer()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .font_family(font)
-                                    .text_color(c("f_text").opacity(0.8))
-                                    .hover(|s| s.text_color(c("f_text")))
-                                    .when(!open, |d| d.truncate())
-                                    .child(if open { command.clone() } else { first_line(&command) }),
-                            )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if !this.open_permission_commands.remove(&toggle) {
-                                    this.open_permission_commands.insert(toggle.clone());
-                                }
-                                cx.notify();
-                            }))
-                    })
-                    .child(
-                        div()
-                            .flex_none()
-                            .ml_auto()
-                            .pl(px(8.0))
-                            .text_size(px(11.0))
-                            .child(time.to_owned()),
-                    ),
-            )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.open_permission_commands.remove(&toggle) {
+                            this.open_permission_commands.insert(toggle.clone());
+                        }
+                        cx.notify();
+                    }))
+            });
+        v_flex()
+            .child(record_row(dot, text, time.to_owned(), open))
             .when(!answer.text.is_empty(), |d| {
                 d.child(
-                    div().pl(px(21.0)).child(
+                    div().pl(px(44.0)).pb(px(4.0)).child(
                         gpui_base::text::TextView::markdown(
                             SharedString::from(format!("{key}:instead")),
                             answer.text.clone(),
@@ -695,6 +667,119 @@ impl FennecWindow {
                 )
             })
     }
+
+    /// Several allowed prompts in a row (THI-205): one line, "Allowed 4
+    /// commands" with the time span, that opens to one line per command
+    /// (tool, command, time) hung from the dot. Answers stored before the
+    /// command was known can't be listed, so a group of only those stays shut.
+    pub(super) fn permission_group(
+        &self,
+        key: &str,
+        answers: &[(&PermissionAnswer, String)],
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let calls: Vec<_> = answers
+            .iter()
+            .map(|(a, time)| (crate::board::split_call(&a.command), time.clone()))
+            .collect();
+        let listable = calls.iter().any(|(call, _)| call.is_some());
+        let open = listable && self.open_permission_commands.contains(key);
+        let span = match (answers.first(), answers.last()) {
+            (Some((_, a)), Some((_, b))) if a != b => format!("{a}–{b}"),
+            (Some((_, a)), _) => a.clone(),
+            _ => String::new(),
+        };
+        let toggle = key.to_owned();
+        let count = answers.len().to_string();
+        let summary = h_flex()
+            .id(SharedString::from(format!("permission-group-{key}")))
+            .flex_1()
+            .min_w_0()
+            .gap(px(4.0))
+            .child(div().flex_none().child(tf("permission_allowed_many", &[("count", &count)])))
+            .when(listable, |d| {
+                d.cursor_pointer()
+                    .hover(|s| s.text_color(c("f_text")))
+                    .child(ui::icon("chevron", 12.0, c("f_muted")).when(!open, |i| {
+                        i.with_transformation(Transformation::rotate(percentage(-0.25)))
+                    }))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.open_permission_commands.remove(&toggle) {
+                            this.open_permission_commands.insert(toggle.clone());
+                        }
+                        cx.notify();
+                    }))
+            });
+        let font = crate::settings::get().font_family.clone();
+        v_flex()
+            .child(record_row(c("ok"), summary, span, false))
+            .when(open, |d| {
+                d.child(
+                    v_flex()
+                        // The line hangs from the dot (centre of the 32 px column).
+                        .ml(px(15.5))
+                        .pl(px(28.0))
+                        .border_l_1()
+                        .border_color(c("f_line"))
+                        .mb(px(4.0))
+                        .children(calls.into_iter().map(|(call, time)| {
+                            let (tool, what) = match call {
+                                Some((tool, what)) if what.is_empty() => (String::new(), tool),
+                                Some(pair) => pair,
+                                None => (String::new(), String::new()),
+                            };
+                            h_flex()
+                                .h(px(22.0))
+                                .gap(px(6.0))
+                                .min_w_0()
+                                .text_size(px(12.0))
+                                .text_color(c("f_muted"))
+                                .when(!tool.is_empty(), |d| d.child(div().flex_none().child(tool)))
+                                .child(if what.is_empty() {
+                                    div().child(t("permission_not_recorded"))
+                                } else {
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .font_family(font.clone())
+                                        .text_size(px(11.5))
+                                        .text_color(c("f_text").opacity(0.8))
+                                        .child(first_line(&what))
+                                })
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .ml_auto()
+                                        .pl(px(10.0))
+                                        .text_size(px(11.0))
+                                        .child(time),
+                                )
+                        })),
+                )
+            })
+    }
+}
+
+/// One permission record line: the dot in the 32 px avatar column, the text
+/// from the message text column, the time at the right edge.
+fn record_row(dot: Hsla, text: impl IntoElement, time: String, open: bool) -> Div {
+    h_flex()
+        .when(!open, |d| d.h(px(24.0)))
+        .when(open, |d| d.items_start().py(px(4.0)))
+        .gap(px(12.0))
+        .text_size(px(12.0))
+        .text_color(c("f_muted"))
+        .child(
+            div()
+                .w(px(32.0))
+                .flex_none()
+                .flex()
+                .justify_center()
+                .when(open, |d| d.pt(px(6.0)))
+                .child(div().size(px(6.0)).rounded_full().bg(dot)),
+        )
+        .child(text)
+        .child(div().flex_none().pl(px(10.0)).text_size(px(11.0)).child(time))
 }
 
 /// At most `n` lines of a command, marked when more follows.

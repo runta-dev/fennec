@@ -3242,7 +3242,34 @@ impl FennecWindow {
             .iter()
             .filter(|reply| Some(&reply.project) == self.project_id().as_ref() && !reply.confirmed_in(r))
             .map(|reply| &reply.message);
-        for (i, m) in r.messages.iter().chain(pending).enumerate() {
+        let all: Vec<&board::Message> = r.messages.iter().chain(pending).collect();
+        // THI-205: allowed permission prompts in a row show as one line.
+        let allowed = |m: &board::Message| m.permission.as_ref().is_some_and(|p| p.allow);
+        let mut skip = 0;
+        for (i, m) in all.iter().copied().enumerate() {
+            if skip > 0 {
+                skip -= 1;
+                if self.thread_jump == Some((r.number, m.id)) {
+                    jump_item = Some(items.len().saturating_sub(1));
+                }
+                continue;
+            }
+            let run = all[i..].iter().take_while(|m| allowed(m)).count();
+            if run > 1 {
+                skip = run - 1;
+                let group: Vec<_> = all[i..i + run]
+                    .iter()
+                    .filter_map(|m| {
+                        Some((m.permission.as_ref()?, crate::local_time::clock(&m.at)))
+                    })
+                    .collect();
+                let key = format!("group:{}", pending_reply::message_key(r.number, m.id));
+                if self.thread_jump == Some((r.number, m.id)) {
+                    jump_item = Some(items.len());
+                }
+                items.push(self.permission_group(&key, &group, cx).into_any_element());
+                continue;
+            }
             let agent = !m.agent.is_empty();
             let name = if agent {
                 sessions::agent_name(&m.agent).to_owned()
