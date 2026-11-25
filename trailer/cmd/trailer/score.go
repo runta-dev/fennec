@@ -12,135 +12,110 @@ import (
 	"strings"
 )
 
-const (
-	bpm  = 72.0
-	beat = 60 / bpm
-	bar  = 4 * beat
-)
-
 type chord struct {
-	bass float64
-	pad  []float64
-	arp  []float64
+	root float64   // sub bass note
+	pad  []float64 // stab voicing
+	arp  []float64 // four arpeggio notes
 }
 
+// Am7 - Fmaj7 - C - G, one chord per bar.
 var progression = []chord{
-	{38, []float64{50, 54, 57, 61, 64}, []float64{62, 66, 69, 73, 76}}, // Dmaj9
-	{35, []float64{47, 54, 57, 61, 62}, []float64{59, 62, 66, 69, 73}}, // Bm9
-	{43, []float64{43, 50, 54, 57, 59}, []float64{55, 59, 62, 66, 69}}, // Gmaj9
-	{45, []float64{45, 52, 57, 59, 62}, []float64{57, 62, 64, 69, 71}}, // Asus2/4
+	{33, []float64{57, 60, 64, 67}, []float64{69, 72, 76, 79}},
+	{29, []float64{57, 60, 64, 65}, []float64{65, 69, 72, 76}},
+	{36, []float64{55, 60, 64, 67}, []float64{67, 72, 76, 79}},
+	{31, []float64{55, 59, 62, 67}, []float64{67, 71, 74, 79}},
 }
 
-var arpPattern = []int{0, 2, 3, 4, 2, 3, 1, 2}
+var arpPattern = []int{0, 2, 1, 3, 2, 0, 3, 1}
 
-func (tl *Timeline) scene(id string) *Scene {
-	for i := range tl.Scenes {
-		if tl.Scenes[i].ID == id {
-			return &tl.Scenes[i]
+// agentNames is shown in the "agents" scene, one per eighth note. The
+// canvas keeps its own list (AGENT_NAMES); keep the counts equal.
+const agentNames = 8
+
+func posMod(a, b int) int { return ((a % b) + b) % b }
+
+// buses separate the parts the kick side-chains from the parts it doesn't.
+type buses struct {
+	drums, bass, synth, fx *stereo
+	kicks                  []float64
+}
+
+// music writes the score. Intro: a ticking clock, a heartbeat and a filtered
+// arpeggio under the problem, cut dead when the agent stops. Drop: a 120 BPM
+// groove from "Not anymore" to the end card. End: one hit and a ringing chord.
+func music(tl *Timeline, b *buses) {
+	beat := tl.Beat
+	bar := 4 * beat
+	d := tl.Grid0
+	stopSc := tl.scene("stops")
+	stop := stopSc.Start + stopSc.cue("stop").At
+	endSc := tl.scene("end")
+	end := endSc.Start + endSc.cue("logo").At
+	barOf := func(t float64) int { return int(math.Floor((t - d + 1e-6) / bar)) }
+
+	// Intro.
+	for t := tl.gridAfter(0.15, beat/2, 0); t < stop-0.02; t += beat / 2 {
+		i := int(math.Round((t - d) / (beat / 2)))
+		if posMod(i, 2) == 0 {
+			hat(b.drums, t, 0.55, 0.012, 0.3, int64(i))
 		}
-	}
-	return nil
-}
-
-func (sc *Scene) cue(name string) *Cue {
-	for i := range sc.Cues {
-		if sc.Cues[i].Name == name {
-			return &sc.Cues[i]
+		if posMod(i, 8) == 0 {
+			kick(b.drums, t, 0.35)
 		}
+		c := progression[posMod(barOf(t), 4)]
+		pluck(b.synth, t, c.arp[arpPattern[posMod(i, 8)]]-12, 0.55, -0.2+0.4*float64(posMod(i, 4))/3, 700, 0.14)
 	}
-	return nil
-}
 
-// sceneAt returns the scene playing at absolute time t.
-func (tl *Timeline) sceneAt(t float64) *Scene {
-	for i := range tl.Scenes {
-		sc := &tl.Scenes[i]
-		if t >= sc.Start && t < sc.Start+sc.Dur {
-			return sc
-		}
-	}
-	return &tl.Scenes[len(tl.Scenes)-1]
-}
-
-// music writes the score: a sparse, unresolved piano under the opening, a
-// silence when the laptop closes, then a warm progression that starts with the
-// logo and lands on a final chord with the end card.
-func music(tl *Timeline, out *stereo) {
-	lid, meet, end := tl.scene("lid"), tl.scene("meet"), tl.scene("end")
-
-	// Opening: Bm9 / Gmaj9, two notes a beat, cut short by the lid.
-	stop := lid.Start + lid.cue("lidClose").At + 0.15
-	open := []struct{ low, hi []float64 }{
-		{[]float64{47, 54}, []float64{66, 69}},
-		{[]float64{47, 54}, []float64{69, 73}},
-		{[]float64{43, 50}, []float64{66, 71}},
-		{[]float64{43, 50}, []float64{62, 66}},
-	}
-	for b := 0; ; b++ {
-		t0 := 0.5 + float64(b)*bar
-		if t0 >= stop {
+	// Groove, in sixteenth notes.
+	q := beat / 4
+	for i := 0; ; i++ {
+		t := d + float64(i)*q
+		if t >= end-0.03 {
 			break
 		}
-		o := open[b%len(open)]
-		for _, n := range o.low {
-			piano(out, t0, math.Min(bar, stop-t0), n, 0.42, -0.15)
+		br := i / 16
+		step := i % 16
+		c := progression[br%4]
+		progress := math.Min(1, (t-d)/math.Max(1, end-d))
+		if step%4 == 0 {
+			kick(b.drums, t, 1)
+			b.kicks = append(b.kicks, t)
 		}
-		for k, n := range o.hi {
-			t := t0 + float64(2+k)*beat
-			if t < stop-0.2 {
-				piano(out, t, math.Min(beat*1.6, stop-t), n, 0.34, 0.25)
+		if br >= 1 && (step == 4 || step == 12) {
+			clap(b.drums, t, 0.9, int64(i))
+		}
+		if step%4 == 2 {
+			hat(b.drums, t, 0.7, 0.05, 0.25, int64(i)+7)
+		} else if br >= 2 && step%2 == 1 {
+			hat(b.drums, t, 0.35, 0.015, -0.25, int64(i)+11)
+		}
+		if step == 0 {
+			bass(b.bass, t, bar-0.05, c.root+12, 1.6)
+			bass(b.bass, t, bar-0.05, c.root, 1.2)
+			for k, n := range c.pad {
+				pad(b.synth, t, bar*0.9, n, 0.32, -0.45+float64(k)*0.3)
 			}
 		}
+		if step%2 == 0 || br >= 1 {
+			n := c.arp[arpPattern[i%8]]
+			cut := 900 + 3200*progress
+			pluck(b.synth, t, n, 0.6+0.25*b2f(step%4 == 0), -0.5+float64(i%4)*0.33, cut, 0.12)
+		}
 	}
+	crash(b.fx, d, 0.8, 3)
+	riser(b.fx, end, 1.8, 0.9, 5)
 
-	// Main progression, from the logo to the end card.
-	gridStart := meet.Start + meet.cue("logo").At
-	gridEnd := end.Start + end.cue("logo").At - 0.15
-	bassFrom := tl.scene("cloud").Start
-	sparkleFrom := tl.scene("terminal").Start
-	for b := 0; ; b++ {
-		t0 := gridStart + float64(b)*bar
-		if t0 >= gridEnd-0.4 {
-			break
-		}
-		c := progression[b%len(progression)]
-		hold := math.Min(bar, gridEnd-t0)
-		for k, n := range c.pad[1:] {
-			pad(out, t0, hold, n, 0.4, -0.45+float64(k)*0.3)
-		}
-		if t0 >= bassFrom {
-			bass(out, t0, hold, c.bass, 0.75)
-		}
-		for i, idx := range arpPattern {
-			t := t0 + float64(i)*beat/2
-			if t >= gridEnd-0.1 {
-				break
-			}
-			vel := 0.36 + 0.1*float64((i+1)%2)
-			if i == 0 {
-				vel = 0.5
-			}
-			piano(out, t, math.Min(beat*1.5, gridEnd-t), c.arp[idx], vel, -0.3+0.6*float64(idx)/4)
-		}
-		if t0 >= sparkleFrom && b%2 == 0 {
-			piano(out, t0+beat*3, beat*2, c.arp[4]+12, 0.22, 0.45)
-		}
+	// End card: a single hit and a ringing Cadd9.
+	for k, n := range []float64{48, 55, 60, 62, 64, 67, 74} {
+		pad(b.synth, end, 3.2, n, 0.3, -0.5+float64(k)*0.16)
 	}
-
-	// Final chord with the end card.
-	tf := gridEnd + 0.15
-	for k, n := range []float64{50, 57, 61, 64, 66, 69} {
-		piano(out, tf+float64(k)*0.045, 5.5, n, 0.55, -0.4+float64(k)*0.16)
+	bass(b.bass, end, 3.0, 36, 1.4)
+	for k, n := range []float64{72, 76, 79, 84, 86} {
+		pluck(b.synth, end+float64(k)*beat/2, n, 0.5, -0.4+float64(k)*0.2, 2400, 0.5)
 	}
-	for k, n := range progression[0].pad[1:] {
-		pad(out, tf, 4.5, n, 0.45, -0.45+float64(k)*0.3)
-	}
-	bass(out, tf, 4.5, 38, 0.8)
-	piano(out, tf+0.6, 4.5, 81, 0.3, 0.35)
-	piano(out, tf+1.2, 4.0, 78, 0.24, -0.25)
 }
 
-// sfx places every cue's sound effect.
+// sfx places the cue sounds and the scene-driven ticks and checkmarks.
 func sfx(tl *Timeline, out *stereo) {
 	for _, sc := range tl.Scenes {
 		for ci, c := range sc.Cues {
@@ -148,56 +123,60 @@ func sfx(tl *Timeline, out *stereo) {
 			seed := int64(ci*7919) + int64(at*1000)
 			switch c.SFX {
 			case "lid":
-				lidThump(out, at, 0.55, false)
-			case "lidOpen":
-				lidThump(out, at, 0.5, true)
-			case "chime":
-				bell(out, at, 86, 0.10, -0.2, 3.0)
-				bell(out, at+0.09, 93, 0.07, 0.25, 2.6)
-			case "chimeFinal":
-				bell(out, at, 86, 0.09, -0.2, 3.5)
-				bell(out, at+0.12, 90, 0.06, 0.1, 3.2)
-				bell(out, at+0.24, 93, 0.06, 0.3, 3.4)
+				lidThump(out, at, 0.7, false)
+			case "powerDown":
+				powerDown(out, at, 0.8)
+			case "impact":
+				impact(out, at, 0.75, seed)
+			case "impactEnd":
+				impact(out, at, 0.7, seed)
+				bell(out, at+0.02, 86, 0.07, -0.2, 2.6)
+				bell(out, at+0.1, 93, 0.05, 0.25, 2.4)
 			case "whoosh":
-				noiseSweep(out, at-0.35, 1.1, 350, 4200, 0.16, seed)
-			case "whooshSoft":
-				noiseSweep(out, at-0.2, 0.9, 500, 3000, 0.09, seed)
+				noiseSweep(out, at-0.3, 0.8, 400, 5000, 0.16, seed)
+			case "whooshUp":
+				noiseSweep(out, at-0.25, 0.6, 600, 6000, 0.12, seed)
+			case "whooshDown":
+				noiseSweep(out, at-0.1, 0.9, 5000, 300, 0.14, seed)
 			case "typing":
-				for i, r := range []rune(c.Text) {
-					g := 0.22
-					if r == ' ' {
-						g = 0.3
-					}
-					keyClick(out, at+float64(i)/c.CPS, g, 0.1, seed+int64(i))
+				for i := range []rune(c.Text) {
+					keyClick(out, at+float64(i)/c.CPS, 0.3, 0.1, seed+int64(i))
 				}
-				// Enter.
-				keyClick(out, at+float64(len([]rune(c.Text)))/c.CPS+0.35, 0.34, 0.1, seed+99)
+				keyClick(out, at+float64(len([]rune(c.Text)))/c.CPS+0.18, 0.42, 0.1, seed+99)
 			case "keys":
 				for i := 0; i < c.Count; i++ {
-					keyClick(out, at+float64(i)*c.Interval, 0.32, 0.1, seed+int64(i))
+					keyClick(out, at+float64(i)*c.Interval, 0.5, 0.1, seed+int64(i))
 				}
-			case "pop":
-				blip(out, at, 880, 0.08, 0.2)
-			case "pops":
-				for i := 0; i < c.Count; i++ {
-					notes := []float64{74, 78, 81, 83, 86, 81, 78, 83, 86, 88, 90}
-					blip(out, at+float64(i)*c.Interval, midiHz(notes[i%len(notes)]), 0.05, -0.6+1.2*float64(i)/float64(max(1, c.Count-1)))
-				}
-			case "click":
-				blip(out, at, 1500, 0.10, 0.2)
-				keyClick(out, at, 0.12, 0.2, seed)
-			case "ding":
-				bell(out, at, 88, 0.07, 0.4, 1.6)
-				bell(out, at+0.13, 95, 0.06, 0.4, 1.8)
 			case "":
 			default:
 				fmt.Fprintf(os.Stderr, "warning: unknown sfx %q\n", c.SFX)
 			}
 		}
 	}
+
+	// One tick per agent name. Must match SCENES.agents in web/trailer.js.
+	if sc := tl.scene("agents"); sc != nil {
+		stopAt := sc.Start + sc.word("whatever").Start
+		for k := 1; k < agentNames; k++ {
+			t := tl.gridAfter(sc.Start+0.001, tl.Beat/2, k-1)
+			if t >= stopAt {
+				break
+			}
+			blip(out, t, midiHz(81+float64(k%4)*2), 0.06, -0.4+0.1*float64(k))
+		}
+	}
+	// One chime per checked task. Must match SCENES.working.
+	if sc := tl.scene("working"); sc != nil {
+		for i := 0; i < 3; i++ {
+			t := tl.gridAfter(sc.Start+0.25, tl.Beat, i)
+			if t < sc.Start+sc.Dur {
+				bell(out, t, 88+float64(i)*3, 0.04, 0.3, 0.8)
+			}
+		}
+	}
 }
 
-// decodeVO turns a recorded line into mono float samples at sampleRate.
+// decodeVO turns the recorded take into mono float samples at sampleRate.
 func decodeVO(path string) ([]float32, error) {
 	cmd := exec.Command("ffmpeg", "-v", "error", "-i", path, "-f", "f32le", "-ac", "1", "-ar", fmt.Sprint(sampleRate), "-")
 	var buf bytes.Buffer
@@ -213,88 +192,125 @@ func decodeVO(path string) ([]float32, error) {
 	return s, nil
 }
 
-// mixAudio renders the full soundtrack to a WAV file and reports how many
-// lines had recorded voice-over.
-func mixAudio(root string, tl *Timeline, path string) (int, error) {
+// mixAudio renders the soundtrack to a WAV file.
+func mixAudio(root string, tl *Timeline, path, stems string) error {
 	length := tl.Duration + 0.5
-	mus := newStereo(length)
-	music(tl, mus)
-	fx := newStereo(length)
-	sfx(tl, fx)
+	b := &buses{drums: newStereo(length), bass: newStereo(length), synth: newStereo(length), fx: newStereo(length)}
+	music(tl, b)
+	sfx(tl, b.fx)
 
-	// Duck the music under the voice.
-	duck := make([]float32, mus.len())
-	for i := range duck {
-		duck[i] = 1
+	// Kick side-chain on bass and synths.
+	sc := make([]float32, b.bass.len())
+	for i := range sc {
+		sc[i] = 1
 	}
-	for _, sc := range tl.Scenes {
-		for _, ln := range sc.Lines {
-			a, b := sc.Start+ln.Start, sc.Start+ln.End
-			for i := int((a - 0.3) * sampleRate); i < int((b+0.5)*sampleRate); i++ {
-				if i < 0 || i >= len(duck) {
-					continue
-				}
-				t := float64(i) / sampleRate
-				d := math.Min(1, math.Min((t-(a-0.3))/0.3, ((b+0.5)-t)/0.5))
-				g := float32(1 - 0.55*d)
-				if g < duck[i] {
-					duck[i] = g
-				}
+	for _, k := range b.kicks {
+		for i := int(k * sampleRate); i < int((k+0.45)*sampleRate) && i < len(sc); i++ {
+			t := float64(i)/sampleRate - k
+			g := float32(1 - 0.6*math.Exp(-t/0.11))
+			if g < sc[i] {
+				sc[i] = g
 			}
 		}
 	}
-	for i := range duck {
-		mus.L[i] *= duck[i]
-		mus.R[i] *= duck[i]
+
+	// Voice-over, one continuous take.
+	vo := newStereo(length)
+	env := make([]float32, vo.len())
+	if tl.Recorded {
+		s, err := decodeVO(filepath.Join(root, "assets", "vo", "take.mp3"))
+		if err != nil {
+			return err
+		}
+		var sum float64
+		var n int
+		for _, v := range s {
+			if math.Abs(float64(v)) > 0.01 {
+				sum += float64(v * v)
+				n++
+			}
+		}
+		gain := 1.0
+		if n > 0 {
+			gain = 0.22 / math.Sqrt(sum/float64(n))
+		}
+		// Place the take, opening the pauses at the split points. Each cut
+		// sits between sentences and gets a short fade so it doesn't click.
+		const fade = 0.008
+		e := 0.0
+		for i, v := range s {
+			tau := float64(i) / sampleRate
+			shift := 0.0
+			g := 1.0
+			for _, sp := range tl.splits {
+				if tau >= sp.At {
+					shift += sp.Shift
+				}
+				if d := math.Abs(tau - sp.At); d < fade {
+					g = math.Min(g, d/fade)
+				}
+			}
+			x := float64(v) * gain * g
+			j := int((tl.VOStart + shift + tau) * sampleRate)
+			vo.add(j, x, 0)
+			a := math.Abs(x)
+			if a > e {
+				e += (a - e) * 0.01
+			} else {
+				e += (a - e) * 0.0002
+			}
+			if j >= 0 && j < len(env) {
+				env[j] = float32(e)
+			}
+		}
 	}
 
 	master := newStereo(length)
-	master.mix(mus, 1)
-	master.mix(reverb(mus, 0.85, 0.35, 1), 0.55)
-	master.mix(fx, 1)
-	master.mix(reverb(fx, 0.7, 0.4, 1), 0.35)
-
-	vo := newStereo(length)
-	recorded := 0
-	for _, sc := range tl.Scenes {
-		for _, ln := range sc.Lines {
-			if !ln.Recorded {
-				continue
+	for i := range master.L {
+		duck := 1 - 0.75*math.Min(1, float64(env[i])/0.06)
+		for _, p := range []struct {
+			bus   *stereo
+			gain  float64
+			chain bool
+			duck  float64
+		}{
+			{b.drums, 0.5, false, 0.5},
+			{b.bass, 0.55, true, 1},
+			{b.synth, 0.55, true, 1},
+			{b.fx, 1, false, 0.7},
+		} {
+			g := p.gain * (1 - (1-duck)*p.duck)
+			if p.chain {
+				g *= float64(sc[i])
 			}
-			s, err := decodeVO(filepath.Join(root, "assets", "vo", ln.ID+".mp3"))
-			if err != nil {
-				return 0, err
-			}
-			// Level each line to the same loudness.
-			var sum float64
-			for _, v := range s {
-				sum += float64(v * v)
-			}
-			gain := 1.0
-			if rms := math.Sqrt(sum / float64(len(s))); rms > 0 {
-				gain = 0.12 / rms
-			}
-			at := int((sc.Start + ln.Start) * sampleRate)
-			for i, v := range s {
-				vo.add(at+i, float64(v)*gain, 0)
-			}
-			recorded++
+			p.bus.L[i] *= float32(g)
+			p.bus.R[i] *= float32(g)
+		}
+	}
+	master.mix(b.drums, 1)
+	master.mix(reverb(b.drums, 0.5, 0.5, 1), 0.12)
+	master.mix(b.bass, 1)
+	master.mix(b.synth, 1)
+	master.mix(reverb(b.synth, 0.85, 0.3, 1), 0.4)
+	master.mix(b.fx, 1)
+	master.mix(reverb(b.fx, 0.8, 0.35, 1), 0.3)
+	if stems != "" {
+		if err := writeStems(stems, master, vo); err != nil {
+			return err
 		}
 	}
 	master.mix(vo, 1)
-	master.mix(reverb(vo, 0.4, 0.5, 1), 0.08)
+	master.mix(reverb(vo, 0.3, 0.5, 1), 0.05)
 
-	// Fade out and soft-limit.
-	fadeFrom := int((tl.Duration - 1.2) * sampleRate)
+	fadeFrom := int((tl.Duration - 0.8) * sampleRate)
 	peak := 0.0
 	for i := range master.L {
 		g := 1.0
 		if i > fadeFrom {
-			g = math.Max(0, 1-float64(i-fadeFrom)/(1.2*sampleRate))
+			g = math.Max(0, 1-float64(i-fadeFrom)/(0.8*sampleRate))
 		}
 		for _, ch := range [][]float32{master.L, master.R} {
-			x := float64(ch[i]) * g
-			x = math.Tanh(x*1.1) / 1.1
+			x := math.Tanh(float64(ch[i])*g*1.2) / 1.2
 			ch[i] = float32(x)
 			peak = math.Max(peak, math.Abs(x))
 		}
@@ -303,8 +319,8 @@ func mixAudio(root string, tl *Timeline, path string) (int, error) {
 	if peak > 0.89 {
 		norm = 0.89 / peak
 	}
-	fmt.Printf("audio: peak %.2f, output gain %.2f, %d voice lines\n", peak, norm, recorded)
-	return recorded, writeWAV(path, master, norm)
+	fmt.Printf("audio: peak %.2f, voice-over %v\n", peak, tl.Recorded)
+	return writeWAV(path, master, norm)
 }
 
 func writeWAV(path string, s *stereo, gain float64) error {
@@ -332,11 +348,12 @@ func writeWAV(path string, s *stereo, gain float64) error {
 	return os.WriteFile(path, b.Bytes(), 0o644)
 }
 
-// normalizeLoudness brings the mix to -16 LUFS with a two-pass, linear
-// ffmpeg loudnorm, so the trailer plays at a consistent level online.
+// normalizeLoudness brings the mix to -14 LUFS with a two-pass, linear
+// ffmpeg loudnorm, the usual level for online video.
 func normalizeLoudness(in, out string) error {
+	const target = "I=-14:TP=-1.0:LRA=11"
 	measure := exec.Command("ffmpeg", "-hide_banner", "-nostats", "-i", in,
-		"-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-")
+		"-af", "loudnorm="+target+":print_format=json", "-f", "null", "-")
 	var stderr bytes.Buffer
 	measure.Stderr = &stderr
 	if err := measure.Run(); err != nil {
@@ -352,13 +369,25 @@ func normalizeLoudness(in, out string) error {
 	if err := json.Unmarshal([]byte(s[i:j+1]), &m); err != nil {
 		return err
 	}
-	af := fmt.Sprintf("loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true",
-		m["input_i"], m["input_tp"], m["input_lra"], m["input_thresh"], m["target_offset"])
+	af := fmt.Sprintf("loudnorm=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s:offset=%s:linear=true",
+		target, m["input_i"], m["input_tp"], m["input_lra"], m["input_thresh"], m["target_offset"])
 	apply := exec.Command("ffmpeg", "-y", "-v", "error", "-i", in, "-af", af, "-ar", fmt.Sprint(sampleRate), "-c:a", "pcm_s16le", out)
 	apply.Stderr = os.Stderr
 	if err := apply.Run(); err != nil {
 		return fmt.Errorf("normalize loudness: %w", err)
 	}
-	fmt.Printf("audio: loudness %s LUFS -> -16 LUFS\n", m["input_i"])
+	fmt.Printf("audio: loudness %s LUFS -> -14 LUFS\n", m["input_i"])
 	return nil
+}
+
+// writeStems saves the music-and-effects bed and the voice separately, at
+// the same gain and before limiting, so their balance can be measured.
+func writeStems(dir string, bed, vo *stereo) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if err := writeWAV(filepath.Join(dir, "bed.wav"), bed, 1); err != nil {
+		return err
+	}
+	return writeWAV(filepath.Join(dir, "voice.wav"), vo, 1)
 }

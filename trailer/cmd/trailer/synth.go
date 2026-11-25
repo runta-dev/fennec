@@ -39,57 +39,6 @@ func (s *stereo) mix(o *stereo, gain float64) {
 
 func midiHz(n float64) float64 { return 440 * math.Pow(2, (n-69)/12) }
 
-// piano renders a soft, felt-piano-like note: inharmonic partials whose
-// upper harmonics decay faster, a gentle hammer thump and a release tail.
-func piano(dst *stereo, at, hold, note, vel, pan float64) {
-	f := midiHz(note)
-	start := int(at * sampleRate)
-	release := 0.6
-	total := hold + release
-	if total > 7 {
-		total = 7
-	}
-	n := int(total * sampleRate)
-	baseTau := 2.6 * math.Pow(220/f, 0.45)
-	if baseTau > 4.5 {
-		baseTau = 4.5
-	}
-	type partial struct{ f, a, tau float64 }
-	var ps []partial
-	for k := 1; k <= 9; k++ {
-		fk := float64(k) * f * math.Sqrt(1+0.00035*float64(k*k))
-		if fk > 12000 {
-			break
-		}
-		a := 1 / math.Pow(float64(k), 1.55)
-		// Felt dampens the upper partials; brighter on harder hits.
-		a *= math.Exp(-float64(k-1) * (0.34 - 0.16*vel))
-		ps = append(ps, partial{fk, a, baseTau / (1 + 0.55*float64(k-1))})
-	}
-	detune := 1.0007
-	rng := rand.New(rand.NewSource(int64(note*1000 + at*100)))
-	for i := 0; i < n; i++ {
-		t := float64(i) / sampleRate
-		env := 1.0
-		if t < 0.004 {
-			env = t / 0.004
-		}
-		if t > hold {
-			env *= math.Exp(-(t - hold) / 0.18)
-		}
-		v := 0.0
-		for _, p := range ps {
-			d := math.Exp(-t/p.tau) * (0.75 + 0.25*math.Exp(-t/0.12))
-			v += p.a * d * (math.Sin(2*math.Pi*p.f*t) + 0.5*math.Sin(2*math.Pi*p.f*detune*t))
-		}
-		v *= 0.66
-		if t < 0.012 {
-			v += (rng.Float64()*2 - 1) * 0.04 * vel * (1 - t/0.012)
-		}
-		dst.add(start+i, v*env*vel*0.22, pan)
-	}
-}
-
 // pad renders a slow, warm chord voice from detuned band-limited saws.
 func pad(dst *stereo, at, dur, note, gain, pan float64) {
 	f := midiHz(note)
@@ -290,4 +239,150 @@ func reverb(src *stereo, room, damp, wet float64) *stereo {
 		}
 	}
 	return out
+}
+
+// kick is a punchy electronic kick: a fast pitch drop and a short click.
+func kick(dst *stereo, at, gain float64) {
+	start := int(at * sampleRate)
+	n := int(0.5 * sampleRate)
+	ph := 0.0
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		f := 46 + 120*math.Exp(-t/0.03)
+		ph += 2 * math.Pi * f / sampleRate
+		v := math.Sin(ph) * math.Exp(-t/0.24)
+		v += math.Sin(2*math.Pi*3200*t) * math.Exp(-t/0.0015) * 0.25
+		dst.add(start+i, math.Tanh(v*1.4)*gain*0.5, 0)
+	}
+}
+
+// clap is three quick noise bursts and a short tail, band-passed.
+func clap(dst *stereo, at, gain float64, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+	start := int(at * sampleRate)
+	n := int(0.3 * sampleRate)
+	var fl, fr svf
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		env := 0.0
+		for _, b := range []float64{0, 0.011, 0.023} {
+			if t >= b {
+				env = math.Max(env, math.Exp(-(t-b)/0.005))
+			}
+		}
+		env = math.Max(env, 0.6*math.Exp(-(t-0.023)/0.07)*b2f(t >= 0.023))
+		_, bl, _ := fl.step(rng.Float64()*2-1, 1300, 0.55)
+		_, br, _ := fr.step(rng.Float64()*2-1, 1450, 0.55)
+		if j := start + i; j >= 0 && j < dst.len() {
+			dst.L[j] += float32(bl * env * gain * 0.7)
+			dst.R[j] += float32(br * env * gain * 0.7)
+		}
+	}
+}
+
+func b2f(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// hat is a high-passed noise tick; open hats ring longer.
+func hat(dst *stereo, at, gain, decay, pan float64, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+	start := int(at * sampleRate)
+	n := int(decay * 6 * sampleRate)
+	var f svf
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		_, _, hp := f.step(rng.Float64()*2-1, 7000, 0.7)
+		dst.add(start+i, hp*math.Exp(-t/decay)*gain*0.5, pan)
+	}
+}
+
+// pluck is a bright saw pluck through a decaying low-pass filter.
+func pluck(dst *stereo, at, note, gain, pan, cutoff, decay float64) {
+	f := midiHz(note)
+	start := int(at * sampleRate)
+	n := int(decay * 5 * sampleRate)
+	var flt svf
+	nh := int(math.Min(24, 9000/f))
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		v := 0.0
+		for k := 1; k <= nh; k++ {
+			v += math.Sin(2*math.Pi*f*float64(k)*t) / float64(k)
+		}
+		v += 0.5 * math.Sin(2*math.Pi*f*1.006*t)
+		fc := cutoff * (1 + 4*math.Exp(-t/0.04))
+		lp, _, _ := flt.step(v, fc, 0.6)
+		env := math.Min(1, t/0.002) * math.Exp(-t/decay)
+		dst.add(start+i, lp*env*gain*0.12, pan)
+	}
+}
+
+// crash is a long high-passed noise wash.
+func crash(dst *stereo, at, gain float64, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+	start := int(at * sampleRate)
+	n := int(2.2 * sampleRate)
+	var fl, fr svf
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		env := math.Exp(-t / 0.55)
+		_, _, l := fl.step(rng.Float64()*2-1, 5200, 0.8)
+		_, _, r := fr.step(rng.Float64()*2-1, 5400, 0.8)
+		if j := start + i; j >= 0 && j < dst.len() {
+			dst.L[j] += float32(l * env * gain * 0.35)
+			dst.R[j] += float32(r * env * gain * 0.35)
+		}
+	}
+}
+
+// impact is the drop hit: kick, sub boom and crash.
+func impact(dst *stereo, at, gain float64, seed int64) {
+	kick(dst, at, gain*1.2)
+	start := int(at * sampleRate)
+	n := int(1.6 * sampleRate)
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		f := 38 + 30*math.Exp(-t/0.12)
+		v := math.Sin(2*math.Pi*f*t) * math.Exp(-t/0.6)
+		dst.add(start+i, v*gain*0.45, 0)
+	}
+	crash(dst, at, gain, seed)
+}
+
+// powerDown is a falling tone, like a machine switching off.
+func powerDown(dst *stereo, at, gain float64) {
+	start := int(at * sampleRate)
+	n := int(0.6 * sampleRate)
+	ph := 0.0
+	for i := 0; i < n; i++ {
+		t := float64(i) / sampleRate
+		f := 30 + 260*math.Exp(-t/0.16)
+		ph += 2 * math.Pi * f / sampleRate
+		v := math.Sin(ph) + 0.35*math.Sin(2*ph) + 0.2*math.Sin(3*ph)
+		env := math.Min(1, t/0.005) * (1 - t/0.6)
+		dst.add(start+i, v*env*gain*0.3, 0)
+	}
+}
+
+// riser is noise whose filter and level climb up to `end`.
+func riser(dst *stereo, end, dur, gain float64, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+	start := int((end - dur) * sampleRate)
+	n := int(dur * sampleRate)
+	var fl, fr svf
+	for i := 0; i < n; i++ {
+		p := float64(i) / float64(n)
+		fc := 300 * math.Pow(25, p)
+		_, bl, _ := fl.step(rng.Float64()*2-1, fc, 0.5)
+		_, br, _ := fr.step(rng.Float64()*2-1, fc*1.05, 0.5)
+		env := p * p * gain * 0.4
+		if j := start + i; j >= 0 && j < dst.len() {
+			dst.L[j] += float32(bl * env)
+			dst.R[j] += float32(br * env)
+		}
+	}
 }

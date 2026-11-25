@@ -3,26 +3,38 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
-// Timeline is the single source of truth shared by the Go renderer (audio,
-// voice-over placement, sound effects) and the canvas scenes in web/trailer.js.
-// Scene lengths stretch to fit the recorded voice-over, so pictures and sound
-// stay in sync whenever a line is re-recorded.
+// Timeline is the single source of truth shared by the Go renderer (music,
+// sound effects, voice-over) and the canvas scenes in web/trailer.js.
+//
+// The whole script is recorded as one continuous ElevenLabs take. Its
+// character timestamps place every word; each scene starts just before its
+// first word, so cuts follow the voice and the read never restarts.
 type Timeline struct {
 	Width     int     `json:"width"`
 	Height    int     `json:"height"`
 	FPS       int     `json:"fps"`
-	Crossfade float64 `json:"crossfade"`
+	BPM       float64 `json:"bpm"`
+	GridScene string  `json:"gridScene"`
+	VOStart   float64 `json:"voStart"`
+	EndHold   float64 `json:"endHold"`
 	Voice     Voice   `json:"voice"`
 	Scenes    []Scene `json:"scenes"`
 
 	// Resolved fields.
 	Duration float64 `json:"duration"`
+	Beat     float64 `json:"beat"`
+	Grid0    float64 `json:"grid0"` // first downbeat of the groove: the start of GridScene
+	Recorded bool    `json:"recorded"`
 	Captions bool    `json:"captions"`
+
+	splits []voSplit
 }
 
 type Voice struct {
@@ -36,33 +48,32 @@ type Voice struct {
 }
 
 type Scene struct {
-	ID     string  `json:"id"`
-	MinDur float64 `json:"minDur"`
-	Lead   float64 `json:"lead"`
-	Tail   float64 `json:"tail"`
-	Lines  []Line  `json:"lines"`
-	Cues   []Cue   `json:"cues"`
+	ID   string   `json:"id"`
+	Text string   `json:"text"`
+	Lead *float64 `json:"lead,omitempty"`
+	// PauseBefore opens a gap in the take before this scene's first word: the
+	// recording is split between sentences, so the read stays one take.
+	PauseBefore float64 `json:"pauseBefore,omitempty"`
+	Cues        []Cue   `json:"cues"`
 
-	// Resolved, in seconds. Start is absolute; line and cue times are
-	// relative to the scene start.
-	Start float64 `json:"start"`
-	Dur   float64 `json:"dur"`
+	// Resolved. Start is absolute; everything else is relative to it.
+	Start    float64 `json:"start"`
+	Dur      float64 `json:"dur"`
+	SegStart float64 `json:"segStart"`
+	SegEnd   float64 `json:"segEnd"`
+	Words    []Word  `json:"words"`
 }
 
-type Line struct {
-	ID   string  `json:"id"`
-	Text string  `json:"text"`
-	Gap  float64 `json:"gap,omitempty"`
-
-	Start    float64 `json:"start"`
-	End      float64 `json:"end"`
-	Recorded bool    `json:"recorded"`
+type Word struct {
+	W     string  `json:"w"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
 }
 
 type Cue struct {
 	Name     string  `json:"name"`
-	Line     string  `json:"line,omitempty"`
-	Anchor   string  `json:"anchor,omitempty"` // "start" (default) or "end" of Line
+	Word     string  `json:"word,omitempty"`
+	Anchor   string  `json:"anchor,omitempty"` // "start" (default) or "end" of Word
 	Offset   float64 `json:"offset"`
 	SFX      string  `json:"sfx,omitempty"`
 	Text     string  `json:"text,omitempty"`
@@ -73,12 +84,18 @@ type Cue struct {
 	At float64 `json:"at"`
 }
 
-// voMeta is written next to each recorded line by the vo command.
-type voMeta struct {
-	Text     string  `json:"text"`
-	VoiceID  string  `json:"voiceId"`
-	ModelID  string  `json:"modelId"`
-	Duration float64 `json:"duration"`
+// voSplit shifts the take by Shift seconds from take time At onwards.
+type voSplit struct{ At, Shift float64 }
+
+// voTake is the recorded voice-over: assets/vo/take.json next to take.mp3.
+type voTake struct {
+	Text     string    `json:"text"`
+	VoiceID  string    `json:"voiceId"`
+	ModelID  string    `json:"modelId"`
+	Chars    []string  `json:"chars"`
+	Starts   []float64 `json:"starts"`
+	Ends     []float64 `json:"ends"`
+	Duration float64   `json:"duration"`
 }
 
 func loadTimeline(root string) (*Timeline, error) {
@@ -93,84 +110,196 @@ func loadTimeline(root string) (*Timeline, error) {
 	return &tl, nil
 }
 
-// estimateSpeech guesses how long an unrecorded line takes to say, so the
-// trailer can be previewed before any voice-over exists.
-func estimateSpeech(text string) float64 {
-	words := len(strings.Fields(text))
-	commas := strings.Count(text, ",") + strings.Count(text, ".") - 1
-	if commas < 0 {
-		commas = 0
+// script is the full voice-over text, recorded in one request.
+func (tl *Timeline) script() string {
+	parts := make([]string, len(tl.Scenes))
+	for i, sc := range tl.Scenes {
+		parts[i] = strings.TrimSpace(sc.Text)
 	}
-	return float64(words)/2.55 + 0.18*float64(commas) + 0.25
+	return strings.Join(parts, " ")
 }
 
-// resolve lays scenes end to end and fills in line and cue times.
+func readTake(root string) (voTake, bool) {
+	var t voTake
+	b, err := os.ReadFile(filepath.Join(root, "assets", "vo", "take.json"))
+	if err != nil || json.Unmarshal(b, &t) != nil {
+		return t, false
+	}
+	return t, len(t.Starts) > 0
+}
+
+// estimateTake fakes character timings so the trailer can be previewed
+// before a take exists or after the script changed.
+func estimateTake(text string) voTake {
+	t := voTake{Text: text}
+	at := 0.0
+	for _, r := range text {
+		d := 0.058
+		t.Chars = append(t.Chars, string(r))
+		t.Starts = append(t.Starts, at)
+		at += d
+		t.Ends = append(t.Ends, at)
+		switch r {
+		case ',':
+			at += 0.18
+		case '.':
+			at += 0.38
+		}
+	}
+	t.Duration = at
+	return t
+}
+
+func normWord(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func (tl *Timeline) resolve(root string) error {
-	t := 0.0
+	text := tl.script()
+	take, ok := readTake(root)
+	tl.Recorded = ok && take.Text == text
+	if !tl.Recorded {
+		take = estimateTake(text)
+	}
+	if len(take.Starts) != len([]rune(text)) {
+		return fmt.Errorf("voice-over alignment has %d characters, script has %d", len(take.Starts), len([]rune(text)))
+	}
+	tl.Beat = 60 / tl.BPM
+
+	// Words with absolute times.
+	runes := []rune(text)
+	off := 0
+	shift := 0.0
+	prevEnd := 0.0
+	tl.splits = nil
+	absWords := make([][]Word, len(tl.Scenes))
+	for si, sc := range tl.Scenes {
+		firstWord := true
+		seg := []rune(strings.TrimSpace(sc.Text))
+		i := off
+		end := off + len(seg)
+		for i < end {
+			for i < end && runes[i] == ' ' {
+				i++
+			}
+			j := i
+			for j < end && runes[j] != ' ' {
+				j++
+			}
+			if j > i {
+				first, last := i, j-1
+				for first < last && !unicode.IsLetter(runes[first]) && !unicode.IsDigit(runes[first]) {
+					first++
+				}
+				if firstWord {
+					firstWord = false
+					if si > 0 && sc.PauseBefore > 0 {
+						shift += sc.PauseBefore
+						tl.splits = append(tl.splits, voSplit{At: (prevEnd + take.Starts[first]) / 2, Shift: sc.PauseBefore})
+					}
+				}
+				prevEnd = take.Ends[last]
+				absWords[si] = append(absWords[si], Word{
+					W:     string(runes[i:j]),
+					Start: tl.VOStart + shift + take.Starts[first],
+					End:   tl.VOStart + shift + take.Ends[last],
+				})
+			}
+			i = j
+		}
+		off = end + 1
+	}
+
 	for si := range tl.Scenes {
 		sc := &tl.Scenes[si]
-		sc.Start = t
-		cursor := sc.Lead
-		for li := range sc.Lines {
-			ln := &sc.Lines[li]
-			if li > 0 {
-				gap := ln.Gap
-				if gap == 0 {
-					gap = 0.35
-				}
-				cursor += gap
-			}
-			dur := estimateSpeech(ln.Text)
-			if m, ok := readVOMeta(root, ln.ID); ok && m.Text == ln.Text {
-				dur = m.Duration
-				ln.Recorded = true
-			}
-			ln.Start = cursor
-			ln.End = cursor + dur
-			cursor = ln.End
+		ws := absWords[si]
+		if len(ws) == 0 {
+			return fmt.Errorf("scene %s has no text", sc.ID)
 		}
-		sc.Dur = cursor + sc.Tail
-		if sc.Dur < sc.MinDur {
-			sc.Dur = sc.MinDur
+		lead := 0.12
+		if sc.Lead != nil {
+			lead = *sc.Lead
 		}
+		sc.Start = ws[0].Start - lead
+		if si == 0 {
+			sc.Start = 0
+		}
+	}
+	for si := range tl.Scenes {
+		sc := &tl.Scenes[si]
+		ws := absWords[si]
+		if si+1 < len(tl.Scenes) {
+			sc.Dur = tl.Scenes[si+1].Start - sc.Start
+		} else {
+			sc.Dur = ws[len(ws)-1].End - sc.Start + tl.EndHold
+		}
+		sc.Words = make([]Word, len(ws))
+		for i, w := range ws {
+			sc.Words[i] = Word{W: w.W, Start: w.Start - sc.Start, End: w.End - sc.Start}
+		}
+		sc.SegStart = sc.Words[0].Start
+		sc.SegEnd = sc.Words[len(ws)-1].End
 		for ci := range sc.Cues {
 			c := &sc.Cues[ci]
-			base := 0.0
-			if c.Line != "" {
-				ln := sc.line(c.Line)
-				if ln == nil {
-					return fmt.Errorf("scene %s cue %s: unknown line %s", sc.ID, c.Name, c.Line)
+			base := sc.SegStart
+			if c.Word != "" {
+				w := sc.word(c.Word)
+				if w == nil {
+					return fmt.Errorf("scene %s cue %s: no word %q", sc.ID, c.Name, c.Word)
 				}
-				base = ln.Start
+				base = w.Start
 				if c.Anchor == "end" {
-					base = ln.End
+					base = w.End
 				}
 			}
 			c.At = base + c.Offset
 		}
-		t += sc.Dur
+		if sc.ID == tl.GridScene {
+			tl.Grid0 = sc.Start
+		}
 	}
-	tl.Duration = t
+	last := tl.Scenes[len(tl.Scenes)-1]
+	tl.Duration = last.Start + last.Dur
 	return nil
 }
 
-func (sc *Scene) line(id string) *Line {
-	for i := range sc.Lines {
-		if sc.Lines[i].ID == id {
-			return &sc.Lines[i]
+func (sc *Scene) word(w string) *Word {
+	n := normWord(w)
+	for i := range sc.Words {
+		if normWord(sc.Words[i].W) == n {
+			return &sc.Words[i]
 		}
 	}
 	return nil
 }
 
-func readVOMeta(root, id string) (voMeta, bool) {
-	var m voMeta
-	b, err := os.ReadFile(filepath.Join(root, "assets", "vo", id+".json"))
-	if err != nil {
-		return m, false
+func (tl *Timeline) scene(id string) *Scene {
+	for i := range tl.Scenes {
+		if tl.Scenes[i].ID == id {
+			return &tl.Scenes[i]
+		}
 	}
-	if json.Unmarshal(b, &m) != nil || m.Duration <= 0 {
-		return m, false
+	return nil
+}
+
+func (sc *Scene) cue(name string) *Cue {
+	for i := range sc.Cues {
+		if sc.Cues[i].Name == name {
+			return &sc.Cues[i]
+		}
 	}
-	return m, true
+	return nil
+}
+
+// gridAfter returns the n-th grid point (step q) at or after absolute time t.
+// web/trailer.js has the same function; keep them identical.
+func (tl *Timeline) gridAfter(t, q float64, n int) float64 {
+	k := math.Ceil((t-tl.Grid0)/q - 1e-9)
+	return tl.Grid0 + (k+float64(n))*q
 }

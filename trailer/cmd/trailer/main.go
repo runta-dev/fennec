@@ -33,20 +33,17 @@ func main() {
 	switch cmd {
 	case "vo":
 		fs := flag.NewFlagSet("vo", flag.ExitOnError)
-		force := fs.Bool("force", false, "re-record lines even if unchanged")
+		force := fs.Bool("force", false, "re-record even if the script is unchanged")
 		fs.Parse(args)
-		only := map[string]bool{}
-		for _, id := range fs.Args() {
-			only[id] = true
-		}
-		err = recordVO(root, *force, only)
+		err = recordVO(root, *force)
 	case "timeline":
 		err = printTimeline(root)
 	case "audio":
 		fs := flag.NewFlagSet("audio", flag.ExitOnError)
 		out := fs.String("o", filepath.Join(root, "out", "audio.wav"), "output WAV")
+		stems := fs.String("stems", "", "also write bed.wav and voice.wav into this directory")
 		fs.Parse(args)
-		err = buildAudio(root, *out)
+		err = buildAudio(root, *out, *stems)
 	case "still":
 		fs := flag.NewFlagSet("still", flag.ExitOnError)
 		captions := fs.Bool("captions", false, "draw the voice-over as captions")
@@ -71,9 +68,10 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: go run ./cmd/trailer <command>
-  vo [-force] [line...]    record voice-over with ElevenLabs (needs ELEVENLABS_API_KEY)
+  vo [-force]              record the voice-over with ElevenLabs (needs ELEVENLABS_API_KEY)
   timeline                 print the resolved timeline
-  audio [-o file.wav]      render the soundtrack only
+  audio [-o f.wav] [-stems dir]
+                           render the soundtrack only (stems: bed and voice)
   still [-captions] t...   render stills at the given seconds into out/stills
   serve                    live preview in a browser
   render [-captions] [-o file.mp4] [-workers n]
@@ -124,22 +122,20 @@ func printTimeline(root string) error {
 	}
 	for _, sc := range tl.Scenes {
 		fmt.Printf("%6.2f  %-9s %5.2fs\n", sc.Start, sc.ID, sc.Dur)
-		for _, ln := range sc.Lines {
-			state := "estimated"
-			if ln.Recorded {
-				state = "recorded"
-			}
-			fmt.Printf("        %6.2f-%6.2f %s %-9s %s\n", sc.Start+ln.Start, sc.Start+ln.End, ln.ID, state, ln.Text)
-		}
+		fmt.Printf("        %6.2f-%6.2f %s\n", sc.Start+sc.SegStart, sc.Start+sc.SegEnd, sc.Text)
 		for _, c := range sc.Cues {
 			fmt.Printf("        %6.2f cue %s (%s)\n", sc.Start+c.At, c.Name, c.SFX)
 		}
 	}
-	fmt.Printf("total %.2fs\n", tl.Duration)
+	state := "estimated"
+	if tl.Recorded {
+		state = "recorded"
+	}
+	fmt.Printf("total %.2fs, voice-over %s, groove from %.2fs\n", tl.Duration, state, tl.Grid0)
 	return nil
 }
 
-func buildAudio(root, out string) error {
+func buildAudio(root, out, stems string) error {
 	tl, err := resolved(root, false)
 	if err != nil {
 		return err
@@ -148,7 +144,7 @@ func buildAudio(root, out string) error {
 		return err
 	}
 	raw := strings.TrimSuffix(out, ".wav") + "-raw.wav"
-	if _, err := mixAudio(root, tl, raw); err != nil {
+	if err := mixAudio(root, tl, raw, stems); err != nil {
 		return err
 	}
 	if err := normalizeLoudness(raw, out); err != nil {
@@ -264,20 +260,15 @@ func render(root, out string, captions bool, workers int) error {
 	}
 	wav := strings.TrimSuffix(out, filepath.Ext(out)) + ".wav"
 	raw := strings.TrimSuffix(wav, ".wav") + "-raw.wav"
-	recorded, err := mixAudio(root, tl, raw)
-	if err != nil {
+	if err := mixAudio(root, tl, raw, ""); err != nil {
 		return err
 	}
 	if err := normalizeLoudness(raw, wav); err != nil {
 		return err
 	}
 	os.Remove(raw)
-	lines := 0
-	for _, sc := range tl.Scenes {
-		lines += len(sc.Lines)
-	}
-	if recorded < lines {
-		fmt.Printf("note: %d of %d lines have voice-over; run `vo` to record the rest\n", recorded, lines)
+	if !tl.Recorded {
+		fmt.Println("note: no voice-over for this script yet; run `vo` to record it")
 	}
 
 	url, stop, err := serve(root, tl)
