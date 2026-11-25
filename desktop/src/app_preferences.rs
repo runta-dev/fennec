@@ -19,6 +19,8 @@ pub struct Preferences {
     pub padding_x: u16,
     pub padding_y: u16,
     pub sidebar_width: u16,
+    /// The queue's request list; 0 follows the window (42%, at most 460 px).
+    pub queue_width: u16,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -31,6 +33,7 @@ impl Default for Preferences {
             padding_x: 0,
             padding_y: 0,
             sidebar_width: 252,
+            queue_width: 0,
         }
     }
 }
@@ -61,6 +64,7 @@ impl State {
                     && p.padding_x <= 32
                     && p.padding_y <= 32
                     && (180..=480).contains(&p.sidebar_width)
+                    && (p.queue_width == 0 || (240..=720).contains(&p.queue_width))
             })
             .unwrap_or_default();
         Self {
@@ -124,8 +128,9 @@ impl FennecWindow {
                 this.app_preferences.saving = false;
                 match result {
                     Ok(mut value) => {
-                        if this.sidebar_resize.drag.is_some() || this.sidebar_resize.saving || this.sidebar_resize.pending.is_some() {
+                        if this.column_resize_busy() {
                             value.sidebar_width = this.app_preferences.value.sidebar_width;
+                            value.queue_width = this.app_preferences.value.queue_width;
                         }
                         this.app_preferences.value = value;
                         this.apply_desktop_preferences(window, cx);

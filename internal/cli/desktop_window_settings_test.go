@@ -72,3 +72,28 @@ func TestSidebarWidthPersistsWithoutResettingExistingPreferences(t *testing.T) {
 		t.Fatal("old preferences were reset", old)
 	}
 }
+
+func TestQueueWidthPersistsAndZeroMeansAutomatic(t *testing.T) {
+	home := t.TempDir()
+	s := newDesktopWindowSettings(home)
+	if s.get().QueueWidth != 0 {
+		t.Fatal(s.get())
+	}
+	if _, err := s.set(context.Background(), json.RawMessage(`{"queue_width":420}`)); err != nil {
+		t.Fatal(err)
+	}
+	if loaded := newDesktopWindowSettings(home).get(); loaded.QueueWidth != 420 || loaded.SidebarWidth != 252 {
+		t.Fatal(loaded)
+	}
+	for _, body := range []string{`{"queue_width":239}`, `{"queue_width":721}`, `{"queue_width":-1}`} {
+		if _, err := s.set(context.Background(), json.RawMessage(body)); err == nil {
+			t.Fatal("invalid queue width accepted", body)
+		}
+	}
+	if _, err := s.set(context.Background(), json.RawMessage(`{"queue_width":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	if loaded := newDesktopWindowSettings(home).get(); loaded.QueueWidth != 0 {
+		t.Fatal(loaded)
+	}
+}

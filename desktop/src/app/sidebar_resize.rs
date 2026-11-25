@@ -1,7 +1,24 @@
-//! Sidebar boundary interaction, using the same GPUI resize band as Herdr.
+//! Column boundary interaction for the sidebar and the queue's request list,
+//! using the same GPUI resize band as Herdr. Both widths persist through the
+//! daemon's `desktop.settings` (THI-153).
 use super::*;
 use gpui_base::{HandleEdge, resize_handle};
 use serde_json::json;
+
+pub(crate) const SIDEBAR_DEFAULT: u16 = 252;
+pub(crate) const SIDEBAR_MIN: f32 = 180.0;
+pub(crate) const SIDEBAR_MAX: f32 = 480.0;
+/// The request list keeps at least this much, and the thread beside it
+/// keeps at least `THREAD_MIN`.
+pub(crate) const QUEUE_MIN: f32 = 240.0;
+pub(crate) const QUEUE_MAX: f32 = 720.0;
+const THREAD_MIN: f32 = 360.0;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Pane {
+    Sidebar,
+    Queue,
+}
 
 #[derive(Default)]
 pub(crate) struct State {
@@ -11,7 +28,7 @@ pub(crate) struct State {
     focus: Option<FocusHandle>,
 }
 #[derive(Clone)]
-pub(super) struct SidebarDrag;
+pub(super) struct SidebarDrag(Pane);
 impl Render for SidebarDrag {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div().size(px(0.0))
@@ -20,36 +37,86 @@ impl Render for SidebarDrag {
 impl FennecWindow {
     pub(super) fn sidebar_width(&self, window: &Window) -> f32 {
         (self.app_preferences.value.sidebar_width as f32).clamp(
-            180.0,
-            (f32::from(window.viewport_size().width) - 400.0).clamp(180.0, 480.0),
+            SIDEBAR_MIN,
+            (f32::from(window.viewport_size().width) - 400.0).clamp(SIDEBAR_MIN, SIDEBAR_MAX),
         )
     }
+    /// Width left for the request list and the thread.
+    fn main_width(&self, window: &Window) -> f32 {
+        f32::from(window.viewport_size().width) - self.sidebar_width(window) * self.sidebar_shown
+    }
+    fn queue_max(&self, window: &Window) -> f32 {
+        (self.main_width(window) - THREAD_MIN).clamp(QUEUE_MIN, QUEUE_MAX)
+    }
+    /// 0 is the automatic width: 42% of the main area, at most 460 px.
+    pub(super) fn queue_width(&self, window: &Window) -> f32 {
+        match self.app_preferences.value.queue_width {
+            0 => (self.main_width(window) * 0.42).min(460.0),
+            w => (w as f32).clamp(QUEUE_MIN, self.queue_max(window)),
+        }
+    }
+    fn pane_state(&mut self, pane: Pane) -> &mut State {
+        match pane {
+            Pane::Sidebar => &mut self.sidebar_resize,
+            Pane::Queue => &mut self.queue_resize,
+        }
+    }
+    fn pane_value(&mut self, pane: Pane) -> &mut u16 {
+        match pane {
+            Pane::Sidebar => &mut self.app_preferences.value.sidebar_width,
+            Pane::Queue => &mut self.app_preferences.value.queue_width,
+        }
+    }
+    fn pane_width(&self, pane: Pane, window: &Window) -> f32 {
+        match pane {
+            Pane::Sidebar => self.sidebar_width(window),
+            Pane::Queue => self.queue_width(window),
+        }
+    }
+    /// True while either column is being dragged or its width is being saved,
+    /// so a settings reply doesn't overwrite the width on screen.
+    pub(crate) fn column_resize_busy(&self) -> bool {
+        [&self.sidebar_resize, &self.queue_resize]
+            .iter()
+            .any(|s| s.drag.is_some() || s.saving || s.pending.is_some())
+    }
     pub(super) fn sidebar_resize_handle(&self, cx: &Context<Self>) -> impl IntoElement {
-        resize_handle("sidebar-resize", Axis::Horizontal)
+        self.column_resize_handle(Pane::Sidebar, cx)
+    }
+    pub(super) fn column_resize_handle(&self, pane: Pane, cx: &Context<Self>) -> impl IntoElement {
+        let id = match pane {
+            Pane::Sidebar => "sidebar-resize",
+            Pane::Queue => "queue-resize",
+        };
+        resize_handle(id, Axis::Horizontal)
             .inside(HandleEdge::Trailing)
-            // The sidebar already paints its themed hairline. Reuse only the
+            // The column already paints its themed hairline. Reuse only the
             // handle's hit area and cursor, without a second default-theme line.
             .with_appearance(std::rc::Rc::new(|_, _, _| {
                 Some(div().size_full().into_any_element())
             }))
-            .debug_selector(|| "sidebar-resize".into())
-            .on_drag(SidebarDrag, |drag, _, _, cx| cx.new(|_| drag.clone()))
+            .debug_selector(move || id.into())
+            .on_drag(SidebarDrag(pane), |drag, _, _, cx| cx.new(|_| drag.clone()))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     cx.stop_propagation();
-                    this.sidebar_resize.focus = window.focused(cx);
+                    this.pane_state(pane).focus = window.focused(cx);
                     this.focus.focus(window, cx);
                     if event.click_count == 2 {
-                        this.sidebar_resize.drag = None;
-                        this.app_preferences.value.sidebar_width = 252;
-                        this.save_sidebar_width(window, cx);
-                        this.restore_sidebar_focus(window, cx);
+                        this.pane_state(pane).drag = None;
+                        *this.pane_value(pane) = match pane {
+                            Pane::Sidebar => SIDEBAR_DEFAULT,
+                            Pane::Queue => 0,
+                        };
+                        this.save_column_width(pane, window, cx);
+                        this.restore_column_focus(pane, window, cx);
                     } else {
-                        this.sidebar_resize.drag = Some((
-                            f32::from(event.position.x),
-                            this.sidebar_width(window).round() as u16,
-                        ));
+                        let width = this.pane_width(pane, window).round() as u16;
+                        if pane == Pane::Queue {
+                            this.queue_resize_from_auto = this.app_preferences.value.queue_width == 0;
+                        }
+                        this.pane_state(pane).drag = Some((f32::from(event.position.x), width));
                     }
                     cx.notify();
                 }),
@@ -61,51 +128,83 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some((start, width)) = self.sidebar_resize.drag else {
+        let pane = event.drag(cx).0;
+        let Some((start, width)) = self.pane_state(pane).drag else {
             return;
         };
-        let max = (f32::from(window.viewport_size().width) - 400.0).clamp(180.0, 480.0);
+        let (min, max) = match pane {
+            Pane::Sidebar => (
+                SIDEBAR_MIN,
+                (f32::from(window.viewport_size().width) - 400.0).clamp(SIDEBAR_MIN, SIDEBAR_MAX),
+            ),
+            Pane::Queue => (QUEUE_MIN, self.queue_max(window)),
+        };
         let width = (width as f32 + f32::from(event.event.position.x) - start)
-            .clamp(180.0, max)
+            .clamp(min, max)
             .round() as u16;
-        if width != self.app_preferences.value.sidebar_width {
-            self.app_preferences.value.sidebar_width = width;
+        if width != *self.pane_value(pane) {
+            *self.pane_value(pane) = width;
             cx.notify();
         }
     }
     pub(super) fn finish_sidebar_resize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some((_, before)) = self.sidebar_resize.drag.take() {
-            if before != self.app_preferences.value.sidebar_width {
-                self.save_sidebar_width(window, cx);
+        for pane in [Pane::Sidebar, Pane::Queue] {
+            if let Some((_, before)) = self.pane_state(pane).drag.take() {
+                // A drag from the automatic queue width counts as a change
+                // once it moved, so the width stops following the window.
+                let before = if pane == Pane::Queue && self.queue_resize_from_auto { 0 } else { before };
+                if before != *self.pane_value(pane) {
+                    self.save_column_width(pane, window, cx);
+                }
+            }
+            self.restore_column_focus(pane, window, cx);
+        }
+        self.queue_resize_from_auto = false;
+    }
+    /// Escape during a drag: put the width back and don't save.
+    pub(super) fn cancel_column_resize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for pane in [Pane::Sidebar, Pane::Queue] {
+            if let Some((_, width)) = self.pane_state(pane).drag.take() {
+                let restored = match pane {
+                    Pane::Queue if self.queue_resize_from_auto => 0,
+                    _ => width,
+                };
+                *self.pane_value(pane) = restored;
+                self.restore_column_focus(pane, window, cx);
             }
         }
-        self.restore_sidebar_focus(window, cx);
+        self.queue_resize_from_auto = false;
     }
-    pub(super) fn restore_sidebar_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(focus) = self.sidebar_resize.focus.take() {
+    fn restore_column_focus(&mut self, pane: Pane, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(focus) = self.pane_state(pane).focus.take() {
             focus.focus(window, cx);
         }
     }
-    fn save_sidebar_width(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.sidebar_resize.pending = Some(self.app_preferences.value.sidebar_width);
+    fn save_column_width(&mut self, pane: Pane, window: &mut Window, cx: &mut Context<Self>) {
+        let width = *self.pane_value(pane);
+        self.pane_state(pane).pending = Some(width);
         // The isolated renderer never writes the user's preferences.
-        if crate::preview::active() || cfg!(test) || self.sidebar_resize.saving {
+        if crate::preview::active() || cfg!(test) || self.pane_state(pane).saving {
             return;
         }
-        self.sidebar_resize.saving = true;
+        self.pane_state(pane).saving = true;
+        let key = match pane {
+            Pane::Sidebar => "sidebar_width",
+            Pane::Queue => "queue_width",
+        };
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             loop {
-                let Ok(width) = this.update(cx, |this, _| this.sidebar_resize.pending.take())
+                let Ok(width) = this.update(cx, |this, _| this.pane_state(pane).pending.take())
                 else {
                     return;
                 };
                 let Some(width) = width else {
-                    let _ = this.update(cx, |this, _| this.sidebar_resize.saving = false);
+                    let _ = this.update(cx, |this, _| this.pane_state(pane).saving = false);
                     return;
                 };
                 let saved = cx
                     .background_spawn(async move {
-                        crate::control::call("desktop.settings.set", json!({"sidebar_width":width}))
+                        crate::control::call("desktop.settings.set", json!({ (key): width }))
                     })
                     .await;
                 if this

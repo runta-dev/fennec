@@ -318,6 +318,16 @@ The preferred width is 180–480 px, further limited while a narrow window needs
 width. Sidebar collapse/expand uses the saved width and keeps its existing
 ease-out motion. Keyboard focus returns to its previous control after resizing.
 
+## Queue list width
+
+The queue's request list (between the sidebar and the open thread) resizes the
+same way: drag its right edge, Escape cancels, focus returns afterwards, and
+mouse-up saves `queue_width` in the same desktop preferences. Until it is
+dragged, the list follows the window (42% of the space beside the sidebar, at
+most 460 px), stored as `queue_width: 0`; double-clicking the edge returns to
+that. A dragged width is 240–720 px, further limited so the thread keeps
+360 px; that temporary clamp does not overwrite the saved width.
+
 The original Herdr window used resizable layout nodes and separators. Fennec's
 window chrome had replaced that layout with a fixed 252 px column; the terminal
 port alone did not carry over the resize interaction or persisted dimensions.

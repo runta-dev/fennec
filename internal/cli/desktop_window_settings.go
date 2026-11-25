@@ -21,6 +21,8 @@ type desktopWindowPreferences struct {
 	PaddingX           int    `json:"padding_x"`
 	PaddingY           int    `json:"padding_y"`
 	SidebarWidth       int    `json:"sidebar_width"`
+	// QueueWidth is the queue request list; 0 means automatic.
+	QueueWidth int `json:"queue_width"`
 }
 type desktopWindowSettings struct {
 	mu    sync.Mutex
@@ -37,7 +39,7 @@ func newDesktopWindowSettings(home string) *desktopWindowSettings {
 	return s
 }
 func validDesktopWindowPreferences(p desktopWindowPreferences) bool {
-	return (p.Theme == "system" || p.Theme == "light" || p.Theme == "dark") && (p.Language == "system" || p.Language == "en-US" || p.Language == "zh-CN") && p.FontSize >= 8 && p.FontSize <= 32 && p.PaddingX >= 0 && p.PaddingX <= 32 && p.PaddingY >= 0 && p.PaddingY <= 32 && p.SidebarWidth >= 180 && p.SidebarWidth <= 480
+	return (p.Theme == "system" || p.Theme == "light" || p.Theme == "dark") && (p.Language == "system" || p.Language == "en-US" || p.Language == "zh-CN") && p.FontSize >= 8 && p.FontSize <= 32 && p.PaddingX >= 0 && p.PaddingX <= 32 && p.PaddingY >= 0 && p.PaddingY <= 32 && p.SidebarWidth >= 180 && p.SidebarWidth <= 480 && (p.QueueWidth == 0 || p.QueueWidth >= 240 && p.QueueWidth <= 720)
 }
 func (s *desktopWindowSettings) get() desktopWindowPreferences {
 	s.mu.Lock()
@@ -54,6 +56,7 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 		PaddingX           *int    `json:"padding_x"`
 		PaddingY           *int    `json:"padding_y"`
 		SidebarWidth       *int    `json:"sidebar_width"`
+		QueueWidth         *int    `json:"queue_width"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -89,6 +92,9 @@ func (s *desktopWindowSettings) set(ctx context.Context, raw json.RawMessage) (a
 	}
 	if p.SidebarWidth != nil {
 		next.SidebarWidth = *p.SidebarWidth
+	}
+	if p.QueueWidth != nil {
+		next.QueueWidth = *p.QueueWidth
 	}
 	if !validDesktopWindowPreferences(next) {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Check the settings"}

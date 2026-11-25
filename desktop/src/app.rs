@@ -23,6 +23,8 @@ mod thread_tags;
 mod thread_wait;
 #[cfg(test)]
 mod reply_tests;
+#[cfg(test)]
+mod queue_resize_tests;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -186,6 +188,8 @@ pub struct FennecWindow {
     /// The Active / Done highlight sliding between the tabs.
     status_slide: segment_slide::Slide,
     pub(crate) sidebar_resize: sidebar_resize::State,
+    pub(crate) queue_resize: sidebar_resize::State,
+    queue_resize_from_auto: bool,
     focus: FocusHandle,
     pending_focus: Option<String>,
     confirmed_session: Option<String>,
@@ -379,6 +383,8 @@ impl FennecWindow {
             queue_glide: Default::default(),
             status_slide: Default::default(),
             sidebar_resize: Default::default(),
+            queue_resize: Default::default(),
+            queue_resize_from_auto: false,
             focus: cx.focus_handle(),
             pending_focus: None,
             confirmed_session: None,
@@ -2904,8 +2910,9 @@ impl FennecWindow {
             window.request_animation_frame();
         }
         v_flex()
-            .w(relative(0.42))
-            .max_w(px(460.0))
+            .relative()
+            .debug_selector(|| "queue-column".into())
+            .w(px(self.queue_width(window)))
             .min_w_0()
             .h_full()
             .flex_none()
@@ -3122,6 +3129,7 @@ impl FennecWindow {
                     .child(glide::origin(&self.queue_glide, glide_scope))
                     .children(cards),
             )
+            .child(self.column_resize_handle(sidebar_resize::Pane::Queue, cx))
     }
 
     fn thread(&self, p: &Project, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3737,10 +3745,7 @@ impl Render for FennecWindow {
                 }
                 let k = &e.keystroke;
                 if k.key == "escape" && cx.has_active_drag() {
-                    if let Some((_,width))=this.sidebar_resize.drag.take() {
-                        this.app_preferences.value.sidebar_width=width;
-                        this.restore_sidebar_focus(window,cx);
-                    }
+                    this.cancel_column_resize(window,cx);
                     cx.stop_active_drag(window);
                     this.layout.hover = None;
                     cx.stop_propagation();
