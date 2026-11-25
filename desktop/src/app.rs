@@ -3125,13 +3125,26 @@ impl FennecWindow {
 
     fn thread(&self, p: &Project, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(r) = self.thread.as_ref().filter(|t| Some(t.number) == self.open) else {
+            // With no thread open, the strip where the thread header would be
+            // still moves the window and zooms it on double-click (THI-151).
             return v_flex()
                 .flex_1()
                 .h_full()
+                .relative()
                 .bg(c("background"))
                 .items_center()
                 .justify_center()
                 .child(ui::icon("chat", 16.0, c("f_muted").opacity(0.5)))
+                .child(
+                    div()
+                        .id("thread-head-empty")
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .h(px(58.0))
+                        .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
+                )
                 .into_any_element();
         };
         let tag_label = |id: &str| {
