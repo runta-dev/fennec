@@ -2,7 +2,7 @@
 
 use super::{FennecWindow, Route};
 use crate::board::{Message, Project, Request};
-use gpui::{AppContext, Entity, TestAppContext, VisualTestContext};
+use gpui::{Entity, Focusable, TestAppContext, VisualTestContext};
 
 fn window(cx: &mut TestAppContext) -> (Entity<FennecWindow>, &mut VisualTestContext) {
     cx.update(gpui_base::init);
