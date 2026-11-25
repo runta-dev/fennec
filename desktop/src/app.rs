@@ -774,6 +774,13 @@ impl FennecWindow {
         let Some(project) = self.project_id() else {
             return;
         };
+        // Opening a thread puts the cursor in its reply box (THI-99), except
+        // right after posting a new request, where the composer keeps focus.
+        // The box keeps its focus handle while the thread loads, so this holds
+        // for uncached threads too.
+        if !self.composer.read(cx).focus_handle(cx).is_focused(window) {
+            self.reply.read(cx).focus_handle(cx).focus(window, cx);
+        }
         if let Some(t) = self.thread_cache.get(&(project.clone(), n)).cloned() {
             self.opening = None;
             self.show_thread(n, Some(t), window, cx);
