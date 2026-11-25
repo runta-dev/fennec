@@ -12,6 +12,19 @@ const LINES: usize = 6;
 const CHROME: usize = 8;
 /// How often the open thread's agent screen is read: an agent's clock ticks each second.
 const EVERY: Duration = Duration::from_millis(500);
+/// How often the reader looks for a newly opened thread.
+const TICK: Duration = Duration::from_millis(50);
+/// A peek this recent needs no new read when its card is hovered or clicked.
+const FRESH: Duration = Duration::from_millis(1500);
+/// Background reads the queue's prefetch keeps in flight at most.
+const PREFETCH: usize = 4;
+
+/// Peek reads in flight, and when each agent's screen was last read.
+#[derive(Default)]
+pub(super) struct Reads {
+    reading: std::collections::HashSet<String>,
+    started: HashMap<String, std::time::Instant>,
+}
 
 /// A stretch of a line drawn in one style.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -57,62 +70,117 @@ impl FennecWindow {
     }
 
     /// Read the agent's screen a few times a second while its thread is open.
+    /// Every read runs on its own: a newly opened thread's agent is read on
+    /// the next tick instead of after the previous thread's read comes back
+    /// (each cloud read is a round trip to the cloud computer).
     pub(super) fn follow_thread_peek(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             loop {
-                let started = std::time::Instant::now();
-                let Ok(target) = this.update(cx, |this, _| {
-                    this.peek_target().cloned().map(|s| (s, this.core.clone()))
-                }) else {
+                let alive = this.update(cx, |this, cx| {
+                    // While a clicked thread loads, its agent is already the target.
+                    let target = this
+                        .peek_target()
+                        .or_else(|| this.opening.and_then(|n| this.listed_peek_session(n)))
+                        .cloned();
+                    if let Some(session) = target {
+                        this.read_peek(session, EVERY, cx);
+                    }
+                });
+                if alive.is_err() {
                     break;
-                };
-                if let Some((session, core)) = target {
-                    let address = session.address.clone();
-                    let theme = crate::vt::theme();
-                    let peek = cx
-                        .background_spawn(async move {
-                            read_screen(&session, core).map(|screen| peek(address, screen, theme))
-                        })
-                        .await;
-                    let applied = this.update(cx, |this, cx| {
-                        let Ok(peek) = peek else { return };
-                        if this.peek_target().is_none_or(|s| s.address != peek.address) {
-                            return;
-                        }
-                        if this.thread_peek.get(&peek.address) != Some(&peek) {
-                            this.thread_peek.insert(peek.address.clone(), peek);
-                            cx.notify();
-                        }
-                    });
-                    if applied.is_err() {
-                        break;
-                    }
                 }
-                // Wait for the next read, but read at once when another thread
-                // opens: its card would otherwise sit empty and then grow.
-                let read_for = this
-                    .update(cx, |this, _| this.peek_target().map(|s| s.address.clone()))
-                    .ok()
-                    .flatten();
-                let wait = EVERY
-                    .saturating_sub(started.elapsed())
-                    .max(Duration::from_millis(100));
-                let waited = std::time::Instant::now();
-                while waited.elapsed() < wait {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(100).min(wait))
-                        .await;
-                    let Ok(now) =
-                        this.update(cx, |this, _| this.peek_target().map(|s| s.address.clone()))
-                    else {
-                        return;
-                    };
-                    if now.is_some() && now != read_for {
-                        break;
-                    }
-                }
+                cx.background_executor().timer(TICK).await;
             }
         }));
+    }
+
+    /// The agent of request `n` in the open queue's list, unless it is in
+    /// review (its peek is hidden then).
+    fn listed_peek_session(&self, n: u64) -> Option<&Session> {
+        if let Some(t) = self.thread.as_ref().filter(|t| t.number == n) {
+            return (t.status != "review").then(|| t.active_session(&self.sessions)).flatten();
+        }
+        let project = self.project_id()?;
+        self.requests
+            .get(&project)?
+            .iter()
+            .find(|r| r.number == n && r.status != "review")?
+            .active_session(&self.sessions)
+    }
+
+    /// Read request `n`'s agent now unless it was read a moment ago: a card
+    /// about to be opened (hovered or clicked) then shows a fresh peek.
+    pub(super) fn warm_peek(&mut self, n: u64, cx: &mut Context<Self>) {
+        if let Some(session) = self.listed_peek_session(n).cloned() {
+            self.read_peek(session, FRESH, cx);
+        }
+    }
+
+    /// Read every live agent of the open queue once, so a thread opened later
+    /// shows its peek at once and refreshes it, instead of growing a moment later.
+    pub(super) fn prefetch_peeks(&mut self, cx: &mut Context<Self>) {
+        let Some(project) = self.project_id() else {
+            return;
+        };
+        let missing: Vec<Session> = self
+            .requests
+            .get(&project)
+            .into_iter()
+            .flatten()
+            .filter(|r| r.status != "review")
+            .filter_map(|r| r.active_session(&self.sessions))
+            .filter(|s| !self.thread_peek.contains_key(&s.address))
+            .cloned()
+            .collect();
+        for session in missing {
+            if self.peek_reads.reading.len() >= PREFETCH {
+                break;
+            }
+            self.read_peek(session, Duration::MAX, cx);
+        }
+    }
+
+    /// Start reading `session`'s screen unless a read is in flight or one
+    /// started less than `every` ago.
+    fn read_peek(&mut self, session: Session, every: Duration, cx: &mut Context<Self>) {
+        let address = session.address.clone();
+        if self.peek_reads.reading.contains(&address) {
+            return;
+        }
+        let now = std::time::Instant::now();
+        if self
+            .peek_reads
+            .started
+            .get(&address)
+            .is_some_and(|at| now.duration_since(*at) < every)
+        {
+            return;
+        }
+        self.peek_reads.reading.insert(address.clone());
+        self.peek_reads.started.insert(address.clone(), now);
+        let core = self.core.clone();
+        let theme = crate::vt::theme();
+        cx.spawn(async move |this, cx| {
+            let read = {
+                let address = address.clone();
+                cx.background_spawn(async move {
+                    read_screen(&session, core).map(|screen| peek(address, screen, theme))
+                })
+                .await
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.peek_reads.reading.remove(&address);
+                let Ok(peek) = read else { return };
+                if this.thread_peek.get(&address) != Some(&peek) {
+                    let shown = this.peek_target().is_some_and(|s| s.address == address);
+                    this.thread_peek.insert(address, peek);
+                    if shown {
+                        cx.notify();
+                    }
+                }
+            });
+        })
+        .detach();
     }
 
     /// The agent's row at the end of the thread: its state, what it says it

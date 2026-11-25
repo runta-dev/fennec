@@ -117,6 +117,8 @@ pub struct FennecWindow {
     /// Each agent's last peek, by session address: a thread switched back to
     /// shows it at once instead of growing when the first read lands.
     thread_peek: HashMap<String, thread_peek::Peek>,
+    /// Peek reads in flight and when each agent's screen was last read.
+    peek_reads: thread_peek::Reads,
     pub(crate) route: Option<Route>,
     open: Option<u64>,
     resolved: bool,
@@ -283,6 +285,7 @@ impl FennecWindow {
             requests: HashMap::new(),
             thread: None,
             thread_peek: HashMap::new(),
+            peek_reads: Default::default(),
             route: None,
             open: None,
             resolved: false,
@@ -647,6 +650,7 @@ impl FennecWindow {
         let fetched_project = requests.as_ref().map(|(id, _)| id.clone());
         if let Some((id, Ok(list))) = requests {
             self.requests.insert(id, list);
+            self.prefetch_peeks(cx);
         }
         let thread = thread.and_then(Result::ok);
         if let (Some(project), Some(t)) = (&fetched_project, &thread) {
@@ -781,6 +785,8 @@ impl FennecWindow {
         if !self.composer.read(cx).focus_handle(cx).is_focused(window) {
             self.reply.read(cx).focus_handle(cx).focus(window, cx);
         }
+        // Its agent's screen is read while the thread itself loads.
+        self.warm_peek(n, cx);
         if let Some(t) = self.thread_cache.get(&(project.clone(), n)).cloned() {
             self.opening = None;
             self.show_thread(n, Some(t), window, cx);
@@ -2545,6 +2551,12 @@ impl FennecWindow {
                 .when(selected, |d| d.bg(c("f_card")))
                 .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
                 .on_click(cx.listener(move |this, _, window, cx| this.open_request(n, window, cx)))
+                // A pointer on its way to a card starts reading its agent.
+                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                    if *hovered {
+                        this.warm_peek(n, cx);
+                    }
+                }))
                 .when(r.status == "queued", |d| {
                     d.on_drag(
                         QueuedRequestDrag {
