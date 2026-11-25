@@ -16,6 +16,7 @@ mod request_attachments;
 mod sidebar_resize;
 mod tab_close;
 mod tabs;
+mod thread_enter;
 mod thread_peek;
 mod thread_links;
 mod thread_wait;
@@ -144,6 +145,8 @@ pub struct FennecWindow {
     /// Keys of the open thread's messages that arrived while it was shown;
     /// they ease in. Cleared when another thread opens.
     fresh_messages: std::collections::HashSet<String>,
+    /// Counts thread switches; each one eases the new thread in (THI-135).
+    thread_switches: u64,
     /// The latest lines the open thread's working agent printed.
     /// Each agent's last peek, by session address: a thread switched back to
     /// shows it at once instead of growing when the first read lands.
@@ -357,6 +360,7 @@ impl FennecWindow {
             pending_replies: Vec::new(),
             reply_token: 0,
             fresh_messages: Default::default(),
+            thread_switches: 0,
             thread_cache: HashMap::new(),
             status_override: HashMap::new(),
             opening: None,
@@ -931,6 +935,7 @@ impl FennecWindow {
         if let Some(t) = thread {
             if self.thread.as_ref().is_none_or(|old| old.number != n) {
                 self.thread_scroll.scroll_to_bottom();
+                self.thread_switches += 1;
             }
             self.thread = Some(t);
         } else if self.thread.as_ref().is_some_and(|old| old.number != n) {
@@ -3373,7 +3378,8 @@ impl FennecWindow {
                         )
                     }),
             )
-            .child(
+            .child(thread_enter::ease_in(
+                self.thread_switches,
                 v_flex()
                     .id("thread")
                     .flex_1()
@@ -3384,7 +3390,7 @@ impl FennecWindow {
                     .py(px(14.0))
                     .children(items)
                     .when_some(peek, |d, card| d.child(card)),
-            )
+            ))
             .child(
                 div().flex_none().px(px(18.0)).pb(px(16.0)).child(
                     v_flex()
