@@ -286,14 +286,14 @@ pub fn project_mark(name: &str, color: &str, size: f32) -> Div {
         .child(initial)
 }
 
-/// Request status pill: Needs you (tint), Running and Queued (outline), Resolved.
+/// Request status pill: Needs you (tint), Running, Failed (red) and Queued (outline), Resolved.
 pub fn status_pill(status: &str) -> Div {
     let (label, fg, bg, border) = match status {
         "failed" => (
             crate::i18n::t("failed"),
-            c("f_text"),
+            c("bug"),
             gpui::transparent_black(),
-            c("f_field"),
+            c("bug").opacity(0.6),
         ),
         "unknown" | "input_unknown" => (
             crate::i18n::t("unknown"),

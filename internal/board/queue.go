@@ -206,6 +206,7 @@ func (s Store) FollowUp(project string, n int, author, body string, attachments 
 		return r, s.commit(s.requestPath(project, n), r)
 	}
 	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
+	r.Reclaim = false
 	r.Session, r.RunLocation, r.Offer = "", "", nil
 	return r, s.commit(s.requestPath(project, n), r)
 }
@@ -394,4 +395,22 @@ func (s Store) Reconcile(project string, n int, session, state string) (Request,
 	}
 	r.Updated = s.now()
 	return r, s.commit(s.requestPath(project, n), r)
+}
+
+// Reclaimed records that a done request's sessions have been ended.
+func (s Store) Reclaimed(project string, n int) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return err
+	}
+	if !r.Reclaim {
+		return nil
+	}
+	r.Reclaim = false
+	return s.commit(s.requestPath(project, n), r)
 }

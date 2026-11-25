@@ -106,6 +106,9 @@ type Request struct {
 	Runs        []Run  `json:"runs,omitempty"`
 	Offer       *Offer `json:"offer,omitempty"`
 	Votes       int    `json:"votes,omitempty"`
+	// Reclaim is set when a person marks the request done: its agent sessions
+	// are ended once their agents stop. Requests resolved earlier keep theirs.
+	Reclaim bool `json:"reclaim,omitempty"`
 	// Messages up to this ID have reached Session.
 	Delivered int       `json:"delivered,omitempty"`
 	Messages  []Message `json:"messages,omitempty"`
@@ -575,6 +578,7 @@ func (s Store) Reply(project string, n int, author, agent, body string) (Request
 	r.Updated = now
 	if agent != "" {
 		r.Status = NeedsYou
+		r.Reclaim = false
 		r.Agent = agent
 		r.Delivered = id
 		recordRun(&r, NeedsYou, now)
@@ -610,12 +614,13 @@ func (s Store) Change(project string, n int, tag, status string) (Request, error
 		if r.Status != NeedsYou && r.Status != Review && r.Status != Failed && r.Status != Resolved {
 			return r, ErrConflict
 		}
+		r.Reclaim = r.Reclaim || r.Status != Resolved
 		r.Status = Resolved
 	case NeedsYou:
 		if r.Status != Resolved {
 			return r, ErrConflict
 		}
-		r.Status = NeedsYou
+		r.Status, r.Reclaim = NeedsYou, false
 	default:
 		return r, ErrInvalid
 	}

@@ -514,10 +514,17 @@ impl Core {
     }
 
     pub fn attach(&self, terminal: &str, cols: u16, rows: u16, display: Value) -> Result<Attached> {
-        let result = self.call(
-            "terminal.attach",
-            json!({"terminal": terminal, "cols": cols, "rows": rows, "history": 2000, "display": display}),
-        )?;
+        self.open_stream(json!({"terminal": terminal, "cols": cols, "rows": rows, "history": 2000, "display": display}))
+    }
+
+    /// Watch a terminal without typing into it or resizing it. The stream
+    /// starts with its screen at the terminal's own size (`terminal.cols`, `.rows`).
+    pub fn observe(&self, terminal: &str) -> Result<Attached> {
+        self.open_stream(json!({"terminal": terminal, "observe": true, "cols": 80, "rows": 24, "history": 0}))
+    }
+
+    fn open_stream(&self, params: Value) -> Result<Attached> {
+        let result = self.call("terminal.attach", params)?;
         let channel = result["channel"].as_u64().ok_or_else(|| anyhow!("attach returned no channel"))? as u32;
         let (tx, rx) = async_channel::unbounded();
         let mut r = self.routes.lock().unwrap();
