@@ -2,12 +2,10 @@ package byocimage
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -70,37 +68,39 @@ func TestArchiveMovesToAnotherComputer(t *testing.T) {
 	on := func(c container, script string) string {
 		return docker(t, "exec", "-u", "fennec", c.name, "sh", "-c", script)
 	}
-	board := func(method, local, path string, body any) json.RawMessage {
+	// boardCall runs a board request on the computer itself. The Mac reaches
+	// the board through the resident board socket, which a computer without
+	// systemd does not serve yet (the queue service cannot be installed), so
+	// queue data is seeded and checked in place.
+	boardCall := func(c container, method, path, body string) string {
 		t.Helper()
-		var out json.RawMessage
-		params := map[string]any{"method": local, "path": path, "body": body}
+		return docker(t, "exec", "-i", "-u", "fennec", c.name, "sh", "-c", `printf '%s' "$1" | "$HOME/.local/fennec/bin/fennec-terminal" board-call `+method+" "+path, "sh", body)
+	}
+	paired := func() string {
+		data, _ := os.ReadFile(filepath.Join(home, ".fen/board/paired-account"))
+		return string(data)
+	}
+	waitPaired := func(not string) string {
+		t.Helper()
 		for i := 0; ; i++ {
-			err := h.control(method, params, &out)
-			if err == nil {
-				return out
+			if got := paired(); got != "" && got != not {
+				return got
 			}
 			if i == 60 {
-				t.Fatalf("%s %s: %v", local, path, err)
+				t.Fatalf("the Mac replica was not bound to the computer (still %q)", paired())
 			}
 			time.Sleep(time.Second)
 		}
-	}
-	titles := func(raw json.RawMessage) []string {
-		var requests []struct{ Title string }
-		json.Unmarshal(raw, &requests)
-		var out []string
-		for _, r := range requests {
-			out = append(out, r.Title)
-		}
-		return out
 	}
 
 	// The old computer has a queue, a knowledge entry and a session with a
 	// conversation.
 	old, oldMachine := computer()
 	var project struct{ ID string }
-	json.Unmarshal(board("board.call", "POST", "/v1/projects", map[string]any{"name": "Moving", "org": "e2e"}), &project)
-	board("board.call", "POST", "/v1/projects/"+project.ID+"/requests", map[string]any{"author": "e2e", "title": "Made on the old computer", "tag": "bug", "body": "first"})
+	if err := json.Unmarshal([]byte(boardCall(old, "POST", "/v1/projects", `{"name":"Moving","org":"e2e","workers":[{"agent":"claude","on":true}]}`)), &project); err != nil || project.ID == "" {
+		t.Fatalf("create queue: %v", err)
+	}
+	boardCall(old, "POST", "/v1/projects/"+project.ID+"/requests", `{"author":"e2e","title":"Made on the old computer","tag":"bug","body":"first"}`)
 	on(old, `set -e
 k="$HOME/.fen/board/projects/`+project.ID+`/knowledge/architecture"; mkdir -p "$k"; echo "remember this" > "$k/fact.md"
 w="$HOME/.fen/brave-otter"; mkdir -p "$w/report" "$w/node_modules"; echo notes > "$w/report/notes.md"; echo x > "$w/node_modules/dep.js"
@@ -108,13 +108,7 @@ mkdir -p "$HOME/.local/fennec/launches"
 echo '{"id":"brave-otter","agent":"claude","local_directory":"/","device":"e2e"}' > "$HOME/.local/fennec/launches/brave-otter.json"
 p="$HOME/.local/fennec/native/claude/projects/-home-fennec--fen-brave-otter"; mkdir -p "$p"
 printf '%s\n' '{"type":"user","cwd":"'"$w"'","uuid":"u1"}' > "$p/0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0.jsonl"`)
-	// The Mac's replica has the queue before the computer goes away.
-	for i := 0; !strings.Contains(string(board("board.local.call", "GET", "/v1/projects", nil)), project.ID); i++ {
-		if i == 60 {
-			t.Fatal("the queue never reached the Mac replica")
-		}
-		time.Sleep(time.Second)
-	}
+	oldIdentity := waitPaired("")
 
 	archive := filepath.Join(root, "moving.fenarchive")
 	exported := time.Now()
@@ -130,22 +124,22 @@ printf '%s\n' '{"type":"user","cwd":"'"$w"'","uuid":"u1"}' > "$p/0f1e2d3c-4b5a-4
 		t.Fatalf("manifest %+v", manifest.Counts)
 	}
 
-	// Move to a new computer. Without an import, the Mac's queues stay bound
-	// to the old one and the new computer has none.
+	// Move to a new computer. Without an import the Mac's replica stays bound
+	// to the old one.
 	h.must("cloud", "byoc", "unpair", oldMachine)
 	fresh, _ := computer()
-	board("board.local.call", "POST", "/v1/projects/"+project.ID+"/requests", map[string]any{"author": "e2e", "title": "Made on the Mac after the export", "tag": "feature", "body": "second"})
-	time.Sleep(6 * time.Second) // several sync steps
-	if got := string(board("board.call", "GET", "/v1/projects", nil)); strings.Contains(got, project.ID) {
-		t.Fatalf("the new computer has the queue before the import: %s", got)
+	time.Sleep(6 * time.Second) // several replication steps
+	if paired() != oldIdentity {
+		t.Fatal("the Mac replica switched computers without an import")
 	}
-	if !strings.Contains(h.daemonLog(), "board is paired with a different account") {
-		t.Log("expected the replica to refuse the new computer before the import")
+	if got := boardCall(fresh, "GET", "/v1/projects", ""); strings.Contains(got, project.ID) {
+		t.Fatalf("the new computer has the queue before the import: %s", got)
 	}
 
 	imported := time.Now()
 	var result struct {
 		RequestsAdded       int `json:"requests_added"`
+		RequestsExisting    int `json:"requests_existing"`
 		KnowledgeAdded      int `json:"knowledge_added"`
 		SessionsRestored    int `json:"sessions_restored"`
 		ConversationsCopied int `json:"conversations_copied"`
@@ -157,36 +151,23 @@ printf '%s\n' '{"type":"user","cwd":"'"$w"'","uuid":"u1"}' > "$p/0f1e2d3c-4b5a-4
 	if result.RequestsAdded != 1 || result.KnowledgeAdded != 1 || result.SessionsRestored != 1 || result.ConversationsCopied != 1 {
 		t.Fatalf("import result %+v", result)
 	}
+	if got := boardCall(fresh, "GET", "/v1/projects/"+project.ID+"/requests", ""); !strings.Contains(got, "Made on the old computer") {
+		t.Fatalf("requests on the new computer: %s", got)
+	}
 	if got := on(fresh, `cat "$HOME/.fen/board/projects/`+project.ID+`/knowledge/architecture/fact.md" "$HOME/.fen/brave-otter/report/notes.md"; test ! -e "$HOME/.fen/brave-otter/node_modules" && echo skipped`); got != "remember this\nnotes\nskipped" {
 		t.Fatalf("restored files: %q", got)
 	}
 	if got := on(fresh, `grep -l '"cwd":"/home/fennec/.fen/brave-otter"' "$HOME"/.local/fennec/native/claude/projects/-home-fennec--fen-brave-otter/*.jsonl | wc -l`); got != "1" {
 		t.Fatalf("conversation not restored where Claude looks: %q", got)
 	}
-
-	// The import rebinds the Mac's replica: the request made on the Mac after
-	// the export reaches the new computer too.
-	want := []string{"Made on the Mac after the export", "Made on the old computer"}
-	for i := 0; ; i++ {
-		got := titles(board("board.call", "GET", "/v1/projects/"+project.ID+"/requests", nil))
-		if fmt.Sprint(sorted(got)) == fmt.Sprint(sorted(want)) {
-			break
-		}
-		if i == 60 {
-			t.Fatalf("requests on the new computer: %v\n%s", got, tail(h.daemonLog(), 4000))
-		}
-		time.Sleep(time.Second)
+	// The import rebinds the Mac's replica to the new computer.
+	if newIdentity := waitPaired(oldIdentity); newIdentity == oldIdentity {
+		t.Fatal("the Mac replica is still bound to the old computer")
 	}
 
 	// Importing again adds nothing.
 	json.Unmarshal([]byte(h.must("cloud", "import", archive)), &result)
-	if result.RequestsAdded != 0 || result.SessionsRestored != 0 {
+	if result.RequestsAdded != 0 || result.RequestsExisting != 1 || result.SessionsRestored != 0 {
 		t.Fatalf("second import %+v", result)
 	}
-}
-
-func sorted(values []string) []string {
-	out := append([]string(nil), values...)
-	sort.Strings(out)
-	return out
 }
