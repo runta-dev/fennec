@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"fennec/internal/cloudstate"
@@ -19,6 +21,19 @@ type cloudCaller interface {
 }
 
 func fenCloudCommand(args []string, output io.Writer) error {
+	if len(args) > 0 && (args[0] == "export" || args[0] == "import" || args[0] == "inspect") {
+		// An archive can take longer than other cloud commands; Ctrl-C cancels it.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := ensureControl(ctx); err != nil {
+			return err
+		}
+		socket, err := controlSocket()
+		if err != nil {
+			return err
+		}
+		return cloudArchiveCommand(ctx, control.Client{Socket: socket}, args, output, os.Stderr, 500*time.Millisecond)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	if err := ensureControl(ctx); err != nil {
@@ -63,7 +78,7 @@ func cloudCommand(ctx context.Context, client cloudCaller, args []string, input 
 		return json.NewEncoder(output).Encode(result)
 	}
 	if args[0] != "delete" || (len(args) != 2 && len(args) != 4) {
-		return fmt.Errorf("usage: fen cloud status | delete <runtime-id> [--confirm-runtime <runtime-id>] | create | byoc ...")
+		return fmt.Errorf("usage: fen cloud status | delete <runtime-id> [--confirm-runtime <runtime-id>] | create | byoc ... | export [--no-sessions] [--output <file>] | import <file> | inspect <file>")
 	}
 	id := args[1]
 	confirmed := ""

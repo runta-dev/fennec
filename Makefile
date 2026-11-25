@@ -97,6 +97,12 @@ test-e2e-byoc:
 
 # The same flow with the daemon and terminal service shipped in a built
 # Fennec.app (FENNEC_BUILD_DIR, nothing installed or restarted).
+# Export queues and sessions from one self-hosted computer and import them
+# on another (THI-165).
+test-e2e-byoc-archive:
+	docker build -f deploy/byoc/Dockerfile -t fennec-cloud:e2e .
+	FENNEC_BYOC_E2E=1 FENNEC_BYOC_IMAGE=fennec-cloud:e2e go test -count=1 -timeout=25m -v -run '^TestArchiveMovesToAnotherComputer$$' ./deploy/byoc
+
 .PHONY: test-e2e-byoc-app
 FENNEC_E2E_APP_BUILD ?= $(CURDIR)/build/byoc-e2e-app
 test-e2e-byoc-app:

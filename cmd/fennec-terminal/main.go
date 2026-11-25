@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"fennec/internal/board"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/cloudarchive"
 	"fennec/internal/commandstream"
 	"fennec/internal/cpusched"
 	"fennec/internal/gateway"
@@ -112,6 +114,15 @@ func run() (int, error) {
 	}
 	if len(os.Args) == 4 && os.Args[1] == "board-call" {
 		return 0, board.Call(home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "archive" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+		defer stop()
+		output := bufio.NewWriterSize(os.Stdout, 1<<20)
+		if err := cloudarchive.Command(ctx, home, os.Args[2:], os.Stdin, output, os.Stderr); err != nil {
+			return 1, err
+		}
+		return 0, output.Flush()
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "queue" {
 		return 0, board.AgentCommand(home, os.Args[2:], os.Stdin, os.Stdout)

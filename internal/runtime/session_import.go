@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -40,6 +41,9 @@ type SessionImport struct {
 	Conversation string        `json:"conversation"`
 	Marker       string        `json:"marker"`
 	Files        []SessionFile `json:"files"`
+	// Modified is the transcript's modification time, kept by a cloud archive
+	// so "continue the latest" picks the same conversation after an import.
+	Modified time.Time `json:"-"`
 }
 
 // SessionFile is one file of a conversation. Claude paths are relative to the
@@ -613,12 +617,22 @@ func cloudAgentHome(home, agent string) string {
 		if err != nil {
 			return ""
 		}
-		root = filepath.Join(root, agent)
-		if agent == "opencode" {
-			return filepath.Join(root, "data")
-		}
-		return root
+		return nativeAgentHome(root, agent)
 	}
+	return gatewayAgentHome(home, agent)
+}
+
+// nativeAgentHome is the agent's conversations under a native account root.
+func nativeAgentHome(root, agent string) string {
+	root = filepath.Join(root, agent)
+	if agent == "opencode" {
+		return filepath.Join(root, "data")
+	}
+	return root
+}
+
+// gatewayAgentHome is the agent's default directory under the gateway.
+func gatewayAgentHome(home, agent string) string {
 	switch agent {
 	case "claude":
 		return filepath.Join(home, ".claude")

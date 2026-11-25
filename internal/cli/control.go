@@ -213,6 +213,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	for name, handler := range services.hookHandlers() {
 		controller.Additional[name] = handler
 	}
+	for name, handler := range newArchiveControl(services).handlers() {
+		controller.Additional[name] = handler
+	}
 	installBrowserTerminal(ctx, services, controller)
 	installMagpiePanel(ctx, services, controller, settings)
 	installPreviewServer(ctx, services)

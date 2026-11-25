@@ -336,40 +336,10 @@ func (s Store) Sync(in Exchange) (Exchange, error) {
 		return Exchange{}, err
 	}
 	defer unlock()
+	if err = s.seedObjects(); err != nil {
+		return Exchange{}, err
+	}
 	state, err := s.replica()
-	if err != nil {
-		return Exchange{}, err
-	}
-	// Seed pre-journal objects once; snapshots never overwrite a peer's fields.
-	known := map[string]bool{}
-	for _, event := range state.Events {
-		known[event.Object] = true
-	}
-	err = filepath.WalkDir(filepath.Join(s.root(), "projects"), func(path string, entry os.DirEntry, walkErr error) error {
-		if os.IsNotExist(walkErr) {
-			return nil
-		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		object, _ := filepath.Rel(s.root(), path)
-		object = filepath.ToSlash(object)
-		if !validObject(object) || known[object] {
-			return nil
-		}
-		var value map[string]json.RawMessage
-		if err := readJSON(path, &value); err != nil {
-			return err
-		}
-		return s.commit(path, value)
-	})
-	if err != nil {
-		return Exchange{}, err
-	}
-	state, err = s.replica()
 	if err != nil {
 		return Exchange{}, err
 	}
@@ -453,3 +423,62 @@ func (s Store) Recover() error {
 	unlock()
 	return nil
 }
+
+// seedObjects commits pre-journal objects once, under the board lock.
+// Snapshots never overwrite a peer's fields.
+func (s Store) seedObjects() error {
+	state, err := s.replica()
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, event := range state.Events {
+		known[event.Object] = true
+	}
+	return filepath.WalkDir(filepath.Join(s.root(), "projects"), func(path string, entry os.DirEntry, walkErr error) error {
+		if os.IsNotExist(walkErr) {
+			return nil
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		object, _ := filepath.Rel(s.root(), path)
+		object = filepath.ToSlash(object)
+		if !validObject(object) || known[object] {
+			return nil
+		}
+		var value map[string]json.RawMessage
+		if err := readJSON(path, &value); err != nil {
+			return err
+		}
+		return s.commit(path, value)
+	})
+}
+
+// Journal returns every board mutation, including objects written before the
+// journal existed. A cloud archive carries it, and importing it through Sync
+// merges it without overwriting newer fields (THI-165).
+func (s Store) Journal() ([]Mutation, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err = s.seedObjects(); err != nil {
+		return nil, err
+	}
+	state, err := s.replica()
+	if err != nil {
+		return nil, err
+	}
+	return state.Events, nil
+}
+
+// ValidProjectID reports whether id can name a project directory.
+func ValidProjectID(id string) bool { return projectID.MatchString(id) }
+
+// SyncBatch is the most events one Sync call accepts.
+const SyncBatch = 4096

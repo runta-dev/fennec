@@ -140,6 +140,12 @@ func (h *e2eHarness) waitReady(within time.Duration) e2eState {
 
 func (h *e2eHarness) daemonLog() string {
 	data, _ := os.ReadFile(filepath.Join(h.root, "daemon.log"))
+	// Since THI-145 the daemon writes its log to dated files under HOME.
+	days, _ := filepath.Glob(filepath.Join(h.home, ".config/fennec/logs/fennec-*.log"))
+	for _, day := range days {
+		more, _ := os.ReadFile(day)
+		data = append(data, more...)
+	}
 	if len(data) > 4000 {
 		data = data[len(data)-4000:]
 	}
