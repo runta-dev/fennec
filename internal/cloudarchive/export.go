@@ -32,6 +32,9 @@ type Options struct {
 	// Planned receives the manifest before any file is written, so a caller
 	// can show progress against Counts.Bytes.
 	Planned func(Manifest)
+	// PlanOnly stops after Planned: nothing is written (the Settings page
+	// shows what an export would hold before the user starts it).
+	PlanOnly bool
 }
 
 type plannedFile struct {
@@ -125,6 +128,9 @@ func Export(ctx context.Context, home string, options Options, w io.Writer) (Man
 
 	if options.Planned != nil {
 		options.Planned(manifest)
+	}
+	if options.PlanOnly {
+		return manifest, trailer, nil
 	}
 	encoder, err := zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {

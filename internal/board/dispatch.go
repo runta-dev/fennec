@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,9 +31,41 @@ func (s Store) SyncedAt() time.Time {
 	return report.At
 }
 
+// SyncBlockedOtherComputer: this Mac's replica belongs to another cloud
+// computer (or account), so replication refuses the current one.
+const SyncBlockedOtherComputer = "other_computer"
+
+// SetSyncBlocked records why the Mac replica refuses to sync ("" clears it).
+func (s Store) SetSyncBlocked(reason string) error {
+	path := filepath.Join(s.root(), "sync-blocked.json")
+	if reason == "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if s.SyncBlocked() == reason {
+		return nil
+	}
+	return writeJSON(path, map[string]string{"reason": reason})
+}
+
+func (s Store) SyncBlocked() string {
+	var blocked struct {
+		Reason string `json:"reason"`
+	}
+	if s.Role == "cloud" || readJSON(filepath.Join(s.root(), "sync-blocked.json"), &blocked) != nil {
+		return ""
+	}
+	return blocked.Reason
+}
+
 func (s Store) SyncStatus() string {
 	if s.Role == "cloud" {
 		return "synced"
+	}
+	if blocked := s.SyncBlocked(); blocked != "" {
+		return blocked
 	}
 	var report SyncReport
 	if readJSON(filepath.Join(s.root(), "sync-status.json"), &report) != nil || s.now().Sub(report.At) > 15*time.Second {

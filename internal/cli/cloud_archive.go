@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/board"
 	"fennec/internal/cloudarchive"
 	"fennec/internal/commandstream"
 	"fennec/internal/control"
@@ -30,6 +31,7 @@ import (
 //	cloud.archive.export  {sessions}  start an export into ~/.config/fennec/exports
 //	cloud.archive.import  {path}      start importing a .fenarchive file
 //	cloud.archive.inspect {path}      read an archive's manifest (preview)
+//	cloud.archive.plan                what an export would hold (THI-188)
 //	cloud.archive.status              the current or last job
 //	cloud.archive.cancel              stop the current job
 type archiveControl struct {
@@ -62,6 +64,7 @@ func (c *archiveControl) handlers() map[string]control.Handler {
 		"cloud.archive.export":  c.export,
 		"cloud.archive.import":  c.importArchive,
 		"cloud.archive.inspect": c.inspect,
+		"cloud.archive.plan":    c.plan,
 		"cloud.archive.status":  c.status,
 		"cloud.archive.cancel":  c.cancel,
 	}
@@ -163,6 +166,30 @@ func remoteError(err error, stderr *bytes.Buffer) error {
 		}
 	}
 	return err
+}
+
+// plan asks the cloud computer what an export would hold, with and without
+// sessions, so the export dialog can show counts and sizes before it starts.
+func (c *archiveControl) plan(ctx context.Context, _ json.RawMessage) (any, error) {
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second) // the apps wait 30 s
+	defer cancel()
+	session, err := c.open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	var stdout, stderr bytes.Buffer
+	session.Stdout, session.Stderr = &stdout, &stderr
+	stop := context.AfterFunc(ctx, func() { session.Close() })
+	defer stop()
+	if err := session.Run(archiveCommand + "plan"); err != nil {
+		return nil, remoteError(err, &stderr)
+	}
+	var plan cloudarchive.Plan
+	if json.Unmarshal(stdout.Bytes(), &plan) != nil || plan.All.Format != cloudarchive.Format {
+		return nil, &control.Fault{Code: "not_ready", Message: "The cloud computer is updating", Retryable: true}
+	}
+	return plan, nil
 }
 
 func archiveDirectory(home string) string { return filepath.Join(home, ".config", "fennec", "exports") }
@@ -345,6 +372,7 @@ func (c *archiveControl) rebindBoard() {
 		log.Printf("cloud archive: could not rebind the queue replica: %v", err)
 		return
 	}
+	_ = (board.Store{Home: c.s.home, Role: "local"}).SetSyncBlocked("")
 	log.Printf("cloud archive: queue replica rebinds to the current cloud computer")
 }
 

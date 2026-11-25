@@ -788,6 +788,111 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             render("renderLogExportResult", ["failed"])
         }
     }
+    // Settings › Cloud computer export and import (THI-188). The daemon runs
+    // the job (cloud.archive.*); archive.js polls it and this side owns the
+    // file panels, like the log export above.
+    private var archiveImportPath: String?
+    private static let archiveType = UTType(filenameExtension: "fenarchive", conformingTo: .data) ?? .data
+    private func archiveAction(_ action: String) {
+        switch action {
+        case "archive-status":
+            control.call("cloud.archive.status") { [weak self] result in
+                if case .success(let value) = result { self?.render("renderArchiveStatus", [value]) }
+                else { self?.render("renderArchiveStatus", [NSNull()]) }
+            }
+        case "archive-plan":
+            control.call("cloud.archive.plan") { [weak self] result in
+                if case .success(let value) = result { self?.render("renderArchivePlan", [value]) }
+                else { self?.render("renderArchivePlan", [NSNull()]) }
+            }
+        case "archive-export:sessions", "archive-export:queues":
+            startArchiveJob("cloud.archive.export", ["sessions": action.hasSuffix(":sessions")])
+        case "archive-import":
+            guard let path = archiveImportPath else { render("renderArchiveStartFailed", ["", ""]); return }
+            startArchiveJob("cloud.archive.import", ["path": path])
+        case "archive-cancel":
+            control.call("cloud.archive.cancel") { [weak self] result in
+                if case .success(let value) = result { self?.render("renderArchiveStatus", [value]) }
+            }
+        case "archive-choose": chooseArchive()
+        case "archive-save":
+            control.call("cloud.archive.status") { [weak self] result in
+                guard let self else { return }
+                let exports = NSHomeDirectory() + "/.config/fennec/exports/"
+                if case .success(let value) = result, let job = value as? [String:Any], job["kind"] as? String == "export", job["state"] as? String == "done",
+                   let path = job["path"] as? String, path.hasPrefix(exports), !path.contains("/../"), FileManager.default.fileExists(atPath: path) {
+                    self.saveArchive(URL(fileURLWithPath: path), name: (job["name"] as? String) ?? URL(fileURLWithPath: path).lastPathComponent)
+                } else {
+                    self.render("renderArchiveSaved", ["failed"])
+                }
+            }
+        default: break
+        }
+    }
+    private func startArchiveJob(_ method: String, _ params: [String:Any]) {
+        control.call(method, params) { [weak self] result in
+            switch result {
+            case .success(let value): self?.render("renderArchiveStatus", [value])
+            case .failure(let error):
+                let error = error as NSError
+                self?.render("renderArchiveStartFailed", [(error.userInfo["FennecCode"] as? String) ?? "", error.localizedDescription])
+            }
+        }
+    }
+    private func chooseArchive() {
+        // The popup closes on outside clicks, so it steps aside for the panel
+        // and comes back with the preview.
+        popupPresentationID = nil
+        popup.orderOut(nil)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [Self.archiveType]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        NSApp.activate(ignoringOtherApps: true)
+        let chosen = panel.runModal() == .OK ? panel.url : nil
+        showPopupInForeground()
+        guard let url = chosen else { render("renderArchiveInspect", ["dismissed"]); return }
+        render("renderArchiveInspect", ["reading"])
+        control.call("cloud.archive.inspect", ["path": url.path]) { [weak self] result in
+            guard let self else { return }
+            if case .success(let value) = result, let manifest = value as? [String:Any] {
+                self.archiveImportPath = url.path
+                self.render("renderArchiveInspect", ["ok", url.lastPathComponent, manifest])
+            } else {
+                self.render("renderArchiveInspect", ["invalid"])
+            }
+        }
+    }
+    private func saveArchive(_ source: URL, name: String) {
+        popupPresentationID = nil
+        popup.orderOut(nil)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.allowedContentTypes = [Self.archiveType]
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            // The export stays in ~/.config/fennec/exports (the newest two are kept).
+            render("renderArchiveSaved", ["cancelled"])
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var saved = false
+            do {
+                if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+                try FileManager.default.moveItem(at: source, to: destination)
+                saved = true
+            } catch {
+                NSLog("Fennec archive save failed: %@", error.localizedDescription)
+            }
+            DispatchQueue.main.async {
+                if saved { NSWorkspace.shared.activateFileViewerSelecting([destination]) }
+                self?.render("renderArchiveSaved", [saved ? "saved" : "failed"])
+            }
+        }
+    }
     private func render(_ function: String, _ arguments: [Any] = []) {
         guard let data = try? JSONSerialization.data(withJSONObject: arguments) else { return }
         web.evaluateJavaScript("window.\(function)(...\(String(decoding: data, as: UTF8.self)))", completionHandler: nil)
@@ -1059,6 +1164,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             if let data = action.data(using:.utf8),let value = (try? JSONSerialization.jsonObject(with:data)) as? [String:Any] { handleTerminal(value) }
             return
         }
+        if action.hasPrefix("archive-") { archiveAction(action); return }
         if action.hasPrefix("native-language:") {nativeLanguage=String(action.dropFirst(16));return}
         if action.hasPrefix("open-license:") { licenseViewer.open(String(action.dropFirst(13)), language: nativeLanguage); return }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }

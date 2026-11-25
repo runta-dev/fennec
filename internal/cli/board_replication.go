@@ -109,9 +109,13 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			pair := filepath.Join(s.home, ".fen/board/paired-account")
 			if old, err := os.ReadFile(pair); err == nil && string(old) != identity {
 				health.failed("board is paired with a different account")
+				// The window says why sync stopped and offers to import a
+				// backup (THI-188); importing rebinds the replica.
+				_ = store.SetSyncBlocked(board.SyncBlockedOtherComputer)
 				cancel()
 				continue
 			} else if os.IsNotExist(err) {
+				_ = store.SetSyncBlocked("")
 				if os.WriteFile(pair, []byte(identity), 0600) != nil {
 					cancel()
 					continue
@@ -151,6 +155,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			if err == nil {
 				health.ok()
+				_ = store.SetSyncBlocked("")
 				last = time.Now()
 				if caughtUp {
 					err = store.SetPrimary(true)

@@ -145,6 +145,19 @@ let previewPrefs={magpie:false,theme:'light',language:'en-US',sandbox_mode:'work
 let previewUpdate={state:'latest',current:'0.2.11121023',latest:'0.2.11121023'};
 const previewCloud=new Set(['claude','codex','pi']);
 const previewRoutes=()=>previewAgents.slice(0,3).map(a=>({agent:a.id,status:a.id==='codex'?'configured':'credentials_required',model:'codex/gpt-preview'}));
+// Settings › Cloud computer export/import (THI-188): a simulated job.
+const previewManifest={format:'fennec-cloud-archive',version:1,created:new Date(nowMS-86400000).toISOString(),source_home:'/root',sessions:true,counts:{projects:4,requests:169,events:5120,attachments:38,knowledge:64,sessions:2226,launches:2200,bytes:712000000}};
+let previewJob={state:'idle'};let previewJobTimer=null;
+const previewArchive=message=>{
+ const q=new URLSearchParams(location.search);const step=(kind,total,finish)=>{previewJob={kind,state:'running',bytes:0,total,manifest:previewManifest,started:new Date().toISOString()};clearInterval(previewJobTimer);if(q.get('archive_hold'))previewJob.bytes=Math.round(total*0.42);else previewJobTimer=setInterval(()=>{previewJob.bytes=Math.min(total,previewJob.bytes+total/6);if(previewJob.bytes>=total){clearInterval(previewJobTimer);setTimeout(()=>{previewJob=finish(previewJob)},600)}},300);return previewJob;};
+ if(message==='archive-status')queueMicrotask(()=>window.renderArchiveStatus({...previewJob}));
+ if(message==='archive-plan')setTimeout(()=>window.renderArchivePlan(q.get('archive_plan')==='none'?null:{all:previewManifest,queues:{...previewManifest,sessions:false,counts:{...previewManifest.counts,sessions:0,launches:0,bytes:21400000}}}),400);
+ if(message.startsWith('archive-export:'))queueMicrotask(()=>window.renderArchiveStatus({...step('export',message.endsWith('sessions')?712000000:21400000,j=>({...j,state:'done',path:'/Users/developer/.config/fennec/exports/fennec-20261125-101500.fenarchive',name:'fennec-20261125-101500.fenarchive'}))}));
+ if(message==='archive-import')queueMicrotask(()=>window.renderArchiveStatus({...step('import',698000000,j=>({...j,state:'done',result:{manifest:previewManifest,requests_added:169,requests_existing:0,sessions_restored:2226,knowledge_added:62,knowledge_conflicts:['this/architecture/a.md','this/runbooks/b.md']}}))}));
+ if(message==='archive-cancel'){clearInterval(previewJobTimer);previewJob={...previewJob,state:'cancelled'};queueMicrotask(()=>window.renderArchiveStatus({...previewJob}));}
+ if(message==='archive-choose'){window.renderArchiveInspect('reading');setTimeout(()=>window.renderArchiveInspect('ok','fennec-20261124-183000.fenarchive',previewManifest),300);}
+ if(message==='archive-save')setTimeout(()=>window.renderArchiveSaved('saved'),300);
+};
 window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(typeof message!=='string')return;
  const colon=message.indexOf(':');const action=colon<0?message:message.slice(0,colon);let p={};try{p=JSON.parse(message.slice(colon+1))}catch{}
@@ -166,6 +179,7 @@ window.webkit={messageHandlers:{fennec:{postMessage(message){
  if(action==='toggle-takeover'){const agent=message.slice(colon+1);previewCloud.has(agent)?previewCloud.delete(agent):previewCloud.add(agent);queueMicrotask(()=>window.renderTakeover({agents:[...previewCloud],activeAgents:[...previewCloud],selectionKnown:true}));}
  if(action==='select-model')setTimeout(()=>{window.renderNativeModels({agent:p.agent,model:p.model,effort:p.effort||'low',models:[{id:'gpt-preview',name:'GPT Preview',efforts:['low','medium','high','xhigh','max']}]});window.renderModelSaving(false)},350);
  if(action==='get-local-model')queueMicrotask(()=>window.renderLocalModel({agent:p.agent,model:'codex/gpt-preview',models:['codex/gpt-preview']}));
+ if(action.startsWith('archive-'))previewArchive(message);
  if(action==='start-agent-login'){const tab=window.open('about:blank','_blank');fetch('/preview-login?agent='+encodeURIComponent(p.agent)).then(r=>r.json()).then(value=>{if(tab)tab.location=value.url;window.renderAgentLoginStarted({session_id:'preview'},p.agent)}).catch(()=>{tab?.close();window.renderAgentLoginStarted(null,p.agent)});}
 }}}};
 window.addEventListener('DOMContentLoaded',()=>{
@@ -194,6 +208,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  if(params.get('tab')==='preferences')document.querySelector('#settings')?.click();
  else if(params.get('tab')==='audit'){document.querySelector('[data-tab="governance"]')?.click();queueMicrotask(()=>document.querySelector('.governance-audit-section')?.scrollIntoView({block:'start'}));}
  else if(params.get('tab'))document.querySelector('[data-tab="'+params.get('tab')+'"]')?.click();
+ if(params.get('archive')==='export')setTimeout(()=>window.openArchiveExport?.(),100);
+ if(params.get('archive')==='import')setTimeout(()=>window.openArchiveImport?.(),100);
  const ob=params.get('onboarding');
  if(ob==='signin'||ob==='setup')window.showOnboardingPreview?.(ob);
 });

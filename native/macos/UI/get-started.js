@@ -238,6 +238,13 @@
     phone.append(phoneIcon, el('span', 'gs-phone-title', "[[i18n:ui.gs_iphone]]"), el('span', 'gs-tag', "[[i18n:ui.gs_optional]]"), chevron);
     const iPhoneAvailable = typeof selfHosted === 'undefined' || !selfHosted;
     card.append(head, progress, steps);
+    // A fresh cloud computer (no agent has run on it yet) can start from a
+    // backup of the old one instead (THI-188).
+    if (!running && typeof window.openArchiveImport === 'function') {
+      const restore = el('button', 'gs-secondary', "[[i18n:ui.gs_import_backup]]"); restore.type = 'button';
+      restore.onclick = () => window.openArchiveImport();
+      card.append(restore);
+    }
     if (iPhoneAvailable) card.append(phone);
     if (doneCount === 3) card.append(el('p', 'gs-finished', "[[i18n:ui.gs_detach_hint]]"));
     card.hidden = false;

@@ -470,6 +470,29 @@ impl FennecWindow {
                                     .mt(px(8.0))
                                     .text_size(px(13.0))
                                     .font_weight(FontWeight::MEDIUM)
+                                    .child(t("archive_section")),
+                            )
+                            .child(card(vec![
+                                archive_row(
+                                    "archive-export-row",
+                                    t("archive_export"),
+                                    t("archive_export_description"),
+                                    crate::app_archive::Mode::Export,
+                                    cx,
+                                ),
+                                archive_row(
+                                    "archive-import-row",
+                                    t("archive_import"),
+                                    t("archive_import_description"),
+                                    crate::app_archive::Mode::Import,
+                                    cx,
+                                ),
+                            ]))
+                            .child(
+                                div()
+                                    .mt(px(8.0))
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::MEDIUM)
                                     .child(t("app_troubleshooting")),
                             )
                             .child(card(vec![row(
@@ -509,4 +532,33 @@ impl FennecWindow {
                     ),
             )
     }
+}
+
+/// A Settings › Cloud computer row that opens the export or import dialog.
+fn archive_row(
+    id: &'static str,
+    label: String,
+    description: String,
+    mode: crate::app_archive::Mode,
+    cx: &mut Context<FennecWindow>,
+) -> Div {
+    h_flex().child(
+        h_flex()
+            .id(id)
+            .flex_1()
+            .min_h(px(52.0))
+            .py(px(8.0))
+            .gap(px(14.0))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, window, cx| this.open_archive(mode, window, cx)))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(2.0))
+                    .child(div().text_size(px(13.0)).child(label))
+                    .child(div().text_size(px(11.5)).text_color(c("f_muted")).child(description)),
+            )
+            .child(ui::icon("forward", 13.0, c("f_muted"))),
+    )
 }

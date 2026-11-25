@@ -213,6 +213,8 @@ pub struct FennecWindow {
     starting: Option<String>,
     pub(crate) settings: crate::project_settings::State,
     pub(crate) app_preferences: crate::app_preferences::State,
+    /// Settings › Cloud computer export/import dialog (THI-188).
+    pub(crate) archive: Option<crate::app_archive::Dialog>,
     creating_local: bool,
     has_connected: bool,
     /// This Mac's own core (Fennec's instance), for local shell tabs.
@@ -407,6 +409,7 @@ impl FennecWindow {
             new_project: None,
             starting: None,
             settings: Default::default(),
+            archive: None,
             app_preferences: if connect {crate::app_preferences::State::load()} else {Default::default()},
             creating_local: false,
             has_connected: false,
@@ -2717,6 +2720,8 @@ impl FennecWindow {
         // The chosen tab's background is the sliding highlight once the tabs
         // were laid out; before that the tab draws it itself.
         let slide_ready = self.status_slide.ready();
+        let other_computer = (p.sync_status == "other_computer")
+            .then(|| other_computer_banner(cx).into_any_element());
         let segment = |label: String, count: usize, on: bool, resolved: bool| {
             div()
                 .id(SharedString::from(format!("seg-{resolved}")))
@@ -3020,6 +3025,7 @@ impl FennecWindow {
                     .when(p.sync_status == "offline", |d| {
                         d.child(stale_board_banner(&p.synced_at, now))
                     })
+                    .when_some(other_computer, |d, banner| d.child(banner))
                     .child(
                         // New Request: one plain box; the first line is the title.
                         v_flex()
@@ -3750,6 +3756,7 @@ impl Render for FennecWindow {
         let dialog = self.new_project_dialog(cx);
         let image_viewer = self.image_viewer_view(cx);
         let session_modal = self.session_modal_view(window, cx);
+        let archive = self.archive_dialog(cx);
         h_flex()
             .relative()
             .track_focus(&self.focus)
@@ -3919,6 +3926,7 @@ impl Render for FennecWindow {
             .when_some(context_menu, |d, m| d.child(m))
             .when_some(dialog, |d, m| d.child(m))
             .when_some(session_modal, |d, m| d.child(m))
+            .when_some(archive, |d, m| d.child(m))
             .when_some(image_viewer, |d, m| d.child(m))
             .when(self.prefix, |d| {
                 d.child(
@@ -3998,6 +4006,37 @@ fn stale_board_banner(synced_at: &str, now: u64) -> impl IntoElement {
         .text_size(px(12.0))
         .text_color(c("f_muted"))
         .child(div().flex_1().min_w_0().child(text))
+}
+
+/// This Mac's queues belong to another cloud computer (or account), so sync
+/// refuses the current one (THI-188). Importing a backup brings them over and
+/// rebinds this Mac to the current computer.
+fn other_computer_banner(cx: &mut Context<FennecWindow>) -> impl IntoElement {
+    h_flex()
+        .w_full()
+        .mb(px(10.0))
+        .px(px(12.0))
+        .py(px(9.0))
+        .gap(px(10.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(c("f_field"))
+        .bg(c("f_card"))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_size(px(12.0))
+                .line_height(px(17.0))
+                .child(t("board_other_computer")),
+        )
+        .child(
+            secondary_button("board-import-backup", t("board_import_backup"), false).on_click(
+                cx.listener(|this, _, window, cx| {
+                    this.open_archive(crate::app_archive::Mode::Import, window, cx)
+                }),
+            ),
+        )
 }
 
 /// ⌘C copies the text selected in the window's text views (thread messages, knowledge);

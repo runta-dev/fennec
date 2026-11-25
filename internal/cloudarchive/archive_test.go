@@ -3,6 +3,7 @@ package cloudarchive
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fennec/internal/board"
 	cloudruntime "fennec/internal/runtime"
@@ -263,5 +264,30 @@ func TestNamesStayInsideTheLayout(t *testing.T) {
 		if validName(name) != want {
 			t.Errorf("validName(%q) = %v", name, !want)
 		}
+	}
+}
+
+// The export dialog shows what an export would hold before it starts
+// (THI-188): `archive plan` writes nothing and counts the same as export.
+func TestPlanMatchesExport(t *testing.T) {
+	home, _ := source(t)
+	var out, errs bytes.Buffer
+	if err := Command(context.Background(), home, []string{"plan"}, nil, &out, &errs); err != nil {
+		t.Fatal(err)
+	}
+	var plan Plan
+	if err := json.Unmarshal(out.Bytes(), &plan); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	manifest, _, err := Export(context.Background(), home, Options{Sessions: true}, &archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.All.Counts != manifest.Counts || !plan.All.Sessions {
+		t.Fatalf("plan %+v, export %+v", plan.All.Counts, manifest.Counts)
+	}
+	if plan.Queues.Sessions || plan.Queues.Counts.Sessions != 0 || plan.Queues.Counts.Requests != 2 || plan.Queues.Counts.Bytes >= plan.All.Counts.Bytes {
+		t.Fatalf("queues-only plan %+v", plan.Queues)
 	}
 }
