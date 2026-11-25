@@ -26,6 +26,8 @@ mod thread_wait;
 mod reply_tests;
 #[cfg(test)]
 mod queue_resize_tests;
+#[cfg(test)]
+mod copy_tests;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -3258,7 +3260,10 @@ impl FennecWindow {
                                             .child(time),
                                     ),
                             )
-                            .child(
+                            .child(div().debug_selector({
+                                let id = m.id;
+                                move || format!("thread-message-{id}")
+                            }).child(
                                 gpui_base::text::TextView::markdown(
                                     SharedString::from(key.clone()),
                                     knowledge_links::link_knowledge(
@@ -3287,7 +3292,7 @@ impl FennecWindow {
                                 .style(ui::markdown_style())
                                 .text_size(px(13.5))
                                 .text_color(c("f_text")),
-                            )
+                            ))
                             .when(!m.attachments.is_empty(), |d| {
                                 d.child(self.stored_images(&m.attachments, m.id, cx))
                             }),
@@ -3717,7 +3722,13 @@ impl Render for FennecWindow {
             .line_height(relative(1.45))
             .bg(c("f_card"))
             .text_color(c("f_text"))
+            // Text views (thread messages, knowledge) select through this window-wide layer;
+            // without it nothing in the window can be selected (THI-169).
+            .child(gpui_base::TextSelectionLayer)
             .on_action(cx.listener(Self::on_shell_action))
+            // Captured first: a focused reply box would otherwise copy its own empty selection.
+            // Any click clears the window selection, so a non-empty one is what was just selected.
+            .capture_action(cx.listener(|_, _: &gpui_base::input::Copy, window, cx| copy_selected_text(window, cx)))
             .capture_action(cx.listener(|this,_:&gpui_base::input::Paste,window,cx|{
                 if this.paste_request_image(window,cx){cx.stop_propagation();}
             }))
@@ -3945,4 +3956,15 @@ fn stale_board_banner(synced_at: &str, now: u64) -> impl IntoElement {
         .text_size(px(12.0))
         .text_color(c("f_muted"))
         .child(div().flex_1().min_w_0().child(text))
+}
+
+/// ⌘C copies the text selected in the window's text views (thread messages, knowledge);
+/// with nothing selected there, the focused input handles it as before.
+fn copy_selected_text(window: &mut Window, cx: &mut App) {
+    let text = gpui_base::TextSelection::selected_text(window, cx);
+    let text = text.trim();
+    if !text.is_empty() {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
+        cx.stop_propagation();
+    }
 }

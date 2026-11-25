@@ -101,6 +101,12 @@ pub fn install_user(cx: &mut App) {
 pub fn install(bindings: Bindings, cx: &mut App) {
     let Bindings { global, terminal } = bindings;
     let _ = ACTIVE.set(global.clone());
+    // Copy what is selected in thread and knowledge text; terminals and inputs bind their own.
+    cx.bind_keys([KeyBinding::new(
+        if cfg!(target_os = "macos") { "cmd-c" } else { "ctrl-c" },
+        gpui_base::input::Copy,
+        Some("FennecWindow"),
+    )]);
     cx.bind_keys(global.into_iter().map(|(key, action)| {
         KeyBinding::new(&key, ShellAction::new(action), Some("FennecWindow"))
     }));
