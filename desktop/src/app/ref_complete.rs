@@ -263,7 +263,7 @@ mod tests {
     fn query_starts_at_a_free_hash() {
         assert_eq!(ref_query("#", 1), Some((0, "")));
         assert_eq!(ref_query("see #20", 7), Some((4, "20")));
-        assert_eq!(ref_query("见#输入", "见#输入".len()), Some(("见".len(), "输入")));
+        assert_eq!(ref_query("\u{89c1}#\u{8f93}\u{5165}", "\u{89c1}#\u{8f93}\u{5165}".len()), Some(("\u{89c1}".len(), "\u{8f93}\u{5165}")));
         assert_eq!(ref_query("(#12", 4), Some((1, "12")));
         assert_eq!(ref_query("C#", 2), None);
         assert_eq!(ref_query("##", 2), None);

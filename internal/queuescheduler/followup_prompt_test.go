@@ -41,13 +41,13 @@ func TestContinuedFollowUpSendsOnlyTheNewMessage(t *testing.T) {
 	request, _ := store.CreateRequest(p.ID, "me", "Question", "", "Original long request")
 	store.ClaimAt(p.ID, request.Number, "calm-fox", "claude", "cloud")
 	store.Complete(p.ID, request.Number, "calm-fox", "claude", "Long agent reply", board.NeedsYou)
-	store.FollowUp(p.ID, request.Number, "me", "发新的 testflight", nil)
+	store.FollowUp(p.ID, request.Number, "me", "\u53d1\u65b0\u7684 testflight", nil)
 	request, err := store.ClaimAt(p.ID, request.Number, "green-leaf", "claude", "cloud")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := sentText(t, store, p, request, `{"terminals":[{"address":"t1","state":"live","labels":{"fennec.session":"calm-fox","fennec.agent":"claude"}}]}`)
-	if !strings.Contains(text, "发新的 testflight") || !strings.Contains(text, "green-leaf resolved|you|failed") {
+	if !strings.Contains(text, "\u53d1\u65b0\u7684 testflight") || !strings.Contains(text, "green-leaf resolved|you|failed") {
 		t.Fatalf("%q", text)
 	}
 	for _, old := range []string{"Original long request", "Long agent reply", "Queue knowledge"} {
