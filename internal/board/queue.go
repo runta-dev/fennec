@@ -298,17 +298,43 @@ func (s Store) fail(project string, n int, session string, input bool) (Request,
 // StalledFailure is shown on a request whose agent stopped without replying.
 const StalledFailure = "The agent stopped without reporting back"
 
-// Stalled reports a run the scheduler gave up waiting on: its agent went idle
-// without calling `queue reply`.
+// AskingFailure is shown on a request whose agent is waiting for an answer in
+// its own session (Claude Code's AskUserQuestion, a permission prompt).
+const AskingFailure = "The agent is asking a question in its session"
+
+// Stalled reports a run the scheduler stopped counting as running: its agent
+// went idle without calling `queue reply` ("stalled"), or it is waiting for an
+// answer in its session ("asking"). Either way a resumed agent runs again.
 func (r Request) Stalled() bool {
-	return r.Status == NeedsYou && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "stalled"
+	if r.Status != NeedsYou || len(r.Runs) == 0 {
+		return false
+	}
+	state := r.Runs[len(r.Runs)-1].State
+	return state == "stalled" || state == "asking"
+}
+
+// Asking reports a run whose agent is waiting for an answer in its session.
+func (r Request) Asking() bool {
+	return r.Stalled() && r.Runs[len(r.Runs)-1].State == "asking"
 }
 
 // Stall moves a running request whose agent has stopped without replying to
 // needs-you, so it stops showing as running. The session is kept: a late reply
 // still lands (see Complete) and a resumed agent puts it back to running (see
-// ConfirmStarted).
+// ConfirmStarted). An asking run whose agent then stops (the question was
+// dismissed) is stalled too.
 func (s Store) Stall(project string, n int, session string) (Request, error) {
+	return s.pause(project, n, session, "stalled", StalledFailure)
+}
+
+// Ask moves a running request whose agent is waiting for an answer in its
+// session to needs-you (THI-163). It stays there until the agent works again
+// (see ConfirmStarted) or replies.
+func (s Store) Ask(project string, n int, session string) (Request, error) {
+	return s.pause(project, n, session, "asking", AskingFailure)
+}
+
+func (s Store) pause(project string, n int, session, state, failure string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -318,13 +344,14 @@ func (s Store) Stall(project string, n int, session string) (Request, error) {
 	if err != nil {
 		return r, err
 	}
-	if r.Session != session || r.Status != Working || len(r.Runs) == 0 || r.Runs[len(r.Runs)-1].State != "running" {
+	running := r.Status == Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running"
+	if r.Session != session || !running && !(state == "stalled" && r.Asking()) {
 		return r, ErrConflict
 	}
 	now := s.now()
-	r.Status, r.Failure, r.Updated = NeedsYou, StalledFailure, now
+	r.Status, r.Failure, r.Updated = NeedsYou, failure, now
 	run := &r.Runs[len(r.Runs)-1]
-	run.State, run.Finished = "stalled", &now
+	run.State, run.Finished = state, &now
 	return r, s.commit(s.requestPath(project, n), r)
 }
 

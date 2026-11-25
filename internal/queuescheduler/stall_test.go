@@ -64,8 +64,8 @@ func TestBrieflyIdleAgentKeepsRunning(t *testing.T) {
 	}
 }
 
-func TestWorkingOrBlockedAgentNeverStalls(t *testing.T) {
-	for _, status := range []string{"working", "blocked", ""} {
+func TestWorkingAgentNeverStalls(t *testing.T) {
+	for _, status := range []string{"working", ""} {
 		s, ex, p, r := runningOnCloud(t)
 		agentIs(ex, r, status, time.Now().Add(time.Minute))
 		later(&s, 24*time.Hour)
@@ -209,5 +209,55 @@ func TestClaudeCodeWithBackgroundWorkNeverStalls(t *testing.T) {
 func TestAgentApp(t *testing.T) {
 	if got := AgentApp([]byte(`{"app":"claude-code","state":"done"}`)); got != "claude-code" {
 		t.Fatalf("AgentApp = %q", got)
+	}
+}
+
+// THI-163: an agent that asks a question in its session (Claude Code's
+// AskUserQuestion; herdr-core status "blocked") needs the person right away,
+// and is running again once the answer lets it work.
+func TestAskingAgentNeedsYouUntilAnswered(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	agentIs(ex, r, "blocked", time.Now())
+	step(t, s)
+	got, _ := s.Store.Request(p.ID, r.Number)
+	if got.Status != board.NeedsYou || got.Failure != board.AskingFailure || !got.Asking() {
+		t.Fatalf("asking agent still shown as running: %+v", got)
+	}
+	// Still asking a day later: stays a question, never becomes a stall.
+	later(&s, 24*time.Hour)
+	step(t, s)
+	if got, _ = s.Store.Request(p.ID, r.Number); got.Failure != board.AskingFailure {
+		t.Fatalf("open question changed: %+v", got)
+	}
+	agentIs(ex, r, "working", time.Now())
+	step(t, s)
+	got, _ = s.Store.Request(p.ID, r.Number)
+	if got.Status != board.Working || got.Failure != "" || got.Runs[len(got.Runs)-1].State != "running" || ex.starts != 1 {
+		t.Fatalf("answered agent not running: %+v (%d starts)", got, ex.starts)
+	}
+}
+
+func TestDismissedQuestionBecomesAStall(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	agentIs(ex, r, "blocked", time.Now())
+	step(t, s)
+	// The question was dismissed (Esc): the agent's turn is over.
+	agentIs(ex, r, "idle", time.Now())
+	step(t, s)
+	got, _ := s.Store.Request(p.ID, r.Number)
+	if got.Status != board.NeedsYou || got.Failure != board.StalledFailure || got.Runs[len(got.Runs)-1].State != "stalled" {
+		t.Fatalf("dismissed question still shown as asking: %+v", got)
+	}
+}
+
+func TestAgentReplyAnswersAskingRun(t *testing.T) {
+	s, ex, p, r := runningOnCloud(t)
+	agentIs(ex, r, "blocked", time.Now())
+	step(t, s)
+	if _, err := s.Store.Complete(p.ID, r.Number, r.Session, r.Agent, "done", board.Resolved); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Store.Request(p.ID, r.Number); got.Status != board.Review {
+		t.Fatalf("reply after a question not kept: %+v", got)
 	}
 }

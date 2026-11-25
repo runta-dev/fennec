@@ -103,8 +103,12 @@ func stallAfter(app string) time.Duration {
 }
 
 // stopped reports an agent that is not working and not asking for anything:
-// its turn ended. "blocked" (asking for input) is visible in the session.
+// its turn ended.
 func stopped(status string) bool { return status == "done" || status == "idle" }
+
+// asking reports an agent waiting for an answer in its session: Claude Code's
+// AskUserQuestion or a permission prompt (herdr-core status "blocked").
+func asking(status string) bool { return status == "blocked" }
 
 type Executor interface {
 	List(context.Context) ([]Session, error)
@@ -202,9 +206,18 @@ func (s Scheduler) Step(ctx context.Context) error {
 	for _, q := range queues {
 		// A stalled run's agent that starts working again (its background job
 		// reported back) is running again.
+		// An asking run whose agent is no longer asking either got its answer
+		// (working again) or the question was dismissed (stopped).
 		for _, r := range q.Stalled {
-			if r.RunLocation == s.Store.Role && states[r.ExecutionSession()] == "live" && agents[r.ExecutionSession()] == "working" {
+			if r.RunLocation != s.Store.Role || states[r.ExecutionSession()] != "live" {
+				continue
+			}
+			switch agent := agents[r.ExecutionSession()]; {
+			case agent == "working":
 				_, err := s.Store.ConfirmStarted(q.Project, r.Number, r.Session)
+				s.report(err)
+			case r.Asking() && stopped(agent):
+				_, err := s.Store.Stall(q.Project, r.Number, r.Session)
 				s.report(err)
 			}
 		}
@@ -223,6 +236,13 @@ func (s Scheduler) Step(ctx context.Context) error {
 			// Enter went through late, or someone submitted it by hand) is running.
 			if r.Status == board.Unknown && state == "live" && agents[r.ExecutionSession()] == "working" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "input_unknown" {
 				_, err := s.Store.ConfirmStarted(q.Project, r.Number, r.Session)
+				s.report(err)
+				continue
+			}
+			// A running request whose agent is asking a question in its
+			// session needs the person now, not when the run ends (THI-163).
+			if r.Status == board.Working && state == "live" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && asking(agents[r.ExecutionSession()]) {
+				_, err := s.Store.Ask(q.Project, r.Number, r.Session)
 				s.report(err)
 				continue
 			}

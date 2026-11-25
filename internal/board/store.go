@@ -732,7 +732,8 @@ type QueueProject struct {
 	Workers []Worker  `json:"workers"`
 	Queued  []Request `json:"queued"`
 	Active  []Request `json:"active"`
-	// Stalled holds needs-you requests whose agent stopped without replying;
+	// Stalled holds needs-you requests whose agent stopped without replying or
+	// is asking a question in its session (THI-163);
 	// they leave the running slots but resume if the agent works again.
 	Stalled []Request `json:"stalled,omitempty"`
 }

@@ -2749,6 +2749,7 @@ impl FennecWindow {
                 _ if r.resolved() => latest,
                 "" => latest,
                 board::STALLED_FAILURE => t("stalled"),
+                board::ASKING_FAILURE => t("asking"),
                 failure => failure.to_owned(),
             };
             let project = p.id.clone();

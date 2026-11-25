@@ -32,6 +32,7 @@
     "desktop.board_stale": {"en-GB":"Not synced with the cloud computer · statuses here may be out of date","en-US":"Not synced with the cloud computer · statuses here may be out of date","zh-CN":"未与云电脑同步 · 这里的状态可能已过时"},
     "desktop.board_stale_since": {"en-GB":"Last synced with the cloud computer {age} ago · statuses here may be out of date","en-US":"Last synced with the cloud computer {age} ago · statuses here may be out of date","zh-CN":"{age}前最后与云电脑同步 · 这里的状态可能已过时"},
     "desktop.stalled": {"en-GB":"The agent stopped before finishing · reply to continue","en-US":"The agent stopped before finishing · reply to continue","zh-CN":"Agent 中途停下，没有汇报结果 · 回复即可继续"},
+    "desktop.asking": {"en-GB":"The agent is asking you a question · answer it in its session","en-US":"The agent is asking you a question · answer it in its session","zh-CN":"Agent 在会话里向你提问 · 去会话里回答"},
     "desktop.queue_offline": {"en-GB":"Cloud unavailable · local changes are saved","en-US":"Cloud unavailable · local changes are saved","zh-CN":"云端暂不可用 · 修改已保存在本机"},
     "desktop.paused": {
       "en-GB": "Paused",

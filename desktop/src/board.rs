@@ -102,6 +102,10 @@ pub struct Attachment {
 /// (board.StalledFailure); shown localized.
 pub const STALLED_FAILURE: &str = "The agent stopped without reporting back";
 
+/// `failure` of a request whose agent is waiting for an answer in its session
+/// (board.AskingFailure, THI-163); shown localized.
+pub const ASKING_FAILURE: &str = "The agent is asking a question in its session";
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Request {
