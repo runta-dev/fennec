@@ -361,8 +361,9 @@ struct RequestIcon: View {
             tile(Image(systemName: "checkmark"), Theme.working)
         default:
             if let agent = request.agentKind ?? project.firstAgent {
+                // Status dot at the bottom-right, like the session list's StatusDot (FEN-66).
                 AgentIcon(agent: agent, size: size)
-                    .overlay(alignment: .topTrailing) {
+                    .overlay(alignment: .bottomTrailing) {
                         Circle().fill(request.status_.color).frame(width: 7, height: 7)
                             .background(Circle().stroke(Theme.bg, lineWidth: 4))
                     }
