@@ -47,7 +47,7 @@ final class AppModel {
     private(set) var environment: RuntaEnvironment
     private(set) var auth: RuntaAuth
     private(set) var store: SessionStore {
-        didSet { queues = QueueStore.matching(store) }
+        didSet { queues = QueueStore.matching(store, environment: environment) }
     }
     /// Queues (THI-124); read only while Show Queues is on.
     private(set) var queues: QueueStore
@@ -69,7 +69,7 @@ final class AppModel {
         self.auth = auth
         let store = preview ? SessionStore.demo() : SessionStore.live(auth: auth)
         self.store = store
-        self.queues = QueueStore.matching(store)
+        self.queues = QueueStore.matching(store, environment: environment)
         if ReviewDemo.enabled { auth.showDemoProfile(true) }
     }
 

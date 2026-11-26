@@ -71,14 +71,46 @@ final class QueueStore {
         try JSONDecoder().decode(T.self, from: try await call("GET", path))
     }
 
-    /// One refresh of the open queue: projects, then its requests.
+    /// One refresh of the open queue: projects and its requests, read at
+    /// the same time (FEN-60). A refresh asked for while one is running
+    /// waits for that one instead of starting a second.
     func refresh() async {
         guard core != nil else { return }
+        if let running = refreshing {
+            await running.value
+            // It read the queue that was open then; another was picked since.
+            if refreshingFor == selected?.id { return }
+        }
+        let task = Task { await readBoard() }
+        refreshing = task
+        refreshingFor = selected?.id ?? selectedID
+        await task.value
+        if refreshing == task { refreshing = nil }
+    }
+
+    @ObservationIgnored private var refreshing: Task<Void, Never>?
+    @ObservationIgnored private var refreshingFor: String?
+
+    private func readRequests(_ project: String?) async throws -> [BoardRequest]? {
+        guard let project else { return nil }
+        return try await get("/v1/projects/\(project)/requests", as: [BoardRequest].self)
+    }
+
+    private func readBoard() async {
         do {
-            projects = try await get("/v1/projects", as: [BoardProject].self)
-            if let id = selected?.id { try await loadRequests(id) }
+            // The open queue is known from the last read (or the saved
+            // choice), so its requests needn't wait for the project list.
+            let guess = selected?.id ?? selectedID
+            async let projectList = get("/v1/projects", as: [BoardProject].self)
+            async let early = readRequests(guess)
+            projects = try await projectList
+            let rows = try await early
+            if let id = selected?.id {
+                if id == guess, let rows { applyRequests(id, rows) } else { try await loadRequests(id) }
+            }
             unavailable = false
             lastSync = .now
+            saveCache()
         } catch {
             unavailable = true
         }
@@ -86,7 +118,11 @@ final class QueueStore {
     }
 
     func loadRequests(_ project: String) async throws {
-        var list = try await get("/v1/projects/\(project)/requests", as: [BoardRequest].self)
+        applyRequests(project, try await get("/v1/projects/\(project)/requests", as: [BoardRequest].self))
+    }
+
+    private func applyRequests(_ project: String, _ read: [BoardRequest]) {
+        var list = read
         for i in list.indices where pendingStatus.contains("\(project)/\(list[i].number)") {
             if let local = requests[project]?.first(where: { $0.number == list[i].number }) { list[i].status = local.status }
         }
@@ -103,6 +139,47 @@ final class QueueStore {
         }
         requests[project] = list
         if me.isEmpty { me = Self.person(in: list) }
+    }
+
+    // MARK: Last list on disk (FEN-60)
+
+    /// Where the last list read is kept, so the Queues tab opens on it at
+    /// once (like the session list) while the fresh one is read.
+    @ObservationIgnored var cache: URL?
+
+    @ObservationIgnored private var saved: Cached?
+
+    private struct Cached: Codable, Equatable {
+        var projects: [BoardProject]
+        var project: String
+        var requests: [BoardRequest]
+    }
+
+    static func cacheURL(_ environment: RuntaEnvironment) -> URL {
+        URL.cachesDirectory.appending(path: "queues-\(environment.rawValue).json")
+    }
+
+    /// The cached list belongs to the account that signed out.
+    static func clearCache(_ environment: RuntaEnvironment) {
+        try? FileManager.default.removeItem(at: cacheURL(environment))
+    }
+
+    fileprivate func loadCache() {
+        guard let cache, let data = try? Data(contentsOf: cache),
+              let saved = try? JSONDecoder().decode(Cached.self, from: data), !saved.projects.isEmpty else { return }
+        projects = saved.projects
+        requests[saved.project] = saved.requests
+        self.saved = saved
+        loaded = true
+    }
+
+    private func saveCache() {
+        guard let cache, let id = selected?.id else { return }
+        // Only what the board said: no stand-ins for requests still being sent.
+        let current = Cached(projects: projects, project: id, requests: list(id).filter { $0.number > 0 })
+        guard current != saved, let data = try? JSONEncoder().encode(current) else { return }
+        saved = current
+        Task.detached(priority: .utility) { try? data.write(to: cache, options: .atomic) }
     }
 
     func loadThread(_ project: String, _ number: Int) async {
@@ -503,8 +580,12 @@ enum QueueError: LocalizedError {
 extension QueueStore {
     /// The queue store for a session store: live with its connection, or
     /// example queues in demo mode.
-    static func matching(_ sessions: SessionStore) -> QueueStore {
-        sessions.core.map { QueueStore(core: $0) } ?? demo()
+    static func matching(_ sessions: SessionStore, environment: RuntaEnvironment) -> QueueStore {
+        guard let core = sessions.core else { return demo() }
+        let store = QueueStore(core: core)
+        store.cache = cacheURL(environment)
+        store.loadCache()
+        return store
     }
 
     static func demo() -> QueueStore {

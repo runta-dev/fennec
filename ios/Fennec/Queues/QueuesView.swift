@@ -44,6 +44,7 @@ struct QueuesView: View {
     @State private var creatingQueue = false
     @State private var linking: BoardRequest?
     @State private var refreshTick = 0
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -54,12 +55,19 @@ struct QueuesView: View {
             }
             .background(Theme.bg)
             .refreshable { await queues.refresh() }
-            .task {
+            .task(id: refreshTick) {
+                // Read now, then keep reading while the app is in front
+                // (FEN-60): every 2 s on the list, 5 s under a thread, which
+                // reads itself. Back from the background, or back on the
+                // list, restarts this, so nothing waits for the next tick.
+                guard scenePhase == .active else { return }
                 while !Task.isCancelled {
                     await queues.refresh()
-                    try? await Task.sleep(for: .seconds(5))
+                    try? await Task.sleep(for: .seconds(path.isEmpty ? 2 : 5))
                 }
             }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { refreshTick += 1 } }
+            .onChange(of: path.isEmpty) { _, onList in if onList { refreshTick += 1 } }
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) { banners }
             .toolbar {
