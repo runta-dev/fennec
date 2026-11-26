@@ -2871,10 +2871,10 @@
     "ui.byoc_error_pairing": {"en-US": "Couldn't pair with the server", "ja": "サーバーとペアリングできませんでした", "ko": "서버와 페어링할 수 없습니다", "zh-CN": "无法与服务器配对", "zh-TW": "無法與伺服器配對"},
     "ui.fennec_terminal": {
       "en-US": "Fennec Terminal",
-      "ja": "Fennec Terminal",
-      "ko": "Fennec Terminal",
-      "zh-CN": "Fennec Terminal",
-      "zh-TW": "Fennec Terminal"
+      "ja": "Fennec ターミナル",
+      "ko": "Fennec 터미널",
+      "zh-CN": "Fennec 终端",
+      "zh-TW": "Fennec 終端機"
     },
     "ui.cant_reach_cloud_computer": {
       "en-US": "Can't reach your cloud computer",
