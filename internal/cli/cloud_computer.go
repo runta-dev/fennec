@@ -85,6 +85,7 @@ func (c runtaComputer) Resolve(ctx context.Context, progress func(stage, id, sta
 	client := *c.client
 	client.SharedAllowed = lifecycleStore.Check
 	client.CreationGeneration = lifecycleStore.Generation
+	client.RetireCreation = lifecycleStore.RecordRetiredCreation
 	var hint struct {
 		RuntimeID string `json:"runtime_id"`
 	}

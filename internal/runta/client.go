@@ -69,10 +69,12 @@ type RuntimeResources struct {
 type Client struct {
 	SharedAllowed      func(owner string) error
 	CreationGeneration func(owner string) string
-	Endpoint, Token    string
-	HTTP               *http.Client
-	PollInterval       time.Duration
-	NoSSHNoDelay       bool
+	// RetireCreation durably advances the generation before a replacement POST.
+	RetireCreation  func(owner, generation string) error
+	Endpoint, Token string
+	HTTP            *http.Client
+	PollInterval    time.Duration
+	NoSSHNoDelay    bool
 	// RetainSSHHome opts the daemon's initial connection into a private local
 	// carrier that survives daemon replacement. Recovery can still dial fresh.
 	RetainSSHHome string
@@ -81,11 +83,26 @@ type Client struct {
 // APIError is a non-2xx answer. Code is the Runta JSON error code ("" when the
 // body was not a Runta error envelope, e.g. a proxy or CDN error page).
 type APIError struct {
-	Status int
-	Code   string
+	Status  int
+	Code    string
+	message string
+}
+
+func (e *APIError) retiredCreation() bool {
+	if e.Status != http.StatusConflict || e.Code != "already_exists" {
+		return false
+	}
+	// Only this explicit refusal proves that the old key cannot create a
+	// machine. Generic conflicts and uncertain outcomes must keep their key.
+	message := strings.TrimPrefix(e.message, "runtime already exists: ")
+	return message == "idempotency key was already consumed by a deleted runtime" ||
+		message == "idempotency key was consumed by a deleted runtime"
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("Runta HTTP %d", e.Status) }
+
+var errRetiredCreation = errors.New("creation key belongs to a deleted cloud computer")
+
 func (c *Client) request(ctx context.Context, method, path string, body any, key string, out any) error {
 	stage := "api.other"
 	switch {
@@ -138,11 +155,13 @@ func (c *Client) request(ctx context.Context, method, path string, body any, key
 		apiError := &APIError{Status: response.StatusCode}
 		var envelope struct {
 			Error struct {
-				Code string `json:"code"`
+				Code    string `json:"code"`
+				Message string `json:"message"`
 			} `json:"error"`
 		}
 		if json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope) == nil {
 			apiError.Code = envelope.Error.Code
+			apiError.message = envelope.Error.Message
 		}
 		return apiError
 	}
@@ -255,7 +274,8 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		}
 		return c.reconcileSharedResources(ctx, matches[0], user), nil
 	}
-	seed := "fennec/shared-v1/" + user
+	baseSeed := "fennec/shared-v1/" + user
+	seed := baseSeed
 	if c.CreationGeneration != nil {
 		if gen := strings.TrimSpace(c.CreationGeneration(user)); gen != "" {
 			seed += "/after-" + gen
@@ -265,6 +285,20 @@ func (c *Client) EnsureShared(ctx context.Context) (Runtime, error) {
 		seed += "/skip-" + strings.Join(terminalIDs, ",")
 	}
 	created, err := c.createShared(ctx, user, seed)
+	if errors.Is(err, errRetiredCreation) && c.RetireCreation != nil {
+		// createShared has just reconciled the full list and found no owned
+		// Fennec runtime. Derive the next generation from the refused seed so
+		// concurrent devices converge; persist before POST so a lost response
+		// or daemon restart retries the same replacement, not a new machine.
+		digest := sha256.Sum256([]byte("retired:" + seed))
+		generation := hex.EncodeToString(digest[:])
+		if err := c.RetireCreation(user, generation); err != nil {
+			return Runtime{}, fmt.Errorf("persist replacement creation identity: %w", err)
+		}
+		seed = baseSeed + "/after-" + generation
+		// One recovery per preparation, never an unbounded creation loop.
+		created, err = c.createShared(ctx, user, seed)
+	}
 	if err == nil && (created.Status == "deleted" || created.Status == "deleting") && created.ID != "" {
 		// The server replayed an earlier creation under this key whose runtime
 		// has since been deleted; derive a fresh key from that runtime.
@@ -308,7 +342,7 @@ func (c *Client) createShared(ctx context.Context, user, seed string) (Runtime, 
 		var apiError *APIError
 		if errors.As(err, &apiError) && apiError.Status == http.StatusConflict {
 			// Another device may have created the shared runtime since our list.
-			// Reconcile by ownership, never by changing keys and issuing another POST.
+			// Reconcile by ownership before considering an explicitly retired key.
 			current, listErr := c.List(ctx)
 			if listErr != nil {
 				return Runtime{}, fmt.Errorf("runtime creation conflict; reconciliation failed: %w", listErr)
@@ -326,6 +360,9 @@ func (c *Client) createShared(ctx context.Context, user, seed string) (Runtime, 
 			}
 			if candidate != nil {
 				return *candidate, nil
+			}
+			if apiError.retiredCreation() {
+				return Runtime{}, errors.Join(errRetiredCreation, err)
 			}
 		}
 		// A validation rejection means the API predates a requested field

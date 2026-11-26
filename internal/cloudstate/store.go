@@ -154,6 +154,20 @@ func (s *Store) RecordReplacedRuntime(owner, runtime string) error {
 	return s.writeGeneration(owner, runtime)
 }
 
+// RecordRetiredCreation advances a server-confirmed retired creation key without
+// bypassing an intentional deletion. The caller persists before its next POST.
+func (s *Store) RecordRetiredCreation(owner, generation string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if owner == "" || generation == "" || len(generation) > 128 {
+		return fmt.Errorf("replacement creation identity required")
+	}
+	if err := s.Check(owner); err != nil {
+		return err
+	}
+	return s.writeGeneration(owner, generation)
+}
+
 func (s *Store) generationPath(owner string) string {
 	sum := sha256.Sum256([]byte("gen:" + owner))
 	return filepath.Join(s.Directory, hex.EncodeToString(sum[:])+".gen")
@@ -166,10 +180,28 @@ func (s *Store) writeGeneration(owner, deletedRuntime string) error {
 	if err := os.MkdirAll(s.Directory, 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.generationPath(owner), []byte(deletedRuntime), 0600)
+	f, err := os.CreateTemp(s.Directory, ".generation-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.WriteString(deletedRuntime); err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Rename(f.Name(), s.generationPath(owner)); err != nil {
+		return err
+	}
+	return syncDirectory(s.Directory)
 }
 
-// Generation returns the last explicitly deleted runtime ID for owner so the
+// Generation returns the last deleted runtime ID or retired creation generation so the
 // next authorized creation derives a fresh deterministic Idempotency-Key
 // instead of colliding with the deleted runtime's server-side idempotency entry.
 func (s *Store) Generation(owner string) string {
