@@ -114,7 +114,7 @@ fn main() {
                 })
                 .expect("cannot open the Fennec window");
             #[cfg(target_os = "macos")]
-            show_after_first_frame(handle.into(), cx);
+            show_after_first_frame(handle, cx);
             #[cfg(not(target_os = "macos"))]
             let _ = handle;
             cx.activate(true);
@@ -128,14 +128,19 @@ fn main() {
         });
 }
 
-/// Orders the window front only once its first frame is on screen, so the system
+/// Orders the window front only once it is drawn as it will look, so the system
 /// open animation (scale in from 98%) carries the content, as WeChat's window
 /// does, instead of an empty window that fills in partway through. GPUI orders a
-/// window front before it has presented anything; this opens it hidden instead.
+/// window front before it has presented anything; this opens it hidden instead,
+/// waits briefly for the board (`board_ready`, at most `BOARD_WAIT`), draws once
+/// so images start loading, then draws again and shows it.
 #[cfg(target_os = "macos")]
-fn show_after_first_frame(handle: AnyWindowHandle, cx: &mut App) {
+fn show_after_first_frame(handle: WindowHandle<app::FennecWindow>, cx: &mut App) {
     use objc2::{msg_send, runtime::AnyObject};
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::time::{Duration, Instant};
+    const BOARD_WAIT: Duration = Duration::from_millis(600);
+    const IMAGE_WAIT: Duration = Duration::from_millis(40);
     let view = handle
         .update(cx, |_, window, _| match HasWindowHandle::window_handle(window).map(|h| h.as_raw()) {
             Ok(RawWindowHandle::AppKit(appkit)) => Some(appkit.ns_view.as_ptr() as usize),
@@ -148,21 +153,32 @@ fn show_after_first_frame(handle: AnyWindowHandle, cx: &mut App) {
         let _ = handle.update(cx, |_, window, _| window.activate_window());
         return;
     };
-    // The view's frame callback borrows the App, so it runs from a main-thread task
-    // rather than inside this (already borrowed) context. `open_window` has drawn
-    // the first frame; `displayLayer:` presents it synchronously in a transaction.
-    cx.foreground_executor()
-        .spawn(async move {
-            let view = view as *mut AnyObject;
-            let none = std::ptr::null_mut::<AnyObject>();
-            unsafe {
-                // Size the hidden layer for the screen's scale before drawing into it.
-                let _: () = msg_send![view, viewDidChangeBackingProperties];
-                let layer: *mut AnyObject = msg_send![view, layer];
-                let _: () = msg_send![view, displayLayer: layer];
-                let window: *mut AnyObject = msg_send![view, window];
-                let _: () = msg_send![window, makeKeyAndOrderFront: none];
-            }
-        })
-        .detach();
+    // Draws and presents a frame into the (hidden) window now: `displayLayer:`
+    // runs GPUI's frame callback, which borrows the App, so this is only called
+    // between awaits below, never inside an update.
+    let draw = move || unsafe {
+        let view = view as *mut AnyObject;
+        let layer: *mut AnyObject = msg_send![view, layer];
+        let _: () = msg_send![view, displayLayer: layer];
+    };
+    let started = Instant::now();
+    cx.spawn(async move |cx| {
+        while started.elapsed() < BOARD_WAIT
+            && !handle.update(cx, |this, _, _| this.board_ready()).unwrap_or(true)
+        {
+            cx.background_executor().timer(Duration::from_millis(8)).await;
+        }
+        unsafe {
+            // Size the hidden layer for the screen's scale before drawing into it.
+            let _: () = msg_send![view as *mut AnyObject, viewDidChangeBackingProperties];
+        }
+        draw();
+        cx.background_executor().timer(IMAGE_WAIT).await;
+        draw();
+        unsafe {
+            let window: *mut AnyObject = msg_send![view as *mut AnyObject, window];
+            let _: () = msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+        }
+    })
+    .detach();
 }

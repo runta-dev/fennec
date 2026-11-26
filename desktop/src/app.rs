@@ -702,6 +702,7 @@ impl FennecWindow {
     /// agents answer on the cloud computer.
     fn follow_board(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let mut quick_refetches = 2;
             loop {
                 let project = this.update(cx, |this, _| this.project_id()).ok().flatten();
                 let open = this.update(cx, |this, _| this.open).ok().flatten();
@@ -722,16 +723,22 @@ impl FennecWindow {
 						Ok::<_,anyhow::Error>((scope, fetched))
                     })
                     .await;
-                if this
-					.update_in(cx, |this, window, cx| {
-						if let Ok((scope, fetched)) = fetched {
-							this.switch_board_scope(scope, window, cx);
-							this.board_loaded(fetched, cx);
-						}
-					})
-                    .is_err()
-                {
+                let Ok(ready) = this.update_in(cx, |this, window, cx| {
+                    if let Ok((scope, fetched)) = fetched {
+                        this.switch_board_scope(scope, window, cx);
+                        this.board_loaded(fetched, cx);
+                    }
+                    this.board_ready()
+                }) else {
                     break;
+                };
+                // The first fetches can miss the shown queue's requests (made
+                // before the computer was known, or before a queue was chosen);
+                // fetch again now rather than in 2 s, so the window opens with
+                // them (`board_ready`). Twice at most, so failures do not spin.
+                if !ready && quick_refetches > 0 {
+                    quick_refetches -= 1;
+                    continue;
                 }
                 cx.background_executor().timer(Duration::from_secs(2)).await;
             }
@@ -826,6 +833,15 @@ impl FennecWindow {
 
     pub(crate) fn visible_projects(&self) -> Vec<&Project> {
         self.projects.iter().collect()
+    }
+
+    /// Whether the board has loaded far enough to draw the window as it will
+    /// look: the queues, and the shown queue's requests. main.rs keeps the window
+    /// hidden until then (briefly), so it does not open empty and fill in.
+    pub(crate) fn board_ready(&self) -> bool {
+        self.board_scope.is_some()
+            && !self.projects.is_empty()
+            && self.project_id().is_none_or(|p| self.requests.contains_key(&p))
     }
 
     pub(crate) fn project_id(&self) -> Option<String> {
