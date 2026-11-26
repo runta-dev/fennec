@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, ops::Range, sync::Arc};
 use gpui::SharedString;
 use markdown::{
     ParseOptions,
-    mdast::{self, Node},
+    mdast::{self, AttributeContent, AttributeValue, Node},
     unist::Point,
 };
 
@@ -19,12 +19,19 @@ use crate::text::{
 /// Parse Markdown into a tree of nodes.
 pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument, SharedString> {
     let options = cx.markdown_extensions.parse_options();
-    let mut root =
-        markdown::to_mdast(source, &options).map_err(|e| SharedString::from(e.to_string()))?;
+    let masked = mask_cjk_punctuation_at_delimiters(source);
+    let parse_source = masked
+        .as_ref()
+        .map_or(source, |(masked, _)| masked.as_str());
+    let mut root = markdown::to_mdast(parse_source, &options)
+        .map_err(|e| SharedString::from(e.to_string()))?;
     let mut prose = options;
     prose.constructs.math_text = false;
     prose.constructs.math_flow = false;
-    flatten_unclaimed_math(&mut root, source, &prose, cx);
+    flatten_unclaimed_math(&mut root, parse_source, &prose, cx);
+    if let Some((_, originals)) = &masked {
+        unmask_cjk_punctuation(&mut root, originals);
+    }
     end_autolinks_at_cjk_punctuation(&mut root, source);
     Ok(ast_to_document(source, root, cx))
 }
@@ -51,8 +58,10 @@ fn end_autolinks_at_cjk_punctuation(node: &mut Node, source: &str) {
 }
 
 /// Characters that end an autolink literal: CJK and full-width punctuation,
-/// and the curly quotes and ellipsis used around URLs in CJK text.
-fn ends_autolink(c: char) -> bool {
+/// and the curly quotes and ellipsis used around URLs in CJK text. Every one
+/// of them is three bytes in UTF-8, which `mask_cjk_punctuation_at_delimiters`
+/// relies on.
+fn is_cjk_punctuation(c: char) -> bool {
     matches!(c,
         '\u{3000}'..='\u{303F}'
         | '\u{FF01}'..='\u{FF0F}'
@@ -79,7 +88,7 @@ fn split_autolink_literal(node: &mut Node, source: &str) -> Option<Node> {
     if text.value != literal || !link.url.ends_with(literal) {
         return None;
     }
-    let cut = literal.find(ends_autolink)?;
+    let cut = literal.find(is_cjk_punctuation)?;
     let kept = &literal[..cut];
     if kept.is_empty() || kept.ends_with("://") || kept.ends_with(':') {
         return None;
@@ -105,6 +114,187 @@ fn split_autolink_literal(node: &mut Node, source: &str) -> Option<Node> {
             end: position.end,
         }),
     }))
+}
+
+/// First of the private-use characters that stand in for masked punctuation.
+const MASK_BASE: u32 = 0xE000;
+/// Nerd Font icons start at U+E0A0; stay below them.
+const MASK_LIMIT: usize = 0xA0;
+
+/// CommonMark lets `**` close only when it is not preceded by punctuation,
+/// or is followed by whitespace or punctuation. Chinese and Japanese prose
+/// has no spaces, so `**客户端卡片（待验收）**显示` never closes: the `**` follows
+/// `）` and precedes `显`, and the reader saw the asterisks. The same rule
+/// stops `中文**（括号）**` from opening.
+///
+/// When a `*` or `~` run touches CJK punctuation on one side and a letter on
+/// the other, swap that punctuation for a private-use character of the same
+/// UTF-8 length, so the parser treats it as a letter and every offset and
+/// column stays put. Returns the masked source and the original of each
+/// stand-in (`MASK_BASE + index`), or `None` when nothing needed masking.
+fn mask_cjk_punctuation_at_delimiters(source: &str) -> Option<(String, Vec<char>)> {
+    let chars: Vec<(usize, char)> = source.char_indices().collect();
+    let is_letter =
+        |c: char| !c.is_whitespace() && !c.is_ascii_punctuation() && !is_cjk_punctuation(c);
+    let mut masked: Vec<usize> = Vec::new();
+    let mut ix = 0;
+    while ix < chars.len() {
+        let delimiter = chars[ix].1;
+        if delimiter != '*' && delimiter != '~' {
+            ix += 1;
+            continue;
+        }
+        let start = ix;
+        while ix < chars.len() && chars[ix].1 == delimiter {
+            ix += 1;
+        }
+        let before = start.checked_sub(1).map(|b| chars[b].1);
+        let after = chars.get(ix).map(|(_, c)| *c);
+        if let (Some(b), Some(a)) = (before, after) {
+            if is_cjk_punctuation(b) && is_letter(a) {
+                masked.push(start - 1);
+            } else if is_cjk_punctuation(a) && is_letter(b) {
+                masked.push(ix);
+            }
+        }
+    }
+    if masked.is_empty() {
+        return None;
+    }
+    let mut originals: Vec<char> = Vec::new();
+    let mut stand_in = Vec::with_capacity(masked.len());
+    for &m in &masked {
+        let c = chars[m].1;
+        let slot = match originals.iter().position(|&o| o == c) {
+            Some(slot) => slot,
+            None if originals.len() < MASK_LIMIT => {
+                originals.push(c);
+                originals.len() - 1
+            }
+            None => continue,
+        };
+        stand_in.push((m, char::from_u32(MASK_BASE + slot as u32)?));
+    }
+    let reserved = MASK_BASE..MASK_BASE + originals.len() as u32;
+    if source.chars().any(|c| reserved.contains(&(c as u32))) {
+        return None;
+    }
+    let mut out = String::with_capacity(source.len());
+    let mut last = 0;
+    for (m, c) in stand_in {
+        let (offset, original) = chars[m];
+        out.push_str(&source[last..offset]);
+        out.push(c);
+        last = offset + original.len_utf8();
+    }
+    out.push_str(&source[last..]);
+    debug_assert_eq!(out.len(), source.len());
+    Some((out, originals))
+}
+
+/// Put the punctuation masked by `mask_cjk_punctuation_at_delimiters` back
+/// into every string the parser copied out of the source.
+fn unmask_cjk_punctuation(node: &mut Node, originals: &[char]) {
+    let fix = |s: &mut String| {
+        let reserved = MASK_BASE..MASK_BASE + originals.len() as u32;
+        if s.chars().any(|c| reserved.contains(&(c as u32))) {
+            *s = s
+                .chars()
+                .map(|c| {
+                    if reserved.contains(&(c as u32)) {
+                        originals[(c as u32 - MASK_BASE) as usize]
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+        }
+    };
+    let fix_opt = |s: &mut Option<String>| {
+        if let Some(s) = s {
+            fix(s);
+        }
+    };
+    match node {
+        Node::Text(n) => fix(&mut n.value),
+        Node::InlineCode(n) => fix(&mut n.value),
+        Node::InlineMath(n) => fix(&mut n.value),
+        Node::Html(n) => fix(&mut n.value),
+        Node::Yaml(n) => fix(&mut n.value),
+        Node::Toml(n) => fix(&mut n.value),
+        Node::MdxjsEsm(n) => fix(&mut n.value),
+        Node::MdxTextExpression(n) => fix(&mut n.value),
+        Node::MdxFlowExpression(n) => fix(&mut n.value),
+        Node::Code(n) => {
+            fix(&mut n.value);
+            fix_opt(&mut n.lang);
+            fix_opt(&mut n.meta);
+        }
+        Node::Math(n) => {
+            fix(&mut n.value);
+            fix_opt(&mut n.meta);
+        }
+        Node::Link(n) => {
+            fix(&mut n.url);
+            fix_opt(&mut n.title);
+        }
+        Node::Image(n) => {
+            fix(&mut n.alt);
+            fix(&mut n.url);
+            fix_opt(&mut n.title);
+        }
+        Node::ImageReference(n) => {
+            fix(&mut n.alt);
+            fix(&mut n.identifier);
+            fix_opt(&mut n.label);
+        }
+        Node::LinkReference(n) => {
+            fix(&mut n.identifier);
+            fix_opt(&mut n.label);
+        }
+        Node::Definition(n) => {
+            fix(&mut n.url);
+            fix_opt(&mut n.title);
+            fix(&mut n.identifier);
+            fix_opt(&mut n.label);
+        }
+        Node::FootnoteReference(n) => {
+            fix(&mut n.identifier);
+            fix_opt(&mut n.label);
+        }
+        Node::FootnoteDefinition(n) => {
+            fix(&mut n.identifier);
+            fix_opt(&mut n.label);
+        }
+        Node::MdxJsxFlowElement(n) => {
+            fix_opt(&mut n.name);
+            n.attributes.iter_mut().for_each(|a| fix_attribute(a, &fix));
+        }
+        Node::MdxJsxTextElement(n) => {
+            fix_opt(&mut n.name);
+            n.attributes.iter_mut().for_each(|a| fix_attribute(a, &fix));
+        }
+        _ => {}
+    }
+    if let Some(children) = node.children_mut() {
+        for child in children {
+            unmask_cjk_punctuation(child, originals);
+        }
+    }
+}
+
+fn fix_attribute(attribute: &mut AttributeContent, fix: &impl Fn(&mut String)) {
+    match attribute {
+        AttributeContent::Expression(e) => fix(&mut e.value),
+        AttributeContent::Property(p) => {
+            fix(&mut p.name);
+            match &mut p.value {
+                Some(AttributeValue::Literal(s)) => fix(s),
+                Some(AttributeValue::Expression(e)) => fix(&mut e.value),
+                None => {}
+            }
+        }
+    }
 }
 
 /// Math parsing is on by default, so prose that merely contains two dollar
@@ -1562,6 +1752,37 @@ mod tests {
                 .collect();
             assert_eq!(found, vec![url.to_string()], "{source}");
         }
+    }
+
+    #[test]
+    fn strong_closes_after_cjk_punctuation() {
+        // CommonMark won't close `**` between `）` and a letter; FEN-43.
+        let source = "**客户端卡片（待验收）**显示的是请求状态，**现在怎么办：**追问。";
+        let mut cx = NodeContext::default();
+        let document = parse(source, &mut cx).unwrap();
+        let paragraph = first_paragraph(&document.blocks[0]).unwrap();
+        assert_eq!(paragraph.text(), source.replace("**", ""));
+        let bold: Vec<String> = paragraph
+            .children
+            .iter()
+            .flat_map(|node| {
+                node.marks
+                    .iter()
+                    .filter(|(_, mark)| mark.bold)
+                    .map(|(range, _)| node.text[range.clone()].to_string())
+            })
+            .collect();
+        assert_eq!(bold, vec!["客户端卡片（待验收）", "现在怎么办："]);
+        // Masking keeps offsets, so a rendered selection maps back exactly.
+        let rendered = 0.."客户端卡片（待验收）显示".len();
+        let in_source = "**".len().."**客户端卡片（待验收）**显示".len();
+        assert_eq!(select_rendered_range(source, rendered), in_source);
+
+        // Code keeps its punctuation, and `**` inside it stays literal.
+        let source = "`a（**b` 中文**（括号）**中文";
+        let document = parse(source, &mut cx).unwrap();
+        let paragraph = first_paragraph(&document.blocks[0]).unwrap();
+        assert_eq!(paragraph.text(), "a（**b 中文（括号）中文");
     }
 
     #[test]
