@@ -352,7 +352,8 @@ func TestAgyLaunchStaysNativeWithMagpieOn(t *testing.T) {
 // A Fennec session folder opens straight into Claude Code's TUI: the folder
 // is trusted in the profile the launch reads, and through Magpie (which signs
 // Claude in) first-run onboarding is finished too. A native account keeps its
-// own onboarding state so Claude Code can still ask it to sign in.
+// own onboarding state so Claude Code can still ask it to sign in. Either
+// way Claude Code adds no attribution to commits or pull requests.
 func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	for _, native := range []bool{false, true} {
@@ -373,9 +374,10 @@ func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
 		if _, err := backend.Launch(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
-		profile := filepath.Join(home, ".claude.json")
+		profile, settingsPath := filepath.Join(home, ".claude.json"), filepath.Join(home, ".claude/settings.json")
 		if native {
 			profile = filepath.Join(home, ".local/fennec/native/claude/.claude.json")
+			settingsPath = filepath.Join(home, ".local/fennec/native/claude/settings.json")
 		}
 		b, err := os.ReadFile(profile)
 		if err != nil {
@@ -391,6 +393,10 @@ func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
 		cwd := filepath.Join(home, ".fen", request.ID)
 		if got.Projects[cwd]["hasTrustDialogAccepted"] != true || got.Onboarded == native {
 			t.Fatalf("native=%v profile %s", native, b)
+		}
+		settings, _ := os.ReadFile(settingsPath)
+		if !strings.Contains(string(settings), `"commit": ""`) || !strings.Contains(string(settings), `"pr": ""`) {
+			t.Fatalf("native=%v attribution not hidden: %s", native, settings)
 		}
 	}
 }

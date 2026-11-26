@@ -216,7 +216,8 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 	if request.Agent == "claude" && !request.NativeLogin {
 		// Fennec made this folder: trust it, as Claude Code otherwise stops
 		// at "Quick safety check" (and, on a fresh profile, at its theme
-		// picker) before the TUI. Magpie does the same for its own launches.
+		// picker) before the TUI, as Magpie does for its own launches. Commits
+		// and pull requests carry no Claude Code attribution.
 		if err := prepareClaudeProfile(runtime.Home, cwd); err != nil {
 			return LocalTerminal{}, err
 		}

@@ -81,17 +81,30 @@ func writeSessionInstructions(path string, data []byte) error {
 	return closeErr
 }
 
-// prepareClaudeProfile trusts a Fennec session folder in the Claude Code
-// profile the launch will read. Through Magpie the gateway token already
-// signs Claude in, so first-run onboarding is marked done as well; a native
-// account keeps its own onboarding state, which credential sync manages.
+// prepareClaudeProfile readies the Claude Code configuration the launch will
+// read. It trusts the Fennec session folder and hides Claude Code's own
+// commit and pull request attribution. Through Magpie the gateway token
+// already signs Claude in, so first-run onboarding is marked done as well; a
+// native account keeps its own onboarding state, which credential sync
+// manages.
 func prepareClaudeProfile(home, cwd string) error {
-	if setup.NativeAgent(home, "claude") {
+	native := setup.NativeAgent(home, "claude")
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if native {
 		root, _, err := setup.NativeAccountRoot(home, "claude")
 		if err != nil {
 			return err
 		}
-		return setup.TrustClaudeFolders(setup.ClaudeProfile(home, filepath.Join(root, "claude")), cwd)
+		configDir = filepath.Join(root, "claude")
+	} else if configDir == "" {
+		configDir = filepath.Join(home, ".claude")
 	}
-	return setup.PrepareClaudeLaunch(setup.ClaudeProfile(home, os.Getenv("CLAUDE_CONFIG_DIR")), cwd)
+	if err := setup.HideClaudeAttribution(configDir); err != nil {
+		return err
+	}
+	profile := setup.ClaudeProfile(home, configDir)
+	if native {
+		return setup.TrustClaudeFolders(profile, cwd)
+	}
+	return setup.PrepareClaudeLaunch(profile, cwd)
 }
