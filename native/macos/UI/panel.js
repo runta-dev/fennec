@@ -986,11 +986,13 @@ function renderBillingRows(payload,loading){
  const reauthRequired=payload.reauth_required===true;
  const webOnly=payload.web_only===true;
  const offline=payload.offline===true;
- const showFooter=!loading&&(reauthRequired||webOnly||offline||missing||payload.error||payload.stale);
+ // payload.stale only means the billing ledger lags a little behind; the numbers
+ // shown are still valid and Retry cannot make them fresher, so it gets no footer.
+ const showFooter=!loading&&(reauthRequired||webOnly||offline||missing||payload.error);
  if(showFooter){
   const footer=document.createElement('div');footer.className='billing-footer';
   const status=document.createElement('span');status.className='billing-status';
-  status.textContent=offline?"[[i18n:ui.offline_waiting_for_network]]":reauthRequired?"[[i18n:ui.sign_in_again_to_enable_billing_access]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||(payload.stale?"[[i18n:ui.updating_showing_last_available_data]]":''));
+  status.textContent=offline?"[[i18n:ui.offline_waiting_for_network]]":reauthRequired?"[[i18n:ui.sign_in_again_to_enable_billing_access]]":webOnly?"[[i18n:ui.view_billing_in_runta_dashboard]]":(payload.error||'');
   const retry=document.createElement('button');retry.type='button';retry.textContent="[[i18n:ui.retry]]";
   if(reauthRequired){
    retry.textContent="[[i18n:ui.sign_in]]";

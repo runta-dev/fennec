@@ -3176,13 +3176,6 @@
       "zh-CN": "未命名会话",
       "zh-TW": "未命名工作階段"
     },
-    "ui.updating_showing_last_available_data": {
-      "en-US": "Updating; showing last available data",
-      "ja": "更新中：直近のデータを表示",
-      "ko": "업데이트 중: 최근 데이터 표시",
-      "zh-CN": "数据更新中，显示最近记录",
-      "zh-TW": "資料更新中，顯示最近紀錄"
-    },
     "ui.updating_the_session_to_check_the_result": {
       "en-US": "Updating the session to check the result.",
       "ja": "結果を確認するためセッションを更新しています。",
