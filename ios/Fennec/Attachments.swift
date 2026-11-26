@@ -155,13 +155,15 @@ extension SessionStore {
         return try JSONDecoder().decode(WorkspaceFile.self, from: Data(json.utf8))
     }
 
-    func sendAttachments(_ text: String, to id: String, onSent: @escaping () -> Void) {
+    /// The composer is already empty when this runs (FEN-24); `onUnsent`
+    /// gets the text back when nothing reached the agent.
+    func sendAttachments(_ text: String, to id: String, onUnsent: @escaping () -> Void) {
         if core == nil {
-            sendDemoAttachments(text, to: id, onSent: onSent)
+            sendDemoAttachments(text, to: id)
             return
         }
         guard let core, let session = session(id), let address = session.address,
-              pendingSends[id] == nil, let attachments = attachmentDrafts[id], !attachments.isEmpty else { return }
+              pendingSends[id] == nil, let attachments = attachmentDrafts[id], !attachments.isEmpty else { onUnsent(); return }
         let images = attachments.filter(\.isImage).compactMap { try? Data(contentsOf: $0.url) }
         pendingSends[id] = PendingSend(message: .init(kind: .user(text), time: .now, images: images), session: session)
         let messageID = pendingSends[id]?.message.id
@@ -199,13 +201,13 @@ extension SessionStore {
                 if pendingSends[id]?.message.id == messageID { pendingSends[id]?.delivery = .sent }
                 awaitingWork[id] = .now
                 attachmentDrafts[id] = []
-                onSent()
                 for attachment in attachments { try? FileManager.default.removeItem(at: attachment.url.deletingLastPathComponent()) }
             } catch {
                 if submitted {
                     if pendingSends[id]?.message.id == messageID { pendingSends[id]?.delivery = .unconfirmed }
                 } else {
                     pendingSends[id] = nil
+                    onUnsent()
                 }
                 attachmentErrors[id] = (error as NSError).localizedDescription
             }
@@ -215,7 +217,7 @@ extension SessionStore {
 
     /// Demo sessions keep attachments on the phone: images show in the
     /// message, other files by name, and the agent replies as usual.
-    private func sendDemoAttachments(_ text: String, to id: String, onSent: () -> Void) {
+    private func sendDemoAttachments(_ text: String, to id: String) {
         guard session(id) != nil, let attachments = attachmentDrafts[id], !attachments.isEmpty else { return }
         let images = attachments.filter(\.isImage).compactMap { try? Data(contentsOf: $0.url) }
         let prompt = ([text] + attachments.filter { !$0.isImage }.map(\.name)).filter { !$0.isEmpty }.joined(separator: "\n")
@@ -224,7 +226,6 @@ extension SessionStore {
             if $0.title == "Untitled session", !text.isEmpty { $0.title = Self.demoTitle(text) }
         }
         attachmentDrafts[id] = []
-        onSent()
         for attachment in attachments { try? FileManager.default.removeItem(at: attachment.url.deletingLastPathComponent()) }
         playDemoReply(id)
     }

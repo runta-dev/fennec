@@ -25,6 +25,20 @@ final class ComposerEditingTests: XCTestCase {
         XCTAssertEqual(editor.text, "Next")
     }
 
+    func testReturnSendsOnlyWhenTheComposerSendsOnReturn() {
+        var sends = 0
+        let editor = UITextView()
+        let chat = ComposerTextView.Coordinator(ComposerTextView(text: .constant("Hi"), focused: .constant(true),
+                                                                 placeholder: "Message", canSend: true, onSend: { sends += 1 }))
+        XCTAssertFalse(chat.textView(editor, shouldChangeTextIn: NSRange(location: 2, length: 0), replacementText: "\n"))
+        XCTAssertEqual(sends, 1)
+        let thread = ComposerTextView.Coordinator(ComposerTextView(text: .constant("Hi"), focused: .constant(true),
+                                                                   placeholder: "Reply", canSend: true, onSend: { sends += 1 },
+                                                                   sendsOnReturn: false, identifier: "thread-composer"))
+        XCTAssertTrue(thread.textView(editor, shouldChangeTextIn: NSRange(location: 2, length: 0), replacementText: "\n"))
+        XCTAssertEqual(sends, 1)
+    }
+
     private final class ActiveEditor: UITextView {
         override var isFirstResponder: Bool { true }
     }

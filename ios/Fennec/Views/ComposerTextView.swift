@@ -2,7 +2,13 @@ import SwiftUI
 import UIKit
 
 /// A multiline composer with a Send key and Shift-Return for hardware
-/// keyboards. IME composition never submits.
+/// keyboards. IME composition never submits. With `sendsOnReturn` off,
+/// Return inserts a line break and only the Send button sends.
+///
+/// Clear it after a send by setting `text` to "" and bumping
+/// `resetRevision`: a plain binding change is ignored while the editor has
+/// focus, and an explicit reset also drops pinyin or other marked text that
+/// would otherwise be committed back into the empty field (FEN-24).
 struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
@@ -11,6 +17,8 @@ struct ComposerTextView: UIViewRepresentable {
     var onSend: () -> Void
     var onPasteImage: ((Data) -> Void)? = nil
     var resetRevision = 0
+    var sendsOnReturn = true
+    var identifier = "chat-composer"
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -22,10 +30,10 @@ struct ComposerTextView: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.font = UIFont.preferredFont(forTextStyle: .body)
         view.adjustsFontForContentSizeCategory = true
-        view.returnKeyType = .send
-        view.enablesReturnKeyAutomatically = true
+        view.returnKeyType = sendsOnReturn ? .send : .default
+        view.enablesReturnKeyAutomatically = sendsOnReturn
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        view.accessibilityIdentifier = "chat-composer"
+        view.accessibilityIdentifier = identifier
         context.coordinator.textView = view
         view.insertLineBreak = { [weak coordinator = context.coordinator] in coordinator?.insertNewline() }
         view.pasteImage = { [weak coordinator = context.coordinator] data in coordinator?.parent.onPasteImage?(data) }
@@ -99,7 +107,7 @@ struct ComposerTextView: UIViewRepresentable {
             textView.invalidateIntrinsicContentSize()
         }
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-            if text == "\n", !insertingLineBreak, textView.markedTextRange == nil {
+            if parent.sendsOnReturn, text == "\n", !insertingLineBreak, textView.markedTextRange == nil {
                 parent.text = textView.text
                 if parent.canSend { parent.onSend() }
                 return false

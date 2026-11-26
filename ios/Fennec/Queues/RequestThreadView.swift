@@ -16,7 +16,8 @@ struct RequestThreadView: View {
     @State private var linking = false
     /// Bumped when the Marked done banner appears, to bounce its check.
     @State private var bannerBounce = 0
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
+    @State private var composerResetRevision = 0
 
     var body: some View {
         let project = queues.project(projectID)
@@ -183,12 +184,17 @@ struct RequestThreadView: View {
             ImageDraftStrip(draft: $images).padding(.horizontal, 16)
             HStack(alignment: .bottom, spacing: 8) {
                 ImagePickerButton(draft: $images)
-                TextField(placeholder(request), text: $draft, axis: .vertical)
-                    .font(.system(size: 16))
-                    .lineLimit(1...6)
-                    .focused($composerFocused)
-                    .padding(.vertical, 8)
-                    .accessibilityIdentifier("thread-composer")
+                ZStack(alignment: .leading) {
+                    if draft.isEmpty {
+                        Text(placeholder(request))
+                            .font(.system(size: 16)).foregroundStyle(Theme.fg3)
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                    ComposerTextView(text: $draft, focused: $composerFocused,
+                                     placeholder: placeholder(request), canSend: canSend,
+                                     onSend: { send(request) }, resetRevision: composerResetRevision,
+                                     sendsOnReturn: false, identifier: "thread-composer")
+                }
                 Button { send(request) } label: {
                     Group {
                         if sending { ProgressView().tint(Theme.onPrimary) }
@@ -222,16 +228,27 @@ struct RequestThreadView: View {
         !sending && !images.uploading && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.done.isEmpty)
     }
 
+    /// The composer empties as soon as Send is tapped, like a chat, not
+    /// after the board answers and the thread reloads; the reply showed up
+    /// in the thread while its text stayed in the box, and a pinyin commit
+    /// after the tap kept it there for good (FEN-24). A failed send puts
+    /// the text and images back unless something new was typed meanwhile.
     private func send(_ request: BoardRequest) {
+        guard canSend else { return }
         let text = draft
-        let sent = images.done
+        let sent = images
         sending = true
+        draft = ""
+        composerResetRevision += 1
+        images = ImageDraft()
         Task {
             defer { sending = false }
-            if await queues.reply(projectID, number, text: text, images: sent) {
-                if draft == text { draft = "" }
-                images = ImageDraft()
+            if await queues.reply(projectID, number, text: text, images: sent.done) { return }
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft = text
+                composerResetRevision += 1
             }
+            if images.done.isEmpty && !images.uploading { images = sent }
         }
     }
 

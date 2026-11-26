@@ -470,11 +470,17 @@ struct ChatView: View {
         guard canSend else { return }
         followBottom = true
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+            // Empty the composer at once, as for a text-only message; it
+            // used to wait for the uploads and then stayed full if the
+            // text changed meanwhile, e.g. a pinyin commit (FEN-24).
+            clearDraft()
             if !(store.attachmentDrafts[sessionID] ?? []).isEmpty {
                 store.sendAttachments(text, to: session.id) {
-                    if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { clearDraft() }
+                    guard draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                    draftBinding.wrappedValue = text
+                    composerResetRevision += 1
                 }
-            } else { clearDraft(); store.send(text, to: session.id) }
+            } else { store.send(text, to: session.id) }
         }
     }
 
