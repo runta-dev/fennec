@@ -52,7 +52,7 @@ export default function Privacy() {
         </ul>
         <p>We use this content to provide, secure and improve the service, as described in the <a href={runtaNotice}>Runta Privacy Notice</a>.</p>
         <p>The agents themselves send your prompts and code to the model provider you chose (for example Anthropic or OpenAI), under your account with that provider. That provider&apos;s privacy policy applies to what it receives.</p>
-        <p>If you pair Fennec with your own server instead of a Runta cloud computer, sessions, files and agent sign-ins stay on that server, and you don&apos;t need a Runta account.</p>
+        <p>If you use a self-hosted Fennec deployment instead of a Runta cloud computer, sessions, files and agent sign-ins stay on that server, and you don&apos;t need a Runta account.</p>
       </Section>
 
       <Section id="iphone" title="On your iPhone">
