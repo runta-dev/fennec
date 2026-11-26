@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/agentcmd"
 	"fennec/internal/cloudtarget"
 	"flag"
 	"fmt"
@@ -168,12 +169,17 @@ func Run(arguments []string, output io.Writer) error {
 		return launcher.ExecLocal(arguments[1], arguments[2:], filepath.Join(home, ".local/share/fennec/shims"))
 	case "dispatch-stable":
 		// Shell functions call the stable dispatcher with the command name.
-		if len(arguments) < 2 || agentForCommand(arguments[1]) == "" {
-			return errors.New("supported agent required")
-		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
+		}
+		if len(arguments) >= 2 && arguments[1] == agentcmd.CursorAlias {
+			if arguments[1], err = cursorAliasCommand(home, arguments[2:]); err != nil {
+				return err
+			}
+		}
+		if len(arguments) < 2 || agentForCommand(arguments[1]) == "" {
+			return errors.New("supported agent required")
 		}
 		if !runningAsStable(home) {
 			return Run(append([]string{"dispatch-agent", agentForCommand(arguments[1])}, arguments[2:]...), output)

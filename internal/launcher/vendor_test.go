@@ -45,3 +45,28 @@ func TestVendorWorkingDirectories(t *testing.T) {
 		})
 	}
 }
+
+// `agent` counts as Cursor's only when it resolves to Cursor's installed CLI.
+func TestResolveCursorAlias(t *testing.T) {
+	home := t.TempDir()
+	versions := filepath.Join(home, ".local/share/cursor-agent/versions/1")
+	bin := filepath.Join(home, "bin")
+	other := filepath.Join(home, "other")
+	for _, dir := range []string{versions, bin, other} {
+		os.MkdirAll(dir, 0700)
+	}
+	os.WriteFile(filepath.Join(versions, "cursor-agent"), []byte("#!/bin/sh\nexit 0\n"), 0700)
+	os.Symlink(filepath.Join(versions, "cursor-agent"), filepath.Join(bin, "agent"))
+	os.WriteFile(filepath.Join(other, "agent"), []byte("#!/bin/sh\nexit 0\n"), 0700)
+	self := filepath.Join(home, "fen")
+	shims := filepath.Join(home, "shims")
+	if original, cursor, err := ResolveCursorAlias(bin+":"+other, shims, self); err != nil || !cursor || original != filepath.Join(bin, "agent") {
+		t.Fatal(original, cursor, err)
+	}
+	if original, cursor, err := ResolveCursorAlias(other+":"+bin, shims, self); err != nil || cursor || original != filepath.Join(other, "agent") {
+		t.Fatal(original, cursor, err)
+	}
+	if _, _, err := ResolveCursorAlias(shims, shims, self); err == nil {
+		t.Fatal("resolved a missing agent")
+	}
+}

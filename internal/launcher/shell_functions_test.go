@@ -67,6 +67,9 @@ func TestShellFunctionsWinOverVersionManagers(t *testing.T) {
 			if out := runShell(t, home, path, "-i", "-c", "codex hello"); !strings.Contains(out, "DISPATCHED dispatch-stable codex hello") {
 				t.Fatalf("interactive codex: %q", out)
 			}
+			if out := runShell(t, home, path, "-i", "-c", "agent hello"); !strings.Contains(out, "DISPATCHED dispatch-stable agent hello") {
+				t.Fatal("agent alias bypassed the dispatcher:", out)
+			}
 			// the prompt hook moves the shims back in front of the manager
 			out := runShell(t, home, path, "-i", "-c", "export PATH=\""+manager+":$PATH\"; fennec_path_front; echo \"P=$PATH\"")
 			if !strings.Contains(out, "P="+filepath.Join(home, ".local/share/fennec/shims")+":") {

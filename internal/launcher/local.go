@@ -21,6 +21,17 @@ func ResolveOriginal(agent, path, shimDir, self string) (string, error) {
 	if !Supported[agent] {
 		return "", fmt.Errorf("unsupported agent %q", agent)
 	}
+	return resolveCommand(agents.BinaryName(agent), path, shimDir, self)
+}
+
+// ResolveCursorAlias finds the `agent` the shell would run without Fennec and
+// reports whether it is Cursor's CLI.
+func ResolveCursorAlias(path, shimDir, self string) (original string, cursor bool, err error) {
+	original, err = resolveCommand(agents.CursorAlias, path, shimDir, self)
+	return original, err == nil && agents.IsCursorCLI(original), err
+}
+
+func resolveCommand(name, path, shimDir, self string) (string, error) {
 	selfInfo, _ := os.Stat(self)
 	shim, _ := filepath.EvalSymlinks(shimDir)
 	for _, directory := range filepath.SplitList(path) {
@@ -34,7 +45,7 @@ func ResolveOriginal(agent, path, shimDir, self string) (string, error) {
 		if resolved == shim || filepath.Clean(directory) == filepath.Clean(shimDir) {
 			continue
 		}
-		candidate := filepath.Join(directory, agents.BinaryName(agent))
+		candidate := filepath.Join(directory, name)
 		info, err := os.Stat(candidate)
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
 			continue
@@ -48,7 +59,7 @@ func ResolveOriginal(agent, path, shimDir, self string) (string, error) {
 		}
 		return original, err
 	}
-	return "", fmt.Errorf("original %s executable not found outside Fennec shims", agent)
+	return "", fmt.Errorf("original %s executable not found outside Fennec shims", name)
 }
 
 func ExecLocal(agent string, args []string, shimDir string) error {

@@ -20,6 +20,23 @@ func agentForCommand(name string) string {
 	return ""
 }
 
+// cursorAliasCommand returns cursor-agent when the `agent` the shell would run
+// is Cursor's CLI. Any other vendor's `agent` replaces this process unchanged.
+func cursorAliasCommand(home string, args []string) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	original, cursor, err := launcher.ResolveCursorAlias(os.Getenv("PATH"), filepath.Join(home, ".local/share/fennec/shims"), self)
+	if err != nil {
+		return "", fmt.Errorf("%s: command not found", agentcmd.CursorAlias)
+	}
+	if !cursor {
+		return "", syscall.Exec(original, append([]string{original}, args...), os.Environ())
+	}
+	return agentcmd.BinaryName("cursor"), nil
+}
+
 // runningAsStable reports whether this process is the stable dispatcher copy.
 func runningAsStable(home string) bool {
 	self, err := os.Executable()

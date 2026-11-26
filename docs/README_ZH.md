@@ -68,7 +68,7 @@ Fennec 将编程代理的工作循环放到云电脑上运行，让它按你的�
 
 目前支持云端控制的代理包括 **Claude Code、Codex、Pi、Kimi Code、Cursor CLI、Grok Build、OpenCode 和 Antigravity CLI**。其他已发现的代理会显示为 **Coming soon（即将支持）**。Fennec 会同步受支持的本地模型设置和凭据，无需本地与云端 CLI 使用完全相同的版本。
 
-Cursor CLI 使用 `cursor-agent`，Grok Build 使用 `grok`；Fennec 不接管 Cursor 编辑器的 `cursor` 命令或共用的 `agent` 别名。开启 Magpie 时，Grok Build 通过 Magpie 接管，并可在 Fennec 中选择模型；关闭时使用原生账号。Magpie 尚不支持接管 Cursor CLI，因此 Cursor 保留原生账号：可以从代理卡片或通过 `fen agent login cursor` 登录，并在 Cursor 内通过 `/model` 或 `--model` 选择模型。
+Cursor CLI 使用 `cursor-agent`（或它的别名 `agent`），Grok Build 使用 `grok`。Fennec 不接管 Cursor 编辑器的 `cursor` 命令；`agent` 只在指向 Cursor CLI 时才接管，其他厂商的 `agent` 照常运行。开启 Magpie 时，Grok Build 通过 Magpie 接管，并可在 Fennec 中选择模型；关闭时使用原生账号。Magpie 尚不支持接管 Cursor CLI，因此 Cursor 保留原生账号：可以从代理卡片或通过 `fen agent login cursor` 登录，并在 Cursor 内通过 `/model` 或 `--model` 选择模型。
 
 Antigravity CLI（`agy`）会按 Google 的发布清单安装到云电脑，并且始终使用从这台 Mac 迁移过去的 Google 登录信息（agy 保存在钥匙串里的条目，或 `~/.gemini/antigravity-cli/antigravity-oauth-token`）。Fennec 不会让它通过 Magpie 接管：那等于反向代理 Google 的 Gemini 服务，可能导致账号被封禁。请先在 Mac 上登录 agy，Fennec 会把登录信息迁移到云端。
 

@@ -23,7 +23,8 @@ configuration and Fennec's model picker; disabled uses isolated native credentia
 Warm Grok model changes select an existing verified Magpie model table in Go,
 preserving its API, key and context limit and disabling remote campaign overrides.
 Both
-installers publish only `cursor-agent` and `grok`, never `cursor` or `agent`.
+installers publish `cursor-agent` and `grok`, never `cursor`. The Cursor installer
+also publishes `agent` when no other `agent` exists, and never replaces one.
 Configuration migration excludes hooks, plugins, MCP commands, trust grants and
 session history. Conflicting credentials preserve the cloud refresh or defer
 the conflict rather than overwriting an unverified login.

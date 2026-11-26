@@ -3,9 +3,11 @@ package setup
 import "strings"
 
 // Vendor distributions are installed in a fresh prefix. No vendor installer is
-// run against the user's home, so neither can replace the shared `agent` alias.
+// run against the user's home. Cursor's `agent` alias is published only where
+// no other `agent` exists, so another vendor's command is never replaced.
 func ensureVendorAgentScript(id string) string {
 	name := "grok"
+	short := ":"
 	download := `case "$(uname -m)" in
  x86_64) arch=x86_64 ;; aarch64|arm64) arch=aarch64 ;; *) exit 69 ;; esac
 base=https://x.ai/cli
@@ -21,6 +23,7 @@ source="$stage/grok"
 `
 	if id == "cursor" {
 		name = "cursor-agent"
+		short = `[ -e "$HOME/.local/bin/agent" ] || [ -L "$HOME/.local/bin/agent" ] || { ln -s "$binary" "$HOME/.local/bin/agent.tmp.$$" && mv -f "$HOME/.local/bin/agent.tmp.$$" "$HOME/.local/bin/agent"; }`
 		download = `case "$(uname -m)" in
  x86_64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; *) exit 69 ;; esac
 curl -fsSL --retry 2 --max-time 30 https://cursor.com/install -o "$stage/install.sh"
@@ -53,7 +56,7 @@ chmod 700 "$stage/antigravity"
 source="$stage/antigravity"
 `
 	}
-	return strings.ReplaceAll(`set -eu
+	return strings.ReplaceAll(strings.ReplaceAll(`set -eu
 export PATH="$HOME/.local/fennec/agents/bin:$HOME/.local/bin:$PATH"
 umask 077
 mkdir -p "$HOME/.local/fennec/install-locks" "$HOME/.local/fennec/agent-versions" "$HOME/.local/fennec/agents/bin" "$HOME/.local/bin"
@@ -63,6 +66,7 @@ binary="$HOME/.local/fennec/agents/bin/@NAME@"
 publish_alias() {
  ln -s "$binary" "$HOME/.local/bin/@NAME@.tmp.$$"
  mv -f "$HOME/.local/bin/@NAME@.tmp.$$" "$HOME/.local/bin/@NAME@"
+ @SHORT@
 }
 if [ -x "$binary" ]; then publish_alias; exit 0; fi
 if command -v @NAME@ >/dev/null 2>&1; then exit 0; fi
@@ -75,5 +79,5 @@ ln -s "$source" "$binary.tmp.$$"
 mv -f "$binary.tmp.$$" "$binary"
 trap - EXIT HUP INT TERM
 publish_alias
-`, "@NAME@", name)
+`, "@NAME@", name), "@SHORT@", short)
 }

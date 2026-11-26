@@ -41,8 +41,10 @@ func ShellIntegration(shell, shims, dispatcher string) (string, error) {
 	return base, nil
 }
 
+// agentCommandNames includes Cursor's `agent` alias: the dispatcher runs it
+// unchanged when it is not Cursor's CLI.
 func agentCommandNames() []string {
-	names := []string{}
+	names := []string{agents.CursorAlias}
 	for id := range Supported {
 		names = append(names, agents.BinaryName(id))
 	}
