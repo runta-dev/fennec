@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/agylog"
 	"fennec/internal/board"
 	"fennec/internal/gateway"
 	"fennec/internal/localssh"
@@ -371,6 +372,15 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 				row["where"] = where
 			}
 		}
+		// agy never sets a terminal title; it names the conversation in its
+		// own index instead, so every client shows that name (FEN-72).
+		if title, _ := row["title"].(string); strings.TrimSpace(title) == "" && isAgy(row) {
+			if cwd, ok := row["cwd"].(string); ok {
+				if named, err := agylog.Title(r.Home, cwd); err == nil && named != "" {
+					row["title"] = named
+				}
+			}
+		}
 		rows[i] = row
 	}
 	listing["terminals"], err = json.Marshal(rows)
@@ -399,4 +409,12 @@ func (r *LocalRuntime) List(ctx context.Context) (json.RawMessage, error) {
 	}
 	listing["gateway"], _ = json.Marshal(map[string]string{"status": gateway.ReadState(r.Home).Status})
 	return json.Marshal(listing)
+}
+
+// isAgy reports whether a terminal row is an Antigravity CLI session.
+func isAgy(row map[string]any) bool {
+	if labels, ok := row["labels"].(map[string]any); ok && labels["fennec.agent"] == "agy" {
+		return true
+	}
+	return row["agent"] == "antigravity" || row["agent"] == "agy"
 }

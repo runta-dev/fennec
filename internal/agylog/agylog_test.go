@@ -45,6 +45,14 @@ func TestTranscriptIsNewestConversationOfTheFolder(t *testing.T) {
 	if err != nil || path != want {
 		t.Fatalf("got %q %v, want %q", path, err, want)
 	}
+	db.Exec(`UPDATE conversation_summaries SET title = ' Fix login ' WHERE conversation_id = ?`, rows[1][0])
+	db.Exec(`UPDATE conversation_summaries SET title = 'Older' WHERE conversation_id = ?`, rows[0][0])
+	if title, err := Title(home, "/work/a"); title != "Fix login" || err != nil {
+		t.Fatalf("title %q %v", title, err)
+	}
+	if title, _ := Title(home, "/work/c"); title != "" {
+		t.Fatal("another folder's title", title)
+	}
 	if path, _ := Transcript(home, "/work/c"); path != "" {
 		t.Fatal("another folder's conversation", path)
 	}

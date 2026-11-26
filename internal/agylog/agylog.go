@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -29,13 +30,34 @@ func Dir(home string) string { return filepath.Join(home, ".gemini", "antigravit
 // Transcript returns the log of the newest conversation agy started in cwd,
 // or "" when it has none yet.
 func Transcript(home, cwd string) (string, error) {
-	if !filepath.IsAbs(cwd) {
+	best, _, err := newest(home, cwd)
+	if err != nil || best == "" {
+		return "", err
+	}
+	path := filepath.Join(Dir(home), "brain", best, ".system_generated", "logs", "transcript_full.jsonl")
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 		return "", nil
+	}
+	return path, nil
+}
+
+// Title returns the title agy gave the newest conversation it started in
+// cwd ("General Greeting"), or "" before it has named one. agy never sets
+// a terminal title, so this is the only name its sessions have (FEN-72).
+func Title(home, cwd string) (string, error) {
+	_, title, err := newest(home, cwd)
+	return title, err
+}
+
+// newest finds the newest conversation agy started in cwd: its ID and title.
+func newest(home, cwd string) (string, string, error) {
+	if !filepath.IsAbs(cwd) {
+		return "", "", nil
 	}
 	cwd = filepath.Clean(cwd)
 	index := filepath.Join(Dir(home), "conversation_summaries.db")
 	if _, err := os.Stat(index); err != nil {
-		return "", nil
+		return "", "", nil
 	}
 	u := url.URL{Scheme: "file", Path: index}
 	q := u.Query()
@@ -44,20 +66,20 @@ func Transcript(home, cwd string) (string, error) {
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT conversation_id, workspace_uris, last_modified_time FROM conversation_summaries")
+	rows, err := db.Query("SELECT conversation_id, title, workspace_uris, last_modified_time FROM conversation_summaries")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer rows.Close()
-	best, bestTime := "", time.Time{}
+	best, bestTitle, bestTime := "", "", time.Time{}
 	for rows.Next() {
 		var id string
-		var uris sql.NullString
+		var title, uris sql.NullString
 		var last any
-		if rows.Scan(&id, &uris, &last) != nil || !conversationID.MatchString(id) {
+		if rows.Scan(&id, &title, &uris, &last) != nil || !conversationID.MatchString(id) {
 			continue
 		}
 		var list []string
@@ -70,17 +92,13 @@ func Transcript(home, cwd string) (string, error) {
 			}
 		}
 		if when := modified(last); matches && (best == "" || when.After(bestTime)) {
-			best, bestTime = id, when
+			best, bestTitle, bestTime = id, title.String, when
 		}
 	}
-	if err := rows.Err(); err != nil || best == "" {
-		return "", err
+	if err := rows.Err(); err != nil {
+		return "", "", err
 	}
-	path := filepath.Join(Dir(home), "brain", best, ".system_generated", "logs", "transcript_full.jsonl")
-	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-		return "", nil
-	}
-	return path, nil
+	return best, strings.TrimSpace(bestTitle), nil
 }
 
 // modified reads last_modified_time as the driver gives it: a time, or the

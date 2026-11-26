@@ -3,8 +3,12 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fennec/internal/agylog"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -61,5 +65,43 @@ func TestHerdrReplyRequiresMatchingSuccessfulResponse(t *testing.T) {
 	}
 	if raw, err := decodeHerdrReply([]byte(`{"jsonrpc":"2.0","id":1,"result":{"terminals":[]}}`)); err != nil || string(raw) != `{"terminals":[]}` {
 		t.Fatalf("%s %v", raw, err)
+	}
+}
+
+func TestSessionListNamesAgySessionsFromItsIndex(t *testing.T) {
+	home := t.TempDir()
+	dir := agylog.Dir(home)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(dir, "conversation_summaries.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, title TEXT, workspace_uris TEXT, last_modified_time TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO conversation_summaries VALUES ('72994c46-a116-42b4-9bc8-ff387784b31e', 'General Greeting', '["file:///root/.fen/great-gum"]', '2026-11-26 16:28:17.324473599+00:00')`); err != nil {
+		t.Fatal(err)
+	}
+	r := &LocalRuntime{Home: home, Query: func(context.Context, string, any) (json.RawMessage, error) {
+		return json.RawMessage(`{"terminals":[
+			{"address":"a","state":"live","title":"","cwd":"/root/.fen/great-gum","status":{"app":"antigravity"},"labels":{"fennec.agent":"agy","fennec.session":"great-gum"}},
+			{"address":"b","state":"live","title":"Own title","cwd":"/root/.fen/great-gum","status":{"app":"antigravity"},"labels":{"fennec.agent":"agy"}},
+			{"address":"c","state":"live","title":"","cwd":"/root/.fen/great-gum","status":{"app":"codex"},"labels":{"fennec.agent":"codex"}}]}`), nil
+	}}
+	output, err := r.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Terminals []map[string]any `json:"terminals"`
+	}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatal(err)
+	}
+	if got := []any{result.Terminals[0]["title"], result.Terminals[1]["title"], result.Terminals[2]["title"]}; got[0] != "General Greeting" || got[1] != "Own title" || got[2] != "" {
+		t.Fatal(got)
 	}
 }
