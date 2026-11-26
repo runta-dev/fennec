@@ -14,6 +14,10 @@
 #   FENNEC_PREVIOUS_COMPONENTS  previous release's *-components.json; the build
 #                               fails if a nested component's inputs are
 #                               unchanged but its content is not
+#   FENNEC_BUILD_DESKTOP        1 (default) ships Fennec Terminal, whose
+#                               Settings switch stays off by default; it needs
+#                               Rust, Zig 0.16 and the desktop/vendor
+#                               submodules. 0 is for a local --dry-run only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dry_run=0
@@ -72,10 +76,15 @@ fi
 version="${FENNEC_VERSION:-0.3.$(TZ=Asia/Singapore date +%m%d%H%M | sed 's/^0*//')}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version' >&2; exit 1; }
 export FENNEC_VERSION="$version" FENNEC_SIGN_IDENTITY="$identity" FENNEC_RELEASE=1
+# Releases carry Fennec Terminal so its Settings switch exists for every user;
+# the feature itself stays off until they turn it on.
+export FENNEC_BUILD_DESKTOP="${FENNEC_BUILD_DESKTOP:-1}"
+[[ $dry_run == 1 || "$FENNEC_BUILD_DESKTOP" == 1 ]] || { echo 'A release must include Fennec Terminal (FENNEC_BUILD_DESKTOP=1)' >&2; exit 1; }
 export FENNEC_BUILD_DIR="$release_work/build" FENNEC_DAEMON_BINARY="$release_work/fennec-daemon"
 go build -trimpath -o "$FENNEC_DAEMON_BINARY" .
 ./scripts/build-macos.sh
 app="$FENNEC_BUILD_DIR/Fennec.app"
+if [[ "$FENNEC_BUILD_DESKTOP" == 1 ]]; then export FENNEC_REQUIRE_DESKTOP=1; fi
 ./scripts/verify-macos-package.sh "$app" "$version"
 mkdir -p "$release_dir"
 if [[ $dry_run == 0 ]]; then

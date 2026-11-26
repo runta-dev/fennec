@@ -27,6 +27,8 @@ submodules (see `desktop/README.md`). Without it the bundle has no
 Terminal** switch; with it, the switch (off by default, also
 `fen settings fennec-terminal on|off`) opens the window at launch and from
 the menu.
+Release builds always include it (see "Signed macOS releases"), so the switch
+is there for every user and stays off until they turn it on.
 
 Local builds are versioned `0.3.<MMDDHHMM>-dev` (Singapore time), shown in the menu
 and Settings, and never install a release over themselves. Release packaging sets
@@ -154,6 +156,8 @@ The workflow checks out an exact Fennec commit and verifies that it belongs to
 `main` before exposing signing credentials to the packaging step. It produces:
 
 - A Developer ID signed, notarized, and stapled `Fennec.app` inside ZIP and DMG.
+  It always contains Fennec Terminal (`FENNEC_BUILD_DESKTOP=1`): the workflow
+  installs Rust and Zig 0.16, and packaging fails if `fennec-desktop` is missing.
 - `SHA256SUMS`, notarization results, and `provenance.json` recording the Fennec
   source commit and the Errand Actions run.
 

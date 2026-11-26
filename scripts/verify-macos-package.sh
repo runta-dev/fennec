@@ -9,9 +9,17 @@ go run ./cmd/check-bundle-permissions "$app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$app/Contents/Info.plist")" == APPL ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "$app/Contents/Info.plist")" == 13.0 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
-# Fennec Terminal (FENNEC_BUILD_DESKTOP=1) is all or nothing.
+# Fennec Terminal (FENNEC_BUILD_DESKTOP=1) is all or nothing; releases set
+# FENNEC_REQUIRE_DESKTOP=1 so a bundle without it cannot ship.
+if [[ "${FENNEC_REQUIRE_DESKTOP:-0}" == 1 && ! -e "$app/Contents/MacOS/fennec-desktop" ]]; then
+  echo 'Fennec Terminal (Contents/MacOS/fennec-desktop) is missing' >&2; exit 1
+fi
 if [[ -e "$app/Contents/MacOS/fennec-desktop" ]]; then
   [[ -x "$app/Contents/MacOS/hc" && -x "$app/Contents/Resources/fennec-hc" && -x "$app/Contents/Resources/fennec-hc-local" ]]
+  for binary in fennec-desktop hc; do
+    lipo -archs "$app/Contents/MacOS/$binary" | grep -qw arm64
+    codesign --verify --strict "$app/Contents/MacOS/$binary"
+  done
 else
   [[ ! -e "$app/Contents/MacOS/hc" && ! -e "$app/Contents/Resources/fennec-hc" && ! -e "$app/Contents/Resources/fennec-hc-local" ]]
 fi
