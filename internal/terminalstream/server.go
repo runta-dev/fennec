@@ -212,7 +212,10 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				continue
 			}
 			sessionCtx, sessionCancel := context.WithCancel(ctx)
-			session := &serverSession{deviceRelay: deviceRelay, commandStream: commandStream, ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: uint16(max(1, min(frame.Rows, 1000))), columns: uint16(max(1, min(frame.Columns, 1000)))}
+			session := &serverSession{deviceRelay: deviceRelay, commandStream: commandStream, ctx: sessionCtx, cancel: sessionCancel, window: newWindow(), input: make(chan Frame, 256), images: frame.Type == "launch" || frame.Type == "attach", inputBudget: Window, rows: 40, columns: 120}
+			if rows, columns, ok := viewerSize(frame.Rows, frame.Columns); ok {
+				session.rows, session.columns = rows, columns
+			}
 			if hasFeature(frame.Features, CapabilityWireWindow) {
 				session.wire = newWireWindow()
 				if frame.Type == "socket" && writes.packets.enabled.Load() {
@@ -495,9 +498,13 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 				emit(Frame{Type: "error", ID: frame.ID, Message: "input window exceeded"})
 			}
 		case "resize":
+			rows, columns, ok := viewerSize(frame.Rows, frame.Columns)
+			if !ok {
+				// A viewer that is hidden or not laid out yet reports no real size.
+				break
+			}
 			session.mu.Lock()
-			session.rows = uint16(max(1, min(frame.Rows, 1000)))
-			session.columns = uint16(max(1, min(frame.Columns, 1000)))
+			session.rows, session.columns = rows, columns
 			if session.conf != nil {
 				session.conf.Resize(int(session.rows), int(session.columns))
 			}
@@ -521,6 +528,24 @@ func (session *serverSession) read(data []byte) (int, error) {
 	// File.Read parks the goroutine in the runtime poller. Do not hold mu
 	// while waiting: closePTY must be able to interrupt reads on cancellation.
 	return session.file.Read(data)
+}
+
+// The smallest viewer size a remote terminal takes. Herdr gives a terminal
+// its newest viewer's size, so a viewer reporting 0x0 or 1x1 (a view that is
+// hidden or not laid out yet) shrank the agent to one cell: Claude Code
+// redrew its whole screen as "─", and the thread's peek of it was empty
+// (FEN-37). The phone applies the same floor (mobile Attach/Resize).
+const (
+	minViewerColumns = 20
+	minViewerRows    = 5
+)
+
+// viewerSize is a viewer's reported size, or false when it is too small to be real.
+func viewerSize(rows, columns int) (uint16, uint16, bool) {
+	if rows < minViewerRows || columns < minViewerColumns {
+		return 0, 0, false
+	}
+	return uint16(min(rows, 1000)), uint16(min(columns, 1000)), true
 }
 
 // Caller holds session.mu; resize must preserve O_NONBLOCK just like IO.

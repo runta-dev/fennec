@@ -104,7 +104,8 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		return encoder.Encode(frame)
 	}
 	columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
-	if err != nil {
+	if err != nil || columns < 20 || rows < 5 {
+		// No terminal, or one not laid out yet: a 0x0 size would shrink the agent (FEN-37).
 		columns, rows = 120, 40
 	}
 	interactive := term.IsTerminal(int(os.Stdin.Fd()))
@@ -286,7 +287,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				return
 			case <-resize:
 				columns, rows, err := term.GetSize(int(os.Stdin.Fd()))
-				if err == nil {
+				if err == nil && columns >= 20 && rows >= 5 {
 					engine.Resize(rows, columns)
 					send(terminalstream.Frame{Type: "resize", Rows: rows, Columns: columns})
 				}

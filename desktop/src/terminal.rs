@@ -2607,7 +2607,14 @@ impl Render for TerminalView {
             .child(
                 canvas(
                     move |bounds, window, _cx| {
-                        let (cols, rows) = grid_size(bounds.size, cell);
+                        // A view that is hidden or not laid out yet has no
+                        // size: fitting it would shrink the program (FEN-37).
+                        let (cols, rows) = if bounds.size.width < cell.width * 2.0 || bounds.size.height < cell.height {
+                            let g = grid.borrow();
+                            (g.vt.cols, g.vt.rows)
+                        } else {
+                            grid_size(bounds.size, cell)
+                        };
                         grid.borrow_mut().fit(cols, rows, cell, window.scale_factor());
                     },
                     move |bounds, _, window, cx| {
