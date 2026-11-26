@@ -114,6 +114,10 @@ final class SessionStore {
     var macOnline: Bool
     var cloudRunning: Bool
     var enabledAgents: Set<AgentKind>
+    /// Which agents can start on the cloud computer; nil until read, and in
+    /// demo mode (FEN-73).
+    var cloudAgents: CloudAgents?
+    @ObservationIgnored private var cloudAgentsReadAt: Date?
     /// Nil in demo mode.
     let core: FennecmobileSessions?
     /// Why the last call to the cloud computer failed; nil once one succeeds.
@@ -259,6 +263,26 @@ final class SessionStore {
         demoReplies[id]?.cancel()
         demoReplies[id] = nil
         sessions.removeAll { $0.id == id }
+    }
+
+    /// Agents the + menu offers. Only agents that can start on the cloud
+    /// computer: one the Mac hasn't moved there has no sign-in on it, and its
+    /// session fails to start (FEN-73). Until the cloud computer says, or when
+    /// it is too old to, every agent turned on in Settings.
+    var newSessionAgents: [AgentKind] {
+        let enabled = AgentKind.allCases.filter { enabledAgents.contains($0) || $0 == .codex }
+        guard core != nil, let cloudAgents else { return enabled }
+        guard cloudAgents.connected else { return [] }
+        guard cloudAgents.known else { return enabled }
+        return enabled.filter { cloudAgents.agents[$0.launcherID]?.ready == true }
+    }
+
+    func loadCloudAgents() async {
+        guard let core else { return }
+        cloudAgentsReadAt = .now
+        guard let json = await live({ try goCall { core.cloudAgents($0) } }),
+              let state = try? JSONDecoder().decode(CloudAgents.self, from: Data(json.utf8)) else { return }
+        cloudAgents = state
     }
 
     /// Creates an empty session. The first message is sent from the chat page.
@@ -427,6 +451,14 @@ extension SessionStore {
 
 // MARK: Live sessions from the cloud computer
 
+/// fennecmobile.CloudAgentsState: which agents can start on the cloud computer.
+struct CloudAgents: Decodable, Equatable {
+    struct Agent: Decodable, Equatable { var ready: Bool }
+    var connected: Bool
+    var known: Bool
+    var agents: [String: Agent]
+}
+
 /// How long the last session list took, by stage (mobile listTiming).
 struct ListTiming: Decodable, Equatable {
     var connect_ms: Int
@@ -559,6 +591,9 @@ extension SessionStore {
         if let listCache { try? data.write(to: listCache, options: .atomic) }
         let previous = apply(rows)
         loaded = true
+        if transcripts, (cloudAgentsReadAt.map { Date.now.timeIntervalSince($0) > 60 } ?? true) {
+            Task { await loadCloudAgents() }
+        }
         // Keep each session's log current so the list shows its latest update.
         // The first read takes the tail of the log; later reads only new lines.
         for session in sessions where session.state != previous[session.id]?.state || session.state == .working {

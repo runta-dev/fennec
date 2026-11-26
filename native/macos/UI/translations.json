@@ -737,6 +737,10 @@
       "en-US": "No QR code in that image.",
       "zh-CN": "这张图片中没有二维码。"
     },
+    "ios.no_cloud_agents": {
+      "en-US": "No agents on your cloud computer yet. Move one there in Fennec on your Mac.",
+      "zh-CN": "云电脑上还没有可用的 agent。请先在 Mac 上的 Fennec 中把 agent 迁移到云电脑。"
+    },
     "ios.create_failed": {
       "en-US": "Couldn't start the session. Please try again.",
       "zh-CN": "无法创建会话，请重试。"

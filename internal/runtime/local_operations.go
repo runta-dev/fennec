@@ -109,7 +109,7 @@ func (o LocalOperation) Validate() error {
 		}
 		return o.CredentialWatch.Validate()
 	}
-	if o.Kind == "system_metrics" {
+	if o.Kind == "system_metrics" || o.Kind == "cloud_agents" {
 		return nil
 	}
 	if o.Kind == "model_accounts" && o.Accounts != nil {
@@ -163,6 +163,9 @@ func (r *LocalRuntime) Operation(ctx context.Context, o LocalOperation) (json.Ra
 	}
 	if o.Kind == "system_metrics" {
 		return json.Marshal(CollectSystemMetrics())
+	}
+	if o.Kind == "cloud_agents" {
+		return json.Marshal(setup.CloudAgents(r.Home))
 	}
 	if o.Kind == "reconfigure_runtime" {
 		result, err := setup.ReconfigureRuntime(ctx, r.Home, *o.Configuration)

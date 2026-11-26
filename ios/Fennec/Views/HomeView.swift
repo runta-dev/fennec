@@ -94,11 +94,15 @@ struct HomeView: View {
 
     @ViewBuilder
     private var agentChoices: some View {
-        ForEach(AgentKind.allCases.filter { store.enabledAgents.contains($0) || $0 == .codex }) { agent in
+        let agents = store.newSessionAgents
+        ForEach(agents) { agent in
             Button { createSession(agent) } label: {
                 Label { Text(agent.displayName) } icon: { AgentIcon(agent: agent, size: 20) }
             }
             .accessibilityIdentifier("create-agent-\(agent.rawValue)")
+        }
+        if agents.isEmpty {
+            Text(L10n.text("ios.no_cloud_agents"))
         }
     }
 
@@ -108,7 +112,11 @@ struct HomeView: View {
         Task {
             defer { creatingSession = false }
             do { path.append(.chat(try await store.launch(agent: agent))) }
-            catch { creationFailed = true }
+            catch {
+                creationFailed = true
+                // The agent may have left the cloud computer since the last read.
+                await store.loadCloudAgents()
+            }
         }
     }
 
