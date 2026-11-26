@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
 
-// Shows the third-party notices bundled in Contents/Resources/licenses. Each
+// Opens upstream licenses of integrated projects on GitHub, and shows the
+// third-party notices bundled in Contents/Resources/licenses. Each bundled
 // document opens in its own window with a WKWebView, whose web content
 // process renders it without blocking the menu-bar UI. Only the documents named here can be opened.
 final class LicenseViewer: NSObject, WKNavigationDelegate, NSWindowDelegate {
@@ -11,6 +12,17 @@ final class LicenseViewer: NSObject, WKNavigationDelegate, NSWindowDelegate {
     }
     private static let documents: [String: Document] = [
         "fennec": Document(file: "THIRD_PARTY_NOTICES.md", titleKey: "ui.third_party_notices"),
+    ]
+    // Open-source projects Fennec integrates. Each opens the project's own
+    // LICENSE on GitHub (default branch) in the browser, so the text shown is
+    // always upstream's rather than a copy pinned in the app.
+    private static let upstreamLicenses: [String: URL] = [
+        "magpie": URL(string: "https://github.com/yetone/magpie/blob/main/LICENSE")!,
+        "herdr-app": URL(string: "https://github.com/herdrdev/herdr-app/blob/master/LICENSE")!,
+        "herdr-core": URL(string: "https://github.com/herdrdev/herdr-core/blob/master/LICENSE")!,
+        "ghostty": URL(string: "https://github.com/ghostty-org/ghostty/blob/main/LICENSE")!,
+        "xterm": URL(string: "https://github.com/xtermjs/xterm.js/blob/master/LICENSE")!,
+        "codex": URL(string: "https://github.com/openai/codex/blob/main/LICENSE")!,
     ]
     private var windows: [String: NSWindow] = [:]
 
@@ -22,6 +34,9 @@ final class LicenseViewer: NSObject, WKNavigationDelegate, NSWindowDelegate {
     /// name is unknown or the file is not in this bundle.
     @discardableResult
     func open(_ name: String, language: String) -> Bool {
+        if let url = Self.upstreamLicenses[name] {
+            return NSWorkspace.shared.open(url)
+        }
         guard let document = Self.documents[name], let directory = Self.directory() else { return false }
         let url = directory.appendingPathComponent(document.file)
         guard FileManager.default.isReadableFile(atPath: url.path) else { return false }
