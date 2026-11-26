@@ -88,7 +88,9 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 		if run.State == "not_started" || run.Location != "cloud" || run.Agent != "" && run.Agent != agent {
 			continue
 		}
-		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) {
+		// Only a run that launched can be resumed: one whose launch failed
+		// (FEN-11: a follow-up whose resume failed) left no session behind.
+		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) && runtime.launched(run.Session) {
 			previous = run.Session
 		}
 		for _, t := range list.Terminals {
@@ -150,4 +152,14 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 	terminal.Labels["fennec.queue"] = project
 	terminal.Labels["fennec.request"] = fmt.Sprint(number)
 	return terminal, continued, nil
+}
+
+// launched reports whether a cloud session was ever launched: Launch records it
+// before starting the terminal.
+func (runtime *LocalRuntime) launched(session string) bool {
+	if !sessionIDPattern.MatchString(session) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(runtime.Home, ".local/fennec/launches", session+".json"))
+	return err == nil
 }

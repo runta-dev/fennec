@@ -100,3 +100,55 @@ func TestContinueThreadStartsFreshWhenNothingToResume(t *testing.T) {
 		t.Fatal(launches, continued, terminal)
 	}
 }
+
+// FEN-11: a retry after a run whose launch failed resumes the last run that
+// did launch, instead of failing on the failed run's missing launch record.
+func TestContinueThreadSkipsARunThatNeverLaunched(t *testing.T) {
+	home := t.TempDir()
+	store := board.Store{Home: home}
+	store.SetRouting(board.Routing{Device: "1234abcd"})
+	oldID, failedID, newID := strings.Repeat("a", 32), strings.Repeat("c", 32), strings.Repeat("b", 32)
+	p, _ := store.CreateProject(board.Project{Name: "Thread", Queue: 1})
+	request, _ := store.CreateRequest(p.ID, "me", "Question", "", "Ask")
+	store.ClaimAt(p.ID, request.Number, oldID, "claude", "cloud")
+	store.Complete(p.ID, request.Number, oldID, "claude", "Reply", board.NeedsYou)
+	store.FollowUp(p.ID, request.Number, "me", "More", nil)
+	store.ClaimAt(p.ID, request.Number, failedID, "claude", "cloud")
+	if _, err := store.Fail(p.ID, request.Number, failedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Retry(p.ID, request.Number); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ClaimAt(p.ID, request.Number, newID, "claude", "cloud"); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(home, ".local/fennec/launches")
+	os.MkdirAll(root, 0700)
+	data, _ := json.Marshal(LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
+	os.WriteFile(filepath.Join(root, oldID+".json"), data, 0600)
+	cwd := filepath.Join(home, ".fen", oldID)
+	writeFixture(t, filepath.Join(cloudAgentHome(home, "claude"), "projects", ClaudeProjectDirectory(cwd), conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"`+cwd+`","message":"Ask"}`+"\n", time.Now().Add(-time.Hour))
+	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ls" {
+			return []byte(`{"terminals":[]}`), nil
+		}
+		return json.Marshal(LocalTerminal{Address: "t2", State: "live"})
+	}}
+	backend.Query = func(_ context.Context, method string, _ any) (json.RawMessage, error) {
+		if method == "terminal.list" {
+			return json.RawMessage(`{"terminals":[]}`), nil
+		}
+		return json.RawMessage(`{}`), nil
+	}
+	_, continued, err := backend.ContinueThread(context.Background(), store, p.ID, request.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var launch LocalLaunch
+	data, _ = os.ReadFile(filepath.Join(root, newID+".json"))
+	json.Unmarshal(data, &launch)
+	if !continued || launch.ResumeFrom != oldID {
+		t.Fatalf("continued=%v resumed from %q, want %q", continued, launch.ResumeFrom, oldID)
+	}
+}

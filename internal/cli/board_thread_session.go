@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -87,7 +88,9 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 		if run.State == "not_started" || run.Location != "local" || run.Agent != "" && run.Agent != agent {
 			continue
 		}
-		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) {
+		// Only a run that launched can be resumed: one whose launch failed
+		// (FEN-11) left no session behind. Launches are recorded in root first.
+		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) && launchedLocally(root, run.Session) {
 			previous = run.Session
 		}
 		for _, t := range list.Terminals {
@@ -183,4 +186,13 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 		return r.LocalTerminal{}, false, err
 	}
 	return terminal, continued, nil
+}
+
+// launchedLocally reports whether continueThread ever launched this session.
+func launchedLocally(root, session string) bool {
+	if session == "" || strings.ContainsAny(session, "/\\.") {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, session+".json"))
+	return err == nil
 }

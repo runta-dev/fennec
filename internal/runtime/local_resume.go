@@ -38,6 +38,10 @@ func (runtime *LocalRuntime) resumeArguments(request LocalLaunch, executable str
 		}
 		seen[id] = true
 		data, err := os.ReadFile(filepath.Join(runtime.Home, ".local/fennec/launches", id+".json"))
+		if os.IsNotExist(err) {
+			// That session never launched, so it has no conversation.
+			return nil, "", ErrResumeUnavailable
+		}
 		if err != nil {
 			return nil, "", err
 		}
