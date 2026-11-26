@@ -31,6 +31,10 @@ struct FennecApp: App {
                     // Back in the foreground: check the connection now, not at the next list.
                     if let core = app.store.core { Task.detached { core.warm() } }
                 }
+                // FEN-68: the connection may die while the app is suspended.
+                // Say so now, so the first read back in the foreground checks
+                // it (and dials a new one alongside) instead of hanging on it.
+                if phase == .background, let core = app.store.core { core.suspend() }
             }
             .onChange(of: app.auth.status == .signedIn) { _, signedIn in
                 // Signed in (or restored at launch): connect while the home

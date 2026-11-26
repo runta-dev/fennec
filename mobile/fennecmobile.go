@@ -237,6 +237,13 @@ type Sessions struct {
 	transport      *terminalstream.Transport
 	residentBusy   bool
 
+	// suspect: the app was in the background (Suspend), so the connection
+	// may have died while it was suspended. The next use checks it first
+	// (settle); resuming is closed when that check is over.
+	suspect  bool
+	resuming chan struct{}
+	dialHook func(context.Context) (*ssh.Client, string, string, error) // tests
+
 	timingMu sync.Mutex
 	timing   listTiming
 }
@@ -326,9 +333,12 @@ func findShared(ctx context.Context, client *runta.Client) (runta.Runtime, error
 }
 
 func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
+	if err := s.settle(ctx); err != nil {
+		return nil, "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	client, token, epoch, err := s.runtimeClient()
+	_, token, _, err := s.runtimeClient()
 	if err != nil {
 		return nil, "", err
 	}
@@ -338,6 +348,26 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 	if s.client != nil {
 		s.client.Close()
 		s.client = nil
+	}
+	connection, sharedID, token, err := s.dial(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	s.client, s.runtimeID, s.token = connection, sharedID, token
+	s.oldTerminal = false // the Mac may have updated it since
+	s.rememberRuntime(sharedID)
+	return connection, sharedID, nil
+}
+
+// dial opens a new connection to the account's cloud computer; it does not
+// make it the current one.
+func (s *Sessions) dial(ctx context.Context) (*ssh.Client, string, string, error) {
+	if s.dialHook != nil {
+		return s.dialHook(ctx)
+	}
+	client, token, epoch, err := s.runtimeClient()
+	if err != nil {
+		return nil, "", "", err
 	}
 	// The cloud computer this phone used last: with its pinned host key the
 	// SSH handshake starts at once, alongside the API checks, which must
@@ -359,14 +389,119 @@ func (s *Sessions) connect(ctx context.Context) (*ssh.Client, string, error) {
 		var apiErr *runta.APIError
 		if errors.As(err, &apiErr) && apiErr.Status == 401 {
 			s.auth.manager.RejectCredential(token, epoch)
-			return nil, "", errSessionExpired
+			return nil, "", "", errSessionExpired
 		}
-		return nil, "", err
+		return nil, "", "", err
 	}
-	s.client, s.runtimeID, s.token = connection, sharedID, token
-	s.oldTerminal = false // the Mac may have updated it since
-	s.rememberRuntime(sharedID)
-	return connection, sharedID, nil
+	return connection, sharedID, token, nil
+}
+
+// resumeGrace is how long a connection that was suspended may take to
+// answer a keepalive before a new one is dialed alongside (FEN-68).
+var resumeGrace = 250 * time.Millisecond
+
+// Suspend says the app went to the background. iOS suspends it, and its
+// connection often dies meanwhile without a word, so the next use checks
+// it first instead of hanging on it.
+func (s *Sessions) Suspend() {
+	s.mu.Lock()
+	if s.client != nil {
+		s.suspect = true
+	}
+	s.mu.Unlock()
+}
+
+// settle waits for the check of a suspect connection, starting it if
+// nobody has: every call made while the app comes back (the lists, the
+// board stream, Warm) waits for one answer, not each for its own timeout.
+func (s *Sessions) settle(ctx context.Context) error {
+	s.mu.Lock()
+	if s.suspect && s.resuming == nil {
+		s.suspect = false
+		if s.client != nil {
+			done := make(chan struct{})
+			s.resuming = done
+			go s.recheck(s.client, done)
+		}
+	}
+	wait := s.resuming
+	s.mu.Unlock()
+	if wait == nil {
+		return nil
+	}
+	select {
+	case <-wait:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// recheck finds out whether a suspended connection still works. It sends
+// a keepalive; when that hasn't answered within resumeGrace it also dials
+// a new connection, and whichever is ready first is used. A dead link
+// then costs one connect, not a keepalive timeout and then a connect.
+func (s *Sessions) recheck(old *ssh.Client, done chan struct{}) {
+	defer func() {
+		s.mu.Lock()
+		s.resuming = nil
+		s.mu.Unlock()
+		close(done)
+	}()
+	alive := make(chan bool, 1)
+	go func() { _, _, err := old.SendRequest("keepalive@openssh.com", true, nil); alive <- err == nil }()
+	grace := time.NewTimer(resumeGrace)
+	defer grace.Stop()
+	select {
+	case ok := <-alive:
+		if !ok {
+			s.drop(old) // connect dials anew
+		}
+		return
+	case <-grace.C:
+	}
+	type dialed struct {
+		client    *ssh.Client
+		id, token string
+		err       error
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	fresh := make(chan dialed, 1)
+	go func() { c, id, token, err := s.dial(ctx); fresh <- dialed{c, id, token, err} }()
+	var d dialed
+	select {
+	case ok := <-alive:
+		if ok {
+			cancel()
+			go func() {
+				if d := <-fresh; d.client != nil {
+					d.client.Close()
+				}
+			}()
+			return
+		}
+		d = <-fresh
+	case d = <-fresh:
+	}
+	if d.err != nil {
+		s.drop(old) // connect dials again and reports what fails
+		return
+	}
+	s.mu.Lock()
+	adopted := s.client == old
+	if adopted {
+		old.Close()
+		s.client, s.runtimeID, s.token = d.client, d.id, d.token
+		s.oldTerminal = false
+	}
+	s.mu.Unlock()
+	if !adopted {
+		d.client.Close()
+		return
+	}
+	s.rememberRuntime(d.id)
+	s.warmResident(d.client)
 }
 
 func (s *Sessions) rememberedRuntime() string {
@@ -385,24 +520,9 @@ func (s *Sessions) rememberRuntime(id string) {
 
 // Warm connects ahead of the first request (after sign-in, at launch, back
 // in the foreground). A connection that died while the app was suspended is
-// found with a keepalive and replaced now, not by the next list.
+// found now (settle), not by the next list.
 func (s *Sessions) Warm() {
-	s.mu.Lock()
-	client := s.client
-	s.mu.Unlock()
-	if client != nil {
-		alive := make(chan bool, 1)
-		go func() { _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); alive <- err == nil }()
-		select {
-		case ok := <-alive:
-			if ok {
-				s.warmResident(client)
-				return
-			}
-		case <-time.After(3 * time.Second):
-		}
-		s.drop(client)
-	}
+	s.Suspend() // back in the foreground: check it before trusting it
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	if client, _, err := s.connect(ctx); err == nil {
