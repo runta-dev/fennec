@@ -56,6 +56,7 @@
     '<button type="button" class="onboarding-cta" id="onboarding-login-btn"></button>' +
     '<p class="onboarding-login-hint" id="onboarding-login-hint" hidden></p>' +
     '</div>' +
+    '<button type="button" class="onboarding-byos" data-open-byoc>[[i18n:ui.use_your_own_server]]</button>' +
     '</div>' +
     '<div class="onboarding-setup" id="onboarding-setup" hidden>' +
     '<div class="onboarding-scene">' +

@@ -83,6 +83,9 @@ func parseBYOCPair(args []string) (byocPairRequest, error) {
 
 // splitBYOCAddress accepts host, host:port, [ipv6] and [ipv6]:port.
 func splitBYOCAddress(address string) (string, int, error) {
+	if strings.ContainsAny(address, " \t\r\n/@'\"\\;`$") {
+		return "", 0, fmt.Errorf("invalid address %q", address)
+	}
 	if host, port, err := net.SplitHostPort(address); err == nil {
 		number, convErr := strconv.Atoi(port)
 		if convErr != nil || number < 1 || number > 65535 {

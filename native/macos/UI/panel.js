@@ -649,6 +649,9 @@ window.renderRuntimes = (rows, message) => {
   }
 };
 function renderAccountMenu() {
+  // A Runta account can switch to a server of its own; a paired server unpairs first.
+  const own = document.querySelector('#use-own-server');
+  if (own) own.hidden = selfHosted;
   const label = document.querySelector('#logout span');
   if (!label) return;
   const key = selfHosted ? 'ui.unpair_server' : 'ui.sign_out';

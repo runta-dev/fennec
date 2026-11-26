@@ -37,7 +37,7 @@ type byocDeployRequest struct {
 
 func parseBYOCDeploy(args []string) (byocDeployRequest, error) {
 	request := byocDeployRequest{Deployment: byoc.Deployment{Image: byoc.DefaultImage, Container: "fennec-cloud", Volume: "fennec-home", Port: 2222}}
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") || strings.ContainsAny(args[0], " \t\r\n'\"\\;`$") {
+	if len(args) == 0 || args[0] == "" || strings.HasPrefix(args[0], "-") || strings.ContainsAny(args[0], " \t\r\n'\"\\;`$") {
 		return request, fmt.Errorf("%s", byocUsage)
 	}
 	request.Target = args[0]
@@ -97,33 +97,45 @@ func byocDeploy(ctx context.Context, client cloudCaller, args []string, output, 
 		return err
 	}
 	request.Deployment.DeviceKey = key.DeviceKey
-	script, err := request.Deployment.Script()
+	pair, err := deployOverSSH(ctx, request, run, progress)
 	if err != nil {
 		return err
+	}
+	fmt.Fprintf(progress, "Pairing with %s…\n", netAddress(pair.Host, pair.Port))
+	var status any
+	if err := client.Call(ctx, "byoc.pair", pair, &status); err != nil {
+		return err
+	}
+	return json.NewEncoder(output).Encode(status)
+}
+
+// deployOverSSH starts the cloud image on request.Target with the user's own
+// SSH and returns the pairing request for it: where the Mac reaches the
+// computer, and the host key read back over that trusted connection. The
+// deployment's DeviceKey must be set. It pairs nothing itself.
+func deployOverSSH(ctx context.Context, request byocDeployRequest, run sshRunner, progress io.Writer) (byocPairRequest, error) {
+	script, err := request.Deployment.Script()
+	if err != nil {
+		return byocPairRequest{}, err
 	}
 	host, port := request.Address, request.Deployment.Port
 	if host == "" {
 		if host, err = sshHostname(ctx, run, request.Target); err != nil {
-			return err
+			return byocPairRequest{}, err
 		}
 	} else if host, port, err = splitBYOCAddress(request.Address); err != nil {
-		return err
+		return byocPairRequest{}, err
 	}
 	fmt.Fprintf(progress, "Starting the Fennec cloud computer on %s…\n", request.Target)
 	stdout, err := run(ctx, []string{"-T", "--", request.Target, "sh", "-s"}, script, progress)
 	if err != nil {
-		return fmt.Errorf("deployment on %s failed: %w", request.Target, err)
+		return byocPairRequest{}, fmt.Errorf("deployment on %s failed: %w", request.Target, err)
 	}
 	hostKey, err := byoc.ParseDeployOutput(stdout)
 	if err != nil {
-		return err
+		return byocPairRequest{}, err
 	}
-	fmt.Fprintf(progress, "Pairing with %s…\n", netAddress(host, port))
-	var status any
-	if err := client.Call(ctx, "byoc.pair", byocPairRequest{Host: host, Port: port, User: byoc.DefaultUser, Fingerprint: hostKey}, &status); err != nil {
-		return err
-	}
-	return json.NewEncoder(output).Encode(status)
+	return byocPairRequest{Host: host, Port: port, User: byoc.DefaultUser, Fingerprint: hostKey}, nil
 }
 
 func netAddress(host string, port int) string {

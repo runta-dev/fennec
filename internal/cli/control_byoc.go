@@ -26,6 +26,13 @@ type byocControl struct {
 	mu      sync.Mutex
 	// restore returns to the stored Runta account after unpairing.
 	restore func()
+	// ssh runs the user's OpenSSH for menu bar deployments.
+	ssh sshRunner
+	// jobMu guards the deployment or pairing the menu bar started. It is
+	// separate from mu, which a pairing holds while it dials the computer.
+	jobMu   sync.Mutex
+	current *byocJob
+	nextJob uint64
 }
 
 // byocStatus is public: it carries no secret, only the pinned host key's
@@ -41,10 +48,11 @@ type byocStatus struct {
 	HostKeyFingerprint string    `json:"host_key_fingerprint,omitempty"`
 	PairedAt           time.Time `json:"paired_at,omitempty"`
 	DeviceKey          string    `json:"device_key,omitempty"`
+	Job                *byocJob  `json:"job,omitempty"`
 }
 
 func newBYOCControl(home string, manager *account.Manager) *byocControl {
-	c := &byocControl{home: home, account: manager}
+	c := &byocControl{home: home, account: manager, ssh: daemonSSH}
 	c.restore = func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
@@ -58,12 +66,14 @@ func (c *byocControl) handlers() map[string]control.Handler {
 		"byoc.status": c.status,
 		"byoc.key":    c.key,
 		"byoc.pair":   c.pair,
+		"byoc.start":  c.start,
 		"byoc.unpair": c.unpair,
 	}
 }
 
 func (c *byocControl) snapshot() byocStatus {
 	var status byocStatus
+	status.Job = c.job()
 	if _, err := os.Stat(filepath.Join(byoc.Dir(c.home), "runtime_key")); err == nil {
 		if signer, err := byoc.DeviceKey(c.home); err == nil {
 			status.DeviceKey = byoc.AuthorizedKey(signer)
@@ -89,17 +99,17 @@ func (c *byocControl) snapshot() byocStatus {
 	return status
 }
 
+// status reads without mu: a pairing holds mu while it dials the computer, and
+// the menu bar polls status meanwhile. The record and keys are written
+// atomically, so an unlocked read sees the old or the new pairing.
 func (c *byocControl) status(context.Context, json.RawMessage) (any, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	return c.snapshot(), nil
 }
 
 // key returns this Mac's device public key, creating it on first use. The
 // user authorizes it on the computer before pairing.
 func (c *byocControl) key(context.Context, json.RawMessage) (any, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// DeviceKey creates the key exclusively, so concurrent callers share one.
 	signer, err := byoc.DeviceKey(c.home)
 	if err != nil {
 		return nil, err
@@ -125,33 +135,48 @@ func (c *byocControl) pair(ctx context.Context, raw json.RawMessage) (any, error
 	if request.User == "" {
 		request.User = byoc.DefaultUser
 	}
+	status, fault := c.pairWith(ctx, request)
+	if fault != nil {
+		return nil, fault
+	}
+	return status, nil
+}
+
+// pairWith pairs with the computer request names; see pair.
+func (c *byocControl) pairWith(ctx context.Context, request byocPairRequest) (byocStatus, *control.Fault) {
+	if request.Port == 0 {
+		request.Port = 22
+	}
+	if request.User == "" {
+		request.User = byoc.DefaultUser
+	}
 	if strings.TrimSpace(request.Fingerprint) == "" {
-		return nil, &control.Fault{Code: "invalid_params", Message: "The computer's host key fingerprint is required"}
+		return byocStatus{}, &control.Fault{Code: "invalid_params", Message: "The computer's host key fingerprint is required"}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	previous, previousErr := byoc.Load(c.home)
 	if previousErr != nil && !errors.Is(previousErr, byoc.ErrNotPaired) {
-		return nil, &control.Fault{Code: "pairing_unreadable", Message: "The existing pairing is unreadable; unpair it first"}
+		return byocStatus{}, &control.Fault{Code: "pairing_unreadable", Message: "The existing pairing is unreadable; unpair it first"}
 	}
 	discoverCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	pairing, client, err := byoc.Discover(discoverCtx, c.home, byoc.Endpoint{Host: request.Host, Port: request.Port, User: request.User}, request.Fingerprint)
 	if err != nil {
-		return nil, &control.Fault{Code: "pairing_failed", Message: "Couldn't pair with the cloud computer: " + err.Error(), Retryable: true}
+		return byocStatus{}, &control.Fault{Code: "pairing_failed", Message: "Couldn't pair with the cloud computer: " + err.Error(), Retryable: true}
 	}
 	client.Close()
 	if previousErr == nil && previous.MachineID != pairing.MachineID {
-		return nil, &control.Fault{Code: "already_paired", Message: "Another cloud computer is paired; unpair it first"}
+		return byocStatus{}, &control.Fault{Code: "already_paired", Message: "Another cloud computer is paired; unpair it first"}
 	}
 	if err := byoc.Save(c.home, pairing); err != nil {
-		return nil, err
+		return byocStatus{}, &control.Fault{Code: "pairing_failed", Message: err.Error()}
 	}
 	if _, err := c.account.Pair(pairing.MachineID); err != nil {
 		if previousErr != nil {
 			_ = byoc.Remove(c.home)
 		}
-		return nil, err
+		return byocStatus{}, &control.Fault{Code: "pairing_failed", Message: err.Error()}
 	}
 	return c.snapshot(), nil
 }

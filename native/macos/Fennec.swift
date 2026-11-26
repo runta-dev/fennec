@@ -1216,6 +1216,28 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
             return
         }
+        // Use your own server: the panel polls byoc.status while a deployment or
+        // pairing it started with byoc.start runs. Pairing changes the account
+        // epoch, so these replies are not fenced by it.
+        if action == "byoc-status" || action == "byoc-key" {
+            control.call(action == "byoc-status" ? "byoc.status" : "byoc.key") { [weak self] result in
+                guard let self else { return }
+                if case .success(let value) = result { self.render(action == "byoc-status" ? "renderBYOCStatus" : "renderBYOCKey", [value]) }
+            }
+            return
+        }
+        if action.hasPrefix("byoc-start:"), let data = String(action.dropFirst(11)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
+            control.call("byoc.start", params) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let value): self.render("renderBYOCStatus", [value])
+                case .failure(let error):
+                    let code = (error as NSError).userInfo["FennecCode"] as? String ?? ""
+                    self.render("renderBYOCStartFailed", [code])
+                }
+            }
+            return
+        }
         if action == "open-pairing-approval" {
             if let url = pairingApprovalURL { NSWorkspace.shared.open(url) }
             return
