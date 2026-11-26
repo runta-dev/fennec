@@ -9,6 +9,7 @@ import (
 	"fennec/internal/launcher"
 	r "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
+	"log"
 	"path/filepath"
 )
 
@@ -128,11 +129,26 @@ func measuredSessionOperation(ctx context.Context, transport *terminalstream.Tra
 	return json.Marshal(result)
 }
 
+// dispatchSession serves `fen attach`/`resume`/`kill`. Their failures go to
+// the daemon log, so an exported log says why Fennec Terminal could not show
+// a cloud session (FEN-33: it only said "try again").
 func (s *daemonServices) dispatchSession(ctx context.Context, raw json.RawMessage) (any, error) {
 	var request fenServiceRequest
 	if json.Unmarshal(raw, &request) != nil {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Invalid session request"}
 	}
+	reply, err := s.dispatchSessionRequest(ctx, request)
+	if request.Operation != "list" && request.Operation != "refresh" {
+		if err != nil {
+			log.Printf("session %s %s failed: %v", request.Operation, request.SessionID, err)
+		} else if r, ok := reply.(fenServiceReply); ok && r.Error != "" {
+			log.Printf("session %s %s failed: %s", request.Operation, request.SessionID, r.Error)
+		}
+	}
+	return reply, err
+}
+
+func (s *daemonServices) dispatchSessionRequest(ctx context.Context, request fenServiceRequest) (any, error) {
 	lifecycle, _, epoch, ok := s.account.Session()
 	if !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in first"}
