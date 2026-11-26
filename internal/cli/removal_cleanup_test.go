@@ -44,6 +44,10 @@ func TestRemovalCleanupRestoresTheUsersEnvironment(t *testing.T) {
 	os.WriteFile(filepath.Join(shims, "mine"), []byte("#!/bin/sh\n"), 0755)
 	os.MkdirAll(filepath.Join(home, ".config/fennec"), 0700)
 	os.WriteFile(filepath.Join(home, ".config/fennec/takeover.json"), []byte(`{"agents":["codex"]}`), 0600)
+	for _, name := range []string{"prepared-runtime.json", "installed-runtime.json", "preparation.json", "preparation-cache-status.json", "route-results.json"} {
+		os.WriteFile(filepath.Join(home, ".config/fennec", name), []byte(`{}`), 0600)
+	}
+	os.WriteFile(filepath.Join(home, ".config/fennec/settings.json"), []byte(`{}`), 0600)
 	agents := filepath.Join(home, "Library/LaunchAgents")
 	os.MkdirAll(agents, 0700)
 	os.WriteFile(cleanupPlistPath(home), cleanupPlist(stable, app, "/dev/null"), 0644)
@@ -59,13 +63,16 @@ func TestRemovalCleanupRestoresTheUsersEnvironment(t *testing.T) {
 	if data, _ := os.ReadFile(filepath.Join(home, ".zshrc")); string(data) != original {
 		t.Fatalf(".zshrc: %q", data)
 	}
-	for _, gone := range []string{".zshenv", ".local/share/fennec/shims/codex", ".local/share/fennec/shell-init.sh", ".local/share/fennec/env-init.sh", ".config/fennec/takeover.json", "Library/LaunchAgents/" + daemonLabel + ".plist", "Library/LaunchAgents/" + cleanupLabel + ".plist"} {
+	for _, gone := range []string{".zshenv", ".local/share/fennec/shims/codex", ".local/share/fennec/shell-init.sh", ".local/share/fennec/env-init.sh", ".config/fennec/takeover.json", ".config/fennec/prepared-runtime.json", ".config/fennec/installed-runtime.json", ".config/fennec/preparation.json", ".config/fennec/preparation-cache-status.json", ".config/fennec/route-results.json", "Library/LaunchAgents/" + daemonLabel + ".plist", "Library/LaunchAgents/" + cleanupLabel + ".plist"} {
 		if _, err := os.Lstat(filepath.Join(home, gone)); !os.IsNotExist(err) {
 			t.Errorf("%s still present", gone)
 		}
 	}
 	if _, err := os.Stat(launcher.StableDir(home)); !os.IsNotExist(err) {
 		t.Error("stable dispatcher still present")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config/fennec/settings.json")); err != nil {
+		t.Error("settings removed: only the cloud computer's preparation state goes")
 	}
 	if _, err := os.Stat(filepath.Join(shims, "mine")); err != nil {
 		t.Error("a file Fennec did not write was removed")

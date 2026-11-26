@@ -167,6 +167,17 @@ func restoreCodexDesktop(ctx context.Context, home string) {
 func performRemovalCleanup(ctx context.Context, home, app string, entries []string, removeSelf bool, bootoutDaemon func()) {
 	restoreCodexDesktop(ctx, home)
 	_ = os.Remove(filepath.Join(home, ".config/fennec/takeover.json"))
+	// What the last preparation recorded about the cloud computer. A reinstall
+	// prepares it again from scratch instead of trusting a computer that may
+	// have been deleted or recreated meanwhile (FEN-25: the card said "Cloud
+	// computer ready" while Runta was still creating a new one). The account,
+	// settings and the cloud computer itself are kept.
+	for _, path := range []string{checkpointPath(home), installationCheckpointPath(home)} {
+		_ = os.Remove(path)
+	}
+	for _, name := range []string{"preparation.json", "preparation-cache-status.json", "route-results.json"} {
+		_ = os.Remove(filepath.Join(home, ".config/fennec", name))
+	}
 	for _, entry := range entries {
 		if err := launcher.UninstallEntry(entry); err != nil {
 			cleanupLog(home, "entry "+entry+": "+err.Error())
