@@ -126,9 +126,9 @@ impl FennecWindow {
             ));
             self.settings = State {
                 project: id.clone(),
-                name: Some(input(&p.name, window, cx)),
+                name: Some(input(&p.display_name(), window, cx)),
                 key: Some(input(&p.key, window, cx)),
-                description: Some(input(&p.description, window, cx)),
+                description: Some(input(&p.display_description(), window, cx)),
                 repository: Some(input(&p.repository, window, cx)),
                 new_tag: Some(new_tag),
                 tags: p.tags.clone(),
@@ -213,10 +213,17 @@ impl FennecWindow {
                 .map(|i| i.read(cx).value().trim().to_owned())
                 .unwrap_or_default()
         };
+        let mut name = value(&s.name);
+        let mut description = value(&s.description);
+        if let Some(project) = self.projects.iter().find(|p| p.id == s.project) {
+            // Merely opening or blurring a translated default is not a rename.
+            if name == project.display_name() { name = project.name.clone(); }
+            if description == project.display_description() { description = project.description.clone(); }
+        }
         let change = json!({
-            "name": value(&s.name),
+            "name": name,
             "key": value(&s.key).to_uppercase(),
-            "description": value(&s.description),
+            "description": description,
             "repository": value(&s.repository),
             "tags": s.tags,
         });
@@ -313,7 +320,7 @@ impl FennecWindow {
                                 div()
                                     .text_size(px(13.5))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(p.name.clone()),
+                                    .child(p.display_name()),
                             )
                             .child(
                                 div()
@@ -851,7 +858,7 @@ impl FennecWindow {
                             .min_w_0()
                             .text_size(px(12.5))
                             .text_color(c("f_muted"))
-                            .child(tf("knowledge_hint", &[("name", &p.name)])),
+                            .child(tf("knowledge_hint", &[("name", &p.display_name())])),
                     )
                     .child(h_flex().flex_none().gap(px(4.0)).children(filters)),
             )

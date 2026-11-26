@@ -92,7 +92,11 @@ impl FennecWindow {
         settings.font_size = f32::from(p.font_size);
         settings.terminal_padding = [f32::from(p.padding_x), f32::from(p.padding_y)];
         crate::settings::set(settings);
+        let old_language = crate::i18n::language();
         crate::i18n::set_language(&p.language);
+        if old_language != crate::i18n::language() {
+            self.settings = Default::default();
+        }
         self.search
             .update(cx, |s, cx| s.set_placeholder(t("search"), window, cx));
         self.composer

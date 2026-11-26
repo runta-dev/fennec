@@ -2468,14 +2468,14 @@ impl FennecWindow {
                 })
                 .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
         };
-        let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q)).map(|p| {
+        let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.display_name().to_lowercase().contains(&q)).map(|p| {
             let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
             let id = p.id.clone();
             self.context_row(row(SharedString::from(format!("p-{}", p.id)), selected).debug_selector(|| format!("project-row-{}", p.id)), context_menu::Target::Project(p.id.clone()), cx)
                 .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| { if !event.is_right_click() && !event.modifiers().control { this.go(Route::Project(id.clone()), window, cx); } }))
                 // Same 16 px as session icons so queue and session names start at one x.
                 .child(ui::project_icon(p, 16.0))
-                .child(div().flex_1().min_w_0().truncate().child(p.name.clone()))
+                .child(div().flex_1().min_w_0().truncate().child(p.display_name()))
                 .when(p.needs_you > 0, |d| {
                     d.child(div().min_w(px(18.0)).h(px(17.0)).px(px(5.0)).rounded(px(9.0)).bg(c("tint")).border_1().border_color(c("orange").opacity(0.3)).text_color(c("accent_text")).text_size(px(10.5)).font_weight(FontWeight::MEDIUM).flex().items_center().justify_center().child(p.needs_you.to_string()))
                 })
@@ -3052,7 +3052,7 @@ impl FennecWindow {
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(c("f_text"))
                                     .truncate()
-                                    .child(p.name.clone()),
+                                    .child(p.display_name()),
                             )
                             .when(!p.description.is_empty(), |d| {
                                 d.child(
@@ -3060,7 +3060,7 @@ impl FennecWindow {
                                         .text_size(px(11.5))
                                         .text_color(c("f_muted"))
                                         .truncate()
-                                        .child(p.description.clone()),
+                                        .child(p.display_description()),
                                 )
                             }),
                     )

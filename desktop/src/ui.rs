@@ -188,6 +188,8 @@ const FILES: &[(&str, &[u8])] = &[
     ("icons/sort.svg", br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10M2.5 10.5 5 13l2.5-2.5M11 13V3M8.5 5.5 11 3l2.5 2.5"/></svg>"##),
     ("icons/term.svg", include_bytes!("../assets/icons/terminal.svg")),
     ("fennec.svg", include_bytes!("../assets/fennec.svg")),
+    ("fennec-ios-light.png", include_bytes!("../../ios/Fennec/Assets.xcassets/AppIcon.appiconset/icon-light.png")),
+    ("fennec-ios-dark.png", include_bytes!("../../ios/Fennec/Assets.xcassets/AppIcon.appiconset/icon-dark.png")),
     ("agents/antigravity.png", include_bytes!("../assets/agents/antigravity.png")),
     ("agents/claudecode.png", include_bytes!("../assets/agents/claudecode.png")),
     ("agents/codex.png", include_bytes!("../assets/agents/codex.png")),
@@ -401,6 +403,13 @@ pub fn tag_chip(id: &str, label: &str) -> Div {
 /// Project artwork uses the image renderer's rounded clip, including uploaded photos.
 pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
     use base64::Engine;
+    if let Some(asset) = project.default_icon(crate::settings::get().dark) {
+        return div().size(px(size)).flex_none()
+            .rounded(px(if size >= 40.0 { 10.0 } else if size > 24.0 { 8.0 } else { 5.0 }))
+            .overflow_hidden()
+            .child(img(asset).size(px(size)).object_fit(ObjectFit::Cover))
+            .into_any_element();
+    }
     if let Some(encoded) = project.icon.strip_prefix("data:image/png;base64,") {
         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) {
             return div()
@@ -432,7 +441,7 @@ pub fn project_icon(project: &crate::board::Project, size: f32) -> AnyElement {
                 .into_any_element();
         }
     }
-    project_mark(&project.name, &project.color, size).into_any_element()
+    project_mark(&project.display_name(), &project.color, size).into_any_element()
 }
 
 /// Reference .side-row.sel: an outside hairline and a subtle lower shadow.

@@ -83,6 +83,32 @@ pub struct Project {
     pub needs_you: usize,
 }
 
+impl Project {
+    pub fn display_name(&self) -> String {
+        self.display_copy("starter_queue_name", &self.name, crate::i18n::language())
+    }
+
+    pub fn display_description(&self) -> String {
+        self.display_copy("starter_queue_description", &self.description, crate::i18n::language())
+    }
+
+    fn display_copy(&self, key: &str, stored: &str, language: &str) -> String {
+        if self.id == "starter" {
+            crate::i18n::default_copy(key, stored, language)
+        } else {
+            stored.to_owned()
+        }
+    }
+
+    pub fn default_icon(&self, dark: bool) -> Option<&'static str> {
+        (self.id == "starter" && self.icon.is_empty()).then_some(if dark {
+            "fennec-ios-dark.png"
+        } else {
+            "fennec-ios-light.png"
+        })
+    }
+}
+
 /// An OKF concept agents wrote in the project's knowledge bundle.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -357,6 +383,41 @@ impl Request {
 
 #[cfg(test)]
 mod thread_tests {
+    #[test]
+    fn starter_defaults_follow_language_without_changing_saved_copy() {
+        let mut project = super::Project {
+            id: "starter".into(),
+            name: "My tasks".into(),
+            description: crate::i18n::text_in("starter_queue_description", "en-US"),
+            ..Default::default()
+        };
+        for language in ["en-US", "en-GB", "zh-CN"] {
+            for (key, value) in [("starter_queue_name", &project.name), ("starter_queue_description", &project.description)] {
+                assert_eq!(project.display_copy(key, value, language), crate::i18n::text_in(key, language));
+            }
+        }
+        assert_eq!(project.name, "My tasks");
+        project.name = crate::i18n::text_in("starter_queue_name", "zh-CN");
+        assert_eq!(project.display_copy("starter_queue_name", &project.name, "en-US"), "My tasks");
+        project.name = "Personal work".into();
+        assert_eq!(project.display_copy("starter_queue_name", &project.name, "zh-CN"), "Personal work");
+        project.id = "custom-queue".into();
+        project.name = "My tasks".into();
+        assert_eq!(project.display_copy("starter_queue_name", &project.name, "zh-CN"), "My tasks");
+    }
+
+    #[test]
+    fn starter_icon_uses_ios_artwork_unless_customized() {
+        let mut project = super::Project { id: "starter".into(), ..Default::default() };
+        assert_eq!(project.default_icon(false), Some("fennec-ios-light.png"));
+        assert_eq!(project.default_icon(true), Some("fennec-ios-dark.png"));
+        project.icon = "data:image/png;base64,custom".into();
+        assert!(project.default_icon(false).is_none());
+        project.icon.clear();
+        project.id = "custom-queue".into();
+        assert!(project.default_icon(false).is_none());
+    }
+
     #[test]
     fn thread_link_prefers_latest_active_conversation_over_sidebar_order() {
         let request: super::Request = serde_json::from_value(

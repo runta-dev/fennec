@@ -220,7 +220,7 @@ impl FennecWindow {
         let Some(project) = self.projects.iter().find(|p| p.id == id) else {
             return;
         };
-        let title = tf("delete_queue_title", &[("name", &project.name)]);
+        let title = tf("delete_queue_title", &[("name", &project.display_name())]);
         let answer = window.prompt(
             PromptLevel::Warning,
             &title,

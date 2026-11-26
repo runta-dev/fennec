@@ -47,12 +47,27 @@ static LANGUAGE: LazyLock<&'static str> = LazyLock::new(|| {
 
 /// `desktop.<key>` in the current language (English when missing).
 pub fn t(key: &str) -> String {
+	text_in(key, language())
+}
+
+pub fn text_in(key: &str, language: &str) -> String {
     let m = &CATALOG[format!("desktop.{key}")];
-    m[language()]
+    m[language]
         .as_str()
         .or_else(|| m["en-US"].as_str())
         .unwrap_or(key)
         .to_owned()
+}
+
+/// Existing starter queues may hold any shipped translation. Localize their
+/// defaults at display time without rewriting shared data or custom copy.
+pub fn default_copy(key: &str, stored: &str, language: &str) -> String {
+    let row = &CATALOG[format!("desktop.{key}")];
+    if row.as_object().is_some_and(|row| row.values().any(|v| v.as_str() == Some(stored))) {
+        text_in(key, language)
+    } else {
+        stored.to_owned()
+    }
 }
 
 /// With `{name}` placeholders filled.
