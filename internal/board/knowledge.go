@@ -145,9 +145,8 @@ func parseConcept(id, text string) (Concept, bool) {
 			c.GeneratedBy, c.GeneratedAt = m["by"], m["at"]
 		}
 	}
-	if c.Type == "" {
-		return c, false
-	}
+	// OKF requires type, but agents have left it out (FEN-53: a whole bundle
+	// without it showed as empty). Any file with front matter is listed.
 	if c.Title == "" {
 		c.Title = id[strings.LastIndexByte(id, '/')+1:]
 	}

@@ -124,8 +124,9 @@ func TestKnowledge(t *testing.T) {
 	os.MkdirAll(dir, 0700)
 	os.WriteFile(filepath.Join(dir, "attach-eof.md"), []byte(concept), 0600)
 	os.WriteFile(filepath.Join(dir, "no-type.md"), []byte("---\ntitle: x\n---\n"), 0600)
+	os.WriteFile(filepath.Join(s.KnowledgePath("fennec"), "INDEX.md"), []byte("# Index\n"), 0600)
 	list, err := s.Knowledge("fennec")
-	if err != nil || len(list) != 1 {
+	if err != nil || len(list) != 2 || list[1].ID != "runbooks/no-type" || list[1].Title != "x" {
 		t.Fatal(list, err)
 	}
 	c := list[0]
