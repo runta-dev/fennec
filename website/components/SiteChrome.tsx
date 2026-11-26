@@ -9,7 +9,7 @@ export type Brand = { name: string; sub?: string; logo: string; home: string; na
 // Links are absolute ("/#faq") so they work from every page.
 export const fennecBrand: Brand = {
   name: 'Fennec', logo: '/fennec.svg', home: '/',
-  nav: [{ label: 'How it works', href: '/#demo' }, { label: 'Your server', href: '/self-hosted/' }, { label: 'FAQ', href: '/#faq' }],
+  nav: [{ label: 'How it works', href: '/#demo' }, { label: 'Self-hosted', href: '/self-hosted/' }, { label: 'FAQ', href: '/#faq' }],
 };
 
 function Wordmark({ brand, size }: { brand: Brand; size: number }) {

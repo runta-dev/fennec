@@ -118,4 +118,4 @@
 @media(max-width:800px) { .landing-mobile { grid-template-columns:1fr; gap:32px; } .mobile-stage { max-width:560px; width:100%; } }
 @media(max-width:760px) { .landing-mobile { margin-inline:24px; padding-block:45px; } .mobile-showcase { width:260px; } .mobile-stage { padding:28px 16px; } }
 @media(max-width:360px) { .landing-mobile { margin-inline:20px; } .mobile-showcase { width:230px; } }
-.hero .hero-byos { display:inline-flex; align-items:center; gap:4px; margin-top:14px; font-size:14px; }
+.hero .hero-self-hosted { display:inline-flex; align-items:center; gap:4px; margin-top:14px; font-size:14px; }
