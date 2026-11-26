@@ -32,7 +32,10 @@ final class QueueStore {
     var me = ""
 
     var selectedID: String? {
-        didSet { if let selectedID { defaults.set(selectedID, forKey: "queues.selected") } }
+        didSet {
+            if let selectedID { defaults.set(selectedID, forKey: "queues.selected") }
+            sendFollow()
+        }
     }
     var tagFilter: String?
 
@@ -122,6 +125,7 @@ final class QueueStore {
     }
 
     private func applyRequests(_ project: String, _ read: [BoardRequest]) {
+        boardRows[project] = read
         var list = read
         for i in list.indices where pendingStatus.contains("\(project)/\(list[i].number)") {
             if let local = requests[project]?.first(where: { $0.number == list[i].number }) { list[i].status = local.status }
@@ -139,6 +143,144 @@ final class QueueStore {
         }
         requests[project] = list
         if me.isEmpty { me = Self.person(in: list) }
+    }
+
+    // MARK: Pushed changes (FEN-60)
+
+    /// The board pushes changes over one `fennec-terminal board-watch`
+    /// stream while the Queues tab is open and the app is in front; polling
+    /// is only a fallback then (an older cloud computer, a dropped link).
+    @ObservationIgnored private var watch: FennecmobileBoardWatch?
+    @ObservationIgnored private var watchStarting = false
+    @ObservationIgnored private var watchWanted = false
+    @ObservationIgnored private var watchRetry: Task<Void, Never>?
+    /// The board's own rows of the open queue, before the phone's pending
+    /// changes are laid over them: what a pushed change applies to.
+    @ObservationIgnored private var boardRows: [String: [BoardRequest]] = [:]
+    /// The thread on screen, followed by the stream.
+    @ObservationIgnored private var followedThread = 0
+    /// When the stream last said anything (it pings every 20 s); nil until
+    /// its first event, so a stream that fails at once never counts as live.
+    @ObservationIgnored private(set) var lastPush: Date?
+    @ObservationIgnored private var watchOpened = Date.distantPast
+    /// The current stream's receiver; events from an older one are dropped.
+    @ObservationIgnored private var sink: BoardSink?
+    /// True while changes arrive by push; the views then poll rarely.
+    var live: Bool { watch != nil && lastPush.map { Date.now.timeIntervalSince($0) < 45 } == true }
+
+    /// Opens the stream if it isn't open. Safe to call often.
+    func startWatching() {
+        guard let core else { return }
+        watchWanted = true
+        if let watch, Date.now.timeIntervalSince(lastPush ?? watchOpened) > 45 {
+            // Nothing, not even a ping: the link died under it (sleep, network change).
+            self.watch = nil
+            Task.detached { watch.close() }
+        }
+        guard watch == nil, !watchStarting else { return }
+        watchStarting = true
+        let sink = BoardSink(store: self)
+        self.sink = sink
+        lastPush = nil
+        watchOpened = .now
+        Task {
+            let opened = await Task.detached { try? core.watchBoard(sink) }.value
+            watchStarting = false
+            guard let opened else { retryWatching(after: 10); return }
+            guard watchWanted, self.sink === sink else { Task.detached { opened.close() }; return }
+            watch = opened
+            sendFollow()
+        }
+    }
+
+    /// Closes the stream (the app went to the background).
+    func stopWatching() {
+        watchWanted = false
+        watchRetry?.cancel()
+        if let watch { Task.detached { watch.close() } }
+        watch = nil
+        sink = nil
+        lastPush = nil
+    }
+
+    /// The thread on screen, or 0 when none: pushed too while it is open.
+    func follow(thread number: Int, in project: String) {
+        guard project == selected?.id || project == selectedID else { return }
+        let number = max(number > 0 ? boardNumber(project, number) : 0, 0)
+        guard number != followedThread else { return }
+        followedThread = number
+        sendFollow()
+    }
+
+    /// Whether the stream is pushing this thread (else its page polls it).
+    func pushes(thread number: Int, in project: String) -> Bool {
+        live && followedThread > 0 && followedThread == boardNumber(project, number) && project == (selected?.id ?? selectedID)
+    }
+
+    func unfollow(thread number: Int, in project: String) {
+        if followedThread > 0, followedThread == boardNumber(project, number) { follow(thread: 0, in: project) }
+    }
+
+    private func sendFollow() {
+        guard let watch, let project = selected?.id ?? selectedID else { return }
+        let thread = followedThread
+        Task.detached { try? watch.follow(project, thread: thread) }
+    }
+
+    private func retryWatching(after seconds: Double) {
+        watchRetry?.cancel()
+        watchRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, let self, self.watchWanted else { return }
+            self.startWatching()
+        }
+    }
+
+    fileprivate func watchClosed(_ message: String, from sink: BoardSink) {
+        guard sink === self.sink else { return }
+        self.sink = nil
+        watch = nil
+        lastPush = nil
+        // An older cloud computer has no board-watch: it fails at once.
+        // Poll meanwhile and look again now and then.
+        if watchWanted { retryWatching(after: message.isEmpty ? 2 : 30) }
+    }
+
+    fileprivate func pushed(_ text: String, from sink: BoardSink) {
+        guard sink === self.sink else { return }
+        lastPush = .now
+        let data = Data(text.utf8)
+        let decoder = JSONDecoder()
+        guard let kind = try? decoder.decode(PushKind.self, from: data) else { return }
+        switch kind.type {
+        case "projects":
+            guard let event = try? decoder.decode(ProjectsPush.self, from: data) else { return }
+            projects = event.projects
+            markSynced()
+        case "requests":
+            guard let event = try? decoder.decode(RequestsPush.self, from: data) else { return }
+            let rows: [BoardRequest]
+            if event.reset == true, let all = event.requests {
+                rows = all
+            } else if let order = event.order, let changed = event.changed, let base = boardRows[event.project] {
+                var byNumber = Dictionary(base.map { ($0.number, $0) }, uniquingKeysWith: { $1 })
+                for row in changed { byNumber[row.number] = row }
+                rows = order.compactMap { byNumber[$0] }
+            } else { return }
+            withAnimation(.smooth(duration: 0.25)) { applyRequests(event.project, rows) }
+            markSynced()
+        case "thread":
+            guard let event = try? decoder.decode(ThreadPush.self, from: data), let thread = event.thread else { return }
+            applyThread(event.project, event.number, thread)
+        default: break // ping
+        }
+    }
+
+    private func markSynced() {
+        unavailable = false
+        lastSync = .now
+        loaded = true
+        saveCache()
     }
 
     // MARK: Last list on disk (FEN-60)
@@ -185,16 +327,21 @@ final class QueueStore {
     func loadThread(_ project: String, _ number: Int) async {
         let number = boardNumber(project, number)
         guard core != nil, number > 0 else { return }
-        if var request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
-            if pendingStatus.contains("\(project)/\(number)"), let local = thread(project, number) { request.status = local.status }
-            mergePendingReplies(project, number, into: &request)
-            threads["\(project)/\(number)"] = request
-            if var list = requests[project], let i = list.firstIndex(where: { $0.number == number }) {
-                list[i].status = request.status
-                list[i].title = request.title
-                list[i].tag = request.tag
-                requests[project] = list
-            }
+        if let request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
+            applyThread(project, number, request)
+        }
+    }
+
+    private func applyThread(_ project: String, _ number: Int, _ read: BoardRequest) {
+        var request = read
+        if pendingStatus.contains("\(project)/\(number)"), let local = thread(project, number) { request.status = local.status }
+        mergePendingReplies(project, number, into: &request)
+        threads["\(project)/\(number)"] = request
+        if var list = requests[project], let i = list.firstIndex(where: { $0.number == number }) {
+            list[i].status = request.status
+            list[i].title = request.title
+            list[i].tag = request.tag
+            requests[project] = list
         }
     }
 
@@ -724,5 +871,43 @@ extension QueueStore {
             : list.firstIndex { $0.number == before } ?? list.count
         list.insert(moved, at: to)
         requests[project] = list
+    }
+}
+
+// MARK: Pushed events (FEN-60; internal/board/watch.go)
+
+private struct PushKind: Decodable { var type: String }
+private struct ProjectsPush: Decodable { var projects: [BoardProject] }
+private struct RequestsPush: Decodable {
+    var project: String
+    var reset: Bool?
+    var requests: [BoardRequest]?
+    var order: [Int]?
+    var changed: [BoardRequest]?
+}
+private struct ThreadPush: Decodable {
+    var project: String
+    var number: Int
+    var thread: BoardRequest?
+}
+
+/// Receives the stream on Go's goroutines and hops to the main actor.
+private final class BoardSink: NSObject, FennecmobileBoardEventsProtocol, @unchecked Sendable {
+    weak var store: QueueStore?
+    init(store: QueueStore) { self.store = store }
+
+    func event(_ json: String?) {
+        guard let json else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.store?.pushed(json, from: self)
+        }
+    }
+
+    func closed(_ message: String?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.store?.watchClosed(message ?? "", from: self)
+        }
     }
 }

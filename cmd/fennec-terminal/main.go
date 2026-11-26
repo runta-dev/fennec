@@ -158,6 +158,13 @@ func run() (int, error) {
 	if len(os.Args) == 4 && os.Args[1] == "board-call" {
 		return 0, board.Call(home, os.Args[2], os.Args[3], os.Stdin, os.Stdout)
 	}
+	if len(os.Args) == 2 && os.Args[1] == "board-watch" {
+		// Pushes board changes to Fennec for iPhone (FEN-60); ends when the
+		// phone closes the channel.
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGPIPE)
+		defer stop()
+		return 0, board.Watch(ctx, home, os.Stdin, os.Stdout)
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "archive" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 		defer stop()

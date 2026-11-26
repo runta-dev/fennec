@@ -1,18 +1,24 @@
 package fennecmobile
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"fennec/internal/board"
 	"fennec/internal/pasteimage"
 	"fennec/internal/terminalstream"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // boardPath is what a board API path may contain: /v1/ and then ids,
@@ -134,4 +140,118 @@ func (s *Sessions) ImageData(id string, size int64) ([]byte, error) {
 		data = append(data, part...)
 	}
 	return data, nil
+}
+
+// BoardEvents receives what `fennec-terminal board-watch` pushes (FEN-60):
+// one JSON event per call (internal/board watch.go has the kinds). Event
+// may run on any goroutine; Closed is called once when the stream ends,
+// with "" when it was closed on purpose.
+type BoardEvents interface {
+	Event(json string)
+	Closed(message string)
+}
+
+// BoardWatch is an open board-watch stream on the cloud computer.
+type BoardWatch struct {
+	session *ssh.Session
+	stdin   io.WriteCloser
+	mu      sync.Mutex
+	once    sync.Once
+	closed  bool
+}
+
+// WatchBoard opens a board-watch stream: the board pushes changes to the
+// open queue (and thread) instead of the app reading the board again and
+// again. Say what to watch with Follow. A cloud computer whose
+// fennec-terminal is older fails at once (Closed with a message); keep
+// polling then.
+func (s *Sessions) WatchBoard(out BoardEvents) (out0 *BoardWatch, err error) {
+	defer func() { err = classify(err) }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client, _, err := s.connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	session, err := client.NewSession()
+	if err != nil {
+		s.drop(client)
+		if client, _, err = s.connect(ctx); err != nil {
+			return nil, err
+		}
+		if session, err = client.NewSession(); err != nil {
+			return nil, err
+		}
+	}
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		session.Close()
+		return nil, err
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		return nil, err
+	}
+	var stderr strings.Builder
+	session.Stderr = &stderr
+	if err := session.Start(`exec "$HOME/.local/fennec/bin/fennec-terminal" board-watch`); err != nil {
+		session.Close()
+		return nil, err
+	}
+	watch := &BoardWatch{session: session, stdin: stdin}
+	go func() {
+		reader := bufio.NewReaderSize(stdout, 64<<10)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(bytes.TrimSpace(line)) > 0 {
+				out.Event(string(bytes.TrimSpace(line)))
+			}
+			if err != nil {
+				break
+			}
+		}
+		waitErr := session.Wait()
+		watch.mu.Lock()
+		closed := watch.closed
+		watch.mu.Unlock()
+		message := ""
+		if !closed {
+			if text := strings.TrimSpace(stderr.String()); text != "" {
+				message = text
+			} else if waitErr != nil {
+				message = classify(waitErr).Error()
+			} else {
+				message = "board watch ended"
+			}
+		}
+		out.Closed(message)
+	}()
+	return watch, nil
+}
+
+// Follow says what to watch: a queue, and a thread in it (0 for none).
+func (w *BoardWatch) Follow(project string, thread int) error {
+	line, err := json.Marshal(map[string]any{"project": project, "thread": thread})
+	if err != nil {
+		return err
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return errors.New("board watch closed")
+	}
+	_, err = w.stdin.Write(append(line, '\n'))
+	return err
+}
+
+// Close ends the stream.
+func (w *BoardWatch) Close() {
+	w.once.Do(func() {
+		w.mu.Lock()
+		w.closed = true
+		w.mu.Unlock()
+		w.stdin.Close()
+		w.session.Close()
+	})
 }

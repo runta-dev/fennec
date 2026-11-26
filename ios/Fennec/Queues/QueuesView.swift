@@ -56,17 +56,24 @@ struct QueuesView: View {
             .background(Theme.bg)
             .refreshable { await queues.refresh() }
             .task(id: refreshTick) {
-                // Read now, then keep reading while the app is in front
-                // (FEN-60): every 2 s on the list, 5 s under a thread, which
-                // reads itself. Back from the background, or back on the
-                // list, restarts this, so nothing waits for the next tick.
+                // FEN-60: the board pushes changes over one stream while the
+                // app is in front (QueueStore.startWatching). Read once now
+                // anyway, then poll only as a fallback: rarely while pushes
+                // arrive, otherwise every 2 s on the list and 5 s under a
+                // thread. Back from the background, or back on the list,
+                // restarts this, so nothing waits for the next tick.
                 guard scenePhase == .active else { return }
+                queues.startWatching()
                 while !Task.isCancelled {
-                    await queues.refresh()
-                    try? await Task.sleep(for: .seconds(path.isEmpty ? 2 : 5))
+                    if !queues.live || path.isEmpty { await queues.refresh() }
+                    try? await Task.sleep(for: .seconds(queues.live ? 30 : path.isEmpty ? 2 : 5))
+                    queues.startWatching() // reopens a stream that went quiet
                 }
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { refreshTick += 1 } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { refreshTick += 1 }
+                if phase == .background { queues.stopWatching() }
+            }
             .onChange(of: path.isEmpty) { _, onList in if onList { refreshTick += 1 } }
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) { banners }

@@ -69,14 +69,17 @@ struct RequestThreadView: View {
         .toolbar(.hidden, for: .tabBar)
         .queueActionAlert()
         .task {
+            // Pushed while it is open (FEN-60); read here only without a stream.
+            queues.follow(thread: number, in: projectID)
             while !Task.isCancelled {
-                await queues.loadThread(projectID, number)
+                if !queues.pushes(thread: number, in: projectID) || queues.thread(projectID, number) == nil { await queues.loadThread(projectID, number) }
                 if let r = queues.thread(projectID, number), r.status_.running {
                     await sessions.refresh(transcripts: false)
                 }
                 try? await Task.sleep(for: .seconds(3))
             }
         }
+        .onDisappear { queues.unfollow(thread: number, in: projectID) }
     }
 
     private func titlePill(_ request: BoardRequest, _ project: BoardProject) -> some View {
