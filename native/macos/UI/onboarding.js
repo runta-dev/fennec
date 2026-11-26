@@ -97,7 +97,8 @@
     '<div class="onboarding-bar"><div class="onboarding-bar-fill" id="onboarding-bar-fill"></div></div>' +
     '<div class="onboarding-feedback-slot">' +
     '<div class="onboarding-status-title" id="onboarding-stage-text" hidden></div>' +
-    '<div class="onboarding-action-wrap"><button type="button" class="onboarding-action-btn" id="onboarding-action-btn" hidden></button></div>' +
+    '<div class="onboarding-action-wrap"><button type="button" class="onboarding-action-btn" id="onboarding-action-btn" hidden></button><button type="button" class="onboarding-action-btn" id="onboarding-secondary-btn" hidden></button></div>' +
+    '<button type="button" class="onboarding-exit" id="onboarding-exit-btn" hidden></button>' +
     '</div>' +
     '</div>' +
     '</div>';
@@ -119,6 +120,10 @@
   const barFill = stage.querySelector('#onboarding-bar-fill');
   const stageText = stage.querySelector('#onboarding-stage-text');
   const actionBtn = stage.querySelector('#onboarding-action-btn');
+  const secondaryBtn = stage.querySelector('#onboarding-secondary-btn');
+  // A failed setup must never trap the user: signing out is always offered.
+  const exitBtn = stage.querySelector('#onboarding-exit-btn');
+  if (exitBtn) exitBtn.onclick = () => send('logout');
   const termCommands = ['codex', 'claude', 'pi'];
 
   // Authentic vector ear-morph + blink keyframes matching Fennec's native mascot.
@@ -436,6 +441,8 @@
       if (asyncHandoffTimer) { clearTimeout(asyncHandoffTimer); asyncHandoffTimer = null; }
       stageText.hidden = true;
       actionBtn.hidden = true;
+      if (secondaryBtn) secondaryBtn.hidden = true;
+      if (exitBtn) exitBtn.hidden = true;
       if (setupPane.hidden || progressCurrent <= 10) {
         setupDismissedForSession = true;
         signedInTransition = false;
@@ -545,15 +552,27 @@
     }
 
     if (isBilling) {
+      // No credits: send the user to top up, then let them retry here.
       actionBtn.hidden = false;
-      actionBtn.textContent = t('[[i18n:ui.open_in_browser]]');
+      actionBtn.textContent = t('[[i18n:ui.add_credits]]');
       actionBtn.onclick = () => send('open-dashboard');
+      if (secondaryBtn) {
+        secondaryBtn.hidden = false;
+        secondaryBtn.textContent = t('[[i18n:ui.retry]]');
+        secondaryBtn.onclick = () => send('retry-runtime');
+      }
     } else if (isFailed) {
       actionBtn.hidden = false;
       actionBtn.textContent = t('[[i18n:ui.retry]]');
       actionBtn.onclick = () => send('retry-runtime');
+      if (secondaryBtn) secondaryBtn.hidden = true;
     } else {
       actionBtn.hidden = true;
+      if (secondaryBtn) secondaryBtn.hidden = true;
+    }
+    if (exitBtn) {
+      exitBtn.hidden = !isFailed;
+      exitBtn.textContent = t('[[i18n:ui.sign_out]]');
     }
   }
 
@@ -662,6 +681,12 @@
       signedInTransition = true;
       setupDismissedForSession = false;
       prepState = { stage: 'connecting', status: '' };
+      renderOnboarding();
+    } else if (mode === 'failed' || mode === 'billing') {
+      isAuthorized = true;
+      signedInTransition = true;
+      setupDismissedForSession = false;
+      prepState = { stage: 'failed', status: mode === 'billing' ? 'billing_restricted' : 'runtime_preparation_failed' };
       renderOnboarding();
     }
   };

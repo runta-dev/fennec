@@ -998,7 +998,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         let events = runtime["events"] as? [String:[String:String]] ?? [:]
         preparationState = events["runtime_progress"] ?? [:]
         if let id = runtime["runtime_id"] as? String { preparationState["runtime_id"] = id }
-        if runtime["stage"] as? String == "failed" { preparationState["stage"] = "failed"; preparationState["status"] = "runtime_preparation_failed" }
+        if runtime["stage"] as? String == "failed" {
+            preparationState["stage"] = "failed"
+            // Keep the specific reason the UI can act on (out of credits: add
+            // credits); anything else is the generic preparation failure.
+            if preparationState["status"] != "billing_restricted" { preparationState["status"] = "runtime_preparation_failed" }
+        }
         if runtime["stage"] as? String == "offline" || runtime["offline"] as? Bool == true || (!online && authorized && runtime["stage"] as? String != "disabled") {
             preparationState["stage"] = "offline"
             preparationState["status"] = "network_offline"

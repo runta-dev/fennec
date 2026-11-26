@@ -3445,6 +3445,7 @@
       "zh-CN": "连接环境",
       "zh-TW": "連線環境"
     },
+    "ui.add_credits": {"en-US":"Add credits","ja":"クレジットを追加","ko":"크레딧 충전","zh-CN":"充值","zh-TW":"儲值"},
     "ui.add_credits_in_runta_to_create_cloud_computer": {
       "en-GB": "Add credits in Runta to create your cloud computer",
       "en-US": "Add credits in Runta to create your cloud computer",

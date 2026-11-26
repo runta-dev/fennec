@@ -867,7 +867,7 @@ window.renderPreparation = state => {
   const titles = {checking_resources:"[[i18n:ui.verifying_cloud_computer_resources]]", installing_session_service:"[[i18n:ui.preparing_session_service]]", restoring_model_accounts:"[[i18n:ui.restoring_model_accounts]]", configuring_routes:"[[i18n:ui.configuring_agent_models]]", installing_model_plugins:"[[i18n:ui.configuring_model_plugins]]", migrating_credentials:"[[i18n:ui.migrating_model_credentials]]", discovering_providers:"[[i18n:ui.loading_model_configuration]]", waiting_credentials:"[[i18n:ui.reading_sign_in_credentials]]", credentials_required:"[[i18n:ui.sign_in_again_to_continue_setup]]", installing_pi:"[[i18n:ui.installing_pi]]",installing_kimi:"[[i18n:ui.installing_kimi]]", installing_opencode:"[[i18n:ui.installing_opencode]]", starting_magpie:"[[i18n:ui.starting_model_gateway]]", installing_node:"[[i18n:ui.installing_runtime_tools]]", installing_magpie:"[[i18n:ui.installing_model_gateway]]", detecting_versions:"[[i18n:ui.discovering_available_agents]]", syncing_versions:"[[i18n:ui.checking_cloud_agents]]", installing_claude:"[[i18n:ui.installing_claude_code]]", installing_codex:"[[i18n:ui.installing_codex]]", agents_installed:"[[i18n:ui.waiting_for_model_gateway_configuration]]", allocating:"[[i18n:ui.allocating_cloud_computer]]", starting:"[[i18n:ui.starting_cloud_computer]]", connecting:"[[i18n:ui.connecting_to_cloud_computer]]", runtime_ready:"[[i18n:ui.environment_started_agent_installation_pending]]", offline:"[[i18n:ui.offline_waiting_for_network]]", failed:"[[i18n:ui.environment_preparation_failed]]"};
   const row = document.createElement('div'); row.className = 'preparation-row';
   const title = document.createElement('span'); title.className = 'preparation-title';
-  const reasons = {network_offline:"[[i18n:ui.offline_waiting_for_network]]", cloud_unreachable:"[[i18n:ui.cant_reach_cloud_computer]]", server_unreachable:"[[i18n:ui.cant_reach_your_server]]", native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]"};
+  const reasons = {network_offline:"[[i18n:ui.offline_waiting_for_network]]", cloud_unreachable:"[[i18n:ui.cant_reach_cloud_computer]]", server_unreachable:"[[i18n:ui.cant_reach_your_server]]", native_credentials_need_attention:"[[i18n:ui.sign_in_to_the_agents_you_want_to_use_on_your_mac_then_retry]]",model_routes_need_attention:"[[i18n:ui.some_agent_models_need_configuration]]", routes_configured_inference_pending:"[[i18n:ui.models_configured_verification_pending]]", no_local_model_credentials:"[[i18n:ui.no_local_model_credentials_configured]]", no_model_providers:"[[i18n:ui.no_model_providers_configured]]", no_compatible_model_providers:"[[i18n:ui.no_compatible_model_configuration]]", provider_catalog_unavailable:"[[i18n:ui.unable_to_load_model_configuration]]", provider_selection_required:"[[i18n:ui.waiting_for_model_provider_selection]]", billing_restricted:"[[i18n:ui.add_credits_in_runta_to_create_cloud_computer]]"};
   title.textContent = reasons[state.status] || titles[state.stage] || "[[i18n:ui.preparing_2]]";
   const indicator = document.createElement('span'); indicator.className = 'preparation-indicator';
   // Unreachable reads like offline: nothing to do but wait, and no progress.
@@ -919,10 +919,18 @@ window.renderPreparation = state => {
     detail.textContent = isUnreachable ? "[[i18n:ui.reconnects_automatically]]" : "[[i18n:ui.reconnects_automatically_when_back_online]]";
     panel.append(detail);
   }
-  if (state.stage === 'failed') {
+  const billing = state.stage === 'failed' && state.status === 'billing_restricted';
+  if (state.stage === 'failed' && !billing) {
     const detail = document.createElement('p');
     detail.textContent = "[[i18n:ui.unable_to_finish_setup_please_retry]]";
     panel.append(detail);
+  }
+  if (billing) {
+    // Out of credits: retrying alone cannot succeed, so lead with topping up.
+    const topUp = document.createElement('button');
+    topUp.textContent = "[[i18n:ui.add_credits]]";
+    topUp.onclick = () => send('open-dashboard');
+    panel.append(topUp);
   }
   if (needsAction) {
     const retry = document.createElement('button');

@@ -482,3 +482,21 @@ func TestCreateReplayOfDeletedRuntimeUsesFreshKey(t *testing.T) {
 		t.Fatalf("expected a second creation under a fresh key: %v", keys)
 	}
 }
+
+func TestBillingRestricted(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{nil, false},
+		{&APIError{Status: http.StatusPaymentRequired}, true},
+		{fmt.Errorf("create: %w", &APIError{Status: http.StatusForbidden, Code: "balance_exhausted"}), true},
+		{&APIError{Status: http.StatusServiceUnavailable}, false},
+		{fmt.Errorf("billing_restricted: balance_exhausted"), true},
+		{fmt.Errorf("runtime failed"), false},
+	} {
+		if got := BillingRestricted(tc.err); got != tc.want {
+			t.Errorf("BillingRestricted(%v) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
+}

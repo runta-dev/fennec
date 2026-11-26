@@ -101,6 +101,24 @@ func (e *APIError) retiredCreation() bool {
 
 func (e *APIError) Error() string { return fmt.Sprintf("Runta HTTP %d", e.Status) }
 
+// BillingRestricted reports whether err means the account cannot run a cloud
+// computer until it adds credits: a refused create/start (HTTP 402 or a
+// billing error code) or a runtime that stopped because the balance ran out.
+func BillingRestricted(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiError *APIError
+	if errors.As(err, &apiError) {
+		switch apiError.Code {
+		case "balance_exhausted", "billing_restricted", "insufficient_balance", "payment_required":
+			return true
+		}
+		return apiError.Status == http.StatusPaymentRequired
+	}
+	return strings.Contains(err.Error(), "billing_restricted")
+}
+
 var errRetiredCreation = errors.New("creation key belongs to a deleted cloud computer")
 
 func (c *Client) request(ctx context.Context, method, path string, body any, key string, out any) error {

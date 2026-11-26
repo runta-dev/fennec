@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fennec/internal/agent"
 	"fennec/internal/launchprofile"
+	"fennec/internal/runta"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
@@ -115,7 +116,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 	})
 	if err != nil {
 		reason := err.Error()
-		if strings.Contains(reason, "billing_restricted") {
+		if runta.BillingRestricted(err) {
 			reason = "billing_restricted"
 		}
 		emit("failed", runtime.ID, reason)

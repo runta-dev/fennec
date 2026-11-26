@@ -208,6 +208,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  if(params.get('byoc')){setTimeout(()=>{window.openBYOCDialog();if(params.get('byoc')==='pair')document.querySelector('#byoc-dialog [data-mode=pair]')?.click();if(params.get('byoc_target')){document.querySelector('#byoc-target').value=params.get('byoc_target');document.querySelector('#byoc-submit').click();}},300);}
  const scenario=params.get('scenario');
  if(scenario==='offline'){window.renderPreparation({stage:'offline',status:'network_offline'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
+ else if(scenario==='billing'){window.renderPreparation({stage:'failed',status:'billing_restricted'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else if(scenario==='failed'){window.renderPreparation({stage:'failed',status:'runtime_preparation_failed'});window.renderSessionRefreshError();document.querySelector('[data-tab="sessions"]')?.click();}
  else window.renderPreparation({stage:'agents_installed',status:'ready'});
  if(params.get('tab')==='preferences')document.querySelector('#settings')?.click();
@@ -216,6 +217,6 @@ window.addEventListener('DOMContentLoaded',()=>{
  if(params.get('archive')==='export')setTimeout(()=>window.openArchiveExport?.(),100);
  if(params.get('archive')==='import')setTimeout(()=>window.openArchiveImport?.(),100);
  const ob=params.get('onboarding');
- if(ob==='signin'||ob==='setup')window.showOnboardingPreview?.(ob);
+ if(ob==='signin'||ob==='setup'||ob==='failed'||ob==='billing')window.showOnboardingPreview?.(ob);
 });
 `
