@@ -95,6 +95,7 @@ PLIST
 rm -rf "$app/Contents/Resources/licenses"
 mkdir -p "$app/Contents/Resources/licenses"
 cp docs/licenses/magpie-MIT.txt docs/licenses/codex-Apache-2.0.txt docs/licenses/klauspost-compress-LICENSE.txt THIRD_PARTY_NOTICES.md "$app/Contents/Resources/licenses/"
+cp docs/licenses/webp-MIT.txt docs/licenses/libwebp-BSD.txt docs/licenses/purego-Apache-2.0.txt "$app/Contents/Resources/licenses/"
 # The Fennec Terminal window: native on GPUI, with herdr-app's terminal core
 # (desktop/, Apache-2.0, see desktop/UPSTREAM.md). Building it needs Rust,
 # Zig 0.16 and two submodules (desktop/README.md), so it is opt-in:
