@@ -87,8 +87,14 @@ fn main() {
             } else { dark };
             settings::set_dark(dark);
             let requests = mods::requests();
+            // The window opens filling the screen's visible area (below the menu
+            // bar, beside the Dock), like WeChat; macOS animates it in from 98%.
+            let screen = cx
+                .primary_display()
+                .map(|display| display.visible_bounds())
+                .unwrap_or_else(|| Bounds::centered(None, size(px(1280.0), px(820.0)), cx));
             let options = WindowOptions {
-                window_bounds: Some(WindowBounds::centered(size(px(1280.0), px(820.0)), cx)),
+                window_bounds: Some(WindowBounds::Windowed(screen)),
                 titlebar: Some(TitlebarOptions {
                     title: Some(if preview::active() { "Fennec design preview" } else { "Fennec" }.into()),
                     appears_transparent: true,
