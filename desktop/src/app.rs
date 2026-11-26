@@ -3179,9 +3179,16 @@ impl FennecWindow {
                                         .absolute()
                                         .right(px(10.0))
                                         .bottom(px(8.0))
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(12.0))
                                         .text_size(px(11.0))
                                         .text_color(c("f_muted"))
-                                        .child(t("compose_shortcuts")),
+                                        .child(ui::shortcut_hint(&["return"], t("send")))
+                                        .child(ui::shortcut_hint(
+                                            &["shift", "return"],
+                                            t("compose_newline"),
+                                        )),
                                 )
                             })
                             .when(composer_has, |d| {

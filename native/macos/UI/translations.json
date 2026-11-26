@@ -170,7 +170,7 @@
     "desktop.export_logs_collecting": {"en-US":"Collecting…","zh-CN":"正在收集…"},
     "desktop.export_logs_saved": {"en-US":"Saved","zh-CN":"已保存"},
     "desktop.export_logs_retry": {"en-US":"Couldn’t export. Try again","zh-CN":"导出失败，请重试"},
-    "desktop.compose_shortcuts": {"en-US":"↵ Send · ⇧↵ New line", "zh-CN":"↵ 发送 · ⇧↵ 换行"},
+    "desktop.compose_newline": {"en-US": "New line", "zh-CN": "换行"},
     "desktop.keyboard_prefix": {"en-US":"s Search · . Settings · b Sidebar · Esc Cancel", "zh-CN":"s 搜索 · . 设置 · b 侧栏 · Esc 取消"},
     "desktop.close_other_tabs_action": {"en-US":"Close other tabs", "zh-CN":"关闭其他标签页"},
     "desktop.close_other_tabs_confirm": {"en-US":"Close other shell tabs and their processes?", "zh-CN":"关闭其他 Shell 标签及其进程？"},

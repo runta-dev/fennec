@@ -34,6 +34,8 @@ pub struct Assets;
 
 const FILES: &[(&str, &[u8])] = &[
     ("icons/context-rename.svg", include_bytes!("../assets/icons/context-rename.svg")),
+    ("icons/key-return.svg", include_bytes!("../assets/icons/key-return.svg")),
+    ("icons/key-shift.svg", include_bytes!("../assets/icons/key-shift.svg")),
     ("programs/activity-spinner.svg", include_bytes!("../assets/programs/activity-spinner.svg")),
     ("programs/LICENSE-LobeHub.txt", include_bytes!("../assets/programs/LICENSE-LobeHub.txt")),
     ("programs/LICENSE-Lucide.txt", include_bytes!("../assets/programs/LICENSE-Lucide.txt")),
@@ -234,6 +236,28 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(color)
+}
+
+/// A keyboard shortcut drawn as small keycaps followed by its label,
+/// e.g. [shift][return] New line.
+pub fn shortcut_hint(keys: &[&str], label: String) -> Div {
+    let muted = c("f_muted");
+    div()
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .child(div().flex().items_center().gap(px(2.0)).children(keys.iter().map(|k| {
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(16.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(muted.opacity(0.35))
+                .child(icon(&format!("key-{k}"), 10.0, muted))
+        })))
+        .child(label)
 }
 
 /// The agent's icon (the iPhone app's), with Kimi's dark variant on dark.
