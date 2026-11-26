@@ -11,9 +11,9 @@ import (
 )
 
 // Removal after the application is trashed restores the user's startup
-// files byte for byte, removes only Fennec's own shims, the stable
-// dispatcher, the routing preference and both LaunchAgent registrations,
-// and stops the daemon only after every file step.
+// files byte for byte, removes Fennec's configuration, the stable
+// dispatcher and both LaunchAgent registrations (not its logs), and stops
+// the daemon only after every file step.
 func TestRemovalCleanupRestoresTheUsersEnvironment(t *testing.T) {
 	zsh, err := exec.LookPath("zsh")
 	if err != nil {
@@ -47,7 +47,11 @@ func TestRemovalCleanupRestoresTheUsersEnvironment(t *testing.T) {
 	for _, name := range []string{"prepared-runtime.json", "installed-runtime.json", "preparation.json", "preparation-cache-status.json", "route-results.json"} {
 		os.WriteFile(filepath.Join(home, ".config/fennec", name), []byte(`{}`), 0600)
 	}
-	os.WriteFile(filepath.Join(home, ".config/fennec/settings.json"), []byte(`{}`), 0600)
+	os.WriteFile(filepath.Join(home, ".config/fennec/settings.json"), []byte(`{"language":"zh-CN"}`), 0600)
+	for _, dir := range []string{"Library/Caches/com.runta.fennec", "Library/WebKit/com.runta.fennec", "Library/HTTPStorages/com.runta.fennec", "Library/Logs/Fennec", ".config/other"} {
+		os.MkdirAll(filepath.Join(home, dir), 0700)
+		os.WriteFile(filepath.Join(home, dir, "data"), []byte("x"), 0600)
+	}
 	agents := filepath.Join(home, "Library/LaunchAgents")
 	os.MkdirAll(agents, 0700)
 	os.WriteFile(cleanupPlistPath(home), cleanupPlist(stable, app, "/dev/null"), 0644)
@@ -71,11 +75,17 @@ func TestRemovalCleanupRestoresTheUsersEnvironment(t *testing.T) {
 	if _, err := os.Stat(launcher.StableDir(home)); !os.IsNotExist(err) {
 		t.Error("stable dispatcher still present")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".config/fennec/settings.json")); err != nil {
-		t.Error("settings removed: only the cloud computer's preparation state goes")
+	// FEN-29: the configuration goes with the application, so a reinstall
+	// starts fresh (e.g. in the system language); logs and others' files stay.
+	for _, gone := range []string{".config/fennec", ".local/share/fennec", "Library/Caches/com.runta.fennec", "Library/WebKit/com.runta.fennec", "Library/HTTPStorages/com.runta.fennec", "Library/Application Support/com.runta.fennec"} {
+		if _, err := os.Lstat(filepath.Join(home, gone)); !os.IsNotExist(err) {
+			t.Errorf("configuration %s still present", gone)
+		}
 	}
-	if _, err := os.Stat(filepath.Join(shims, "mine")); err != nil {
-		t.Error("a file Fennec did not write was removed")
+	for _, kept := range []string{"Library/Logs/Fennec/data", ".config/other/data"} {
+		if _, err := os.Stat(filepath.Join(home, kept)); err != nil {
+			t.Errorf("%s removed", kept)
+		}
 	}
 	if stopped != 1 {
 		t.Fatalf("daemon stopped %d times", stopped)

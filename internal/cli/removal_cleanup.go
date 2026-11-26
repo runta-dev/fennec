@@ -170,8 +170,8 @@ func performRemovalCleanup(ctx context.Context, home, app string, entries []stri
 	// What the last preparation recorded about the cloud computer. A reinstall
 	// prepares it again from scratch instead of trusting a computer that may
 	// have been deleted or recreated meanwhile (FEN-25: the card said "Cloud
-	// computer ready" while Runta was still creating a new one). The account,
-	// settings and the cloud computer itself are kept.
+	// computer ready" while Runta was still creating a new one). The cloud
+	// computer itself is kept.
 	for _, path := range []string{checkpointPath(home), installationCheckpointPath(home)} {
 		_ = os.Remove(path)
 	}
@@ -224,6 +224,16 @@ func performRemovalCleanup(ctx context.Context, home, app string, entries []stri
 		cleanupLog(home, "removed "+dir)
 	}
 	if removeSelf {
+		// FEN-29: removing the application removes its configuration too
+		// (account, settings, caches), so a reinstall starts fresh, e.g. in
+		// the system language. Logs, the Keychain item and the cloud computer
+		// are kept.
+		if runtime.GOOS == "darwin" {
+			_ = exec.CommandContext(ctx, "/usr/bin/defaults", "delete", "com.runta.fennec").Run()
+		}
+		if err := uninstall.RemoveConfiguration(home); err != nil {
+			cleanupLog(home, "configuration: "+err.Error())
+		}
 		_ = os.RemoveAll(launcher.StableDir(home))
 		_ = os.Remove(cleanupPlistPath(home))
 		cleanupLog(home, "cleanup complete")

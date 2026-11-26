@@ -21,12 +21,32 @@ type LocalPlan struct {
 	Entries    []string `json:"entries"`
 }
 
-var localData = []string{
+// configuration is what Fennec keeps for the user on the Mac: account,
+// settings, cloud connection state, caches and WebView storage.
+var configuration = []string{
 	".config/fennec", ".local/share/fennec",
-	"Library/Caches/com.runta.fennec", "Library/WebKit/com.runta.fennec",
+	"Library/Caches/com.runta.fennec", "Library/WebKit/com.runta.fennec", "Library/HTTPStorages/com.runta.fennec",
 	"Library/Application Support/com.runta.fennec", "Library/Saved Application State/com.runta.fennec.savedState",
-	"Library/Preferences/com.runta.fennec.plist", "Library/LaunchAgents/com.runta.fennec.daemon.plist",
+	"Library/Preferences/com.runta.fennec.plist",
+}
+
+var localData = append(append([]string{}, configuration...),
+	"Library/LaunchAgents/com.runta.fennec.daemon.plist",
 	"Library/LaunchAgents/com.runta.fennec.cleanup.plist", "Library/Logs/Fennec",
+)
+
+// RemoveConfiguration deletes Fennec's configuration when the application is
+// removed (FEN-29), so a reinstall starts like a first install. Logs stay for
+// support; the Keychain item and the cloud computer are not touched.
+func RemoveConfiguration(home string) error {
+	if !filepath.IsAbs(home) || filepath.Clean(home) == "/" {
+		return fmt.Errorf("user home required")
+	}
+	paths := make([]string, 0, len(configuration))
+	for _, relative := range configuration {
+		paths = append(paths, filepath.Join(home, relative))
+	}
+	return removeLocalPaths(paths)
 }
 
 func BundleID(app string) (string, error) {
