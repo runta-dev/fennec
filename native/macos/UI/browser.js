@@ -6,7 +6,7 @@
  let fitting=false;function scheduleFit(){if(fitting)return;fitting=true;requestAnimationFrame(()=>{fitting=false;fit.fit();});}
  document.fonts.ready.then(scheduleFit);
  const loading=document.querySelector('#loading'),reconnect=document.querySelector('#reconnect');
- let socket,generation=0,credit=0,pending=[],ready=false,imagePaste=false;
+ let socket,generation=0,credit=0,pending=[],ready=false,imagePaste=false,imageWebP=false;
  const bytes64=bytes=>btoa(String.fromCharCode(...bytes));
  function send(frame){if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify(frame));}
  function flush(){while(ready&&credit>0&&pending.length){const item=pending[0];if(!item.data)return;const size=Math.min(credit,item.data.length,16384);send({type:item.type,data:bytes64(item.data.subarray(0,size)),bytes:item.total||0});item.total=0;item.data=item.data.slice(size);credit-=size;if(!item.data.length)pending.shift();}}
@@ -16,7 +16,7 @@
  terminal.onResize(({cols,rows})=>{if(ready)send({type:'resize',columns:cols,rows});});
  new ResizeObserver(scheduleFit).observe(document.querySelector('#terminal'));
  function connect(){
-  const epoch=++generation;socket?.close();pending=[];credit=0;ready=false;imagePaste=false;loading.hidden=false;reconnect.hidden=true;
+  const epoch=++generation;socket?.close();pending=[];credit=0;ready=false;imagePaste=false;imageWebP=false;loading.hidden=false;reconnect.hidden=true;
   socket=new WebSocket(`ws://${location.host}/socket`);
   socket.onopen=()=>{if(epoch!==generation)return;fit.fit();send({token,columns:terminal.cols,rows:terminal.rows});};
   socket.onmessage=event=>{
@@ -26,7 +26,7 @@
     if(frame.title)document.title=frame.title;
     if(/^\/icons\/[a-z0-9-]+\.svg$/.test(frame.icon)){let icon=document.querySelector('link[rel="icon"]');if(!icon){icon=document.createElement('link');icon.rel='icon';document.head.append(icon);}icon.href=frame.icon;}
    }
-   else if(frame.type==='receipt'){ready=true;imagePaste=(frame.capabilities||[]).includes('image_paste_v1');credit=65536;terminal.reset();terminal.focus();scheduleFit();flush();}
+   else if(frame.type==='receipt'){ready=true;imagePaste=(frame.capabilities||[]).includes('image_paste_v1');imageWebP=(frame.capabilities||[]).includes('image_webp_v1');credit=65536;terminal.reset();terminal.focus();scheduleFit();flush();}
    else if(frame.type==='data'){loading.hidden=true;const data=Uint8Array.from(atob(frame.data),c=>c.charCodeAt(0));terminal.write(data,()=>{if(epoch===generation){send({type:'credit',bytes:data.length});scheduleFit();}});}
    else if(frame.type==='input_credit'){credit+=frame.bytes;flush();}
    else if(frame.type==='paste_error'){showPasteError(frame.message);}
@@ -46,7 +46,19 @@
   event.preventDefault();event.stopImmediatePropagation();
   if(!imagePaste||file.size<1||file.size>20*1024*1024||pending.some(item=>item.type==='image')){showPasteError();return;}
   const epoch=generation,item={type:'image',data:null,total:file.size};pending.push(item);
-  try{const data=new Uint8Array(await file.arrayBuffer());if(epoch!==generation||!ready)return;if(data.length!==file.size)throw Error('size');item.data=data;flush();}
+  try{
+   let upload=file;
+   if(imageWebP){
+    const bitmap=await createImageBitmap(file);
+    try{
+     if(bitmap.width>16384||bitmap.height>16384||bitmap.width*bitmap.height>32000000)throw Error('dimensions');
+     const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
+     canvas.getContext('2d').drawImage(bitmap,0,0);
+     upload=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('image')),'image/webp',0.85));
+    }finally{bitmap.close();}
+   }
+   const data=new Uint8Array(await upload.arrayBuffer());if(epoch!==generation||!ready)return;if(data.length!==upload.size)throw Error('size');item.total=data.length;item.data=data;flush();
+  }
   catch{if(epoch!==generation)return;pending=pending.filter(entry=>entry!==item);showPasteError();flush();}
  },true);
  terminal.textarea?.addEventListener('paste',event=>{const count=(event.clipboardData?.getData('text')||'').length;if(!count||!ready||!pasted)return;pasted.textContent='Pasted '+count+' characters. Press Return to send.';pasted.hidden=false;clearTimeout(pastedTimer);pastedTimer=setTimeout(()=>{pasted.hidden=true;},4000);});

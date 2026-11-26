@@ -1,14 +1,18 @@
 package fennecmobile
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"fennec/internal/board"
+	"fennec/internal/pasteimage"
+	"fennec/internal/terminalstream"
 )
 
 // boardPath is what a board API path may contain: /v1/ and then ids,
@@ -66,17 +70,35 @@ func boardError(err error) error {
 	return errors.New(message)
 }
 
-// UploadImage stores a PNG or JPEG image on the board for a request or a
+// UploadImage compresses a pasted image to WebP for a request or a
 // reply and returns its board.Attachment as JSON, to send along with the
 // message. Images are content-addressed, so uploading one twice is harmless.
 func (s *Sessions) UploadImage(data []byte) (out0 string, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client, _, err := s.connect(ctx)
+	if err != nil {
+		return "", err
+	}
+	transport, err := s.resident(ctx, client)
+	if err != nil {
+		return "", err
+	}
+	if transport.Supports(terminalstream.CapabilityBoardWebP) {
+		data, err = pasteimage.Compress(data)
+		if err != nil {
+			return "", err
+		}
+	}
 	attachment, err := board.NewAttachment(data)
 	if err != nil {
 		return "", errors.New("image")
 	}
+	wireAttachment := attachment
+	wireAttachment.Thumbnail = ""
 	for offset := int64(0); offset < attachment.Size; offset += board.AttachmentChunkBytes {
 		end := min(offset+board.AttachmentChunkBytes, attachment.Size)
-		chunk, err := json.Marshal(board.AttachmentChunk{Attachment: attachment, Offset: offset, Data: data[offset:end]})
+		chunk, err := json.Marshal(board.AttachmentChunk{Attachment: wireAttachment, Offset: offset, Data: data[offset:end]})
 		if err != nil {
 			return "", err
 		}

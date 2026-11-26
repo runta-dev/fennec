@@ -105,3 +105,11 @@ linked tools; no affiliation or endorsement is implied.
   `website/public/licenses/xterm-addon-canvas-MIT.txt`.
 - Used with the existing xterm.js 5.5.0 build to draw block and box glyphs on a
   Canvas 2D character grid. Distributed with the website; no CDN runtime scripts.
+
+## WebP image encoding
+
+Pasted images use `github.com/gen2brain/webp` v0.6.4 (MIT), based on
+Google's libwebp (BSD), with optional shared-library loading through
+`github.com/ebitengine/purego` v0.10.1 (Apache-2.0).
+License texts: `docs/licenses/webp-MIT.txt`, `docs/licenses/libwebp-BSD.txt`,
+and `docs/licenses/purego-Apache-2.0.txt`.

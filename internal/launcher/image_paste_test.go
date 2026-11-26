@@ -5,8 +5,39 @@ import (
 	"context"
 	"errors"
 	"fennec/internal/terminalstream"
+	"image"
+	"image/png"
 	"testing"
 )
+
+func TestClipboardCompressionRequiresPeerCapability(t *testing.T) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewNRGBA(image.Rect(0, 0, 100, 80))); err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		window := terminalstream.NewCreditWindow()
+		window.Take(1)
+		var sent bytes.Buffer
+		err := sendClipboardImage(context.Background(), []byte{22}, 1, window, func(f terminalstream.Frame) error {
+			sent.Write(f.Data)
+			window.Add(len(f.Data))
+			return nil
+		}, func(context.Context) ([]byte, error) { return pngData.Bytes(), nil }, func() { t.Fatal("compression failed") }, nil, enabled)
+		window.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, format, err := image.DecodeConfig(bytes.NewReader(sent.Bytes()))
+		want := "png"
+		if enabled {
+			want = "webp"
+		}
+		if err != nil || format != want {
+			t.Fatalf("format %s, expected %s: %v", format, want, err)
+		}
+	}
+}
 
 func TestClipboardUploadCreditsAndTextFallback(t *testing.T) {
 	for _, kind := range []string{"image", "text", "error"} {

@@ -765,7 +765,13 @@ func (s Store) ClaimAt(project string, n int, session, agent, location string) (
 			working++
 		}
 		if item.Status == Queued && first == 0 {
-			first = item.Number
+			candidate, readErr := s.Request(project, item.Number)
+			if readErr != nil {
+				return r, readErr
+			}
+			if len(candidate.Messages) > 0 && s.AttachmentsReady(candidate) {
+				first = item.Number
+			}
 		}
 	}
 	if p.Paused || working >= p.Queue || first != n {

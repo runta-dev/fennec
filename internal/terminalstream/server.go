@@ -125,7 +125,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		sessionsMu.Unlock()
 		workers.Wait()
 	}()
-	capabilities := []string{"claude_settings_v1", "hook_bridge_v1", CapabilityImagePaste, "probe_id", CapabilityTrafficPackets}
+	capabilities := []string{"claude_settings_v1", "hook_bridge_v1", CapabilityImagePaste, CapabilityImageWebP, "probe_id", CapabilityTrafficPackets}
 	if guard, ok := output.(interface{ TCPQueueGuarded() bool }); ok && guard.TCPQueueGuarded() {
 		capabilities = append(capabilities, CapabilityTCPOutputGuard)
 	}
@@ -133,7 +133,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 		capabilities = append(capabilities, "reconcile_routes", "model_accounts", "native_accounts", "deferred_catalog", "model_catalog", "native_models", "native_model_set", "native_login", "native_account", "reconfigure_runtime", "configuration_gzip", "model_accounts_gzip", "system_metrics", "native_credential_set", "native_credential_watch", "connector_prepare", "connector_health", "mac_online", "magpie_credentials_sync", "preparation_health")
 	}
 	if dial != nil {
-		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay, CapabilityCommand, CapabilityMagpieWeb, CapabilityPreview, CapabilityBoard, CapabilityBoardImages, CapabilityThreadSession, CapabilityCloudArchive)
+		capabilities = append(capabilities, CapabilityCodexAppServer, CapabilityCodexAppServerEarlyInput, CapabilitySessionImport, CapabilityDeviceRelay, CapabilityCommand, CapabilityMagpieWeb, CapabilityPreview, CapabilityBoard, CapabilityBoardImages, CapabilityBoardWebP, CapabilityThreadSession, CapabilityCloudArchive)
 	}
 	if err := emit(Frame{Type: "ready", Version: ProtocolVersion, Capabilities: capabilities}); err != nil {
 		return err
@@ -302,7 +302,7 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 					emit(Frame{Type: "error", ID: frame.ID, Message: "remote launch failed; inspect session before retrying"})
 					return
 				}
-				receiptCapabilities := []string{CapabilityImagePaste}
+				receiptCapabilities := []string{CapabilityImagePaste, CapabilityImageWebP}
 				if session.wire != nil {
 					receiptCapabilities = append(receiptCapabilities, CapabilityWireWindow)
 				}

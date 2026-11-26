@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fennec/internal/pasteimage"
 	"image"
 	pixelcolor "image/color"
 	"image/jpeg"
@@ -45,11 +46,14 @@ type AttachmentChunk struct {
 }
 
 func validAttachment(a Attachment) bool {
-	return attachmentID.MatchString(a.ID) && a.Size > 0 && a.Size <= MaxImageBytes && (a.MediaType == "image/png" || a.MediaType == "image/jpeg") && a.Width > 0 && a.Height > 0 && a.Width <= 16384 && a.Height <= 16384 && int64(a.Width)*int64(a.Height) <= 32_000_000 && len(a.Thumbnail) <= 32<<10
+	return attachmentID.MatchString(a.ID) && a.Size > 0 && a.Size <= MaxImageBytes && (a.MediaType == "image/png" || a.MediaType == "image/jpeg" || a.MediaType == "image/webp") && a.Width > 0 && a.Height > 0 && a.Width <= 16384 && a.Height <= 16384 && int64(a.Width)*int64(a.Height) <= 32_000_000 && len(a.Thumbnail) <= 32<<10
 }
 func (s Store) attachmentDir() string { return filepath.Join(s.root(), "attachments") }
 func (s Store) AttachmentPath(a Attachment) string {
 	ext := ".png"
+	if a.MediaType == "image/webp" {
+		ext = ".webp"
+	}
 	if a.MediaType == "image/jpeg" {
 		ext = ".jpg"
 	}
@@ -76,7 +80,11 @@ func (s Store) ImportAttachment(path string) (Attachment, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return Attachment{}, ErrInvalid
 	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxImageBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, pasteimage.MaxBytes+1))
+	if err != nil {
+		return Attachment{}, err
+	}
+	data, err = pasteimage.Compress(data)
 	if err != nil {
 		return Attachment{}, err
 	}
@@ -91,7 +99,7 @@ func NewAttachment(data []byte) (Attachment, error) {
 		return Attachment{}, ErrInvalid
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || (format != "png" && format != "jpeg") || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 16384 || cfg.Height > 16384 || int64(cfg.Width)*int64(cfg.Height) > 32_000_000 {
+	if err != nil || (format != "png" && format != "jpeg" && format != "webp") || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 16384 || cfg.Height > 16384 || int64(cfg.Width)*int64(cfg.Height) > 32_000_000 {
 		return Attachment{}, ErrInvalid
 	}
 	sum := sha256.Sum256(data)
@@ -385,6 +393,15 @@ func (s Store) MissingAttachments() []MissingAttachment {
 	return out
 }
 func (s Store) ReadAttachmentChunk(id string, offset int64) (AttachmentChunk, error) {
+	return s.ReadAttachmentChunkSize(id, offset, AttachmentChunkBytes)
+}
+
+// ReadAttachmentChunkSize permits smaller resumable uploads on slow links
+// without changing the maximum accepted by older peers.
+func (s Store) ReadAttachmentChunkSize(id string, offset int64, size int) (AttachmentChunk, error) {
+	if size < 1 || size > AttachmentChunkBytes {
+		return AttachmentChunk{}, ErrInvalid
+	}
 	a, err := s.attachment(id)
 	if err != nil {
 		return AttachmentChunk{}, err
@@ -397,7 +414,7 @@ func (s Store) ReadAttachmentChunk(id string, offset int64) (AttachmentChunk, er
 		return AttachmentChunk{}, err
 	}
 	defer f.Close()
-	data := make([]byte, min(int64(AttachmentChunkBytes), a.Size-offset))
+	data := make([]byte, min(int64(size), a.Size-offset))
 	_, err = f.ReadAt(data, offset)
 	return AttachmentChunk{a, offset, data}, err
 }

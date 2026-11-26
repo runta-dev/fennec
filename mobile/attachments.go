@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fennec/internal/clipboard"
+	"fennec/internal/pasteimage"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/sessionid"
 	"fennec/internal/terminalstream"
@@ -150,6 +151,7 @@ func sendNativeImages(ctx context.Context, stream imageStream, images [][]byte, 
 			}
 		}
 	}()
+	acceptsWebP := false
 	wait := func(kind string, seq uint64) error {
 		for {
 			select {
@@ -158,6 +160,9 @@ func sendNativeImages(ctx context.Context, stream imageStream, images [][]byte, 
 					if kind == "receipt" {
 						found := false
 						for _, capability := range frame.Capabilities {
+							if capability == terminalstream.CapabilityImageWebP {
+								acceptsWebP = true
+							}
 							if capability == terminalstream.CapabilityEchoAck {
 								found = true
 							}
@@ -198,6 +203,13 @@ func sendNativeImages(ctx context.Context, stream imageStream, images [][]byte, 
 		return wait("echo_ack", seq)
 	}
 	for _, image := range images {
+		if acceptsWebP {
+			var err error
+			image, err = pasteimage.Compress(image)
+			if err != nil {
+				return err
+			}
+		}
 		if err := send("image", image); err != nil {
 			return err
 		}

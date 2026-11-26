@@ -762,7 +762,19 @@ impl TerminalView {
                             refused.push((name(), why.to_owned()));
                             continue;
                         }
-                        let out = crate::spawn::command(crate::core_bin::path()).args(["put", "--json", &addr]).arg(p).output();
+                        let compressed = if copies {
+                            match crate::control::call("clipboard.image.compress", serde_json::json!({"path":p}))
+                                .and_then(|v| v["path"].as_str().map(PathBuf::from).ok_or_else(|| anyhow::anyhow!("could not compress image"))) {
+                                Ok(path) => Some(path),
+                                Err(error) => {
+                                    refused.push((name(), error.to_string()));
+                                    let _ = std::fs::remove_file(p);
+                                    continue;
+                                }
+                            }
+                        } else { None };
+                        let out = crate::spawn::command(crate::core_bin::path()).args(["put", "--json", &addr]).arg(compressed.as_ref().unwrap_or(p)).output();
+                        if let Some(path) = compressed { let _ = std::fs::remove_file(path); }
                         if copies {
                             let _ = std::fs::remove_file(p);
                         }

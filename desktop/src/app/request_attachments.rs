@@ -66,7 +66,7 @@ fn import_image(mut bytes: Vec<u8>) -> anyhow::Result<board::Attachment> {
         decoded.write_to(&mut output, image::ImageFormat::Png)?;
         bytes = output.into_inner();
     }
-    if bytes.len() > 8 << 20 {
+    if bytes.len() > 64 << 20 {
         anyhow::bail!("image is too large");
     }
     let stamp = std::time::SystemTime::now()
@@ -161,7 +161,7 @@ impl FennecWindow {
                             p.extension().and_then(|s| s.to_str()).is_some_and(|s| {
                                 matches!(
                                     s.to_ascii_lowercase().as_str(),
-                                    "png" | "jpg" | "jpeg" | "tif" | "tiff" | "bmp"
+                                    "png" | "jpg" | "jpeg" | "webp" | "tif" | "tiff" | "bmp"
                                 )
                             })
                         }) =>

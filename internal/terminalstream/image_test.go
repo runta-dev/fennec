@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fennec/internal/clipboard"
+	"fennec/internal/pasteimage"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
 	"image"
@@ -258,5 +259,25 @@ func TestLegacyKimiPasteDoesNotInsertPath(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("missing actionable legacy notice")
 		}
+	}
+}
+
+func TestWebPWireImageBecomesAgentCompatiblePNG(t *testing.T) {
+	data, err := pasteimage.Compress(testImage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var upload imageUpload
+	path, err := upload.accept(Frame{Bytes: len(data), Data: data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := clipboard.ValidatePNG(actual); err != nil {
+		t.Fatal("agent clipboard received unsupported encoding", err)
 	}
 }

@@ -3,6 +3,7 @@ package launcher
 import (
 	"context"
 	"fennec/internal/clipboard"
+	"fennec/internal/pasteimage"
 	"fennec/internal/terminalstream"
 	"io"
 )
@@ -12,7 +13,7 @@ import (
 // seq is the input sequence number of the shortcut; every chunk carries it so
 // the service can acknowledge the upload once the paste is written. absent is
 // called when the clipboard turned out to hold no image.
-func sendClipboardImage(ctx context.Context, original []byte, seq uint64, window *terminalstream.CreditWindow, send func(terminalstream.Frame) error, read func(context.Context) ([]byte, error), notice func(), absent func()) error {
+func sendClipboardImage(ctx context.Context, original []byte, seq uint64, window *terminalstream.CreditWindow, send func(terminalstream.Frame) error, read func(context.Context) ([]byte, error), notice func(), absent func(), webp ...bool) error {
 	data, err := read(ctx)
 	if err != nil {
 		window.Add(len(original))
@@ -26,6 +27,13 @@ func sendClipboardImage(ctx context.Context, original []byte, seq uint64, window
 		return send(terminalstream.Frame{Type: "input", Data: original, Seq: seq})
 	}
 	window.Add(len(original))
+	if len(webp) > 0 && webp[0] {
+		data, err = pasteimage.Compress(data)
+		if err != nil {
+			notice()
+			return nil
+		}
+	}
 	total := len(data)
 	for len(data) > 0 {
 		n := window.Take(min(len(data), terminalstream.Chunk))

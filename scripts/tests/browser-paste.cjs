@@ -78,5 +78,18 @@ assert.equal(nodes.pasted.hidden, true, 'notice hides after a moment');
   replacement.onmessage({data:JSON.stringify({type:'receipt',capabilities:['image_paste_v1']})});
   complete(payload.buffer);await stale;
   assert.equal(replacement.sent.length,0,'stale clipboard image crossed sessions');
+  // A capable peer receives the browser's compressed image, with its new size.
+  const compressed=new Uint8Array(20000).fill(17);
+  let closed=false;
+  context.createImageBitmap=async()=>({width:100,height:80,close(){closed=true;}});
+  context.document.createElement=()=>({getContext:()=>({drawImage(){}}),toBlob(callback,type,quality){
+    assert.equal(type,'image/webp');assert.equal(quality,0.85);
+    callback({size:compressed.length,arrayBuffer:async()=>compressed.buffer});
+  }});
+  replacement.onmessage({data:JSON.stringify({type:'receipt',capabilities:['image_paste_v1','image_webp_v1']})});
+  await listeners['paste:capture']({clipboardData:{items:[{type:'image/png',getAsFile:()=>file}]},preventDefault(){},stopImmediatePropagation(){}});
+  assert.equal(closed,true);
+  assert.equal(replacement.sent[0].bytes,compressed.length);
+  assert.deepEqual(Buffer.concat(replacement.sent.map(f=>Buffer.from(f.data,'base64'))),Buffer.from(compressed));
   console.log('PASS browser terminal text/image paste, ordering, credits, and reconnect isolation');
 })().catch(error=>{console.error(error);process.exitCode=1;});

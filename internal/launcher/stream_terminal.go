@@ -120,7 +120,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 		defer owner.engine.CompareAndSwap(engine, nil)
 	}
 	interaction := terminalstream.InteractionEncoder{ImagePaste: true}
-	var imagePaste, cadence atomic.Bool
+	var imagePaste, imageWebP, cadence atomic.Bool
 	receiptReady := make(chan struct{})
 	pasteNotice := func() { fmt.Fprint(os.Stderr, "\a\r\nCould not paste image, try copying it again\r\n") }
 	sendInput := func(data []byte, stamp inputStamp) error {
@@ -134,7 +134,7 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 				}
 				if imagePaste.Load() {
 					rejected := func() { engine.RejectImage(); pasteNotice() }
-					if err := sendClipboardImage(ctx, frame.Data, frame.Seq, window, send, readClipboardImage, rejected, engine.RejectImage); err != nil {
+					if err := sendClipboardImage(ctx, frame.Data, frame.Seq, window, send, readClipboardImage, rejected, engine.RejectImage, imageWebP.Load()); err != nil {
 						return err
 					}
 					continue
@@ -353,6 +353,8 @@ func executeStream(plan LaunchPlan, intent LaunchIntent, home string, ready func
 			confirmed = true
 			for _, capability := range frame.Capabilities {
 				switch capability {
+				case terminalstream.CapabilityImageWebP:
+					imageWebP.Store(true)
 				case terminalstream.CapabilityImagePaste:
 					imagePaste.Store(true)
 					engine.SetImagePaste(true)

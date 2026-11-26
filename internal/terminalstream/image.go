@@ -3,12 +3,14 @@ package terminalstream
 import (
 	"bytes"
 	"fennec/internal/clipboard"
+	"fennec/internal/pasteimage"
 	"fmt"
 	"os"
 	"strings"
 )
 
 const CapabilityImagePaste = "image_paste_v1"
+const CapabilityImageWebP = "image_webp_v1"
 
 // An image uses the same ordered, credited input queue as keystrokes. Bytes
 // announces the total size on the first chunk; subsequent chunks carry zero.
@@ -37,7 +39,11 @@ func (u *imageUpload) accept(frame Frame) (string, error) {
 		return "", nil
 	}
 	defer u.reset()
-	if err := clipboard.ValidatePNG(u.data.Bytes()); err != nil {
+	data, err := pasteimage.PNG(u.data.Bytes())
+	if err != nil {
+		return "", err
+	}
+	if err := clipboard.ValidatePNG(data); err != nil {
 		return "", err
 	}
 	file, err := os.CreateTemp("", "fennec-pasted-*.png")
@@ -45,7 +51,7 @@ func (u *imageUpload) accept(frame Frame) (string, error) {
 		return "", err
 	}
 	path := file.Name()
-	_, writeErr := file.Write(u.data.Bytes())
+	_, writeErr := file.Write(data)
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil || strings.ContainsAny(path, "\x00\x1b\r\n") {
 		os.Remove(path)

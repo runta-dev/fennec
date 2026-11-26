@@ -110,6 +110,23 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				outbound.Events, outbound.More = nil, false
 				caughtUp = false
 			}
+			// Do not publish a format an older executor cannot read. It will
+			// resume from the same cursor once its advertised capability updates.
+			if err == nil && !transport.Supports(terminalstream.CapabilityBoardWebP) {
+				for _, event := range outbound.Events {
+					var messages []board.Message
+					if json.Unmarshal(event.Fields["messages"], &messages) != nil {
+						continue
+					}
+					for _, message := range messages {
+						for _, image := range message.Attachments {
+							if image.MediaType == "image/webp" {
+								err = fmt.Errorf("cloud service needs WebP image support")
+							}
+						}
+					}
+				}
+			}
 			if err == nil {
 				raw, e := remote.call(step, "POST", "/v1/sync", outbound)
 				err = e
@@ -127,7 +144,15 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 							// such requests queued until every original is present.
 							last = time.Now()
 							_ = store.RecordImageSync(peerSeen, len(incoming.Missing) > 0 || len(local.Missing) > 0)
-							err = syncQueueAttachments(step, remote, store, incoming.Missing, local.Missing)
+							// Metadata's short deadline must not repeatedly cancel a
+							// larger image at offset zero on a slow resident link.
+							images, stopImages := context.WithTimeout(lifecycle, 30*time.Second)
+							if transport.Supports(terminalstream.CapabilityBoardWebP) || !hasWebP(incoming.Missing) {
+								err = syncQueueAttachments(images, remote, store, incoming.Missing, local.Missing)
+							} else {
+								err = fmt.Errorf("cloud service needs WebP image support")
+							}
+							stopImages()
 						}
 					}
 				}
@@ -189,14 +214,34 @@ func (h *syncHealth) ok() {
 	h.reason = ""
 }
 
-func syncQueueAttachments(ctx context.Context, remote boardClient, local board.Store, push, pull []board.MissingAttachment) error {
+func hasWebP(missing []board.MissingAttachment) bool {
+	for _, m := range missing {
+		if m.Attachment.MediaType == "image/webp" {
+			return true
+		}
+	}
+	return false
+}
+
+type attachmentCaller interface {
+	call(context.Context, string, string, any) (json.RawMessage, error)
+}
+
+func syncQueueAttachments(ctx context.Context, remote attachmentCaller, local board.Store, push, pull []board.MissingAttachment) error {
+	var failures []error
 	for _, missing := range push {
-		chunk, err := local.ReadAttachmentChunk(missing.Attachment.ID, missing.Offset)
+		chunk, err := local.ReadAttachmentChunkSize(missing.Attachment.ID, missing.Offset, 32<<10)
 		if err != nil {
 			continue
 		}
-		if _, err = remote.call(ctx, "POST", "/v1/attachments/"+chunk.Attachment.ID, chunk); err != nil {
-			return err
+		// The thumbnail already travelled with the request metadata. Repeating
+		// its base64 payload in every chunk wastes much of a slow link.
+		chunk.Attachment.Thumbnail = ""
+		attempt, cancel := context.WithTimeout(ctx, 8*time.Second)
+		_, err = remote.call(attempt, "POST", "/v1/attachments/"+chunk.Attachment.ID, chunk)
+		cancel()
+		if err != nil {
+			failures = append(failures, err)
 		}
 	}
 	for _, missing := range pull {
@@ -215,7 +260,7 @@ func syncQueueAttachments(ctx context.Context, remote boardClient, local board.S
 			return err
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func queueRouting(s *daemonServices, store board.Store) board.Routing {

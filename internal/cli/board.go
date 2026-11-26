@@ -19,6 +19,7 @@ import (
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
+	"fennec/internal/pasteimage"
 	r "fennec/internal/runtime"
 	"fennec/internal/sessionid"
 	"fennec/internal/terminalstream"
@@ -213,6 +214,22 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		return map[string]string{"url": url}, nil
 	}
 	imageImports := make(chan struct{}, 2)
+	c.Additional["clipboard.image.compress"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		select {
+		case imageImports <- struct{}{}:
+			defer func() { <-imageImports }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		var params struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(raw, &params) != nil || !filepath.IsAbs(params.Path) {
+			return nil, board.ErrInvalid
+		}
+		path, err := pasteimage.File(params.Path)
+		return map[string]string{"path": path}, err
+	}
 	c.Additional["board.attachment.import"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		select {
 		case imageImports <- struct{}{}:
@@ -233,7 +250,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		attachment, err := store.ImportAttachment(params.Path)
 		if err != nil {
-			return nil, &control.Fault{Code: "invalid_params", Message: "Use a PNG or JPEG image up to 8 MB"}
+			return nil, &control.Fault{Code: "invalid_params", Message: "Use a PNG, JPEG or WebP image up to 8 MB"}
 		}
 		return attachment, nil
 	}
