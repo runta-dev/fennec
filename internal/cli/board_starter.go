@@ -1,14 +1,10 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
 
 	"fennec/internal/localization"
 	uiassets "fennec/native/macos/UI"
@@ -36,19 +32,7 @@ func starterQueueLanguage(home string) string {
 			return prefs.Language
 		}
 	}
-	language := os.Getenv("LANG")
-	if runtime.GOOS == "darwin" {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		if out, err := exec.CommandContext(ctx, "/usr/bin/defaults", "read", "-g", "AppleLanguages").Output(); err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				if line = strings.Trim(strings.TrimSpace(line), `(),"`); line != "" {
-					language = line
-					break
-				}
-			}
-		}
-	}
+	language := systemPreferredLanguage()
 	if strings.HasPrefix(strings.ToLower(language), "zh") {
 		return "zh-CN"
 	}

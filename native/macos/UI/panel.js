@@ -730,7 +730,7 @@ themeButtons.forEach((button,index)=>{
   event.preventDefault();themeButtons[next].click();themeButtons[next].focus();
  };
 });
-window.exportLocalPreferences = () => ({theme:appearance.value,language:document.querySelector('#language')?.value || 'zh-CN'});
+window.exportLocalPreferences = () => ({theme:appearance.value,language:document.querySelector('#language')?.value || systemLanguage()});
 window.renderMagpiePreference = enabled => {
  if(magpieEnabled!==enabled){nativeModelStates.clear();nativeModelRequests.clear();nativeAccountStates.clear();nativeAccountPending.clear();localGatewayModels.clear();localGatewayPending.clear();}
  magpieEnabled=enabled;

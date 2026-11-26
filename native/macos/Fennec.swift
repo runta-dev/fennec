@@ -54,7 +54,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var openedLoginURL: String?
     private var item: NSStatusItem!
     private let permissionPopover = NSPopover()
-    private var nativeLanguage = "zh-CN"
+    private var nativeLanguage = L10n.panelLanguage(Locale.preferredLanguages.first ?? "en-US")
     private let licenseViewer = LicenseViewer()
     private var shownApprovalID: String?
     private var approvals: [[String:String]] = []

@@ -23,6 +23,17 @@ enum L10n {
         let value = row?[locale] ?? (locale == "zh-TW" ? row?["zh-CN"] : nil) ?? FennecEnglish.messages[key] ?? key
         return displayText(value, locale: locale)
     }
+    /// A system language tag as one of the panel's languages (FEN-29: a new
+    /// install starts in the system language, not Chinese).
+    static func panelLanguage(_ tag: String) -> String {
+        let tag = tag.lowercased().replacingOccurrences(of: "_", with: "-")
+        if ["zh-hant", "zh-tw", "zh-hk", "zh-mo"].contains(where: { tag.hasPrefix($0) }) { return "zh-TW" }
+        if tag.hasPrefix("zh") { return "zh-CN" }
+        if tag.hasPrefix("ja") { return "ja" }
+        if tag.hasPrefix("ko") { return "ko" }
+        if tag.hasPrefix("en-gb") { return "en-GB" }
+        return "en-US"
+    }
     static func displayText(_ text: String, locale: String) -> String {
         let separator = locale == "ja" ? "\u{3001}" : locale.hasPrefix("zh") ? "\u{ff0c}" : " · "
         return text.replacingOccurrences(of: "...", with: "…")

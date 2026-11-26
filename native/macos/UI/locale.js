@@ -2,9 +2,19 @@
 const messages = window.FennecMessages;
 const languageSelect = document.querySelector('#language');
 const supportedLanguages = ['zh-CN', 'zh-TW', 'en-US', 'en-GB', 'ja', 'ko'];
-let language = 'zh-CN';
+// Until the saved setting arrives, follow the system language (FEN-29).
+function systemLanguage(tag = globalThis.navigator?.language || '') {
+  tag = tag.toLowerCase().replace(/_/g, '-');
+  if (/^zh-(hant|tw|hk|mo)/.test(tag)) return 'zh-TW';
+  if (tag.startsWith('zh')) return 'zh-CN';
+  if (tag.startsWith('ja')) return 'ja';
+  if (tag.startsWith('ko')) return 'ko';
+  if (tag.startsWith('en-gb')) return 'en-GB';
+  return 'en-US';
+}
+let language = systemLanguage();
 try { language = localStorage.getItem('language') || language; } catch (_) {}
-if (!supportedLanguages.includes(language)) language = 'zh-CN';
+if (!supportedLanguages.includes(language)) language = systemLanguage();
 languageSelect.value = language;
 const textSources = new WeakMap();
 const attrSources = new WeakMap();

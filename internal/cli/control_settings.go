@@ -111,6 +111,8 @@ func newDesktopSettings(home string) *desktopSettings {
 func newDesktopSettingsWithMagpie(home string, installed func() bool) *desktopSettings {
 	settings := &desktopSettings{path: filepath.Join(home, ".config/fennec/settings.json"), value: desktopPreferences{Theme: "system", Language: "zh-CN"}}
 	if _, err := os.Lstat(settings.path); os.IsNotExist(err) {
+		// A new install starts in the system language (FEN-29).
+		settings.value.Language = panelLanguage(systemPreferredLanguage())
 		settings.value.Magpie = installed()
 		// Publish complete defaults once, without replacing a concurrent explicit choice.
 		_ = initializeDesktopPreferences(settings.path, settings.value)
