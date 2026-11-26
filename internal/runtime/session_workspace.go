@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fennec/internal/localssh"
+	"fennec/internal/setup"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,4 +79,19 @@ func writeSessionInstructions(path string, data []byte) error {
 		return err
 	}
 	return closeErr
+}
+
+// prepareClaudeProfile trusts a Fennec session folder in the Claude Code
+// profile the launch will read. Through Magpie the gateway token already
+// signs Claude in, so first-run onboarding is marked done as well; a native
+// account keeps its own onboarding state, which credential sync manages.
+func prepareClaudeProfile(home, cwd string) error {
+	if setup.NativeAgent(home, "claude") {
+		root, _, err := setup.NativeAccountRoot(home, "claude")
+		if err != nil {
+			return err
+		}
+		return setup.TrustClaudeFolders(setup.ClaudeProfile(home, filepath.Join(root, "claude")), cwd)
+	}
+	return setup.PrepareClaudeLaunch(setup.ClaudeProfile(home, os.Getenv("CLAUDE_CONFIG_DIR")), cwd)
 }

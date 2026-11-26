@@ -1,4 +1,4 @@
-package cli
+package setup
 
 import (
 	"bytes"
@@ -11,23 +11,36 @@ import (
 
 var claudeTrustMu sync.Mutex
 
-// claudeProfile is the global config file Claude Code reads for configDir
-// (setup.LocalAgentHome's answer): ~/.claude.json for the default
+// ClaudeProfile is the global config file Claude Code reads for configDir
+// (LocalAgentHome's answer): ~/.claude.json for the default
 // ~/.claude, otherwise $CLAUDE_CONFIG_DIR/.claude.json.
-func claudeProfile(home, configDir string) string {
+func ClaudeProfile(home, configDir string) string {
 	if configDir == "" || filepath.Clean(configDir) == filepath.Join(home, ".claude") {
 		return filepath.Join(home, ".claude.json")
 	}
 	return filepath.Join(configDir, ".claude.json")
 }
 
-// trustClaudeFolders records in profile that Claude Code may work in dirs
+// TrustClaudeFolders records in profile that Claude Code may work in dirs
 // without its "Quick safety check" trust prompt, which an unattended queue
 // session has nobody to answer. Each folder is recorded as written and with
 // its links followed, since Claude Code keys projects by its real working
 // directory. Every other key and value in the file is kept byte for byte;
 // a file that can't be parsed (Claude Code may be mid-write) is left alone.
-func trustClaudeFolders(profile string, dirs ...string) error {
+func TrustClaudeFolders(profile string, dirs ...string) error {
+	return updateClaudeProfile(profile, false, dirs)
+}
+
+// PrepareClaudeLaunch trusts dirs like TrustClaudeFolders and also marks
+// Claude Code's first-run onboarding (theme picker and sign-in intro) as
+// done, so a Fennec session opens straight into the TUI. Use it only when
+// the session is already signed in another way (Magpie's gateway token):
+// finished onboarding also skips Claude Code's own login step.
+func PrepareClaudeLaunch(profile string, dirs ...string) error {
+	return updateClaudeProfile(profile, true, dirs)
+}
+
+func updateClaudeProfile(profile string, onboarded bool, dirs []string) error {
 	claudeTrustMu.Lock()
 	defer claudeTrustMu.Unlock()
 	top := map[string]json.RawMessage{}
@@ -48,6 +61,13 @@ func trustClaudeFolders(profile string, dirs ...string) error {
 		}
 	}
 	changed := false
+	if onboarded {
+		var done bool
+		if json.Unmarshal(top["hasCompletedOnboarding"], &done) != nil || !done {
+			top["hasCompletedOnboarding"] = json.RawMessage("true")
+			changed = true
+		}
+	}
 	for _, dir := range dirs {
 		if dir == "" {
 			continue

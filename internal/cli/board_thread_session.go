@@ -130,7 +130,7 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 			// Nobody is there to answer Claude Code's "Quick safety check"
 			// folder trust prompt in a queue session; the launch would sit
 			// on it and the scheduler would never see the agent start.
-			if err = trustClaudeFolders(claudeProfile(e.home, setup.LocalAgentHome(ctx, agent)), cwd); err != nil {
+			if err = setup.TrustClaudeFolders(setup.ClaudeProfile(e.home, setup.LocalAgentHome(ctx, agent)), cwd); err != nil {
 				return r.LocalTerminal{}, false, fmt.Errorf("trust Claude working directory: %w", err)
 			}
 		}

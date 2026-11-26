@@ -213,6 +213,14 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, err
 		}
 	}
+	if request.Agent == "claude" && !request.NativeLogin {
+		// Fennec made this folder: trust it, as Claude Code otherwise stops
+		// at "Quick safety check" (and, on a fresh profile, at its theme
+		// picker) before the TUI. Magpie does the same for its own launches.
+		if err := prepareClaudeProfile(runtime.Home, cwd); err != nil {
+			return LocalTerminal{}, err
+		}
+	}
 	agentArguments, err := hookbridge.MaterializeClaudeSettings(runtime.Home, request.ID, request.Agent, inputArguments, request.ClaudeSettings)
 	if err != nil {
 		return LocalTerminal{}, err

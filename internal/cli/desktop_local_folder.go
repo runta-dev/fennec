@@ -36,7 +36,7 @@ func desktopLocalFolder(ctx context.Context, home, agent, name string) (string, 
 	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("session folder must be a directory")
 	}
-	if err := trustClaudeFolders(claudeProfile(home, setup.LocalAgentHome(ctx, agent)), dir); err != nil {
+	if err := setup.TrustClaudeFolders(setup.ClaudeProfile(home, setup.LocalAgentHome(ctx, agent)), dir); err != nil {
 		return "", fmt.Errorf("trust Claude working directory: %w", err)
 	}
 	return dir, nil

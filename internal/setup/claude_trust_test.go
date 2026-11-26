@@ -1,4 +1,4 @@
-package cli
+package setup
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 func TestTrustClaudeFoldersMarksQueueSessionAndKeepsTheRest(t *testing.T) {
 	home := t.TempDir()
-	profile := claudeProfile(home, filepath.Join(home, ".claude"))
+	profile := ClaudeProfile(home, filepath.Join(home, ".claude"))
 	if profile != filepath.Join(home, ".claude.json") {
 		t.Fatalf("default profile = %s", profile)
 	}
@@ -22,7 +22,7 @@ func TestTrustClaudeFoldersMarksQueueSessionAndKeepsTheRest(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := trustClaudeFolders(profile, dir); err != nil {
+	if err := TrustClaudeFolders(profile, dir); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(profile)
@@ -52,7 +52,7 @@ func TestTrustClaudeFoldersMarksQueueSessionAndKeepsTheRest(t *testing.T) {
 		t.Fatalf("mode changed to %v", info.Mode().Perm())
 	}
 	before, _ := os.ReadFile(profile)
-	if err := trustClaudeFolders(profile, dir); err != nil {
+	if err := TrustClaudeFolders(profile, dir); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := os.ReadFile(profile)
@@ -64,11 +64,11 @@ func TestTrustClaudeFoldersMarksQueueSessionAndKeepsTheRest(t *testing.T) {
 func TestTrustClaudeFoldersCustomConfigDirAndBrokenFile(t *testing.T) {
 	home := t.TempDir()
 	custom := filepath.Join(home, "cfg")
-	profile := claudeProfile(home, custom)
+	profile := ClaudeProfile(home, custom)
 	if profile != filepath.Join(custom, ".claude.json") {
 		t.Fatalf("custom profile = %s", profile)
 	}
-	if err := trustClaudeFolders(profile, home); err != nil {
+	if err := TrustClaudeFolders(profile, home); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(profile); !strings.Contains(string(b), `"hasTrustDialogAccepted": true`) {
@@ -77,10 +77,45 @@ func TestTrustClaudeFoldersCustomConfigDirAndBrokenFile(t *testing.T) {
 	if err := os.WriteFile(profile, []byte(`{"projects": {`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := trustClaudeFolders(profile, home); err == nil {
+	if err := TrustClaudeFolders(profile, home); err == nil {
 		t.Fatal("half-written profile was overwritten")
 	}
 	if b, _ := os.ReadFile(profile); string(b) != `{"projects": {` {
 		t.Fatalf("half-written profile changed: %s", b)
+	}
+}
+
+func TestPrepareClaudeLaunchFinishesOnboardingOnce(t *testing.T) {
+	home := t.TempDir()
+	profile := ClaudeProfile(home, "")
+	if err := os.WriteFile(profile, []byte(`{"hasCompletedOnboarding": false, "theme": "light"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareClaudeLaunch(profile, home); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Onboarded bool                      `json:"hasCompletedOnboarding"`
+		Theme     string                    `json:"theme"`
+		Projects  map[string]map[string]any `json:"projects"`
+	}
+	b, _ := os.ReadFile(profile)
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Onboarded || got.Theme != "light" || got.Projects[home]["hasTrustDialogAccepted"] != true {
+		t.Fatalf("profile not prepared: %s", b)
+	}
+	if err := PrepareClaudeLaunch(profile, home); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(profile); string(after) != string(b) {
+		t.Fatal("prepared profile was rewritten")
+	}
+	if err := TrustClaudeFolders(ClaudeProfile(home, filepath.Join(home, "native")), home); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "native", ".claude.json")); strings.Contains(string(b), "hasCompletedOnboarding") {
+		t.Fatalf("trust alone finished onboarding: %s", b)
 	}
 }

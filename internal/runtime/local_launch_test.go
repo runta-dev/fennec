@@ -348,3 +348,49 @@ func TestAgyLaunchStaysNativeWithMagpieOn(t *testing.T) {
 		}
 	}
 }
+
+// A Fennec session folder opens straight into Claude Code's TUI: the folder
+// is trusted in the profile the launch reads, and through Magpie (which signs
+// Claude in) first-run onboarding is finished too. A native account keeps its
+// own onboarding state so Claude Code can still ask it to sign in.
+func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	for _, native := range []bool{false, true} {
+		home := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(home, ".local/fennec"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".local/fennec/agent-mode.json"), []byte(fmt.Sprintf(`{"native":%v}`, native)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/claude", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+			if args[0] == "ls" {
+				return []byte(`{"terminals":[]}`), nil
+			}
+			return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+		}}
+		request := LocalLaunch{ID: strings.Repeat("d", 32), Agent: "claude", LocalDirectory: "/project", Device: "1234abcd"}
+		if _, err := backend.Launch(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		profile := filepath.Join(home, ".claude.json")
+		if native {
+			profile = filepath.Join(home, ".local/fennec/native/claude/.claude.json")
+		}
+		b, err := os.ReadFile(profile)
+		if err != nil {
+			t.Fatalf("native=%v: %v", native, err)
+		}
+		var got struct {
+			Onboarded bool                      `json:"hasCompletedOnboarding"`
+			Projects  map[string]map[string]any `json:"projects"`
+		}
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+		cwd := filepath.Join(home, ".fen", request.ID)
+		if got.Projects[cwd]["hasTrustDialogAccepted"] != true || got.Onboarded == native {
+			t.Fatalf("native=%v profile %s", native, b)
+		}
+	}
+}
