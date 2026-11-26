@@ -54,7 +54,8 @@ export default function Home() {
             <li><Check size={16}/><div><strong>Follow the work</strong><span>The agent’s replies, the commands it ran, and how long it worked.</span></div></li>
             <li><Check size={16}/><div><strong>Reply, stop, or start</strong><span>Send a follow-up, stop a session, open its terminal, or start a new one.</span></div></li>
           </ul>
-          <p className="benefit-detail"><Smartphone size={14}/>To pair, open the Fennec menu bar app, choose Get Fennec iOS App, and scan the code.</p>
+          <div className="mobile-actions"><a className="button primary" href="https://testflight.apple.com/join/D7rsJRPs"><Smartphone size={17}/>Join TestFlight<ArrowUpRight size={16}/></a></div>
+          <p className="benefit-detail">Install the iPhone beta through TestFlight. Then open the Fennec menu bar app on your Mac, choose Get Fennec iOS App, and scan the code to pair.</p>
         </div>
         <figure className="mobile-stage" aria-label="Fennec for iPhone, replaying the sessions from the walkthrough above"><MobileShowcase/></figure>
       </section>

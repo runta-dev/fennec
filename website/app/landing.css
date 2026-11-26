@@ -104,6 +104,7 @@
 /* Fennec for iPhone: copy beside the replaying phone (components/MobileShowcase). */
 .landing-mobile { max-width:1120px; margin:0 auto; display:grid; grid-template-columns:1fr 1.1fr; align-items:center; gap:100px; padding:72px 0; border-bottom:1px solid var(--border); }
 .mobile-copy > p { font-size:14px; color:var(--muted); margin:24px 0 0; max-width:440px; }
+.mobile-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:28px; }
 .mobile-copy > .benefit-detail { display:flex; gap:7px; align-items:baseline; font-size:12px; margin-top:26px; }
 .mobile-copy > .benefit-detail > svg { flex:none; position:relative; top:2px; }
 .mobile-features { list-style:none; padding:0; margin:28px 0 0; display:grid; gap:18px; }
