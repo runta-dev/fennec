@@ -25,7 +25,86 @@ pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument
     prose.constructs.math_text = false;
     prose.constructs.math_flow = false;
     flatten_unclaimed_math(&mut root, source, &prose, cx);
+    end_autolinks_at_cjk_punctuation(&mut root, source);
     Ok(ast_to_document(source, root, cx))
+}
+
+/// GFM autolink literals (`https://…` typed without `<>`) only end at
+/// whitespace or `<`, so in Chinese or Japanese prose, where no space follows
+/// the URL, `https://example.com/a，然后打开` linked the full-width comma and
+/// all the text after it. No URL ends in CJK punctuation, so end the link at
+/// the first such character and leave the rest as text.
+fn end_autolinks_at_cjk_punctuation(node: &mut Node, source: &str) {
+    let Some(children) = node.children_mut() else {
+        return;
+    };
+    let mut ix = 0;
+    while ix < children.len() {
+        if let Some(rest) = split_autolink_literal(&mut children[ix], source) {
+            children.insert(ix + 1, rest);
+            ix += 2;
+            continue;
+        }
+        end_autolinks_at_cjk_punctuation(&mut children[ix], source);
+        ix += 1;
+    }
+}
+
+/// Characters that end an autolink literal: CJK and full-width punctuation,
+/// and the curly quotes and ellipsis used around URLs in CJK text.
+fn ends_autolink(c: char) -> bool {
+    matches!(c,
+        '\u{3000}'..='\u{303F}'
+        | '\u{FF01}'..='\u{FF0F}'
+        | '\u{FF1A}'..='\u{FF20}'
+        | '\u{FF3B}'..='\u{FF40}'
+        | '\u{FF5B}'..='\u{FF65}'
+        | '\u{FE10}'..='\u{FE1F}'
+        | '\u{FE30}'..='\u{FE4F}'
+        | '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}' | '\u{2026}')
+}
+
+/// Cut a literal autolink at its first CJK punctuation; returns the text
+/// node for the part after the cut.
+fn split_autolink_literal(node: &mut Node, source: &str) -> Option<Node> {
+    let Node::Link(link) = node else {
+        return None;
+    };
+    let position = link.position.clone()?;
+    let literal = source.get(position.start.offset..position.end.offset)?;
+    // Only literals: the source is the link text itself (no `[…](…)`, `<…>`).
+    let [Node::Text(text)] = link.children.as_slice() else {
+        return None;
+    };
+    if text.value != literal || !link.url.ends_with(literal) {
+        return None;
+    }
+    let cut = literal.find(ends_autolink)?;
+    let kept = &literal[..cut];
+    if kept.is_empty() || kept.ends_with("://") || kept.ends_with(':') {
+        return None;
+    }
+    let rest = literal[cut..].to_string();
+    let mut middle = position.start.clone();
+    middle.offset += cut;
+    middle.column += kept.chars().count();
+    let url_len = link.url.len() - rest.len();
+    link.url.truncate(url_len);
+    let kept = kept.to_string();
+    let mut link_end = position.clone();
+    link_end.end = middle.clone();
+    link.position = Some(link_end.clone());
+    if let [Node::Text(text)] = link.children.as_mut_slice() {
+        text.value = kept;
+        text.position = Some(link_end);
+    }
+    Some(Node::Text(mdast::Text {
+        value: rest,
+        position: Some(markdown::unist::Position {
+            start: middle,
+            end: position.end,
+        }),
+    }))
 }
 
 /// Math parsing is on by default, so prose that merely contains two dollar
@@ -1440,6 +1519,49 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn autolink_literal_ends_at_cjk_punctuation() {
+        let source = "请打开 https://github.com/login/device，输入验证码 `X`。见 https://a.com/b。";
+        let mut cx = NodeContext::default();
+        let document = parse(source, &mut cx).unwrap();
+        let paragraph = first_paragraph(&document.blocks[0]).unwrap();
+        assert_eq!(paragraph.text(), source.replace('`', ""));
+        let mut links = Vec::new();
+        for node in &paragraph.children {
+            for (range, mark) in &node.marks {
+                if let Some(link) = &mark.link {
+                    links.push((node.text[range.clone()].to_string(), link.url.to_string()));
+                }
+            }
+        }
+        assert_eq!(
+            links,
+            vec![
+                ("https://github.com/login/device".to_string(), "https://github.com/login/device".to_string()),
+                ("https://a.com/b".to_string(), "https://a.com/b".to_string()),
+            ]
+        );
+        let selected = "请打开 ".len().."请打开 https://github.com/login/device，输入".len();
+        assert_eq!(select_rendered_range(source, selected.clone()), selected);
+
+        // Explicit links and URLs with non-punctuation CJK stay whole.
+        for (source, url) in [
+            ("[文档](https://a.com/x，y)", "https://a.com/x，y"),
+            ("见 https://zh.wikipedia.org/wiki/狐 好", "https://zh.wikipedia.org/wiki/狐"),
+            ("www.example.com，然后", "http://www.example.com"),
+        ] {
+            let document = parse(source, &mut cx).unwrap();
+            let paragraph = first_paragraph(&document.blocks[0]).unwrap();
+            let found: Vec<_> = paragraph
+                .children
+                .iter()
+                .flat_map(|node| node.marks.iter())
+                .filter_map(|(_, mark)| mark.link.as_ref().map(|link| link.url.to_string()))
+                .collect();
+            assert_eq!(found, vec![url.to_string()], "{source}");
+        }
     }
 
     #[test]
