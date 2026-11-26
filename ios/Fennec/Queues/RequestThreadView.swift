@@ -11,7 +11,6 @@ struct RequestThreadView: View {
     @Binding var path: [QueueRoute]
     @State private var draft = ""
     @State private var images = ImageDraft()
-    @State private var sending = false
     @State private var showMenu = false
     @State private var linking = false
     /// Bumped when the Marked done banner appears, to bounce its check.
@@ -197,8 +196,7 @@ struct RequestThreadView: View {
                 }
                 Button { send(request) } label: {
                     Group {
-                        if sending { ProgressView().tint(Theme.onPrimary) }
-                        else { Image(systemName: "arrow.up").regularIconWeight().font(.system(size: 15, weight: .semibold)) }
+                        Image(systemName: "arrow.up").regularIconWeight().font(.system(size: 15, weight: .semibold))
                     }
                     .frame(width: 36, height: 36)
                     .foregroundStyle(Theme.onPrimary)
@@ -225,7 +223,7 @@ struct RequestThreadView: View {
     }
 
     private var canSend: Bool {
-        !sending && !images.uploading && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.done.isEmpty)
+        !images.uploading && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.done.isEmpty)
     }
 
     /// The composer empties as soon as Send is tapped, like a chat, not
@@ -237,12 +235,10 @@ struct RequestThreadView: View {
         guard canSend else { return }
         let text = draft
         let sent = images
-        sending = true
         draft = ""
         composerResetRevision += 1
         images = ImageDraft()
         Task {
-            defer { sending = false }
             if await queues.reply(projectID, number, text: text, images: sent.done) { return }
             if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 draft = text
@@ -390,6 +386,8 @@ struct ThreadMessage: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.leading, 40)
+            // On its way to the board (FEN-58): a stand-in with a negative ID.
+            .opacity(message.id < 0 ? 0.6 : 1)
         }
     }
 

@@ -90,6 +90,12 @@ final class QueueStore {
         for i in list.indices where pendingStatus.contains("\(project)/\(list[i].number)") {
             if let local = requests[project]?.first(where: { $0.number == list[i].number }) { list[i].status = local.status }
         }
+        for i in list.indices {
+            guard let pending = pendingReplies["\(project)/\(list[i].number)"]?.filter({ !$0.sent }), !pending.isEmpty else { continue }
+            list[i].status = "queued"
+            list[i].failure = nil
+            if let last = pending.last?.message { list[i].latest = last }
+        }
         // New requests still on their way, or posted after this list was
         // read, stay in it until the board lists them (FEN-58).
         for (key, local) in localRequests.sorted(by: { $0.key < $1.key }) where key == "\(project)/\(local.number)" {
@@ -104,6 +110,7 @@ final class QueueStore {
         guard core != nil, number > 0 else { return }
         if var request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
             if pendingStatus.contains("\(project)/\(number)"), let local = thread(project, number) { request.status = local.status }
+            mergePendingReplies(project, number, into: &request)
             threads["\(project)/\(number)"] = request
             if var list = requests[project], let i = list.firstIndex(where: { $0.number == number }) {
                 list[i].status = request.status
@@ -217,15 +224,101 @@ final class QueueStore {
         return number
     }
 
+    // MARK: Replies (FEN-58)
+
+    /// A reply on its way to the board, shown in the thread at once.
+    struct PendingReply {
+        var message: BoardMessage
+        /// The board's message count that means it has this reply.
+        var arrivedAt: Int
+        var sent = false
+    }
+    /// By "project/number", oldest first.
+    private var pendingReplies: [String: [PendingReply]] = [:]
+    @ObservationIgnored private var nextLocalMessage = -1
+
+    /// Puts replies the board doesn't list yet at the end of `request`, and
+    /// forgets the ones it has. Unsent ones keep the thread Queued.
+    private func mergePendingReplies(_ project: String, _ number: Int, into request: inout BoardRequest) {
+        let key = "\(project)/\(number)"
+        guard var pending = pendingReplies[key] else { return }
+        let count = request.messages?.count ?? 0
+        pending.removeAll { $0.sent && count >= $0.arrivedAt }
+        pendingReplies[key] = pending.isEmpty ? nil : pending
+        let waiting = pending.filter { !$0.sent || count < $0.arrivedAt }
+        if !waiting.isEmpty {
+            request.messages = (request.messages ?? []) + waiting.map(\.message)
+            request.latest = waiting.last?.message
+        }
+        if pending.contains(where: { !$0.sent }) {
+            request.status = "queued"
+            request.failure = nil
+        }
+    }
+
     /// A reply; it sends the request back to the queue (the desktop's
     /// continue_request). An empty reply is Retry.
+    ///
+    /// Like Mark done (FEN-22), it doesn't wait for the board (FEN-58): the
+    /// message shows in the thread at once and the request turns Queued.
+    /// Replies to one thread reach the board in order. A failed one is
+    /// taken out again, with an error tap; the thread puts its text back.
     func reply(_ project: String, _ number: Int, text: String, images: [BoardAttachment] = []) async -> Bool {
         if core == nil { demoReply(project, number, text: text, images: images); return true }
-        guard let number = await onBoard(project, number) else { return false }
-        return await change(project, number: number) {
-            _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/continue",
-                               ["body": text.trimmingCharacters(in: .whitespacesAndNewlines), "author": author, "attachments": attachmentsJSON(images)])
+        // A new request still being posted gets its board number first.
+        guard let shown = await onBoard(project, boardNumber(project, number)) else { return false }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = "\(project)/\(shown)"
+        let previous = thread(project, shown)
+        let id = nextLocalMessage
+        nextLocalMessage -= 1
+        let at = ISO8601DateFormatter().string(from: .now)
+        let message = BoardMessage(id: id, author: author, body: body, at: at, attachments: images.isEmpty ? nil : images)
+        let hasMessage = !body.isEmpty || !images.isEmpty
+        let serverCount = (previous?.messages ?? []).filter { $0.id >= 0 }.count
+        let ahead = pendingReplies[key]?.count ?? 0
+        if hasMessage {
+            pendingReplies[key, default: []].append(PendingReply(message: message, arrivedAt: serverCount + ahead + 1))
         }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.smooth(duration: 0.3)) {
+            demoUpdate(project, shown) { r in
+                if hasMessage {
+                    r.messages = (r.messages ?? []) + [message]
+                    r.latest = message
+                }
+                r.status = "queued"
+                r.failure = nil
+            }
+        }
+
+        // Earlier replies to this thread go first.
+        while let list = pendingReplies[key], let first = list.firstIndex(where: { !$0.sent }), list[first].message.id != id, hasMessage {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let ok = await change(project) {
+                _ = try await call("POST", "/v1/projects/\(project)/requests/\(shown)/continue",
+                                   ["body": body, "author": author, "attachments": attachmentsJSON(images)])
+                if let i = pendingReplies[key]?.firstIndex(where: { $0.message.id == id }) { pendingReplies[key]?[i].sent = true }
+        }
+        if ok {
+            await loadThread(project, shown)
+            return true
+        }
+        pendingReplies[key]?.removeAll { $0.message.id == id }
+        if pendingReplies[key]?.isEmpty == true { pendingReplies[key] = nil }
+        withAnimation(.smooth(duration: 0.3)) {
+            demoUpdate(project, shown) { r in
+                r.messages?.removeAll { $0.id == id }
+                if pendingReplies[key]?.contains(where: { !$0.sent }) != true, let previous {
+                    r.status = previous.status
+                    r.failure = previous.failure
+                }
+                r.latest = r.messages?.last
+            }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        return false
     }
 
     /// Mark done (FEN-22): the row and thread show Resolved at once, with a
