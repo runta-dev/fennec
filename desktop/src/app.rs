@@ -3489,7 +3489,7 @@ impl FennecWindow {
                 self.thread_peek_card(s, &r.status, bar, cx)
             })
             .or_else(|| self.thread_wait_card(p, r));
-        let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed");
+        let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed" | "unknown");
         let question = if in_peek { None } else { self.thread_question_card(r, cx) };
         let answers = r.answerable().is_some();
         v_flex()

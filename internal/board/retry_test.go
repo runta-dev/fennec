@@ -65,3 +65,16 @@ func TestAgentCommandListsAndRetries(t *testing.T) {
 		t.Fatal("retried a missing request")
 	}
 }
+
+// A person can close an unconfirmed request without retrying it; marking it
+// done reclaims its session like any other.
+func TestResolveUnconfirmedRequest(t *testing.T) {
+	store, p, r := unconfirmedRun(t)
+	got, err := store.Change(p.ID, r.Number, nil, Resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != Resolved || !got.Reclaim {
+		t.Fatalf("not resolved: %+v", got)
+	}
+}

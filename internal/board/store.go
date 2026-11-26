@@ -680,7 +680,9 @@ func (s Store) Change(project string, n int, tags []string, status string) (Requ
 	switch status {
 	case "":
 	case Resolved:
-		if r.Status != NeedsYou && r.Status != Review && r.Status != Failed && r.Status != Resolved {
+		// A person may close a request whose run could not be confirmed
+		// (unknown) too; reclaim then ends its session.
+		if r.Status != NeedsYou && r.Status != Review && r.Status != Failed && r.Status != Unknown && r.Status != Resolved {
 			return r, ErrConflict
 		}
 		r.Reclaim = r.Reclaim || r.Status != Resolved
