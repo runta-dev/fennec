@@ -45,8 +45,12 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		_, err = fmt.Fprintln(output, result.Path)
 		return err
 	}
+	// fen queue list <queue>: every request of the queue with its status.
+	if len(args) == 2 && args[0] == "list" {
+		return fenQueueList(method, scope, args[1], output)
+	}
 	if len(args) != 3 && len(args) != 6 && len(args) != 7 {
-		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | new <queue> <number> <agent> <session> <tag>[,<tag>...]|auto (title line, then body, on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | threads <queue>")
+		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | new <queue> <number> <agent> <session> <tag>[,<tag>...]|auto (title line, then body, on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | threads <queue> | list <queue> | retry <queue> <number>")
 	}
 	n, err := strconv.Atoi(args[2])
 	if err != nil || n < 1 {
@@ -85,6 +89,9 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		body = link
 		verb = "POST"
 		path += "/links"
+	} else if args[0] == "retry" && len(args) == 3 {
+		verb = "POST"
+		path += "/retry"
 	} else if args[0] != "read" || len(args) != 3 {
 		return fmt.Errorf("invalid queue command")
 	}
@@ -133,4 +140,33 @@ func fenQueueLink(args []string) (map[string]any, error) {
 		}
 	}
 	return map[string]any{"number": to, "kind": kind, "author": args[3], "agent": args[3], "session": args[4]}, nil
+}
+
+// fenQueueList prints `fen queue list`: the queue's requests with their
+// status, through the same daemon call as the other queue commands.
+func fenQueueList(method, scope, project string, output io.Writer) error {
+	socket, err := controlSocket()
+	if err != nil {
+		return err
+	}
+	client := control.Client{Socket: socket}
+	get := func(path string, into any) error {
+		var raw json.RawMessage
+		if err := client.Call(context.Background(), method, map[string]any{"method": "GET", "path": path, "scope": scope}, &raw); err != nil {
+			return err
+		}
+		if json.Unmarshal(raw, into) != nil {
+			return fmt.Errorf("invalid queue reply")
+		}
+		return nil
+	}
+	var p board.Project
+	if err := get("/v1/projects/"+project, &p); err != nil {
+		return err
+	}
+	var list []board.Summary
+	if err := get("/v1/projects/"+project+"/requests", &list); err != nil {
+		return err
+	}
+	return json.NewEncoder(output).Encode(board.QueueItems(p, list))
 }

@@ -152,6 +152,7 @@ The Mac daemon exposes it to the app as the control method `board.call`
 | `GET /v1/queue` | Requests ready to start, with each project's limit and workers |
 | `POST /v1/projects/{id}/requests/{n}/claim` | Assign a queued request to a session (fails if already taken) |
 | `POST /v1/projects/{id}/requests/{n}/release` | Return a claimed request to the queue when its session did not start |
+| `POST /v1/projects/{id}/requests/{n}/retry` | Explicitly retry an unknown, failed or needs-you request in a new session |
 
 ## Queue operations
 
@@ -171,6 +172,16 @@ disjoint numbers while offline.
 Agents read and answer with `fen queue read/reply` on the Mac or
 `fennec-terminal queue read/reply` on the cloud. Result text travels on stdin.
 The execution prompt supplies the exact queue, number, agent and run identity.
+
+Any agent can also look after a queue for the person. `queue list <queue>`
+prints every request with its status, failure, agent and session, so a stuck
+request is visible. `queue retry <queue> <n>` is the explicit retry an
+unknown ("Execution could not be confirmed"), failed or needs-you request
+waits for, as Fennec never relaunches those by itself: the request goes back
+to the queue unchanged and the scheduler starts it in a new session, and a late
+reply from the old session is refused. Queued, running, review and done
+requests are left alone. On the Mac these are `fen queue list|retry`
+(`POST …/requests/{n}/retry`).
 
 ### Thread mirror and links
 

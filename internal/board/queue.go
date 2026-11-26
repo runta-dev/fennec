@@ -174,6 +174,33 @@ func (s Store) Continue(project string, n int, author, body string) (Request, er
 	return s.FollowUp(project, n, author, body, nil)
 }
 
+// Retry is the explicit retry an unconfirmed, failed or needs-you request
+// waits for: Fennec never relaunches those by itself (see Fail and
+// Reconcile). The request goes back to the queue as it is, without new
+// input, and the scheduler starts it in a new session; a late reply from the
+// old session no longer matches the request and is refused (see Complete).
+// Requests that are queued, running, awaiting review or done are left alone.
+func (s Store) Retry(project string, n int) (Request, error) {
+	unlock, err := s.lock()
+	if err != nil {
+		return Request{}, err
+	}
+	defer unlock()
+	r, err := s.Request(project, n)
+	if err != nil {
+		return r, err
+	}
+	if r.Status != Unknown && r.Status != Failed && r.Status != NeedsYou {
+		return r, ErrConflict
+	}
+	now := s.now()
+	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
+	r.Reclaim = false
+	clearQuestion(&r)
+	r.Session, r.RunLocation, r.Offer = "", "", nil
+	return r, s.commit(s.requestPath(project, n), r)
+}
+
 // FollowUp persists input before scheduling it. Input arriving during a turn
 // stays pending until that turn releases its slot.
 func (s Store) FollowUp(project string, n int, author, body string, attachments []Attachment) (Request, error) {

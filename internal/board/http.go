@@ -267,6 +267,13 @@ func (s Store) Handler() http.Handler {
 			reply(w, req, err)
 		}
 	})
+	// The explicit retry of an unknown, failed or needs-you request; see Store.Retry.
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/retry", func(w http.ResponseWriter, r *http.Request) {
+		if n, ok := number(w, r); ok {
+			req, err := s.Retry(r.PathValue("id"), n)
+			reply(w, req, err)
+		}
+	})
 	mux.HandleFunc("GET /v1/projects/{id}/knowledge", func(w http.ResponseWriter, r *http.Request) {
 		list, err := s.Knowledge(r.PathValue("id"))
 		reply(w, list, err)
