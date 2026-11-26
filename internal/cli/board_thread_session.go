@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"fennec/internal/board"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fmt"
@@ -22,8 +21,8 @@ func (e queueMacExecutor) threadSession(ctx context.Context, project string, num
 // continueThread also reports whether the terminal carries the agent's earlier
 // conversation for this thread (see runtime.ContinueThread).
 func (e queueMacExecutor) continueThread(ctx context.Context, project string, number int) (terminal r.LocalTerminal, continued bool, err error) {
-	store := board.Store{Home: e.home, Role: "local"}
-	root := filepath.Join(e.home, ".fen/board/launches")
+	store := e.board()
+	root := filepath.Join(store.Root(), "launches")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return r.LocalTerminal{}, false, err
 	}
@@ -164,6 +163,7 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 		}
 		argv = append(argv, args...)
 		labels := map[string]string{"fennec.session": id, "fennec.agent": agent, "fennec.queue": project, "fennec.request": fmt.Sprint(number), "fennec.directory": cwd}
+		labels["fennec.board"] = store.Namespace
 		raw, err = e.core.call(ctx, "terminal.run", map[string]any{"argv": argv, "cwd": cwd, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": labels, "size": map[string]int{"cols": 120, "rows": 40}})
 		if err != nil {
 			return r.LocalTerminal{}, false, err

@@ -154,11 +154,13 @@ impl FennecWindow {
                 ));
             }
         }
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let (knowledge, queue) = cx
-                .background_spawn(async move { (board::knowledge(&id), board::queue()) })
+                .background_spawn(async move { worker_scope.run(|| { (board::knowledge(&id), board::queue()) }) })
                 .await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 if let Ok(k) = knowledge {
                     this.settings.knowledge = k;
                 }
@@ -178,11 +180,13 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         let id = self.settings.project.clone();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let changed = cx
-                .background_spawn(async move { board::update_project(&id, change) })
+                .background_spawn(async move { worker_scope.run(|| { board::update_project(&id, change) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match changed {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match changed {
                 Ok(p) => {
                     if let Some(old) = this.projects.iter_mut().find(|o| o.id == p.id) {
                         let (open, needs_you) = (old.open, old.needs_you);
@@ -195,7 +199,7 @@ impl FennecWindow {
                     this.refresh_now(window, cx);
                 }
                 Err(_) => this.say(t("try_again"), cx),
-            });
+            } });
         }));
     }
 
@@ -375,6 +379,8 @@ impl FennecWindow {
             multiple: false,
             prompt: Some(t("upload_image").into()),
         });
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(paths))) = selected.await else {
                 return;
@@ -385,12 +391,12 @@ impl FennecWindow {
             let path = path.to_string_lossy().into_owned();
             let target = project.clone();
             let result = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     let value = crate::control::call("board.icon", json!({"path":path}))?;
                     board::update_project(&target, json!({"icon":value["icon"]}))
-                })
+                }) })
                 .await;
-            let _ = this.update(cx, |this, cx| match result {
+            let _ = this.update(cx, |this, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match result {
                 Ok(project) => {
                     if let Some(old) = this.projects.iter_mut().find(|p| p.id == project.id) {
                         let (open, needs_you) = (old.open, old.needs_you);
@@ -408,7 +414,7 @@ impl FennecWindow {
                         this.say(t("try_again"), cx);
                     }
                 }
-            });
+            } });
         }));
     }
 

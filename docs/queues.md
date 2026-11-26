@@ -10,6 +10,20 @@ cloud computer per user. Desktop and CLI are clients of that daemon. Queue
 coordination stays inside these two endpoints over the existing authenticated
 resident channel. There is no additional public service or third coordinator.
 
+Mac replicas are isolated by API environment, verified owner, and cloud computer
+ID under `~/.fen/boards/<scope>/`. Each computer has its own projects, journal,
+sync cursor, attachments and launch locks. Switching computers selects that
+replica and restarts its scheduler; the resident sync channel is pinned to the
+same scope. A newly provisioned computer starts empty, then receives its starter
+queue. Switching back restores the original replica. Legacy `~/.fen/board` data
+is preserved without automatically merging it into any computer.
+
+Desktop queue selection, text drafts and attachment drafts are scoped in
+`desktop-board-state.json`. Queue actions capture their scope and reject stale
+responses after a switch. Local agents use `fen queue --scope <scope>` so a late
+completion returns to its original board. Archive import remains an explicit
+operation on the selected cloud computer and never rebinds another local replica.
+
 Projects are presented as **Queues**. **Request** and **New Request** remain
 user-facing terms. Execution settings, shared instructions, optional repository,
 knowledge and default agents belong to the queue. Agent **Run location** remains

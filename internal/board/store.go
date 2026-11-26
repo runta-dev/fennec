@@ -149,6 +149,8 @@ type Store struct {
 	Home string
 	Now  func() time.Time
 	Role string
+	// Namespace isolates Mac replicas; cloud stores keep the legacy root.
+	Namespace string
 }
 
 var (
@@ -171,7 +173,15 @@ const (
 // DefaultTags are a new project's tags.
 var DefaultTags = []Tag{{"bug", "Bug"}, {"feature", "Feature"}, {"discussion", "Discussion"}}
 
-func (s Store) root() string { return filepath.Join(s.Home, ".fen", "board") }
+func (s Store) root() string {
+	if s.Namespace != "" {
+		return filepath.Join(s.Home, ".fen", "boards", s.Namespace)
+	}
+	return filepath.Join(s.Home, ".fen", "board")
+}
+
+// Root is also used for per-board local launch locks and thread mirrors.
+func (s Store) Root() string { return s.root() }
 func (s Store) now() time.Time {
 	if s.Now != nil {
 		return s.Now().UTC()

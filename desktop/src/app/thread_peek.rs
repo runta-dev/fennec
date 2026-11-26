@@ -167,6 +167,7 @@ impl FennecWindow {
         self.peek_reads.started.insert(address.clone(), now);
         let core = self.core.clone();
         let theme = crate::vt::theme();
+		let scope = self.board_scope.clone();
         cx.spawn(async move |this, cx| {
             let read = {
                 let address = address.clone();
@@ -176,6 +177,7 @@ impl FennecWindow {
                 .await
             };
             let _ = this.update(cx, |this, cx| {
+				if this.board_scope != scope { return; }
                 this.peek_reads.reading.remove(&address);
                 let Ok(peek) = read else { return };
                 if this.thread_peek.get(&address) != Some(&peek) {

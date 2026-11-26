@@ -28,20 +28,31 @@ import (
 // knowledge) over the daemon's authenticated resident connection, the way
 // previews are reached. See docs/desktop-app.md.
 type boardClient struct {
-	s     *daemonServices
-	local bool
+	s             *daemonServices
+	local         bool
+	scope         string
+	store         *board.Store
+	channel       *terminalChannel
+	channelPinned bool
 }
 
 func (b boardClient) dial(ctx context.Context) (net.Conn, error) {
 	if b.local {
-		return (board.Store{Home: b.s.home, Role: "local"}).Dial(ctx)
+		store := b.s.localBoard()
+		if b.store != nil {
+			store = *b.store
+		}
+		return store.Dial(ctx)
 	}
 	if _, _, _, ok := b.s.account.Session(); !ok {
 		return nil, &control.Fault{Code: "login_required", Message: "Sign in to Fennec"}
 	}
-	b.s.mu.Lock()
-	channel := b.s.channel
-	b.s.mu.Unlock()
+	channel := b.channel
+	if !b.channelPinned {
+		b.s.mu.Lock()
+		channel = b.s.channel
+		b.s.mu.Unlock()
+	}
 	if channel == nil {
 		return nil, &control.Fault{Code: "not_ready", Message: "Connecting to the cloud computer", Retryable: true}
 	}
@@ -75,6 +86,23 @@ func (b boardClient) forPath(path string) boardClient {
 
 // do sends one request and returns the status and JSON body.
 func (b boardClient) do(ctx context.Context, method, path string, body any) (int, json.RawMessage, error) {
+	store, channel, lifetime := b.s.boardSnapshot()
+	if b.scope != "" && b.scope != store.Namespace {
+		return 0, nil, &control.Fault{Code: "board_changed", Message: "The cloud computer changed; refresh the queue", Retryable: true}
+	}
+	if b.local && b.store == nil {
+		b.store = &store
+	}
+	if b.channel == nil {
+		b.channel = channel
+	}
+	b.channelPinned = true
+	if lifetime != nil && b.scope != "" {
+		bound, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(lifetime, cancel)
+		defer func() { stop(); cancel() }()
+		ctx = bound
+	}
 	if !boardPath.MatchString(path) || strings.Contains(path, "..") || (method != http.MethodGet && method != http.MethodPost && method != http.MethodPatch && method != http.MethodDelete) {
 		return 0, nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
 	}
@@ -116,6 +144,9 @@ func (b boardClient) do(ctx context.Context, method, path string, body any) (int
 	if err != nil {
 		return 0, nil, err
 	}
+	if err := b.s.checkBoardScope(b.scope); err != nil {
+		return 0, nil, err
+	}
 	return response.StatusCode, data, nil
 }
 
@@ -140,14 +171,42 @@ func (b boardClient) call(ctx context.Context, method, path string, body any) (j
 
 func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Controller) {
 	client := boardClient{s: s}
+	c.Additional["board.context"] = func(_ context.Context, _ json.RawMessage) (any, error) {
+		return map[string]string{"scope": s.localBoard().Namespace}, nil
+	}
+	c.Additional["board.threads"] = func(_ context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Project string `json:"project"`
+			Scope   string `json:"scope"`
+		}
+		if json.Unmarshal(raw, &params) != nil {
+			return nil, board.ErrInvalid
+		}
+		store := s.localBoard()
+		if params.Scope != "" {
+			if !boardScopeID.MatchString(params.Scope) {
+				return nil, board.ErrInvalid
+			}
+			store.Namespace = params.Scope
+		}
+		if err := store.MirrorThreads(params.Project); err != nil {
+			return nil, err
+		}
+		return map[string]string{"path": store.ThreadsPath(params.Project)}, nil
+	}
 	c.Additional["board.attachment.url"] = func(_ context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
-			ID string `json:"id"`
+			ID    string `json:"id"`
+			Scope string `json:"scope"`
 		}
 		if json.Unmarshal(raw, &params) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
 		}
-		url, err := (board.Store{Home: s.home, Role: "local"}).AttachmentURL(params.ID)
+		store, err := s.scopedBoard(params.Scope)
+		if err != nil {
+			return nil, err
+		}
+		url, err := store.AttachmentURL(params.ID)
 		if err != nil {
 			return nil, &control.Fault{Code: "not_ready", Message: "The image is still syncing", Retryable: true}
 		}
@@ -162,12 +221,17 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 			return nil, ctx.Err()
 		}
 		var params struct {
-			Path string `json:"path"`
+			Path  string `json:"path"`
+			Scope string `json:"scope"`
 		}
 		if json.Unmarshal(raw, &params) != nil || !filepath.IsAbs(params.Path) {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Choose an image"}
 		}
-		attachment, err := (board.Store{Home: s.home, Role: "local"}).ImportAttachment(params.Path)
+		store, err := s.scopedBoard(params.Scope)
+		if err != nil {
+			return nil, err
+		}
+		attachment, err := store.ImportAttachment(params.Path)
 		if err != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Use a PNG or JPEG image up to 8 MB"}
 		}
@@ -186,13 +250,14 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		}
 		return map[string]string{"icon": icon}, nil
 	}
-	for _, method := range []string{"board.call", "board.local.call"} {
-		boardService := boardClient{s: s, local: method == "board.local.call"}
+	for _, method := range []string{"board.call", "board.local.call", "board.agent.call"} {
+		boardService := boardClient{s: s, local: method != "board.call"}
 		c.Additional[method] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var params struct {
 				Method string          `json:"method"`
 				Path   string          `json:"path"`
 				Body   json.RawMessage `json:"body,omitempty"`
+				Scope  string          `json:"scope"`
 			}
 			if json.Unmarshal(raw, &params) != nil {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Invalid board request"}
@@ -201,7 +266,19 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 			if len(params.Body) > 0 && string(params.Body) != "null" {
 				body = params.Body
 			}
-			return boardService.forPath(params.Path).call(ctx, params.Method, params.Path, body)
+			service := boardService
+			service.scope = params.Scope
+			if method == "board.agent.call" {
+				if !boardScopeID.MatchString(params.Scope) {
+					return nil, board.ErrInvalid
+				}
+				store := board.Store{Home: s.home, Role: "local", Namespace: params.Scope}
+				service.store, service.scope = &store, ""
+				if knowledgePath.MatchString(params.Path) {
+					return nil, board.ErrInvalid
+				}
+			}
+			return service.forPath(params.Path).call(ctx, params.Method, params.Path, body)
 		}
 	}
 	c.Additional["account.organizations"] = func(ctx context.Context, _ json.RawMessage) (any, error) {
@@ -212,15 +289,19 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		var params struct {
 			Project string `json:"project"`
 			Number  int    `json:"number"`
+			Scope   string `json:"scope"`
 		}
 		if json.Unmarshal(raw, &params) != nil {
 			return nil, board.ErrInvalid
+		}
+		localStore, err := s.scopedBoard(params.Scope)
+		if err != nil {
+			return nil, err
 		}
 		op := r.LocalOperation{Kind: "thread_session", Project: params.Project, RequestNumber: params.Number}
 		if err := op.Validate(); err != nil {
 			return nil, err
 		}
-		localStore := board.Store{Home: s.home, Role: "local"}
 		if request, err := localStore.Request(params.Project, params.Number); err == nil && len(request.Runs) > 0 && request.Runs[len(request.Runs)-1].Location == "local" {
 			exe, err := os.Executable()
 			if err != nil {
@@ -232,7 +313,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 			if core == nil {
 				return nil, &control.Fault{Code: "not_ready", Message: "Session service is starting", Retryable: true}
 			}
-			terminal, err := (queueMacExecutor{home: s.home, exe: exe, core: core}).threadSession(ctx, params.Project, params.Number)
+			terminal, err := (queueMacExecutor{home: s.home, exe: exe, core: core, store: localStore}).threadSession(ctx, params.Project, params.Number)
 			if err != nil {
 				return nil, err
 			}

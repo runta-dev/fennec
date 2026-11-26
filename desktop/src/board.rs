@@ -8,6 +8,45 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::process::Stdio;
 
+/// Capture at the UI action, then keep every RPC in that action on its board.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Scope(pub String);
+
+thread_local! {
+    static CALL_SCOPE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+impl Scope {
+    pub fn current() -> Result<Self> {
+        if crate::preview::active() || !crate::control::available() || crate::core_bin::cloud() {
+            return Ok(Self::default());
+        }
+        let value = crate::control::call("board.context", json!({}))?;
+        let scope = value["scope"].as_str().context("missing queue scope")?;
+        if scope != "local" && (scope.len() != 64 || !scope.bytes().all(|b| b.is_ascii_hexdigit())) {
+            bail!("invalid queue scope");
+        }
+        Ok(Self(scope.to_owned()))
+    }
+
+    pub fn run<T>(&self, action: impl FnOnce() -> T) -> T {
+        struct Restore(Option<String>);
+        impl Drop for Restore {
+            fn drop(&mut self) { CALL_SCOPE.with(|s| { s.replace(self.0.take()); }); }
+        }
+        let _restore = Restore(CALL_SCOPE.with(|s| s.replace(Some(self.0.clone()))));
+        action()
+    }
+}
+
+pub fn control_call(method: &str, mut params: Value) -> Result<Value> {
+    if !crate::core_bin::cloud() {
+        let scope = CALL_SCOPE.with(|s| s.borrow().clone()).context("queue scope not loaded")?;
+        params["scope"] = json!(scope);
+    }
+    crate::control::call(method, params)
+}
+
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
 pub struct Tag {
     pub id: String,
@@ -99,7 +138,7 @@ pub struct PermissionAnswer {
     pub text: String,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
 #[serde(default)]
 pub struct Attachment {
     pub id: String,
@@ -376,7 +415,7 @@ pub fn call(method: &str, path: &str, body: Option<Value>) -> Result<Value> {
         return result;
     }
     if crate::control::available() {
-        return crate::control::call(
+        return control_call(
             if crate::core_bin::cloud() {
                 "board.call"
             } else {

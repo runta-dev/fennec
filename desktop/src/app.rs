@@ -32,6 +32,8 @@ mod queue_resize_tests;
 mod sidebar_row_tests;
 #[cfg(test)]
 mod copy_tests;
+#[cfg(test)]
+mod board_scope_tests;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -120,6 +122,7 @@ pub struct FennecWindow {
     events: Option<EventLines>,
     sessions: Vec<Session>,
     pub(crate) projects: Vec<Project>,
+	pub(crate) board_scope: Option<board::Scope>,
     deleted_projects: std::collections::HashSet<String>,
     pub(crate) requests: HashMap<String, Vec<Request>>,
     /// Each queue's knowledge titles, for references in thread messages (THI-117).
@@ -194,6 +197,8 @@ pub struct FennecWindow {
     pub(crate) reply_drafts: HashMap<String, String>,
     /// The last-saved queue and drafts, kept across restarts (THI-121).
     local_state: local_state::Saved,
+	local_profiles: std::collections::BTreeMap<String, local_state::Saved>,
+	local_profiles_dirty: bool,
     /// The queue reopened from the last run, until the board confirms it exists.
     restored_queue: Option<String>,
     opening_thread_session: bool,
@@ -365,6 +370,7 @@ impl FennecWindow {
             events: None,
             sessions: Vec::new(),
             projects: Vec::new(),
+			board_scope: if connect && !crate::preview::active() { None } else { Some(board::Scope::default()) },
             deleted_projects: Default::default(),
             requests: HashMap::new(),
             knowledge_refs: Default::default(),
@@ -405,6 +411,8 @@ impl FennecWindow {
             reply,
             reply_drafts: HashMap::new(),
             local_state: Default::default(),
+			local_profiles: Default::default(),
+			local_profiles_dirty: false,
             restored_queue: None,
 		    opening_thread_session: false,
             notice: None,
@@ -714,8 +722,12 @@ impl FennecWindow {
             loop {
                 let project = this.update(cx, |this, _| this.project_id()).ok().flatten();
                 let open = this.update(cx, |this, _| this.open).ok().flatten();
+				let selected_scope = this.update(cx, |this, _| this.board_scope.clone()).ok().flatten();
                 let fetched = cx
                     .background_spawn(async move {
+						let scope = board::Scope::current()?;
+						let project = project.filter(|_| selected_scope.as_ref() == Some(&scope));
+						let fetched = scope.run(|| {
                         let projects = board::projects();
                         let requests = project.as_ref().map(|p| (p.clone(), board::requests(p)));
                         let thread = project
@@ -723,15 +735,22 @@ impl FennecWindow {
                             .zip(open)
                             .map(|(p, n)| board::request(p, n));
                         (projects, requests, thread)
+						});
+						Ok::<_,anyhow::Error>((scope, fetched))
                     })
                     .await;
                 if this
-                    .update(cx, |this, cx| this.board_loaded(fetched, cx))
+					.update_in(cx, |this, window, cx| {
+						if let Ok((scope, fetched)) = fetched {
+							this.switch_board_scope(scope, window, cx);
+							this.board_loaded(fetched, cx);
+						}
+					})
                     .is_err()
                 {
                     break;
                 }
-                cx.background_executor().timer(Duration::from_secs(4)).await;
+                cx.background_executor().timer(Duration::from_secs(2)).await;
             }
         }));
     }
@@ -834,6 +853,8 @@ impl FennecWindow {
     }
 
     pub(crate) fn refresh_now(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		let Some(scope) = self.board_scope.clone() else { return; };
+		let worker_scope = scope.clone();
         let project = self.project_id();
         let open = self.open;
         // An open thread names knowledge entries by file; their titles come
@@ -843,7 +864,7 @@ impl FennecWindow {
             .filter(|p| open.is_some() && self.knowledge_refs.stale(p));
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let (fetched, knowledge) = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     let projects = board::projects();
                     let requests = project.as_ref().map(|p| (p.clone(), board::requests(p)));
                     let thread = project
@@ -855,9 +876,10 @@ impl FennecWindow {
                         (p, concepts)
                     });
                     ((projects, requests, thread), knowledge)
-                })
+                }) })
                 .await;
             let _ = this.update(cx, |this, cx| {
+				if this.board_scope.as_ref() != Some(&scope) { return; }
                 if let Some((p, Ok(concepts))) = knowledge {
                     this.knowledge_refs.store(p, &concepts);
                 }
@@ -943,13 +965,15 @@ impl FennecWindow {
         }
         self.opening = Some(n);
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let fetched = {
                 let project = project.clone();
-                cx.background_spawn(async move { board::request(&project, n) })
+                cx.background_spawn(async move { worker_scope.run(|| { board::request(&project, n) }) })
                     .await
             };
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 if let Ok(t) = &fetched {
                     this.thread_cache.insert((project.clone(), n), t.clone());
                 }
@@ -1010,6 +1034,7 @@ impl FennecWindow {
     /// from the board's loaded requests, or else the session's own
     /// `fennec.queue`/`fennec.request` labels.
     pub(super) fn session_request(&self, s: &Session) -> Option<(String, u64, String)> {
+		if !s.address.starts_with("cloud:") && self.board_scope.as_ref().is_none_or(|scope| scope.0 != s.board_scope) { return None; }
         self.loaded_session_request(s)
             .map(|(pid, r)| (pid.to_owned(), r.number, r.title.clone()))
             .or_else(|| {
@@ -1070,11 +1095,13 @@ impl FennecWindow {
         let submitted = text.clone();
         let submitted_project = project.clone();
         let submitted_images:Vec<String>=images.iter().map(|image|image.id.clone()).collect();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
-                .background_spawn(async move { board::post(&project, &text, &me, &images) })
+                .background_spawn(async move { worker_scope.run(|| { board::post(&project, &text, &me, &images) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 this.posting = false;
                 match posted {
                     Ok(r) => {
@@ -1113,16 +1140,18 @@ impl FennecWindow {
         };
         self.opening_thread_session = true;
         let origin = project.clone();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let result = cx
-                .background_spawn(async move {
-                    crate::control::call(
+                .background_spawn(async move { worker_scope.run(|| {
+                    board::control_call(
                         "board.session",
                         serde_json::json!({"project":project,"number":number}),
                     )
-                })
+                }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 this.opening_thread_session = false;
                 match result {
                     Ok(result) => {
@@ -1205,14 +1234,16 @@ impl FennecWindow {
         self.reply_drafts.remove(&key);
         self.reply.update(cx, |s, cx| s.set_value("", window, cx));
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let sent_images = images.clone();
             let sent = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     board::continue_request(&project, n, &text, &me, &sent_images)
-                })
+                }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 this.replying = false;
                 this.pending_replies.retain(|p| p.token != token);
                 let here = this.project_id().as_deref() == Some(&origin) && this.open == Some(n);
@@ -1285,12 +1316,14 @@ impl FennecWindow {
         self.status_override.insert(key.clone(), status.to_owned());
         self.show_status(&project, n, status);
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let changed = project.clone();
             let done = cx
-                .background_spawn(async move { board::set_status(&changed, n, status) })
+                .background_spawn(async move { worker_scope.run(|| { board::set_status(&changed, n, status) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match done {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match done {
                 Ok(_) => {
                     if status == "resolved" {
                         this.end_thread_sessions(&project, n, window, cx);
@@ -1307,7 +1340,7 @@ impl FennecWindow {
                     }
                     this.say(format!("{e:#}"), cx)
                 }
-            });
+            } });
         }));
     }
 
@@ -1350,7 +1383,8 @@ impl FennecWindow {
     /// so the row goes at once. A working agent is left to finish its turn,
     /// as the queue does; the queue ends it afterwards.
     fn end_thread_sessions(&mut self, project: &str, n: u64, window: &mut Window, cx: &mut Context<Self>) {
-        for key in thread_sessions_to_end(&self.sessions, project, n) {
+		let scoped: Vec<_> = self.sessions.iter().filter(|s| s.address.starts_with("cloud:") || self.board_scope.as_ref().is_some_and(|scope| scope.0 == s.board_scope)).cloned().collect();
+        for key in thread_sessions_to_end(&scoped, project, n) {
             self.close_tab_key(key, window, cx);
         }
     }
@@ -1363,14 +1397,16 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let result = cx
-                .background_spawn(async move { board::move_request(&project, number, before) })
+                .background_spawn(async move { worker_scope.run(|| { board::move_request(&project, number, before) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match result {
                 Ok(_) => this.refresh_now(window, cx),
                 Err(e) => this.say(format!("{e:#}"), cx),
-            });
+            } });
         }));
     }
 
@@ -2203,20 +2239,22 @@ impl FennecWindow {
         let org = String::new();
         let agent = np.agent.clone();
         let color = board::COLORS[self.projects.len() % board::COLORS.len()];
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let created = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     board::create_project(&name, &org, &description, &repository, color, &agent)
-                })
+                }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| match created {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match created {
                 Ok(p) => {
                     this.new_project = None;
                     this.projects.push(p.clone());
                     this.go(Route::Project(p.id), window, cx);
                 }
                 Err(_) => this.say(t("check_repository"), cx),
-            });
+            } });
         }));
     }
 
@@ -2757,8 +2795,6 @@ impl FennecWindow {
         // The chosen tab's background is the sliding highlight once the tabs
         // were laid out; before that the tab draws it itself.
         let slide_ready = self.status_slide.ready();
-        let other_computer = (p.sync_status == "other_computer")
-            .then(|| other_computer_banner(cx).into_any_element());
         let segment = |label: String, count: usize, on: bool, resolved: bool| {
             div()
                 .id(SharedString::from(format!("seg-{resolved}")))
@@ -3062,7 +3098,6 @@ impl FennecWindow {
                     .when(p.sync_status == "offline", |d| {
                         d.child(stale_board_banner(&p.synced_at, now))
                     })
-                    .when_some(other_computer, |d, banner| d.child(banner))
                     .child(
                         // New Request: one plain box; the first line is the title.
                         v_flex()
@@ -4143,36 +4178,7 @@ fn stale_board_banner(synced_at: &str, now: u64) -> impl IntoElement {
         .child(div().flex_1().min_w_0().child(text))
 }
 
-/// This Mac's queues belong to another cloud computer (or account), so sync
-/// refuses the current one (THI-188). Importing a backup brings them over and
-/// rebinds this Mac to the current computer.
-fn other_computer_banner(cx: &mut Context<FennecWindow>) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .mb(px(10.0))
-        .px(px(12.0))
-        .py(px(9.0))
-        .gap(px(10.0))
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(c("f_field"))
-        .bg(c("f_card"))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_size(px(12.0))
-                .line_height(px(17.0))
-                .child(t("board_other_computer")),
-        )
-        .child(
-            secondary_button("board-import-backup", t("board_import_backup"), false).on_click(
-                cx.listener(|this, _, window, cx| {
-                    this.open_archive(crate::app_archive::Mode::Import, window, cx)
-                }),
-            ),
-        )
-}
+
 
 /// ⌘C copies the text selected in the window's text views (thread messages, knowledge);
 /// with nothing selected there, the focused input handles it as before.

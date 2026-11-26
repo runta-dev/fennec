@@ -17,24 +17,32 @@ import (
 // stays on stdin and a session fence prevents a late run completing a new run.
 func fenQueueCommand(args []string, output io.Writer) error {
 	method := "board.local.call"
+	scope := ""
 	if len(args) > 0 && args[0] == "--cloud" {
 		method = "board.call"
 		args = args[1:]
 	}
+	if len(args) >= 2 && args[0] == "--scope" {
+		scope, args = args[1], args[2:]
+		if method != "board.local.call" || !boardScopeID.MatchString(scope) {
+			return board.ErrInvalid
+		}
+		method = "board.agent.call"
+	}
 	// fen queue threads <queue>: the folder this computer mirrors the queue's
 	// threads into (THI-103); the board refreshes it on every change.
 	if len(args) == 2 && args[0] == "threads" {
-		home, err := os.UserHomeDir()
+		socket, err := controlSocket()
 		if err != nil {
 			return err
 		}
-		store := board.Store{Home: home}
-		if _, err := os.Stat(store.ThreadsPath(args[1])); err != nil {
-			if err = store.MirrorThreads(args[1]); err != nil {
-				return err
-			}
+		var result struct {
+			Path string `json:"path"`
 		}
-		_, err = fmt.Fprintln(output, store.ThreadsPath(args[1]))
+		if err := (control.Client{Socket: socket}).Call(context.Background(), "board.threads", map[string]string{"project": args[1], "scope": scope}, &result); err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(output, result.Path)
 		return err
 	}
 	if len(args) != 3 && len(args) != 6 && len(args) != 7 {
@@ -86,7 +94,7 @@ func fenQueueCommand(args []string, output io.Writer) error {
 	}
 	client := control.Client{Socket: socket}
 	var raw json.RawMessage
-	err = client.Call(context.Background(), method, map[string]any{"method": verb, "path": path, "body": body}, &raw)
+	err = client.Call(context.Background(), method, map[string]any{"method": verb, "path": path, "body": body, "scope": scope}, &raw)
 	if err != nil {
 		return err
 	}

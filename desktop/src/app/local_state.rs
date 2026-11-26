@@ -1,7 +1,7 @@
 //! What the window keeps across restarts (THI-121): the last queue shown and
 //! the text not yet sent from the new-request composer and the thread reply
-//! boxes. Kept in `~/.config/fennec/desktop-state.json`, written a moment after
-//! it changes.
+//! boxes, isolated by cloud computer in desktop-board-state.json. The old
+//! unscoped desktop-state.json is preserved, never assigned to a new computer.
 use super::{FennecWindow, Route};
 use gpui::*;
 use serde::{Deserialize, Serialize};
@@ -17,14 +17,15 @@ pub(crate) struct Saved {
     pub composer: String,
     /// Reply drafts by `reply:<queue>:<number>`, empty ones left out.
     pub replies: BTreeMap<String, String>,
+    pub images: BTreeMap<String, Vec<crate::board::Attachment>>,
 }
 
 fn path() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME")
-        .map(|home| std::path::PathBuf::from(home).join(".config/fennec/desktop-state.json"))
+        .map(|home| std::path::PathBuf::from(home).join(".config/fennec/desktop-board-state.json"))
 }
 
-pub(crate) fn load() -> Saved {
+pub(crate) fn load() -> BTreeMap<String, Saved> {
     path()
         .and_then(|p| std::fs::read(p).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
@@ -32,7 +33,7 @@ pub(crate) fn load() -> Saved {
 }
 
 /// Write through a temporary file so a crash mid-write keeps the old state.
-fn store(saved: &Saved) -> anyhow::Result<()> {
+fn store(saved: &BTreeMap<String, Saved>) -> anyhow::Result<()> {
     let Some(path) = path() else { return Ok(()) };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -66,20 +67,82 @@ impl FennecWindow {
             last_queue,
             composer: self.composer.read(cx).value().to_string(),
             replies,
+            images: self
+                .request_images
+                .by_queue
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 
     /// Restore the saved state into a window being built: open the last queue
     /// with the cursor in its new-request box, and put the drafts back.
     pub(super) fn restore_local_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let saved = load();
+        self.local_profiles = load();
+        let _ = (window, cx);
+    }
+
+    pub(super) fn switch_board_scope(
+        &mut self,
+        scope: crate::board::Scope,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.board_scope.as_ref() == Some(&scope) {
+            return;
+        }
+        if let Some(old) = &self.board_scope {
+            self.local_profiles
+                .insert(old.0.clone(), self.local_snapshot(cx));
+            self.local_profiles_dirty = true;
+        }
+        let saved = self
+            .local_profiles
+            .get(&scope.0)
+            .cloned()
+            .unwrap_or_default();
+        self.board_scope = Some(scope);
+        self.projects.clear();
+        self.deleted_projects.clear();
+        self.requests.clear();
+        self.thread_cache.clear();
+        self.status_override.clear();
+        self.thread = None;
+        self.open = None;
+        self.opening = None;
+        self.pending_replies.clear();
+        self.fresh_messages.clear();
+        self.question_picks.clear();
+        self.thread_peek.clear();
+        self.peek_reads = Default::default();
+        self.thread_jump = None;
+        self.thread_follow = false;
+        self.open_permission_commands.clear();
+        self.new_project = None;
+        self.knowledge_refs = Default::default();
+        self.settings = Default::default();
+        self.request_images = Default::default();
+        self.request_images.by_queue.extend(saved.images.clone());
+        self.image_viewer = None;
+        self.context_menu = None;
+        self.menu = None;
+        self.posting = false;
+        self.replying = false;
+        self.answering = false;
+        self.opening_thread_session = false;
+        self.reply_drafts.clear();
+        self.tag = None;
+        self.resolved = false;
+        self.reply.update(cx, |s, cx| s.set_value("", window, cx));
+        self.composer
+            .update(cx, |s, cx| s.set_value(saved.composer.clone(), window, cx));
+        if matches!(self.route, Some(Route::Project(_) | Route::Settings(_, _))) {
+            self.route = None;
+        }
+        self.restored_queue = None;
         self.reply_drafts
             .extend(saved.replies.iter().map(|(k, v)| (k.clone(), v.clone())));
-        if !saved.composer.is_empty() {
-            let text = saved.composer.clone();
-            self.composer
-                .update(cx, |s, cx| s.set_value(text, window, cx));
-        }
         if let Some(queue) = &saved.last_queue {
             self.route = Some(Route::Project(queue.clone()));
             self.restored_queue = Some(queue.clone());
@@ -97,10 +160,15 @@ impl FennecWindow {
                     .timer(Duration::from_millis(400))
                     .await;
                 let Ok(changed) = this.update(cx, |this, cx| {
+                    let Some(scope) = this.board_scope.clone() else {
+                        return None;
+                    };
                     let now = this.local_snapshot(cx);
-                    (now != this.local_state).then(|| {
+                    (now != this.local_state || this.local_profiles_dirty).then(|| {
                         this.local_state = now.clone();
-                        now
+                        this.local_profiles.insert(scope.0, now);
+                        this.local_profiles_dirty = false;
+                        this.local_profiles.clone()
                     })
                 }) else {
                     break;

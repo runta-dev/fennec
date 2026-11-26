@@ -107,13 +107,15 @@ impl FennecWindow {
         let origin = project.clone();
         let key = self.question_key(n, &q);
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let sent = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     board::answer(&project, n, &me, &q.id, &picks, allow, &text)
-                })
+                }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 this.answering = false;
                 let here = this.project_id().as_deref() == Some(&origin) && this.open == Some(n);
                 match sent {

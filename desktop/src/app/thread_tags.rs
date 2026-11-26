@@ -66,11 +66,13 @@ impl FennecWindow {
             r.set_tags(&next);
         }
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let done = cx
-                .background_spawn(async move { board::set_tags(&project, n, &next) })
+                .background_spawn(async move { worker_scope.run(|| { board::set_tags(&project, n, &next) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 if let Err(e) = done {
                     this.say(format!("{e:#}"), cx);
                 }

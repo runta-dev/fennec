@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fennec/internal/board"
@@ -13,12 +11,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 )
 
 func startQueueReplication(ctx context.Context, s *daemonServices) {
-	store := board.Store{Home: s.home, Role: "local"}
+	store := s.localBoard()
 	if err := store.SetRouting(queueRouting(s, store)); err != nil {
 		log.Printf("queue routing unavailable: %v", err)
 		return
@@ -28,20 +25,25 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 	s.boardCore = core
 	s.mu.Unlock()
 	exe, _ := os.Executable()
-	executor := queueMacExecutor{core: core, home: s.home, exe: exe}
-	scheduler := queuescheduler.Scheduler{Store: store, Executor: executor, Command: shellArgument(exe) + " queue", OnError: func(err error) { log.Printf("queue execution: %v", err) }}
 	// Restart begins fenced until a fresh replication handshake, preserving runs.
 	if err := store.SetPrimary(false); err != nil {
 		log.Printf("queue state unavailable: %v", err)
 		return
 	}
-	go scheduler.Run(ctx)
 	go func() {
+		startScheduler := func(store board.Store) context.CancelFunc {
+			life, cancel := s.boardLifetime(ctx)
+			executor := queueMacExecutor{core: core, home: s.home, exe: exe, store: store}
+			scheduler := queuescheduler.Scheduler{Store: store, Executor: executor, Command: shellArgument(exe) + " queue --scope " + store.Namespace, OnError: func(err error) { log.Printf("queue execution: %v", err) }}
+			go scheduler.Run(life)
+			return cancel
+		}
+		stopScheduler := startScheduler(store)
+		defer func() { stopScheduler() }()
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		var peerSeen map[string]uint64
 		var epoch uint64
-		var identity string
 		starterChecked := false
 		last := time.Time{}
 		// Log only transitions: a silent 3.5-hour outage (THI-55) left the
@@ -53,6 +55,17 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				return
 			case <-ticker.C:
 			}
+			lifecycle, _, current, authorized := s.account.Session()
+			next := s.localBoard()
+			if next.Namespace != store.Namespace || current != epoch {
+				stopScheduler()
+				_ = store.SetPrimary(false)
+				store = next
+				_ = store.SetPrimary(false)
+				peerSeen, starterChecked, last = nil, false, time.Time{}
+				epoch = current
+				stopScheduler = startScheduler(store)
+			}
 			s.mu.Lock()
 			ready := s.channel != nil && s.brokerReady
 			channel := s.channel
@@ -60,8 +73,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			if err := store.SetRouting(queueRouting(s, store)); err != nil {
 				continue
 			}
-			lifecycle, principal, current, authorized := s.account.Session()
-			if !ready || !authorized {
+			if !ready || !authorized || store.Namespace == "local" {
 				health.failed(fmt.Sprintf("channel ready=%t authorized=%t", ready, authorized))
 				if last.IsZero() || time.Since(last) > 10*time.Second {
 					_ = store.SetPrimary(false)
@@ -87,40 +99,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				cancel()
 				continue
 			}
-			if current != epoch || identity == "" {
-				// The board is shared by the devices of one owner: a Runta account,
-				// or a paired self-hosted computer.
-				scope := "byoc/" + principal.Machine
-				if token, isRunta := principal.RuntaToken(); isRunta {
-					api := runta.Client{Endpoint: s.account.Endpoint(), Token: token}
-					owner, err := api.CurrentUser(step)
-					if err != nil {
-						health.failed("account: " + err.Error())
-						cancel()
-						continue
-					}
-					scope = api.Endpoint + "/" + owner
-				}
-				sum := sha256.Sum256([]byte(scope))
-				identity = hex.EncodeToString(sum[:])
-				epoch = current
-				peerSeen = nil
-			}
-			pair := filepath.Join(s.home, ".fen/board/paired-account")
-			if old, err := os.ReadFile(pair); err == nil && string(old) != identity {
-				health.failed("board is paired with a different account")
-				// The window says why sync stopped and offers to import a
-				// backup (THI-188); importing rebinds the replica.
-				_ = store.SetSyncBlocked(board.SyncBlockedOtherComputer)
-				cancel()
-				continue
-			} else if os.IsNotExist(err) {
-				_ = store.SetSyncBlocked("")
-				if os.WriteFile(pair, []byte(identity), 0600) != nil {
-					cancel()
-					continue
-				}
-			}
+			remote := boardClient{s: s, scope: store.Namespace, channel: channel}
 			outbound, err := store.Sync(board.Exchange{Seen: peerSeen})
 			caughtUp := !outbound.More
 			if peerSeen == nil {
@@ -132,7 +111,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				caughtUp = false
 			}
 			if err == nil {
-				raw, e := (boardClient{s: s}).call(step, "POST", "/v1/sync", outbound)
+				raw, e := remote.call(step, "POST", "/v1/sync", outbound)
 				err = e
 				if err == nil {
 					var incoming board.Exchange
@@ -148,7 +127,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 							// such requests queued until every original is present.
 							last = time.Now()
 							_ = store.RecordImageSync(peerSeen, len(incoming.Missing) > 0 || len(local.Missing) > 0)
-							err = syncQueueAttachments(step, boardClient{s: s}, store, incoming.Missing, local.Missing)
+							err = syncQueueAttachments(step, remote, store, incoming.Missing, local.Missing)
 						}
 					}
 				}
@@ -288,6 +267,14 @@ func shellArgument(value string) string {
 type queueMacExecutor struct {
 	core      *boardLocalCore
 	home, exe string
+	store     board.Store
+}
+
+func (e queueMacExecutor) board() board.Store {
+	if e.store.Home != "" {
+		return e.store
+	}
+	return board.Store{Home: e.home, Role: "local"}
 }
 
 func (e queueMacExecutor) List(ctx context.Context) ([]queuescheduler.Session, error) {
@@ -332,5 +319,5 @@ func (e queueMacExecutor) Start(ctx context.Context, p board.Project, request bo
 	if err != nil {
 		return err
 	}
-	return queuescheduler.SendRequest(ctx, board.Store{Home: e.home, Role: "local"}, e.core.call, terminal.Address, request, prompt.For(continued))
+	return queuescheduler.SendRequest(ctx, e.board(), e.core.call, terminal.Address, request, prompt.For(continued))
 }

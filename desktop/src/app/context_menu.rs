@@ -228,13 +228,15 @@ impl FennecWindow {
             &[t("cancel").as_str(), t("delete_queue").as_str()],
             cx,
         );
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             if answer.await.ok() != Some(1) { return; }
             let deleted_id = id.clone();
-            let result = cx.background_spawn(async move {
+            let result = cx.background_spawn(async move { worker_scope.run(|| {
                 board::call("DELETE", &format!("/v1/projects/{deleted_id}"), None)
-            }).await;
-            let _ = this.update_in(cx, |this, window, cx| match result {
+            }) }).await;
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match result {
                 Ok(_) => {
                     this.deleted_projects.insert(id.clone());
                     this.projects.retain(|p| p.id != id);
@@ -250,7 +252,7 @@ impl FennecWindow {
                     cx.notify();
                 }
                 Err(_) => this.say(t("delete_queue_failed"), cx),
-            });
+            } });
         }));
     }
 

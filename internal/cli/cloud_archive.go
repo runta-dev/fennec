@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fennec/internal/board"
 	"fennec/internal/cloudarchive"
 	"fennec/internal/commandstream"
 	"fennec/internal/control"
@@ -355,25 +354,8 @@ func (c *archiveControl) importArchive(_ context.Context, raw json.RawMessage) (
 		c.mu.Lock()
 		job.Result = &result
 		c.mu.Unlock()
-		c.rebindBoard()
 		return nil
 	})
-}
-
-// rebindBoard lets this Mac's queue replica join the cloud computer the user
-// just imported into. The replica remembers the computer (or account) it
-// first synced with in paired-account and refuses any other, so moving to a
-// new computer would otherwise stop queue sync for good. Importing is the
-// user's explicit choice of the new computer; replication writes the current
-// identity again on its next step and merges what the Mac has.
-func (c *archiveControl) rebindBoard() {
-	pair := filepath.Join(c.s.home, ".fen/board/paired-account")
-	if err := os.Remove(pair); err != nil && !os.IsNotExist(err) {
-		log.Printf("cloud archive: could not rebind the queue replica: %v", err)
-		return
-	}
-	_ = (board.Store{Home: c.s.home, Role: "local"}).SetSyncBlocked("")
-	log.Printf("cloud archive: queue replica rebinds to the current cloud computer")
 }
 
 type progressWriter struct {

@@ -88,7 +88,7 @@ fn import_image(mut bytes: Vec<u8>) -> anyhow::Result<board::Attachment> {
         file.write_all(&bytes)?;
         drop(file);
         let value =
-            crate::control::call("board.attachment.import", serde_json::json!({"path":path}))?;
+            board::control_call("board.attachment.import", serde_json::json!({"path":path}))?;
         Ok(serde_json::from_value(value)?)
     })();
     let _ = std::fs::remove_file(&path);
@@ -196,9 +196,11 @@ impl FennecWindow {
         self.request_images.errors.remove(&project);
         self.request_images.busy.insert(project.clone());
         cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return true; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn(async move |this, cx| {
             let result: anyhow::Result<Vec<board::Attachment>> = cx
-                .background_spawn(async move {
+                .background_spawn(async move { worker_scope.run(|| {
                     match source {
                         PasteSource::Image(bytes) => Ok(vec![import_image(bytes)?]),
                         PasteSource::Files(paths) => paths
@@ -212,9 +214,9 @@ impl FennecWindow {
                             })
                             .collect(),
                     }
-                })
+                }) })
                 .await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 this.request_images.busy.remove(&project);
                 match result {
                     Ok(images) => {
@@ -387,17 +389,19 @@ impl FennecWindow {
         viewer.path = None;
         viewer.failed = false;
         let id = viewer.ids[viewer.index].clone();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn(async move |this, cx| {
             let request = id.clone();
             let result = cx
-                .background_spawn(async move {
-                    crate::control::call("board.attachment.url", serde_json::json!({"id":request}))
-                })
+                .background_spawn(async move { worker_scope.run(|| {
+                    board::control_call("board.attachment.url", serde_json::json!({"id":request}))
+                }) })
                 .await;
             let path = result
                 .ok()
                 .and_then(|value| value["url"].as_str().and_then(file_url_path));
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 // A later image may have been chosen while this one resolved.
                 let Some(viewer) = this.image_viewer.as_mut().filter(|v| v.ids[v.index] == id)
                 else {

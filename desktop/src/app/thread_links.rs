@@ -327,11 +327,13 @@ impl FennecWindow {
             return;
         };
         let me = self.me.clone();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let done = cx
-                .background_spawn(async move { board::set_link(&project, from, to, kind, &me) })
+                .background_spawn(async move { worker_scope.run(|| { board::set_link(&project, from, to, kind, &me) }) })
                 .await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 if let Err(e) = done {
                     this.say(format!("{e:#}"), cx);
                 }

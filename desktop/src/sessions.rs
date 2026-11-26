@@ -22,6 +22,7 @@ pub struct Session {
     pub title: String,
     pub directory: String,
     pub queue: String,
+	pub board_scope: String,
     pub request: Option<u64>,
     pub state: State,
     /// What the agent says it is doing now (herdr-core's `status.msg`).
@@ -93,6 +94,7 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                 })
                 .unwrap_or_else(|| name.clone());
             Some(Session {
+				board_scope: labels["fennec.board"].as_str().unwrap_or_default().to_owned(),
                 address: t["address"].as_str()?.to_owned(),
                 name,
                 agent,
