@@ -369,7 +369,10 @@ struct ThreadMessage: View {
                     if let date = message.date { Text("· \(shortTime(date))") }
                 }
                 .font(.system(size: 12.5)).foregroundStyle(Theme.fg2)
+                // Same size as agent replies in a session (PreviewMessageText) and
+                // the bubbles here; unsized it fell back to 17pt .body (FEN-56).
                 MarkdownText(text: message.body)
+                    .font(.system(size: 15.5)).textSelection(.enabled)
                     .environment(\.openURL, OpenURLAction { url in route(url) })
                 AttachmentThumbnails(attachments: message.attachments ?? [], trailing: false)
             }
