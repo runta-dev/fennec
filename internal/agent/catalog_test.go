@@ -164,3 +164,33 @@ func TestPanelRejectsLocalOnlyPlaceholdersAndConfigurationEvidence(t *testing.T)
 		}
 	}
 }
+
+// FEN-27: Codex Desktop writes ~/.codex/config.toml, so with the app installed
+// that file alone must not show Codex CLI as installed on this Mac.
+func TestCodexConfigFromDesktopIsNotTheCLI(t *testing.T) {
+	home, apps := t.TempDir(), t.TempDir()
+	config := filepath.Join(home, ".codex/config.toml")
+	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	codex := func() bool {
+		for _, item := range discoverAt(home, nil, []string{apps}) {
+			if item.ID == "codex" {
+				return true
+			}
+		}
+		return false
+	}
+	if !codex() {
+		t.Fatal("config without Codex Desktop should still count")
+	}
+	if err := os.MkdirAll(filepath.Join(apps, "Codex.app/Contents/Resources/codex-cli"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if codex() {
+		t.Fatal("Codex Desktop's config counted as Codex CLI")
+	}
+}

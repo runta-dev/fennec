@@ -73,7 +73,10 @@ func discoverAt(home string, paths []string, appRoots []string) []Agent {
 				break
 			}
 		}
-		if evidence == "" {
+		// Codex Desktop writes ~/.codex/config.toml too, so with the app here
+		// that file is no sign of the CLI (Magpie's cliShared). Counting it
+		// showed Codex CLI on This Mac with no codex to run (FEN-27).
+		if evidence == "" && !(d.id == "codex" && codexDesktopInstalled(appRoots)) {
 			for _, config := range d.configs {
 				if info, err := os.Stat(filepath.Join(home, config)); err == nil && info.Mode().IsRegular() {
 					evidence = "configuration"

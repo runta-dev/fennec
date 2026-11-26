@@ -163,10 +163,17 @@ func Run(arguments []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if enabled[arguments[1]] && !launcher.LocalQuery(arguments[2:]) && !launcher.RunLocally() {
+		cloud := enabled[arguments[1]] && !launcher.RunLocally()
+		if cloud && !launcher.LocalQuery(arguments[2:]) {
 			return runAgent(arguments[1:])
 		}
-		return launcher.ExecLocal(arguments[1], arguments[2:], filepath.Join(home, ".local/share/fennec/shims"))
+		err = launcher.ExecLocal(arguments[1], arguments[2:], filepath.Join(home, ".local/share/fennec/shims"))
+		if cloud && errors.Is(err, launcher.ErrNotInstalled) {
+			// --version/--help run here only as a shortcut; with no CLI on
+			// this Mac they go to the cloud computer like any other run (FEN-27).
+			return runAgent(arguments[1:])
+		}
+		return err
 	case "dispatch-stable":
 		// Shell functions call the stable dispatcher with the command name.
 		home, err := os.UserHomeDir()

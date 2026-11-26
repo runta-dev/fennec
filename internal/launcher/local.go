@@ -69,6 +69,9 @@ func ExecLocal(agent string, args []string, shimDir string) error {
 	}
 	original, err := ResolveOriginal(agent, os.Getenv("PATH"), shimDir, self)
 	if err != nil {
+		if Supported[agent] {
+			return notInstalled(agent)
+		}
 		return err
 	}
 	// exec replaces the launcher: terminal, signal behavior, cwd and exit code
