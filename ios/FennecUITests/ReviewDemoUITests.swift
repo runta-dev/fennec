@@ -136,6 +136,10 @@ final class ReviewDemoUITests: XCTestCase {
         composer.typeText("Please also cover the empty state.")
         app.buttons["thread-send"].tap()
         XCTAssertTrue(text(app, "cover the empty state").waitForExistence(timeout: 5))
+        // Send keeps the keyboard; a tap on the thread puts it away (FEN-62).
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "Send closed the keyboard")
+        text(app, "cover the empty state").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), "a tap outside the composer left the keyboard up")
         XCTAssertTrue(text(app, "Ready for your review").waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["Mark done"].waitForExistence(timeout: 5))
         attach(app, "10-queue-reply")

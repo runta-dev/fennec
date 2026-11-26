@@ -435,6 +435,7 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         }
+        .keepsKeyboard()
     }
 
     private var canSend: Bool {

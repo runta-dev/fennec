@@ -18,6 +18,7 @@ struct FennecApp: App {
                     ScanSignInView()
                 }
             }
+            .dismissesKeyboardOnOutsideTap()
             .id(app.environment)
             .environment(app)
             .environment(app.auth)

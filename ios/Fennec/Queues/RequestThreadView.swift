@@ -214,6 +214,7 @@ struct RequestThreadView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
         }
+        .keepsKeyboard()
         .animation(.spring(duration: 0.4, bounce: 0.3), value: queues.justResolved)
     }
 
