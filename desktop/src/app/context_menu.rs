@@ -1,4 +1,4 @@
-//! Sidebar, tab and selected-text context menus, using Herdr's compact menu metrics.
+//! Sidebar, tab, request card and selected-text context menus, using Herdr's compact menu metrics.
 use super::*;
 use crate::i18n::tf;
 
@@ -6,12 +6,15 @@ use crate::i18n::tf;
 pub(super) enum Target {
     Project(String),
     Terminal { session: String, tab: String },
+    /// A request card in a queue column (FEN-5).
+    Request { project: String, number: u64 },
     /// Right-click with text selected in a thread or knowledge page (THI-169).
     Text(String),
 }
 #[derive(Clone)]
 enum Action {
     DeleteProject(String),
+    DeleteRequest(String, u64),
     RenameProject(String),
     ProjectSettings(String),
     OpenTerminal(String, String),
@@ -20,6 +23,15 @@ enum Action {
     CloseTab(String),
     SplitTab(String),
     CopyText(String),
+}
+impl Action {
+    fn destructive(&self) -> bool {
+        matches!(self, Action::DeleteProject(_) | Action::DeleteRequest(..))
+    }
+    /// Closing and deleting sit below a divider, apart from the other items.
+    fn separated(&self) -> bool {
+        matches!(self, Action::CloseTab(_)) || self.destructive()
+    }
 }
 struct Item {
     label: &'static str,
@@ -81,6 +93,11 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         let items = match target {
+            Target::Request { project, number } => vec![Item {
+                label: "delete_request",
+                icon: "trash",
+                action: Action::DeleteRequest(project, number),
+            }],
             Target::Text(text) => vec![Item {
                 label: "context_copy",
                 icon: "copy",
@@ -176,6 +193,9 @@ impl FennecWindow {
         self.dismiss_context_menu(true, cx);
         match action {
             Some(Action::DeleteProject(id)) => self.delete_queue(id, window, cx),
+            Some(Action::DeleteRequest(project, number)) => {
+                self.delete_request(project, number, window, cx)
+            }
             Some(Action::RenameProject(id)) => {
                 self.go(
                     Route::Settings(id, crate::project_settings::Tab::General),
@@ -256,6 +276,59 @@ impl FennecWindow {
         }));
     }
 
+    /// FEN-5: deletes a request from its card's context menu, after asking.
+    fn delete_request(&mut self, project: String, number: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::preview::active() {
+            return;
+        }
+        let Some(queue) = self.projects.iter().find(|p| p.id == project) else {
+            return;
+        };
+        let reference = format!("{}-{number}", queue.key);
+        let request_title = self
+            .requests
+            .get(&project)
+            .and_then(|list| list.iter().find(|r| r.number == number))
+            .map(|r| r.title.clone())
+            .unwrap_or_else(|| reference.clone());
+        let title = tf("delete_request_title", &[("reference", &reference)]);
+        let detail = tf("delete_request_detail", &[("title", &request_title)]);
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            &title,
+            Some(&detail),
+            &[t("cancel").as_str(), t("delete_request").as_str()],
+            cx,
+        );
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            if answer.await.ok() != Some(1) { return; }
+            let deleted = project.clone();
+            let result = cx.background_spawn(async move { worker_scope.run(|| {
+                board::delete_request(&deleted, number)
+            }) }).await;
+            let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match result {
+                Ok(_) => {
+                    if let Some(list) = this.requests.get_mut(&project) {
+                        list.retain(|r| r.number != number);
+                    }
+                    this.thread_cache.remove(&(project.clone(), number));
+                    if this.project_id().as_deref() == Some(project.as_str())
+                        && (this.open == Some(number) || this.opening == Some(number))
+                    {
+                        this.open = None;
+                        this.opening = None;
+                        this.thread = None;
+                    }
+                    this.refresh_now(window, cx);
+                    cx.notify();
+                }
+                Err(_) => this.say(t("delete_request_failed"), cx),
+            } });
+        }));
+    }
+
     pub(super) fn context_key(
         &mut self,
         key: &str,
@@ -294,7 +367,8 @@ impl FennecWindow {
             + if menu
                 .items
                 .iter()
-                .any(|i| matches!(i.action, Action::CloseTab(_) | Action::DeleteProject(_)))
+                .skip(1)
+                .any(|i| i.action.separated())
             {
                 9.0
             } else {
@@ -328,7 +402,7 @@ impl FennecWindow {
                 .children(menu.items.iter().enumerate().map(|(index, item)| {
                     v_flex()
                         .when(
-                            matches!(item.action, Action::CloseTab(_) | Action::DeleteProject(_)),
+                            index > 0 && item.action.separated(),
                             |d| d.child(div().mx(px(7.0)).my(px(4.0)).h(px(1.0)).bg(c("border"))),
                         )
                         .child(
@@ -340,7 +414,7 @@ impl FennecWindow {
                                 .rounded(px(7.0))
                                 .text_size(px(12.8))
                                 .font_weight(FontWeight::MEDIUM)
-                                .text_color(c(if matches!(item.action, Action::DeleteProject(_)) {
+                                .text_color(c(if item.action.destructive() {
                                     "blocked"
                                 } else {
                                     "foreground"
@@ -357,7 +431,7 @@ impl FennecWindow {
                                 .child(ui::icon(
                                     item.icon,
                                     14.0,
-                                    c(if matches!(item.action, Action::DeleteProject(_)) {
+                                    c(if item.action.destructive() {
                                         "blocked"
                                     } else {
                                         "muted"

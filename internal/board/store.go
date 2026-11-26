@@ -98,8 +98,11 @@ type PermissionAnswer struct {
 }
 
 type Request struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
+	// Deleted is a replicated tombstone (FEN-5): the request is gone from its
+	// queue everywhere, and later edits from offline replicas cannot bring it back.
+	Deleted bool   `json:"deleted,omitempty"`
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
 	// Tag is the request's first tag; builds before THI-133 know only it.
 	Tag string `json:"tag"`
 	// Tags are all of the request's tags, Tag first, in the project's tag
@@ -309,6 +312,26 @@ func (s Store) DeleteProject(id string) error {
 	}
 	p.Deleted = true
 	return s.commit(filepath.Join(s.projectDir(id), "project.json"), p)
+}
+
+// DeleteRequest persists a replicated tombstone for request n (FEN-5). Its
+// number is not reused; an agent still working on it keeps its session, but
+// its replies no longer reach the board and its slot is free again.
+func (s Store) DeleteRequest(project string, n int) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if _, err = s.Project(project); err != nil {
+		return err
+	}
+	r, err := s.Request(project, n)
+	if err != nil {
+		return err
+	}
+	r.Deleted = true
+	return s.commit(s.requestPath(project, n), r)
 }
 
 // KeyFrom makes a request-number prefix from a project name: its first
@@ -539,6 +562,9 @@ func (s Store) Request(project string, n int) (Request, error) {
 		return r, ErrNotFound
 	}
 	err := readJSON(s.requestPath(project, n), &r)
+	if err == nil && r.Deleted {
+		return r, ErrNotFound
+	}
 	return r, err
 }
 

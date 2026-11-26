@@ -2850,6 +2850,7 @@ impl FennecWindow {
             let project = p.id.clone();
             let drop_project = project.clone();
             let next_project = project.clone();
+            let menu_project = project.clone();
             let card_key = format!("req-{n}");
             let card = v_flex()
                 .id(SharedString::from(card_key.clone()))
@@ -2986,7 +2987,14 @@ impl FennecWindow {
                             )),
                         ),
                     )
-                })
+                });
+            // FEN-5: right-click (or Control-click) a card to delete its request.
+            let card = self
+                .context_row(
+                    card,
+                    context_menu::Target::Request { project: menu_project, number: n },
+                    cx,
+                )
                 .into_any_element();
             v_flex()
                 .when(index == 0 || shown[index - 1].status != r.status, |d| {

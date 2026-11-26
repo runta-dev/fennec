@@ -609,6 +609,11 @@ pub fn set_tags(project: &str, n: u64, tags: &[String]) -> Result<Value> {
     )
 }
 
+/// FEN-5: deletes request `n` from its queue on every device.
+pub fn delete_request(project: &str, n: u64) -> Result<Value> {
+    call("DELETE", &format!("/v1/projects/{project}/requests/{n}"), None)
+}
+
 pub fn set_status(project: &str, n: u64, status: &str) -> Result<Value> {
     call(
         "PATCH",

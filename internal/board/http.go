@@ -158,6 +158,12 @@ func (s Store) Handler() http.Handler {
 			}{req, related}, err)
 		}
 	})
+	mux.HandleFunc("DELETE /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
+		if n, ok := number(w, r); ok {
+			err := s.DeleteRequest(r.PathValue("id"), n)
+			reply(w, map[string]bool{"deleted": err == nil}, err)
+		}
+	})
 	mux.HandleFunc("PATCH /v1/projects/{id}/requests/{n}", func(w http.ResponseWriter, r *http.Request) {
 		// "tags" replaces all of the request's tags (THI-133); "tag", from
 		// builds before it, replaces them with that one.
