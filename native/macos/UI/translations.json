@@ -7,7 +7,6 @@
     "desktop.link_mentions": {"en-GB":"Mentions","en-US":"Mentions","zh-CN":"提及"},
     "desktop.link_mentioned_in": {"en-GB":"Mentioned in","en-US":"Mentioned in","zh-CN":"被提及于"},
     "desktop.link_more_mentions": {"en-GB":"{n} more mentions","en-US":"{n} more mentions","zh-CN":"还有 {n} 处提及"},
-    "desktop.link_request": {"en-GB":"Link","en-US":"Link","zh-CN":"关联"},
     "desktop.link_search": {"en-GB":"Find a request by number or title","en-US":"Find a request by number or title","zh-CN":"按编号或标题查找请求"},
     "desktop.link_none": {"en-GB":"No matching requests","en-US":"No matching requests","zh-CN":"没有匹配的请求"},
     "desktop.view_thread": {"en-GB":"Open thread","en-US":"Open thread","zh-CN":"打开讨论"},

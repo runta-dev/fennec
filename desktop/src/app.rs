@@ -75,8 +75,6 @@ struct SidebarRow<'a> {
 enum Menu {
     NewSession,
     RequestTag,
-    /// THI-103: pick a request to link the open thread to.
-    LinkRequest,
     /// THI-133: check and uncheck the open thread's tags.
     ThreadTags,
 }
@@ -153,9 +151,6 @@ pub struct FennecWindow {
     thread_jump: Option<(u64, u64)>,
     /// Frames left to keep scrolling to `thread_jump` while layout settles.
     thread_jump_frames: std::cell::Cell<u8>,
-    /// THI-103: the Link request menu's filter, and the kind it links as.
-    link_search: Entity<InputState>,
-    link_kind: &'static str,
     /// The highlighted `#` suggestion in the New Request box (THI-209).
     ref_pick: usize,
     /// The `#` whose suggestions Esc hid.
@@ -279,17 +274,7 @@ impl FennecWindow {
                 .submit_on_enter(true)
                 .placeholder(t("reply"))
         });
-        let link_search = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder(t("link_search"))
-                .clean_on_escape()
-        });
         let mut subs = vec![
-            cx.subscribe_in(&link_search, window, |_, _, ev: &InputEvent, _, cx| {
-                if matches!(ev, InputEvent::Change) {
-                    cx.notify();
-                }
-            }),
             cx.subscribe_in(&search, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -396,8 +381,6 @@ impl FennecWindow {
             thread_jump_pending: false,
             thread_jump: None,
             thread_jump_frames: Default::default(),
-            link_search,
-            link_kind: "related",
             ref_pick: 0,
             ref_closed: None,
             pending_replies: Vec::new(),
@@ -2048,9 +2031,6 @@ impl FennecWindow {
 
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.menu?;
-        if self.menu == Some(Menu::LinkRequest) {
-            return self.link_menu(cx);
-        }
         if self.menu == Some(Menu::ThreadTags) {
             return self.tag_menu(cx);
         }
@@ -3584,13 +3564,6 @@ impl FennecWindow {
                     )
                     .child(ui::status_pill(&r.status))
                     .child(div().flex_1())
-                    .child(
-                        secondary_button("link-request", t("link_request"), false).on_click(
-                            cx.listener(|this, event: &ClickEvent, window, cx| {
-                                this.toggle_link_menu(event, window, cx)
-                            }),
-                        ),
-                    )
                     .when(session_route.is_none() && !r.runs.is_empty(), |d| {
                         d.child(
                             secondary_button("resume-thread-session", t("view_session"), false)

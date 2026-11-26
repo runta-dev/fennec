@@ -248,32 +248,6 @@ pub(super) fn link_refs(body: &str, key: &str, known: &HashSet<u64>) -> String {
     out
 }
 
-/// The requests the Link menu offers: the queue's others, newest first,
-/// whose reference or title contains the filter.
-pub(super) fn link_candidates<'a>(
-    list: &'a [Request],
-    key: &str,
-    open: u64,
-    filter: &str,
-) -> Vec<&'a Request> {
-    let filter = filter.trim().to_lowercase();
-    let mut rows: Vec<&Request> = list
-        .iter()
-        .filter(|r| r.number != open)
-        .filter(|r| {
-            filter.is_empty()
-                || r.title.to_lowercase().contains(&filter)
-                || format!("{}-{}", key, r.number)
-                    .to_lowercase()
-                    .contains(&filter)
-                || r.number.to_string() == filter.trim_start_matches('#')
-        })
-        .collect();
-    rows.sort_by(|a, b| b.number.cmp(&a.number));
-    rows.truncate(8);
-    rows
-}
-
 impl FennecWindow {
     /// Opens request `n` scrolled to message `message`, highlighted (a
     /// mention row's source). Message 0 is the request's title.
@@ -288,27 +262,6 @@ impl FennecWindow {
         if message > 0 {
             self.thread_jump = Some((n, message));
             self.thread_jump_frames.set(6);
-        }
-        cx.notify();
-    }
-
-    pub(super) fn toggle_link_menu(
-        &mut self,
-        event: &ClickEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.menu == Some(Menu::LinkRequest) {
-            self.menu = None;
-        } else {
-            self.menu = Some(Menu::LinkRequest);
-            self.menu_anchor = point(
-                event.position().x - px(300.0),
-                event.position().y + px(18.0),
-            );
-            self.link_search
-                .update(cx, |s, cx| s.set_value("", window, cx));
-            self.link_search.read(cx).focus_handle(cx).focus(window, cx);
         }
         cx.notify();
     }
@@ -340,130 +293,6 @@ impl FennecWindow {
                 this.refresh_now(window, cx);
             });
         }));
-    }
-
-    /// The Link request menu: Related or Duplicate of, a filter, and the
-    /// queue's matching requests; choosing one links the open thread to it.
-    pub(super) fn link_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let p = self
-            .project_id()
-            .and_then(|id| self.projects.iter().find(|p| p.id == id))?;
-        let open = self.open?;
-        let list = self
-            .requests
-            .get(&p.id)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
-        let filter = self.link_search.read(cx).value().to_string();
-        let rows = link_candidates(list, &p.key, open, &filter);
-        let kind = self.link_kind;
-        let segment = |id: &'static str, label: String, value: &'static str| {
-            div()
-                .id(id)
-                .flex_1()
-                .h(px(24.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(12.0))
-                .when(kind == value, |d| d.bg(c("f_card")).text_color(c("f_text")))
-                .when(kind != value, |d| d.text_color(c("f_muted")))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.link_kind = value;
-                    cx.notify();
-                }))
-                .child(label)
-        };
-        let empty = rows.is_empty();
-        Some(
-            v_flex()
-                .absolute()
-                .top(self.menu_anchor.y)
-                .left(self.menu_anchor.x.max(px(8.0)))
-                .w(px(340.0))
-                .p(px(6.0))
-                .gap(px(6.0))
-                .rounded(px(9.0))
-                .bg(c("f_card"))
-                .border_1()
-                .border_color(c("f_field"))
-                .shadow_lg()
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    this.menu = None;
-                    cx.notify();
-                }))
-                .occlude()
-                .child(
-                    h_flex()
-                        .p(px(2.0))
-                        .rounded(px(8.0))
-                        .bg(c("f_line"))
-                        .child(segment("link-kind-related", t("link_related"), "related"))
-                        .child(segment(
-                            "link-kind-duplicate",
-                            t("link_duplicate_of"),
-                            "duplicate",
-                        )),
-                )
-                .child(
-                    div()
-                        .h(px(30.0))
-                        .px(px(9.0))
-                        .rounded(px(7.0))
-                        .border_1()
-                        .border_color(c("f_field"))
-                        .flex()
-                        .items_center()
-                        .text_size(px(13.0))
-                        .child(Input::new(&self.link_search)),
-                )
-                .when(empty, |d| {
-                    d.child(
-                        div()
-                            .py(px(10.0))
-                            .flex()
-                            .justify_center()
-                            .text_size(px(12.0))
-                            .text_color(c("f_muted"))
-                            .child(t("link_none")),
-                    )
-                })
-                .children(rows.into_iter().map(|r| {
-                    let to = r.number;
-                    h_flex()
-                        .id(SharedString::from(format!("link-option-{to}")))
-                        .h(px(30.0))
-                        .px(px(8.0))
-                        .gap(px(8.0))
-                        .rounded(px(5.0))
-                        .hover(|s| s.bg(c("f_expanded")))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.menu = None;
-                            let kind = this.link_kind;
-                            this.set_link(open, to, kind, window, cx);
-                            cx.notify();
-                        }))
-                        .child(
-                            div()
-                                .flex_none()
-                                .text_size(px(12.0))
-                                .text_color(c("f_muted"))
-                                .child(format!("{}-{}", p.key, to)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(px(12.5))
-                                .text_color(c("f_text"))
-                                .child(r.title.clone()),
-                        )
-                        .child(ui::status_pill(&r.status))
-                }))
-                .into_any_element(),
-        )
     }
 
     pub(super) fn thread_links(
@@ -618,7 +447,7 @@ impl FennecWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{link_candidates, link_label, link_refs, ordered, request_link};
+    use super::{link_label, link_refs, ordered, request_link};
     use crate::board::{Related, Request};
     use std::collections::HashSet;
 
@@ -667,33 +496,6 @@ mod tests {
                 mentions: vec![],
             }]
         );
-    }
-
-    #[test]
-    fn the_link_menu_offers_other_requests_newest_first() {
-        let list: Vec<Request> = (1..=12)
-            .map(|n| Request {
-                number: n,
-                title: if n == 4 {
-                    "Sync stalls".into()
-                } else {
-                    format!("Item {n}")
-                },
-                ..Default::default()
-            })
-            .collect();
-        let numbers = |rows: Vec<&Request>| rows.iter().map(|r| r.number).collect::<Vec<_>>();
-        assert_eq!(
-            numbers(link_candidates(&list, "THI", 12, "")),
-            [11, 10, 9, 8, 7, 6, 5, 4]
-        );
-        assert_eq!(numbers(link_candidates(&list, "THI", 12, "sync")), [4]);
-        assert_eq!(
-            numbers(link_candidates(&list, "THI", 12, "thi-1")),
-            [11, 10, 1]
-        );
-        assert_eq!(numbers(link_candidates(&list, "THI", 12, "#7")), [7]);
-        assert!(link_candidates(&list, "THI", 4, "sync").is_empty());
     }
 
     #[test]
