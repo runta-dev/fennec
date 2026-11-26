@@ -25,7 +25,12 @@ struct RequestThreadView: View {
             if let project, let request {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
+                        // Not lazy (FEN-70): a lazy stack anchored at the bottom
+                        // guessed the height of rows it hadn't built, so opening a
+                        // thread (and the full messages replacing the latest one)
+                        // scrolled past the real content: blank until you scrolled.
+                        // Threads are short enough to build all at once.
+                        VStack(alignment: .leading, spacing: 14) {
                             if let related = request.related, !related.isEmpty {
                                 LinkedRequestsCard(related: related, project: project) { n in path.append(.thread(projectID, n)) }
                             }
@@ -42,7 +47,12 @@ struct RequestThreadView: View {
                     }
                     .defaultScrollAnchor(.bottom)
                     .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: request.messages?.count) { _, _ in withAnimation { proxy.scrollTo("status", anchor: .bottom) } }
+                    .onChange(of: request.messages?.count) { old, _ in
+                        // The first full load jumps without animation; only new
+                        // messages in an open thread slide in.
+                        if old == nil { proxy.scrollTo("status", anchor: .bottom) }
+                        else { withAnimation { proxy.scrollTo("status", anchor: .bottom) } }
+                    }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottom(request, project) }
                 .toolbar {
