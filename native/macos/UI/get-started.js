@@ -177,9 +177,14 @@
     if (prefs.done && finishing) return;
     // A cloud computer prepared before counts as ready while Fennec checks it
     // again after launch, so the agents show at once instead of seconds later.
+    // Not while Runta reports it is not running yet (stage "starting": being
+    // created, started or resumed): the dashboard would say Creating while
+    // the card said ready (FEN-25). That stage is definite, so it does not
+    // wait out the hold either.
     const stage = window.fennecPreparationStage || '';
     const ready = held('ready', stage === 'agents_installed'
-      || (preparedBefore && !['failed', 'offline', 'disabled', 'credentials_required'].includes(stage)));
+      || (preparedBefore && !['starting', 'failed', 'offline', 'disabled', 'credentials_required'].includes(stage)),
+      stage !== 'starting');
     const activeNow = activeAgents();
     // Only an agent that is still selected keeps step 2: removing it is the
     // user's choice, not a refresh.

@@ -211,3 +211,14 @@ t('a cloud computer prepared before shows the agents at once while it is checked
   s.clock.now += 16_000; s.render();
   assert.equal(s.card.byClass('gs-count')[0].textContent, '0 / 3', 'a failed check must still undo step 1');
 });
+
+t('a cloud computer still being created is not ready even if one was prepared before', () => {
+  const s = load(); s.ctx.detectedAgents = [codex]; s.prefs({});
+  s.ctx.renderPreparation({ stage: 'connecting', prepared_before: 'true' });
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '1 / 3');
+  s.ctx.fennecPreparationStage = 'starting'; s.ctx.renderPreparation({ stage: 'starting', status: 'creating', prepared_before: 'true' });
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '0 / 3', 'Runta still creating the computer must undo step 1 at once');
+  assert.equal(s.card.byClass('gs-chip').length, 0);
+  s.ctx.fennecPreparationStage = 'agents_installed'; s.ctx.renderPreparation({ stage: 'agents_installed', prepared_before: 'true' });
+  assert.equal(s.card.byClass('gs-count')[0].textContent, '1 / 3');
+});
