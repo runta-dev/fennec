@@ -148,7 +148,8 @@ func TestImageInputRequiresResultConfirmationAndHidesThumbnailFromAgent(t *testi
 	if _, err = s.Claim(p.ID, r.Number, "calm-fox", "codex"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Fail(p.ID, r.Number, "calm-fox"); err != nil {
+	// Image delivery reports an uncertain paste as input failure.
+	if _, err = s.FailInput(p.ID, r.Number, "calm-fox"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.Reconcile(p.ID, r.Number, "calm-fox", "live"); !errors.Is(err, ErrConflict) {

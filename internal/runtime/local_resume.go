@@ -2,10 +2,15 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 )
+
+// ErrResumeUnavailable means the earlier session left no conversation to
+// resume, e.g. its agent never started a turn (FEN-11).
+var ErrResumeUnavailable = errors.New("the previous conversation is not available to resume")
 
 // ResumeArguments resolves a conversation within its original workspace.
 // Never use an agent's global latest conversation as a fallback.
@@ -19,7 +24,7 @@ func ResumeArguments(agentHome, agent, directory, launchID, executable string) (
 		return nil, nil, err
 	}
 	if bundle == nil {
-		return nil, nil, fmt.Errorf("the previous conversation is not available to resume")
+		return nil, nil, ErrResumeUnavailable
 	}
 	return bundle, args, nil
 }

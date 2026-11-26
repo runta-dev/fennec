@@ -318,7 +318,10 @@ func (s Store) fail(project string, n int, session string, input bool) (Request,
 	}
 	r.Status, r.Failure, r.Updated = Unknown, "Execution could not be confirmed", s.now()
 	recordRun(&r, Unknown, r.Updated)
-	if input || len(RequestAttachments(r)) > 0 {
+	// Only an attempted input delivery is uncertain. A launch that failed
+	// before any input was sent is not, even when the thread has images
+	// (FEN-11: such a run waited for a confirmation that could never come).
+	if input {
 		recordRun(&r, "input_unknown", r.Updated)
 	}
 	return r, s.commit(s.requestPath(project, n), r)

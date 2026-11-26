@@ -339,6 +339,14 @@ func (s Scheduler) Step(ctx context.Context) error {
 			if state == "" && r.Status == board.Working && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && now.Sub(r.Runs[len(r.Runs)-1].Started) >= StallAfter {
 				state = "finished"
 			}
+			// An unconfirmed run whose session never appeared (its launch
+			// failed) can never be confirmed: nobody can be working in it.
+			// Show it as failed so it can be retried, instead of awaiting
+			// confirmation forever (FEN-11). The listing includes finished
+			// terminals, so absent means it never existed or was removed.
+			if state == "" && r.Status == board.Unknown && len(r.Runs) > 0 && now.Sub(r.Runs[len(r.Runs)-1].Started) >= StallAfter {
+				state = "finished"
+			}
 			if state == "finished" || (state == "live" && (r.Status == board.Unknown || len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "starting")) {
 				_, err := s.Store.Reconcile(q.Project, r.Number, r.Session, state)
 				s.report(err)

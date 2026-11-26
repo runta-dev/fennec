@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fennec/internal/board"
 	"fmt"
 	"os"
@@ -118,7 +119,15 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 			id = fmt.Sprintf("%x", sha256.Sum256([]byte(previous+"/resume")))[:32]
 		}
 		continued = previous != ""
-		terminal, err = runtime.Launch(ctx, LocalLaunch{ID: id, ResumeFrom: previous, Agent: agent, Device: store.Routing().Device, LocalDirectory: "/", Arguments: args})
+		launch := LocalLaunch{ID: id, ResumeFrom: previous, Agent: agent, Device: store.Routing().Device, LocalDirectory: "/", Arguments: args}
+		terminal, err = runtime.Launch(ctx, launch)
+		if errors.Is(err, ErrResumeUnavailable) {
+			// The earlier run never got a conversation (FEN-11: its input was
+			// refused). Nothing launched yet, so start fresh with the full
+			// thread instead of failing the follow-up for good.
+			launch.ResumeFrom, continued = "", false
+			terminal, err = runtime.Launch(ctx, launch)
+		}
 		if err != nil {
 			return LocalTerminal{}, false, err
 		}

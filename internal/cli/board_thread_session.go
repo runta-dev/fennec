@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fmt"
@@ -117,10 +118,15 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 				return r.LocalTerminal{}, false, fmt.Errorf("the previous conversation's working directory is unavailable")
 			}
 			_, args, err = r.ResumeArguments(setup.LocalAgentHome(ctx, agent), agent, cwd, id, "")
-			if err != nil {
+			if errors.Is(err, r.ErrResumeUnavailable) {
+				// The earlier run never got a conversation (FEN-11): start
+				// fresh with the full thread instead of failing for good.
+				previous, continued, args, err = "", false, []string{}, nil
+			} else if err != nil {
 				return r.LocalTerminal{}, false, err
 			}
-		} else {
+		}
+		if previous == "" {
 			cwd = filepath.Join(e.home, ".fen/queue-sessions", id)
 			if err = os.MkdirAll(cwd, 0700); err != nil {
 				return r.LocalTerminal{}, false, err

@@ -49,3 +49,27 @@ func TestAgentReplyClearsUnconfirmedInputNote(t *testing.T) {
 		t.Fatalf("stale failure kept: %q %q", got.Status, got.Failure)
 	}
 }
+
+// FEN-11: a launch that failed before any input was sent is not an
+// unconfirmed input delivery, even when the thread has images.
+func TestLaunchFailureOnImageThreadIsNotUnconfirmedInput(t *testing.T) {
+	s := testStore(t)
+	a, err := s.SaveAttachment(attachmentFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.CreateProject(Project{Name: "Input"})
+	r, err := s.CreateRequestWithAttachments(p.ID, "me", "Check image", nil, "", []Attachment{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Claim(p.ID, r.Number, "calm-fox", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if r, err = s.Fail(p.ID, r.Number, "calm-fox"); err != nil || r.Status != Unknown {
+		t.Fatal(r.Status, err)
+	}
+	if state := r.Runs[len(r.Runs)-1].State; state == "input_unknown" {
+		t.Fatalf("launch failure awaits input confirmation: %q", state)
+	}
+}
