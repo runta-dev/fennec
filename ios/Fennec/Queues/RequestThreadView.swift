@@ -644,19 +644,21 @@ struct ImageDraft: Equatable {
     var error: String?
 }
 
-struct ImagePickerButton: View {
+struct ImagePickerButton<Content: View>: View {
     @Environment(QueueStore.self) private var queues
     @Binding var draft: ImageDraft
+    /// Draws the button; gets whether an upload is running.
+    var content: (Bool) -> Content
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
 
+    init(draft: Binding<ImageDraft>, @ViewBuilder content: @escaping (Bool) -> Content) {
+        _draft = draft
+        self.content = content
+    }
+
     var body: some View {
-        Button { picking = true } label: {
-            Group {
-                if draft.uploading { ProgressView() } else { Image(systemName: "plus").regularIconWeight().font(.system(size: 17, weight: .medium)) }
-            }
-            .frame(width: 36, height: 36)
-        }
+        Button { picking = true } label: { content(draft.uploading) }
         .disabled(draft.uploading || draft.done.count >= 8)
         .accessibilityLabel(L10n.text("ios.attach"))
         .photosPicker(isPresented: $picking, selection: $picked, maxSelectionCount: max(1, 8 - draft.done.count), matching: .images)
@@ -677,7 +679,7 @@ struct ImagePickerButton: View {
                 draft.error = L10n.text("desktop.request_image_error"); continue
             }
             // PNG and JPEG go as they are; anything else (HEIC) as JPEG.
-            let bytes = Self.isPNGOrJPEG(data) ? data : (image.jpegData(compressionQuality: 0.9) ?? data)
+            let bytes = ImagePicking.isPNGOrJPEG(data) ? data : (image.jpegData(compressionQuality: 0.9) ?? data)
             guard bytes.count <= 8 << 20 else { draft.error = L10n.text("desktop.request_image_error"); continue }
             do {
                 let attachment = try await queues.upload(bytes)
@@ -689,6 +691,21 @@ struct ImagePickerButton: View {
         }
     }
 
+}
+
+/// The round "+" used in composer bars.
+extension ImagePickerButton where Content == AnyView {
+    init(draft: Binding<ImageDraft>) {
+        self.init(draft: draft) { uploading in
+            AnyView(Group {
+                if uploading { ProgressView() } else { Image(systemName: "plus").regularIconWeight().font(.system(size: 17, weight: .medium)) }
+            }
+            .frame(width: 36, height: 36))
+        }
+    }
+}
+
+enum ImagePicking {
     static func isPNGOrJPEG(_ data: Data) -> Bool {
         let head = [UInt8](data.prefix(4))
         return head.starts(with: [0x89, 0x50, 0x4E, 0x47]) || head.starts(with: [0xFF, 0xD8, 0xFF])

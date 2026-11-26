@@ -680,6 +680,19 @@ struct NewRequestSheet: View {
                             Button(L10n.text("ios.auto_tag")) { tag = nil }
                             ForEach(project.tags) { t in Button(t.label) { tag = t.id } }
                         } label: { pill(tag.map(project.tagLabel) ?? L10n.text("ios.auto_tag"), icon: "tag", on: tag != nil) }
+                        // Screenshots go with the request, as in a thread reply (FEN-64).
+                        ImagePickerButton(draft: $images) { uploading in
+                            if uploading {
+                                ProgressView().controlSize(.small)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(Theme.surface, in: Capsule())
+                                    .overlay(Capsule().strokeBorder(Theme.line))
+                            } else {
+                                pill(images.done.isEmpty ? L10n.text("desktop.request_image") : "\(L10n.text("desktop.request_image")) \(images.done.count)",
+                                     icon: "photo", on: !images.done.isEmpty)
+                            }
+                        }
+                        .accessibilityIdentifier("new-request-image")
                     }
                 }
                 TextField(L10n.text("ios.new_request_placeholder"), text: $text, axis: .vertical)

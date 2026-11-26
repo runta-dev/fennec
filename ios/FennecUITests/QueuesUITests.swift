@@ -83,6 +83,8 @@ final class QueuesUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["new-request"].tap()
         XCTAssertTrue(app.buttons["send-request"].waitForExistence(timeout: 5))
+        // The sheet can attach images (FEN-64).
+        XCTAssertTrue(app.buttons["new-request-image"].isHittable)
         shot(app, "33-new-request")
     }
 }
