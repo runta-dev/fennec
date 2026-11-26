@@ -614,6 +614,12 @@ pub fn delete_request(project: &str, n: u64) -> Result<Value> {
     call("DELETE", &format!("/v1/projects/{project}/requests/{n}"), None)
 }
 
+/// FEN-11: puts a failed or unconfirmed request `n` back in the queue; the
+/// scheduler starts it in a new session (Store.Retry).
+pub fn retry_request(project: &str, n: u64) -> Result<Value> {
+    call("POST", &format!("/v1/projects/{project}/requests/{n}/retry"), Some(json!({})))
+}
+
 pub fn set_status(project: &str, n: u64, status: &str) -> Result<Value> {
     call(
         "PATCH",

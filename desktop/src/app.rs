@@ -1301,6 +1301,40 @@ impl FennecWindow {
         }));
     }
 
+    /// FEN-11: the explicit retry of a failed or unconfirmed request.
+    fn retry_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(project), Some(n)) = (self.project_id(), self.open) else {
+            return;
+        };
+        let previous = self
+            .thread
+            .as_ref()
+            .filter(|t| t.number == n)
+            .map(|t| t.status.clone());
+        self.show_status(&project, n, "queued");
+        cx.notify();
+        let Some(scope) = self.board_scope.clone() else { return; };
+        let worker_scope = scope.clone();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let changed = project.clone();
+            let done = cx
+                .background_spawn(async move { worker_scope.run(|| board::retry_request(&changed, n)) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.board_scope.as_ref() != Some(&scope) {
+                    return;
+                }
+                if let Err(e) = done {
+                    if let Some(previous) = previous {
+                        this.show_status(&project, n, &previous);
+                    }
+                    this.say(format!("{e:#}"), cx);
+                }
+                this.refresh_now(window, cx)
+            });
+        }));
+    }
+
     fn set_status(&mut self, status: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(project), Some(n)) = (self.project_id(), self.open) else {
             return;
@@ -3498,6 +3532,8 @@ impl FennecWindow {
             })
             .or_else(|| self.thread_wait_card(p, r));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed" | "unknown");
+        // FEN-11: a failed or unconfirmed request is only started again on request.
+        let can_retry = matches!(r.status.as_str(), "failed" | "unknown");
         let question = if in_peek { None } else { self.thread_question_card(r, cx) };
         let answers = r.answerable().is_some();
         v_flex()
@@ -3569,6 +3605,13 @@ impl FennecWindow {
                                 cx.listener(move |this, _, window, cx| {
                                     this.open_session_modal(address.clone(), window, cx)
                                 }),
+                            ),
+                        )
+                    })
+                    .when(can_retry, |d| {
+                        d.child(
+                            secondary_button("retry-request", t("retry_request"), false).on_click(
+                                cx.listener(|this, _, window, cx| this.retry_request(window, cx)),
                             ),
                         )
                     })
