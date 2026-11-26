@@ -75,7 +75,6 @@ export default function Home() {
 
       <aside className="computer-use-aside"><div><strong>Prefer to run the cloud computer yourself?</strong><p>Pair Fennec with a Linux server you control, in one command. No Runta account needed.</p></div><a className="text-link" href="/self-hosted/">Use your own server <ArrowUpRight size={15}/></a></aside>
 
-      <aside className="computer-use-aside"><div><strong>Need your agent to operate Mac apps and web pages?</strong><p>Fennec Computer Use is a separate app. Use it on its own or alongside Fennec.</p></div><a className="text-link" href="/computer-use/">Explore Computer Use <ArrowUpRight size={15}/></a></aside>
 
       <section className="faq-section" id="faq"><h2>A few things to know.</h2><div>{[
         ['Which agents does it support?', 'Cloud execution is available for ' + agents.map(a => a.name).join(', ') + '. Other discovered agents are marked Coming soon in the app. Cursor CLI uses cursor-agent; your Cursor editor command stays unchanged.'],
