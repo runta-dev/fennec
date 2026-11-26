@@ -441,7 +441,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 
     private func buildPopup() {
         popup.isRestorable = false
-        popup.animationBehavior = .none
+        // The system window animation (scale from 98% with a slight spring on open,
+        // shrink and fade on close), the same one WeChat 4 uses on macOS 26.
+        popup.animationBehavior = .documentWindow
         popup.isOpaque = false
         popup.backgroundColor = .clear
         popup.hasShadow = true
