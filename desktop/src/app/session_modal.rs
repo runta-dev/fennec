@@ -19,6 +19,14 @@ const SHRINK: u32 = 8;
 const BLUR_RADIUS: i32 = 3;
 const BLUR_PASSES: usize = 3;
 
+/// The panel's corner radius. gpui's `overflow_hidden` clips to a rectangle,
+/// not to rounded corners, so square children would poke out of the corners
+/// (FEN-51): the header is rounded on top, and the terminal is inset from the
+/// bottom corners by more than `radius × (1 − 1/√2)`.
+const RADIUS: f32 = 12.0;
+const INNER_RADIUS: f32 = RADIUS - 1.0;
+const CORNER_INSET: f32 = 4.0;
+
 impl FennecWindow {
     pub(super) fn open_session_modal(
         &mut self,
@@ -120,6 +128,9 @@ impl FennecWindow {
         let body = div()
             .flex_1()
             .min_h_0()
+            .px(px(CORNER_INSET))
+            .pb(px(CORNER_INSET))
+            .rounded_b(px(INNER_RADIUS))
             .bg(c("background"))
             .when(connecting, |d| {
                 d.flex().items_center().justify_center().child(
@@ -151,6 +162,7 @@ impl FennecWindow {
             .pl(px(14.0))
             .pr(px(8.0))
             .gap(px(8.0))
+            .rounded_t(px(INNER_RADIUS))
             .bg(c("f_bg"))
             .border_b_1()
             .border_color(c("f_line"))
@@ -195,7 +207,7 @@ impl FennecWindow {
             .w(relative(0.88))
             .max_w(px(1360.0))
             .h(relative(0.86))
-            .rounded(px(12.0))
+            .rounded(px(RADIUS))
             .overflow_hidden()
             .border_1()
             .border_color(c("f_line"))
