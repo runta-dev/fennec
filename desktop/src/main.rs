@@ -104,12 +104,19 @@ fn main() {
                 window_decorations: Some(WindowDecorations::Client),
                 app_id: Some("fennec-desktop".into()),
                 window_min_size: Some(size(px(900.0), px(560.0))),
+                // On macOS the window is shown by `show_after_first_frame`.
+                show: !cfg!(target_os = "macos"),
                 ..Default::default()
             };
-            cx.open_window(options, |window, cx| {
-                cx.new(|cx| app::FennecWindow::new(requests, window, cx))
-            })
-            .expect("cannot open the Fennec window");
+            let handle = cx
+                .open_window(options, |window, cx| {
+                    cx.new(|cx| app::FennecWindow::new(requests, window, cx))
+                })
+                .expect("cannot open the Fennec window");
+            #[cfg(target_os = "macos")]
+            show_after_first_frame(handle.into(), cx);
+            #[cfg(not(target_os = "macos"))]
+            let _ = handle;
             cx.activate(true);
             // The window is the program: closing it ends it (the menu bar app starts it again).
             cx.on_window_closed(|cx, _| {
@@ -119,4 +126,43 @@ fn main() {
             })
             .detach();
         });
+}
+
+/// Orders the window front only once its first frame is on screen, so the system
+/// open animation (scale in from 98%) carries the content, as WeChat's window
+/// does, instead of an empty window that fills in partway through. GPUI orders a
+/// window front before it has presented anything; this opens it hidden instead.
+#[cfg(target_os = "macos")]
+fn show_after_first_frame(handle: AnyWindowHandle, cx: &mut App) {
+    use objc2::{msg_send, runtime::AnyObject};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let view = handle
+        .update(cx, |_, window, _| match HasWindowHandle::window_handle(window).map(|h| h.as_raw()) {
+            Ok(RawWindowHandle::AppKit(appkit)) => Some(appkit.ns_view.as_ptr() as usize),
+            _ => None,
+        })
+        .ok()
+        .flatten();
+    let Some(view) = view else {
+        // Not an AppKit view (never expected): show it the ordinary way.
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+        return;
+    };
+    // The view's frame callback borrows the App, so it runs from a main-thread task
+    // rather than inside this (already borrowed) context. `open_window` has drawn
+    // the first frame; `displayLayer:` presents it synchronously in a transaction.
+    cx.foreground_executor()
+        .spawn(async move {
+            let view = view as *mut AnyObject;
+            let none = std::ptr::null_mut::<AnyObject>();
+            unsafe {
+                // Size the hidden layer for the screen's scale before drawing into it.
+                let _: () = msg_send![view, viewDidChangeBackingProperties];
+                let layer: *mut AnyObject = msg_send![view, layer];
+                let _: () = msg_send![view, displayLayer: layer];
+                let window: *mut AnyObject = msg_send![view, window];
+                let _: () = msg_send![window, makeKeyAndOrderFront: none];
+            }
+        })
+        .detach();
 }
