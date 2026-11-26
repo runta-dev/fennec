@@ -104,7 +104,7 @@ struct PromptWaitingPill: View {
             HStack(spacing: 8) {
                 Circle().fill(Theme.accent).frame(width: 7, height: 7)
                 Text(L10n.text("ios.needs_answer")).font(.system(size: 13, weight: .medium))
-                Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.up").regularIconWeight().font(.system(size: 10, weight: .semibold))
             }
             .padding(.horizontal, 14).frame(height: 32)
             .glassEffect(.regular.interactive(), in: Capsule())

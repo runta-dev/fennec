@@ -78,7 +78,7 @@ struct QueueSettingsView: View {
     private func trailing(_ text: String) -> some View {
         HStack(spacing: 4) {
             Text(text).lineLimit(1).foregroundStyle(Theme.fg3)
-            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.fg3)
+            Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 12)).foregroundStyle(Theme.fg3)
         }
         .font(.system(size: 14))
     }
@@ -152,7 +152,7 @@ struct QueueWorkersView: View {
                                 Label { Text(kind.displayName) } icon: { AgentIcon(agent: kind, size: 20) }
                             }
                         }
-                    } label: { Label(L10n.text("desktop.add_worker"), systemImage: "plus").foregroundStyle(Theme.accent) }
+                    } label: { Label { Text(L10n.text("desktop.add_worker")) } icon: { Image(systemName: "plus").regularIconWeight() }.foregroundStyle(Theme.accent) }
                     .disabled(project.workers.count >= 12)
                     .listRowBackground(Theme.surface)
                 }
@@ -194,7 +194,7 @@ struct QueueTagsView: View {
                         Task { await queues.setTags(project.id, tags) }
                     }
                     HStack {
-                        Image(systemName: "plus").foregroundStyle(Theme.fg3)
+                        Image(systemName: "plus").regularIconWeight().foregroundStyle(Theme.fg3)
                         TextField(L10n.text("ios.add_tag"), text: $adding).submitLabel(.done).onSubmit { add(project) }
                     }
                     .listRowBackground(Theme.surface)
@@ -434,7 +434,7 @@ struct ConceptView: View {
         .toolbar {
             if let concept {
                 ToolbarItem(placement: .topBarTrailing) {
-                    ShareLink(item: "# \(concept.title)\n\n\(concept.body ?? "")") { Image(systemName: "square.and.arrow.up") }
+                    ShareLink(item: "# \(concept.title)\n\n\(concept.body ?? "")") { Image(systemName: "square.and.arrow.up").regularIconWeight() }
                 }
             }
         }

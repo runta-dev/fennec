@@ -45,7 +45,7 @@ struct ConnectingView: View {
     }
 
     private func check(_ done: Bool) -> some View {
-        Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold))
+        Image(systemName: "checkmark").regularIconWeight().font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Theme.accent).frame(width: 20).opacity(done ? 1 : 0)
     }
 }

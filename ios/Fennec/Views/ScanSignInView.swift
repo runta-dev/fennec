@@ -30,7 +30,7 @@ struct ScanSignInView: View {
                 topBar
                 if let notice = notice ?? failure {
                     VStack(spacing: 6) {
-                        Label(notice, systemImage: "exclamationmark.circle")
+                        Label { Text(notice) } icon: { Image(systemName: "exclamationmark.circle").regularIconWeight() }
                             .font(.system(size: 14, weight: .medium))
                             .padding(.horizontal, 14).frame(minHeight: 36)
                             .glassEffect(.regular, in: Capsule())
@@ -95,12 +95,12 @@ struct ScanSignInView: View {
             HStack {
                 if mode != "choices" {
                     Button { auth.cancelSignIn(); mode = "choices"; code = ""; reviewCode = false } label: {
-                        Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                        Image(systemName: "chevron.left").regularIconWeight().frame(width: 44, height: 44)
                     }.accessibilityLabel(L10n.text("ios.back"))
                 }
                 Spacer()
                 if mode == "scan" { PhotosPicker(selection: $photo, matching: .images) {
-                    Image(systemName: "photo.on.rectangle").font(.system(size: 17, weight: .medium))
+                    Image(systemName: "photo.on.rectangle").regularIconWeight().font(.system(size: 17, weight: .medium))
                         .frame(width: 44, height: 44)
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
@@ -115,7 +115,7 @@ struct ScanSignInView: View {
     private var scanPanel: some View {
         VStack(spacing: 10) {
             Text(L10n.text("ios.scan_mac")).font(.system(size: 18, weight: .semibold)).lineLimit(1)
-            Label(L10n.text("ui.get_fennec_ios_app"), systemImage: "laptopcomputer")
+            Label { Text(L10n.text("ui.get_fennec_ios_app")) } icon: { Image(systemName: "laptopcomputer").regularIconWeight() }
                 .font(.system(size: 13)).padding(.horizontal, 11).frame(height: 28)
                 .background(.white.opacity(0.1), in: Capsule())
             if camera == .denied {
@@ -168,7 +168,7 @@ struct ScanSignInView: View {
 
     private func loginLabel(_ title: String, symbol: String? = nil) -> some View {
         Group {
-            if let symbol { Label(title, systemImage: symbol) }
+            if let symbol { Label { Text(title) } icon: { Image(systemName: symbol).regularIconWeight() } }
             else { Text(title) }
         }.font(.system(size: 16, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 54)

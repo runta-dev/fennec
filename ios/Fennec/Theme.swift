@@ -49,6 +49,16 @@ extension Font {
     static let groupHeader = Font.system(size: 13, weight: .medium)
 }
 
+/// Icons keep their regular weight when the system's Bold Text setting is on
+/// (FEN-47): SF Symbols otherwise get much heavier, while text still follows
+/// the setting. Applied to every icon the app draws itself. Without Bold Text
+/// this is the default weight, so nothing changes. The navigation bar's back
+/// chevron stays the system one on purpose: a replacement image is shrunk by
+/// the bar for everyone.
+extension View {
+    func regularIconWeight() -> some View { environment(\.legibilityWeight, .regular) }
+}
+
 /// Thin 1pt Runta-orange outline used for focus and selection everywhere.
 struct SelectionOutline: ViewModifier {
     var active: Bool

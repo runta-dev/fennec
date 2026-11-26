@@ -72,7 +72,7 @@ struct QueuesView: View {
                 }
                 ToolbarItem(placement: .principal) { queueMenu }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { composing = true } label: { Image(systemName: "plus") }
+                    Button { composing = true } label: { Image(systemName: "plus").regularIconWeight() }
                         .disabled(queues.selected == nil)
                         .accessibilityLabel(L10n.text("desktop.new_request"))
                         .accessibilityIdentifier("new-request")
@@ -140,7 +140,7 @@ struct QueuesView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 3) {
                     Text(queues.selected?.name ?? L10n.text("ios.queues")).font(.system(size: 15, weight: .semibold))
-                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.down").regularIconWeight().font(.system(size: 10, weight: .semibold))
                 }
                 if let project = queues.selected {
                     Text(project.paused ? L10n.text("desktop.paused") : projectSummary(project))
@@ -184,7 +184,7 @@ struct QueuesView: View {
                     Text(L10n.text("desktop.done")).foregroundStyle(Theme.fg2)
                     Text("\(done.count)").foregroundStyle(Theme.fg3).monospacedDigit()
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Theme.fg3)
+                    Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 13)).foregroundStyle(Theme.fg3)
                 }
                 .font(.system(size: 14.5))
                 .padding(.horizontal, 18).padding(.vertical, 12)
@@ -223,7 +223,7 @@ struct QueuesView: View {
 
     private func pausedBanner(_ project: BoardProject) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "pause.fill").foregroundStyle(Theme.fg2)
+            Image(systemName: "pause.fill").regularIconWeight().foregroundStyle(Theme.fg2)
             VStack(alignment: .leading, spacing: 1) {
                 Text(L10n.text("desktop.queued_paused")).font(.system(size: 14, weight: .medium))
                 Text(L10n.text("ios.queue_paused_hint")).font(.system(size: 12.5)).foregroundStyle(Theme.fg2)
@@ -281,7 +281,7 @@ struct QueueBanner: View {
     var text: String
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).foregroundStyle(Theme.fg3)
+            Image(systemName: icon).regularIconWeight().foregroundStyle(Theme.fg3)
             Text(text).font(.system(size: 13.5)).foregroundStyle(Theme.fg2)
             Spacer(minLength: 0)
         }
@@ -358,7 +358,7 @@ struct RequestIcon: View {
     }
 
     private func tile(_ image: Image, _ color: Color) -> some View {
-        image.font(.system(size: size * 0.45, weight: .medium)).foregroundStyle(color)
+        image.font(.system(size: size * 0.45, weight: .medium)).regularIconWeight().foregroundStyle(color)
             .frame(width: size, height: size)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).strokeBorder(Theme.line))
@@ -674,7 +674,7 @@ struct NewRequestSheet: View {
                 ImageDraftStrip(draft: $images)
                 Spacer(minLength: 0)
                 if let error {
-                    Label(error, systemImage: "exclamationmark.triangle")
+                    Label { Text(error) } icon: { Image(systemName: "exclamationmark.triangle").regularIconWeight() }
                         .font(.system(size: 12.5)).foregroundStyle(Theme.danger)
                 }
                 Text(L10n.text("ios.new_request_where", values: ["queue": project.name, "busy": busy]))
@@ -716,7 +716,7 @@ struct NewRequestSheet: View {
     }
 
     private func pill(_ title: String, icon: String, on: Bool) -> some View {
-        Label(title, systemImage: icon)
+        Label { Text(title) } icon: { Image(systemName: icon).regularIconWeight() }
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(on ? Theme.fg : Theme.fg2)
             .padding(.horizontal, 12).padding(.vertical, 7)

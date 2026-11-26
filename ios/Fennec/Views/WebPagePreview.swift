@@ -18,11 +18,11 @@ struct WebPagePreview: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button(action: onClose) { Image(systemName: "xmark") }
+                        Button(action: onClose) { Image(systemName: "xmark").regularIconWeight() }
                             .accessibilityLabel(L10n.text("ui.close"))
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up").regularIconWeight() }
                     }
                 }
         }

@@ -13,7 +13,7 @@ struct SearchView: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.fg2)
+                    Image(systemName: "magnifyingglass").regularIconWeight().foregroundStyle(Theme.fg2)
                     TextField(L10n.text("ios.search"), text: $query)
                         .focused($focused)
                         .textInputAutocapitalization(.never)
@@ -23,7 +23,7 @@ struct SearchView: View {
                 .padding(.horizontal, 16)
                 .frame(height: 46)
                 .glassEffect(.regular, in: Capsule())
-                GlassCircleButton(action: { dismiss() }) { Image(systemName: "xmark") }
+                GlassCircleButton(action: { dismiss() }) { Image(systemName: "xmark").regularIconWeight() }
                     .accessibilityLabel(L10n.text("ui.close"))
             }
             .padding(.horizontal, 16)

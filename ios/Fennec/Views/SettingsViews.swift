@@ -112,7 +112,7 @@ struct AccountView: View {
                 ListCard {
                     VStack(spacing: 0) {
                         Toggle(isOn: $queuesEnabled) {
-                            Label(L10n.text("ios.show_queues"), systemImage: "square.stack")
+                            Label { Text(L10n.text("ios.show_queues")) } icon: { Image(systemName: "square.stack").regularIconWeight() }
                         }
                         .tint(Theme.accent)
                         .font(.system(size: 15.5))
@@ -124,7 +124,7 @@ struct AccountView: View {
                 ListCard {
                     Link(destination: PrivacyPolicy.url) {
                         ListRow(icon: "hand.raised", title: L10n.text("ios.privacy_policy"), showDivider: false) {
-                            Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.fg3)
+                            Image(systemName: "arrow.up.right").regularIconWeight().font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.fg3)
                         }
                     }
                     .buttonStyle(.plain)
@@ -172,7 +172,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("system-settings-heading")
             ListCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    Label(L10n.text("ui.appearance"), systemImage: "circle.lefthalf.filled")
+                    Label { Text(L10n.text("ui.appearance")) } icon: { Image(systemName: "circle.lefthalf.filled").regularIconWeight() }
                         .font(.system(size: 15.5, weight: .medium))
                     Picker(L10n.text("ui.appearance"), selection: $appearance) {
                         Text(L10n.text("ui.system")).tag("system")
@@ -185,7 +185,7 @@ struct AccountView: View {
                 .padding(16)
                 Divider().overlay(Theme.line).padding(.leading, 16)
                 HStack(spacing: 12) {
-                    Label(L10n.text("ui.language"), systemImage: "globe")
+                    Label { Text(L10n.text("ui.language")) } icon: { Image(systemName: "globe").regularIconWeight() }
                         .font(.system(size: 15.5, weight: .medium))
                     Spacer(minLength: 8)
                     Picker(L10n.text("ui.language"), selection: $language.selection) {

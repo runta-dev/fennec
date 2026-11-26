@@ -78,7 +78,7 @@ struct ConnectionIssueCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: issue.kind == .network ? "wifi.exclamationmark" : "exclamationmark.circle")
+                Image(systemName: issue.kind == .network ? "wifi.exclamationmark" : "exclamationmark.circle").regularIconWeight()
                     .foregroundStyle(issue.kind == .network ? Theme.fg2 : Theme.danger)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(issue.title).font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.fg)
@@ -97,7 +97,7 @@ struct ConnectionIssueCard: View {
                 Button { withAnimation { showDetail.toggle() } } label: {
                     HStack(spacing: 4) {
                         Text(L10n.text("ios.error_details"))
-                        Image(systemName: showDetail ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold))
+                        Image(systemName: showDetail ? "chevron.up" : "chevron.down").regularIconWeight().font(.system(size: 10, weight: .semibold))
                     }
                     .font(.system(size: 12)).foregroundStyle(Theme.fg3)
                 }

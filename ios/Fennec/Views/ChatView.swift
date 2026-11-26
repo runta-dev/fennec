@@ -221,7 +221,7 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showMenu = true } label: { Image(systemName: "ellipsis") }
+                Button { showMenu = true } label: { Image(systemName: "ellipsis").regularIconWeight() }
                     .accessibilityLabel(L10n.text("ios.session_menu"))
             }
         }
@@ -334,7 +334,7 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showMenu = true } label: { Image(systemName: "ellipsis") }
+                Button { showMenu = true } label: { Image(systemName: "ellipsis").regularIconWeight() }
                     .accessibilityLabel(L10n.text("ios.session_menu"))
             }
         }
@@ -368,9 +368,9 @@ struct ChatView: View {
                 HStack(spacing: 8) {
                     ForEach(attachments) { attachment in
                         HStack(spacing: 6) {
-                            Image(systemName: attachment.isImage ? "photo" : "doc")
+                            Image(systemName: attachment.isImage ? "photo" : "doc").regularIconWeight()
                             Text(attachment.name).lineLimit(1).frame(maxWidth: 160)
-                            Button { store.removeAttachment(attachment, from: sessionID) } label: { Image(systemName: "xmark.circle.fill") }
+                            Button { store.removeAttachment(attachment, from: sessionID) } label: { Image(systemName: "xmark.circle.fill").regularIconWeight() }
                                 .accessibilityLabel(L10n.text("ios.remove_attachment"))
                                 .disabled(store.pendingSends[sessionID] != nil)
                         }
@@ -387,7 +387,7 @@ struct ChatView: View {
                 Button(L10n.text("ios.choose_files"), systemImage: "folder") { showFiles = true }
             } label: {
                 if importingAttachments { ProgressView().frame(width: 36, height: 36) }
-                else { Image(systemName: "plus")
+                else { Image(systemName: "plus").regularIconWeight()
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 36, height: 36)
                 }
@@ -410,7 +410,7 @@ struct ChatView: View {
             }
             if draft.isEmpty && (store.attachmentDrafts[sessionID] ?? []).isEmpty && session.state == .working {
                 Button { store.stopDemoTurn(session.id) } label: {
-                    Image(systemName: "stop.fill").font(.system(size: 13))
+                    Image(systemName: "stop.fill").regularIconWeight().font(.system(size: 13))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)
                         .background(Theme.primary, in: Circle())
@@ -418,7 +418,7 @@ struct ChatView: View {
                 .accessibilityLabel(L10n.text("ios.stop_turn"))
             } else {
                 Button { sendMessage(session) } label: {
-                    Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold))
+                    Image(systemName: "arrow.up").regularIconWeight().font(.system(size: 15, weight: .semibold))
                         .frame(width: 36, height: 36)
                         .foregroundStyle(Theme.onPrimary)
                         .background(Theme.primary.opacity(canSend ? 1 : 0.35), in: Circle())
@@ -517,7 +517,7 @@ struct ChatView: View {
                 EmptyView()
             case .unconfirmed:
                 Button { showDeliveryIssue = true } label: {
-                    Image(systemName: "exclamationmark.circle").font(.system(size: 14))
+                    Image(systemName: "exclamationmark.circle").regularIconWeight().font(.system(size: 14))
                         .foregroundStyle(Theme.danger)
                         .frame(width: 28, height: 28)
                 }
@@ -551,7 +551,7 @@ struct ChatView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             HStack(spacing: 6) {
-                Image(systemName: approval.location == .mac ? "laptopcomputer" : "cloud")
+                Image(systemName: approval.location == .mac ? "laptopcomputer" : "cloud").regularIconWeight()
                     .foregroundStyle(approval.location == .mac ? Theme.accent : Theme.fg3)
                 Text(approval.directory).lineLimit(1).truncationMode(.middle)
             }
@@ -561,7 +561,7 @@ struct ChatView: View {
             Button(L10n.text("ios.approve_session")) { store.approve(session.id, forSession: true) }.buttonStyle(GlassCapsuleButtonStyle())
             Divider().overlay(Theme.line)
             HStack {
-                Image(systemName: "pencil").foregroundStyle(Theme.fg3)
+                Image(systemName: "pencil").regularIconWeight().foregroundStyle(Theme.fg3)
                 TextField(L10n.text("ios.tell_agent", values: ["agent": session.agent.displayName]), text: $denyReason)
                 Button(L10n.text("permission.deny")) {
                     store.deny(session.id, reason: denyReason)
@@ -612,7 +612,7 @@ private struct QuestionSheet: View {
                 .buttonStyle(.plain)
             }
             HStack(spacing: 10) {
-                Image(systemName: "pencil").foregroundStyle(Theme.fg3)
+                Image(systemName: "pencil").regularIconWeight().foregroundStyle(Theme.fg3)
                 TextField(L10n.text("ios.custom_answer"), text: $custom, onEditingChanged: { typing = $0 })
                     .onSubmit { if !custom.isEmpty { answer(custom) } }
             }
@@ -650,7 +650,7 @@ struct MessageView: View {
         switch message.kind {
         case .macOnline:
             HStack(spacing: 10) {
-                Image(systemName: "laptopcomputer").font(.system(size: 15))
+                Image(systemName: "laptopcomputer").regularIconWeight().font(.system(size: 15))
                     .foregroundStyle(Theme.working)
                 Text(L10n.text("ios.mac_online")).font(.system(size: 13, weight: .medium))
                 Spacer(minLength: 8)
@@ -692,7 +692,7 @@ struct MessageView: View {
         case .step(let text):
             HStack(spacing: 6) {
                 Text(text)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 10, weight: .semibold))
             }
             .font(.system(size: 13.5))
             .foregroundStyle(Theme.fg2)
@@ -726,7 +726,7 @@ private struct ChangesCard: View {
                     Text("+\(files.map(\.added).reduce(0, +))").foregroundStyle(Theme.working)
                     Text("−\(files.map(\.removed).reduce(0, +))").foregroundStyle(Theme.danger)
                     Spacer()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(Theme.fg3)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").regularIconWeight().foregroundStyle(Theme.fg3)
                 }
                 .font(.system(size: 12.5, design: .monospaced))
                 .padding(.horizontal, 14).padding(.vertical, 11)
@@ -816,7 +816,7 @@ private struct ToolStep: View {
             Button { withAnimation(.snappy) { expanded.toggle() } } label: {
                 HStack(spacing: 6) {
                     Text(ToolUse.headline(uses)).lineLimit(1).truncationMode(.middle)
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 10, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
                 .font(.system(size: 14)).foregroundStyle(Theme.fg2)
@@ -830,7 +830,7 @@ private struct ToolStep: View {
                     ForEach(Array(uses.enumerated()), id: \.offset) { index, use in
                         if index > 0 { Divider().overlay(Theme.line).padding(.leading, 40) }
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Image(systemName: use.symbol)
+                            Image(systemName: use.symbol).regularIconWeight()
                                 .font(.system(size: 12.5)).foregroundStyle(Theme.fg2)
                                 .frame(width: 18)
                             Text(use.summary.isEmpty ? use.verb : use.summary)
@@ -1067,7 +1067,7 @@ private struct TurnView: View {
                 }
                 Spacer(minLength: 8)
                 if foldable {
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .animation(.snappy, value: expanded)
                 }
@@ -1147,7 +1147,7 @@ private struct PastedImages: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: entries.count > 1 ? .automatic : .never))
                 Button { shown = nil } label: {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).frame(width: 40, height: 40)
+                    Image(systemName: "xmark").regularIconWeight().font(.system(size: 15, weight: .medium)).frame(width: 40, height: 40)
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
                 .padding(16)
@@ -1175,7 +1175,7 @@ private struct RemoteImage: View {
                 ZStack {
                     Theme.surface
                     if failed {
-                        Image(systemName: "photo").font(.system(size: 20)).foregroundStyle(Theme.fg3)
+                        Image(systemName: "photo").regularIconWeight().font(.system(size: 20)).foregroundStyle(Theme.fg3)
                     } else {
                         ProgressView().tint(Theme.fg3)
                     }

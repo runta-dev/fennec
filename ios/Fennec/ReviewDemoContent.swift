@@ -68,7 +68,7 @@ struct DemoTerminalPage: View {
             Color.black.ignoresSafeArea()
             DemoTerminalView(recording: DemoTerminal.recording(for: session))
                 .padding(.horizontal, 4)
-            Label(L10n.text("ios.demo_terminal"), systemImage: "eye")
+            Label { Text(L10n.text("ios.demo_terminal")) } icon: { Image(systemName: "eye").regularIconWeight() }
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85))
                 .padding(.horizontal, 14).frame(minHeight: 34)
                 .glassEffect(.regular, in: Capsule())

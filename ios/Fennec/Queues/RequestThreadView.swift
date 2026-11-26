@@ -49,7 +49,7 @@ struct RequestThreadView: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) { titlePill(request, project) }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { showMenu = true } label: { Image(systemName: "ellipsis") }
+                        Button { showMenu = true } label: { Image(systemName: "ellipsis").regularIconWeight() }
                             .accessibilityLabel(L10n.text("ios.request_menu"))
                             .accessibilityIdentifier("request-menu")
                     }
@@ -119,7 +119,7 @@ struct RequestThreadView: View {
                      hint: nil, hintAgent: nil, inline: true)
         } else if request.status_ == .queued {
             let wait = QueueWait.of(queues.list(projectID), number: request.number, limit: project.queue, paused: project.paused)
-            WaitCard(icon: AnyView(Image(systemName: "clock").font(.system(size: 16)).foregroundStyle(Theme.fg2)),
+            WaitCard(icon: AnyView(Image(systemName: "clock").regularIconWeight().font(.system(size: 16)).foregroundStyle(Theme.fg2)),
                      title: L10n.text("desktop.queued_wait"), dot: Theme.fg3, detail: wait.text,
                      hint: L10n.text(wait == .paused ? "desktop.queued_hint_paused" : "desktop.queued_hint"),
                      hintAgent: project.firstAgent, inline: false)
@@ -156,7 +156,7 @@ struct RequestThreadView: View {
     /// a way back if that was a mistake (FEN-22).
     private var resolvedBanner: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: "checkmark.circle.fill").regularIconWeight()
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.working)
                 .symbolEffect(.bounce, options: .nonRepeating, value: bannerBounce)
@@ -198,7 +198,7 @@ struct RequestThreadView: View {
                 Button { send(request) } label: {
                     Group {
                         if sending { ProgressView().tint(Theme.onPrimary) }
-                        else { Image(systemName: "arrow.up").font(.system(size: 15, weight: .semibold)) }
+                        else { Image(systemName: "arrow.up").regularIconWeight().font(.system(size: 15, weight: .semibold)) }
                     }
                     .frame(width: 36, height: 36)
                     .foregroundStyle(Theme.onPrimary)
@@ -254,7 +254,7 @@ struct RequestThreadView: View {
 
     private func glassButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon).font(.system(size: 14, weight: .medium))
+            Label { Text(title) } icon: { Image(systemName: icon).regularIconWeight() }.font(.system(size: 14, weight: .medium))
                 .padding(.horizontal, 16).frame(height: 36)
         }
         .buttonStyle(.plain)
@@ -316,7 +316,7 @@ struct LiveCard: View {
                     Text(session.agent.displayName).font(.system(size: 13.5, weight: .medium))
                     Spacer()
                     Text(L10n.text("desktop.view_session")).font(.system(size: 12.5)).foregroundStyle(Theme.fg3)
-                    Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(Theme.fg3)
+                    Image(systemName: "chevron.right").regularIconWeight().font(.system(size: 11)).foregroundStyle(Theme.fg3)
                 }
                 Text(lines).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.fg2)
                     .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
@@ -342,7 +342,7 @@ struct FailureCard: View {
     var body: some View {
         let failure = request.failure ?? ""
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.danger)
+            Image(systemName: "exclamationmark.circle").regularIconWeight().foregroundStyle(Theme.danger)
             Text(failure.isEmpty || failure == "The agent stopped without reporting back" ? L10n.text("desktop.stalled") : failure)
                 .font(.system(size: 13.5)).foregroundStyle(Theme.fg)
             Spacer(minLength: 0)
@@ -445,7 +445,7 @@ struct AttachmentThumbnails: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     Button { shown = nil } label: {
-                        Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).frame(width: 40, height: 40)
+                        Image(systemName: "xmark").regularIconWeight().font(.system(size: 15, weight: .medium)).frame(width: 40, height: 40)
                     }
                     .glassEffect(.regular.interactive(), in: Circle())
                     .padding(16)
@@ -602,7 +602,7 @@ struct LinkSheet: View {
                 }
                 .pickerStyle(.segmented)
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.fg2)
+                    Image(systemName: "magnifyingglass").regularIconWeight().foregroundStyle(Theme.fg2)
                     TextField(L10n.text("desktop.link_search"), text: $query)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                 }
@@ -651,7 +651,7 @@ struct ImagePickerButton: View {
     var body: some View {
         Button { picking = true } label: {
             Group {
-                if draft.uploading { ProgressView() } else { Image(systemName: "plus").font(.system(size: 17, weight: .medium)) }
+                if draft.uploading { ProgressView() } else { Image(systemName: "plus").regularIconWeight().font(.system(size: 17, weight: .medium)) }
             }
             .frame(width: 36, height: 36)
         }
@@ -709,7 +709,7 @@ struct ImageDraftStrip: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(alignment: .topTrailing) {
                             Button { draft.done.removeAll { $0.id == a.id } } label: {
-                                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                                Image(systemName: "xmark").regularIconWeight().font(.system(size: 9, weight: .semibold))
                                     .frame(width: 18, height: 18)
                                     .foregroundStyle(Theme.bg).background(Theme.fg, in: Circle())
                             }

@@ -128,7 +128,7 @@ struct ListRow<Trailing: View>: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 if let icon {
-                    Image(systemName: icon).font(.system(size: 18)).foregroundStyle(iconColor).frame(width: 24)
+                    Image(systemName: icon).regularIconWeight().font(.system(size: 18)).foregroundStyle(iconColor).frame(width: 24)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.system(size: 15.5)).foregroundStyle(titleColor)

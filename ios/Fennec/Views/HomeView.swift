@@ -61,7 +61,7 @@ struct HomeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu { agentChoices } label: {
                         if creatingSession { ProgressView() }
-                        else { Image(systemName: "plus") }
+                        else { Image(systemName: "plus").regularIconWeight() }
                     }
                         .disabled(creatingSession)
                         .accessibilityLabel(L10n.text("ios.new_session"))
@@ -168,7 +168,7 @@ struct HomeView: View {
 
     private var offlineBanner: some View {
         HStack(spacing: 10) {
-            Image(systemName: "laptopcomputer").foregroundStyle(Theme.fg3)
+            Image(systemName: "laptopcomputer").regularIconWeight().foregroundStyle(Theme.fg3)
             Text(L10n.text("ios.mac_offline")).font(.system(size: 14, weight: .medium))
             Spacer()
         }
@@ -181,7 +181,7 @@ struct HomeView: View {
     private var searchBar: some View {
         Button { showSearch = true } label: {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: "magnifyingglass").regularIconWeight()
                 Text(L10n.text("ios.search"))
                 Spacer()
             }
@@ -207,7 +207,7 @@ struct SessionRow: View {
             AgentIcon(agent: session.agent, state: session.state)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if session.pinned { Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(Theme.fg3) }
+                    if session.pinned { Image(systemName: "pin.fill").regularIconWeight().font(.system(size: 10)).foregroundStyle(Theme.fg3) }
                     Text(session.title).font(.rowTitle).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(shortTime(session.updatedAt)).font(.system(size: 12.5)).foregroundStyle(Theme.fg3).monospacedDigit()

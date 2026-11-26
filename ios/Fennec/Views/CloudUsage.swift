@@ -88,7 +88,7 @@ struct CloudComputerCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: "cloud").foregroundStyle(Theme.fg2)
+                Image(systemName: "cloud").regularIconWeight().foregroundStyle(Theme.fg2)
                 Text(L10n.text("ui.cloud_computer")).font(.system(size: 15.5, weight: .medium))
                 Spacer(minLength: 8)
                 if let metrics, let vcpus = metrics.vcpus, vcpus > 0 {
@@ -108,7 +108,7 @@ struct CloudComputerCard: View {
                       history: metrics?.mem_history ?? [])
             }
             HStack(spacing: 10) {
-                Label(L10n.text("ui.network"), systemImage: "globe").foregroundStyle(Theme.fg2)
+                Label { Text(L10n.text("ui.network")) } icon: { Image(systemName: "globe").regularIconWeight() }.foregroundStyle(Theme.fg2)
                 Spacer(minLength: 8)
                 if let metrics {
                     Text("↑ \(traffic(metrics.net_tx_bytes ?? 0))   ↓ \(traffic(metrics.net_rx_bytes ?? 0))").monospacedDigit()
@@ -119,7 +119,7 @@ struct CloudComputerCard: View {
             .font(.system(size: 13.5))
             VStack(spacing: 8) {
                 HStack {
-                    Label(L10n.text("ui.disk"), systemImage: "internaldrive").foregroundStyle(Theme.fg2)
+                    Label { Text(L10n.text("ui.disk")) } icon: { Image(systemName: "internaldrive").regularIconWeight() }.foregroundStyle(Theme.fg2)
                     Spacer(minLength: 8)
                     if let metrics, let total = metrics.disk_total_bytes, total > 0 {
                         Text("\(gigabytes(metrics.disk_used_bytes ?? 0)) / \(gigabytes(total))").monospacedDigit()
@@ -146,7 +146,7 @@ struct CloudComputerCard: View {
     private func meter(icon: String, title: String, value: String?, history: [Double]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(title, systemImage: icon).foregroundStyle(Theme.fg2)
+                Label { Text(title) } icon: { Image(systemName: icon).regularIconWeight() }.foregroundStyle(Theme.fg2)
                 Spacer(minLength: 4)
                 if let value { Text(value).monospacedDigit() } else { SkeletonBar(width: 44, height: 10) }
             }
@@ -202,7 +202,7 @@ struct BillingCard: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 // The email is already in the page header; this row names the plan.
-                Image(systemName: "creditcard").foregroundStyle(Theme.fg2).frame(width: 20)
+                Image(systemName: "creditcard").regularIconWeight().foregroundStyle(Theme.fg2).frame(width: 20)
                 Text(L10n.text("ios.billing")).font(.system(size: 15.5, weight: .medium))
                 Spacer(minLength: 8)
                 Text(L10n.text("ui.pay_as_you_go")).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.accent)
@@ -217,7 +217,7 @@ struct BillingCard: View {
                         Text(L10n.text("ios.billing")).foregroundStyle(Theme.fg2)
                         Spacer()
                         Text(L10n.text("ios.open_dashboard")).foregroundStyle(Theme.accent)
-                        Image(systemName: "arrow.up.right").font(.system(size: 12)).foregroundStyle(Theme.accent)
+                        Image(systemName: "arrow.up.right").regularIconWeight().font(.system(size: 12)).foregroundStyle(Theme.accent)
                     }
                     .font(.system(size: 15)).padding(.horizontal, 16).padding(.vertical, 13)
                 }
@@ -244,7 +244,7 @@ struct BillingCard: View {
         VStack(spacing: 0) {
             Divider().overlay(Theme.line)
             HStack(spacing: 12) {
-                Image(systemName: icon).foregroundStyle(Theme.fg2).frame(width: 20)
+                Image(systemName: icon).regularIconWeight().foregroundStyle(Theme.fg2).frame(width: 20)
                 Text(title)
                 Spacer(minLength: 8)
                 if let value { Text(value).monospacedDigit() } else { SkeletonBar(width: 56, height: 10) }
@@ -255,7 +255,7 @@ struct BillingCard: View {
 
     private func usage(icon: String, title: String, value: String?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: icon).font(.system(size: 13)).foregroundStyle(Theme.fg2)
+            Label { Text(title) } icon: { Image(systemName: icon).regularIconWeight() }.font(.system(size: 13)).foregroundStyle(Theme.fg2)
             if let value {
                 Text(value).font(.system(size: 13.5)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
             } else {
