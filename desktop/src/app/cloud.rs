@@ -106,6 +106,20 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.ensure_cloud_view_once(key, true, window, cx);
+    }
+
+    /// `retry`: after an update, the local core left running by the previous
+    /// Fennec.app refuses new terminals ("no holder ... is not current"), as
+    /// for shells in `new_shell_once`. The core is restarted and the attach
+    /// asked once more (FEN-33).
+    fn ensure_cloud_view_once(
+        &mut self,
+        key: &str,
+        retry: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.cloud_views.contains_key(key)
             || self.cloud_attach_pending.contains(key)
             || self.cloud_attach_failed.contains(key)
@@ -156,6 +170,29 @@ impl FennecWindow {
                 }))?;
                 record["address"].as_str().map(str::to_owned).ok_or_else(|| anyhow::anyhow!("Attach view not confirmed"))
             }).await;
+            let stale = matches!(&result, Err(e) if format!("{e:#}").contains("no holder") || format!("{e:#}").contains("is not current"));
+            if stale && retry {
+                let restarted = cx
+                    .background_spawn(async move {
+                        let program = crate::core_bin::local()?;
+                        crate::spawn::command(program).args(["server", "restart"]).output().ok()
+                    })
+                    .await;
+                let _ = this.update_in(cx, |this, window, cx| {
+                    this.cloud_attach_pending.remove(&key);
+                    if restarted.is_some() {
+                        this.local = None;
+                        this.with_local(window, cx, move |this, window, cx| {
+                            this.ensure_cloud_view_once(&key, false, window, cx)
+                        });
+                    } else {
+                        this.cloud_attach_error.insert(key.clone(), format!("{:#}", result.unwrap_err()));
+                        this.cloud_attach_failed.insert(key.clone());
+                    }
+                    cx.notify();
+                });
+                return;
+            }
             let _ = this.update_in(cx, |this, _, cx| {
                 this.cloud_attach_pending.remove(&key);
                 match result {
