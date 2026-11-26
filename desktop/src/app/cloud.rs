@@ -168,11 +168,84 @@ impl FennecWindow {
                         let selected = matches!(&this.route, Some(Route::Session(id)) if this.shown_tab(id) == key);
                         if selected { this.pending_focus = Some(key.clone()); }
                     }
-                    Err(error) => { tracing::warn!("cloud attach view: {error:#}"); this.cloud_attach_failed.insert(key.clone()); }
+                    Err(error) => {
+                        tracing::warn!("cloud attach view: {error:#}");
+                        this.cloud_attach_error.insert(key.clone(), format!("{error:#}"));
+                        this.cloud_attach_failed.insert(key.clone());
+                    }
                 }
                 cx.notify();
             });
         }));
+    }
+
+    /// `fen attach` ended: keep the last lines it printed (its error, when it
+    /// failed), so "try again" says why instead of nothing (FEN-33).
+    pub(super) fn read_attach_error(
+        &mut self,
+        key: String,
+        local: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(core) = self.local.clone() else {
+            return;
+        };
+        self.cloud_attach_error.remove(&key);
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let screen = cx
+                .background_spawn(async move {
+                    core.call("terminal.read", json!({"terminal": local, "lines": 0}))
+                })
+                .await;
+            let text = screen.ok().and_then(|s| s["text"].as_str().map(attach_error_text));
+            let _ = this.update(cx, |this, cx| {
+                if let Some(text) = text.filter(|t| !t.is_empty()) {
+                    this.cloud_attach_error.insert(key, text);
+                    cx.notify();
+                }
+            });
+        }));
+    }
+
+    /// The "try again" button of a cloud terminal that could not be shown,
+    /// with the reason when it is known.
+    pub(super) fn cloud_failure(
+        &self,
+        id: &'static str,
+        key: String,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let lines: Vec<String> = self
+            .cloud_attach_error
+            .get(&key)
+            .map(|e| e.lines().map(str::to_owned).collect())
+            .unwrap_or_default();
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(12.0))
+            .max_w(px(640.0))
+            .px(px(24.0))
+            .when(!lines.is_empty(), |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .text_size(px(12.5))
+                        .text_color(c("muted"))
+                        .children(lines.into_iter().map(|line| div().child(line))),
+                )
+            })
+            .child(secondary_button(id, t("try_again"), false).on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.cloud_attach_failed.remove(&key);
+                    this.cloud_attach_error.remove(&key);
+                    cx.notify();
+                },
+            )))
     }
 
     pub(super) fn detach_cloud_view(&mut self, key: &str, cx: &mut Context<Self>) {
@@ -332,5 +405,29 @@ impl FennecWindow {
             }
         }
         local
+    }
+}
+
+/// The last few printed lines of an ended `fen attach`, without blank lines.
+fn attach_error_text(screen: &str) -> String {
+    let lines: Vec<&str> = screen.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).collect();
+    let start = lines.len().saturating_sub(6);
+    lines[start..]
+        .iter()
+        .map(|l| l.chars().take(200).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod attach_error_tests {
+    #[test]
+    fn keeps_the_last_printed_lines() {
+        let screen = "\n\nconnecting\nError: Session is not active. Refresh the list before retrying.\n\n\n";
+        assert_eq!(
+            super::attach_error_text(screen),
+            "connecting\nError: Session is not active. Refresh the list before retrying."
+        );
+        assert_eq!(super::attach_error_text("\n  \n"), "");
     }
 }

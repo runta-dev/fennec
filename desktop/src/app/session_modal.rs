@@ -139,15 +139,10 @@ impl FennecWindow {
                 )
             })
             .when(cloud_failed, |d| {
-                let key = address.clone();
-                d.flex().items_center().justify_center().child(
-                    secondary_button("session-modal-retry", t("try_again"), false).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.cloud_attach_failed.remove(&key);
-                            cx.notify();
-                        }),
-                    ),
-                )
+                d.flex()
+                    .items_center()
+                    .justify_center()
+                    .child(self.cloud_failure("session-modal-retry", address.clone(), cx))
             })
             .when_some(view, |d, v| d.child(v));
         let header = h_flex()

@@ -171,6 +171,11 @@ func serveWithIdleTimeout(ctx context.Context, input io.Reader, output io.Writer
 			}
 			continue
 		}
+		if (frame.Type == "launch" || frame.Type == "attach") && frame.Display != nil {
+			if home, err := os.UserHomeDir(); err == nil {
+				RememberDisplay(home, frame.Display)
+			}
+		}
 		if frame.Type == "launch" || frame.Type == "attach" || frame.Type == "stop" || frame.Type == "operation" || frame.Type == "socket" {
 			if frame.validateOpen() != nil || (frame.Type == "socket" && dial == nil) || (frame.Type == "attach" && len(attachers) == 0) || (frame.Type == "stop" && stopSession == nil) || (frame.Type == "operation" && operate == nil) {
 				return fmt.Errorf("invalid terminal launch")

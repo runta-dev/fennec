@@ -114,6 +114,8 @@ pub struct FennecWindow {
     cloud_views: HashMap<String, String>,
     cloud_attach_pending: std::collections::HashSet<String>,
     cloud_attach_failed: std::collections::HashSet<String>,
+    /// What `fen attach` printed before it exited, shown with "try again".
+    cloud_attach_error: HashMap<String, String>,
     cloud_events: Option<EventLines>,
     core: Option<Arc<Core>>,
     core_error: Option<String>,
@@ -349,6 +351,7 @@ impl FennecWindow {
             cloud_views: HashMap::new(),
             cloud_attach_pending: Default::default(),
             cloud_attach_failed: Default::default(),
+            cloud_attach_error: HashMap::new(),
             cloud_events: None,
             core,
             core_error,
@@ -1480,7 +1483,9 @@ impl FennecWindow {
                             this.focus.focus(window, cx);
                         }
                         this.terms.remove(&addr);
-                        this.cloud_views.remove(&addr);
+                        if let Some(local) = this.cloud_views.remove(&addr) {
+                            this.read_attach_error(addr.clone(), local, window, cx);
+                        }
                         this.cloud_attach_failed.insert(addr.clone());
                     } else {
                         this.tab_closed(&addr, window, cx);
@@ -3841,15 +3846,10 @@ impl FennecWindow {
                         )
                     })
                     .when(cloud_failed, |d| {
-                        let key = shown.clone();
-                        d.flex().items_center().justify_center().child(
-                            secondary_button("retry-cloud-attach", t("try_again"), false).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.cloud_attach_failed.remove(&key);
-                                    cx.notify();
-                                }),
-                            ),
-                        )
+                        d.flex()
+                            .items_center()
+                            .justify_center()
+                            .child(self.cloud_failure("retry-cloud-attach", shown.clone(), cx))
                     })
                     .opacity(self.layout.content_opacity.max(0.85))
                     .when_some(view, |d, v| d.child(v)),

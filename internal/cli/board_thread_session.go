@@ -7,6 +7,7 @@ import (
 	"errors"
 	r "fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/terminalstream"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,7 +174,13 @@ func (e queueMacExecutor) continueThread(ctx context.Context, project string, nu
 		argv = append(argv, args...)
 		labels := map[string]string{"fennec.session": id, "fennec.agent": agent, "fennec.queue": project, "fennec.request": fmt.Sprint(number), "fennec.directory": cwd}
 		labels["fennec.board"] = store.Namespace
-		raw, err = e.core.call(ctx, "terminal.run", map[string]any{"argv": argv, "cwd": cwd, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": labels, "size": map[string]int{"cols": 120, "rows": 40}})
+		run := map[string]any{"argv": argv, "cwd": cwd, "env": map[string]string{"TERM": "xterm-256color", "COLORTERM": "truecolor"}, "labels": labels, "size": map[string]int{"cols": 120, "rows": 40}}
+		// Nobody is attached yet; answer the agent's color queries with the
+		// last viewer's theme instead of herdr-core's dark default (FEN-33).
+		if display := terminalstream.LastDisplay(e.home); display != nil {
+			run["display"] = display
+		}
+		raw, err = e.core.call(ctx, "terminal.run", run)
 		if err != nil {
 			return r.LocalTerminal{}, false, err
 		}

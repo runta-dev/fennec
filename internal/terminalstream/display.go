@@ -2,7 +2,10 @@ package terminalstream
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 )
@@ -111,4 +114,58 @@ func (r *DisplayResponder) Flush() []byte {
 	r.pending = nil
 	r.done = true
 	return pending
+}
+
+// lastDisplayFile keeps the colors of the most recent viewer. A queue agent
+// starts with nobody attached, so without them herdr-core answers OSC 10/11
+// with its own dark defaults, and Codex picks a dark composer even when every
+// viewer uses a light theme (FEN-33).
+func lastDisplayFile(home string) string {
+	return filepath.Join(home, ".local/fennec/last-display.json")
+}
+
+var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// RememberDisplay records a viewer's colors; anything else is ignored.
+func RememberDisplay(home string, facts *DisplayFacts) {
+	if home == "" || facts == nil || !hexColor.MatchString(facts.Background) || !hexColor.MatchString(facts.Foreground) {
+		return
+	}
+	data, err := json.Marshal(facts)
+	if err != nil {
+		return
+	}
+	path := lastDisplayFile(home)
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
+		return
+	}
+	if os.MkdirAll(filepath.Dir(path), 0700) != nil {
+		return
+	}
+	temporary := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
+	if os.WriteFile(temporary, data, 0600) != nil {
+		os.Remove(temporary)
+		return
+	}
+	if os.Rename(temporary, path) != nil {
+		os.Remove(temporary)
+	}
+}
+
+// LastDisplay returns the recorded colors in herdr-core's terminal.run
+// "display" shape, or nil when no viewer has reported any.
+func LastDisplay(home string) map[string]any {
+	data, err := os.ReadFile(lastDisplayFile(home))
+	if err != nil {
+		return nil
+	}
+	var facts DisplayFacts
+	if json.Unmarshal(data, &facts) != nil || !hexColor.MatchString(facts.Background) || !hexColor.MatchString(facts.Foreground) {
+		return nil
+	}
+	display := map[string]any{"fg": facts.Foreground, "bg": facts.Background}
+	if hexColor.MatchString(facts.Cursor) {
+		display["cursor"] = facts.Cursor
+	}
+	return display
 }
