@@ -295,7 +295,7 @@ extension BoardRequest {
     }
 }
 
-/// One request: agent icon (or a clock while queued), reference, title, time.
+/// One request: agent icon (or a clock while queued), title and time, then reference and latest line.
 struct RequestRow: View {
     var request: BoardRequest
     var project: BoardProject
@@ -306,12 +306,17 @@ struct RequestRow: View {
             RequestIcon(request: request, project: project)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(request.reference(project.key)).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.fg3)
                     Text(request.title).font(.rowTitle).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(shortTime(request.updatedDate)).font(.system(size: 12.5)).foregroundStyle(Theme.fg3).monospacedDigit()
                 }
-                Text(line).font(.rowBody).foregroundStyle(Theme.fg2).lineLimit(1)
+                // The reference leads the second line so the title gets the full
+                // width of the first one on a phone (FEN-54).
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(request.reference(project.key)).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Theme.fg3)
+                        .fixedSize()
+                    Text(line).font(.rowBody).foregroundStyle(Theme.fg2).lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 18)
