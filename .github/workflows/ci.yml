@@ -38,6 +38,7 @@ jobs:
           set -eu
           test "$(uname -m)" = arm64
           go -C cua test -race ./cmd/cua-package
-          go build -trimpath -o "$RUNNER_TEMP/fennec-daemon" .
+          # Pinned: runtime/cgo (via purego) would take the runner SDK's macOS 15.
+          MACOSX_DEPLOYMENT_TARGET=13.0 go build -trimpath -o "$RUNNER_TEMP/fennec-daemon" .
           FENNEC_DAEMON_BINARY="$RUNNER_TEMP/fennec-daemon" ./scripts/build-macos.sh
           ./scripts/verify-macos-package.sh build/Fennec.app 0.2.0

@@ -81,7 +81,9 @@ export FENNEC_VERSION="$version" FENNEC_SIGN_IDENTITY="$identity" FENNEC_RELEASE
 export FENNEC_BUILD_DESKTOP="${FENNEC_BUILD_DESKTOP:-1}"
 [[ $dry_run == 1 || "$FENNEC_BUILD_DESKTOP" == 1 ]] || { echo 'A release must include Fennec Terminal (FENNEC_BUILD_DESKTOP=1)' >&2; exit 1; }
 export FENNEC_BUILD_DIR="$release_work/build" FENNEC_DAEMON_BINARY="$release_work/fennec-daemon"
-go build -trimpath -o "$FENNEC_DAEMON_BINARY" .
+# purego (via the WebP encoder) links runtime/cgo, so clang sets the minimum
+# macOS from the build machine's SDK (15 on CI) unless pinned. Fennec supports 13.
+MACOSX_DEPLOYMENT_TARGET=13.0 go build -trimpath -o "$FENNEC_DAEMON_BINARY" .
 ./scripts/build-macos.sh
 app="$FENNEC_BUILD_DIR/Fennec.app"
 if [[ "$FENNEC_BUILD_DESKTOP" == 1 ]]; then export FENNEC_REQUIRE_DESKTOP=1; fi
