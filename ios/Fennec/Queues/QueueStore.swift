@@ -2,6 +2,7 @@ import CryptoKit
 import FennecCore
 import Foundation
 import Observation
+import SwiftUI
 import UIKit
 
 /// Queues on the iPhone (THI-124): the same board the desktop shows, read
@@ -84,14 +85,18 @@ final class QueueStore {
     }
 
     func loadRequests(_ project: String) async throws {
-        let list = try await get("/v1/projects/\(project)/requests", as: [BoardRequest].self)
+        var list = try await get("/v1/projects/\(project)/requests", as: [BoardRequest].self)
+        for i in list.indices where pendingStatus.contains("\(project)/\(list[i].number)") {
+            if let local = requests[project]?.first(where: { $0.number == list[i].number }) { list[i].status = local.status }
+        }
         requests[project] = list
         if me.isEmpty { me = Self.person(in: list) }
     }
 
     func loadThread(_ project: String, _ number: Int) async {
         guard core != nil else { return }
-        if let request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
+        if var request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
+            if pendingStatus.contains("\(project)/\(number)"), let local = thread(project, number) { request.status = local.status }
             threads["\(project)/\(number)"] = request
             if var list = requests[project], let i = list.firstIndex(where: { $0.number == number }) {
                 list[i].status = request.status
@@ -159,15 +164,50 @@ final class QueueStore {
         }
     }
 
+    /// Mark done (FEN-22): the row and thread show Resolved at once, with a
+    /// success tap; a failed change puts the old status back.
     func markDone(_ project: String, _ number: Int) async {
-        if core == nil { demoUpdate(project, number) { $0.status = "resolved" }; return }
-        await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["status": "resolved"]) }
+        await setStatus(project, number, "resolved")
     }
 
     /// Reopen: back to Needs you, as on the desktop.
     func reopen(_ project: String, _ number: Int) async {
-        if core == nil { demoUpdate(project, number) { $0.status = "you" }; return }
-        await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["status": "you"]) }
+        await setStatus(project, number, "you")
+    }
+
+    /// Requests whose status change is on its way to the board, by
+    /// "project/number". Refreshes keep the local status meanwhile, and
+    /// repeated taps do nothing.
+    private(set) var pendingStatus: Set<String> = []
+
+    /// The request just marked done, "project/number": its thread shows a
+    /// Marked done banner with Undo for a few seconds.
+    var justResolved: String?
+
+    private func setStatus(_ project: String, _ number: Int, _ status: String) async {
+        let key = "\(project)/\(number)"
+        // A change already showing (a second tap) does nothing; another
+        // one (Undo) waits for the change in flight.
+        guard thread(project, number)?.status != status else { return }
+        while pendingStatus.contains(key) { try? await Task.sleep(for: .milliseconds(100)) }
+        guard let previous = thread(project, number)?.status, previous != status else { return }
+        withAnimation(.smooth(duration: 0.3)) { demoUpdate(project, number) { $0.status = status } }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        justResolved = status == "resolved" ? key : nil
+        if justResolved != nil {
+            Task { try? await Task.sleep(for: .seconds(4)); if justResolved == key { justResolved = nil } }
+        }
+        if core == nil { return }
+        pendingStatus.insert(key)
+        let ok = await change(project, number: number) {
+            _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["status": status])
+        }
+        pendingStatus.remove(key)
+        if !ok {
+            if justResolved == key { justResolved = nil }
+            withAnimation(.smooth(duration: 0.3)) { demoUpdate(project, number) { $0.status = previous } }
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 
     func setTag(_ project: String, _ number: Int, _ tag: String) async {
@@ -350,7 +390,8 @@ extension QueueStore {
         return r
     }
 
-    /// Changes a demo request in the list and in its open thread.
+    /// Changes a request in the list and in its open thread, on the phone
+    /// only: the demo, and optimistic updates (FEN-22).
     fileprivate func demoUpdate(_ project: String, _ number: Int, _ change: (inout BoardRequest) -> Void) {
         let at = ISO8601DateFormatter().string(from: .now)
         if var thread = threads["\(project)/\(number)"] {

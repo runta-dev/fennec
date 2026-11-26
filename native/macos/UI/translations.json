@@ -365,6 +365,8 @@
     "ios.notify_request": {"en-US": "A request needs you", "zh-CN": "有 request 需要你处理"},
     "ios.queue_demo_only": {"en-US": "Not available in the demo", "zh-CN": "演示模式下不可用"},
     "ios.tag": {"en-US": "Tag", "zh-CN": "标签"},
+    "ios.marked_done": {"en-US": "Marked done", "zh-CN": "已标记完成"},
+    "ios.undo": {"en-US": "Undo", "zh-CN": "撤销"},
     "ios.auto_tag": {"en-US": "Auto tag", "zh-CN": "自动标签"},
     "ios.reorder": {"en-US": "Reorder", "zh-CN": "调整顺序"},
     "ios.reorder_queued": {"en-US": "Reorder queued", "zh-CN": "调整排队顺序"},

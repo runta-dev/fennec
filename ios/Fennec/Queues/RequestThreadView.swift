@@ -14,6 +14,8 @@ struct RequestThreadView: View {
     @State private var sending = false
     @State private var showMenu = false
     @State private var linking = false
+    /// Bumped when the Marked done banner appears, to bounce its check.
+    @State private var bannerBounce = 0
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -32,9 +34,11 @@ struct RequestThreadView: View {
                             }
                             if request.status_ == .failed { FailureCard(request: request) }
                             statusCard(request, project).id("status")
+                            actions(request)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
+                        .animation(.smooth(duration: 0.3), value: request.status)
                     }
                     .defaultScrollAnchor(.bottom)
                     .scrollDismissesKeyboard(.interactively)
@@ -87,6 +91,7 @@ struct RequestThreadView: View {
             .font(.system(size: 11)).foregroundStyle(Theme.fg2)
         }
         .frame(maxWidth: 230)
+        .animation(.smooth(duration: 0.3), value: request.status)
         .accessibilityElement(children: .combine)
     }
 
@@ -122,22 +127,59 @@ struct RequestThreadView: View {
 
     // MARK: Composer and actions (28, 29, 32)
 
-    private func bottom(_ request: BoardRequest, _ project: BoardProject) -> some View {
-        VStack(spacing: 8) {
-            if request.status_.canMarkDone || request.status_ == .resolved {
-                HStack(spacing: 8) {
-                    if request.status_ == .failed {
-                        glassButton(L10n.text("desktop.retry_request"), "arrow.clockwise") {
-                            Task { await queues.reply(projectID, number, text: "") }
-                        }
-                    }
-                    if request.status_ == .resolved {
-                        glassButton(L10n.text("desktop.reopen"), "arrow.uturn.backward") { Task { await queues.reopen(projectID, number) } }
-                    } else {
-                        glassButton(L10n.text("desktop.resolve"), "checkmark") { Task { await queues.markDone(projectID, number) } }
+    /// Retry, Mark done and Reopen sit at the end of the thread, under what
+    /// the agent said, not right above the composer where they were easy to
+    /// hit by mistake (FEN-22).
+    @ViewBuilder
+    private func actions(_ request: BoardRequest) -> some View {
+        if request.status_.canMarkDone || request.status_ == .resolved {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                if request.status_ == .failed {
+                    glassButton(L10n.text("desktop.retry_request"), "arrow.clockwise") {
+                        Task { await queues.reply(projectID, number, text: "") }
                     }
                 }
+                if request.status_ == .resolved {
+                    glassButton(L10n.text("desktop.reopen"), "arrow.uturn.backward") { Task { await queues.reopen(projectID, number) } }
+                } else {
+                    glassButton(L10n.text("desktop.resolve"), "checkmark") { Task { await queues.markDone(projectID, number) } }
+                }
             }
+            .padding(.top, 4)
+            .transition(.opacity)
+        }
+    }
+
+    /// Shown for a few seconds after Mark done: the thread is closed, with
+    /// a way back if that was a mistake (FEN-22).
+    private var resolvedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.working)
+                .symbolEffect(.bounce, options: .nonRepeating, value: bannerBounce)
+                .onAppear { bannerBounce += 1 }
+            Text(L10n.text("ios.marked_done")).font(.system(size: 15, weight: .medium))
+            Spacer(minLength: 0)
+            Button(L10n.text("ios.undo")) {
+                queues.justResolved = nil
+                Task { await queues.reopen(projectID, number) }
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Theme.accent)
+            .accessibilityIdentifier("undo-mark-done")
+        }
+        .padding(.horizontal, 16).frame(height: 48)
+        .glassEffect(.regular, in: Capsule())
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func bottom(_ request: BoardRequest, _ project: BoardProject) -> some View {
+        VStack(spacing: 8) {
+            if queues.justResolved == "\(projectID)/\(number)" { resolvedBanner }
             ImageDraftStrip(draft: $images).padding(.horizontal, 16)
             HStack(alignment: .bottom, spacing: 8) {
                 ImagePickerButton(draft: $images)
@@ -165,6 +207,7 @@ struct RequestThreadView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
         }
+        .animation(.spring(duration: 0.4, bounce: 0.3), value: queues.justResolved)
     }
 
     private func placeholder(_ request: BoardRequest) -> String {
