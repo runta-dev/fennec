@@ -623,6 +623,7 @@ impl FennecWindow {
                     }
                     if gone {
                         this.core_error = Some(t("terminal_closed"));
+                        this.heal_core(core.clone(), window, cx);
                         cx.notify();
                     }
                 });
@@ -1525,9 +1526,10 @@ impl FennecWindow {
         cx: &mut Context<Self>,
         then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) {
-        if self.local.is_some() {
+        if self.local.as_ref().is_some_and(|c| !c.is_closed()) {
             return then(self, window, cx);
         }
+        self.local = None;
         let Some(program) = crate::core_bin::local() else {
             return;
         };
@@ -1556,6 +1558,7 @@ impl FennecWindow {
                             }
                         }
                     }
+                    this.watch_core(core.clone(), window, cx);
                     this.local = Some(core);
                     then(this, window, cx);
                     cx.notify();

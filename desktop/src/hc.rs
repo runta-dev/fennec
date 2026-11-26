@@ -446,6 +446,11 @@ impl Core {
         Ok(core)
     }
 
+    /// The connection to the core is gone; every call fails with "lost the core".
+    pub fn is_closed(&self) -> bool {
+        self.routes.lock().unwrap().closed
+    }
+
     /// Resolves once the connection to the core is gone.
     pub async fn closed(&self) {
         let _ = self.lost.recv().await;

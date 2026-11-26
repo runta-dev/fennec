@@ -205,6 +205,9 @@ impl FennecWindow {
                         let selected = matches!(&this.route, Some(Route::Session(id)) if this.shown_tab(id) == key);
                         if selected { this.pending_focus = Some(key.clone()); }
                     }
+                    Err(error) if format!("{error:#}").contains("lost the core") => {
+                        tracing::warn!("cloud attach view: {error:#}; waiting for the core to come back");
+                    }
                     Err(error) => {
                         tracing::warn!("cloud attach view: {error:#}");
                         this.cloud_attach_error.insert(key.clone(), format!("{error:#}"));
@@ -283,6 +286,99 @@ impl FennecWindow {
                     cx.notify();
                 },
             )))
+    }
+
+    /// Calls `heal_core` when this connection to the local core drops.
+    pub(super) fn watch_core(&mut self, core: Arc<Core>, window: &mut Window, cx: &mut Context<Self>) {
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            core.closed().await;
+            let _ = this.update_in(cx, |this, window, cx| this.heal_core(core, window, cx));
+        }));
+    }
+
+    /// The connection to a core dropped (the core restarted, crashed, or was
+    /// restarted by hand after an update: "lost the core"). Reconnect, attach
+    /// every shown terminal again, and start the cloud views over, instead of
+    /// leaving the window broken until Fennec restarts (FEN-33).
+    pub(super) fn heal_core(&mut self, lost: Arc<Core>, window: &mut Window, cx: &mut Context<Self>) {
+        let same = |c: &Option<Arc<Core>>| c.as_ref().is_some_and(|c| Arc::ptr_eq(c, &lost));
+        let was_core = same(&self.core);
+        let was_local = same(&self.local);
+        if !was_core && !was_local {
+            return;
+        }
+        tracing::warn!("core connection lost; reconnecting");
+        if was_local {
+            self.local = None;
+        }
+        // The fen attach views ran as terminals in the lost core.
+        if was_local || !crate::core_bin::cloud() {
+            for key in self.cloud_views.keys().cloned().collect::<Vec<_>>() {
+                if let Some(view) = self.terms.remove(&key) {
+                    view.read(cx).detach();
+                }
+            }
+            self.cloud_views.clear();
+            self.cloud_attach_pending.clear();
+            self.cloud_attach_failed.clear();
+            self.cloud_attach_error.clear();
+        }
+        let local = crate::core_bin::local();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let mut connected = None;
+            for attempt in 0..30u64 {
+                if attempt > 0 {
+                    cx.background_executor().timer(Duration::from_millis(500 * attempt.min(4))).await;
+                }
+                let program = local.clone();
+                let result = cx
+                    .background_spawn(async move {
+                        match program {
+                            Some(p) if !was_core => crate::core_bin::using(p, Core::connect),
+                            _ => Core::connect(),
+                        }
+                    })
+                    .await;
+                match result {
+                    Ok(core) => {
+                        connected = Some(core);
+                        break;
+                    }
+                    Err(e) => tracing::warn!("reconnect to core (attempt {}): {e:#}", attempt + 1),
+                }
+            }
+            let _ = this.update_in(cx, |this, window, cx| {
+                let Some(core) = connected else {
+                    this.core_error = Some(t("terminal_closed"));
+                    cx.notify();
+                    return;
+                };
+                if was_core {
+                    this.core = Some(core.clone());
+                    this.core_error = None;
+                    this.follow_core(window, cx);
+                }
+                let shares_local = was_local || (was_core && !crate::core_bin::cloud());
+                if shares_local && this.local.is_none() {
+                    if !was_core {
+                        this.watch_core(core.clone(), window, cx);
+                    }
+                    this.local = Some(core.clone());
+                }
+                for (key, view) in this.terms.clone() {
+                    let mine = if key.starts_with("local:") {
+                        shares_local
+                    } else {
+                        was_core && !key.starts_with("cloud:")
+                    };
+                    let target = if key.starts_with("local:") { this.local.clone() } else { Some(core.clone()) };
+                    if let (true, Some(target)) = (mine, target) {
+                        view.update(cx, |v, cx| v.reattach_if_needed(target, cx));
+                    }
+                }
+                cx.notify();
+            });
+        }));
     }
 
     pub(super) fn detach_cloud_view(&mut self, key: &str, cx: &mut Context<Self>) {
