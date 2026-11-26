@@ -47,7 +47,8 @@ final class QueueStore {
     func project(_ id: String) -> BoardProject? { projects.first { $0.id == id } }
     func list(_ project: String) -> [BoardRequest] { requests[project] ?? [] }
     func thread(_ project: String, _ number: Int) -> BoardRequest? {
-        threads["\(project)/\(number)"] ?? list(project).first { $0.number == number }
+        let number = boardNumber(project, number)
+        return threads["\(project)/\(number)"] ?? list(project).first { $0.number == number }
     }
     /// Requests that need you across all queues: the Queues tab badge.
     var needsYouCount: Int {
@@ -89,12 +90,18 @@ final class QueueStore {
         for i in list.indices where pendingStatus.contains("\(project)/\(list[i].number)") {
             if let local = requests[project]?.first(where: { $0.number == list[i].number }) { list[i].status = local.status }
         }
+        // New requests still on their way, or posted after this list was
+        // read, stay in it until the board lists them (FEN-58).
+        for (key, local) in localRequests.sorted(by: { $0.key < $1.key }) where key == "\(project)/\(local.number)" {
+            if list.contains(where: { $0.number == local.number }) { localRequests[key] = nil } else { list.append(local) }
+        }
         requests[project] = list
         if me.isEmpty { me = Self.person(in: list) }
     }
 
     func loadThread(_ project: String, _ number: Int) async {
-        guard core != nil else { return }
+        let number = boardNumber(project, number)
+        guard core != nil, number > 0 else { return }
         if var request = try? await get("/v1/projects/\(project)/requests/\(number)", as: BoardRequest.self) {
             if pendingStatus.contains("\(project)/\(number)"), let local = thread(project, number) { request.status = local.status }
             threads["\(project)/\(number)"] = request
@@ -137,27 +144,84 @@ final class QueueStore {
         }
     }
 
-    func post(_ project: String, text: String, tag: String?, images: [BoardAttachment]) async -> BoardRequest? {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let first = text.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+    // MARK: New requests (FEN-58)
+
+    /// New requests shown before the board has them, by "project/number":
+    /// stand-ins with a negative number while the POST is on its way, then
+    /// the board's request until a list read includes it.
+    private var localRequests: [String: BoardRequest] = [:]
+    /// The board's number for each stand-in it accepted: "project/-1" → 58.
+    /// A thread opened on a stand-in keeps working after the POST answers.
+    private var postedNumbers: [String: Int] = [:]
+    @ObservationIgnored private var nextLocalNumber = -1
+    /// A new request the board refused: the New request sheet opens again
+    /// with it, so the text isn't lost.
+    var unsent: UnsentRequest?
+
+    /// The board's number for `number`, which may be a stand-in.
+    func boardNumber(_ project: String, _ number: Int) -> Int {
+        number < 0 ? postedNumbers["\(project)/\(number)"] ?? number : number
+    }
+
+    /// Waits for a stand-in to reach the board; nil if it was refused.
+    private func onBoard(_ project: String, _ number: Int) async -> Int? {
+        guard number < 0 else { return number }
+        let key = "\(project)/\(number)"
+        while localRequests[key] != nil { try? await Task.sleep(for: .milliseconds(100)) }
+        return postedNumbers[key]
+    }
+
+    /// Sends a new request without waiting for the board, like Mark done
+    /// (FEN-22): it shows as Queued in the list and its thread at once,
+    /// with a success tap, and the board's number takes over when the POST
+    /// answers. Returns the number to open its thread with. A refused
+    /// request is removed again and comes back in `unsent`.
+    func send(_ project: String, text: String, tag: String?, images: [BoardAttachment]) -> Int {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let first = trimmed.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
         let title = first.isEmpty ? L10n.text("desktop.image_request") : String(first.prefix(200))
-        var body: [String: Any] = ["title": title, "body": text, "author": author, "attachments": attachmentsJSON(images)]
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if core == nil { return demoPost(project, title: title, text: trimmed).number }
+
+        let number = nextLocalNumber
+        nextLocalNumber -= 1
+        let key = "\(project)/\(number)"
+        let at = ISO8601DateFormatter().string(from: .now)
+        var local = BoardRequest(number: number, title: title, tag: tag, status: "queued", author: author, created: at, updated: at)
+        local.messages = [BoardMessage(id: 1, author: author, body: trimmed, at: at, attachments: images.isEmpty ? nil : images)]
+        local.latest = local.messages?.first
+        localRequests[key] = local
+        withAnimation(.smooth(duration: 0.3)) { requests[project, default: []].append(local) }
+
+        var body: [String: Any] = ["title": title, "body": trimmed, "author": author, "attachments": attachmentsJSON(images)]
         if let tag { body["tag"] = tag }
-        if core == nil { return demoPost(project, title: title, text: text) }
-        do {
-            let request = try JSONDecoder().decode(BoardRequest.self, from: try await call("POST", "/v1/projects/\(project)/requests", body))
-            try? await loadRequests(project)
-            return request
-        } catch {
-            actionError = error.localizedDescription
-            return nil
+        Task {
+            do {
+                let request = try JSONDecoder().decode(BoardRequest.self, from: try await call("POST", "/v1/projects/\(project)/requests", body))
+                postedNumbers[key] = request.number
+                localRequests[key] = nil
+                localRequests["\(project)/\(request.number)"] = request
+                withAnimation(.smooth(duration: 0.3)) {
+                    var rows = self.list(project).filter { $0.number != number }
+                    if !rows.contains(where: { $0.number == request.number }) { rows.append(request) }
+                    requests[project] = rows
+                }
+                try? await loadRequests(project)
+            } catch {
+                localRequests[key] = nil
+                withAnimation(.smooth(duration: 0.3)) { requests[project]?.removeAll { $0.number == number } }
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                unsent = UnsentRequest(project: project, number: number, text: text, tag: tag, images: images, error: error.localizedDescription)
+            }
         }
+        return number
     }
 
     /// A reply; it sends the request back to the queue (the desktop's
     /// continue_request). An empty reply is Retry.
     func reply(_ project: String, _ number: Int, text: String, images: [BoardAttachment] = []) async -> Bool {
         if core == nil { demoReply(project, number, text: text, images: images); return true }
+        guard let number = await onBoard(project, number) else { return false }
         return await change(project, number: number) {
             _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/continue",
                                ["body": text.trimmingCharacters(in: .whitespacesAndNewlines), "author": author, "attachments": attachmentsJSON(images)])
@@ -185,6 +249,7 @@ final class QueueStore {
     var justResolved: String?
 
     private func setStatus(_ project: String, _ number: Int, _ status: String) async {
+        guard let number = await onBoard(project, number) else { return }
         let key = "\(project)/\(number)"
         // A change already showing (a second tap) does nothing; another
         // one (Undo) waits for the change in flight.
@@ -212,18 +277,21 @@ final class QueueStore {
 
     func setTag(_ project: String, _ number: Int, _ tag: String) async {
         if core == nil { demoUpdate(project, number) { $0.tag = tag }; return }
+        guard let number = await onBoard(project, number) else { return }
         await change(project, number: number) { _ = try await call("PATCH", "/v1/projects/\(project)/requests/\(number)", ["tag": tag]) }
     }
 
     /// Moves a queued request in front of `before` (0: to the front).
     func move(_ project: String, _ number: Int, before: Int) async {
         if core == nil { demoMove(project, number, before: before); return }
+        guard let number = await onBoard(project, number) else { return }
         await change(project) { _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/move", ["before": before]) }
     }
 
     /// Links `number` to `to` as "related" or "duplicate"; "" removes the link.
     func link(_ project: String, _ number: Int, to: Int, kind: String) async {
         if core == nil { demoLink(project, number, to: to, kind: kind); return }
+        guard let number = await onBoard(project, number) else { return }
         await change(project, number: number) {
             _ = try await call("POST", "/v1/projects/\(project)/requests/\(number)/links", ["number": to, "kind": kind, "author": author])
         }
@@ -320,6 +388,16 @@ final class QueueStore {
             (try? JSONEncoder().encode(image)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         }
     }
+}
+
+/// A new request the board refused (FEN-58), for the New request sheet.
+struct UnsentRequest: Equatable {
+    var project: String
+    var number: Int
+    var text: String
+    var tag: String?
+    var images: [BoardAttachment]
+    var error: String
 }
 
 enum QueueError: LocalizedError {

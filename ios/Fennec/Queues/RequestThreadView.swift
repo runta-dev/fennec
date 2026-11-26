@@ -180,7 +180,7 @@ struct RequestThreadView: View {
 
     private func bottom(_ request: BoardRequest, _ project: BoardProject) -> some View {
         VStack(spacing: 8) {
-            if queues.justResolved == "\(projectID)/\(number)" { resolvedBanner }
+            if queues.justResolved == "\(projectID)/\(queues.boardNumber(projectID, number))" { resolvedBanner }
             ImageDraftStrip(draft: $images).padding(.horizontal, 16)
             HStack(alignment: .bottom, spacing: 8) {
                 ImagePickerButton(draft: $images)

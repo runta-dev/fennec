@@ -164,7 +164,8 @@ struct BoardRequest: Codable, Hashable, Identifiable {
         if let session, !session.isEmpty, !ids.contains(session) { ids.insert(session, at: 0) }
         return ids
     }
-    func reference(_ key: String) -> String { "\(key)-\(number)" }
+    /// A new request still on its way has a negative stand-in number (FEN-58).
+    func reference(_ key: String) -> String { number < 0 ? "\(key)-…" : "\(key)-\(number)" }
 }
 
 enum RequestStatus: String, CaseIterable {

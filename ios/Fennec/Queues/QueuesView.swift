@@ -84,6 +84,13 @@ struct QueuesView: View {
                     NewRequestSheet(project: project) { number in path.append(.thread(project.id, number)) }
                 }
             }
+            .onChange(of: queues.unsent) { _, unsent in
+                // A new request the board refused (FEN-58): leave its thread
+                // and open the sheet again with it.
+                guard let unsent else { return }
+                path.removeAll { $0 == .thread(unsent.project, unsent.number) }
+                composing = true
+            }
             .sheet(isPresented: $reordering) {
                 if let project = queues.selected { ReorderView(project: project) }
             }
@@ -641,7 +648,8 @@ struct NewRequestSheet: View {
     @State private var text = ""
     @State private var tag: String?
     @State private var images = ImageDraft()
-    @State private var sending = false
+    /// Why the last send didn't reach the board (FEN-58).
+    @State private var error: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -665,15 +673,19 @@ struct NewRequestSheet: View {
                     .accessibilityIdentifier("new-request-text")
                 ImageDraftStrip(draft: $images)
                 Spacer(minLength: 0)
+                if let error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.danger)
+                }
                 Text(L10n.text("ios.new_request_where", values: ["queue": project.name, "busy": busy]))
                     .font(.system(size: 12.5)).foregroundStyle(Theme.fg3)
                 Button {
                     send()
                 } label: {
-                    if sending { ProgressView().tint(Theme.onPrimary) } else { Text(L10n.text("ios.send_to_queue")) }
+                    Text(L10n.text("ios.send_to_queue"))
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(sending || images.uploading || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.done.isEmpty))
+                .disabled(images.uploading || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.done.isEmpty))
                 .accessibilityIdentifier("send-request")
             }
             .padding(16)
@@ -684,7 +696,17 @@ struct NewRequestSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button(L10n.text("desktop.cancel")) { dismiss() } }
             }
         }
-        .onAppear { focused = true }
+        .onAppear {
+            if let unsent = queues.unsent {
+                project = queues.project(unsent.project) ?? project
+                text = unsent.text
+                tag = unsent.tag
+                images = ImageDraft(done: unsent.images)
+                error = unsent.error
+                queues.unsent = nil
+            }
+            focused = true
+        }
         .presentationDetents([.large])
     }
 
@@ -702,15 +724,12 @@ struct NewRequestSheet: View {
             .overlay(Capsule().strokeBorder(on ? Theme.accent : Theme.line))
     }
 
+    /// Closes at once and opens the new thread; the request goes to the
+    /// board in the background (FEN-58), as Mark done does (FEN-22).
     private func send() {
-        sending = true
-        Task {
-            defer { sending = false }
-            if let request = await queues.post(project.id, text: text, tag: tag, images: images.done) {
-                queues.selectedID = project.id
-                dismiss()
-                opened(request.number)
-            }
-        }
+        let number = queues.send(project.id, text: text, tag: tag, images: images.done)
+        queues.selectedID = project.id
+        dismiss()
+        opened(number)
     }
 }
