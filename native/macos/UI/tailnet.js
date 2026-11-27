@@ -50,7 +50,14 @@
     key_passphrase: '[[i18n:ui.tailnet_add_key_passphrase]]',
   };
 
+  // The last good tailnet.status is kept across app restarts, so Computers
+  // shows the list at once and a fresh status replaces it (FEN-123).
+  const cacheKey = 'tailnet_status_cache';
   let status = null;      // last tailnet.status payload
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    if (cached && cached.state === 'running' && Array.isArray(cached.devices)) status = cached;
+  } catch {}
   let requestError = '';  // control error code when status couldn't be read
   let busy = '';          // 'login' | 'logout' while a button's call runs
 
@@ -503,11 +510,21 @@
 
   window.renderTailnet = payload => {
     if (payload && typeof payload === 'object' && typeof payload.error === 'string' && !payload.state) {
-      requestError = payload.error;
       busy = '';
+      if (payload.error === 'login_required') {
+        status = null;
+        try { localStorage.removeItem(cacheKey); } catch {}
+      }
+      // While the cloud computer reconnects (not_ready, unsupported, a
+      // timeout), keep showing the last list instead of emptying the card.
+      if (payload.error === 'login_required' || status?.state !== 'running') requestError = payload.error;
     } else if (payload && typeof payload === 'object') {
       requestError = '';
       status = payload;
+      try {
+        if (status.state === 'running') localStorage.setItem(cacheKey, JSON.stringify(status));
+        else localStorage.removeItem(cacheKey);
+      } catch {}
       // A finished call clears its button; the polled status shows the rest.
       if (busy === 'login' && (status.state !== 'not_installed' && status.state !== 'stopped' || status.error)) busy = '';
       if (busy === 'logout' && status.state !== 'running' && !['installing', 'starting'].includes(status.state)) busy = '';
