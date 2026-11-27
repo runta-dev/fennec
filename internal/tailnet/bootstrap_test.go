@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -162,5 +164,81 @@ func TestRequestValidateSecrets(t *testing.T) {
 func TestEncodePowerShell(t *testing.T) {
 	if got := encodePowerShell("hi"); got != "aABpAA==" {
 		t.Fatal(got)
+	}
+}
+
+// fakeTailscaleSSH serves a no-credentials SSH server like Tailscale SSH: it
+// accepts the sign-in, or with check it sends the approval banner and holds.
+func fakeTailscaleSSH(t *testing.T, check bool) {
+	t.Helper()
+	_, hostPrivate, _ := ed25519.GenerateKey(rand.Reader)
+	hostSigner, _ := ssh.NewSignerFromKey(hostPrivate)
+	config := &ssh.ServerConfig{NoClientAuth: true}
+	if check {
+		config.BannerCallback = func(ssh.ConnMetadata) string {
+			return "# Tailscale SSH requires an additional check.\n# To authenticate, visit: https://login.tailscale.com/a/abc123\n"
+		}
+		config.NoClientAuthCallback = func(ssh.ConnMetadata) (*ssh.Permissions, error) {
+			time.Sleep(5 * time.Second)
+			return nil, os.ErrPermission
+		}
+	}
+	config.AddHostKey(hostSigner)
+	old := dial
+	t.Cleanup(func() { dial = old })
+	dial = func(ctx context.Context, p paths, host string, port int) (net.Conn, error) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		defer listener.Close()
+		client, err := net.Dial("tcp", listener.Addr().String())
+		if err != nil {
+			return nil, err
+		}
+		server, err := listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		go func() {
+			conn, channels, requests, err := ssh.NewServerConn(server, config)
+			if err != nil {
+				server.Close()
+				return
+			}
+			go ssh.DiscardRequests(requests)
+			go func() {
+				for c := range channels {
+					c.Reject(ssh.Prohibited, "")
+				}
+			}()
+			conn.Wait()
+		}()
+		return client, nil
+	}
+}
+
+func TestTailscaleSSHCheck(t *testing.T) {
+	p := paths{t.TempDir()}
+	fakeTailscaleSSH(t, false)
+	if code, url := tailscaleSSHCheck(context.Background(), p, "100.64.0.9", "me"); code != "" || url != "" {
+		t.Fatalf("accept: %q %q", code, url)
+	}
+	fakeTailscaleSSH(t, true)
+	start := time.Now()
+	code, url := tailscaleSSHCheck(context.Background(), paths{t.TempDir()}, "100.64.0.9", "me")
+	if code != ErrSSHCheck || url != "https://login.tailscale.com/a/abc123" {
+		t.Fatalf("check: %q %q", code, url)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("check held the sign-in for %v", time.Since(start))
+	}
+}
+
+func TestDeviceTailscaleSSH(t *testing.T) {
+	var n node
+	json.Unmarshal([]byte(`{"ID":"n1","HostName":"box","sshHostKeys":["ssh-ed25519 AAAA"]}`), &n)
+	if !n.device().TailscaleSSH {
+		t.Fatal("sshHostKeys not read")
 	}
 }

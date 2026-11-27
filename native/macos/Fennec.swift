@@ -1267,6 +1267,11 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             tailnetCall("tailnet.add", params, render: "renderTailnetAdded")
             return
         }
+        // Tailscale's admin pages only: the policy file and SSH check approvals (FEN-123).
+        if action.hasPrefix("tailnet-open-url:") {
+            if let url = URL(string: String(action.dropFirst(17))), url.scheme == "https", url.host == "login.tailscale.com", url.user == nil { NSWorkspace.shared.open(url) }
+            return
+        }
         if action.hasPrefix("tailnet-remove:"), let data = String(action.dropFirst(15)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
             tailnetCall("tailnet.remove", params)
             return

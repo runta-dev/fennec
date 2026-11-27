@@ -36,7 +36,12 @@
     shields_up: '[[i18n:ui.tailnet_ssh_shields_up]]',
     host_key_changed: '[[i18n:ui.tailnet_ssh_host_key_changed]]',
     ssh_failed: '[[i18n:ui.tailnet_ssh_failed]]',
+    ssh_check: '[[i18n:ui.tailnet_ssh_check]]',
   };
+  // The tailnet policy rule that lets Tailscale SSH sign-ins from the cloud
+  // computer through without a browser check every 12 hours (FEN-123).
+  const acceptRule = '{\n  "action": "accept",\n  "src": ["autogroup:member"],\n  "dst": ["autogroup:self"],\n  "users": ["autogroup:nonroot", "root"]\n}';
+  const policyURL = 'https://login.tailscale.com/admin/acls/file';
   // The add dialog's own wording for a failed first sign-in.
   const addErrors = {
     ...sshErrors,
@@ -138,6 +143,13 @@
     '<label class="byoc-field" id="tailnet-add-passphrase-field"><span>[[i18n:ui.tailnet_add_passphrase]]</span><input id="tailnet-add-passphrase" type="password" autocomplete="off" placeholder="[[i18n:ui.byoc_optional]]"></label></div>' +
     '</details>' +
     '<p class="byoc-note" id="tailnet-add-note"></p>' +
+    // Linux without Tailscale SSH: turning it on there skips the password.
+    '<div class="tailnet-ssh-hint" id="tailnet-add-ssh-hint" hidden><p class="byoc-note">[[i18n:ui.tailnet_add_or_tailscale_ssh]]</p>' +
+    '<div class="byoc-key"><code>sudo tailscale set --ssh</code><button type="button" data-copy="sudo tailscale set --ssh">[[i18n:ui.gs_copy]]</button></div></div>' +
+    // The policy says "check": show the rule to change and where.
+    '<div class="tailnet-check" id="tailnet-add-check" hidden><p class="byoc-note">[[i18n:ui.tailnet_add_check]]</p>' +
+    '<div class="byoc-key tailnet-command"><code id="tailnet-add-rule"></code><button type="button" id="tailnet-add-rule-copy">[[i18n:ui.gs_copy]]</button></div>' +
+    '<div class="tailnet-check-actions"><button type="button" id="tailnet-add-policy">[[i18n:ui.tailnet_open_policy]]</button><button type="button" class="gs-link" id="tailnet-add-approve">[[i18n:ui.tailnet_approve_once]]</button></div></div>' +
     '</form>' +
     '<div class="byoc-footer"><p class="byoc-status" id="tailnet-add-status" role="status"></p>' +
     '<button type="button" class="developer-custom-apply" id="tailnet-add-connect">[[i18n:ui.tailnet_connect]]</button></div>';
@@ -146,6 +158,7 @@
   let adding = null;      // the device the dialog adds
   let connecting = false;
   let auth = 'password';  // 'password' | 'key'
+  let checkLink = '';     // one-time approval URL from a "check" rule
 
   function open() { if (typeof tab === 'function') tab('tailscale'); document.querySelector('#settings')?.classList.add('active'); send('tailnet-status'); }
   entry.onclick = open;
@@ -301,6 +314,12 @@
         fix.onclick = () => send('open-remote-login');
         problem.append(' ', fix);
       }
+      if (computer.error === 'ssh_check') {
+        const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_policy]]'));
+        fix.type = 'button';
+        fix.onclick = () => send('tailnet-open-url:' + policyURL);
+        problem.append(' ', fix);
+      }
       item.append(problem);
     }
     // This Mac's own numbers are in the card above.
@@ -381,9 +400,28 @@
   }
   dialog.addEventListener('close', clearSecrets);
 
+  // Tailscale SSH devices need only a user name; the rest of the form hides.
+  function setTailscaleSSH(on) {
+    dialog.classList.toggle('is-tailscale-ssh', on);
+    $('.tailnet-add-intro').hidden = on;
+    for (const id of ['.byoc-modes', '#tailnet-add-password-field', '#tailnet-add-key-field', '.tailnet-advanced']) dialog.querySelector(id).hidden = on || (id === '#tailnet-add-password-field' && auth !== 'password') || (id === '#tailnet-add-key-field' && auth !== 'key');
+  }
+  function showCheck(link) {
+    checkLink = link || '';
+    $('#tailnet-add-check').hidden = false;
+    $('#tailnet-add-approve').hidden = !checkLink;
+  }
+  $('#tailnet-add-rule').textContent = acceptRule;
+  const copy = (text, b) => { send('copy-text:' + text); const label = b.textContent; b.textContent = t('[[i18n:ui.gs_copied]]'); setTimeout(() => { b.textContent = label; }, 1500); };
+  $('#tailnet-add-rule-copy').onclick = event => copy(acceptRule, event.currentTarget);
+  for (const b of dialog.querySelectorAll('[data-copy]')) b.onclick = () => copy(b.dataset.copy, b);
+  $('#tailnet-add-policy').onclick = () => send('tailnet-open-url:' + policyURL);
+  $('#tailnet-add-approve').onclick = () => { if (checkLink) send('tailnet-open-url:' + checkLink); };
+
   function openAdd(device) {
     adding = device;
     const windows = device.os === 'windows';
+    const tailscaleSSH = !!device.tailscale_ssh;
     $('#tailnet-add-title').textContent = t('[[i18n:ui.tailnet_add_title]]').replace('{name}', device.name);
     $('#tailnet-add-note').textContent = t(windows ? '[[i18n:ui.tailnet_add_need_windows]]' : device.os === 'macOS' ? '[[i18n:ui.tailnet_add_need_mac]]' : '[[i18n:ui.tailnet_add_need_linux]]');
     const user = $('#tailnet-add-user');
@@ -395,9 +433,13 @@
     $('#tailnet-add-status').classList.remove('is-error', 'is-busy');
     connecting = false;
     $('#tailnet-add-connect').disabled = false;
+    $('#tailnet-add-check').hidden = true;
+    $('#tailnet-add-ssh-hint').hidden = tailscaleSSH || device.os !== 'linux';
+    if (tailscaleSSH) $('#tailnet-add-note').textContent = t('[[i18n:ui.tailnet_add_tailscale_ssh_note]]');
     if (!dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
     setAuth(auth);
-    if (!user.value) user.focus();
+    setTailscaleSSH(tailscaleSSH);
+    if (!user.value || tailscaleSSH) user.focus();
   }
   $('#tailnet-add-user').oninput = event => { event.target.dataset.auto = 'false'; };
   $('#tailnet-add-close').onclick = () => dialog.close();
@@ -413,7 +455,9 @@
     const port = Number(portText);
     if (!/^\d+$/.test(portText) || port < 1 || port > 65535) { $('#tailnet-add-form .tailnet-advanced').open = true; return fail('[[i18n:ui.tailnet_add_port_invalid]]'); }
     const request = { id: adding.id, user, port };
-    if (auth === 'key') {
+    if (adding.tailscale_ssh) {
+      delete request.port;
+    } else if (auth === 'key') {
       const key = $('#tailnet-add-key').value.trim();
       if (!key) return fail('[[i18n:ui.tailnet_add_key_needed]]');
       request.private_key = key + '\n';
@@ -438,6 +482,12 @@
     const state = $('#tailnet-add-status');
     const code = result?.error || result?.computer?.error || (!result?.computer ? 'ssh_failed' : '');
     state.classList.remove('is-busy');
+    if (code === 'ssh_check') {
+      state.classList.remove('is-error');
+      state.textContent = '';
+      showCheck(result?.computer?.check_url);
+      return;
+    }
     if (code) {
       state.classList.add('is-error');
       state.textContent = t(addErrors[code] || loginErrors[code] || sshErrors.ssh_failed);

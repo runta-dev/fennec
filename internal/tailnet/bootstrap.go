@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,6 +122,54 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 	}
 	return ""
 }
+
+// tailscaleSSHCheck signs in to a Tailscale SSH server with no credentials,
+// as the cloud computer's own ssh does. Tailscale SSH decides from the tailnet
+// policy: accept, deny, or "check", which holds the sign-in and sends a
+// banner with a login.tailscale.com URL to approve it. It returns "" when the
+// sign-in is accepted, ErrSSHCheck and that URL, or another error code.
+func tailscaleSSHCheck(ctx context.Context, p paths, host, user string) (string, string) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	conn, err := dial(ctx, p, host, 22)
+	if err != nil {
+		return ErrUnreachable, ""
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	var url string
+	hostKeyChanged := false
+	config := &ssh.ClientConfig{
+		User:            user,
+		HostKeyCallback: acceptNewHostKey(p, &hostKeyChanged),
+		BannerCallback: func(message string) error {
+			if found := checkURL.FindString(message); found != "" {
+				url = found
+				cancel() // the check waits for a person; don't hold the sign-in open
+			}
+			return nil
+		},
+		Timeout: 15 * time.Second,
+	}
+	sshConn, channels, requests, err := ssh.NewClientConn(conn, net.JoinHostPort(host, "22"), config)
+	switch {
+	case err == nil:
+		ssh.NewClient(sshConn, channels, requests).Close()
+		return "", ""
+	case url != "":
+		return ErrSSHCheck, url
+	case hostKeyChanged:
+		return ErrHostKeyChange, ""
+	case strings.Contains(strings.ToLower(err.Error()), "unable to authenticate"):
+		return ErrAuthFailed, ""
+	case ctx.Err() != nil:
+		return ErrUnreachable, ""
+	}
+	return ErrSSHFailed, ""
+}
+
+var checkURL = regexp.MustCompile(`https://login\.tailscale\.com/[^\s"'<>]+`)
 
 // encodePowerShell is the UTF-16LE base64 form -EncodedCommand expects, so
 // the script needs no quoting for cmd.exe or PowerShell.

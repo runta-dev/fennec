@@ -334,6 +334,15 @@ func Add(ctx context.Context, home string, r Request) (Device, error) {
 	if port == 22 {
 		port = 0
 	}
+	// Tailscale SSH needs no password or key, only a policy that lets this
+	// sign-in through without a browser check.
+	if r.Password == "" && r.PrivateKey == "" && device.TailscaleSSH {
+		port = 0
+		if code, url := tailscaleSSHCheck(ctx, p, host, r.User); code != "" {
+			device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Checked: time.Now().Unix(), Error: code, CheckURL: url}
+			return *device, nil
+		}
+	}
 	// With a password or private key, sign in once with it to authorize the
 	// cloud computer's key there; then check the key works like any add.
 	if r.Password != "" || r.PrivateKey != "" {
@@ -398,6 +407,7 @@ type probeResult struct {
 	at      time.Time
 	metrics *Metrics
 	err     string
+	url     string // Tailscale SSH check URL with err ssh_check
 }
 
 var (
@@ -450,19 +460,31 @@ func attachComputers(ctx context.Context, p paths, status *Status, refresh, wait
 		}
 		probesMu.Unlock()
 		if seen {
-			c.Checked, c.Metrics, c.Error = last.at.Unix(), last.metrics, last.err
+			c.Checked, c.Metrics, c.Error, c.CheckURL = last.at.Unix(), last.metrics, last.err, last.url
 		}
 		device.Computer = &c
 		if !due {
 			continue
 		}
+		tailscaleSSH := device.TailscaleSSH
 		run := func(device *Device, c Computer) {
 			probeCtx := context.Background()
 			if wait {
 				probeCtx = ctx
 			}
 			metrics, code := probe(probeCtx, p, c.Host, c.Port, c.User)
-			rememberProbe(c.ID, metrics, code)
+			url := ""
+			if code == ErrUnreachable && tailscaleSSH {
+				// A "check" rule holds the sign-in until it times out; ask
+				// Tailscale SSH why, so the panel can say so.
+				if check, link := tailscaleSSHCheck(probeCtx, p, c.Host, c.User); check == ErrSSHCheck {
+					code, url = check, link
+				}
+			}
+			probesMu.Lock()
+			probes[c.ID] = probeResult{at: time.Now(), metrics: metrics, err: code, url: url}
+			probesMu.Unlock()
+			c.CheckURL = url
 			probesMu.Lock()
 			delete(probing, c.ID)
 			probesMu.Unlock()

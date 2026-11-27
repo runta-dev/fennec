@@ -56,28 +56,33 @@ type Status struct {
 
 // Device is one node of the tailnet.
 type Device struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	DNSName  string    `json:"dns_name,omitempty"`
-	OS       string    `json:"os,omitempty"`
-	Online   bool      `json:"online"`
-	IPs      []string  `json:"ips,omitempty"`
-	LastSeen string    `json:"last_seen,omitempty"`
-	Computer *Computer `json:"computer,omitempty"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	DNSName  string   `json:"dns_name,omitempty"`
+	OS       string   `json:"os,omitempty"`
+	Online   bool     `json:"online"`
+	IPs      []string `json:"ips,omitempty"`
+	LastSeen string   `json:"last_seen,omitempty"`
+	// TailscaleSSH: the device runs Tailscale SSH (`tailscale set --ssh`),
+	// so the cloud computer signs in without a password or key (FEN-123).
+	TailscaleSSH bool      `json:"tailscale_ssh,omitempty"`
+	Computer     *Computer `json:"computer,omitempty"`
 }
 
 // Computer is a device the cloud computer was added to.
 type Computer struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Alias   string   `json:"alias"`
-	Host    string   `json:"host"`
-	User    string   `json:"user"`
-	Port    int      `json:"port,omitempty"`
-	AddedAt int64    `json:"added_at"`
-	Checked int64    `json:"checked_at,omitempty"`
-	Error   string   `json:"error,omitempty"`
-	Metrics *Metrics `json:"metrics,omitempty"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Alias string `json:"alias"`
+	Host  string `json:"host"`
+	User  string `json:"user"`
+	Port  int    `json:"port,omitempty"`
+	// CheckURL approves one Tailscale SSH "check" sign-in (Error ssh_check).
+	CheckURL string   `json:"check_url,omitempty"`
+	AddedAt  int64    `json:"added_at"`
+	Checked  int64    `json:"checked_at,omitempty"`
+	Error    string   `json:"error,omitempty"`
+	Metrics  *Metrics `json:"metrics,omitempty"`
 }
 
 // Metrics is one sample read from an added computer over SSH.
@@ -111,6 +116,9 @@ const (
 	// ("Allow incoming connections" off), so SSH from the cloud computer
 	// stalls in the banner exchange while pings still answer (FEN-156).
 	ErrShieldsUp = "shields_up"
+	// ErrSSHCheck: the tailnet policy's SSH rule is "check", so Tailscale
+	// SSH wants a browser approval (CheckURL) every 12 hours.
+	ErrSSHCheck = "ssh_check"
 )
 
 type paths struct{ home string }

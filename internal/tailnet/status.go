@@ -28,10 +28,11 @@ type node struct {
 	Online       bool
 	LastSeen     time.Time
 	UserID       int64
+	SSH_HostKeys []string `json:"sshHostKeys"`
 }
 
 func (n *node) device() Device {
-	d := Device{ID: n.ID, Name: n.HostName, DNSName: strings.TrimSuffix(n.DNSName, "."), OS: n.OS, Online: n.Online, IPs: n.TailscaleIPs}
+	d := Device{ID: n.ID, Name: n.HostName, DNSName: strings.TrimSuffix(n.DNSName, "."), OS: n.OS, Online: n.Online, IPs: n.TailscaleIPs, TailscaleSSH: len(n.SSH_HostKeys) > 0}
 	if short, _, ok := strings.Cut(d.DNSName, "."); ok && short != "" {
 		// MagicDNS names are unique in the tailnet; host names aren't.
 		d.Name = short
