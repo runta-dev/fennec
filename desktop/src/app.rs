@@ -2402,17 +2402,24 @@ impl FennecWindow {
                                 r.tag_list().iter().map(|id| ui::tag_chip(id, &tag_label(id))),
                             ),
                         )
-                        .when(!r.agent.is_empty(), |d| {
-                            d.child(ui::agent_icon(&r.agent, 14.0))
-                        })
+                        // FEN-197: agent, replies and age sit at the card's right edge.
                         .child(
                             h_flex()
-                                .gap(px(3.0))
-                                .child(ui::icon("chat", 12.0, c("f_muted")))
-                                .child(r.replies.to_string()),
-                        )
-                        .when(r.votes > 0, |d| d.child(format!("+{}", r.votes)))
-                        .child(sessions::age(sessions::rfc3339_ms(&r.updated), now)),
+                                .ml_auto()
+                                .flex_none()
+                                .gap(px(10.0))
+                                .when(!r.agent.is_empty(), |d| {
+                                    d.child(ui::agent_icon(&r.agent, 14.0))
+                                })
+                                .child(
+                                    h_flex()
+                                        .gap(px(3.0))
+                                        .child(ui::icon("chat", 12.0, c("f_muted")))
+                                        .child(r.replies.to_string()),
+                                )
+                                .when(r.votes > 0, |d| d.child(format!("+{}", r.votes)))
+                                .child(sessions::age(sessions::rfc3339_ms(&r.updated), now)),
+                        ),
                 )
                 // THI-176: a question the thread can answer.
                 .when(r.answerable().is_some(), |d| {
