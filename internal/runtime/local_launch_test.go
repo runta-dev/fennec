@@ -249,7 +249,7 @@ func TestClaudeLaunchShowsNativeCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 		joined := strings.Join(command, " ")
-		if !strings.Contains(joined, "env CLAUDE_CODE_NATIVE_CURSOR=1 ") || !strings.Contains(joined, "env IS_SANDBOX=1 ") {
+		if !strings.Contains(joined, "env CLAUDE_CODE_NATIVE_CURSOR=1 CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 ") || !strings.Contains(joined, "env IS_SANDBOX=1 ") {
 			t.Fatalf("native=%v claude command %q", native, joined)
 		}
 	}
@@ -257,7 +257,7 @@ func TestClaudeLaunchShowsNativeCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(script, `if request['agent']=='claude':command=['env','CLAUDE_CODE_NATIVE_CURSOR=1']+command`) {
+	if !strings.Contains(script, `if request['agent']=='claude':command=['env','CLAUDE_CODE_NATIVE_CURSOR=1','CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1']+command`) {
 		t.Fatal("cloud launch script does not show Claude Code's native cursor")
 	}
 }
@@ -397,6 +397,40 @@ func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
 		settings, _ := os.ReadFile(settingsPath)
 		if !strings.Contains(string(settings), `"commit": ""`) || !strings.Contains(string(settings), `"pr": ""`) {
 			t.Fatalf("native=%v attribution not hidden: %s", native, settings)
+		}
+	}
+}
+
+// FEN-99: cloud Codex runs inline (main screen) so Fennec scrolls its output
+// natively, and a caller that already asks for it does not pass the flag twice
+// (Codex rejects a repeated --no-alt-screen).
+func TestCodexLaunchRunsInline(t *testing.T) {
+	for _, arguments := range [][]string{nil, {"--no-alt-screen"}} {
+		home := t.TempDir()
+		var command []string
+		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/codex", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+			if args[0] == "ls" {
+				return []byte(`{"terminals":[]}`), nil
+			}
+			for i, arg := range args {
+				if arg == "--" {
+					command = append([]string{}, args[i+1:]...)
+				}
+			}
+			return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
+		}}
+		request := LocalLaunch{ID: strings.Repeat("d", 32), Agent: "codex", LocalDirectory: "/project", Device: "1234abcd", Arguments: arguments}
+		if _, err := backend.Launch(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for _, arg := range command {
+			if arg == "--no-alt-screen" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("arguments %q: codex command %q", arguments, command)
 		}
 	}
 }

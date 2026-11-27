@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -235,6 +236,9 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append(command, "--dangerously-skip-permissions")
 	case "codex":
 		command = append(command, "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`)
+		if !slices.Contains(agentArguments, codexInline) {
+			command = append(command, codexInline)
+		}
 	case "claude":
 		command = append(command, "--permission-mode", "bypassPermissions")
 		command = append([]string{"env", "IS_SANDBOX=1"}, command...)
@@ -290,7 +294,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append([]string{"env", piHardwareCursor}, command...)
 	}
 	if request.Agent == "claude" {
-		command = append([]string{"env", claudeNativeCursor}, command...)
+		command = append([]string{"env", claudeNativeCursor, claudeInline}, command...)
 	}
 	if request.NativeLogin {
 		if err := setup.PrepareNativeLogin(ctx, runtime.Home, setup.NativeLogin{ID: request.ID, Agent: request.Agent}); err != nil {

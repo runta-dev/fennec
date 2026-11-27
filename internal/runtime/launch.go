@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -84,6 +85,9 @@ func launchScript(id, agent, cwd string, arguments []string, version string, att
 		if strings.ContainsRune(arg, 0) || size > 32768 {
 			return "", fmt.Errorf("invalid or oversized agent arguments")
 		}
+	}
+	if agent == "codex" && !slices.Contains(arguments, codexInline) {
+		command = append(command, codexInline)
 	}
 	command = append(append(command, agents.NoUpdateArguments(agent)...), arguments...)
 	request := map[string]any{"id": id, "agent": agent, "cwd": cwd, "command": command, "version": version}
@@ -187,7 +191,7 @@ with open(root/(request['id']+'.lock'),'a') as lock:
  # which predictive echo needs; an explicit Pi setting still wins.
  if request['agent']=='pi':command=['env','` + piHardwareCursor + `']+command
  # Claude Code likewise, instead of a drawn cursor behind a remote flag.
- if request['agent']=='claude':command=['env','` + claudeNativeCursor + `']+command
+ if request['agent']=='claude':command=['env','` + claudeNativeCursor + `','` + claudeInline + `']+command
  # The cloud runtime has no session bus. Without an address, Go and shell
  # dbus clients run dbus-launch, and every such daemon outlives its agent and
  # holds an inotify instance until the user's limit is exhausted.
@@ -220,6 +224,19 @@ const piHardwareCursor = "PI_HARDWARE_CURSOR=1"
 // the machine, so a newly created cloud computer silently loses predictive
 // echo. An explicit value in the user's Claude settings env still wins.
 const claudeNativeCursor = "CLAUDE_CODE_NATIVE_CURSOR=1"
+
+// Cloud agents run their TUI inline, on the main screen, so their output is
+// ordinary terminal scrollback that Fennec scrolls natively (FEN-99). An
+// alternate-screen TUI keeps its own virtual scrollback, and every wheel step
+// becomes a round trip to the cloud computer and a full redraw.
+//
+// codexInline is Codex's flag for inline mode; it is an error to pass twice.
+const codexInline = "--no-alt-screen"
+
+// claudeInline turns off Claude Code's fullscreen renderer, which it enables
+// by default on a fresh install (every new cloud computer) and behind a
+// remote flag. It takes precedence over the user's "tui" setting.
+const claudeInline = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1"
 
 // noSessionBus tells dbus clients there is no session bus, so they fail fast
 // instead of starting one (the Magpie supervisor sets the same).
