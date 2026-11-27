@@ -37,7 +37,8 @@
 
   let status = null;      // last tailnet.status payload
   let requestError = '';  // control error code when status couldn't be read
-  let busy = '';          // 'login' | 'logout' while a button's call runs
+  let busy = '';
+  let addOpen = false;    // the card's list of tailnet devices to add          // 'login' | 'logout' while a button's call runs
 
   // Settings: an entry row that opens the Tailscale page.
   const preferences = document.querySelector('#preferences');
@@ -68,9 +69,37 @@
   const cardHead = el('div', 'tailnet-card-top');
   const hostSlot = el('div', 'tailnet-host');
   const cardBody = el('div', 'tailnet-body');
-  card.append(cardHead, hostSlot, cardBody);
+  const cardSlot = el('div', 'tailnet-add-slot');
+  card.append(cardHead, cardSlot, hostSlot, cardBody);
+  // This Mac gets the same compact row as the other machines (one line of
+  // meters), so the card stays short. panel.js still draws the sparkline
+  // card, hidden, from the same per-second samples.
   const hostCard = document.querySelector('#host-metrics-card');
-  if (hostCard) { hostCard.classList.remove('card'); hostSlot.append(hostCard); }
+  if (hostCard) hostCard.hidden = true;
+  const hostRow = el('div', 'tailnet-device tailnet-local');
+  hostSlot.append(hostRow);
+  let hostSample = null;
+  const drawHostRow = () => {
+    const p = hostSample || {};
+    hostRow.replaceChildren();
+    const main = el('div', 'tailnet-device-main');
+    const icon = el('span', 'tailnet-os');
+    icon.innerHTML = osIcons.macOS;
+    const text = el('div', 'tailnet-device-text');
+    const name = el('span', 'tailnet-device-name', p.name || t('[[i18n:ui.this_mac]]'));
+    name.title = [p.name, p.chip].filter(Boolean).join(' · ');
+    const sub = el('span', 'tailnet-device-sub');
+    sub.append(el('span', 'tailnet-dot is-online'), document.createTextNode([t('[[i18n:ui.this_mac]]'), [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ')].join(' · ')));
+    text.append(name, sub);
+    main.append(icon, text);
+    hostRow.append(main);
+    if (hostSample) hostRow.append(meters({ cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes }));
+  };
+  const renderHost = window.renderHostMetrics;
+  window.renderHostMetrics = payload => {
+    renderHost?.(payload);
+    if (payload && typeof payload === 'object') { hostSample = payload; drawHostRow(); }
+  };
   document.querySelector('#computers')?.append(card);
 
   // Add a computer.
@@ -196,6 +225,14 @@
     return cell;
   }
 
+  function meters(metrics) {
+    const grid = el('div', 'tailnet-meters');
+    grid.append(meter('CPU', (Number(metrics.cpu_percent) || 0).toFixed(1) + '%', Number(metrics.cpu_percent)));
+    if (metrics.memory_total_bytes) grid.append(meter(t('[[i18n:ui.memory]]'), usage(metrics.memory_used_bytes || 0, metrics.memory_total_bytes), 100 * (metrics.memory_used_bytes || 0) / metrics.memory_total_bytes));
+    if (metrics.disk_total_bytes) grid.append(meter(t('[[i18n:ui.disk]]'), usage(metrics.disk_used_bytes || 0, metrics.disk_total_bytes), 100 * (metrics.disk_used_bytes || 0) / metrics.disk_total_bytes));
+    return grid;
+  }
+
   function deviceRow(device, thisDevice) {
     const item = el('div', 'tailnet-device' + (device.online ? '' : ' is-offline'));
     const main = el('div', 'tailnet-device-main');
@@ -244,13 +281,7 @@
       item.append(problem);
     }
     // This Mac's own numbers are in the card above.
-    if (connected && metrics && device.online && device.id !== thisDevice) {
-      const grid = el('div', 'tailnet-meters');
-      grid.append(meter('CPU', (Number(metrics.cpu_percent) || 0).toFixed(1) + '%', Number(metrics.cpu_percent)));
-      if (metrics.memory_total_bytes) grid.append(meter(t('[[i18n:ui.memory]]'), usage(metrics.memory_used_bytes || 0, metrics.memory_total_bytes), 100 * (metrics.memory_used_bytes || 0) / metrics.memory_total_bytes));
-      if (metrics.disk_total_bytes) grid.append(meter(t('[[i18n:ui.disk]]'), usage(metrics.disk_used_bytes || 0, metrics.disk_total_bytes), 100 * (metrics.disk_used_bytes || 0) / metrics.disk_total_bytes));
-      item.append(grid);
-    }
+    if (connected && metrics && device.online && device.id !== thisDevice) item.append(meters(metrics));
     return item;
   }
 
@@ -259,6 +290,7 @@
     window.tailnetComputerCount = 0;
     cardHead.replaceChildren();
     cardBody.replaceChildren();
+    cardSlot.replaceChildren();
     const running = s?.state === 'running' && !requestError;
     const head = el('div', 'runtime-metrics-head');
     const title = el('span', 'runtime-metrics-title-wrap');
@@ -266,10 +298,24 @@
     icon.innerHTML = markSVG;
     title.append(icon, el('span', 'runtime-metrics-title', t('[[i18n:ui.tailnet_title]]')));
     head.append(title);
-    if (running && (s.user || s.tailnet)) head.append(el('span', 'runtime-metrics-spec', s.user || s.tailnet));
+    // Adding lives in the header so it is on the first screen however many
+    // machines the card lists. Before Tailscale is signed in it opens
+    // Settings › Tailscale; after, it unfolds the devices that can be added.
+    const others = running ? (s.devices || []).filter(d => d.id !== s.this_device && !(d.computer && !d.computer.error && d.computer.alias)) : [];
+    if (s && requestError !== 'login_required') {
+      const add = el('button', 'tailnet-head-add' + (running && addOpen ? ' is-open' : ''));
+      add.type = 'button';
+      add.innerHTML = svg('<path d="M10 4.5v11M4.5 10h11"/>');
+      add.append(el('span', '', t('[[i18n:ui.tailnet_add_worker]]')));
+      const available = others.filter(d => sshCapable(d.os)).length;
+      if (running && available) add.append(el('span', 'tailnet-head-count', String(available)));
+      if (running) add.setAttribute('aria-expanded', String(addOpen));
+      add.onclick = () => { if (!running) { open(); return; } addOpen = !addOpen; drawCard(); };
+      head.append(add);
+    }
     cardHead.append(head);
     // Say what worker machines are for until the tailnet is set up.
-    if (!running) cardHead.append(el('p', 'tailnet-card-intro', t('[[i18n:ui.tailnet_card_intro]]')));
+    if (!running) cardHead.append(el('p', 'tailnet-card-intro' + (s?.error ? ' is-error' : ''), t(s?.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_card_intro]]')));
     const self = running ? (s.devices || []).find(d => d.id === s.this_device) : null;
     if (self?.computer?.error) {
       const problem = el('p', 'tailnet-device-problem tailnet-host-problem', t(sshErrors[self.computer.error] || sshErrors.ssh_failed));
@@ -285,25 +331,23 @@
       hostSlot.querySelector('.tailnet-host-problem')?.remove();
     }
     if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
-    if (!running) {
-      const setup = el('button', 'tailnet-setup');
-      setup.type = 'button';
-      setup.append(el('span', '', t(s.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_setup]]')));
-      const go = el('span', 'tailnet-chevron');
-      go.innerHTML = chevron;
-      setup.append(go);
-      setup.onclick = open;
-      cardBody.append(setup);
-      window.updateComputerCount?.();
-      return;
-    }
-    // This Mac is the first worker machine above; list the others.
+    if (!running) { window.updateComputerCount?.(); return; }
+    // This Mac is the first worker machine above; the card lists the other
+    // workers, and the header's Add unfolds the rest of the tailnet here.
     const devices = (Array.isArray(s.devices) ? s.devices : []).filter(d => d.id !== s.this_device);
-    if (!devices.length) cardBody.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
-    const list = el('div', 'tailnet-devices');
-    for (const device of devices) list.append(deviceRow(device, s.this_device));
-    if (devices.length) cardBody.append(list);
-    window.tailnetComputerCount = devices.filter(d => d.computer && !d.computer.error && d.computer.alias).length;
+    const workers = devices.filter(d => d.computer && !d.computer.error && d.computer.alias);
+    if (workers.length) {
+      const list = el('div', 'tailnet-devices');
+      for (const device of workers) list.append(deviceRow(device, s.this_device));
+      cardBody.append(list);
+    }
+    if (addOpen) {
+      const list = el('div', 'tailnet-devices tailnet-candidates');
+      for (const device of others) list.append(deviceRow(device, s.this_device));
+      if (!others.length) list.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
+      cardSlot.replaceChildren(list);
+    } else cardSlot.replaceChildren();
+    window.tailnetComputerCount = workers.length;
     window.updateComputerCount?.();
   }
 
@@ -377,7 +421,8 @@
     drawCard();
   };
   window.renderTailnetBusy = value => { busy = value || ''; drawPage(); };
-  window.rerenderTailnet = () => { drawPage(); drawCard(); };
+  window.rerenderTailnet = () => { drawPage(); drawCard(); drawHostRow(); };
   drawPage();
   drawCard();
+  drawHostRow();
 })();

@@ -4381,7 +4381,7 @@
     "ui.gs_import_backup": {"en-US": "Import from backup", "en-GB": "Import from backup", "zh-CN": "从备份导入"},
     "ui.cancel": {"en-US": "Cancel", "en-GB": "Cancel", "zh-CN": "取消"},
     "ui.tailnet_title": {"en-US": "Worker machines", "en-GB": "Worker machines", "zh-CN": "工作机"},
-    "ui.tailnet_intro": {"en-US": "Once the cloud computer joins your tailnet, your other computers can become worker machines that agents build and test on", "en-GB": "Once the cloud computer joins your tailnet, your other computers can become worker machines that agents build and test on", "zh-CN": "把云电脑接入你的 tailnet 后，你的其他电脑就能设为工作机，供 agent 构建、测试"},
+    "ui.tailnet_intro": {"en-US": "Join your tailnet to add other computers as worker machines", "en-GB": "Join your tailnet to add other computers as worker machines", "zh-CN": "接入 tailnet 后，其他电脑可设为工作机"},
     "ui.tailnet_signin_note": {"en-US": "This signs in the cloud computer, not this Mac", "en-GB": "This signs in the cloud computer, not this Mac", "zh-CN": "登录的是云电脑，不是这台 Mac"},
     "ui.tailnet_sign_in": {"en-US": "Sign in to Tailscale", "en-GB": "Sign in to Tailscale", "zh-CN": "登录 Tailscale"},
     "ui.tailnet_sign_out": {"en-US": "Sign out", "en-GB": "Sign out", "zh-CN": "退出登录"},
@@ -4428,9 +4428,11 @@
     "ui.tailnet_ssh_unreachable": {"en-US": "Couldn’t reach it over Tailscale; check that it’s online", "en-GB": "Couldn’t reach it over Tailscale; check that it’s online", "zh-CN": "无法通过 Tailscale 连到它，请确认它在线"},
     "ui.tailnet_ssh_host_key_changed": {"en-US": "Its SSH host key changed since it was added", "en-GB": "Its SSH host key changed since it was added", "zh-CN": "它的 SSH 主机密钥和添加时不一样了"},
     "ui.tailnet_ssh_failed": {"en-US": "Couldn’t sign in over SSH", "en-GB": "Couldn’t sign in over SSH", "zh-CN": "无法通过 SSH 登录"},
-    "ui.tailnet_card_intro": {"en-US": "Give your cloud agents more machines to build and test on, for work that needs compute", "en-GB": "Give your cloud agents more machines to build and test on, for work that needs compute", "zh-CN": "让云电脑上的 agent 用你的其他电脑跑构建、测试这类吃算力的活"},
+    "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your other computers", "en-GB": "Let agents build and test on your other computers", "zh-CN": "让 agent 用你的其他电脑构建、测试"},
     "ui.tailnet_worker": {"en-US": "Worker", "en-GB": "Worker", "zh-CN": "工作机"},
-    "ui.tailnet_add_intro": {"en-US": "Once set up, agents on the cloud computer can sign in to this computer to build, test and run jobs", "en-GB": "Once set up, agents on the cloud computer can sign in to this computer to build, test and run jobs", "zh-CN": "设好后，云电脑上的 agent 可以登录这台电脑，在上面构建、测试、跑任务"}
+    "ui.tailnet_add_intro": {"en-US": "Agents can then build and test on this computer", "en-GB": "Agents can then build and test on this computer", "zh-CN": "设好后，agent 可以在这台电脑上构建、测试"},
+    "ui.tailnet_add_worker": {"en-US": "Add a worker machine", "en-GB": "Add a worker machine", "zh-CN": "添加工作机"},
+    "ui.tailnet_available": {"en-US": "{n} available", "en-GB": "{n} available", "zh-CN": "{n} 台可添加"}
   },
   "version": 1
 }
