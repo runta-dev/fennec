@@ -49,9 +49,11 @@ impl FennecWindow {
         if r.status != "queued" && !starting {
             return None;
         }
-        // The agent that will take it: the dispatched one, else the queue's first worker.
+        // The agent that will take it: the one chosen in the composer (or
+        // dispatched), else the queue's first worker. A queued request already
+        // carries the composer's pick, so use it, as the request card does (FEN-165).
         let agent = Some(r.agent.clone())
-            .filter(|a| !a.is_empty() && starting)
+            .filter(|a| !a.is_empty())
             .or_else(|| p.workers.iter().find(|w| w.on).map(|w| w.agent.clone()));
         let (title, detail, hint) = if starting {
             let name = agent
