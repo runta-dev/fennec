@@ -29,7 +29,7 @@ impl Render for QueueDrag {
 impl FennecWindow {
     /// Width left for the request list and the thread, right of the rail.
     fn main_width(&self, window: &Window) -> f32 {
-        f32::from(window.viewport_size().width) - super::rail::RAIL_WIDTH
+        f32::from(window.viewport_size().width) - super::rail::RAIL_WIDTH - super::rail::PANEL_INSET
     }
     fn queue_max(&self, window: &Window) -> f32 {
         (self.main_width(window) - THREAD_MIN).clamp(QUEUE_MIN, QUEUE_MAX)

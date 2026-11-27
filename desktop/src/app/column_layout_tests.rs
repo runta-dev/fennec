@@ -2,7 +2,7 @@
 //! (terminal, queues, settings) that replaces the sidebar; the queue column
 //! and the thread beside it fill the rest.
 
-use super::{FennecWindow, Route, rail::RAIL_WIDTH};
+use super::{FennecWindow, Route, rail::{PANEL_INSET, RAIL_WIDTH}};
 use crate::board::{Project, Request};
 use gpui::{Entity, Focusable as _, Modifiers, TestAppContext, VisualTestContext, px, size};
 
@@ -50,6 +50,13 @@ fn rail_holds_terminal_queues_and_settings(cx: &mut TestAppContext) {
     assert_eq!(column.left(), px(RAIL_WIDTH));
     assert!(column.top() >= title.bottom());
     assert!(cx.debug_bounds("new-request").is_some());
+    // FEN-125: the content is a panel inset from the window's right and
+    // bottom edges, on the chrome the title bar and rail share.
+    let panel = cx.debug_bounds("main-panel").expect("content panel");
+    assert_eq!(panel.left(), px(RAIL_WIDTH));
+    assert_eq!(panel.top(), title.bottom());
+    assert_eq!(panel.right(), px(1200.0 - PANEL_INSET));
+    assert_eq!(panel.bottom(), px(800.0 - PANEL_INSET));
 }
 
 #[gpui::test]

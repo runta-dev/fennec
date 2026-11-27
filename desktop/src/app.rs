@@ -196,6 +196,8 @@ pub struct FennecWindow {
     notice: Option<String>,
     /// The terminal the rail's terminal button goes back to.
     last_terminal: Option<String>,
+    /// FEN-125: the rail button that grows under the pointer, as in Slack.
+    rail_hover: rail::RailHover,
     /// Queue cards easing to a new place after their status moved them.
     queue_glide: glide::Shared,
     /// The Active / Done highlight sliding between the tabs.
@@ -397,6 +399,7 @@ impl FennecWindow {
 		    opening_thread_session: false,
             notice: None,
             last_terminal: None,
+            rail_hover: Default::default(),
             queue_glide: Default::default(),
             status_slide: Default::default(),
             queue_scroll: ScrollHandle::new(),
@@ -3478,21 +3481,34 @@ impl Render for FennecWindow {
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .bg(c("f_bg"))
                     .child(self.titlebar())
                     .child(
                         h_flex()
                             .flex_1()
                             .min_h_0()
                             .w_full()
-                            .child(self.rail(cx))
+                            .child(self.rail(window, cx))
+            // FEN-125: the content sits in a rounded panel on the chrome that
+            // the title bar and the rail share, as in Slack.
             .child(
                 div()
-                    .relative()
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .pr(px(rail::PANEL_INSET))
+                    .pb(px(rail::PANEL_INSET))
+                    .child(
+                div()
+                    .id("main-panel")
+                    .debug_selector(|| "main-panel".into())
+                    .relative()
+                    .size_full()
                     .flex()
                     .flex_col()
+                    .bg(c("background"))
+                    .rounded(px(rail::PANEL_RADIUS))
+                    .overflow_hidden()
                     .child(div().flex_1().min_h_0().flex().child(main))
                     .when_some(self.notice.clone(), |d, text| {
                         d.child(
@@ -3504,8 +3520,9 @@ impl Render for FennecWindow {
                                 .text_color(c("f_muted"))
                                 .child(text),
                         )
-                    }),
-            )))
+                    })
+                    .child(rail::panel_frame()),
+            ))))
             .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))

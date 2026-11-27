@@ -68,9 +68,10 @@ fn queue_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
     // At most 720 px, and the thread keeps 360 px.
     resize_queue(cx, 2000.0);
     assert_eq!(width(cx), 720.0);
-    // A narrower window shrinks a saved width without forgetting it.
+    // A narrower window shrinks a saved width without forgetting it: 900
+    // minus the rail, the panel's inset (FEN-125) and the thread's 360.
     cx.simulate_resize(gpui::size(px(900.0), px(800.0)));
-    assert_eq!(width(cx), 468.0);
+    assert_eq!(width(cx), 462.0);
     app.read_with(cx, |app, _| assert_eq!(app.app_preferences.value.queue_width, 720));
 }
 
