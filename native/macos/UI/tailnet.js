@@ -85,13 +85,17 @@
     const main = el('div', 'tailnet-device-main');
     const icon = el('span', 'tailnet-os');
     icon.innerHTML = osIcons.macOS;
-    const text = el('div', 'tailnet-device-text');
+    // Name and a muted "This Mac" on the left, the OS and memory badge on the
+    // right, like the cloud computer card's head (FEN-104).
+    const text = el('div', 'tailnet-device-text tailnet-local-text');
     const name = el('span', 'tailnet-device-name', p.name || t('[[i18n:ui.this_mac]]'));
     name.title = [p.name, p.chip].filter(Boolean).join(' · ');
-    const sub = el('span', 'tailnet-device-sub');
-    sub.append(el('span', 'tailnet-dot is-online'), document.createTextNode([t('[[i18n:ui.this_mac]]'), [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ')].join(' · ')));
-    text.append(name, sub);
+    text.append(name);
+    if (p.name) text.append(el('span', 'host-local-tag', t('[[i18n:ui.this_mac]]')));
     main.append(icon, text);
+    const os = [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ');
+    const ram = Number(p.memory_total_bytes) > 0 ? Math.round(p.memory_total_bytes / 1073741824) + ' GB' : '';
+    if (hostSample) main.append(el('span', 'runtime-metrics-spec tailnet-local-spec', [os, ram].filter(Boolean).join(' · ')));
     hostRow.append(main);
     if (hostSample) hostRow.append(meters({ cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes }));
   };

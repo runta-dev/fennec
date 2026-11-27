@@ -4428,7 +4428,7 @@
     "ui.tailnet_ssh_unreachable": {"en-US": "Couldn’t reach it over Tailscale; check that it’s online", "en-GB": "Couldn’t reach it over Tailscale; check that it’s online", "zh-CN": "无法通过 Tailscale 连到它，请确认它在线"},
     "ui.tailnet_ssh_host_key_changed": {"en-US": "Its SSH host key changed since it was added", "en-GB": "Its SSH host key changed since it was added", "zh-CN": "它的 SSH 主机密钥和添加时不一样了"},
     "ui.tailnet_ssh_failed": {"en-US": "Couldn’t sign in over SSH", "en-GB": "Couldn’t sign in over SSH", "zh-CN": "无法通过 SSH 登录"},
-    "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your other computers", "en-GB": "Let agents build and test on your other computers", "zh-CN": "让 agent 用你的其他电脑构建、测试"},
+    "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your own computers", "en-GB": "Let agents build and test on your own computers", "zh-CN": "让 agent 用你自己的电脑构建、测试"},
     "ui.tailnet_worker": {"en-US": "Worker", "en-GB": "Worker", "zh-CN": "工作机"},
     "ui.tailnet_add_intro": {"en-US": "Agents can then build and test on this computer", "en-GB": "Agents can then build and test on this computer", "zh-CN": "设好后，agent 可以在这台电脑上构建、测试"},
     "ui.tailnet_add_worker": {"en-US": "Add a worker machine", "en-GB": "Add a worker machine", "zh-CN": "添加工作机"},
