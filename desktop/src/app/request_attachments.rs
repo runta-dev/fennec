@@ -17,6 +17,9 @@ pub(super) struct Drafts {
     /// they go out as soon as the last one is imported.
     pub send_when_ready: HashSet<String>,
     pub errors: HashMap<String, &'static str>,
+    /// The local preview of an imported image, by attachment ID: the tile
+    /// keeps showing it instead of swapping to the board's thumbnail.
+    previews: HashMap<String, Arc<Image>>,
     next_token: u64,
 }
 
@@ -37,20 +40,16 @@ impl Drafts {
         self.is_pending(key) || self.by_queue.get(key).is_some_and(|i| !i.is_empty())
     }
 
-    /// Removes the pending image `token`; false when it was already gone
+    /// Removes the pending image `token`; None when it was already gone
     /// (removed by hand, or the board scope changed).
-    fn take_pending(&mut self, key: &str, token: u64) -> bool {
-        let Some(list) = self.pending.get_mut(key) else {
-            return false;
-        };
-        let Some(i) = list.iter().position(|p| p.token == token) else {
-            return false;
-        };
-        list.remove(i);
+    fn take_pending(&mut self, key: &str, token: u64) -> Option<PendingImage> {
+        let list = self.pending.get_mut(key)?;
+        let i = list.iter().position(|p| p.token == token)?;
+        let taken = list.remove(i);
         if list.is_empty() {
             self.pending.remove(key);
         }
-        true
+        Some(taken)
     }
 }
 
@@ -342,11 +341,19 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         let drafts = &mut self.request_images;
-        if !drafts.take_pending(&key, token) {
+        let Some(pending) = drafts.take_pending(&key, token) else {
             return;
-        }
+        };
         match result {
             Ok(image) => {
+                // Keep previews only for images still in some draft.
+                let by_queue = &drafts.by_queue;
+                drafts
+                    .previews
+                    .retain(|id, _| by_queue.values().flatten().any(|a| &a.id == id));
+                if let Some(preview) = pending.preview {
+                    drafts.previews.insert(image.id.clone(), preview);
+                }
                 let draft = drafts.by_queue.entry(key.clone()).or_default();
                 if !draft.iter().any(|a| a.id == image.id) {
                     draft.push(image);
@@ -425,7 +432,17 @@ impl FennecWindow {
                                     .size(px(width))
                                     .rounded(px(10.0))
                                     .overflow_hidden()
-                                    .child(thumbnail(&image, width, height)),
+                                    .child(
+                                        match self.request_images.previews.get(&image.id) {
+                                            Some(preview) => img(preview.clone())
+                                                .w(px(width))
+                                                .h(px(height))
+                                                .object_fit(ObjectFit::Cover)
+                                                .rounded(px(10.0))
+                                                .into_any_element(),
+                                            None => thumbnail(&image, width, height),
+                                        },
+                                    ),
                             )
                             .child(
                                 div().absolute().top(px(-5.0)).right(px(-5.0)).child(
@@ -470,7 +487,7 @@ impl FennecWindow {
                             .object_fit(ObjectFit::Cover)
                             .rounded(px(10.0))
                             .into_any_element(),
-                        None => div().size(px(side)).bg(c("f_line")).into_any_element(),
+                        None => div().size(px(side)).into_any_element(),
                     };
                     div()
                         .id(SharedString::from(format!("pending-image-{token}")))
@@ -482,13 +499,11 @@ impl FennecWindow {
                         .rounded(px(10.0))
                         .border_1()
                         .border_color(c("f_line"))
-                        // Faded until the daemon has imported it.
                         .child(
                             div()
                                 .size(px(side))
                                 .rounded(px(10.0))
                                 .overflow_hidden()
-                                .opacity(0.55)
                                 .child(body),
                         )
                         .child(
