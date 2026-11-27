@@ -3,7 +3,6 @@
 
 use gpui::*;
 use std::borrow::Cow;
-use std::time::Duration;
 
 /// A theme color (settings.rs): Fennec's `f_*` tokens, Herdr's chrome, the accents.
 pub fn c(name: &str) -> Hsla {
@@ -350,9 +349,9 @@ pub fn status_pill(status: &str) -> Div {
         ),
         "working" => (
             crate::i18n::t("working"),
-            c("working"),
+            c("ok"),
             gpui::transparent_black(),
-            c("working").opacity(0.45),
+            c("ok").opacity(0.45),
         ),
         "resolved" => (
             crate::i18n::t("resolved"),
@@ -367,7 +366,7 @@ pub fn status_pill(status: &str) -> Div {
             c("f_field"),
         ),
     };
-    let pill = div()
+    div()
         .flex_none()
         .px(px(7.0))
         .h(px(19.0))
@@ -379,109 +378,8 @@ pub fn status_pill(status: &str) -> Div {
         .text_color(fg)
         .bg(bg)
         .border_1()
-        .border_color(border);
-    if status != "working" {
-        return pill.child(label);
-    }
-    let label = SharedString::from(label);
-    // Running: the sessions' yellow activity spinner, and a bright band
-    // sweeping through the label (FEN-135).
-    pill.gap(px(4.0))
-        .pl(px(5.0))
-        .child(activity_spinner(10.0, fg))
-        .child(div().with_animation(
-            "status-working-shimmer",
-            Animation::new(Duration::from_millis(SHIMMER_MS)).repeat(),
-            move |d, _| {
-                d.child(shimmer_text(
-                    label.clone(),
-                    fg,
-                    c("foreground"),
-                    shimmer_phase(),
-                ))
-            },
-        ))
-}
-
-/// The yellow spinner shown while an agent works, turning with every other one.
-pub fn activity_spinner(size: f32, color: Hsla) -> AnimationElement<Svg> {
-    svg()
-        .path("programs/activity-spinner.svg")
-        .size(px(size))
-        .flex_none()
-        .text_color(color)
-        .with_animation(
-            "activity-spinner",
-            Animation::new(Duration::from_millis(SPINNER_MS)).repeat(),
-            // One shared phase: every running spinner turns in step,
-            // however late its row appeared (THI-111).
-            |icon, _| icon.with_transformation(Transformation::rotate(percentage(spinner_phase()))),
-        )
-}
-
-const SPINNER_MS: u64 = 900;
-/// One sweep, then a rest before the next (like the iOS text shimmer).
-const SHIMMER_MS: u64 = 2_000;
-const SHIMMER_SWEEP: f32 = 0.6;
-
-fn clock_ms() -> u128 {
-    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    START
-        .get_or_init(std::time::Instant::now)
-        .elapsed()
-        .as_millis()
-}
-
-/// Where every activity spinner is in its turn, from one shared clock.
-pub fn spinner_phase() -> f32 {
-    (clock_ms() % SPINNER_MS as u128) as f32 / SPINNER_MS as f32
-}
-
-/// Where every shimmer is in its cycle (0..1), from the same clock.
-fn shimmer_phase() -> f32 {
-    (clock_ms() % SHIMMER_MS as u128) as f32 / SHIMMER_MS as f32
-}
-
-/// `text` in `base`, with a band of `bright` passing over it left to right
-/// during the first `SHIMMER_SWEEP` of `phase`, then resting.
-pub fn shimmer_text(text: SharedString, base: Hsla, bright: Hsla, phase: f32) -> StyledText {
-    let n = text.chars().count().max(1) as f32;
-    let sweep = (phase / SHIMMER_SWEEP).min(1.0);
-    // The band's center travels from just before the first glyph to just after the last.
-    const HALF: f32 = 0.22;
-    let center = -HALF + sweep * (1.0 + 2.0 * HALF);
-    let highlights = text
-        .char_indices()
-        .enumerate()
-        .filter_map(|(k, (i, ch))| {
-            let pos = (k as f32 + 0.5) / n;
-            let k = 1.0 - ((pos - center).abs() / HALF).min(1.0);
-            if sweep >= 1.0 || k <= 0.0 {
-                return None;
-            }
-            let k = k * k * (3.0 - 2.0 * k);
-            let color = mix_hsla(base, bright, k * 0.85);
-            Some((
-                i..i + ch.len_utf8(),
-                HighlightStyle {
-                    color: Some(color),
-                    ..Default::default()
-                },
-            ))
-        })
-        .collect::<Vec<_>>();
-    StyledText::new(text).with_highlights(highlights)
-}
-
-fn mix_hsla(a: Hsla, b: Hsla, t: f32) -> Hsla {
-    let (a, b) = (Rgba::from(a), Rgba::from(b));
-    let l = |x: f32, y: f32| x + (y - x) * t;
-    Hsla::from(Rgba {
-        r: l(a.r, b.r),
-        g: l(a.g, b.g),
-        b: l(a.b, b.b),
-        a: l(a.a, b.a),
-    })
+        .border_color(border)
+        .child(label)
 }
 
 /// Stable tag colors across views, restarts and tag reordering.
