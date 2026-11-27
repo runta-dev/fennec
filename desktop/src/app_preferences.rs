@@ -80,6 +80,14 @@ impl FennecWindow {
         cx: &mut Context<Self>,
     ) {
         let p = &self.app_preferences.value;
+        // FEN-187: give AppKit the chosen theme too. Otherwise a dark Fennec
+        // theme on a light Mac keeps a light NSWindow, whose inactive traffic
+        // lights are drawn dark (black dots on the dark title bar) instead of gray.
+        cx.set_window_appearance(match p.theme.as_str() {
+            "dark" => Some(WindowAppearance::Dark),
+            "light" => Some(WindowAppearance::Light),
+            _ => None,
+        });
         let mut settings = (*crate::settings::get()).clone();
         settings.dark = match p.theme.as_str() {
             "dark" => true,
