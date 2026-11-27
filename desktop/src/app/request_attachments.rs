@@ -459,7 +459,6 @@ impl FennecWindow {
                                         .group_hover("request-attachment", |s| s.visible())
                                         .rounded_full()
                                         .bg(c("f_text"))
-                                        .hover(|s| s.bg(c("f_muted")))
                                         .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                             cx.stop_propagation()
                                         })
@@ -518,7 +517,6 @@ impl FennecWindow {
                                     .group_hover("request-attachment", |s| s.visible())
                                     .rounded_full()
                                     .bg(c("f_text"))
-                                    .hover(|s| s.bg(c("f_muted")))
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
                                     })
