@@ -167,9 +167,19 @@
   let auth = 'password';  // 'password' | 'key'
   let checkLink = '';     // one-time approval URL from a "check" rule
 
-  function open() { if (typeof tab === 'function') tab('tailscale'); document.querySelector('#settings')?.classList.add('active'); send('tailnet-status'); }
-  entry.onclick = open;
-  page.querySelector('#tailscale-back').onclick = () => { if (typeof tab === 'function') tab('preferences'); };
+  // Back returns to where the page was opened from: Settings, or Computers
+  // through the Worker computers header (FEN-177).
+  let backTo = 'preferences';
+  const back = page.querySelector('#tailscale-back');
+  function open(from = 'preferences') {
+    backTo = from === 'computers' ? 'computers' : 'preferences';
+    back.title = t(backTo === 'computers' ? '[[i18n:ui.computers]]' : '[[i18n:ui.settings]]');
+    if (typeof tab === 'function') tab('tailscale');
+    document.querySelector('#settings')?.classList.add('active');
+    send('tailnet-status');
+  }
+  entry.onclick = () => open('preferences');
+  back.onclick = () => { if (typeof tab === 'function') tab(backTo); };
 
   function stateLabel(s) {
     if (requestError) return t('[[i18n:ui.tailnet_unavailable]]');
@@ -403,7 +413,7 @@
       add.type = 'button';
       add.innerHTML = svg('<path d="M10 4.5v11M4.5 10h11"/>');
       add.append(el('span', '', t('[[i18n:ui.tailnet_add_worker]]')));
-      add.onclick = open;
+      add.onclick = () => open('computers');
       head.append(add);
     } else if (running) {
       // Once signed in, the header keeps a way back to Settings › Tailscale (FEN-177).
@@ -411,7 +421,7 @@
       link.type = 'button';
       link.append(el('span', '', 'Tailscale'));
       link.insertAdjacentHTML('beforeend', chevron);
-      link.onclick = open;
+      link.onclick = () => open('computers');
       head.append(link);
     }
     cardHead.append(head);
