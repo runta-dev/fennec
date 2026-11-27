@@ -55,7 +55,7 @@
   page.id = 'tailscale';
   page.hidden = true;
   page.innerHTML =
-    '<div class="session-detail-toolbar"><button type="button" class="tailnet-back" id="tailscale-back" aria-label="[[i18n:ui.settings]]" title="[[i18n:ui.settings]]">' + svg('<path d="m12 5-5 5 5 5"/>') + '</button><span class="tailnet-page-title">Tailscale</span></div>' +
+    '<div class="session-detail-toolbar"><button type="button" class="tailnet-back" id="tailscale-back" title="[[i18n:ui.settings]]">' + svg('<path d="m12 5-5 5 5 5"/>') + '<span class="tailnet-page-title">Tailscale</span></button></div>' +
     '<div class="card tailnet-card"><div class="tailnet-head"><span class="tailnet-icon tailnet-head-icon">' + markSVG + '</span><div class="tailnet-head-text"><strong>Tailscale</strong><span id="tailscale-summary"></span></div></div>' +
     '<p class="tailnet-intro">[[i18n:ui.tailnet_intro]]</p>' +
     '<div id="tailscale-body"></div></div>';
