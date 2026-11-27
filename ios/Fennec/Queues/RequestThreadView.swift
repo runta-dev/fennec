@@ -154,12 +154,13 @@ struct RequestThreadView: View {
 
     // MARK: Composer and actions (28, 29, 32)
 
-    /// Retry, Mark done and Reopen sit at the end of the thread, under what
-    /// the agent said, not right above the composer where they were easy to
-    /// hit by mistake (FEN-22).
+    /// Retry and Mark done sit at the end of the thread, under what the
+    /// agent said, not right above the composer where they were easy to hit
+    /// by mistake (FEN-22). A done request has no Reopen button: sending a
+    /// message reopens it (FEN-118).
     @ViewBuilder
     private func actions(_ request: BoardRequest) -> some View {
-        if request.status_.canMarkDone || request.status_ == .resolved {
+        if request.status_.canMarkDone {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 if request.status_ == .failed {
@@ -167,11 +168,7 @@ struct RequestThreadView: View {
                         Task { await queues.reply(projectID, number, text: "") }
                     }
                 }
-                if request.status_ == .resolved {
-                    glassButton(L10n.text("desktop.reopen"), "arrow.uturn.backward") { Task { await queues.reopen(projectID, number) } }
-                } else {
-                    glassButton(L10n.text("desktop.resolve"), "checkmark") { Task { await queues.markDone(projectID, number) } }
-                }
+                glassButton(L10n.text("desktop.resolve"), "checkmark") { Task { await queues.markDone(projectID, number) } }
             }
             .padding(.top, 4)
             .transition(.opacity)
@@ -584,8 +581,6 @@ struct RequestMenuSheet: View {
                 }
                 if request.status_.canMarkDone {
                     ListCard { row("checkmark", L10n.text("desktop.resolve"), last: true) { Task { await queues.markDone(project.id, request.number) }; dismiss() } }
-                } else if request.status_ == .resolved {
-                    ListCard { row("arrow.uturn.backward", L10n.text("desktop.reopen"), last: true) { Task { await queues.reopen(project.id, request.number) }; dismiss() } }
                 }
             }
             .padding(16)

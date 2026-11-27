@@ -144,7 +144,10 @@ final class ReviewDemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Mark done"].waitForExistence(timeout: 5))
         attach(app, "10-queue-reply")
         app.buttons["Mark done"].tap()
-        XCTAssertTrue(app.buttons["Reopen"].waitForExistence(timeout: 5))
+        // Done: no Reopen button, a new message reopens it (FEN-118).
+        XCTAssertTrue(app.buttons["undo-mark-done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Mark done"].waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Reopen"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         let working = app.descendants(matching: .any)["request-121"].firstMatch
