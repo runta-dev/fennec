@@ -535,6 +535,16 @@ pub fn request(project: &str, n: u64) -> Result<Request> {
     )?)?)
 }
 
+/// A new request's placeholder title: its first line, or "Image request".
+pub fn title_for(text: &str) -> String {
+    let first = text.trim().lines().next().unwrap_or_default().trim();
+    if first.is_empty() {
+        crate::i18n::t("image_request")
+    } else {
+        first.chars().take(200).collect()
+    }
+}
+
 /// A new request: the whole text is its first message (the request itself);
 /// its first line is only a placeholder title until the agent's session
 /// names the work, which the queue scheduler then copies onto the thread.
@@ -545,12 +555,7 @@ pub fn post(
     attachments: &[Attachment],
 ) -> Result<Request> {
     let text = text.trim();
-    let first = text.lines().next().unwrap_or_default().trim();
-    let title: String = if first.is_empty() {
-        crate::i18n::t("image_request")
-    } else {
-        first.chars().take(200).collect()
-    };
+    let title = title_for(text);
     let body = json!({"title": title, "body": text, "author": author, "attachments":attachments});
     Ok(serde_json::from_value(call(
         "POST",

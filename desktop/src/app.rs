@@ -10,6 +10,7 @@ mod glide;
 mod knowledge_links;
 mod local_state;
 mod pending_reply;
+mod pending_request;
 mod ref_complete;
 mod row_motion;
 mod segment_slide;
@@ -172,7 +173,10 @@ pub struct FennecWindow {
     request_images: request_attachments::Drafts,
     image_viewer: Option<request_attachments::Viewer>,
     session_modal: Option<session_modal::SessionModal>,
-    posting: bool,
+    /// FEN-133: new requests sent but not yet answered by the board.
+    pending_requests: Vec<pending_request::PendingRequest>,
+    /// Numbers the next pending request.
+    request_token: u64,
     replying: bool,
     /// THI-176: options picked on an asking thread's question card, by
     /// "project:number:question id", and whether an answer is on its way.
@@ -361,7 +365,8 @@ impl FennecWindow {
             request_images: Default::default(),
             image_viewer: None,
             session_modal: None,
-            posting: false,
+            pending_requests: Vec::new(),
+            request_token: 0,
             replying: false,
             question_picks: HashMap::new(),
             answering: false,
@@ -1033,10 +1038,9 @@ impl FennecWindow {
     }
 
     fn post(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.posting
-            || self
-                .composer
-                .update(cx, |s, cx| s.marked_text_range(window, cx).is_some())
+        if self
+            .composer
+            .update(cx, |s, cx| s.marked_text_range(window, cx).is_some())
         {
             return;
         }
@@ -1048,46 +1052,65 @@ impl FennecWindow {
         if self.request_images.busy.contains(&project)||(text.trim().is_empty()&&images.is_empty()) {
             return;
         }
-        self.posting = true;
-        let me = self.me.clone();
-        let submitted = text.clone();
-        let submitted_project = project.clone();
-        let submitted_images:Vec<String>=images.iter().map(|image|image.id.clone()).collect();
         let Some(scope) = self.board_scope.clone() else { return; };
+        // FEN-133: the card shows and the box clears now; the board answers
+        // in the background (see pending_request).
+        self.request_token += 1;
+        let token = self.request_token;
+        self.pending_requests.push(pending_request::PendingRequest::new(
+            project.clone(),
+            token,
+            self.me.clone(),
+            text.clone(),
+            images.clone(),
+        ));
+        self.request_images.errors.remove(&project);
+        self.request_images.by_queue.remove(&project);
+        self.composer.update(cx, |s, cx| s.set_value("", window, cx));
+        self.set_resolved(false);
+        cx.notify();
+        let me = self.me.clone();
         let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
                 .background_spawn(async move { worker_scope.run(|| { board::post(&project, &text, &me, &images) }) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
-                this.posting = false;
+                let Some(i) = this.pending_requests.iter().position(|p| p.token == token) else { return; };
+                let pending = this.pending_requests.remove(i);
+                let submitted_project = pending.project;
                 match posted {
                     Ok(r) => {
-                        this.request_images.errors.remove(&submitted_project);
-                        if let Some(images)=this.request_images.by_queue.get_mut(&submitted_project){images.retain(|image|!submitted_images.contains(&image.id));}
-                        if this.composer.read(cx).value().as_ref() == submitted {
-                            this.composer
-                                .update(cx, |s, cx| s.set_value("", window, cx));
+                        if !r.messages.is_empty() {
+                            this.thread_cache
+                                .insert((submitted_project.clone(), r.number), r.clone());
+                        }
+                        // FEN-106: the new request shows as a card right under
+                        // the composer, which keeps focus for the next one.
+                        let list = this.requests.entry(submitted_project.clone()).or_default();
+                        if !list.iter().any(|old| old.number == r.number) {
+                            list.insert(0, r.clone());
                         }
                         if this.project_id().as_deref() == Some(&submitted_project) {
-                            this.set_resolved(false);
-                            if !r.messages.is_empty() {
-                                this.thread_cache
-                                    .insert((submitted_project.clone(), r.number), r.clone());
-                            }
-                            // FEN-106: the new request shows as a card right under
-                            // the composer, which keeps focus for the next one.
-                            let list = this.requests.entry(submitted_project.clone()).or_default();
-                            if !list.iter().any(|old| old.number == r.number) {
-                                list.insert(0, r.clone());
-                            }
                             // FEN-131: and it becomes the selected thread, shown
                             // beside the list, instead of the one open before.
                             // `open_request` leaves the composer focused.
                             this.open_request(r.number, window, cx);
                         }
                     }
-                    Err(e) => this.say(format!("{e:#}"), cx),
+                    Err(e) => {
+                        // Refused: what was sent goes back to the box, unless
+                        // something new was written there meanwhile.
+                        if this.composer.read(cx).value().trim().is_empty() {
+                            this.composer
+                                .update(cx, |s, cx| s.set_value(pending.text.clone(), window, cx));
+                        }
+                        let images = this.request_images.by_queue.entry(submitted_project).or_default();
+                        if images.is_empty() {
+                            *images = pending.images;
+                        }
+                        this.say(format!("{e:#}"), cx);
+                    }
                 }
                 cx.notify();
             });
@@ -2171,7 +2194,11 @@ impl FennecWindow {
 
     fn project(&self, p: &Project, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let q = self.query(cx);
-        let all = self.requests.get(&p.id).cloned().unwrap_or_default();
+        let mut all = self.requests.get(&p.id).cloned().unwrap_or_default();
+        // FEN-133: requests on their way to the board, newest first, on top.
+        for pending in self.pending_requests.iter().filter(|x| x.project == p.id) {
+            all.insert(0, pending.request.clone());
+        }
         let mut shown: Vec<&Request> = all
             .iter()
             .filter(|r| r.resolved() == self.resolved)
@@ -2242,6 +2269,7 @@ impl FennecWindow {
         let cards = shown.iter().enumerate().map(|(index, r)| {
             let selected = self.opening.or(self.open) == Some(r.number);
             let n = r.number;
+            let standin = pending_request::is_standin(n);
             let latest = r
                 .latest
                 .as_ref()
@@ -2265,7 +2293,7 @@ impl FennecWindow {
             let card_key = format!("req-{n}");
             let card = v_flex()
                 .id(SharedString::from(card_key.clone()))
-                .opacity(appear(&card_key))
+                .opacity(appear(&card_key) * if standin { 0.6 } else { 1.0 })
                 .w_full()
                 .px(px(13.0))
                 .py(px(11.0))
@@ -2280,14 +2308,16 @@ impl FennecWindow {
                 })
                 .when(selected, |d| d.bg(c("f_card")))
                 .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
-                .on_click(cx.listener(move |this, _, window, cx| this.open_request(n, window, cx)))
+                .when(!standin, |d| {
+                    d.on_click(cx.listener(move |this, _, window, cx| this.open_request(n, window, cx)))
+                })
                 // A pointer on its way to a card starts reading its agent.
                 .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                     if *hovered {
                         this.warm_peek(n, cx);
                     }
                 }))
-                .when(r.status == "queued", |d| {
+                .when(r.status == "queued" && !standin, |d| {
                     d.on_drag(
                         QueuedRequestDrag {
                             project,
@@ -2348,7 +2378,11 @@ impl FennecWindow {
                         .gap_y(px(5.0))
                         .text_size(px(11.0))
                         .text_color(c("f_muted"))
-                        .child(format!("{}-{}", p.key, r.number))
+                        .child(if standin {
+                            format!("{}-…", p.key)
+                        } else {
+                            format!("{}-{}", p.key, r.number)
+                        })
                         .child(
                             h_flex().min_w_0().flex_wrap().gap(px(4.0)).children(
                                 r.tag_list().iter().map(|id| ui::tag_chip(id, &tag_label(id))),
@@ -2382,7 +2416,7 @@ impl FennecWindow {
                         ),
                     )
                 })
-                .when(r.status == "queued", |d| {
+                .when(r.status == "queued" && !standin, |d| {
                     d.child(
                         h_flex().child(
                             secondary_button(
@@ -2400,13 +2434,16 @@ impl FennecWindow {
                     )
                 });
             // FEN-5: right-click (or Control-click) a card to delete its request.
-            let card = self
-                .context_row(
+            let card = if standin {
+                card.into_any_element()
+            } else {
+                self.context_row(
                     card,
                     context_menu::Target::Request { project: menu_project, number: n },
                     cx,
                 )
-                .into_any_element();
+                .into_any_element()
+            };
             v_flex()
                 .when(index == 0 || shown[index - 1].status != r.status, |d| {
                     let header_key = format!("group-{}", r.status);

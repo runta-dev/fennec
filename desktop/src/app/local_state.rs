@@ -127,7 +127,7 @@ impl FennecWindow {
         self.image_viewer = None;
         self.context_menu = None;
         self.menu = None;
-        self.posting = false;
+        self.pending_requests.clear();
         self.replying = false;
         self.answering = false;
         self.opening_thread_session = false;
