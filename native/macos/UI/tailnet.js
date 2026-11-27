@@ -73,6 +73,7 @@
   dialog.setAttribute('aria-labelledby', 'tailnet-add-title');
   dialog.innerHTML =
     '<div class="developer-dialog-head"><strong id="tailnet-add-title"></strong><button type="button" class="developer-close" id="tailnet-add-close" aria-label="[[i18n:ui.close]]">×</button></div>' +
+    '<p class="byoc-note tailnet-add-intro">[[i18n:ui.tailnet_add_intro]]</p>' +
     '<ol class="tailnet-steps">' +
     '<li><span class="tailnet-step-mark">1</span><div class="tailnet-step-main"><span id="tailnet-add-run"></span>' +
     '<div class="byoc-key tailnet-command"><code id="tailnet-add-command"></code><button type="button" id="tailnet-add-copy">[[i18n:ui.gs_copy]]</button></div>' +
@@ -209,7 +210,7 @@
     const connected = computer && !computer.error && computer.alias;
     if (device.id === thisDevice) side.append(el('span', 'runtime-metrics-spec', t('[[i18n:ui.this_mac]]')));
     if (connected) {
-      const tag = el('span', 'runtime-metrics-spec tailnet-connected', t('[[i18n:ui.tailnet_connected]]'));
+      const tag = el('span', 'runtime-metrics-spec tailnet-connected', t('[[i18n:ui.tailnet_worker]]'));
       tag.title = 'ssh ' + computer.alias;
       side.append(tag);
       const remove = el('button', 'tailnet-remove');
@@ -261,6 +262,8 @@
     if (s.state === 'running' && (s.user || s.tailnet)) head.append(el('span', 'runtime-metrics-spec', s.user || s.tailnet));
     card.append(head);
     if (s.state !== 'running') {
+      // Say what worker machines are for before asking to set anything up.
+      card.append(el('p', 'tailnet-card-intro', t('[[i18n:ui.tailnet_card_intro]]')));
       const setup = el('button', 'tailnet-setup');
       setup.type = 'button';
       setup.append(el('span', '', t(s.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_setup]]')));
