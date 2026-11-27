@@ -48,6 +48,9 @@ type Runtime struct {
 	SSHEnabled  bool              `json:"ssh_enabled"`
 	ErrorCode   string            `json:"error_code"`
 	Environment map[string]string `json:"environment_variables"`
+	// TLSPassthroughHosts are tunnelled to the original destination by the
+	// egress gateway instead of intercepted.
+	TLSPassthroughHosts []string `json:"tls_passthrough_hosts"`
 }
 type RuntimeResources struct {
 	Current struct {

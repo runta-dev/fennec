@@ -227,6 +227,10 @@ func StartLogin(ctx context.Context, home string) (Status, error) {
 	return ReadStatus(ctx, home, false), nil
 }
 
+// networkBlockedGrace is how long RunUp lets tailscaled retry a registration
+// the egress gateway rejects before it reports network_blocked.
+var networkBlockedGrace = 30 * time.Second
+
 // RunUp is the sign-in worker: install, start tailscaled, then `tailscale up`,
 // which waits until the user approves the login URL in the browser.
 func RunUp(ctx context.Context, home string) error {
@@ -259,7 +263,11 @@ func RunUp(ctx context.Context, home string) error {
 		done <- err
 	}()
 	// `tailscale up` keeps retrying a registration the network rejects;
-	// stop as soon as tailscaled reports why, so the panel can say so.
+	// stop as soon as tailscaled reports why, so the panel can say so. A
+	// network_blocked answer gets a grace period first: the Mac has just added
+	// Tailscale to the gateway's TLS passthrough (FEN-129), and the gateway
+	// may still be applying it while tailscaled makes its first attempts.
+	blockedAfter := time.Now().Add(networkBlockedGrace)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -280,6 +288,9 @@ func RunUp(ctx context.Context, home string) error {
 			}
 			for _, message := range b.Health {
 				if code := classifyLoginError(message); code != "" {
+					if code == ErrNetworkBlocked && time.Now().Before(blockedAfter) {
+						continue
+					}
 					cancel()
 					<-done
 					return fail(code, fmt.Errorf("%s", message))

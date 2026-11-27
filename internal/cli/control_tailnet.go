@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fennec/internal/cloudops"
 	"fennec/internal/control"
+	"fennec/internal/runta"
 	"fennec/internal/tailnet"
+	"log"
 	"net"
 	"os"
 	"os/user"
@@ -28,6 +30,7 @@ func (s *daemonServices) tailnetHandlers() map[string]control.Handler {
 			return s.tailnetStatus(ctx, request.Probe)
 		},
 		"tailnet.login": func(ctx context.Context, _ json.RawMessage) (any, error) {
+			s.ensureTailnetPassthrough(ctx)
 			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_login"}, 30*time.Second)
 		},
 		"tailnet.logout": func(ctx context.Context, _ json.RawMessage) (any, error) {
@@ -47,6 +50,33 @@ func (s *daemonServices) tailnetHandlers() map[string]control.Handler {
 			}
 			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_remove", Tailnet: &tailnet.Request{ID: request.ID}}, 15*time.Second)
 		},
+	}
+}
+
+// ensureTailnetPassthrough lets Tailscale through the Runta egress gateway
+// before sign-in: it adds Tailscale's control and DERP hosts to the cloud
+// computer's TLS passthrough list (FEN-129). It is best effort. If the API
+// refuses, sign-in still runs and the panel reports network_blocked as before.
+func (s *daemonServices) ensureTailnetPassthrough(ctx context.Context) {
+	_, principal, _, ok := s.account.Session()
+	token, isRunta := principal.RuntaToken()
+	if !ok || !isRunta {
+		return
+	}
+	s.mu.Lock()
+	runtimeID := s.config.RuntimeID
+	s.mu.Unlock()
+	if runtimeID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	changed, err := runta.NewClient(s.home, token).EnsureTLSPassthrough(ctx, runtimeID, runta.TailscaleTLSPassthroughHosts)
+	switch {
+	case err != nil:
+		log.Printf("tailnet: TLS passthrough for Tailscale not set: %v", err)
+	case changed:
+		log.Printf("tailnet: added Tailscale hosts to the cloud computer's TLS passthrough")
 	}
 }
 

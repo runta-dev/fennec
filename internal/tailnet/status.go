@@ -149,7 +149,8 @@ func jsonID(id int64) string {
 
 // classifyLoginError names a failed registration. The egress gateway of a
 // Runta cloud computer terminates TLS and only passes WebSocket upgrades, so
-// Tailscale's control protocol upgrade comes back as a bare 400 (FEN-104).
+// Tailscale's control protocol upgrade comes back as a bare 400 (FEN-104),
+// unless *.tailscale.com is in the runtime's TLS passthrough list (FEN-129).
 func classifyLoginError(message string) string {
 	lower := strings.ToLower(message)
 	if !strings.Contains(lower, "login error") && !strings.Contains(lower, "register request") {
