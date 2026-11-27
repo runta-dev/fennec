@@ -89,6 +89,17 @@ The Responses API request shape, guardian headers and ChatGPT token refresh in
 - Modified only by `cua-package`: the `chrome://credits` resource in `resources.pak` is replaced with the generated notices; the cookie key's Keychain item name in the framework changes from "Chromium Safe Storage" to "Fennec Safe Storage"; and the app is re-signed with Fennec's signing identity. A staging made with `-allow-missing-credits` (development only) carries no notices and must not be distributed.
 - The DevTools protocol client in `cua/internal/cdp` is Fennec's own code; no chromedp or cdproto code is included.
 
+## Operating system icons
+
+- Linux (Worker computers list, `native/macos/UI/tailnet.js`): Simple Icons
+  `linux` SVG path, CC0-1.0, simple-icons 16.38.1, retrieved from
+  https://cdn.jsdelivr.net/npm/simple-icons@16.38.1/icons/linux.svg.
+
+The penguin is Tux, originally drawn by Larry Ewing with The GIMP, who grants
+permission to use and modify it with this acknowledgement. Linux is a
+registered trademark of Linus Torvalds. The icon identifies the
+operating system; no affiliation or endorsement is implied.
+
 ## Website terminal playback
 
 The homepage links to terminal tools using their identifying artwork:
