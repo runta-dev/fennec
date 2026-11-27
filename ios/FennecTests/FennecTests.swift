@@ -355,5 +355,21 @@ final class FennecTests: XCTestCase {
     func testPreviewDropsMarkdown() {
         XCTAssertEqual(Session.plainLine("\n查到了，主要是**项目产物**和 `go` 缓存。\n| a | b |"), "查到了，主要是项目产物和 go 缓存。")
         XCTAssertEqual(Session.plainLine("## Done"), "Done")
+        XCTAssertEqual(Session.plainLine("隔离。 \u{E200}cite\u{E202}turn538016search2\u{E201}"), "隔离。")
+    }
+
+    @MainActor func testCodexMarkersAndCJKBold() {
+        // FEN-85: Codex citation markers showed as boxes, and bold ending in 。 kept its asterisks.
+        XCTAssertEqual(MarkdownBlock.stripAgentMarkers("原因。 \u{E200}cite\u{E202}turn538016search2\u{E201}\n下一行"), "原因。\n下一行")
+        XCTAssertEqual(MarkdownBlock.stripAgentMarkers("由 \u{E200}entity\u{E202}[\"company\",\"OpenAI\"]\u{E201} 提供"), "由 OpenAI 提供")
+        XCTAssertEqual(MarkdownBlock.parse("a \u{E200}cite\u{E202}turn1search2\u{E201}"), [.paragraph("a")])
+        for source in ["**不是每一笔数据都要转发。**它们负责", "**现在怎么办：**追问", "中文**（括号）**后", "**done.** next"] {
+            let value = MarkdownBlock.parseInline(source)
+            let text = String(value.characters)
+            XCTAssertFalse(text.contains("*"), text)
+            XCTAssertTrue(value.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true }, source)
+        }
+        XCTAssertEqual(String(MarkdownBlock.parseInline("**现在怎么办：**追问").characters), "现在怎么办：追问")
+        XCTAssertEqual(String(MarkdownBlock.parseInline("`a*：b` 和 2*3：4").characters), "a*：b 和 2*3：4")
     }
 }

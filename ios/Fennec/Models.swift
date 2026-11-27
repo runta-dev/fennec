@@ -338,8 +338,7 @@ extension Session {
         let line = markdown.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
         var text = line.replacingOccurrences(of: #"^(#{1,6}|[-*+]|>)\s+"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "|", with: " ").trimmingCharacters(in: .whitespaces)
-        let parsed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-        return parsed.map { String($0.characters) } ?? text
+        return String(MarkdownBlock.parseInline(text).characters)
     }
 }
 

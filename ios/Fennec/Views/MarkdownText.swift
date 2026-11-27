@@ -46,8 +46,7 @@ enum MarkdownBlock: Equatable {
 
     @MainActor static func inline(_ text: String) -> AttributedString {
         if let cached = inlineCache[text] { return cached }
-        let value = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
+        let value = parseInline(text)
         if inlineCache.count > 4000 { inlineCache.removeAll() }
         inlineCache[text] = value
         return value
@@ -67,6 +66,105 @@ enum MarkdownBlock: Equatable {
             intent.remove(.stronglyEmphasized)
             piece.inlinePresentationIntent = intent.isEmpty ? nil : intent
             out = Text("\(out)\(Text(piece).fontWeight(.semibold))")
+        }
+        return out
+    }
+
+    /// Inline Markdown without the cache, for callers off the main actor.
+    static func parseInline(_ text: String) -> AttributedString {
+        let clean = stripAgentMarkers(text)
+        let (masked, restore) = maskPunctuationAtDelimiters(clean)
+        guard let value = try? AttributedString(markdown: masked, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
+            return AttributedString(clean)
+        }
+        return unmask(value, restore)
+    }
+
+    /// Codex marks web citations and named entities with private-use
+    /// characters: U+E200 opens one, U+E202 separates its fields and U+E201
+    /// closes it, e.g. "\u{E200}cite\u{E202}turn5search2\u{E201}". Its own
+    /// apps hide them; iOS fonts have no glyph, so replies showed boxes around
+    /// "cite turn…search2" (FEN-85). Citations are dropped, with the spaces
+    /// before them; an entity keeps its display name.
+    static func stripAgentMarkers(_ text: String) -> String {
+        let marker: ClosedRange<UInt32> = 0xE200...0xE2FF
+        guard text.unicodeScalars.contains(where: { marker.contains($0.value) }) else { return text }
+        let scalars = Array(text.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var i = 0
+        while i < scalars.count {
+            let scalar = scalars[i]
+            if scalar.value == 0xE200, let end = scalars[(i + 1)...].firstIndex(where: { $0.value == 0xE201 }) {
+                let fields = String(String.UnicodeScalarView(scalars[(i + 1)..<end])).components(separatedBy: "\u{E202}")
+                if fields.first == "entity", fields.count > 1, let name = entityName(fields[1]) {
+                    out.append(contentsOf: name.unicodeScalars)
+                } else {
+                    while let last = out.last, last == " " || last == "\t" { out.removeLast() }
+                }
+                i = end + 1
+                continue
+            }
+            if !marker.contains(scalar.value) { out.append(scalar) }
+            i += 1
+        }
+        return String(out)
+    }
+
+    /// `["company","OpenAI",…]` → "OpenAI".
+    private static func entityName(_ field: String) -> String? {
+        guard let array = try? JSONSerialization.jsonObject(with: Data(field.utf8)) as? [Any], array.count > 1 else { return nil }
+        return array[1] as? String
+    }
+
+    /// CommonMark won't close `**` that follows punctuation when a letter comes
+    /// next, so `**转发。**它们` and `**现在怎么办：**追问` showed raw asterisks
+    /// (FEN-85; the desktop has the same fix, FEN-43). Punctuation like `。：（`
+    /// touching a `*`/`~` run, with a letter on the run's other side, is swapped
+    /// for a private-use character (U+E000+n) before parsing and put back after.
+    /// Skipped when the text already holds such characters.
+    static func maskPunctuationAtDelimiters(_ text: String) -> (String, [Character: Character]) {
+        let chars = Array(text)
+        guard chars.contains(where: isDelimiter),
+              !text.unicodeScalars.contains(where: { (0xE000...0xE0FF).contains($0.value) }) else { return (text, [:]) }
+        var out = chars
+        var masks: [Character: Character] = [:] // original -> mask
+        func mask(_ index: Int) {
+            let original = chars[index]
+            if masks[original] == nil {
+                guard masks.count < 256, let scalar = Unicode.Scalar(0xE000 + UInt32(masks.count)) else { return }
+                masks[original] = Character(scalar)
+            }
+            out[index] = masks[original]!
+        }
+        var i = 0
+        while i < chars.count {
+            guard isDelimiter(chars[i]) else { i += 1; continue }
+            var j = i
+            while j < chars.count, chars[j] == chars[i] { j += 1 }
+            let before: Character? = i > 0 ? chars[i - 1] : nil
+            let after: Character? = j < chars.count ? chars[j] : nil
+            if let before, isWidePunctuation(before), let after, isLetterLike(after) { mask(i - 1) }
+            if let after, isWidePunctuation(after), let before, isLetterLike(before) { mask(j) }
+            i = j
+        }
+        guard !masks.isEmpty else { return (text, [:]) }
+        return (String(out), Dictionary(uniqueKeysWithValues: masks.map { ($0.value, $0.key) }))
+    }
+
+    private static func isDelimiter(_ c: Character) -> Bool { c == "*" || c == "~" }
+    private static func isLetterLike(_ c: Character) -> Bool { !c.isWhitespace && !c.isPunctuation && !isDelimiter(c) }
+    /// Non-ASCII punctuation: CJK and full-width marks, curly quotes, dashes, ….
+    private static func isWidePunctuation(_ c: Character) -> Bool {
+        guard c.unicodeScalars.count == 1, let scalar = c.unicodeScalars.first, scalar.value > 0x7F else { return false }
+        return c.isPunctuation
+    }
+
+    private static func unmask(_ value: AttributedString, _ restore: [Character: Character]) -> AttributedString {
+        guard !restore.isEmpty else { return value }
+        var out = AttributedString()
+        for run in value.runs {
+            let text = String(value[run.range].characters.map { restore[$0] ?? $0 })
+            out.append(AttributedString(text, attributes: run.attributes))
         }
         return out
     }
@@ -95,7 +193,7 @@ enum MarkdownBlock: Equatable {
     }
 
     static func parse(_ text: String) -> [MarkdownBlock] {
-        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        let lines = stripAgentMarkers(text).replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []
         var paragraph: [String] = []
         var items: [ListItem] = []
