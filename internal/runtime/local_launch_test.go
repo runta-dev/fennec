@@ -401,14 +401,26 @@ func TestClaudeLaunchTrustsSessionFolder(t *testing.T) {
 	}
 }
 
-// FEN-99: cloud Codex runs inline (main screen) so Fennec scrolls its output
-// natively, and a caller that already asks for it does not pass the flag twice
-// (Codex rejects a repeated --no-alt-screen).
-func TestCodexLaunchRunsInline(t *testing.T) {
-	for _, arguments := range [][]string{nil, {"--no-alt-screen"}} {
+// FEN-99: cloud agents run inline (main screen) so Fennec scrolls their
+// output natively. Codex and Grok reject a repeated --no-alt-screen, so a
+// caller that already passes it does not get it twice.
+func TestCloudAgentsLaunchInline(t *testing.T) {
+	cases := []struct {
+		agent     string
+		arguments []string
+		want      []string
+	}{
+		{"codex", nil, []string{"--no-alt-screen"}},
+		{"codex", []string{"--no-alt-screen"}, []string{"--no-alt-screen"}},
+		{"grok", nil, []string{"--no-alt-screen"}},
+		{"grok", []string{"--no-alt-screen"}, []string{"--no-alt-screen"}},
+		{"pi", nil, []string{"--tui-mode", "regular"}},
+		{"agy", nil, []string{"--settings", `{"altScreenMode":"never"}`}},
+	}
+	for _, c := range cases {
 		home := t.TempDir()
 		var command []string
-		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/codex", nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
+		backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/usr/bin/" + c.agent, nil }, Run: func(ctx context.Context, args ...string) ([]byte, error) {
 			if args[0] == "ls" {
 				return []byte(`{"terminals":[]}`), nil
 			}
@@ -419,18 +431,13 @@ func TestCodexLaunchRunsInline(t *testing.T) {
 			}
 			return json.Marshal(LocalTerminal{Address: "t1", State: "live"})
 		}}
-		request := LocalLaunch{ID: strings.Repeat("d", 32), Agent: "codex", LocalDirectory: "/project", Device: "1234abcd", Arguments: arguments}
+		request := LocalLaunch{ID: strings.Repeat("d", 32), Agent: c.agent, LocalDirectory: "/project", Device: "1234abcd", Arguments: c.arguments}
 		if _, err := backend.Launch(context.Background(), request); err != nil {
 			t.Fatal(err)
 		}
-		count := 0
-		for _, arg := range command {
-			if arg == "--no-alt-screen" {
-				count++
-			}
-		}
-		if count != 1 {
-			t.Fatalf("arguments %q: codex command %q", arguments, command)
+		joined := " " + strings.Join(command, " ") + " "
+		if !strings.Contains(joined, " "+strings.Join(c.want, " ")+" ") || strings.Count(joined, " "+c.want[0]+" ") != 1 {
+			t.Fatalf("%s %q: command %q", c.agent, c.arguments, command)
 		}
 	}
 }

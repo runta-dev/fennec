@@ -86,9 +86,7 @@ func launchScript(id, agent, cwd string, arguments []string, version string, att
 			return "", fmt.Errorf("invalid or oversized agent arguments")
 		}
 	}
-	if agent == "codex" && !slices.Contains(arguments, codexInline) {
-		command = append(command, codexInline)
-	}
+	command = append(command, inlineArguments(agent, arguments)...)
 	command = append(append(command, agents.NoUpdateArguments(agent)...), arguments...)
 	request := map[string]any{"id": id, "agent": agent, "cwd": cwd, "command": command, "version": version}
 
@@ -230,8 +228,24 @@ const claudeNativeCursor = "CLAUDE_CODE_NATIVE_CURSOR=1"
 // alternate-screen TUI keeps its own virtual scrollback, and every wheel step
 // becomes a round trip to the cloud computer and a full redraw.
 //
-// codexInline is Codex's flag for inline mode; it is an error to pass twice.
-const codexInline = "--no-alt-screen"
+// inlineArguments returns the flags that keep an agent inline, placed before
+// the caller's arguments. Kimi and Cursor are inline by default. OpenCode has
+// no inline switch for its main TUI (only the separate "mini" interface).
+func inlineArguments(agent string, arguments []string) []string {
+	switch agent {
+	case "codex", "grok":
+		// Both reject the flag when it is given twice.
+		if !slices.Contains(arguments, "--no-alt-screen") {
+			return []string{"--no-alt-screen"}
+		}
+	case "pi":
+		return []string{"--tui-mode", "regular"}
+	case "agy":
+		// A later --settings from the caller replaces this one.
+		return []string{"--settings", `{"altScreenMode":"never"}`}
+	}
+	return nil
+}
 
 // claudeInline turns off Claude Code's fullscreen renderer, which it enables
 // by default on a fresh install (every new cloud computer) and behind a

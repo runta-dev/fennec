@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -236,9 +235,6 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 		command = append(command, "--dangerously-skip-permissions")
 	case "codex":
 		command = append(command, "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`)
-		if !slices.Contains(agentArguments, codexInline) {
-			command = append(command, codexInline)
-		}
 	case "claude":
 		command = append(command, "--permission-mode", "bypassPermissions")
 		command = append([]string{"env", "IS_SANDBOX=1"}, command...)
@@ -262,6 +258,7 @@ func (runtime *LocalRuntime) Launch(ctx context.Context, request LocalLaunch) (L
 			return LocalTerminal{}, fmt.Errorf("unsupported OpenCode permission mode")
 		}
 	}
+	command = append(command, inlineArguments(request.Agent, agentArguments)...)
 	command = append(command, agentArguments...)
 	if len(request.Hooks) > 0 {
 		if err := hookbridge.SaveBindings(runtime.Home, request.ID, request.Hooks); err != nil {
