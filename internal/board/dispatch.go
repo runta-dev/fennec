@@ -349,3 +349,16 @@ func FollowUpPrompt(p Project, r Request, command string) string {
 	}
 	return fmt.Sprintf("%s\n\n[%s-%d · report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
 }
+
+// SteerPrompt is what the person wrote while the agent was still working on
+// this run, typed into its session as it is (FEN-169). It ends with the same
+// run's reply command, so the agent answers everything in one reply.
+func SteerPrompt(p Project, r Request, messages []Message, command string) string {
+	bodies := []string{}
+	for _, m := range messages {
+		if body := strings.TrimSpace(m.Body); body != "" {
+			bodies = append(bodies, body)
+		}
+	}
+	return fmt.Sprintf("%s\n\n[%s-%d · new message in this thread while you work; report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
+}

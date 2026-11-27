@@ -71,31 +71,9 @@ func SendRequest(ctx context.Context, store board.Store, query func(context.Cont
 		}
 		return fmt.Errorf("image paste outcome needs confirmation")
 	}
-	paths := []string{}
-	for _, image := range images {
-		if !store.HasAttachment(image) {
-			return fmt.Errorf("image has not synchronized")
-		}
-		data, err := os.ReadFile(store.AttachmentPath(image))
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(data)
-		if hex.EncodeToString(sum[:]) != image.ID {
-			return fmt.Errorf("image integrity check failed")
-		}
-		raw, err := query(ctx, "terminal.put", map[string]any{"terminal": terminal, "name": image.ID[:12] + "-" + image.Name, "data": data})
-		if err != nil {
-			return err
-		}
-		var put struct {
-			Path  string `json:"path"`
-			Bytes int64  `json:"bytes"`
-		}
-		if json.Unmarshal(raw, &put) != nil || put.Bytes != image.Size || !filepath.IsAbs(put.Path) || strings.ContainsAny(put.Path, "\x00\x1b\r\n") {
-			return fmt.Errorf("image upload was not confirmed")
-		}
-		paths = append(paths, quotePastedPath(put.Path))
+	paths, err := uploadImages(ctx, store, query, terminal, images)
+	if err != nil {
+		return err
 	}
 	// A lost submit reply must not resubmit a request after reconnect/restart.
 	file, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -234,4 +212,36 @@ func quotePastedPath(path string) string {
 		return path
 	}
 	return "'" + strings.ReplaceAll(path, "'", "'\\''") + "'"
+}
+
+// uploadImages puts each image into the terminal's directory and returns
+// the quoted paths to paste in front of the text.
+func uploadImages(ctx context.Context, store board.Store, query func(context.Context, string, any) (json.RawMessage, error), terminal string, images []board.Attachment) ([]string, error) {
+	paths := []string{}
+	for _, image := range images {
+		if !store.HasAttachment(image) {
+			return nil, fmt.Errorf("image has not synchronized")
+		}
+		data, err := os.ReadFile(store.AttachmentPath(image))
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != image.ID {
+			return nil, fmt.Errorf("image integrity check failed")
+		}
+		raw, err := query(ctx, "terminal.put", map[string]any{"terminal": terminal, "name": image.ID[:12] + "-" + image.Name, "data": data})
+		if err != nil {
+			return nil, err
+		}
+		var put struct {
+			Path  string `json:"path"`
+			Bytes int64  `json:"bytes"`
+		}
+		if json.Unmarshal(raw, &put) != nil || put.Bytes != image.Size || !filepath.IsAbs(put.Path) || strings.ContainsAny(put.Path, "\x00\x1b\r\n") {
+			return nil, fmt.Errorf("image upload was not confirmed")
+		}
+		paths = append(paths, quotePastedPath(put.Path))
+	}
+	return paths, nil
 }

@@ -300,6 +300,16 @@ func (s Scheduler) Step(ctx context.Context) error {
 				}
 				continue
 			}
+			// The person replied while the agent works: type it into the
+			// session now instead of holding it until the run ends (FEN-169).
+			if r.Status == board.Working && state == "live" && len(r.Runs) > 0 && r.Runs[len(r.Runs)-1].State == "running" && r.HasPendingFollowUp() {
+				p, e := s.Store.Project(q.Project)
+				if e != nil {
+					return e
+				}
+				s.report(s.steer(ctx, p, r, sessions[r.ExecutionSession()].Address))
+				continue
+			}
 			// A running request whose agent ended its turn without `queue
 			// reply` is not running: nothing will move it on by itself. The
 			// idle time counts from the later of delivery and the agent's last
