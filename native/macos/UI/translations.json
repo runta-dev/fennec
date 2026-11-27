@@ -303,9 +303,9 @@
     "desktop.remove": {"en-US": "Remove", "zh-CN": "移除"},
     "desktop.reopen": {"en-US": "Reopen", "zh-CN": "重新打开"},
     "desktop.reply": {
-      "en-GB": "Reply",
-      "en-US": "Reply",
-      "zh-CN": "回复"
+      "en-GB": "Message the agent",
+      "en-US": "Message the agent",
+      "zh-CN": "给 agent 发消息"
     },
     "desktop.repository": {"en-US": "Repository", "zh-CN": "仓库"},
     "desktop.reset_tags": {"en-US": "Reset to Bug, Feature, Discussion", "zh-CN": "恢复为 Bug、Feature、Discussion"},
@@ -384,8 +384,6 @@
     "ios.new_request_placeholder": {"en-US": "Describe the work. The first line is the title.", "zh-CN": "描述要做的事，第一行是标题。"},
     "ios.new_request_where": {"en-US": "Goes to the end of the {queue} queue · {busy}", "zh-CN": "加到 {queue} 队列末尾 · {busy}"},
     "ios.send_to_queue": {"en-US": "Send to queue", "zh-CN": "发到队列"},
-    "ios.add_to_request": {"en-US": "Add to this request", "zh-CN": "补充到这个请求"},
-    "ios.reply_to_continue": {"en-US": "Reply to continue", "zh-CN": "回复以继续"},
     "ios.request_menu": {"en-US": "Request options", "zh-CN": "请求选项"},
     "ios.after_it_starts": {"en-US": "After it starts", "zh-CN": "开始后可用"},
     "ios.add_tag": {"en-US": "Add tag", "zh-CN": "添加标签"},

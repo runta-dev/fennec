@@ -229,11 +229,7 @@ struct RequestThreadView: View {
     }
 
     private func placeholder(_ request: BoardRequest) -> String {
-        switch request.status_ {
-        case .queued: L10n.text("ios.add_to_request")
-        case .failed: L10n.text("ios.reply_to_continue")
-        default: L10n.text("desktop.reply")
-        }
+        L10n.text("desktop.reply")
     }
 
     private var canSend: Bool {
