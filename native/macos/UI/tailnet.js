@@ -222,9 +222,8 @@
       const ipv4 = (s.self?.ips || []).find(ip => ip.includes('.'));
       body.append(row('[[i18n:ui.tailnet_ip]]', ipv4, true));
       // Tailscale's own device list, for removing or renaming devices (FEN-177).
-      const devicesLink = el('button', 'gs-link tailnet-devices-link', t('[[i18n:ui.tailnet_admin_devices]]'));
-      devicesLink.type = 'button';
-      devicesLink.onclick = () => send('tailnet-open-url:' + devicesURL);
+      const devicesLink = button('[[i18n:ui.tailnet_admin_devices]]', 'tailnet-secondary tailnet-devices-link', () => send('tailnet-open-url:' + devicesURL));
+      devicesLink.insertAdjacentHTML('beforeend', svg('<path d="M8 5h7v7M15 5l-9 9"/>'));
       actions.append(devicesLink);
       actions.append(button('[[i18n:ui.tailnet_sign_out]]', 'tailnet-secondary', () => { busy = 'logout'; drawPage(); send('tailnet-logout'); }, busy === 'logout'));
       body.append(actions);
