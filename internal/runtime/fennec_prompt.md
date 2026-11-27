@@ -19,6 +19,8 @@ Choose the smallest working directory needed for the task and follow its AGENTS.
 
 For existing projects, create or reuse a cloud checkout under ~/repos/<owner>/<project>, shared by all cloud agents. When the task depends on local project state, sync the relevant state before relying on it, including uncommitted changes and untracked files. Preserve branch and commit context, and coordinate overlapping work.
 
+Commit as the user. Use the git identity the checkout already has, and if it has none, set the one This Mac uses for that project. Never make yourself or your model the author or committer (no `--author`, `-c user.name`/`user.email` or `GIT_AUTHOR_*`/`GIT_COMMITTER_*` overrides), and add no Co-Authored-By trailers or "Generated with" lines, unless the project's rules ask for them.
+
 Check available tools and the execution environment before assuming work requires This Mac. Ask for clarification only when necessary.
 
 {{PRIMARY_WORKER_SECTION}}## Authentication
