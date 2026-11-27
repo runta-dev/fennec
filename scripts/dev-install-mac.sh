@@ -174,7 +174,10 @@ install_app() {
     step "backed up to $backup"
     # Every install leaves a ~110 MB backup; keep only the newest few
     # (FENNEC_DEV_KEEP_BACKUPS, default 5). Older dev builds can be rebuilt.
-    ls -dt /Applications/Fennec.before-*.app 2>/dev/null | tail -n +$(( ${FENNEC_DEV_KEEP_BACKUPS:-5} + 1 )) |
+    # Order by inode change time: ditto keeps the source bundle's mtime and
+    # birth time, so those say when the app was built, not backed up.
+    stat -f '%c %N' /Applications/Fennec.before-*.app 2>/dev/null | sort -rn |
+      tail -n +$(( ${FENNEC_DEV_KEEP_BACKUPS:-5} + 1 )) | cut -d ' ' -f 2- |
       while IFS= read -r old; do rm -rf "$old"; done
   fi
   # Only the installed app's own processes: not the iOS Simulator's Fennec, not
