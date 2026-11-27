@@ -2515,14 +2515,13 @@ impl FennecWindow {
                         .child(offline_badge(&p.synced_at, now)),
                 )
             })
+            // FEN-155: the New Request box and the Active/Done row stay put;
+            // only the request list below them scrolls.
             .child(
                 v_flex()
-                    .id("requests")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.queue_scroll)
-                    .p(px(14.0))
+                    .flex_none()
+                    .px(px(14.0))
+                    .pt(px(14.0))
                     .child(
                         // New Request: one plain box; the first line is the title.
                         v_flex()
@@ -2641,7 +2640,17 @@ impl FennecWindow {
                                     )
                                     .child(ui::icon("chevron", 13.0, c("f_muted"))),
                             ),
-                    )
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("requests")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.queue_scroll)
+                    .px(px(14.0))
+                    .pb(px(14.0))
                     .when(shown.is_empty(), |d| {
                         d.child(
                             div()
