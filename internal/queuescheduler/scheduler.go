@@ -380,11 +380,19 @@ func (s Scheduler) Step(ctx context.Context) error {
 		}
 		for _, request := range q.Queued {
 			worker := worker
+			chosen := false
 			for _, w := range q.Workers {
 				if w.On && w.Agent == request.Agent {
-					worker = w
+					worker, chosen = w, true
 					break
 				}
+			}
+			// A request posted for an agent that isn't one of the queue's
+			// turned-on workers (FEN-110: the iPhone's + menu picks any agent
+			// ready on the cloud computer) still goes to that agent. Only
+			// before its first run: a request that ran keeps the queue's workers.
+			if !chosen && request.Agent != "" && len(request.Runs) == 0 && board.Agents[request.Agent] {
+				worker = board.Worker{Agent: request.Agent, On: true}
 			}
 			target := routing.Locations[worker.Agent]
 			if target == "" {

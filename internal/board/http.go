@@ -116,12 +116,14 @@ func (s Store) Handler() http.Handler {
 			Author, Title, Tag, Body string
 			Tags                     []string     `json:"tags"`
 			Attachments              []Attachment `json:"attachments"`
+			// Agent is the agent that should take the request (FEN-110).
+			Agent string `json:"agent"`
 		}
 		if decode(w, r, &body) {
 			if len(body.Tags) == 0 && body.Tag != "" {
 				body.Tags = []string{body.Tag}
 			}
-			req, err := s.CreateRequestWithAttachments(r.PathValue("id"), body.Author, body.Title, body.Tags, body.Body, body.Attachments)
+			req, err := s.CreateRequestForAgent(r.PathValue("id"), body.Author, body.Title, body.Tags, body.Body, body.Attachments, body.Agent)
 			reply(w, req, err)
 		}
 	})

@@ -491,22 +491,7 @@ struct ChatView: View {
     }
 
     private func emptyConversation(_ session: Session) -> some View {
-        VStack(spacing: 16) {
-            AgentIcon(agent: session.agent, size: 48)
-                .accessibilityHidden(true)
-            VStack(spacing: 8) {
-                Text(L10n.text("ios.empty_chat_title"))
-                    .font(.system(size: 20, weight: .medium)).foregroundStyle(Theme.fg)
-                Text(L10n.text("ios.empty_chat_detail"))
-                    .font(.system(size: 14)).foregroundStyle(Theme.fg2)
-                    .lineSpacing(4)
-            }
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: 280)
-        }
-        .frame(maxWidth: .infinity).padding(.top, 72).padding(.bottom, 40)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("empty-conversation")
+        EmptyConversation(agent: session.agent)
     }
 
     @ViewBuilder
@@ -622,6 +607,31 @@ private struct QuestionSheet: View {
             .selectionOutline(typing, radius: 13)
         }
         .padding(20)
+    }
+}
+
+/// A new conversation's blank page: the agent and an invitation to start.
+/// Also the New request page's (FEN-110).
+struct EmptyConversation: View {
+    var agent: AgentKind
+
+    var body: some View {
+        VStack(spacing: 16) {
+            AgentIcon(agent: agent, size: 48)
+                .accessibilityHidden(true)
+            VStack(spacing: 8) {
+                Text(L10n.text("ios.empty_chat_title"))
+                    .font(.system(size: 20, weight: .medium)).foregroundStyle(Theme.fg)
+                Text(L10n.text("ios.empty_chat_detail"))
+                    .font(.system(size: 14)).foregroundStyle(Theme.fg2)
+                    .lineSpacing(4)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
+        }
+        .frame(maxWidth: .infinity).padding(.top, 72).padding(.bottom, 40)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("empty-conversation")
     }
 }
 

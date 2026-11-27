@@ -244,3 +244,29 @@ func TestThreadTakesTheSessionTitleOnceTheAgentNamesIt(t *testing.T) {
 		t.Fatal(r.Title, r.Messages[0].Body)
 	}
 }
+
+// FEN-110: a request posted for an agent goes to that agent, even when the
+// queue's only worker is another one.
+func TestRequestPostedForAnAgentRunsThatAgent(t *testing.T) {
+	store := board.Store{Home: t.TempDir(), Role: "local"}
+	p, _ := store.CreateProject(board.Project{Name: "Pick", Queue: 2})
+	store.SetPrimary(false)
+	store.SetRouting(board.Routing{Locations: map[string]string{"claude": "local", "codex": "local"}})
+	picked, err := store.CreateRequestForAgent(p.ID, "me", "With Codex", nil, "", nil, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _ := store.CreateRequest(p.ID, "me", "Default", "", "")
+	if _, err := store.CreateRequestForAgent(p.ID, "me", "Unknown", nil, "", nil, "nope"); !errors.Is(err, board.ErrInvalid) {
+		t.Fatal("unknown agent accepted", err)
+	}
+	step(t, Scheduler{Store: store, Executor: &executorFixture{}})
+	got, _ := store.Request(p.ID, picked.Number)
+	if got.Status != board.Working || got.Agent != "codex" {
+		t.Fatal(got)
+	}
+	got, _ = store.Request(p.ID, plain.Number)
+	if got.Status != board.Working || got.Agent != "claude" {
+		t.Fatal(got)
+	}
+}

@@ -365,7 +365,6 @@
     "ios.tag": {"en-US": "Tag", "zh-CN": "标签"},
     "ios.marked_done": {"en-US": "Marked done", "zh-CN": "已标记完成"},
     "ios.undo": {"en-US": "Undo", "zh-CN": "撤销"},
-    "ios.auto_tag": {"en-US": "Auto tag", "zh-CN": "自动标签"},
     "ios.reorder": {"en-US": "Reorder", "zh-CN": "调整顺序"},
     "ios.reorder_queued": {"en-US": "Reorder queued", "zh-CN": "调整排队顺序"},
     "ios.reorder_hint": {"en-US": "Drag queued requests to change their order. The top one starts next.", "zh-CN": "拖动排队中的请求调整顺序，最上面的下一个开始。"},
@@ -379,9 +378,6 @@
     "ios.requests": {"en-US": "Requests", "zh-CN": "请求"},
     "ios.in_threads": {"en-US": "In threads", "zh-CN": "讨论中"},
     "ios.search_requests": {"en-US": "Search requests", "zh-CN": "搜索请求"},
-    "ios.new_request_placeholder": {"en-US": "Describe the work. The first line is the title.", "zh-CN": "描述要做的事，第一行是标题。"},
-    "ios.new_request_where": {"en-US": "Goes to the end of the {queue} queue · {busy}", "zh-CN": "加到 {queue} 队列末尾 · {busy}"},
-    "ios.send_to_queue": {"en-US": "Send to queue", "zh-CN": "发到队列"},
     "ios.request_menu": {"en-US": "Request options", "zh-CN": "请求选项"},
     "ios.after_it_starts": {"en-US": "After it starts", "zh-CN": "开始后可用"},
     "ios.add_tag": {"en-US": "Add tag", "zh-CN": "添加标签"},
@@ -720,6 +716,10 @@
     "ui.ok": {
       "en-US": "OK",
       "zh-CN": "好"
+    },
+    "ios.no_cloud_agents": {
+      "en-US": "No agents on your cloud computer yet. Move one there in Fennec on your Mac.",
+      "zh-CN": "云电脑上还没有可用的 agent。请先在 Mac 上的 Fennec 中把 agent 迁移到云电脑。"
     },
     "ios.message_agent": {
       "en-US": "Message {agent}",

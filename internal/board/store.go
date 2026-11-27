@@ -584,6 +584,16 @@ func (s Store) CreateRequest(project, author, title, tag, body string) (Request,
 // CreateRequestWithAttachments posts a request with tags (ids or labels); no
 // tags leave a placeholder for the agent that takes it (TagAuto).
 func (s Store) CreateRequestWithAttachments(project, author, title string, tags []string, body string, images []Attachment) (Request, error) {
+	return s.CreateRequestForAgent(project, author, title, tags, body, images, "")
+}
+
+// CreateRequestForAgent posts a request that the given agent should take
+// (FEN-110: the iPhone picks the agent before writing the request). An empty
+// agent leaves the choice to the queue's workers.
+func (s Store) CreateRequestForAgent(project, author, title string, tags []string, body string, images []Attachment, agent string) (Request, error) {
+	if agent != "" && !Agents[agent] {
+		return Request{}, ErrInvalid
+	}
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -629,7 +639,7 @@ func (s Store) CreateRequestWithAttachments(project, author, title string, tags 
 			p.Next++
 		}
 	}
-	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Created: now, Updated: now, QueuedAt: now,
+	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Agent: agent, Created: now, Updated: now, QueuedAt: now,
 		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
 	r.setTags(tags)
 	p.Next++

@@ -80,10 +80,23 @@ final class QueuesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Mark done"].waitForExistence(timeout: 5))
         shot(app, "28-thread-review")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        // + picks the agent, then opens the request's blank page (FEN-110).
         app.buttons["new-request"].tap()
+        let codex = app.buttons["new-request-agent-codex"]
+        XCTAssertTrue(codex.waitForExistence(timeout: 5))
+        shot(app, "32-new-request-agents")
+        codex.tap()
         XCTAssertTrue(app.buttons["send-request"].waitForExistence(timeout: 5))
-        // The sheet can attach images (FEN-64).
+        XCTAssertTrue(app.descendants(matching: .any)["empty-conversation"].exists)
+        // The page can attach images (FEN-64).
         XCTAssertTrue(app.buttons["new-request-image"].isHittable)
         shot(app, "33-new-request")
+        let text = app.textViews["new-request-text"]
+        text.tap()
+        text.typeText("Check the login screen")
+        app.buttons["send-request"].tap()
+        // Send opens the new thread in place of the blank page.
+        XCTAssertTrue(app.staticTexts["Check the login screen"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["send-request"].exists)
     }
 }

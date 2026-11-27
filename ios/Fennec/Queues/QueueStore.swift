@@ -407,18 +407,21 @@ final class QueueStore {
     /// with a success tap, and the board's number takes over when the POST
     /// answers. Returns the number to open its thread with. A refused
     /// request is removed again and comes back in `unsent`.
-    func send(_ project: String, text: String, tag: String?, images: [BoardAttachment]) -> Int {
+    /// `agent` is the agent picked in the + menu; the board runs the request
+    /// with it (FEN-110).
+    func send(_ project: String, text: String, tag: String? = nil, images: [BoardAttachment], agent: AgentKind? = nil) -> Int {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let first = trimmed.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
         let title = first.isEmpty ? L10n.text("desktop.image_request") : String(first.prefix(200))
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        if core == nil { return demoPost(project, title: title, text: trimmed).number }
+        if core == nil { return demoPost(project, title: title, text: trimmed, agent: agent).number }
 
         let number = nextLocalNumber
         nextLocalNumber -= 1
         let key = "\(project)/\(number)"
         let at = ISO8601DateFormatter().string(from: .now)
         var local = BoardRequest(number: number, title: title, tag: tag, status: "queued", author: author, created: at, updated: at)
+        local.agent = agent?.launcherID
         local.messages = [BoardMessage(id: 1, author: author, body: trimmed, at: at, attachments: images.isEmpty ? nil : images)]
         local.latest = local.messages?.first
         localRequests[key] = local
@@ -426,6 +429,7 @@ final class QueueStore {
 
         var body: [String: Any] = ["title": title, "body": trimmed, "author": author, "attachments": attachmentsJSON(images)]
         if let tag { body["tag"] = tag }
+        if let agent { body["agent"] = agent.launcherID }
         Task {
             do {
                 let request = try JSONDecoder().decode(BoardRequest.self, from: try await call("POST", "/v1/projects/\(project)/requests", body))
@@ -442,7 +446,7 @@ final class QueueStore {
                 localRequests[key] = nil
                 withAnimation(.smooth(duration: 0.3)) { requests[project]?.removeAll { $0.number == number } }
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                unsent = UnsentRequest(project: project, number: number, text: text, tag: tag, images: images, error: error.localizedDescription)
+                unsent = UnsentRequest(project: project, number: number, text: text, tag: tag, images: images, agent: agent, error: error.localizedDescription)
             }
         }
         return number
@@ -714,6 +718,7 @@ struct UnsentRequest: Equatable {
     var text: String
     var tag: String?
     var images: [BoardAttachment]
+    var agent: AgentKind?
     var error: String
 }
 
@@ -780,10 +785,11 @@ extension QueueStore {
         return store
     }
 
-    fileprivate func demoPost(_ project: String, title: String, text: String) -> BoardRequest {
+    fileprivate func demoPost(_ project: String, title: String, text: String, agent: AgentKind? = nil) -> BoardRequest {
         let n = (list(project).map(\.number).max() ?? 0) + 1
         let at = ISO8601DateFormatter().string(from: .now)
         var r = BoardRequest(number: n, title: title, tag: self.project(project)?.tags.first?.id, status: "queued", author: author, created: at, updated: at)
+        r.agent = agent?.launcherID
         r.messages = [BoardMessage(id: 1, author: author, body: text, at: at)]
         requests[project, default: []].append(r)
         return r

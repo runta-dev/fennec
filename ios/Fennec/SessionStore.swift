@@ -265,7 +265,8 @@ final class SessionStore {
         sessions.removeAll { $0.id == id }
     }
 
-    /// Agents the + menu offers. Only agents that can start on the cloud
+    /// Agents home's + menu offers for a new request (FEN-110; new sessions
+    /// before FEN-108). Only agents that can start on the cloud
     /// computer: one the Mac hasn't moved there has no sign-in on it, and its
     /// session fails to start (FEN-73). Until the cloud computer says, or when
     /// it is too old to, every agent turned on in Settings.
@@ -283,6 +284,12 @@ final class SessionStore {
         guard let json = await live({ try goCall { core.cloudAgents($0) } }),
               let state = try? JSONDecoder().decode(CloudAgents.self, from: Data(json.utf8)) else { return }
         cloudAgents = state
+    }
+
+    /// Reads which agents are ready unless that was read in the last minute.
+    func loadCloudAgentsIfStale() async {
+        guard cloudAgentsReadAt.map({ Date.now.timeIntervalSince($0) > 60 }) ?? true else { return }
+        await loadCloudAgents()
     }
 
     /// Creates an empty session. The first message is sent from the chat page.

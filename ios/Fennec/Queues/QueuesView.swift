@@ -9,6 +9,8 @@ enum QueueRoute: Hashable {
     case knowledge(String)
     case concept(String, String)
     case chat(String)
+    /// The blank page of a new request for an agent (FEN-110).
+    case newRequest(String, AgentKind)
     case account
     case agents
 }
@@ -27,6 +29,7 @@ struct QueueDestinations: ViewModifier {
             case .knowledge(let project): KnowledgeView(projectID: project, path: $path)
             case let .concept(project, id): ConceptView(projectID: project, conceptID: id, path: $path)
             case .chat(let id): ChatView(sessionID: id)
+            case let .newRequest(project, agent): NewRequestView(projectID: project, agent: agent, path: $path)
             case .account: AccountView(openAgents: { path.append(.agents) })
             case .agents: AgentsView()
             }
@@ -41,7 +44,6 @@ struct QueuesView: View {
     @Environment(SessionStore.self) private var store
     @Environment(RuntaAuth.self) private var auth
     @State private var path: [QueueRoute] = []
-    @State private var composing = false
     @State private var searching = false
     @State private var reordering = false
     @State private var creatingQueue = false
@@ -72,6 +74,9 @@ struct QueuesView: View {
                     // The board can't be read: ask the cloud client why
                     // (signed out, computer stopped, no network), for the banner.
                     if queues.unavailable { await store.refresh(transcripts: false) }
+                    // Which agents the + menu offers (FEN-110, as FEN-73 did
+                    // for new sessions): at most once a minute.
+                    Task { await store.loadCloudAgentsIfStale() }
                     try? await Task.sleep(for: .seconds(queues.live ? 30 : path.isEmpty ? 2 : 5))
                     queues.startWatching() // reopens a stream that went quiet
                 }
@@ -93,25 +98,16 @@ struct QueuesView: View {
                     .accessibilityLabel(L10n.text("ui.account"))
                 }
                 ToolbarItem(placement: .principal) { queueMenu }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { composing = true } label: { Image(systemName: "plus").regularIconWeight() }
-                        .disabled(queues.selected == nil)
-                        .accessibilityLabel(L10n.text("desktop.new_request"))
-                        .accessibilityIdentifier("new-request")
-                }
+                ToolbarItem(placement: .topBarTrailing) { newRequestMenu }
             }
             .modifier(QueueDestinations(path: $path))
-            .sheet(isPresented: $composing) {
-                if let project = queues.selected {
-                    NewRequestSheet(project: project) { number in path.append(.thread(project.id, number)) }
-                }
-            }
             .onChange(of: queues.unsent) { _, unsent in
                 // A new request the board refused (FEN-58): leave its thread
-                // and open the sheet again with it.
+                // and open its blank page again with it.
                 guard let unsent else { return }
                 path.removeAll { $0 == .thread(unsent.project, unsent.number) }
-                composing = true
+                let agent = unsent.agent ?? queues.project(unsent.project)?.firstAgent ?? .codex
+                path.append(.newRequest(unsent.project, agent))
             }
             .sheet(isPresented: $reordering) {
                 if let project = queues.selected { ReorderView(project: project) }
@@ -129,6 +125,32 @@ struct QueuesView: View {
             .queueActionAlert()
         }
         .tint(Theme.fg)
+    }
+
+    // MARK: New request (33)
+
+    /// + picks the agent first, then opens the request's blank page, as a
+    /// new chat used to start (FEN-110). The request goes to the open queue.
+    private var newRequestMenu: some View {
+        Menu {
+            let agents = store.newSessionAgents
+            ForEach(agents) { agent in
+                Button {
+                    if let project = queues.selected { path.append(.newRequest(project.id, agent)) }
+                } label: {
+                    Label { Text(agent.displayName) } icon: { AgentIcon(agent: agent, size: 20) }
+                }
+                .accessibilityIdentifier("new-request-agent-\(agent.rawValue)")
+            }
+            if agents.isEmpty {
+                Text(L10n.text("ios.no_cloud_agents"))
+            }
+        } label: {
+            Image(systemName: "plus").regularIconWeight()
+        }
+        .disabled(queues.selected == nil)
+        .accessibilityLabel(L10n.text("desktop.new_request"))
+        .accessibilityIdentifier("new-request")
     }
 
     // MARK: Queue menu (19)
@@ -716,114 +738,5 @@ struct RequestSearchResults: View {
         guard let range = flat.range(of: q, options: .caseInsensitive) else { return flat }
         let start = flat.index(range.lowerBound, offsetBy: -40, limitedBy: flat.startIndex) ?? flat.startIndex
         return (start == flat.startIndex ? "" : "…") + flat[start...]
-    }
-}
-
-// MARK: New request (33)
-
-struct NewRequestSheet: View {
-    @Environment(QueueStore.self) private var queues
-    @Environment(\.dismiss) private var dismiss
-    @State var project: BoardProject
-    var opened: (Int) -> Void
-    @State private var text = ""
-    @State private var tag: String?
-    @State private var images = ImageDraft()
-    /// Why the last send didn't reach the board (FEN-58).
-    @State private var error: String?
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        Menu {
-                            ForEach(queues.projects) { p in Button(p.name) { project = p; tag = nil } }
-                        } label: { pill(project.name, icon: "square.stack", on: true) }
-                        Menu {
-                            Button(L10n.text("ios.auto_tag")) { tag = nil }
-                            ForEach(project.tags) { t in Button(t.label) { tag = t.id } }
-                        } label: { pill(tag.map(project.tagLabel) ?? L10n.text("ios.auto_tag"), icon: "tag", on: tag != nil) }
-                        // Screenshots go with the request, as in a thread reply (FEN-64).
-                        ImagePickerButton(draft: $images) { uploading in
-                            if uploading {
-                                ProgressView().controlSize(.small)
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(Theme.surface, in: Capsule())
-                                    .overlay(Capsule().strokeBorder(Theme.line))
-                            } else {
-                                pill(images.done.isEmpty ? L10n.text("desktop.request_image") : "\(L10n.text("desktop.request_image")) \(images.done.count)",
-                                     icon: "photo", on: !images.done.isEmpty)
-                            }
-                        }
-                        .accessibilityIdentifier("new-request-image")
-                    }
-                }
-                TextField(L10n.text("ios.new_request_placeholder"), text: $text, axis: .vertical)
-                    .font(.system(size: 16))
-                    .focused($focused)
-                    .lineLimit(4...14)
-                    .accessibilityIdentifier("new-request-text")
-                ImageDraftStrip(draft: $images)
-                Spacer(minLength: 0)
-                if let error {
-                    Label { Text(error) } icon: { Image(systemName: "exclamationmark.triangle").regularIconWeight() }
-                        .font(.system(size: 12.5)).foregroundStyle(Theme.danger)
-                }
-                Text(L10n.text("ios.new_request_where", values: ["queue": project.name, "busy": busy]))
-                    .font(.system(size: 12.5)).foregroundStyle(Theme.fg3)
-                Button {
-                    send()
-                } label: {
-                    Text(L10n.text("ios.send_to_queue"))
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(images.uploading || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.done.isEmpty))
-                .accessibilityIdentifier("send-request")
-            }
-            .padding(16)
-            .background(Theme.bg)
-            .navigationTitle(L10n.text("desktop.new_request"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L10n.text("desktop.cancel")) { dismiss() } }
-            }
-        }
-        .onAppear {
-            if let unsent = queues.unsent {
-                project = queues.project(unsent.project) ?? project
-                text = unsent.text
-                tag = unsent.tag
-                images = ImageDraft(done: unsent.images)
-                error = unsent.error
-                queues.unsent = nil
-            }
-            focused = true
-        }
-        .presentationDetents([.large])
-    }
-
-    private var busy: String {
-        let working = queues.list(project.id).filter { $0.status_.running }.count
-        return L10n.text("desktop.queued_busy", values: ["working": String(min(working, project.queue)), "limit": String(project.queue)])
-    }
-
-    private func pill(_ title: String, icon: String, on: Bool) -> some View {
-        Label { Text(title) } icon: { Image(systemName: icon).regularIconWeight() }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(on ? Theme.fg : Theme.fg2)
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(Theme.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(on ? Theme.accent : Theme.line))
-    }
-
-    /// Closes at once and opens the new thread; the request goes to the
-    /// board in the background (FEN-58), as Mark done does (FEN-22).
-    private func send() {
-        let number = queues.send(project.id, text: text, tag: tag, images: images.done)
-        queues.selectedID = project.id
-        dismiss()
-        opened(number)
     }
 }
