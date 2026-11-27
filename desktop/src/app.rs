@@ -203,6 +203,9 @@ pub struct FennecWindow {
     pub(crate) sidebar: bool,
     /// How far the sidebar is shown (0 hidden, 1 shown) in this frame.
     sidebar_shown: f32,
+    /// Whether the window is in native full screen in this frame. macOS hides
+    /// the traffic lights there, so title rows don't leave room for them (FEN-101).
+    full_screen: bool,
     /// The running sidebar animation: the target, the starting amount, and when it started.
     sidebar_motion: Option<(bool, f32, std::time::Instant)>,
     /// Queue cards easing to a new place after their status moved them.
@@ -404,6 +407,7 @@ impl FennecWindow {
             notice: None,
             sidebar: true,
             sidebar_shown: 1.0,
+            full_screen: false,
             sidebar_motion: None,
             queue_glide: Default::default(),
             status_slide: Default::default(),
@@ -2031,8 +2035,18 @@ impl FennecWindow {
     /// sidebar is hidden it clears the traffic lights and the toggle, and it
     /// moves with the sidebar's slide.
     pub(crate) fn title_inset(&self, base: f32, gap: f32) -> Pixels {
-        let collapsed = SIDEBAR_TOGGLE_LEFT + SIDEBAR_TOGGLE_SIZE + gap;
+        let collapsed = self.sidebar_toggle_left() + SIDEBAR_TOGGLE_SIZE + gap;
         px(base + (collapsed - base) * (1.0 - self.sidebar_shown))
+    }
+
+    /// The sidebar toggle's left edge: beside the traffic lights, or at the
+    /// window's edge in full screen, where macOS hides them (FEN-101).
+    fn sidebar_toggle_left(&self) -> f32 {
+        if self.full_screen {
+            SIDEBAR_TOGGLE_LEFT_FULL_SCREEN
+        } else {
+            SIDEBAR_TOGGLE_LEFT
+        }
     }
 
     /// The sidebar toggle sits beside the traffic lights at the same place
@@ -2040,7 +2054,7 @@ impl FennecWindow {
     fn sidebar_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
         div()
             .absolute()
-            .left(px(SIDEBAR_TOGGLE_LEFT))
+            .left(px(self.sidebar_toggle_left()))
             .top(px(10.0))
             .child(
                 ui::icon_button("sidebar-toggle", "sidebar")
@@ -3931,6 +3945,7 @@ impl Render for FennecWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::terminal::next_frame();
         window.set_rem_size(px(crate::settings::ui_font_size()));
+        self.full_screen = window.is_fullscreen();
         self.sync_input_styles(cx);
         self.step_sidebar(window, cx);
         let sidebar_width=self.sidebar_width(window);
@@ -4163,6 +4178,8 @@ impl Render for FennecWindow {
 
 /// Where the sidebar toggle starts: just right of the traffic lights.
 const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
+/// In full screen there are no traffic lights: line up with the search field.
+const SIDEBAR_TOGGLE_LEFT_FULL_SCREEN: f32 = 10.0;
 const SIDEBAR_TOGGLE_SIZE: f32 = 26.0;
 const SIDEBAR_SLIDE_SECONDS: f32 = 0.22;
 /// A sidebar row's height and the gap below it.
