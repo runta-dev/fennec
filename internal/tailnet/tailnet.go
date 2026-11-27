@@ -112,10 +112,6 @@ const (
 	ErrUnreachable   = "unreachable" // offline or no route
 	ErrHostKeyChange = "host_key_changed"
 	ErrSSHFailed     = "ssh_failed"
-	// ErrShieldsUp: the Mac's own Tailscale blocks incoming connections
-	// ("Allow incoming connections" off), so SSH from the cloud computer
-	// stalls in the banner exchange while pings still answer (FEN-156).
-	ErrShieldsUp = "shields_up"
 	// ErrSSHCheck: the tailnet policy's SSH rule is "check", so Tailscale
 	// SSH wants a browser approval (CheckURL) every 12 hours.
 	ErrSSHCheck = "ssh_check"

@@ -33,7 +33,6 @@
     auth_failed: '[[i18n:ui.tailnet_ssh_auth_failed]]',
     refused: '[[i18n:ui.tailnet_ssh_refused]]',
     unreachable: '[[i18n:ui.tailnet_ssh_unreachable]]',
-    shields_up: '[[i18n:ui.tailnet_ssh_shields_up]]',
     host_key_changed: '[[i18n:ui.tailnet_ssh_host_key_changed]]',
     ssh_failed: '[[i18n:ui.tailnet_ssh_failed]]',
     ssh_check: '[[i18n:ui.tailnet_ssh_check]]',
@@ -276,7 +275,7 @@
     return grid;
   }
 
-  function deviceRow(device, thisDevice) {
+  function deviceRow(device) {
     const item = el('div', 'tailnet-device' + (device.online ? '' : ' is-offline'));
     const main = el('div', 'tailnet-device-main');
     const icon = el('span', 'tailnet-os');
@@ -295,7 +294,6 @@
     const side = el('div', 'tailnet-device-side');
     const computer = device.computer;
     const connected = computer && !computer.error && computer.alias;
-    if (device.id === thisDevice) side.append(el('span', 'runtime-metrics-spec', t('[[i18n:ui.this_mac]]')));
     if (connected) {
       const tag = el('span', 'runtime-metrics-spec tailnet-connected', t('[[i18n:ui.tailnet_worker]]'));
       tag.title = 'ssh ' + computer.alias;
@@ -306,7 +304,7 @@
       remove.title = remove.ariaLabel = t('[[i18n:ui.tailnet_remove]]');
       remove.onclick = () => send('tailnet-remove:' + JSON.stringify({ id: device.id }));
       side.append(remove);
-    } else if ((device.id !== thisDevice || computer?.error) && sshCapable(device.os)) {
+    } else if (sshCapable(device.os)) {
       const add = button('[[i18n:ui.tailnet_add]]', 'tailnet-add', () => openAdd(device), !device.online);
       if (!device.online) add.title = t('[[i18n:ui.tailnet_offline]]');
       side.append(add);
@@ -315,12 +313,6 @@
     item.append(main);
     if (computer?.error) {
       const problem = el('p', 'tailnet-device-problem', t(sshErrors[computer.error] || sshErrors.ssh_failed));
-      if (computer.error === 'refused' && device.id === thisDevice) {
-        const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_sharing]]'));
-        fix.type = 'button';
-        fix.onclick = () => send('open-remote-login');
-        problem.append(' ', fix);
-      }
       if (computer.error === 'ssh_check') {
         const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_policy]]'));
         fix.type = 'button';
@@ -329,8 +321,7 @@
       }
       item.append(problem);
     }
-    // This Mac's own numbers are in the card above.
-    if (connected && metrics && device.online && device.id !== thisDevice) item.append(meters(metrics));
+    if (connected && metrics && device.online) item.append(meters(metrics));
     return item;
   }
 
@@ -360,29 +351,16 @@
     cardHead.append(head);
     // Say what worker computers are for until the tailnet is set up.
     if (!running) cardHead.append(el('p', 'tailnet-card-intro' + (s?.error ? ' is-error' : ''), t(s?.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_card_intro]]')));
-    const self = running ? (s.devices || []).find(d => d.id === s.this_device) : null;
-    if (self?.computer?.error) {
-      const problem = el('p', 'tailnet-device-problem tailnet-host-problem', t(sshErrors[self.computer.error] || sshErrors.ssh_failed));
-      if (self.computer.error === 'refused') {
-        const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_sharing]]'));
-        fix.type = 'button';
-        fix.onclick = () => send('open-remote-login');
-        problem.append(' ', fix);
-      }
-      hostSlot.querySelector('.tailnet-host-problem')?.remove();
-      hostSlot.append(problem);
-    } else {
-      hostSlot.querySelector('.tailnet-host-problem')?.remove();
-    }
     if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
     if (!running) { window.updateComputerCount?.(); return; }
-    // This Mac is the first worker computer above; then the other workers,
-    // then the rest of the tailnet, each with "Add".
+    // This Mac is the first worker computer above, through the Fennec relay;
+    // its tailnet device is left out. Then the other workers, then the rest
+    // of the tailnet, each with "Add" (FEN-147).
     const devices = (Array.isArray(s.devices) ? s.devices : []).filter(d => d.id !== s.this_device);
     const isWorker = d => d.computer && !d.computer.error && d.computer.alias;
     const workers = devices.filter(isWorker);
     const list = el('div', 'tailnet-devices');
-    for (const device of [...workers, ...devices.filter(d => !isWorker(d))]) list.append(deviceRow(device, s.this_device));
+    for (const device of [...workers, ...devices.filter(d => !isWorker(d))]) list.append(deviceRow(device));
     if (!devices.length) list.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
     cardBody.append(list);
     window.tailnetComputerCount = workers.length;

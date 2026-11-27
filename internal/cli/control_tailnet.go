@@ -10,11 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"os/user"
-	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 )
 
@@ -109,22 +105,11 @@ func (s *daemonServices) tailnetCall(ctx context.Context, operation cloudops.Ope
 	return transport.Operate(ctx, operation)
 }
 
-// tailnetAutoAdd remembers when this Mac last tried to add itself, so a Mac
-// without Remote Login isn't retried on every poll, and the last failed
-// attempt's device, which the status shows until an attempt succeeds.
-var tailnetAutoAdd struct {
-	sync.Mutex
-	tried   map[string]time.Time
-	running map[string]bool
-	failed  map[string]json.RawMessage
-}
-
 // tailnetStatus is the cloud computer's tailnet plus what only the Mac
-// knows: which device is this Mac and the local user name. A Mac running
-// Fennec adds itself: it authorizes the cloud computer's key and asks the
-// cloud computer to sign in, so the user runs no command there. The sign-in
-// runs in the background: it waits for SSH, up to 20 s when this Mac isn't
-// reachable, and the panel shows "Loading…" until status answers (FEN-147).
+// knows: which device is this Mac and the local user name (the add dialog's
+// default). This Mac is the default worker computer through the Fennec
+// relay, so the panel leaves its tailnet device out of the list; it is
+// never added over the tailnet (FEN-147).
 func (s *daemonServices) tailnetStatus(ctx context.Context, probe bool) (any, error) {
 	raw, err := s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_status", Tailnet: &tailnet.Request{Probe: probe}}, 25*time.Second)
 	if err != nil {
@@ -134,143 +119,20 @@ func (s *daemonServices) tailnetStatus(ctx context.Context, probe bool) (any, er
 	if err = json.Unmarshal(raw, &status); err != nil {
 		return nil, err
 	}
-	name := localUser()
-	status["local_user"] = name
+	status["local_user"] = localUser()
 	var view tailnet.Status
 	if json.Unmarshal(raw, &view) != nil || view.State != "running" {
 		return status, nil
 	}
 	local := localTailnetIPs()
-	index := -1
-	for i, device := range view.Devices {
+	for _, device := range view.Devices {
 		for _, ip := range device.IPs {
 			if local[ip] {
-				index = i
+				status["this_device"] = device.ID
 			}
 		}
 	}
-	if index < 0 {
-		return status, nil
-	}
-	device := view.Devices[index]
-	status["this_device"] = device.ID
-	if device.Computer != nil && device.Computer.Error == "" || view.PublicKey == "" || name == "" {
-		tailnetAutoAdd.Lock()
-		delete(tailnetAutoAdd.failed, device.ID)
-		tailnetAutoAdd.Unlock()
-		return status, nil
-	}
-	// With "Allow incoming connections" off, Tailscale on this Mac drops the
-	// cloud computer's SSH: say so instead of a timeout, and don't retry.
-	if localShieldsUp() {
-		markThisDevice(status, index, tailnet.ErrShieldsUp)
-		return status, nil
-	}
-	tailnetAutoAdd.Lock()
-	if tailnetAutoAdd.tried == nil {
-		tailnetAutoAdd.tried, tailnetAutoAdd.running, tailnetAutoAdd.failed = map[string]time.Time{}, map[string]bool{}, map[string]json.RawMessage{}
-	}
-	due := !tailnetAutoAdd.running[device.ID] && time.Since(tailnetAutoAdd.tried[device.ID]) >= time.Minute
-	if due {
-		tailnetAutoAdd.tried[device.ID] = time.Now()
-		tailnetAutoAdd.running[device.ID] = true
-	}
-	failed := tailnetAutoAdd.failed[device.ID]
-	tailnetAutoAdd.Unlock()
-	if failed != nil {
-		var replacement any
-		if devices, ok := status["devices"].([]any); ok && index < len(devices) && json.Unmarshal(failed, &replacement) == nil {
-			devices[index] = replacement
-		}
-	}
-	if !due {
-		return status, nil
-	}
-	if err = authorizeTailnetKey(s.home, view.PublicKey); err != nil {
-		tailnetAutoAdd.Lock()
-		tailnetAutoAdd.running[device.ID] = false
-		tailnetAutoAdd.Unlock()
-		status["this_device_error"] = "authorize_failed"
-		return status, nil
-	}
-	go s.tailnetAddSelf(device.ID, name)
 	return status, nil
-}
-
-// tailnetAddSelf asks the cloud computer to sign in to this Mac and keeps a
-// failed result for later status calls. A success is saved on the cloud
-// computer, so status reports it from then on.
-func (s *daemonServices) tailnetAddSelf(id, name string) {
-	added, err := s.tailnetCall(context.Background(), cloudops.Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: id, User: name}}, 25*time.Second)
-	var result tailnet.Device
-	tailnetAutoAdd.Lock()
-	defer tailnetAutoAdd.Unlock()
-	tailnetAutoAdd.running[id] = false
-	if err != nil || json.Unmarshal(added, &result) != nil || result.Computer == nil {
-		return
-	}
-	if result.Computer.Error == "" {
-		delete(tailnetAutoAdd.failed, id)
-		return
-	}
-	tailnetAutoAdd.failed[id] = added
-}
-
-// markThisDevice sets this Mac's computer error in a status payload.
-func markThisDevice(status map[string]any, index int, code string) {
-	devices, ok := status["devices"].([]any)
-	if !ok || index >= len(devices) {
-		return
-	}
-	device, ok := devices[index].(map[string]any)
-	if !ok {
-		return
-	}
-	computer, _ := device["computer"].(map[string]any)
-	if computer == nil {
-		computer = map[string]any{}
-	}
-	computer["error"] = code
-	device["computer"] = computer
-}
-
-// tailscalePrefs reads this Mac's Tailscale preferences as JSON. The app's
-// bundled CLI works for both the App Store and the standalone app. Started
-// by the daemon, without a shell's environment, that binary tries to open
-// the GUI ("CLIError error 3") unless TAILSCALE_BE_CLI is set.
-var tailscalePrefs = func(ctx context.Context) ([]byte, error) {
-	for _, path := range []string{"/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"} {
-		if _, err := os.Stat(path); err == nil {
-			command := exec.CommandContext(ctx, path, "debug", "prefs")
-			command.Env = append(os.Environ(), "TAILSCALE_BE_CLI=1")
-			return command.Output()
-		}
-	}
-	return nil, os.ErrNotExist
-}
-
-var shieldsCache struct {
-	sync.Mutex
-	at time.Time
-	up bool
-}
-
-// localShieldsUp reports whether Tailscale on this Mac blocks incoming
-// connections (ShieldsUp). Unknown counts as no. The answer is kept 10 s,
-// because the panel polls status every few seconds.
-func localShieldsUp() bool {
-	shieldsCache.Lock()
-	defer shieldsCache.Unlock()
-	if time.Since(shieldsCache.at) < 10*time.Second {
-		return shieldsCache.up
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	var prefs struct{ ShieldsUp bool }
-	raw, err := tailscalePrefs(ctx)
-	shieldsCache.up = err == nil && json.Unmarshal(raw, &prefs) == nil && prefs.ShieldsUp
-	shieldsCache.at = time.Now()
-	return shieldsCache.up
 }
 
 func localUser() string {
@@ -297,41 +159,4 @@ func localTailnetIPs() map[string]bool {
 		}
 	}
 	return found
-}
-
-// authorizeTailnetKey adds the cloud computer's tailnet key to this Mac's
-// authorized_keys (restricted to tailnet addresses), once.
-func authorizeTailnetKey(home, key string) error {
-	line := tailnet.AuthorizeLine(key)
-	fields := strings.Fields(key)
-	if line == "" || len(fields) < 2 || !strings.HasPrefix(fields[0], "ssh-") {
-		return os.ErrInvalid
-	}
-	dir := filepath.Join(home, ".ssh")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, "authorized_keys")
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	for _, existing := range strings.Split(string(data), "\n") {
-		if strings.Contains(existing, fields[1]) {
-			return nil
-		}
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	prefix := ""
-	if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
-		prefix = "\n"
-	}
-	_, err = file.WriteString(prefix + line + "\n")
-	if closeErr := file.Close(); err == nil {
-		err = closeErr
-	}
-	return err
 }
