@@ -289,15 +289,21 @@ impl FennecWindow {
                     .size(px(RAIL_ITEM))
                     .child(ui::project_icon(p, RAIL_ITEM))
                     .when(p.needs_you > 0, |d| {
+                        // FEN-139: gpui sizes border-box, so padding plus the
+                        // 2px border made a one-digit badge wider than 18px
+                        // (an oval). One digit gets an exact 18px circle; only
+                        // longer counts grow into a pill.
+                        let count = p.needs_you.to_string();
+                        let wide = count.len() > 1;
                         d.child(
                             div()
                                 .absolute()
                                 .right(px(-4.0))
                                 .bottom(px(-4.0))
-                                .min_w(px(18.0))
                                 .h(px(18.0))
-                                .px(px(5.0))
-                                .rounded(px(9.0))
+                                .when(wide, |d| d.min_w(px(18.0)).px(px(4.0)))
+                                .when(!wide, |d| d.w(px(18.0)))
+                                .rounded_full()
                                 .bg(c("orange"))
                                 .border_2()
                                 .border_color(c("f_bg"))
@@ -307,7 +313,7 @@ impl FennecWindow {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .child(p.needs_you.to_string()),
+                                .child(count),
                         )
                     })
                     .into_any_element();
