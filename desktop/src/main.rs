@@ -47,6 +47,8 @@ mod board;
 mod control;
 mod cursor;
 mod dispatch_env;
+#[cfg(target_os = "macos")]
+mod fullscreen_log;
 mod i18n;
 mod local_time;
 mod project_settings;
@@ -114,6 +116,10 @@ fn main() {
                 })
                 .expect("cannot open the Fennec window");
             #[cfg(target_os = "macos")]
+            if let Some(window) = ns_window(handle, cx) {
+                fullscreen_log::watch(handle, window, cx);
+            }
+            #[cfg(target_os = "macos")]
             show_after_first_frame(handle, cx);
             #[cfg(not(target_os = "macos"))]
             let _ = handle;
@@ -126,6 +132,22 @@ fn main() {
             })
             .detach();
         });
+}
+
+/// The window's `NSWindow`, as an address.
+#[cfg(target_os = "macos")]
+fn ns_window(handle: WindowHandle<app::FennecWindow>, cx: &mut App) -> Option<usize> {
+    use objc2::{msg_send, runtime::AnyObject};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let view = handle
+        .update(cx, |_, window, _| match HasWindowHandle::window_handle(window).map(|h| h.as_raw()) {
+            Ok(RawWindowHandle::AppKit(appkit)) => Some(appkit.ns_view.as_ptr() as usize),
+            _ => None,
+        })
+        .ok()
+        .flatten()?;
+    let window: *mut AnyObject = unsafe { msg_send![view as *mut AnyObject, window] };
+    (!window.is_null()).then_some(window as usize)
 }
 
 /// Orders the window front only once it is drawn as it will look, so the system
