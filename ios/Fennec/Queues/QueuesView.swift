@@ -353,7 +353,7 @@ extension BoardRequest {
     }
 }
 
-/// One request: agent icon (or a clock while queued), title and time, then reference and latest line.
+/// One request: agent icon (or a clock while queued; no status dot once done), title and time, then reference and latest line.
 struct RequestRow: View {
     var request: BoardRequest
     var project: BoardProject
@@ -393,16 +393,20 @@ struct RequestIcon: View {
         switch request.status_ {
         case .queued:
             tile(Image(systemName: "clock"), Theme.fg2)
-        case .resolved:
-            tile(Image(systemName: "checkmark"), Theme.working)
         default:
             if let agent = request.agentKind ?? project.firstAgent {
                 // Status dot at the bottom-right, like the session list's StatusDot (FEN-66).
+                // A done request shows the plain agent icon: the Done page already
+                // says it is done, so a checkmark on every row repeats it (FEN-116).
                 AgentIcon(agent: agent, size: size)
                     .overlay(alignment: .bottomTrailing) {
-                        Circle().fill(request.status_.color).frame(width: 7, height: 7)
-                            .background(Circle().stroke(Theme.bg, lineWidth: 4))
+                        if request.status_ != .resolved {
+                            Circle().fill(request.status_.color).frame(width: 7, height: 7)
+                                .background(Circle().stroke(Theme.bg, lineWidth: 4))
+                        }
                     }
+            } else if request.status_ == .resolved {
+                tile(Image(systemName: "checkmark"), Theme.working)
             } else {
                 tile(Image(systemName: "circle.fill"), request.status_.color)
             }
