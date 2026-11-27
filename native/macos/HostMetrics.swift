@@ -66,8 +66,8 @@ final class HostMetrics {
         }
         guard result == KERN_SUCCESS else { return nil }
         let page = UInt64(vm_kernel_page_size)
-        let internal = UInt64(stats.internal_page_count), purgeable = UInt64(stats.purgeable_count)
-        let app = internal > purgeable ? internal - purgeable : 0
+        let anonymous = UInt64(stats.internal_page_count), purgeable = UInt64(stats.purgeable_count)
+        let app = anonymous > purgeable ? anonymous - purgeable : 0
         return (app + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * page
     }
 
