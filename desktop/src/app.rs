@@ -2503,67 +2503,18 @@ impl FennecWindow {
             .bg(c("background"))
             .border_r_1()
             .border_color(c("f_line"))
-            .child(
-                h_flex()
-                    .id("project-head")
-                    .h(px(58.0))
-                    .flex_none()
-                    .px(px(18.0))
-                    .gap(px(11.0))
-                    .border_b_1()
-                    .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .child(ui::project_icon(p, 30.0))
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(2.0))
-                            .child(
-                                div()
-                                    .text_size(px(13.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(c("f_text"))
-                                    .truncate()
-                                    .child(p.display_name()),
-                            )
-                            .when(!p.description.is_empty(), |d| {
-                                d.child(
-                                    div()
-                                        .text_size(px(11.5))
-                                        .text_color(c("f_muted"))
-                                        .truncate()
-                                        .child(p.display_description()),
-                                )
-                            }),
-                    )
-                    .when(p.sync_status == "offline", |d| {
-                        d.child(offline_badge(&p.synced_at, now))
-                    })
-                    .child({
-                        let id = p.id.clone();
-                        div()
-                            .id("project-settings")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .size(px(28.0))
-                            .rounded(px(6.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .hover(|s| s.bg(c("f_line")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.go(
-                                    Route::Settings(
-                                        id.clone(),
-                                        crate::project_settings::Tab::General,
-                                    ),
-                                    window,
-                                    cx,
-                                )
-                            }))
-                            .child(ui::icon("gear", 15.0, c("f_muted")))
-                    }),
-            )
+            // FEN-149: no queue header. The rail already shows the queue's icon
+            // and name, and its right-click menu opens the queue's settings. The
+            // offline badge (FEN-75) is the only thing kept, on its own line.
+            .when(p.sync_status == "offline", |d| {
+                d.child(
+                    h_flex()
+                        .flex_none()
+                        .px(px(18.0))
+                        .pt(px(12.0))
+                        .child(offline_badge(&p.synced_at, now)),
+                )
+            })
             .child(
                 v_flex()
                     .id("requests")
