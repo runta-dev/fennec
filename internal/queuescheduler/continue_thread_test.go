@@ -1,4 +1,4 @@
-package runtime
+package queuescheduler
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fennec/internal/board"
+	cloudruntime "fennec/internal/runtime"
 )
 
 // A reclaimed thread has no live terminal; resuming its conversation still
@@ -31,17 +32,17 @@ func TestContinueThreadReportsAResumedConversation(t *testing.T) {
 	}
 	root := filepath.Join(home, ".local/fennec/launches")
 	os.MkdirAll(root, 0700)
-	data, _ := json.Marshal(LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
+	data, _ := json.Marshal(cloudruntime.LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
 	os.WriteFile(filepath.Join(root, oldID+".json"), data, 0600)
 	cwd := filepath.Join(home, ".fen", oldID)
-	writeFixture(t, filepath.Join(cloudAgentHome(home, "claude"), "projects", ClaudeProjectDirectory(cwd), conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"`+cwd+`","message":"Ask"}`+"\n", time.Now().Add(-time.Hour))
+	writeFixture(t, filepath.Join(cloudruntime.CloudAgentHome(home, "claude"), "projects", cloudruntime.ClaudeProjectDirectory(cwd), conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"`+cwd+`","message":"Ask"}`+"\n", time.Now().Add(-time.Hour))
 	launched := false
-	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
+	backend := &cloudruntime.LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
 		if args[0] == "ls" {
 			return []byte(`{"terminals":[]}`), nil
 		}
 		launched = true
-		return json.Marshal(LocalTerminal{Address: "t2", State: "live"})
+		return json.Marshal(cloudruntime.LocalTerminal{Address: "t2", State: "live"})
 	}}
 	backend.Query = func(_ context.Context, method string, _ any) (json.RawMessage, error) {
 		if method == "terminal.list" {
@@ -49,7 +50,7 @@ func TestContinueThreadReportsAResumedConversation(t *testing.T) {
 		}
 		return json.RawMessage(`{}`), nil
 	}
-	terminal, continued, err := backend.ContinueThread(context.Background(), store, p.ID, request.Number)
+	terminal, continued, err := ContinueThread(context.Background(), backend, store, p.ID, request.Number)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,15 +77,15 @@ func TestContinueThreadStartsFreshWhenNothingToResume(t *testing.T) {
 	}
 	root := filepath.Join(home, ".local/fennec/launches")
 	os.MkdirAll(root, 0700)
-	data, _ := json.Marshal(LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
+	data, _ := json.Marshal(cloudruntime.LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
 	os.WriteFile(filepath.Join(root, oldID+".json"), data, 0600)
 	launches := 0
-	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
+	backend := &cloudruntime.LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
 		if args[0] == "ls" {
 			return []byte(`{"terminals":[]}`), nil
 		}
 		launches++
-		return json.Marshal(LocalTerminal{Address: "t2", State: "live"})
+		return json.Marshal(cloudruntime.LocalTerminal{Address: "t2", State: "live"})
 	}}
 	backend.Query = func(_ context.Context, method string, _ any) (json.RawMessage, error) {
 		if method == "terminal.list" {
@@ -92,7 +93,7 @@ func TestContinueThreadStartsFreshWhenNothingToResume(t *testing.T) {
 		}
 		return json.RawMessage(`{}`), nil
 	}
-	terminal, continued, err := backend.ContinueThread(context.Background(), store, p.ID, request.Number)
+	terminal, continued, err := ContinueThread(context.Background(), backend, store, p.ID, request.Number)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,15 +126,15 @@ func TestContinueThreadSkipsARunThatNeverLaunched(t *testing.T) {
 	}
 	root := filepath.Join(home, ".local/fennec/launches")
 	os.MkdirAll(root, 0700)
-	data, _ := json.Marshal(LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
+	data, _ := json.Marshal(cloudruntime.LocalLaunch{ID: oldID, Agent: "claude", Device: "1234abcd", LocalDirectory: "/"})
 	os.WriteFile(filepath.Join(root, oldID+".json"), data, 0600)
 	cwd := filepath.Join(home, ".fen", oldID)
-	writeFixture(t, filepath.Join(cloudAgentHome(home, "claude"), "projects", ClaudeProjectDirectory(cwd), conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"`+cwd+`","message":"Ask"}`+"\n", time.Now().Add(-time.Hour))
-	backend := &LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
+	writeFixture(t, filepath.Join(cloudruntime.CloudAgentHome(home, "claude"), "projects", cloudruntime.ClaudeProjectDirectory(cwd), conversationA+".jsonl"), `{"type":"user","uuid":"u1","cwd":"`+cwd+`","message":"Ask"}`+"\n", time.Now().Add(-time.Hour))
+	backend := &cloudruntime.LocalRuntime{Home: home, Lookup: func(string) (string, error) { return "/bin/echo", nil }, Run: func(_ context.Context, args ...string) ([]byte, error) {
 		if args[0] == "ls" {
 			return []byte(`{"terminals":[]}`), nil
 		}
-		return json.Marshal(LocalTerminal{Address: "t2", State: "live"})
+		return json.Marshal(cloudruntime.LocalTerminal{Address: "t2", State: "live"})
 	}}
 	backend.Query = func(_ context.Context, method string, _ any) (json.RawMessage, error) {
 		if method == "terminal.list" {
@@ -141,14 +142,29 @@ func TestContinueThreadSkipsARunThatNeverLaunched(t *testing.T) {
 		}
 		return json.RawMessage(`{}`), nil
 	}
-	_, continued, err := backend.ContinueThread(context.Background(), store, p.ID, request.Number)
+	_, continued, err := ContinueThread(context.Background(), backend, store, p.ID, request.Number)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var launch LocalLaunch
+	var launch cloudruntime.LocalLaunch
 	data, _ = os.ReadFile(filepath.Join(root, newID+".json"))
 	json.Unmarshal(data, &launch)
 	if !continued || launch.ResumeFrom != oldID {
 		t.Fatalf("continued=%v resumed from %q, want %q", continued, launch.ResumeFrom, oldID)
+	}
+}
+
+const conversationA = "af4ac027-381a-48d8-9cbc-32ba6f82c5fb"
+
+func writeFixture(t *testing.T, file, content string, modified time.Time) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !modified.IsZero() {
+		os.Chtimes(file, modified, modified)
 	}
 }

@@ -1,4 +1,4 @@
-package runtime
+package queuescheduler
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fennec/internal/board"
+	r "fennec/internal/runtime"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,25 +14,27 @@ import (
 	"time"
 )
 
-// ThreadSession is shared by the scheduler and explicit navigation. Opening a
+// ThreadSession finds or starts the cloud session of a queue thread. The queue
+// owns the mapping from threads to sessions; runtime only runs them (FEN-81).
+// It is shared by the scheduler and explicit navigation. Opening a
 // thread's terminal never submits work; only the scheduler delivers its input.
-func (runtime *LocalRuntime) ThreadSession(ctx context.Context, store board.Store, project string, number int) (LocalTerminal, error) {
-	terminal, _, err := runtime.ContinueThread(ctx, store, project, number)
+func ThreadSession(ctx context.Context, runtime *r.LocalRuntime, store board.Store, project string, number int) (r.LocalTerminal, error) {
+	terminal, _, err := ContinueThread(ctx, runtime, store, project, number)
 	return terminal, err
 }
 
 // ContinueThread is ThreadSession that also reports whether the terminal
 // carries the agent's earlier conversation for this thread: a live terminal of
 // an earlier run, or a launch that resumed one. A fresh launch does not.
-func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Store, project string, number int) (terminal LocalTerminal, continued bool, err error) {
+func ContinueThread(ctx context.Context, runtime *r.LocalRuntime, store board.Store, project string, number int) (terminal r.LocalTerminal, continued bool, err error) {
 	root := filepath.Join(runtime.Home, ".fen/board/session-locks")
 	if err := os.MkdirAll(root, 0700); err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s/%d", project, number))))
 	lock, err := os.OpenFile(filepath.Join(root, key), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	defer lock.Close()
 	for {
@@ -40,25 +43,25 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 			break
 		}
 		if err != syscall.EWOULDBLOCK {
-			return LocalTerminal{}, false, err
+			return r.LocalTerminal{}, false, err
 		}
 		select {
 		case <-ctx.Done():
-			return LocalTerminal{}, false, ctx.Err()
+			return r.LocalTerminal{}, false, ctx.Err()
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	request, err := store.Request(project, number)
 	if err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	if len(request.Runs) == 0 {
-		return LocalTerminal{}, false, fmt.Errorf("this thread has not started yet")
+		return r.LocalTerminal{}, false, fmt.Errorf("this thread has not started yet")
 	}
 	latest := request.Runs[len(request.Runs)-1]
 	if latest.Location != "cloud" {
-		return LocalTerminal{}, false, fmt.Errorf("this thread runs on the Mac")
+		return r.LocalTerminal{}, false, fmt.Errorf("this thread runs on the Mac")
 	}
 	agent := latest.Agent
 	if agent == "" {
@@ -74,13 +77,13 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 	}
 	raw, err := runtime.Query(ctx, "terminal.list", map[string]any{})
 	if err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	var list struct {
-		Terminals []LocalTerminal `json:"terminals"`
+		Terminals []r.LocalTerminal `json:"terminals"`
 	}
 	if json.Unmarshal(raw, &list) != nil {
-		return LocalTerminal{}, false, fmt.Errorf("invalid session listing")
+		return r.LocalTerminal{}, false, fmt.Errorf("invalid session listing")
 	}
 	previous := ""
 	for i := len(request.Runs) - 1; i >= 0; i-- {
@@ -90,7 +93,7 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 		}
 		// Only a run that launched can be resumed: one whose launch failed
 		// (FEN-11: a follow-up whose resume failed) left no session behind.
-		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) && runtime.launched(run.Session) {
+		if previous == "" && (run.ID != request.Session || run.State != "starting" || run.Session != run.ID) && runtime.Launched(run.Session) {
 			previous = run.Session
 		}
 		for _, t := range list.Terminals {
@@ -107,7 +110,7 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 	if terminal.Address == "" {
 		p, err := store.Project(project)
 		if err != nil {
-			return LocalTerminal{}, false, err
+			return r.LocalTerminal{}, false, err
 		}
 		args := []string{}
 		for _, worker := range p.Workers {
@@ -121,9 +124,9 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 			id = fmt.Sprintf("%x", sha256.Sum256([]byte(previous+"/resume")))[:32]
 		}
 		continued = previous != ""
-		launch := LocalLaunch{ID: id, ResumeFrom: previous, Agent: agent, Device: store.Routing().Device, LocalDirectory: "/", Arguments: args}
+		launch := r.LocalLaunch{ID: id, ResumeFrom: previous, Agent: agent, Device: store.Routing().Device, LocalDirectory: "/", Arguments: args}
 		terminal, err = runtime.Launch(ctx, launch)
-		if errors.Is(err, ErrResumeUnavailable) {
+		if errors.Is(err, r.ErrResumeUnavailable) {
 			// The earlier run never got a conversation (FEN-11: its input was
 			// refused). Nothing launched yet, so start fresh with the full
 			// thread instead of failing the follow-up for good.
@@ -131,10 +134,10 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 			terminal, err = runtime.Launch(ctx, launch)
 		}
 		if err != nil {
-			return LocalTerminal{}, false, err
+			return r.LocalTerminal{}, false, err
 		}
 		if terminal.State == "finished" {
-			return LocalTerminal{}, false, fmt.Errorf("the resumed session has ended")
+			return r.LocalTerminal{}, false, fmt.Errorf("the resumed session has ended")
 		}
 		if terminal.Labels == nil {
 			terminal.Labels = map[string]string{}
@@ -144,22 +147,12 @@ func (runtime *LocalRuntime) ContinueThread(ctx context.Context, store board.Sto
 	id := terminal.Labels["fennec.session"]
 	_, err = runtime.Query(ctx, "terminal.label", map[string]any{"terminal": terminal.Address, "labels": map[string]string{"fennec.queue": project, "fennec.request": fmt.Sprint(number)}})
 	if err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	if err = store.BindSession(project, number, request.Session, id); err != nil {
-		return LocalTerminal{}, false, err
+		return r.LocalTerminal{}, false, err
 	}
 	terminal.Labels["fennec.queue"] = project
 	terminal.Labels["fennec.request"] = fmt.Sprint(number)
 	return terminal, continued, nil
-}
-
-// launched reports whether a cloud session was ever launched: Launch records it
-// before starting the terminal.
-func (runtime *LocalRuntime) launched(session string) bool {
-	if !sessionIDPattern.MatchString(session) {
-		return false
-	}
-	_, err := os.Stat(filepath.Join(runtime.Home, ".local/fennec/launches", session+".json"))
-	return err == nil
 }

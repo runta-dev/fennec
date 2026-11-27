@@ -6,6 +6,7 @@ import (
 	"fennec/internal/board"
 	"fennec/internal/gateway"
 	"fennec/internal/localssh"
+	"fennec/internal/queuescheduler"
 	"fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fmt"
@@ -19,7 +20,7 @@ func Operate(ctx context.Context, r *runtime.LocalRuntime, o Operation) (json.Ra
 	}
 	switch o.Kind {
 	case "thread_session":
-		terminal, err := r.ThreadSession(ctx, board.Store{Home: r.Home, Role: "cloud"}, o.Project, o.RequestNumber)
+		terminal, err := queuescheduler.ThreadSession(ctx, r, board.Store{Home: r.Home, Role: "cloud"}, o.Project, o.RequestNumber)
 		if err != nil {
 			return nil, err
 		}

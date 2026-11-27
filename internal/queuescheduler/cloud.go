@@ -38,7 +38,7 @@ func (c CloudExecutor) List(ctx context.Context) ([]Session, error) {
 	return out, nil
 }
 func (c CloudExecutor) Start(ctx context.Context, p board.Project, request board.Request, prompt board.Prompt) error {
-	terminal, continued, err := c.Runtime.ContinueThread(ctx, c.Store, p.ID, request.Number)
+	terminal, continued, err := ContinueThread(ctx, c.Runtime, c.Store, p.ID, request.Number)
 	if err != nil {
 		return err
 	}
