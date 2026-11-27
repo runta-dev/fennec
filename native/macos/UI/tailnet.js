@@ -61,9 +61,16 @@
   preferences?.before(page);
 
   // Computers: the tailnet's devices below This Mac.
+  // One card for every worker machine: this Mac first (its live metrics,
+  // drawn by drawHostMetrics in panel.js), then the tailnet's computers.
   const card = el('div', 'card runtime-metrics-card tailnet-devices-card');
   card.id = 'tailnet-card';
-  card.hidden = true;
+  const cardHead = el('div', 'tailnet-card-top');
+  const hostSlot = el('div', 'tailnet-host');
+  const cardBody = el('div', 'tailnet-body');
+  card.append(cardHead, hostSlot, cardBody);
+  const hostCard = document.querySelector('#host-metrics-card');
+  if (hostCard) { hostCard.classList.remove('card'); hostSlot.append(hostCard); }
   document.querySelector('#computers')?.append(card);
 
   // Add a computer.
@@ -250,20 +257,35 @@
   function drawCard() {
     const s = status;
     window.tailnetComputerCount = 0;
-    if (!s || requestError === 'login_required') { card.hidden = true; window.updateComputerCount?.(); return; }
-    card.hidden = false;
-    card.replaceChildren();
+    cardHead.replaceChildren();
+    cardBody.replaceChildren();
+    const running = s?.state === 'running' && !requestError;
     const head = el('div', 'runtime-metrics-head');
     const title = el('span', 'runtime-metrics-title-wrap');
     const icon = el('span', 'billing-field-icon tailnet-icon');
     icon.innerHTML = markSVG;
     title.append(icon, el('span', 'runtime-metrics-title', t('[[i18n:ui.tailnet_title]]')));
     head.append(title);
-    if (s.state === 'running' && (s.user || s.tailnet)) head.append(el('span', 'runtime-metrics-spec', s.user || s.tailnet));
-    card.append(head);
-    if (s.state !== 'running') {
-      // Say what worker machines are for before asking to set anything up.
-      card.append(el('p', 'tailnet-card-intro', t('[[i18n:ui.tailnet_card_intro]]')));
+    if (running && (s.user || s.tailnet)) head.append(el('span', 'runtime-metrics-spec', s.user || s.tailnet));
+    cardHead.append(head);
+    // Say what worker machines are for until the tailnet is set up.
+    if (!running) cardHead.append(el('p', 'tailnet-card-intro', t('[[i18n:ui.tailnet_card_intro]]')));
+    const self = running ? (s.devices || []).find(d => d.id === s.this_device) : null;
+    if (self?.computer?.error) {
+      const problem = el('p', 'tailnet-device-problem tailnet-host-problem', t(sshErrors[self.computer.error] || sshErrors.ssh_failed));
+      if (self.computer.error === 'refused') {
+        const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_sharing]]'));
+        fix.type = 'button';
+        fix.onclick = () => send('open-remote-login');
+        problem.append(' ', fix);
+      }
+      hostSlot.querySelector('.tailnet-host-problem')?.remove();
+      hostSlot.append(problem);
+    } else {
+      hostSlot.querySelector('.tailnet-host-problem')?.remove();
+    }
+    if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
+    if (!running) {
       const setup = el('button', 'tailnet-setup');
       setup.type = 'button';
       setup.append(el('span', '', t(s.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_setup]]')));
@@ -271,18 +293,17 @@
       go.innerHTML = chevron;
       setup.append(go);
       setup.onclick = open;
-      card.append(setup);
+      cardBody.append(setup);
       window.updateComputerCount?.();
       return;
     }
-    const devices = Array.isArray(s.devices) ? s.devices : [];
-    if (!devices.length) {
-      card.append(el('p', 'tailnet-message', t('[[i18n:ui.tailnet_no_devices]]')));
-    }
+    // This Mac is the first worker machine above; list the others.
+    const devices = (Array.isArray(s.devices) ? s.devices : []).filter(d => d.id !== s.this_device);
+    if (!devices.length) cardBody.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
     const list = el('div', 'tailnet-devices');
     for (const device of devices) list.append(deviceRow(device, s.this_device));
-    card.append(list);
-    window.tailnetComputerCount = devices.filter(d => d.computer && !d.computer.error && d.computer.alias && d.id !== s.this_device).length;
+    if (devices.length) cardBody.append(list);
+    window.tailnetComputerCount = devices.filter(d => d.computer && !d.computer.error && d.computer.alias).length;
     window.updateComputerCount?.();
   }
 
@@ -358,4 +379,5 @@
   window.renderTailnetBusy = value => { busy = value || ''; drawPage(); };
   window.rerenderTailnet = () => { drawPage(); drawCard(); };
   drawPage();
+  drawCard();
 })();

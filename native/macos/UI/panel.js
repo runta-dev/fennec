@@ -1388,7 +1388,7 @@ function drawHostMetrics() {
   card.innerHTML =
    '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="spark-host-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f38d25" stop-opacity="0.28"/><stop offset="100%" stop-color="#f38d25" stop-opacity="0.0"/></linearGradient></defs></svg>' +
    '<div class="runtime-metrics-head">' +
-   '<span class="runtime-metrics-title-wrap"><span class="billing-field-icon host-os-icon" aria-hidden="true">' + appleLogoSVG + '</span><span class="runtime-metrics-title" id="host-title"></span></span>' +
+   '<span class="runtime-metrics-title-wrap"><span class="billing-field-icon host-os-icon" aria-hidden="true">' + appleLogoSVG + '</span><span class="runtime-metrics-title" id="host-title"></span><span class="host-local-tag" id="host-local-tag"></span></span>' +
    '<span class="runtime-metrics-spec" id="host-spec"></span>' +
    '</div>' +
    '<div class="runtime-metrics-grid host-metrics-grid">' + sparkCell('cpu', 'CPU', cpuIcon) + sparkCell('mem', '<span id="host-mem-lbl"></span>', memIcon) + '</div>' +
@@ -1407,6 +1407,8 @@ function drawHostMetrics() {
  const spec = card.querySelector('#host-spec');
  spec.textContent = [os, ram].filter(Boolean).join(' · ');
  spec.title = title.title = [title.textContent, os, p.chip, cores, ram].filter(Boolean).join(' · ');
+ // This Mac is the first worker machine in the Worker machines card (FEN-104).
+ card.querySelector('#host-local-tag').textContent = t('[[i18n:ui.this_mac]]');
  card.querySelector('#host-mem-lbl').textContent = t('[[i18n:ui.memory]]');
  card.querySelector('#host-disk-lbl').textContent = t('[[i18n:ui.disk]]');
  const has = payload !== null;
