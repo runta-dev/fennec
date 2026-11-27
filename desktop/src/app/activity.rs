@@ -38,6 +38,7 @@ impl FennecWindow {
                 if this.update_in(cx, |this, _, cx| {
                     if result["retry"] == true { this.activity_input = Value::Null; }
                     this.activity = result["terminals"].clone();
+                    this.remember_programs();
                     this.apply_activity();
                     cx.notify();
                 }).is_err() { break; }
@@ -137,8 +138,30 @@ impl FennecWindow {
         }
     }
 
-    pub(super) fn program_icon(&self, address: &str, fallback: &str, size: f32) -> AnyElement {
+    /// Keeps each terminal's last known program, so a result that briefly
+    /// lacks it doesn't flash the plain terminal glyph (FEN-161).
+    pub(super) fn remember_programs(&mut self) {
+        if let Some(terminals) = self.activity.as_object() {
+            for (address, p) in terminals {
+                if p["program"].is_object() {
+                    self.programs_seen.insert(address.clone(), p["program"].clone());
+                }
+            }
+        }
+    }
+
+    /// The program a terminal runs: from the latest activity result, else the
+    /// last one seen for it.
+    pub(super) fn program(&self, address: &str) -> &Value {
         let p = &self.activity[address]["program"];
+        if p.is_object() {
+            return p;
+        }
+        self.programs_seen.get(address).unwrap_or(&Value::Null)
+    }
+
+    pub(super) fn program_icon(&self, address: &str, fallback: &str, size: f32) -> AnyElement {
+        let p = self.program(address);
         let Some(path) = p["icon"].as_str() else {
             return ui::agent_icon(fallback, size);
         };
@@ -156,7 +179,7 @@ impl FennecWindow {
     }
 
     pub(super) fn program_name(&self, address: &str, fallback: &str) -> String {
-        self.activity[address]["program"]["name"]
+        self.program(address)["name"]
             .as_str()
             .unwrap_or(fallback)
             .to_owned()

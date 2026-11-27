@@ -98,6 +98,10 @@ pub struct FennecWindow {
     activity_send: Option<async_channel::Sender<(serde_json::Value, Option<Arc<Core>>)>>,
     activity_input: serde_json::Value,
     activity: serde_json::Value,
+    /// The last program each terminal was seen running. An activity result
+    /// replaces `activity` whole, and one that briefly lacks a terminal would
+    /// flash its icon back to the plain terminal glyph (FEN-161).
+    programs_seen: HashMap<String, serde_json::Value>,
     thread_notices: Vec<activity::ThreadNotice>,
     /// Whether the window was active at the last activity tick (every 200 ms).
     window_active: bool,
@@ -344,6 +348,7 @@ impl FennecWindow {
             activity_send: None,
             activity_input: serde_json::Value::Null,
             activity: serde_json::Value::Null,
+            programs_seen: HashMap::new(),
             thread_notices: Vec::new(),
             window_active: false,
             cloud_listing: serde_json::Value::Null,
@@ -450,6 +455,7 @@ impl FennecWindow {
             this.sessions = sessions::from_terminals(&crate::preview::terminals());
             this.shells = crate::preview::shells();
             this.activity = crate::preview::activity();
+            this.remember_programs();
             this.apply_activity();
             this.core_error = Some(String::new());
         } else if connect {

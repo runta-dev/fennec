@@ -374,20 +374,27 @@ impl FennecWindow {
     /// The terminal button wears the icon of the tab its terminal shows
     /// (Node, Claude, a shell…), so it matches the tab strip (FEN-127).
     /// Before any terminal opened it is the plain terminal glyph.
+    ///
+    /// A shell (or a program not known yet) is drawn exactly like that plain
+    /// glyph, and the terminal counts as alive while its view is open, so a
+    /// core resync that briefly empties the session list or the activity
+    /// result doesn't flash the button to a different icon (FEN-161).
     fn rail_terminal_icon(&self, selected: bool) -> Box<dyn FnOnce(f32, bool) -> AnyElement + '_> {
         let alive = |a: &String| {
-            self.layout.members.contains_key(a) || self.sessions.iter().any(|s| &s.address == a)
+            self.layout.members.contains_key(a)
+                || self.sessions.iter().any(|s| &s.address == a)
+                || self.terms.contains_key(&self.shown_tab(a))
         };
-        match self.last_terminal.as_ref().filter(|a| alive(a)) {
-            Some(root) => {
-                let tab = self.shown_tab(root);
-                let program = tab.strip_prefix("local:").unwrap_or(&tab).to_string();
-                Box::new(Self::rail_tile(
-                    move |size, _| self.program_icon(&program, "shell", size),
-                    selected,
-                    false,
-                ))
-            }
+        let program = self.last_terminal.as_ref().filter(|a| alive(a)).map(|root| {
+            let tab = self.shown_tab(root);
+            tab.strip_prefix("local:").unwrap_or(&tab).to_string()
+        });
+        match program.filter(|p| !self.program(p)["shell"].as_bool().unwrap_or(true)) {
+            Some(program) => Box::new(Self::rail_tile(
+                move |size, _| self.program_icon(&program, "shell", size),
+                selected,
+                false,
+            )),
             None => Box::new(Self::rail_glyph("term", selected, false)),
         }
     }
