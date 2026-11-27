@@ -117,8 +117,9 @@ enum MarkdownBlock: Equatable {
     }
 
     /// CommonMark won't close `**` that follows punctuation when a letter comes
-    /// next, so `**转发。**它们` and `**现在怎么办：**追问` showed raw asterisks
-    /// (FEN-85; the desktop has the same fix, FEN-43). Punctuation like `。：（`
+    /// next, so bold CJK text ending in a full stop (U+3002) or colon (U+FF1A)
+    /// and followed by more CJK text showed raw asterisks (FEN-85; the desktop
+    /// has the same fix, FEN-43). Punctuation such as U+3002, U+FF1A and U+FF08
     /// touching a `*`/`~` run, with a letter on the run's other side, is swapped
     /// for a private-use character (U+E000+n) before parsing and put back after.
     /// Skipped when the text already holds such characters.
