@@ -92,11 +92,11 @@ modeSelect.value = 'auto';
 modeSelect.onchange();
 assert.equal(sent.pop(), 'settings:{"permission_mode":"auto"}');
 
-// 4. Selecting the Governance tab loads 7-day audit entries, expands detail, filters, and clears.
-context.window.onGovernanceTabShown();
+// 4. Opening the notification center loads 7-day audit entries, expands detail, filters, and clears.
+context.window.onNotificationsShown();
 assert.equal(sent.pop(), 'audit-list:{"filter":"all","limit":100}');
 context.window.openSecurityAuditView();
-assert.equal(tabs.pop(), 'governance');
+assert.equal(tabs.pop(), 'notifications');
 
 context.window.renderAuditLog({
   summary: { total_7d: 2, today_count: 2, blocked_7d: 1, retention_days: 7 },
