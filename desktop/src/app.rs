@@ -272,7 +272,7 @@ impl FennecWindow {
         });
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(2, 12)
+                .auto_grow(3, 12)
                 .submit_on_enter(true)
                 .placeholder(t("new_request"))
         });
