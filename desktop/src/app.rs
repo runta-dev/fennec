@@ -98,10 +98,10 @@ pub struct FennecWindow {
     activity_send: Option<async_channel::Sender<(serde_json::Value, Option<Arc<Core>>)>>,
     activity_input: serde_json::Value,
     activity: serde_json::Value,
-    /// The program each terminal's icon shows, held steady across activity
-    /// results that briefly lack the terminal or report a short-lived
-    /// foreground command (FEN-161). See `activity::SeenProgram`.
-    programs_seen: HashMap<String, activity::SeenProgram>,
+    /// The last program each terminal was seen running. An activity result
+    /// replaces `activity` whole, and one that briefly lacks a terminal would
+    /// flash its icon back to the plain terminal glyph (FEN-161).
+    programs_seen: HashMap<String, serde_json::Value>,
     thread_notices: Vec<activity::ThreadNotice>,
     /// Whether the window was active at the last activity tick (every 200 ms).
     window_active: bool,

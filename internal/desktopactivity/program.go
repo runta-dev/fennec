@@ -123,6 +123,11 @@ func Resolve(app string, argv []string) Program {
 			if k, ok := find(name); ok && !contains(table.Interpreters, k) {
 				return shown(k, "", false, false)
 			}
+			// A shell behind a wrapper (`env VAR=1 zsh -l`) is that shell, not
+			// the unknown program "env" with its boxed icon (FEN-161).
+			if contains(table.Shells, name) {
+				return shown("shell", name, true, false)
+			}
 		}
 	}
 	if k, ok := find(first); ok {

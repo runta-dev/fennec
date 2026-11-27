@@ -111,6 +111,8 @@ func TestPrograms(t *testing.T) {
 		{"", []string{"zsh", "-lic", `"$@"; exec "$0" -i`, "zsh", "pi"}, "pi", "Pi"},
 		{"", []string{"pwsh.exe", "-NoExit", "-Command", "& 'codex' '--help'"}, "codex", "Codex"},
 		{"", []string{"not-codex"}, "program", "not-codex"},
+		{"", []string{"/usr/bin/env", "-u", "VAR", "SHELL_SESSION=1", "/bin/zsh", "-l"}, "shell", "zsh"},
+		{"", []string{"env", "node", "/opt/codex.js"}, "codex", "Codex"},
 	}
 	for _, c := range cases {
 		p := Resolve(c.app, c.argv)

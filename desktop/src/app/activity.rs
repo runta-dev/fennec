@@ -1,21 +1,6 @@
 //! Native presentation and ordered delivery of core events to the local policy service.
 use super::*;
 use serde_json::{Value, json};
-use std::time::Instant;
-
-/// How long a terminal's new program must last before its icon shows it (FEN-161).
-const PROGRAM_SETTLE: Duration = Duration::from_millis(1200);
-
-/// A terminal's program as its icon shows it, and a different one it reported
-/// since, with when it first did.
-pub(super) struct SeenProgram {
-    shown: Value,
-    pending: Option<(Value, Instant)>,
-}
-
-fn same_program(a: &Value, b: &Value) -> bool {
-    a["key"] == b["key"] && a["name"] == b["name"]
-}
 
 impl FennecWindow {
     pub(super) fn start_activity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -68,7 +53,7 @@ impl FennecWindow {
                 if this
                     .update_in(cx, |this, window, cx| {
                         this.queue_activity(window);
-                        if this.expire_thread_notices() | this.settle_programs() {
+                        if this.expire_thread_notices() {
                             cx.notify();
                         }
                     })
@@ -153,62 +138,26 @@ impl FennecWindow {
         }
     }
 
-    /// Keeps each terminal's shown program steady (FEN-161). A result that
-    /// lacks the terminal keeps the last one. A different program is shown
-    /// only once it has lasted `PROGRAM_SETTLE`: a click or a new prompt makes
-    /// zsh run helpers (git status, prompt themes…) in the foreground for a few
-    /// milliseconds, and the tab and rail flashed the boxed "unknown program"
-    /// icon. The first program a terminal reports is shown at once.
+    /// Keeps each terminal's last known program, so a result that briefly
+    /// lacks it doesn't flash the plain terminal glyph (FEN-161).
     pub(super) fn remember_programs(&mut self) {
-        let now = Instant::now();
         if let Some(terminals) = self.activity.as_object() {
             for (address, p) in terminals {
-                let program = &p["program"];
-                if !program.is_object() {
-                    continue;
-                }
-                match self.programs_seen.get_mut(address) {
-                    None => {
-                        self.programs_seen.insert(
-                            address.clone(),
-                            SeenProgram { shown: program.clone(), pending: None },
-                        );
-                    }
-                    Some(seen) if same_program(&seen.shown, program) => seen.pending = None,
-                    Some(seen) => match &seen.pending {
-                        Some((next, _)) if same_program(next, program) => {}
-                        _ => seen.pending = Some((program.clone(), now)),
-                    },
+                if p["program"].is_object() {
+                    self.programs_seen.insert(address.clone(), p["program"].clone());
                 }
             }
         }
-        self.settle_programs();
     }
 
-    /// Shows the programs that have lasted `PROGRAM_SETTLE`; true if any changed.
-    pub(super) fn settle_programs(&mut self) -> bool {
-        let now = Instant::now();
-        let mut changed = false;
-        for seen in self.programs_seen.values_mut() {
-            if seen
-                .pending
-                .as_ref()
-                .is_some_and(|(_, since)| now.duration_since(*since) >= PROGRAM_SETTLE)
-            {
-                seen.shown = seen.pending.take().map(|(p, _)| p).unwrap_or_default();
-                changed = true;
-            }
-        }
-        changed
-    }
-
-    /// The program a terminal's icon shows: the settled one, else the latest
-    /// activity result's.
+    /// The program a terminal runs: from the latest activity result, else the
+    /// last one seen for it.
     pub(super) fn program(&self, address: &str) -> &Value {
-        match self.programs_seen.get(address) {
-            Some(seen) => &seen.shown,
-            None => &self.activity[address]["program"],
+        let p = &self.activity[address]["program"];
+        if p.is_object() {
+            return p;
         }
+        self.programs_seen.get(address).unwrap_or(&Value::Null)
     }
 
     pub(super) fn program_icon(&self, address: &str, fallback: &str, size: f32) -> AnyElement {
