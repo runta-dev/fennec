@@ -78,3 +78,33 @@ func TestPromptUsesInstalledAlias(t *testing.T) {
 		}
 	}
 }
+
+// FEN-179: only a chosen primary worker computer brings the section that has
+// agents ask to move This Mac's access there.
+func TestPromptPrimaryWorkerSection(t *testing.T) {
+	home := t.TempDir()
+	request := LocalLaunch{ID: "sunny-spicy", Agent: "codex", Device: "1234abcd", LocalDirectory: "/Users/example"}
+	prompt, err := FennecPrompt(home, request)
+	if err != nil || strings.Contains(prompt, "## Primary worker computer") || strings.Contains(prompt, "{{") {
+		t.Fatal("primary section without a primary", err)
+	}
+	dir := filepath.Join(home, ".config", "fennec")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tailnet-computers.json"), []byte(`[{"id":"a","name":"jarvis","alias":"jarvis","host":"100.1.1.1","user":"u","added_at":1,"primary":true}]`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	prompt, err = FennecPrompt(home, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Primary worker computer", `chose "jarvis" as the primary`, "end to end while This Mac is asleep or offline", "explicitly agrees", "Primary worker computer for builds"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	if strings.Contains(prompt, "{{") {
+		t.Fatal("unfilled placeholder")
+	}
+}

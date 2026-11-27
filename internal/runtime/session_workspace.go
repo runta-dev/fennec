@@ -16,6 +16,14 @@ import (
 //go:embed fennec_prompt.md
 var fennecPromptTemplate string
 
+// primaryWorkerSection is added to the prompt only when the user picked a
+// primary worker computer. The user wants it able to finish work end to end
+// while This Mac is offline, so agents ask to move missing access there
+// (FEN-179).
+//
+//go:embed fennec_primary_worker.md
+var primaryWorkerSection string
+
 // FennecPrompt contains the complete startup context in the harness-readable
 // instructions. No separate metadata file needs to be discovered by the agent.
 func FennecPrompt(home string, request LocalLaunch) (string, error) {
@@ -25,11 +33,12 @@ func FennecPrompt(home string, request LocalLaunch) (string, error) {
 	quote := func(value string) string { raw, _ := json.Marshal(value); return string(raw) }
 	// The user can pick one worker computer for builds, compiles and tests
 	// (FEN-147); without one, nothing changes for the agent.
-	primary := ""
+	primary, section := "", ""
 	if alias := tailnet.PrimaryAlias(home); alias != "" {
 		primary = "- Primary worker computer for builds, compiles and tests: SSH alias " + quote(alias) + "\n"
+		section = strings.ReplaceAll(primaryWorkerSection, "{{PRIMARY_ALIAS}}", quote(alias))
 	}
-	return strings.NewReplacer("{{PRIMARY_WORKER}}", primary, "{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
+	return strings.NewReplacer("{{PRIMARY_WORKER}}", primary, "{{PRIMARY_WORKER_SECTION}}", section, "{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
 }
 func prepareSessionWorkspace(home string, request LocalLaunch) (string, error) {
 	prompt, err := FennecPrompt(home, request)
