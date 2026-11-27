@@ -1,5 +1,6 @@
-//! FEN-106: a narrow rail (terminal, queues, settings) replaces the sidebar;
-//! the queue column and the thread beside it fill the rest.
+//! FEN-106: a title bar (traffic lights, search) over a narrow rail
+//! (terminal, queues, settings) that replaces the sidebar; the queue column
+//! and the thread beside it fill the rest.
 
 use super::{FennecWindow, Route, rail::RAIL_WIDTH};
 use crate::board::{Project, Request};
@@ -37,11 +38,17 @@ fn rail_holds_terminal_queues_and_settings(cx: &mut TestAppContext) {
     let fennec = cx.debug_bounds("rail-queue-fennec").expect("queue icon");
     let website = cx.debug_bounds("rail-queue-website").expect("queue icon");
     let settings = cx.debug_bounds("rail-settings").expect("settings button");
-    assert!(terminal.top() >= px(40.0), "the traffic lights keep the rail's top");
+    let title = cx.debug_bounds("titlebar").expect("title bar");
+    assert_eq!(title.left(), px(0.0));
+    assert_eq!(title.size.width, px(1200.0));
+    assert!(rail.top() >= title.bottom(), "the rail starts under the title bar");
+    let search = cx.debug_bounds("titlebar-search").expect("search in the title bar");
+    assert!((search.center().x - px(600.0)).abs() < px(1.0), "search is centered");
     assert!(terminal.bottom() <= fennec.top() && fennec.bottom() <= website.top());
     assert!(settings.bottom() > px(700.0), "settings sits at the bottom");
     let column = cx.debug_bounds("queue-column").expect("queue column");
     assert_eq!(column.left(), px(RAIL_WIDTH));
+    assert!(column.top() >= title.bottom());
     assert!(cx.debug_bounds("new-request").is_some());
 }
 

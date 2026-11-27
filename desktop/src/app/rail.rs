@@ -1,11 +1,14 @@
-//! FEN-106: a narrow rail on the left edge, as in Discord, instead of the old
-//! sidebar. From the top: room for the traffic lights, the local terminal,
-//! the queues (one icon each), New queue, and Settings at the bottom. The
-//! queue column and the thread beside it fill the rest of the window.
+//! FEN-106: a title bar across the window (the traffic lights at its left,
+//! search in the middle) over a narrow rail on the left edge, as in Discord,
+//! instead of the old sidebar. The rail holds the local terminal, the queues
+//! (one icon each), New queue, and Settings at the bottom. The queue column
+//! and the thread beside it fill the rest of the window.
 use super::*;
 
-/// The rail's width; the traffic lights (x 16–68) sit in its top.
+/// The rail's width; it lines up with the traffic lights (x 16–68) above it.
 pub(crate) const RAIL_WIDTH: f32 = 72.0;
+/// The title bar's height; the traffic lights (y 17–29) sit in its middle.
+pub(crate) const TITLEBAR_HEIGHT: f32 = 46.0;
 /// A rail button's square.
 const RAIL_ITEM: f32 = 44.0;
 
@@ -144,13 +147,33 @@ impl FennecWindow {
         }
     }
 
-    /// The queue header's search field (⌘K).
-    pub(super) fn search_field(&self) -> Stateful<Div> {
+    /// The title bar: it moves the window like a native one, holds the
+    /// traffic lights at its left and search (⌘K) in its middle.
+    pub(super) fn titlebar(&self) -> impl IntoElement {
         h_flex()
-            .id("queue-search")
-            .w(px(180.0))
+            .id("titlebar")
+            .debug_selector(|| "titlebar".into())
+            .w_full()
+            .h(px(TITLEBAR_HEIGHT))
+            .flex_none()
+            .px(px(RAIL_WIDTH + 12.0))
+            .bg(c("f_bg"))
+            .border_b_1()
+            .border_color(c("f_line"))
+            .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+            .child(div().flex_1())
+            .child(self.search_field())
+            .child(div().flex_1())
+    }
+
+    /// The title bar's search field (⌘K).
+    fn search_field(&self) -> Stateful<Div> {
+        h_flex()
+            .id("titlebar-search")
+            .debug_selector(|| "titlebar-search".into())
+            .w(px(360.0))
             .flex_shrink(1.0)
-            .min_w(px(110.0))
+            .min_w(px(160.0))
             .h(px(28.0))
             .px(px(8.0))
             .gap(px(7.0))
@@ -297,15 +320,7 @@ impl FennecWindow {
             .bg(c("f_bg"))
             .border_r_1()
             .border_color(c("f_line"))
-            // The top moves the window; the traffic lights sit there.
-            .child(
-                div()
-                    .id("rail-titlebar")
-                    .w_full()
-                    .h(px(if self.full_screen { 12.0 } else { 46.0 }))
-                    .flex_none()
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
-            )
+            .pt(px(10.0))
             .child(
                 self.rail_item(
                     "rail-terminal".into(),

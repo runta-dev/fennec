@@ -85,12 +85,13 @@ restores focus to its active terminal, without stealing focus from project edito
 
 ## Layout (FEN-106)
 
-A narrow rail on the left edge replaces the sidebar, as in Discord. From the
-top: the traffic lights, the local terminal (back to the last terminal shown,
+A title bar runs across the window: the traffic lights at its left and search
+(Command-K) in its middle. Under it, a narrow rail on the left edge replaces the
+sidebar, as in Discord. From the top: the local terminal (back to the last terminal shown,
 or a new shell; more shells open as tabs), one icon per queue with its "needs
 you" count, New queue, and Settings at the bottom. Right-click a queue icon to
-rename or delete it. Right of the rail are the queue column (header with
-search, New request box and request list, resizable) and the thread beside it.
+rename or delete it. Right of the rail are the queue column (header, New
+request box and request list, resizable) and the thread beside it.
 A posted request shows as a card under the box, which keeps focus.
 
 No shell opens by itself: a terminal opens from the rail or from a thread

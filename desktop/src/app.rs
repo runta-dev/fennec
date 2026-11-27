@@ -188,9 +188,6 @@ pub struct FennecWindow {
     restored_queue: Option<String>,
     opening_thread_session: bool,
     notice: Option<String>,
-    /// Whether the window is in native full screen in this frame. macOS hides
-    /// the traffic lights there, so title rows don't leave room for them (FEN-101).
-    full_screen: bool,
     /// The terminal the rail's terminal button goes back to.
     last_terminal: Option<String>,
     /// Queue cards easing to a new place after their status moved them.
@@ -391,7 +388,6 @@ impl FennecWindow {
             restored_queue: None,
 		    opening_thread_session: false,
             notice: None,
-            full_screen: false,
             last_terminal: None,
             queue_glide: Default::default(),
             status_slide: Default::default(),
@@ -2486,8 +2482,6 @@ impl FennecWindow {
                     .when(p.sync_status == "offline", |d| {
                         d.child(offline_badge(&p.synced_at, now))
                     })
-                    // FEN-106: search moved here from the sidebar (⌘K).
-                    .child(self.search_field())
                     .child({
                         let id = p.id.clone();
                         div()
@@ -3306,7 +3300,6 @@ impl Render for FennecWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         crate::terminal::next_frame();
         window.set_rem_size(px(crate::settings::ui_font_size()));
-        self.full_screen = window.is_fullscreen();
         self.sync_input_styles(cx);
         self.step_tabs(window, cx);
         let route = self.route.clone();
@@ -3433,7 +3426,20 @@ impl Render for FennecWindow {
                     cx.stop_propagation();
                 }
             }))
-            .child(self.rail(cx))
+            // FEN-106: a title bar across the window (traffic lights, search),
+            // then the rail and the queue column and thread beside it.
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(self.titlebar())
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.rail(cx))
             .child(
                 div()
                     .relative()
@@ -3454,7 +3460,7 @@ impl Render for FennecWindow {
                                 .child(text),
                         )
                     }),
-            )
+            )))
             .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
