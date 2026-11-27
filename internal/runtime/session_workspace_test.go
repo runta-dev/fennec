@@ -107,4 +107,8 @@ func TestPromptPrimaryWorkerSection(t *testing.T) {
 	if strings.Contains(prompt, "{{") {
 		t.Fatal("unfilled placeholder")
 	}
+	// The example preview link carries the bare ID; JSON quotes broke it.
+	if !strings.Contains(prompt, "http://localhost:47823/p/sunny-spicy/pv_") {
+		t.Fatal("preview example link is not the bare session ID")
+	}
 }

@@ -38,7 +38,7 @@ func FennecPrompt(home string, request LocalLaunch) (string, error) {
 		primary = "- Primary worker computer for builds, compiles and tests: SSH alias " + quote(alias) + "\n"
 		section = strings.ReplaceAll(primaryWorkerSection, "{{PRIMARY_ALIAS}}", quote(alias))
 	}
-	return strings.NewReplacer("{{PRIMARY_WORKER}}", primary, "{{PRIMARY_WORKER_SECTION}}", section, "{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
+	return strings.NewReplacer("{{PRIMARY_WORKER}}", primary, "{{PRIMARY_WORKER_SECTION}}", section, "{{SESSION_ID}}", request.ID, "{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
 }
 func prepareSessionWorkspace(home string, request LocalLaunch) (string, error) {
 	prompt, err := FennecPrompt(home, request)
