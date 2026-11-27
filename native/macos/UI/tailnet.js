@@ -481,6 +481,9 @@
       // No SSH server there: say what to turn on for that kind of computer.
       const refused = { macOS: '[[i18n:ui.tailnet_add_need_mac]]', windows: '[[i18n:ui.tailnet_add_need_windows]]' }[adding?.os] || '[[i18n:ui.tailnet_add_need_linux]]';
       state.textContent = t(code === 'refused' ? refused : addErrors[code] || loginErrors[code] || sshErrors.ssh_failed);
+      // A failure no message names well keeps ssh's own words underneath.
+      const detail = result?.computer?.detail;
+      if (detail && !['auth_failed', 'refused', 'key_invalid', 'key_passphrase'].includes(code)) state.append(el('span', 'tailnet-error-detail', detail));
       if (code === 'key_passphrase') $('#tailnet-add-form .tailnet-advanced').open = true;
       return;
     }

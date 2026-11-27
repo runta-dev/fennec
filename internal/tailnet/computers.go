@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -262,6 +263,12 @@ func parseMetrics(out []byte) *Metrics {
 // probe signs in to user@host over the tailnet and reads metrics. A computer
 // whose shell isn't POSIX (Windows) still counts as reached, without metrics.
 func probe(ctx context.Context, p paths, host string, port int, user string) (*Metrics, string) {
+	metrics, code, _ := probeDetail(ctx, p, host, port, user)
+	return metrics, code
+}
+
+// probeDetail is probe plus ssh's own words when it fails (FEN-147).
+func probeDetail(ctx context.Context, p paths, host string, port int, user string) (*Metrics, string, string) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	args := []string{"-F", "/dev/null", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "LogLevel=ERROR"}
@@ -279,24 +286,25 @@ func probe(ctx context.Context, p paths, host string, port int, user string) (*M
 	command.WaitDelay = time.Second
 	out, err := command.Output()
 	if err == nil {
-		return parseMetrics(out), ""
+		return parseMetrics(out), "", ""
 	}
 	text := strings.ToLower(stderr.String())
 	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() != 255 && ctx.Err() == nil {
 		// The remote command ran: signed in, but the shell isn't POSIX.
-		return parseMetrics(out), ""
+		return parseMetrics(out), "", ""
 	}
+	detail := strings.TrimSpace(err.Error() + clip(stderr.Bytes()))
 	switch {
 	case strings.Contains(text, "permission denied"):
-		return nil, ErrAuthFailed
+		return nil, ErrAuthFailed, detail
 	case strings.Contains(text, "connection refused") || strings.Contains(text, "connect to") && strings.Contains(text, "refused"):
-		return nil, ErrRefused
+		return nil, ErrRefused, detail
 	case strings.Contains(text, "host key") && (strings.Contains(text, "changed") || strings.Contains(text, "verification failed")):
-		return nil, ErrHostKeyChange
+		return nil, ErrHostKeyChange, detail
 	case ctx.Err() != nil || strings.Contains(text, "timed out") || strings.Contains(text, "no route") || strings.Contains(text, "unreachable") || strings.Contains(text, "closed by remote host"):
-		return nil, ErrUnreachable
+		return nil, ErrUnreachable, detail
 	}
-	return nil, ErrSSHFailed
+	return nil, ErrSSHFailed, detail
 }
 
 func portOr22(port int) int {
@@ -346,15 +354,17 @@ func Add(ctx context.Context, home string, r Request) (Device, error) {
 	// With a password or private key, sign in once with it to authorize the
 	// cloud computer's key there; then check the key works like any add.
 	if r.Password != "" || r.PrivateKey != "" {
-		if code := authorize(ctx, p, host, portOr22(port), r, device.OS == "windows"); code != "" {
-			device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: time.Now().Unix(), Error: code}
+		if code, detail := authorizeDetail(ctx, p, host, portOr22(port), r, device.OS == "windows"); code != "" {
+			log.Printf("tailnet: adding %s@%s: %s: %s", r.User, host, code, detail)
+			device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: time.Now().Unix(), Error: code, Detail: detail}
 			return *device, nil
 		}
 	}
-	metrics, code := probe(ctx, p, host, port, r.User)
+	metrics, code, detail := probeDetail(ctx, p, host, port, r.User)
 	now := time.Now().Unix()
 	if code != "" {
-		device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: now, Error: code}
+		log.Printf("tailnet: checking %s@%s after adding: %s: %s", r.User, host, code, detail)
+		device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: now, Error: code, Detail: detail}
 		return *device, nil
 	}
 	computersMu.Lock()

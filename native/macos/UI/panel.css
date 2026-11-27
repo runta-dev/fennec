@@ -756,3 +756,4 @@ nav button{padding:3px 7px}
 .tailnet-once{margin:1px 0 0;font-size:10.5px;color:var(--muted)}
 .tailnet-dialog input::-webkit-caps-lock-indicator,.tailnet-dialog input::-webkit-credentials-auto-fill-button,.tailnet-dialog input::-webkit-strong-password-auto-fill-button{display:none!important;visibility:hidden;pointer-events:none}
 .tailnet-add-device .tailnet-device-name{color:var(--text)}
+.byoc-status:has(.tailnet-error-detail){flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}.tailnet-error-detail{display:block;max-width:100%;font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);overflow-wrap:anywhere;user-select:text;max-height:40px;overflow:auto}

@@ -31,13 +31,21 @@ const (
 // authorized_keys, so later sign-ins use the key. The credential lives only
 // in this call: it is never written to disk or logged.
 func authorize(ctx context.Context, p paths, host string, port int, r Request, windows bool) string {
+	code, _ := authorizeDetail(ctx, p, host, port, r, windows)
+	return code
+}
+
+// authorizeDetail is authorize plus what went wrong in words, for the add
+// dialog and the log, so a failure that fits no error code still explains
+// itself (FEN-147). The detail never contains the password or key.
+func authorizeDetail(ctx context.Context, p paths, host string, port int, r Request, windows bool) (string, string) {
 	key, err := ensureKey(p)
 	if err != nil {
-		return ErrSSHFailed
+		return ErrSSHFailed, "cloud computer key: " + err.Error()
 	}
 	commands := AuthorizeCommands(key)
 	if commands == nil {
-		return ErrSSHFailed
+		return ErrSSHFailed, "cloud computer key unusable"
 	}
 	var methods []ssh.AuthMethod
 	if r.PrivateKey != "" {
@@ -50,9 +58,9 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 		var missing *ssh.PassphraseMissingError
 		switch {
 		case errors.As(err, &missing), errors.Is(err, x509.IncorrectPasswordError):
-			return ErrKeyPassphrase
+			return ErrKeyPassphrase, ""
 		case err != nil:
-			return ErrKeyInvalid
+			return ErrKeyInvalid, ""
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
@@ -67,7 +75,7 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 		}))
 	}
 	if len(methods) == 0 {
-		return ErrAuthFailed
+		return ErrAuthFailed, ""
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -75,7 +83,7 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 	address := net.JoinHostPort(host, strconv.Itoa(port))
 	conn, err := dial(ctx, p, host, port)
 	if err != nil {
-		return ErrUnreachable
+		return ErrUnreachable, err.Error()
 	}
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -91,24 +99,25 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 	if err != nil {
 		conn.Close()
 		// tailscale nc says why it couldn't connect on its stderr.
-		text := strings.ToLower(err.Error() + " " + dialError(conn))
+		detail := strings.TrimSpace(err.Error() + " " + dialError(conn))
+		text := strings.ToLower(detail)
 		switch {
 		case hostKeyChanged:
-			return ErrHostKeyChange
+			return ErrHostKeyChange, detail
 		case strings.Contains(text, "unable to authenticate") || strings.Contains(text, "no supported methods"):
-			return ErrAuthFailed
+			return ErrAuthFailed, detail
 		case strings.Contains(text, "refused"):
-			return ErrRefused
+			return ErrRefused, detail
 		case ctx.Err() != nil || strings.Contains(text, "eof") || strings.Contains(text, "timed out") || strings.Contains(text, "unreachable") || strings.Contains(text, "no route"):
-			return ErrUnreachable
+			return ErrUnreachable, detail
 		}
-		return ErrSSHFailed
+		return ErrSSHFailed, "sign-in: " + detail
 	}
 	client := ssh.NewClient(sshConn, channels, requests)
 	defer client.Close()
 	session, err := client.NewSession()
 	if err != nil {
-		return ErrSSHFailed
+		return ErrSSHFailed, "signed in, but no session: " + err.Error()
 	}
 	defer session.Close()
 	// The POSIX command without its Remote Login check: we are signed in
@@ -117,10 +126,22 @@ func authorize(ctx context.Context, p paths, host string, port int, r Request, w
 	if windows {
 		command = "powershell -NoProfile -NonInteractive -EncodedCommand " + encodePowerShell(commands["windows"])
 	}
-	if err = session.Run(command); err != nil {
-		return ErrSSHFailed
+	if output, err := session.CombinedOutput(command); err != nil {
+		return ErrSSHFailed, "signed in, but adding the key failed: " + err.Error() + clip(output)
 	}
-	return ""
+	return "", ""
+}
+
+// clip is a command's output for an error detail: one line, at most 300 bytes.
+func clip(output []byte) string {
+	text := strings.Join(strings.Fields(string(output)), " ")
+	if len(text) > 300 {
+		text = text[:300] + "…"
+	}
+	if text == "" {
+		return ""
+	}
+	return " (" + text + ")"
 }
 
 // tailscaleSSHCheck signs in to a Tailscale SSH server with no credentials,

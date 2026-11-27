@@ -78,11 +78,13 @@ type Computer struct {
 	User  string `json:"user"`
 	Port  int    `json:"port,omitempty"`
 	// CheckURL approves one Tailscale SSH "check" sign-in (Error ssh_check).
-	CheckURL string   `json:"check_url,omitempty"`
-	AddedAt  int64    `json:"added_at"`
-	Checked  int64    `json:"checked_at,omitempty"`
-	Error    string   `json:"error,omitempty"`
-	Metrics  *Metrics `json:"metrics,omitempty"`
+	CheckURL string `json:"check_url,omitempty"`
+	AddedAt  int64  `json:"added_at"`
+	Checked  int64  `json:"checked_at,omitempty"`
+	Error    string `json:"error,omitempty"`
+	// Detail says in words what failed while adding; it is never saved.
+	Detail  string   `json:"detail,omitempty"`
+	Metrics *Metrics `json:"metrics,omitempty"`
 }
 
 // Metrics is one sample read from an added computer over SSH.
