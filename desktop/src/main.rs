@@ -50,6 +50,7 @@ mod dispatch_env;
 #[cfg(target_os = "macos")]
 mod fullscreen_log;
 mod i18n;
+mod inertia;
 mod local_time;
 mod project_settings;
 mod shot;

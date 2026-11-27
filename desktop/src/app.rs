@@ -3379,6 +3379,8 @@ impl Render for FennecWindow {
             // Text views (thread messages, knowledge) select through this window-wide layer;
             // without it nothing in the window can be selected (THI-169).
             .child(gpui_base::TextSelectionLayer)
+            // Trackpad flicks keep gliding after the fingers lift (FEN-205).
+            .child(crate::inertia::layer())
             .on_action(cx.listener(Self::on_shell_action))
             .on_mouse_down(MouseButton::Right, cx.listener(|this, e: &MouseDownEvent, window, cx| {
                 this.open_text_context_menu(e.position, window, cx)
