@@ -225,7 +225,7 @@ enum QueueWait: Equatable {
         return .inLine(ahead: ahead, working: working, limit: max(limit, 1))
     }
 
-    /// "Next up · 3/3 agents busy", or "Queue paused".
+    /// "Next up · 3/3 agents busy", or "Project paused".
     var text: String {
         switch self {
         case .paused: return L10n.text("desktop.queued_paused")

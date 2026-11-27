@@ -52,11 +52,11 @@ final class QueuesUITests: XCTestCase {
         shot(app, "18-queues-tab")
 
         app.buttons["queue-menu"].tap()
-        XCTAssertTrue(app.buttons["Pause queue"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Pause project"].waitForExistence(timeout: 3))
         shot(app, "19-queue-menu")
-        app.buttons["Pause queue"].tap()
+        app.buttons["Pause project"].tap()
         XCTAssertTrue(app.buttons["queue-resume"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Queue paused"].exists)
+        XCTAssertTrue(app.staticTexts["Project paused"].exists)
         shot(app, "20-queue-paused")
         app.buttons["queue-resume"].tap()
 

@@ -397,6 +397,11 @@ mod thread_tests {
             }
         }
         assert_eq!(project.name, "My tasks");
+        let before_fen207 = "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it.";
+        assert_eq!(
+            project.display_copy("starter_queue_description", before_fen207, "zh-CN"),
+            crate::i18n::text_in("starter_queue_description", "zh-CN")
+        );
         project.name = crate::i18n::text_in("starter_queue_name", "zh-CN");
         assert_eq!(project.display_copy("starter_queue_name", &project.name, "en-US"), "My tasks");
         project.name = "Personal work".into();

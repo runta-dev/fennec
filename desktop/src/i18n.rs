@@ -59,11 +59,19 @@ pub fn text_in(key: &str, language: &str) -> String {
         .to_owned()
 }
 
+/// Default copy shipped before a rewording, still stored on existing boards
+/// (FEN-207 renamed "queue" to "project" in the UI).
+const RETIRED_DEFAULTS: &[(&str, &str)] = &[(
+    "starter_queue_description",
+    "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it.",
+)];
+
 /// Existing starter queues may hold any shipped translation. Localize their
 /// defaults at display time without rewriting shared data or custom copy.
 pub fn default_copy(key: &str, stored: &str, language: &str) -> String {
     let row = &CATALOG[format!("desktop.{key}")];
-    if row.as_object().is_some_and(|row| row.values().any(|v| v.as_str() == Some(stored))) {
+    let retired = RETIRED_DEFAULTS.iter().any(|(k, v)| *k == key && *v == stored);
+    if retired || row.as_object().is_some_and(|row| row.values().any(|v| v.as_str() == Some(stored))) {
         text_in(key, language)
     } else {
         stored.to_owned()
