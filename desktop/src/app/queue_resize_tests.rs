@@ -55,14 +55,14 @@ fn resize_queue(cx: &mut VisualTestContext, delta: f32) {
 #[gpui::test]
 fn queue_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
     let (app, cx) = window(cx);
-    // Automatic: a quarter of the 1122 px beside the 72 px rail and the
-    // panel's inset, so list and thread split 1:3 (FEN-209).
-    assert_eq!(width(cx), 281.0);
+    // Automatic: a third of the 1122 px beside the 72 px rail and the
+    // panel's inset, so list and thread split 1:2 (FEN-209).
+    assert_eq!(width(cx), 374.0);
     resize_queue(cx, 100.0);
-    assert_eq!(width(cx), 381.0);
+    assert_eq!(width(cx), 474.0);
     app.read_with(cx, |app, _| {
-        assert_eq!(app.app_preferences.value.queue_width, 381);
-        assert_eq!(app.queue_resize.pending, Some(381));
+        assert_eq!(app.app_preferences.value.queue_width, 474);
+        assert_eq!(app.queue_resize.pending, Some(474));
     });
     resize_queue(cx, -1000.0);
     assert_eq!(width(cx), 240.0);

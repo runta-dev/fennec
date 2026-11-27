@@ -35,10 +35,10 @@ impl FennecWindow {
         (self.main_width(window) - THREAD_MIN).clamp(QUEUE_MIN, QUEUE_MAX)
     }
     /// 0 is the automatic width: the list and the thread split the main
-    /// area 1:3 (FEN-209).
+    /// area 1:2 (FEN-209).
     pub(super) fn queue_width(&self, window: &Window) -> f32 {
         match self.app_preferences.value.queue_width {
-            0 => (self.main_width(window) / 4.0).round().clamp(QUEUE_MIN, self.queue_max(window)),
+            0 => (self.main_width(window) / 3.0).round().clamp(QUEUE_MIN, self.queue_max(window)),
             w => (w as f32).clamp(QUEUE_MIN, self.queue_max(window)),
         }
     }

@@ -19,7 +19,7 @@ pub struct Preferences {
     pub padding_x: u16,
     pub padding_y: u16,
     pub sidebar_width: u16,
-    /// The queue's request list; 0 follows the window (a quarter of it, so list:thread is 1:3).
+    /// The queue's request list; 0 follows the window (a third of it, so list:thread is 1:2).
     pub queue_width: u16,
 }
 impl Default for Preferences {
