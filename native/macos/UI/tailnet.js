@@ -12,7 +12,8 @@
   const markSVG = '<svg viewBox="0 0 20 20" aria-hidden="true" class="tailnet-mark">' + [[4,4,.35],[10,4,.35],[16,4,.35],[4,10,1],[10,10,1],[16,10,1],[4,16,.35],[10,16,1],[16,16,.35]].map(([x,y,o])=>'<circle cx="'+x+'" cy="'+y+'" r="2.1" fill="currentColor" stroke="none" opacity="'+o+'"/>').join('') + '</svg>';
   const osIcons = {
     macOS: '<svg viewBox="0 0 20 20" aria-hidden="true" class="os-logo"><path d="M13.6 10.7c0-1.9 1.6-2.8 1.6-2.9-.9-1.3-2.2-1.5-2.7-1.5-1.2-.1-2.2.7-2.8.7-.6 0-1.5-.7-2.4-.6-1.3 0-2.4.7-3.1 1.9-1.3 2.3-.3 5.6.9 7.5.6.9 1.3 1.9 2.3 1.8.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6c1 0 1.6-.9 2.2-1.8.7-1 1-2 1-2.1 0 0-1.8-.7-1.8-3ZM11.8 5c.5-.6.8-1.4.7-2.3-.7 0-1.6.5-2.1 1.1-.5.5-.9 1.4-.8 2.2.8.1 1.6-.4 2.2-1Z"/></svg>',
-    linux: svg('<rect x="3" y="4" width="14" height="12" rx="2"/><path d="m6.5 8.5 2 1.5-2 1.5M10.5 12h3"/>'),
+    // Penguin for Linux, drawn for Fennec (filled like the macOS logo; belly, eyes and beak are cut out).
+    linux: '<svg viewBox="0 0 20 20" aria-hidden="true" class="os-logo"><path fill-rule="evenodd" d="M10 1.6C7.6 1.6 6.6 3.6 6.6 5.9c0 1.6-.6 2.6-1.4 4-.9 1.6-1.2 3.2-.6 4.8.7 1.8 2.8 2.8 5.4 2.8s4.7-1 5.4-2.8c.6-1.6.3-3.2-.6-4.8-.8-1.4-1.4-2.4-1.4-4 0-2.3-1-4.3-3.4-4.3ZM10 8.3c-1.6 0-2.6 2-2.6 4.3 0 2.2 1.1 3.6 2.6 3.6s2.6-1.4 2.6-3.6c0-2.3-1-4.3-2.6-4.3ZM8.9 4.3a.65.65 0 1 0 0 1.3.65.65 0 0 0 0-1.3Zm2.2 0a.65.65 0 1 0 0 1.3.65.65 0 0 0 0-1.3ZM9 6.6l1-.6 1 .6-1 .7Z"/><ellipse cx="7.4" cy="18" rx="1.9" ry=".8"/><ellipse cx="12.6" cy="18" rx="1.9" ry=".8"/></svg>',
     windows: svg('<path d="M3 5.2 9 4.3v5.2H3ZM10.5 4.1 17 3v6.5h-6.5ZM3 10.9h6v5.2l-6-.9ZM10.5 10.9H17V17l-6.5-1.1Z"/>'),
     phone: svg('<rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 15h2"/>'),
     other: svg('<rect x="2.5" y="4" width="15" height="10" rx="1.5"/><path d="M7 17h6M10 14v3"/>'),
