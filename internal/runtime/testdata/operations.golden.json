@@ -1,0 +1,620 @@
+[
+  {
+    "name": "unknown kind",
+    "error": "unsupported operation",
+    "calls": null
+  },
+  {
+    "name": "empty kind",
+    "error": "unsupported operation",
+    "calls": null
+  },
+  {
+    "name": "thread_session invalid project",
+    "error": "invalid thread",
+    "calls": null
+  },
+  {
+    "name": "thread_session invalid number",
+    "error": "invalid thread",
+    "calls": null
+  },
+  {
+    "name": "thread_session live",
+    "result": {
+      "address": "t1",
+      "labels": {
+        "fennec.agent": "codex",
+        "fennec.queue": "$PROJECT",
+        "fennec.request": "2",
+        "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "where": "cloud"
+      },
+      "name": "one",
+      "state": "live",
+      "status": {
+        "app": "codex",
+        "state": "idle"
+      },
+      "title": "Work"
+    },
+    "calls": [
+      {
+        "via": "query terminal.list",
+        "args": {}
+      },
+      {
+        "via": "query terminal.label",
+        "args": {
+          "labels": {
+            "fennec.queue": "$PROJECT",
+            "fennec.request": "2"
+          },
+          "terminal": "t1"
+        }
+      }
+    ]
+  },
+  {
+    "name": "thread_session missing request",
+    "error": "not found",
+    "calls": null
+  },
+  {
+    "name": "connector_health without health",
+    "error": "health identity required",
+    "calls": null
+  },
+  {
+    "name": "connector_health invalid health",
+    "error": "invalid health device",
+    "calls": null
+  },
+  {
+    "name": "mac_online without generation",
+    "error": "generation required",
+    "calls": null
+  },
+  {
+    "name": "preparation_health without check",
+    "error": "preparation check required",
+    "calls": null
+  },
+  {
+    "name": "preparation_health invalid check",
+    "error": "invalid preparation marker",
+    "calls": null
+  },
+  {
+    "name": "system_metrics",
+    "result": [
+      "cpu_history",
+      "cpu_percent",
+      "disk_total_bytes",
+      "disk_used_bytes",
+      "mem_history",
+      "memory_current_mib",
+      "memory_used_bytes",
+      "memory_used_mib",
+      "net_rx_bps",
+      "net_rx_bytes",
+      "net_tx_bps",
+      "net_tx_bytes",
+      "sampled_unix_ms",
+      "vcpus"
+    ],
+    "calls": null
+  },
+  {
+    "name": "cloud_agents",
+    "result": {
+      "agy": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "claude": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "codex": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "cursor": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "grok": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "kimi": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "opencode": {
+        "account": "signed_out",
+        "ready": false
+      },
+      "pi": {
+        "account": "signed_out",
+        "ready": false
+      }
+    },
+    "calls": null
+  },
+  {
+    "name": "reconfigure_runtime without configuration",
+    "error": "configuration required",
+    "calls": null
+  },
+  {
+    "name": "native_account codex",
+    "result": {
+      "accounts": [],
+      "agent": "codex",
+      "location": "cloud",
+      "status": "signed_out"
+    },
+    "calls": null
+  },
+  {
+    "name": "native_account agy",
+    "result": {
+      "accounts": [],
+      "agent": "agy",
+      "location": "cloud",
+      "status": "signed_out"
+    },
+    "calls": null
+  },
+  {
+    "name": "native_account unsupported",
+    "error": "unsupported native model agent",
+    "calls": null
+  },
+  {
+    "name": "native_models agy unsupported",
+    "error": "unsupported native model agent",
+    "calls": null
+  },
+  {
+    "name": "native_models codex",
+    "result": {
+      "agent": "codex",
+      "model": "",
+      "models": [
+        {
+          "id": "",
+          "name": "Default"
+        },
+        {
+          "id": "gpt-test",
+          "name": "gpt-test",
+          "provider": "openai"
+        }
+      ]
+    },
+    "calls": null
+  },
+  {
+    "name": "native_model_set foreign model",
+    "error": "unsupported native model",
+    "calls": null
+  },
+  {
+    "name": "native_model_set codex",
+    "result": {
+      "agent": "codex",
+      "model": "gpt-test",
+      "models": [
+        {
+          "id": "",
+          "name": "Default"
+        },
+        {
+          "id": "gpt-test",
+          "name": "gpt-test",
+          "provider": "openai"
+        }
+      ]
+    },
+    "calls": null
+  },
+  {
+    "name": "native_login_status invalid address",
+    "error": "login required",
+    "calls": null
+  },
+  {
+    "name": "native_login_status without login",
+    "error": "login required",
+    "calls": null
+  },
+  {
+    "name": "native_login_status",
+    "result": {
+      "agent": "codex",
+      "running": true,
+      "session_id": "login-fixture",
+      "signed_in": false
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t3"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "native_login_cancel",
+    "error": "invalid login directory",
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t3"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "native_credential_set without credential",
+    "error": "credential required",
+    "calls": null
+  },
+  {
+    "name": "native_credential_watch without watch",
+    "error": "credential watch required",
+    "calls": null
+  },
+  {
+    "name": "model_accounts without accounts",
+    "error": "unsupported operation",
+    "calls": null
+  },
+  {
+    "name": "magpie_credentials_sync empty",
+    "error": "credential stores required",
+    "calls": null
+  },
+  {
+    "name": "connector_prepare without connector",
+    "error": "connector identity required",
+    "calls": null
+  },
+  {
+    "name": "connector_prepare invalid connector",
+    "error": "invalid alias identity",
+    "calls": null
+  },
+  {
+    "name": "reconcile_routes empty",
+    "result": [],
+    "calls": null
+  },
+  {
+    "name": "list",
+    "result": {
+      "gateway": {
+        "status": "unknown"
+      },
+      "machines": [
+        {
+          "name": "m",
+          "since_ms": 1,
+          "state": "up",
+          "why": "ok"
+        }
+      ],
+      "terminals": [
+        {
+          "address": "t1",
+          "agent": "codex",
+          "labels": {
+            "fennec.agent": "codex",
+            "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "where": "cloud"
+          },
+          "name": "one",
+          "state": "live",
+          "status": {
+            "app": "codex",
+            "state": "idle"
+          },
+          "title": "Work",
+          "where": "cloud"
+        },
+        {
+          "address": "t2",
+          "agent": "claude",
+          "labels": {},
+          "state": "finished"
+        }
+      ],
+      "version": "x"
+    },
+    "calls": [
+      {
+        "via": "query terminal.list",
+        "args": {}
+      }
+    ]
+  },
+  {
+    "name": "launch without request",
+    "error": "unsupported operation",
+    "calls": null
+  },
+  {
+    "name": "launch invalid request",
+    "error": "invalid local session identity",
+    "calls": null
+  },
+  {
+    "name": "stop live",
+    "result": {
+      "address": "t1",
+      "agent": "codex",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "fennec.agent": "codex",
+        "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "state": "finished"
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "kill",
+          "t1"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "stop finished",
+    "result": {
+      "address": "t2",
+      "agent": "codex",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "labels": {
+        "fennec.agent": "codex",
+        "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "state": "finished"
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t2"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "stop invalid identity",
+    "error": "invalid session identity",
+    "calls": null
+  },
+  {
+    "name": "read",
+    "result": {
+      "screen": {
+        "complete": true,
+        "text": "hello"
+      },
+      "terminal": {
+        "address": "t1",
+        "agent": "codex",
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "labels": {
+          "fennec.agent": "codex",
+          "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "state": "live"
+      }
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "read",
+          "t1",
+          "--json",
+          "--lines",
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "read wrong session",
+    "error": "The cloud session identity could not be verified.",
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "peek painted",
+    "result": {
+      "cols": 0,
+      "rows": 0,
+      "terminal": {
+        "address": "t1",
+        "agent": "codex",
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "labels": {
+          "fennec.agent": "codex",
+          "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "state": "live"
+      },
+      "vt": "G1swbXBhaW50IHQx"
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "peek without painter",
+    "result": {
+      "screen": {
+        "complete": true,
+        "text": "hello"
+      },
+      "terminal": {
+        "address": "t1",
+        "agent": "codex",
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "labels": {
+          "fennec.agent": "codex",
+          "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "state": "live"
+      }
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "read",
+          "t1",
+          "--json",
+          "--lines",
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "peek finished",
+    "result": {
+      "screen": {
+        "complete": true,
+        "text": "hello"
+      },
+      "terminal": {
+        "address": "t2",
+        "agent": "codex",
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "labels": {
+          "fennec.agent": "codex",
+          "fennec.session": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "state": "finished"
+      }
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t2"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "read",
+          "t2",
+          "--json",
+          "--lines",
+          "0"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "send",
+    "result": {
+      "receipt": {
+        "accepted": true
+      }
+    },
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t1"
+        ]
+      },
+      {
+        "via": "run",
+        "args": [
+          "send",
+          "--json",
+          "--",
+          "t1",
+          "hello"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "send blank",
+    "error": "input must contain 1–16384 bytes without NUL",
+    "calls": null
+  },
+  {
+    "name": "send to finished",
+    "error": "terminal is not live",
+    "calls": [
+      {
+        "via": "run",
+        "args": [
+          "get",
+          "t2"
+        ]
+      }
+    ]
+  }
+]
