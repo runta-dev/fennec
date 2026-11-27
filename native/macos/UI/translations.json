@@ -4431,7 +4431,7 @@
     "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your own computers", "en-GB": "Let agents build and test on your own computers", "zh-CN": "让 agent 用你自己的电脑构建、测试"},
     "ui.tailnet_worker": {"en-US": "Worker", "en-GB": "Worker", "zh-CN": "工作机"},
     "ui.tailnet_add_intro": {"en-US": "Agents can then build and test on this computer", "en-GB": "Agents can then build and test on this computer", "zh-CN": "设好后，agent 可以在这台电脑上构建、测试"},
-    "ui.tailnet_add_worker": {"en-US": "Add a worker computer", "en-GB": "Add a worker computer", "zh-CN": "添加工作机"},
+    "ui.tailnet_add_worker": {"en-US": "Add", "en-GB": "Add", "zh-CN": "添加"},
     "ui.tailnet_available": {"en-US": "{n} available", "en-GB": "{n} available", "zh-CN": "{n} 台可添加"}
   },
   "version": 1
