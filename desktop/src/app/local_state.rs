@@ -62,7 +62,7 @@ impl FennecWindow {
         }
         replies.retain(|_, v| !v.trim().is_empty());
         let last_queue = match &self.route {
-            Some(Route::Project(id) | Route::Settings(id, _)) => Some(id.clone()),
+            Some(Route::Project(id) | Route::Settings(id, _) | Route::Knowledge(id)) => Some(id.clone()),
             _ => self.local_state.last_queue.clone(),
         };
         Saved {
@@ -143,7 +143,7 @@ impl FennecWindow {
         self.reply.update(cx, |s, cx| s.set_value("", window, cx));
         self.composer
             .update(cx, |s, cx| s.set_value(saved.composer.clone(), window, cx));
-        if matches!(self.route, Some(Route::Project(_) | Route::Settings(_, _))) {
+        if matches!(self.route, Some(Route::Project(_) | Route::Settings(_, _) | Route::Knowledge(_))) {
             self.route = None;
         }
         self.restored_queue = None;

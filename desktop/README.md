@@ -51,8 +51,8 @@ For isolated rendering, set `FENNEC_DESKTOP_PREVIEW` to the absolute path of
 `fixtures/design.json` and `FENNEC_DESKTOP_SHOT` to an output PNG. This mode
 reads fixture responses and never connects to the daemon or creates terminals.
 Set `FENNEC_PREVIEW_THEME=light|dark` and `FENNEC_LANGUAGE=en-US|zh-CN` as needed.
-Write `project:fennec`, `request:42`, `settings:fennec:general` (or `knowledge`,
-`queue`, `agents`), or `menu:tags` to `<output.png>.request` to capture
+Write `project:fennec`, `request:42`, `settings:fennec:general` (or `queue`),
+`knowledge:fennec`, or `menu:tags` to `<output.png>.request` to capture
 that view. Fixtures prove visual layout only, not live runtime behavior.
 
 ## Keyboard preferences

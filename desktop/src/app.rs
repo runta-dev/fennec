@@ -62,6 +62,8 @@ pub(crate) enum Route {
     Session(String),
     /// A project's settings, on one of its tabs.
     Settings(String, crate::project_settings::Tab),
+    /// A project's knowledge, opened from the book right of search (FEN-211).
+    Knowledge(String),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -551,9 +553,11 @@ impl FennecWindow {
                 }
             }
             (Some("session"), Some(a), _) => self.go(Route::Session(a.into()), window, cx),
+            (Some("knowledge"), Some(id), _) | (Some("settings"), Some(id), Some("knowledge")) => {
+                self.go(Route::Knowledge(id.into()), window, cx)
+            }
             (Some("settings"), Some(id), tab) => {
                 let tab = match tab.unwrap_or_default() {
-                    "knowledge" => Tab::Knowledge,
                     "queue" => Tab::Queue,
                     _ => Tab::General,
                 };
@@ -855,7 +859,7 @@ impl FennecWindow {
 
     pub(crate) fn project_id(&self) -> Option<String> {
         match &self.route {
-            Some(Route::Project(id) | Route::Settings(id, _)) => Some(id.clone()),
+            Some(Route::Project(id) | Route::Settings(id, _) | Route::Knowledge(id)) => Some(id.clone()),
             _ => None,
         }
     }
@@ -928,7 +932,7 @@ impl FennecWindow {
                     view.read(cx).detach();
                 }
             }
-            if let Route::Settings(id, _) = &route {
+            if let Route::Settings(id, _) | Route::Knowledge(id) = &route {
                 self.open_settings(id.clone(), window, cx);
             }
             if let Route::Project(_) = route {
@@ -3354,6 +3358,12 @@ impl Render for FennecWindow {
                     Some(p) => self
                         .project_settings(&p, *tab, window, cx)
                         .into_any_element(),
+                    None => empty(),
+                }
+            }
+            Some(Route::Knowledge(id)) => {
+                match self.projects.iter().find(|p| &p.id == id).cloned() {
+                    Some(p) => self.knowledge_page(&p, cx).into_any_element(),
                     None => empty(),
                 }
             }

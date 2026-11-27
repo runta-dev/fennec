@@ -1,5 +1,7 @@
-//! Project settings (docs/desktop-app.md): General, Knowledge, Queue. The
-//! Agents tab is gone (FEN-145): the composer picks agent, model and effort.
+//! Project settings (docs/desktop-app.md): General and Queue. The Agents tab
+//! is gone (FEN-145): the composer picks agent, model and effort. Knowledge
+//! has its own page (FEN-211), opened from the book right of the title bar's
+//! search; its state still lives here.
 
 use crate::app::{FennecWindow, Route, secondary_button};
 use crate::board::{self, Concept, Project, QueueProject, Tag};
@@ -14,7 +16,6 @@ use serde_json::json;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
     General,
-    Knowledge,
     Queue,
 }
 
@@ -235,7 +236,6 @@ impl FennecWindow {
     ) -> impl IntoElement {
         let tabs = [
             (Tab::General, "general", "sliders"),
-            (Tab::Knowledge, "knowledge", "book"),
             (Tab::Queue, "queue", "layers"),
         ]
         .map(|(which, label, icon)| {
@@ -265,64 +265,18 @@ impl FennecWindow {
         });
         let body = match tab {
             Tab::General => self.general(p, cx).into_any_element(),
-            Tab::Knowledge => self.knowledge(p, cx).into_any_element(),
             Tab::Queue => self.queue_tab(p, cx).into_any_element(),
         };
         let heading = match tab {
             Tab::General => "general",
-            Tab::Knowledge => "knowledge",
             Tab::Queue => "queue",
         };
-        let back = p.id.clone();
         v_flex()
             .flex_1()
             .min_w_0()
             .h_full()
             .bg(c("background"))
-            .child(
-                h_flex()
-                    .id("settings-head")
-                    .h(px(58.0))
-                    .flex_none()
-                    .px(px(18.0))
-                    .gap(px(11.0))
-                    .border_b_1()
-                    .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .pl(px(18.0))
-                    .child(
-                        div()
-                            .id("settings-back")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .size(px(28.0))
-                            .rounded(px(6.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .hover(|s| s.bg(c("f_line")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.go(Route::Project(back.clone()), window, cx)
-                            }))
-                            .child(ui::icon("back", 17.0, c("f_muted"))),
-                    )
-                    .child(ui::project_icon(p, 30.0))
-                    .child(
-                        v_flex()
-                            .gap(px(2.0))
-                            .child(
-                                div()
-                                    .text_size(px(13.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(p.display_name()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.5))
-                                    .text_color(c("f_muted"))
-                                    .child(t("project_settings")),
-                            ),
-                    ),
-            )
+            .child(self.page_head(p, "project_settings", cx))
             .child(
                 h_flex()
                     .flex_1()
@@ -339,20 +293,17 @@ impl FennecWindow {
                             .children(tabs),
                     )
                     .child(
-                        // Knowledge is a list beside a reader, each scrolling on
-                        // its own, so the body itself doesn't scroll there.
                         div()
                             .id("settings-body")
                             .flex_1()
                             .min_w_0()
                             .min_h_0()
-                            .when(tab != Tab::Knowledge, |d| d.overflow_y_scroll())
-                            .when(tab == Tab::Knowledge, |d| d.flex().flex_col())
+                            .overflow_y_scroll()
                             .child(
                                 v_flex()
                                     .w_full()
-                                    .when(tab != Tab::Knowledge, |d| d.max_w(px(760.0)).pb(px(40.0)))
-                                    .when(tab == Tab::Knowledge, |d| d.flex_1().min_h_0())
+                                    .max_w(px(760.0))
+                                    .pb(px(40.0))
                                     .px(px(28.0))
                                     .pt(px(20.0))
                                     .child(
@@ -366,6 +317,75 @@ impl FennecWindow {
                             ),
                     ),
             )
+    }
+
+    /// A project's knowledge on a page of its own (FEN-211): a list beside a
+    /// reader, each scrolling on its own, under the same head as Settings.
+    pub(crate) fn knowledge_page(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .bg(c("background"))
+            .child(self.page_head(p, "knowledge", cx))
+            .child(
+                v_flex()
+                    .id("knowledge-body")
+                    .flex_1()
+                    .min_w_0()
+                    .min_h_0()
+                    .px(px(28.0))
+                    .pt(px(16.0))
+                    .child(self.knowledge(p, cx)),
+            )
+    }
+
+    /// The head of a project's Settings and Knowledge pages: back to the
+    /// project, its icon and name, and what the page is.
+    fn page_head(&self, p: &Project, subtitle: &str, cx: &mut Context<Self>) -> impl IntoElement {
+        let back = p.id.clone();
+        h_flex()
+        .id("settings-head")
+        .h(px(58.0))
+        .flex_none()
+        .px(px(18.0))
+        .gap(px(11.0))
+        .border_b_1()
+        .border_color(c("f_line"))
+        .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+        .pl(px(18.0))
+        .child(
+            div()
+                .id("settings-back")
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .size(px(28.0))
+                .rounded(px(6.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .hover(|s| s.bg(c("f_line")))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.go(Route::Project(back.clone()), window, cx)
+                }))
+                .child(ui::icon("back", 17.0, c("f_muted"))),
+        )
+        .child(ui::project_icon(p, 30.0))
+        .child(
+            v_flex()
+                .gap(px(2.0))
+                .child(
+                    div()
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(p.display_name()),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(c("f_muted"))
+                        .child(t(subtitle)),
+                ),
+        )
     }
 
     fn upload_project_icon(&mut self, window: &mut Window, cx: &mut Context<Self>) {

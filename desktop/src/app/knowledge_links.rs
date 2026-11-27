@@ -4,7 +4,7 @@
 //! `thread-mirror-and-links.md`, `architecture/x.md`, a full
 //! `~/.fen/board/projects/<id>/knowledge/…` path, or an OKF `[[name]]` link.
 //! Each one that names an entry of the queue's bundle becomes a link that
-//! shows the entry's title and opens it in Queue settings › Knowledge.
+//! shows the entry's title and opens it on the project's Knowledge page.
 use super::*;
 use std::time::{Duration, Instant};
 
@@ -208,7 +208,7 @@ pub(super) fn link_knowledge(body: &str, known: &[KnowledgeRef]) -> String {
 }
 
 impl FennecWindow {
-    /// Opens an entry of a queue's knowledge in Queue settings › Knowledge.
+    /// Opens an entry of a project's knowledge on its Knowledge page.
     pub(crate) fn open_concept(
         &mut self,
         project: String,
@@ -216,11 +216,7 @@ impl FennecWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.go(
-            Route::Settings(project, crate::project_settings::Tab::Knowledge),
-            window,
-            cx,
-        );
+        self.go(Route::Knowledge(project), window, cx);
         self.settings.show_concept(id);
         cx.notify();
     }

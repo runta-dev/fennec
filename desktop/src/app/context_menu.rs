@@ -261,7 +261,7 @@ impl FennecWindow {
                     this.deleted_projects.insert(id.clone());
                     this.projects.retain(|p| p.id != id);
                     this.requests.remove(&id);
-                    if matches!(&this.route, Some(Route::Project(p) | Route::Settings(p, _)) if p == &id) {
+                    if matches!(&this.route, Some(Route::Project(p) | Route::Settings(p, _) | Route::Knowledge(p)) if p == &id) {
                         this.route = None;
                         this.open = None;
                         this.opening = None;

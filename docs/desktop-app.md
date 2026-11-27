@@ -26,7 +26,7 @@ open http://127.0.0.1:5188). Screens and routes in the mockup:
 | `#` | Project: request list beside the open request's thread |
 | `#agent-<id>` | Session: the agent's terminal, plus local shell tabs |
 | `#new-session` | New session dialog |
-| `#settings-<project>-<tab>` | Project settings: General, Knowledge, Queue |
+| `#settings-<project>-<tab>` | Project settings: General, Queue (the app moved Knowledge to its own page, opened from the book right of search; FEN-211) |
 
 ## Layout
 

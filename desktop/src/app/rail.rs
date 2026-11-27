@@ -269,7 +269,8 @@ impl FennecWindow {
     }
 
     /// The title bar: it moves the window like a native one, holds the
-    /// traffic lights at its left and search (⌘K) in its middle. It has no
+    /// traffic lights at its left and search (⌘K) in its middle, with
+    /// knowledge to its right. It has no
     /// background or line of its own: it is the chrome the rail is on too.
     pub(super) fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
@@ -290,7 +291,33 @@ impl FennecWindow {
                     .child(self.history_buttons(cx)),
             )
             .child(self.search_field())
-            .child(div().flex_1().min_w_0())
+            // FEN-211: the current project's knowledge, just right of search.
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .pl(px(8.0))
+                    .child(self.knowledge_button(cx)),
+            )
+    }
+
+    /// The book right of search: opens the current project's knowledge, or
+    /// goes back to the project when it's already showing.
+    fn knowledge_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let showing = matches!(self.route, Some(Route::Knowledge(_)));
+        let project = self
+            .project_id()
+            .or_else(|| self.local_state.last_queue.clone())
+            .filter(|id| self.projects.iter().any(|p| &p.id == id));
+        ui::icon_button("titlebar-knowledge", "book")
+            .debug_selector(|| "titlebar-knowledge".into())
+            .when(showing, |d| d.bg(c("f_line")))
+            .when(project.is_none(), |d| d.opacity(0.45))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                let Some(id) = project.clone() else { return };
+                let route = if showing { Route::Project(id) } else { Route::Knowledge(id) };
+                this.go(route, window, cx);
+            }))
     }
 
     /// The title bar's search field (⌘K).
@@ -440,7 +467,7 @@ impl FennecWindow {
             .visible_projects()
             .into_iter()
             .map(|p| {
-                let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
+                let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _) | Route::Knowledge(id)) if id == &p.id);
                 let id = p.id.clone();
                 let needs_you = p.needs_you;
                 let icon = move |scale: f32, hovered: bool| {
