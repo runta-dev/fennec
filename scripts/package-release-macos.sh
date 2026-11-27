@@ -130,7 +130,14 @@ if [[ $dry_run == 0 ]]; then
   ln -s /Applications "$release_work/dmg/Applications"
   dmg="$release_dir/Fennec-$version-macos-arm64.dmg"
   # ULMO (LZMA) keeps the download small. Mounting it needs macOS 10.15 or later.
-  hdiutil create -volname Fennec -srcfolder "$release_work/dmg" -format ULMO -ov "$dmg" >/dev/null
+  # GitHub's macOS runners intermittently fail this with "Resource busy" while
+  # something else still holds the staging folder; v0.5.20 hit it twice in a row.
+  for attempt in 1 2 3 4 5; do
+    hdiutil create -volname Fennec -srcfolder "$release_work/dmg" -format ULMO -ov "$dmg" >/dev/null && break
+    [[ $attempt == 5 ]] && { echo "hdiutil create failed $attempt times" >&2; exit 1; }
+    echo "hdiutil create failed (attempt $attempt), retrying in $((attempt * 10))s" >&2
+    sleep $((attempt * 10))
+  done
   codesign --force --timestamp --keychain "$release_keychain" --sign "$identity" "$dmg"
   notarize "$dmg" "$release_dir/notarization-dmg.json"
   xcrun stapler staple "$dmg"
