@@ -197,7 +197,6 @@ impl FennecWindow {
     pub(super) fn thread_peek_card(
         &self,
         session: &Session,
-        title: &str,
         status: &str,
         permission: Option<AnyElement>,
         cx: &mut Context<Self>,
@@ -246,24 +245,18 @@ impl FennecWindow {
                             .gap(px(6.0))
                             .min_w_0()
                             .child(
-                                // FEN-141: the thread's title; the icon already
-                                // says which agent it is.
+                                // FEN-151: the agent's name (e.g. "Claude Code"),
+                                // not the thread's title (FEN-141 tried that).
                                 div()
-                                    .min_w_0()
-                                    .truncate()
+                                    .flex_none()
                                     .text_size(px(13.0))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(c("f_text"))
-                                    .child(if title.trim().is_empty() {
-                                        sessions::agent_name(&session.agent).to_owned()
-                                    } else {
-                                        title.trim().to_owned()
-                                    }),
+                                    .child(sessions::agent_name(&session.agent).to_owned()),
                             )
                             .child(
                                 div()
-                                    .flex_shrink_0()
-                                    .max_w(px(260.0))
+                                    .min_w_0()
                                     .truncate()
                                     .text_size(px(11.5))
                                     .text_color(c("f_muted"))
