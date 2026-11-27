@@ -25,22 +25,22 @@ final class ControlClient {
         }
     }
 
-    func call(_ method: String, _ params: [String: Any] = [:], completion: @escaping (Result<Any, Error>) -> Void) {
+    func call(_ method: String, _ params: [String: Any] = [:], timeout seconds: Int = 30, completion: @escaping (Result<Any, Error>) -> Void) {
         queue.async {
             let result: Result<Any, Error>
-            do { result = .success(try self.request(method, params)) }
+            do { result = .success(try self.request(method, params, timeout: seconds)) }
             catch { result = .failure(error) }
             DispatchQueue.main.async { completion(result) }
         }
     }
 
-    private func request(_ method: String, _ params: [String: Any]) throws -> Any {
+    private func request(_ method: String, _ params: [String: Any], timeout seconds: Int = 30) throws -> Any {
         let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw failure("Unable to open daemon connection") }
         defer { Darwin.close(fd) }
         var noSignal: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
-        var timeout = timeval(tv_sec: 30, tv_usec: 0)
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         var address = sockaddr_un()

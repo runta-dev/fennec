@@ -1208,7 +1208,9 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     }
     private func tailnetCall(_ method: String, _ params: [String:Any] = [:], render function: String? = nil) {
         let epoch = accountEpoch
-        control.call(method, params) { [weak self] result in
+        // Adding signs in over SSH (and may first authorize the key with a
+        // password), which can take longer than the default 30 s.
+        control.call(method, params, timeout: method == "tailnet.add" ? 65 : 30) { [weak self] result in
             guard let self, self.accountEpoch == epoch else { return }
             switch result {
             case .success(let value):

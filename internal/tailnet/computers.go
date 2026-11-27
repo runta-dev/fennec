@@ -79,6 +79,9 @@ func (r Request) Validate(needUser bool) error {
 	if needUser && !validUser.MatchString(r.User) {
 		return fmt.Errorf("invalid user name")
 	}
+	if r.Port < 0 || r.Port > 65535 || len(r.Password) > 1024 || len(r.Passphrase) > 1024 || len(r.PrivateKey) > 32<<10 {
+		return fmt.Errorf("invalid sign-in details")
+	}
 	return nil
 }
 
@@ -160,6 +163,9 @@ func writeSSHConfig(p paths, list []Computer) error {
 	b.WriteString("# Computers added over Tailscale in Fennec (FEN-104). Generated; edits are overwritten.\n")
 	for _, c := range list {
 		fmt.Fprintf(&b, "Host %s\n  HostName %s\n  User %s\n", c.Alias, c.Host, c.User)
+		if c.Port != 0 && c.Port != 22 {
+			fmt.Fprintf(&b, "  Port %d\n", c.Port)
+		}
 		for _, option := range sshOptions(p) {
 			key, value, _ := strings.Cut(option, "=")
 			fmt.Fprintf(&b, "  %s %s\n", key, value)
@@ -255,12 +261,15 @@ func parseMetrics(out []byte) *Metrics {
 
 // probe signs in to user@host over the tailnet and reads metrics. A computer
 // whose shell isn't POSIX (Windows) still counts as reached, without metrics.
-func probe(ctx context.Context, p paths, host, user string) (*Metrics, string) {
+func probe(ctx context.Context, p paths, host string, port int, user string) (*Metrics, string) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	args := []string{"-F", "/dev/null", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "LogLevel=ERROR"}
 	for _, option := range sshOptions(p) {
 		args = append(args, "-o", option)
+	}
+	if port != 0 && port != 22 {
+		args = append(args, "-p", strconv.Itoa(port))
 	}
 	args = append(args, "-l", user, host, "sh -s")
 	command := exec.CommandContext(ctx, "ssh", args...)
@@ -290,6 +299,13 @@ func probe(ctx context.Context, p paths, host, user string) (*Metrics, string) {
 	return nil, ErrSSHFailed
 }
 
+func portOr22(port int) int {
+	if port == 0 {
+		return 22
+	}
+	return port
+}
+
 var computersMu sync.Mutex
 
 // Add checks that the cloud computer can sign in to the device as user and
@@ -314,16 +330,28 @@ func Add(ctx context.Context, home string, r Request) (Device, error) {
 		return Device{}, fmt.Errorf("device not found in the tailnet")
 	}
 	host := device.IPs[0]
-	metrics, code := probe(ctx, p, host, r.User)
+	port := r.Port
+	if port == 22 {
+		port = 0
+	}
+	// With a password or private key, sign in once with it to authorize the
+	// cloud computer's key there; then check the key works like any add.
+	if r.Password != "" || r.PrivateKey != "" {
+		if code := authorize(ctx, p, host, portOr22(port), r, device.OS == "windows"); code != "" {
+			device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: time.Now().Unix(), Error: code}
+			return *device, nil
+		}
+	}
+	metrics, code := probe(ctx, p, host, port, r.User)
 	now := time.Now().Unix()
 	if code != "" {
-		device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Checked: now, Error: code}
+		device.Computer = &Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, Checked: now, Error: code}
 		return *device, nil
 	}
 	computersMu.Lock()
 	defer computersMu.Unlock()
 	list := loadComputers(p)
-	entry := Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, AddedAt: now}
+	entry := Computer{ID: r.ID, Name: device.Name, Host: host, User: r.User, Port: port, AddedAt: now}
 	kept := list[:0]
 	for _, c := range list {
 		if c.ID == r.ID {
@@ -421,7 +449,7 @@ func attachComputers(ctx context.Context, p paths, status *Status, refresh bool)
 			wait.Add(1)
 			go func(device *Device, c Computer) {
 				defer wait.Done()
-				metrics, code := probe(ctx, p, c.Host, c.User)
+				metrics, code := probe(ctx, p, c.Host, c.Port, c.User)
 				rememberProbe(c.ID, metrics, code)
 				c.Checked, c.Metrics, c.Error = time.Now().Unix(), metrics, code
 				device.Computer = &c

@@ -41,7 +41,10 @@ func (s *daemonServices) tailnetHandlers() map[string]control.Handler {
 			if json.Unmarshal(raw, &request) != nil || request.Validate(true) != nil {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Choose a computer and a user name"}
 			}
-			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: request.ID, User: request.User}}, 28*time.Second)
+			// A password or private key goes to the cloud computer for one
+			// sign-in that authorizes its key there (FEN-123); never logged.
+			add := tailnet.Request{ID: request.ID, User: request.User, Port: request.Port, Password: request.Password, PrivateKey: request.PrivateKey, Passphrase: request.Passphrase}
+			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_add", Tailnet: &add}, 55*time.Second)
 		},
 		"tailnet.remove": func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var request tailnet.Request

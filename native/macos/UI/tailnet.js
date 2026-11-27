@@ -1,7 +1,8 @@
 // Tailscale on the cloud computer (FEN-104). Settings › Tailscale signs the
 // cloud computer in or out of the user's tailnet; Computers lists the
-// tailnet's devices, and "Add" authorizes the cloud computer's public key on
-// one of them so it can sign in over SSH. Swift polls tailnet.status and calls
+// tailnet's devices, and "Add" signs in to one of them once with a
+// password or private key the user gives, authorizes the cloud computer's
+// public key there, and from then on signs in with that key (FEN-123). Swift polls tailnet.status and calls
 // window.renderTailnet; errors arrive as codes and the copy here explains them.
 (() => {
   const t = token => (typeof translate === 'function' ? translate(token) : token);
@@ -34,11 +35,17 @@
     host_key_changed: '[[i18n:ui.tailnet_ssh_host_key_changed]]',
     ssh_failed: '[[i18n:ui.tailnet_ssh_failed]]',
   };
+  // The add dialog's own wording for a failed first sign-in.
+  const addErrors = {
+    ...sshErrors,
+    auth_failed: '[[i18n:ui.tailnet_add_auth_failed]]',
+    key_invalid: '[[i18n:ui.tailnet_add_key_invalid]]',
+    key_passphrase: '[[i18n:ui.tailnet_add_key_passphrase]]',
+  };
 
   let status = null;      // last tailnet.status payload
   let requestError = '';  // control error code when status couldn't be read
-  let busy = '';
-  let addOpen = false;    // the card's list of tailnet devices to add          // 'login' | 'logout' while a button's call runs
+  let busy = '';          // 'login' | 'logout' while a button's call runs
 
   // Settings: an entry row that opens the Tailscale page.
   const preferences = document.querySelector('#preferences');
@@ -69,8 +76,7 @@
   const cardHead = el('div', 'tailnet-card-top');
   const hostSlot = el('div', 'tailnet-host');
   const cardBody = el('div', 'tailnet-body');
-  const cardSlot = el('div', 'tailnet-add-slot');
-  card.append(cardHead, cardSlot, hostSlot, cardBody);
+  card.append(cardHead, hostSlot, cardBody);
   // This Mac gets the same compact row as the other machines (one line of
   // meters), so the card stays short. panel.js still draws the sparkline
   // card, hidden, from the same per-second samples.
@@ -111,22 +117,33 @@
   dialog.id = 'tailnet-add-dialog';
   dialog.tabIndex = -1;
   dialog.setAttribute('aria-labelledby', 'tailnet-add-title');
+  // The user's password or private key signs in once; the cloud computer
+  // then authorizes its own key there. Port and key passphrase are advanced.
   dialog.innerHTML =
     '<div class="developer-dialog-head"><strong id="tailnet-add-title"></strong><button type="button" class="developer-close" id="tailnet-add-close" aria-label="[[i18n:ui.close]]">×</button></div>' +
     '<p class="byoc-note tailnet-add-intro">[[i18n:ui.tailnet_add_intro]]</p>' +
-    '<ol class="tailnet-steps">' +
-    '<li><span class="tailnet-step-mark">1</span><div class="tailnet-step-main"><span id="tailnet-add-run"></span>' +
-    '<div class="byoc-key tailnet-command"><code id="tailnet-add-command"></code><button type="button" id="tailnet-add-copy">[[i18n:ui.gs_copy]]</button></div>' +
-    '<p class="byoc-note" id="tailnet-add-note"></p></div></li>' +
-    '<li><span class="tailnet-step-mark">2</span><div class="tailnet-step-main"><label class="byoc-field"><span>[[i18n:ui.tailnet_add_user]]</span><input id="tailnet-add-user" spellcheck="false" autocomplete="off"></label></div></li>' +
-    '</ol>' +
-    '<p class="byoc-note tailnet-fennec-note" id="tailnet-add-fennec" hidden>[[i18n:ui.tailnet_add_fennec_note]]</p>' +
+    '<form class="byoc-form tailnet-add-form" id="tailnet-add-form" autocomplete="off">' +
+    '<label class="byoc-field"><span>[[i18n:ui.tailnet_add_user]]</span><input id="tailnet-add-user" spellcheck="false" autocomplete="off"></label>' +
+    '<div class="developer-segments byoc-modes" role="radiogroup" aria-label="[[i18n:ui.tailnet_add_sign_in]]">' +
+    '<button type="button" role="radio" data-auth="password" aria-checked="true">[[i18n:ui.tailnet_add_password]]</button>' +
+    '<button type="button" role="radio" data-auth="key" aria-checked="false">[[i18n:ui.tailnet_add_private_key]]</button>' +
+    '</div>' +
+    // The segment above names the field, so the fields carry no label.
+    '<div class="byoc-field" id="tailnet-add-password-field"><input id="tailnet-add-password" type="password" autocomplete="off" aria-label="[[i18n:ui.tailnet_add_password]]"></div>' +
+    '<div class="byoc-field" id="tailnet-add-key-field" hidden><textarea id="tailnet-add-key" spellcheck="false" rows="4" aria-label="[[i18n:ui.tailnet_add_private_key]]" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>' +
+    '<details class="tailnet-advanced"><summary><svg class="disclosure-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>[[i18n:ui.tailnet_add_advanced]]</span></summary>' +
+    '<div class="byoc-row"><label class="byoc-field byoc-port"><span>[[i18n:ui.byoc_port]]</span><input id="tailnet-add-port" inputmode="numeric" value="22"></label>' +
+    '<label class="byoc-field" id="tailnet-add-passphrase-field"><span>[[i18n:ui.tailnet_add_passphrase]]</span><input id="tailnet-add-passphrase" type="password" autocomplete="off" placeholder="[[i18n:ui.byoc_optional]]"></label></div>' +
+    '</details>' +
+    '<p class="byoc-note" id="tailnet-add-note"></p>' +
+    '</form>' +
     '<div class="byoc-footer"><p class="byoc-status" id="tailnet-add-status" role="status"></p>' +
     '<button type="button" class="developer-custom-apply" id="tailnet-add-connect">[[i18n:ui.tailnet_connect]]</button></div>';
   document.body?.append(dialog);
   const $ = selector => dialog.querySelector(selector);
   let adding = null;      // the device the dialog adds
   let connecting = false;
+  let auth = 'password';  // 'password' | 'key'
 
   function open() { if (typeof tab === 'function') tab('tailscale'); document.querySelector('#settings')?.classList.add('active'); send('tailnet-status'); }
   entry.onclick = open;
@@ -294,7 +311,6 @@
     window.tailnetComputerCount = 0;
     cardHead.replaceChildren();
     cardBody.replaceChildren();
-    cardSlot.replaceChildren();
     const running = s?.state === 'running' && !requestError;
     const head = el('div', 'runtime-metrics-head');
     const title = el('span', 'runtime-metrics-title-wrap');
@@ -302,19 +318,15 @@
     icon.innerHTML = markSVG;
     title.append(icon, el('span', 'runtime-metrics-title', t('[[i18n:ui.tailnet_title]]')));
     head.append(title);
-    // Adding lives in the header so it is on the first screen however many
-    // machines the card lists. Before Tailscale is signed in it opens
-    // Settings › Tailscale; after, it unfolds the devices that can be added.
-    const others = running ? (s.devices || []).filter(d => d.id !== s.this_device && !(d.computer && !d.computer.error && d.computer.alias)) : [];
-    if (s && requestError !== 'login_required') {
-      const add = el('button', 'tailnet-head-add' + (running && addOpen ? ' is-open' : ''));
+    // Before Tailscale is signed in, Add opens Settings › Tailscale. After,
+    // the card lists every tailnet device with its own "Add", so
+    // there is no button to unfold them (FEN-123).
+    if (s && !running && requestError !== 'login_required') {
+      const add = el('button', 'tailnet-head-add');
       add.type = 'button';
       add.innerHTML = svg('<path d="M10 4.5v11M4.5 10h11"/>');
       add.append(el('span', '', t('[[i18n:ui.tailnet_add_worker]]')));
-      const available = others.filter(d => sshCapable(d.os)).length;
-      if (running && available) add.append(el('span', 'tailnet-head-count', String(available)));
-      if (running) add.setAttribute('aria-expanded', String(addOpen));
-      add.onclick = () => { if (!running) { open(); return; } addOpen = !addOpen; drawCard(); };
+      add.onclick = open;
       head.append(add);
     }
     cardHead.append(head);
@@ -336,62 +348,86 @@
     }
     if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
     if (!running) { window.updateComputerCount?.(); return; }
-    // This Mac is the first worker computer above; the card lists the other
-    // workers, and the header's Add unfolds the rest of the tailnet here.
+    // This Mac is the first worker computer above; then the other workers,
+    // then the rest of the tailnet, each with "Add".
     const devices = (Array.isArray(s.devices) ? s.devices : []).filter(d => d.id !== s.this_device);
-    const workers = devices.filter(d => d.computer && !d.computer.error && d.computer.alias);
-    if (workers.length) {
-      const list = el('div', 'tailnet-devices');
-      for (const device of workers) list.append(deviceRow(device, s.this_device));
-      cardBody.append(list);
-    }
-    if (addOpen) {
-      const list = el('div', 'tailnet-devices tailnet-candidates');
-      for (const device of others) list.append(deviceRow(device, s.this_device));
-      if (!others.length) list.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
-      cardSlot.replaceChildren(list);
-    } else cardSlot.replaceChildren();
+    const isWorker = d => d.computer && !d.computer.error && d.computer.alias;
+    const workers = devices.filter(isWorker);
+    const list = el('div', 'tailnet-devices');
+    for (const device of [...workers, ...devices.filter(d => !isWorker(d))]) list.append(deviceRow(device, s.this_device));
+    if (!devices.length) list.append(el('p', 'tailnet-message tailnet-empty', t('[[i18n:ui.tailnet_no_devices]]')));
+    cardBody.append(list);
     window.tailnetComputerCount = workers.length;
     window.updateComputerCount?.();
   }
 
-  function openAdd(device) {
-    adding = device;
-    const commands = status?.commands || {};
-    const windows = device.os === 'windows';
-    $('#tailnet-add-title').textContent = t('[[i18n:ui.tailnet_add_title]]').replace('{name}', device.name);
-    $('#tailnet-add-run').textContent = t('[[i18n:ui.tailnet_add_run]]').replace('{name}', device.name);
-    $('#tailnet-add-command').textContent = (windows ? commands.windows : commands.posix) || '';
-    $('#tailnet-add-note').textContent = t(windows ? '[[i18n:ui.tailnet_add_note_windows]]' : device.os === 'macOS' ? '[[i18n:ui.tailnet_add_note_mac]]' : '[[i18n:ui.tailnet_add_note_linux]]');
-    $('#tailnet-add-fennec').hidden = device.os !== 'macOS';
-    const user = $('#tailnet-add-user');
-    if (!user.value || user.dataset.auto === 'true') { user.value = windows ? '' : (status?.local_user || ''); user.dataset.auto = 'true'; }
+  function setAuth(value) {
+    auth = value;
+    for (const b of dialog.querySelectorAll('[data-auth]')) b.setAttribute('aria-checked', String(b.dataset.auth === value));
+    $('#tailnet-add-password-field').hidden = value !== 'password';
+    $('#tailnet-add-key-field').hidden = value !== 'key';
+    $('#tailnet-add-passphrase-field').hidden = value !== 'key';
     $('#tailnet-add-status').textContent = '';
     $('#tailnet-add-status').classList.remove('is-error');
+    (value === 'key' ? $('#tailnet-add-key') : $('#tailnet-add-password')).focus();
+  }
+  for (const b of dialog.querySelectorAll('[data-auth]')) b.onclick = () => setAuth(b.dataset.auth);
+
+  // Secrets never stay in the page longer than the dialog is open.
+  function clearSecrets() {
+    for (const id of ['#tailnet-add-password', '#tailnet-add-key', '#tailnet-add-passphrase']) $(id).value = '';
+  }
+  dialog.addEventListener('close', clearSecrets);
+
+  function openAdd(device) {
+    adding = device;
+    const windows = device.os === 'windows';
+    $('#tailnet-add-title').textContent = t('[[i18n:ui.tailnet_add_title]]').replace('{name}', device.name);
+    $('#tailnet-add-note').textContent = t(windows ? '[[i18n:ui.tailnet_add_need_windows]]' : device.os === 'macOS' ? '[[i18n:ui.tailnet_add_need_mac]]' : '[[i18n:ui.tailnet_add_need_linux]]');
+    const user = $('#tailnet-add-user');
+    // The same user name as on this Mac, until the user types another.
+    if (!user.value || user.dataset.auto === 'true') { user.value = windows ? '' : (status?.local_user || ''); user.dataset.auto = 'true'; }
+    $('#tailnet-add-port').value = '22';
+    clearSecrets();
+    $('#tailnet-add-status').textContent = '';
+    $('#tailnet-add-status').classList.remove('is-error', 'is-busy');
     connecting = false;
     $('#tailnet-add-connect').disabled = false;
     if (!dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
+    setAuth(auth);
+    if (!user.value) user.focus();
   }
   $('#tailnet-add-user').oninput = event => { event.target.dataset.auto = 'false'; };
   $('#tailnet-add-close').onclick = () => dialog.close();
-  $('#tailnet-add-copy').onclick = () => {
-    const text = $('#tailnet-add-command').textContent;
-    if (!text) return;
-    send('copy-text:' + text);
-    const b = $('#tailnet-add-copy');
-    b.textContent = t('[[i18n:ui.gs_copied]]');
-    setTimeout(() => { b.textContent = t('[[i18n:ui.gs_copy]]'); }, 1500);
-  };
+  $('#tailnet-add-form').onsubmit = event => { event.preventDefault(); $('#tailnet-add-connect').click(); };
+  $('#tailnet-add-password').onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); $('#tailnet-add-connect').click(); } };
   $('#tailnet-add-connect').onclick = () => {
     const user = $('#tailnet-add-user').value.trim();
     const state = $('#tailnet-add-status');
     if (!adding || connecting) return;
-    if (!/^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}$/.test(user)) { state.textContent = t('[[i18n:ui.tailnet_add_user_needed]]'); state.classList.add('is-error'); return; }
+    const fail = token => { state.classList.remove('is-busy'); state.classList.add('is-error'); state.textContent = t(token); };
+    if (!/^[A-Za-z0-9._][A-Za-z0-9._@-]{0,63}$/.test(user)) return fail('[[i18n:ui.tailnet_add_user_needed]]');
+    const portText = $('#tailnet-add-port').value.trim() || '22';
+    const port = Number(portText);
+    if (!/^\d+$/.test(portText) || port < 1 || port > 65535) { $('#tailnet-add-form .tailnet-advanced').open = true; return fail('[[i18n:ui.tailnet_add_port_invalid]]'); }
+    const request = { id: adding.id, user, port };
+    if (auth === 'key') {
+      const key = $('#tailnet-add-key').value.trim();
+      if (!key) return fail('[[i18n:ui.tailnet_add_key_needed]]');
+      request.private_key = key + '\n';
+      const passphrase = $('#tailnet-add-passphrase').value;
+      if (passphrase) request.passphrase = passphrase;
+    } else {
+      const password = $('#tailnet-add-password').value;
+      if (!password) return fail('[[i18n:ui.tailnet_add_password_needed]]');
+      request.password = password;
+    }
     connecting = true;
     $('#tailnet-add-connect').disabled = true;
     state.classList.remove('is-error');
+    state.classList.add('is-busy');
     state.textContent = t('[[i18n:ui.tailnet_connecting]]');
-    send('tailnet-add:' + JSON.stringify({ id: adding.id, user }));
+    send('tailnet-add:' + JSON.stringify(request));
   };
 
   window.renderTailnetAdded = result => {
@@ -399,11 +435,14 @@
     $('#tailnet-add-connect').disabled = false;
     const state = $('#tailnet-add-status');
     const code = result?.error || result?.computer?.error || (!result?.computer ? 'ssh_failed' : '');
+    state.classList.remove('is-busy');
     if (code) {
       state.classList.add('is-error');
-      state.textContent = t(sshErrors[code] || loginErrors[code] || sshErrors.ssh_failed);
+      state.textContent = t(addErrors[code] || loginErrors[code] || sshErrors.ssh_failed);
+      if (code === 'key_passphrase') $('#tailnet-add-form .tailnet-advanced').open = true;
       return;
     }
+    clearSecrets();
     state.classList.remove('is-error');
     state.textContent = t('[[i18n:ui.tailnet_connected]]');
     setTimeout(() => dialog.close(), 700);

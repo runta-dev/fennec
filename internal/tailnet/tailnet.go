@@ -24,6 +24,14 @@ type Request struct {
 	User string `json:"user,omitempty"`
 	// Probe asks Status to sign in to added computers for fresh metrics.
 	Probe bool `json:"probe,omitempty"`
+	// Port is the SSH port on that computer; 0 means 22.
+	Port int `json:"port,omitempty"`
+	// Password or PrivateKey (with Passphrase if it is encrypted) signs in
+	// once to authorize the cloud computer's key (FEN-123). They are used
+	// for that one sign-in only and never stored.
+	Password   string `json:"password,omitempty"`
+	PrivateKey string `json:"private_key,omitempty"`
+	Passphrase string `json:"passphrase,omitempty"`
 }
 
 // Status is what the cloud computer reports to the Mac.
@@ -65,6 +73,7 @@ type Computer struct {
 	Alias   string   `json:"alias"`
 	Host    string   `json:"host"`
 	User    string   `json:"user"`
+	Port    int      `json:"port,omitempty"`
 	AddedAt int64    `json:"added_at"`
 	Checked int64    `json:"checked_at,omitempty"`
 	Error   string   `json:"error,omitempty"`
