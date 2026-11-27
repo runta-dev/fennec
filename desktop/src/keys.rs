@@ -40,6 +40,8 @@ fn supported(action: &str) -> bool {
                 | "agent.next"
                 | "agent.prev"
                 | "request.new"
+                | "history.back"
+                | "history.forward"
                 | "mod.open:picker"
                 | "mod.open:tui-prefix"
                 | "mod.open:tui-close-others"
@@ -57,7 +59,8 @@ pub const DEFAULTS: &str = r#"{
     "global": {
         "cmd-,": "app.settings", "cmd-n": "request.new", "cmd-t": "tab.new", "cmd-w": "tab.close",
         "ctrl-tab": "tab.next", "ctrl-shift-tab": "tab.prev",
-        "cmd-shift-]": "tab.next", "cmd-shift-[": "tab.prev", "cmd-p": "mod.open:picker"
+        "cmd-shift-]": "tab.next", "cmd-shift-[": "tab.prev", "cmd-p": "mod.open:picker",
+        "cmd-[": "history.back", "cmd-]": "history.forward"
     },
     "terminal": {
         "cmd-c": "terminal.copy", "cmd-v": "terminal.paste",

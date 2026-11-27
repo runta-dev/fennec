@@ -114,6 +114,7 @@ impl FennecWindow {
         self.thread = None;
         self.open = None;
         self.opening = None;
+        self.history.clear();
         self.pending_replies.clear();
         self.fresh_messages.clear();
         self.question_picks.clear();

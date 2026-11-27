@@ -271,7 +271,7 @@ impl FennecWindow {
     /// The title bar: it moves the window like a native one, holds the
     /// traffic lights at its left and search (⌘K) in its middle. It has no
     /// background or line of its own: it is the chrome the rail is on too.
-    pub(super) fn titlebar(&self) -> impl IntoElement {
+    pub(super) fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .id("titlebar")
             .debug_selector(|| "titlebar".into())
@@ -280,9 +280,17 @@ impl FennecWindow {
             .flex_none()
             .px(px(RAIL_WIDTH + 12.0))
             .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-            .child(div().flex_1())
+            // FEN-203: back and forward sit just left of search, which stays centred.
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .justify_end()
+                    .pr(px(8.0))
+                    .child(self.history_buttons(cx)),
+            )
             .child(self.search_field())
-            .child(div().flex_1())
+            .child(div().flex_1().min_w_0())
     }
 
     /// The title bar's search field (⌘K).

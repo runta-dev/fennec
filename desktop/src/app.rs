@@ -27,6 +27,7 @@ mod thread_links;
 mod thread_tags;
 mod thread_wait;
 mod rail;
+mod nav_history;
 mod queue_resize;
 #[cfg(test)]
 mod reply_tests;
@@ -210,6 +211,8 @@ pub struct FennecWindow {
     last_terminal: Option<String>,
     /// FEN-125: the rail button that grows under the pointer, as in Slack.
     rail_hover: rail::RailHover,
+    /// FEN-203: the places visited, for back and forward.
+    history: nav_history::History,
     /// Queue cards easing to a new place after their status moved them.
     queue_glide: glide::Shared,
     /// The Active / Done highlight sliding between the tabs.
@@ -415,6 +418,7 @@ impl FennecWindow {
             notice: None,
             last_terminal: None,
             rail_hover: Default::default(),
+            history: Default::default(),
             queue_glide: Default::default(),
             status_slide: Default::default(),
             queue_scroll: ScrollHandle::new(),
@@ -1894,6 +1898,10 @@ impl FennecWindow {
                 self.focus_new_request(window, cx);
                 return;
             }
+            "history.back" | "history.forward" => {
+                self.go_history(a.id() == "history.back", window, cx);
+                return;
+            }
             "mod.open:picker" => {
                 self.focus_search(window, cx);
                 return;
@@ -3319,6 +3327,7 @@ impl Render for FennecWindow {
         if let Some(Route::Session(address)) = &route {
             self.last_terminal = Some(address.clone());
         }
+        self.note_place();
         if !matches!(route, Some(Route::Project(_))) {
             // Hidden meanwhile: the queue's cards are placed at once when it shows again.
             self.queue_glide.borrow_mut().reset();
@@ -3452,7 +3461,7 @@ impl Render for FennecWindow {
                     .min_w_0()
                     .h_full()
                     .bg(c("f_bg"))
-                    .child(self.titlebar())
+                    .child(self.titlebar(cx))
                     .child(
                         h_flex()
                             .flex_1()
