@@ -2689,7 +2689,7 @@ impl FennecWindow {
                 .bg(c("background"))
                 .items_center()
                 .justify_center()
-                .child(ui::icon("chat", 16.0, c("f_muted").opacity(0.5)))
+                .child(empty_thread(self.requests.get(&p.id).is_some_and(|l| !l.is_empty())))
                 .child(
                     div()
                         .id("thread-head-empty")
@@ -3535,6 +3535,54 @@ fn empty() -> AnyElement {
         .h_full()
         .bg(c("background"))
         .into_any_element()
+}
+
+/// The thread pane with no request open (FEN-189): a quiet, centered card that
+/// says what goes here and how to get started, instead of a lone faint icon.
+fn empty_thread(has_requests: bool) -> impl IntoElement {
+    let muted = c("f_muted");
+    v_flex()
+        .items_center()
+        .max_w(px(360.0))
+        .px(px(24.0))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(52.0))
+                .rounded(px(14.0))
+                .bg(c("f_card"))
+                .border_1()
+                .border_color(c("f_line"))
+                .child(ui::icon("chat", 24.0, muted)),
+        )
+        .child(
+            div()
+                .mt(px(18.0))
+                .text_size(px(15.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(c("f_text"))
+                .child(if has_requests { t("empty_thread_title") } else { t("empty_queue_title") }),
+        )
+        .child(
+            div()
+                .mt(px(6.0))
+                .text_size(px(12.5))
+                .line_height(px(19.0))
+                .text_center()
+                .text_color(muted)
+                .child(if has_requests { t("empty_thread_body") } else { t("empty_queue_body") }),
+        )
+        .child(
+            h_flex()
+                .mt(px(22.0))
+                .gap(px(18.0))
+                .text_size(px(12.0))
+                .text_color(muted)
+                .child(ui::text_shortcut_hint(&["⌘", "N"], t("new_request")))
+                .when(has_requests, |d| d.child(ui::text_shortcut_hint(&["⌘", "K"], t("search")))),
+        )
 }
 
 /// The Mac shows its replica of the board. While the cloud is unreachable that
