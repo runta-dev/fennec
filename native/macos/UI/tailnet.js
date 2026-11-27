@@ -95,39 +95,30 @@
   // card, hidden, from the same per-second samples.
   const hostCard = document.querySelector('#host-metrics-card');
   if (hostCard) hostCard.hidden = true;
-  const hostRow = el('div', 'tailnet-device tailnet-local');
+  let hostRow = el('div', 'tailnet-device tailnet-local');
   hostSlot.append(hostRow);
   let hostSample = null;
   const drawHostRow = () => {
     const p = hostSample || {};
-    hostRow.replaceChildren();
-    const main = el('div', 'tailnet-device-main');
-    const icon = el('span', 'tailnet-os');
-    icon.innerHTML = osIcons.macOS;
-    // Name and a muted "This Mac" on the left, the OS and memory badge on the
-    // right, like the cloud computer card's head (FEN-104).
-    const text = el('div', 'tailnet-device-text tailnet-local-text');
-    const name = el('span', 'tailnet-device-name', p.name || t('[[i18n:ui.this_mac]]'));
-    name.title = [p.name, p.chip].filter(Boolean).join(' · ');
-    text.append(name);
-    if (p.name) text.append(el('span', 'host-local-tag', t('[[i18n:ui.this_mac]]')));
-    main.append(icon, text);
     const os = [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ');
     const ram = Number(p.memory_total_bytes) > 0 ? Math.round(p.memory_total_bytes / 1073741824) + ' GB' : '';
-    const spec = [os, ram].filter(Boolean).join(' · ');
-    if (hostSample && hasWorkers()) {
-      // With other worker computers, the right side picks the primary one,
-      // so the OS and memory move under the name like the other rows.
-      text.classList.add('has-sub');
-      const line = el('div', 'tailnet-local-line');
-      line.append(...text.childNodes);
-      text.append(line, el('span', 'tailnet-device-sub', spec));
-      const side = el('div', 'tailnet-device-side');
-      side.append(primaryControl('this-mac'));
-      main.append(side);
-    } else if (hostSample) main.append(el('span', 'runtime-metrics-spec tailnet-local-spec', spec));
-    hostRow.append(main);
-    if (hostSample) hostRow.append(meters({ cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes }));
+    const id = 'this-mac';
+    const primary = (status?.primary || id) === id;
+    const tags = [t('[[i18n:ui.this_mac]]')];
+    // "Primary" only means something once there is another worker computer.
+    if (primary && hasWorkers()) tags.push({ primary: true });
+    const row = computerRow({
+      icon: osIcons.macOS,
+      name: p.name || t('[[i18n:ui.this_mac]]'),
+      title: [p.name, p.chip].filter(Boolean).join(' · '),
+      tags: p.name ? tags : tags.slice(1),
+      sub: hostSample ? [os, ram].filter(Boolean).join(' · ') : '',
+      action: !primary ? setPrimaryButton(id) : null,
+      meters: hostSample ? { cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes } : null,
+    });
+    row.classList.add('tailnet-local');
+    hostRow.replaceWith(row);
+    hostRow = row;
   };
   const renderHost = window.renderHostMetrics;
   window.renderHostMetrics = payload => {
@@ -285,15 +276,54 @@
     return grid;
   }
 
+  // Every row has the same shape (FEN-147): an OS tile; the name with muted
+  // tags ("This Mac", "Added", "Primary") on one line and the state under it;
+  // at most one button on the right, so the buttons line up; Remove shows
+  // only while the row is hovered; meters below.
+  function computerRow({ icon, name, title, tags = [], sub, online, action, remove, meters: sample, problem, offline }) {
+    const item = el('div', 'tailnet-device' + (offline ? ' is-offline' : ''));
+    const main = el('div', 'tailnet-device-main');
+    const tile = el('span', 'tailnet-os');
+    tile.innerHTML = icon;
+    const text = el('div', 'tailnet-device-text');
+    const line = el('div', 'tailnet-name-line');
+    const label = el('span', 'tailnet-device-name', name);
+    label.title = title || name;
+    line.append(label);
+    for (const tag of tags) {
+      const span = tag.primary ? el('span', 'tailnet-tag is-primary', t('[[i18n:ui.tailnet_primary]]')) : el('span', 'tailnet-tag', tag.text || tag);
+      if (tag.primary) span.title = t('[[i18n:ui.tailnet_primary_hint]]');
+      if (tag.title) span.title = tag.title;
+      line.append(span);
+    }
+    text.append(line);
+    if (sub) {
+      const subline = el('span', 'tailnet-device-sub');
+      if (online !== undefined) subline.append(el('span', 'tailnet-dot' + (online ? ' is-online' : '')));
+      subline.append(document.createTextNode(sub));
+      text.append(subline);
+    }
+    main.append(tile, text);
+    const side = el('div', 'tailnet-device-side');
+    if (remove) {
+      const x = el('button', 'tailnet-remove');
+      x.type = 'button';
+      x.innerHTML = svg('<path d="m6 6 8 8M14 6l-8 8"/>');
+      x.title = x.ariaLabel = t('[[i18n:ui.tailnet_remove]]');
+      x.onclick = remove;
+      side.append(x);
+    }
+    if (action) side.append(action);
+    main.append(side);
+    item.append(main);
+    if (problem) item.append(problem);
+    if (sample) item.append(meters(sample));
+    return item;
+  }
+
   // One worker computer is primary: agents build, compile and test there.
   // It is this Mac until the user picks another (FEN-147).
-  function primaryControl(id) {
-    const current = (status?.primary || 'this-mac') === id;
-    if (current) {
-      const tag = el('span', 'tailnet-state tailnet-primary', t('[[i18n:ui.tailnet_primary]]'));
-      tag.title = t('[[i18n:ui.tailnet_primary_hint]]');
-      return tag;
-    }
+  function setPrimaryButton(id) {
     const set = button('[[i18n:ui.tailnet_set_primary]]', 'tailnet-add', () => {
       status = { ...status, primary: id === 'this-mac' ? '' : id };
       drawCard();
@@ -306,56 +336,43 @@
   const hasWorkers = () => status?.state === 'running' && (status.devices || []).some(d => d.id !== status.this_device && d.computer && !d.computer.error && d.computer.alias);
 
   function deviceRow(device) {
-    const item = el('div', 'tailnet-device' + (device.online ? '' : ' is-offline'));
-    const main = el('div', 'tailnet-device-main');
-    const icon = el('span', 'tailnet-os');
-    icon.innerHTML = osIcon(device.os);
-    const text = el('div', 'tailnet-device-text');
-    const name = el('span', 'tailnet-device-name', device.name);
-    name.title = device.dns_name || device.name;
-    const metrics = device.computer?.metrics;
-    const ip = (device.ips || []).find(value => value.includes('.')) || '';
-    const os = metrics?.os_name ? [metrics.os_name, metrics.os_version].filter(Boolean).join(' ') : osNames[device.os] || device.os || '';
-    const sub = el('span', 'tailnet-device-sub');
-    const dot = el('span', 'tailnet-dot' + (device.online ? ' is-online' : ''));
-    sub.append(dot, document.createTextNode([device.online ? t('[[i18n:ui.tailnet_online]]') : t('[[i18n:ui.tailnet_offline]]'), os, ip].filter(Boolean).join(' · ')));
-    text.append(name, sub);
-    main.append(icon, text);
-    const side = el('div', 'tailnet-device-side');
     const computer = device.computer;
     const connected = computer && !computer.error && computer.alias;
-    if (connected) {
-      if ((status?.primary || '') !== device.id) {
-        const tag = el('span', 'tailnet-state', t('[[i18n:ui.tailnet_added]]'));
-        tag.title = 'ssh ' + computer.alias;
-        side.append(tag);
-      }
-      side.append(primaryControl(device.id));
-      const remove = el('button', 'tailnet-remove');
-      remove.type = 'button';
-      remove.innerHTML = svg('<path d="m6 6 8 8M14 6l-8 8"/>');
-      remove.title = remove.ariaLabel = t('[[i18n:ui.tailnet_remove]]');
-      remove.onclick = () => send('tailnet-remove:' + JSON.stringify({ id: device.id }));
-      side.append(remove);
-    } else if (sshCapable(device.os)) {
-      const add = button('[[i18n:ui.tailnet_add]]', 'tailnet-add', () => openAdd(device), !device.online);
-      if (!device.online) add.title = t('[[i18n:ui.tailnet_offline]]');
-      side.append(add);
+    const metrics = computer?.metrics;
+    const ip = (device.ips || []).find(value => value.includes('.')) || '';
+    const os = metrics?.os_name ? [metrics.os_name, metrics.os_version].filter(Boolean).join(' ') : osNames[device.os] || device.os || '';
+    const primary = connected && (status?.primary || '') === device.id;
+    const tags = connected ? [{ text: t('[[i18n:ui.tailnet_added]]'), title: 'ssh ' + computer.alias }] : [];
+    if (primary) tags.push({ primary: true });
+    let action = null;
+    if (connected && !primary) action = setPrimaryButton(device.id);
+    else if (!connected && sshCapable(device.os)) {
+      action = button('[[i18n:ui.tailnet_add]]', 'tailnet-add', () => openAdd(device), !device.online);
+      if (!device.online) action.title = t('[[i18n:ui.tailnet_offline]]');
     }
-    main.append(side);
-    item.append(main);
+    let problem = null;
     if (computer?.error) {
-      const problem = el('p', 'tailnet-device-problem', t(sshErrors[computer.error] || sshErrors.ssh_failed));
+      problem = el('p', 'tailnet-device-problem', t(sshErrors[computer.error] || sshErrors.ssh_failed));
       if (computer.error === 'ssh_check') {
         const fix = el('button', 'gs-link', t('[[i18n:ui.tailnet_open_policy]]'));
         fix.type = 'button';
         fix.onclick = () => send('tailnet-open-url:' + policyURL);
         problem.append(' ', fix);
       }
-      item.append(problem);
     }
-    if (connected && metrics && device.online) item.append(meters(metrics));
-    return item;
+    return computerRow({
+      icon: osIcon(device.os),
+      name: device.name,
+      title: device.dns_name || device.name,
+      tags,
+      sub: [device.online ? t('[[i18n:ui.tailnet_online]]') : t('[[i18n:ui.tailnet_offline]]'), os, ip].filter(Boolean).join(' · '),
+      online: device.online,
+      offline: !device.online,
+      action,
+      remove: connected ? () => send('tailnet-remove:' + JSON.stringify({ id: device.id })) : null,
+      problem,
+      meters: connected && metrics && device.online ? metrics : null,
+    });
   }
 
   function drawCard() {

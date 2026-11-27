@@ -757,5 +757,8 @@ nav button{padding:3px 7px}
 .tailnet-dialog input::-webkit-caps-lock-indicator,.tailnet-dialog input::-webkit-credentials-auto-fill-button,.tailnet-dialog input::-webkit-strong-password-auto-fill-button{display:none!important;visibility:hidden;pointer-events:none}
 .tailnet-add-device .tailnet-device-name{color:var(--text)}
 .byoc-status:has(.tailnet-error-detail){flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}.tailnet-error-detail{display:block;max-width:100%;font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);overflow-wrap:anywhere;user-select:text;max-height:40px;overflow:auto}
-.tailnet-state{font-size:11px;color:var(--muted);white-space:nowrap;padding:0 2px}.tailnet-primary{color:var(--text);font-weight:500;cursor:default}
-.tailnet-local-text.has-sub{flex-direction:column;align-items:stretch;gap:1px}.tailnet-local-line{display:flex;align-items:baseline;gap:6px;min-width:0}.tailnet-local-line .tailnet-device-name{min-width:0}.tailnet-local-line .host-local-tag{flex:none}
+/* Worker computer rows (FEN-147): name and muted tags on one line, the state under it, one right-aligned button, Remove on hover. */
+.tailnet-name-line{display:flex;align-items:baseline;gap:6px;min-width:0}.tailnet-name-line .tailnet-device-name{flex:0 1 auto;min-width:0}
+.tailnet-tag{flex:none;font-size:10.5px;color:var(--muted);white-space:nowrap}.tailnet-tag.is-primary{color:var(--orange);font-weight:500;cursor:default}
+.tailnet-device-side{position:relative;min-height:24px;justify-content:flex-end}
+.tailnet-device-side .tailnet-remove{position:absolute;right:calc(100% + 4px);top:50%;transform:translateY(-50%)}.tailnet-device-side:not(:has(.tailnet-add)) .tailnet-remove{position:static;transform:none}
