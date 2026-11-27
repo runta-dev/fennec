@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"fennec/internal/board"
+	r "fennec/internal/runtime"
 )
 
 var ErrInputUnconfirmed = errors.New("input delivery was not confirmed")
@@ -109,8 +110,12 @@ func SendRequest(ctx context.Context, store board.Store, query func(context.Cont
 		return err
 	}
 	text := strings.Join(paths, " ") + " \n\n" + prompt
-	raw, err := query(ctx, "terminal.send", map[string]any{"terminal": terminal, "text": text, "force": false})
+	raw, err := sendWhenSettled(ctx, query, terminal, text)
 	if err != nil {
+		if r.HerdrRefusalKind(err) != "" {
+			// Herdr typed nothing, so a later retry may send it again.
+			os.Remove(marker)
+		}
 		return err
 	}
 	var receipt struct {
@@ -133,8 +138,30 @@ func SendRequest(ctx context.Context, store board.Store, query func(context.Cont
 	return os.WriteFile(marker, []byte("done"), 0600)
 }
 
+// sendWhenSettled pastes the request once the agent has finished starting.
+// herdr-core refuses input with "unavailable" ("still starting: its output has
+// not settled", nothing typed) while a fresh TUI keeps repainting. Codex 0.172
+// animates its empty input box for 10-20 seconds after launch (FEN-153), so a
+// single attempt fails every new Codex thread.
+func sendWhenSettled(ctx context.Context, query func(context.Context, string, any) (json.RawMessage, error), terminal, text string) (json.RawMessage, error) {
+	deadline := time.Now().Add(settleWindow)
+	for {
+		raw, err := query(ctx, "terminal.send", map[string]any{"terminal": terminal, "text": text, "force": false})
+		if err == nil || r.HerdrRefusalKind(err) != "unavailable" || time.Now().After(deadline) {
+			return raw, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(settlePoll):
+		}
+	}
+}
+
 // Confirmation timing; tests shorten it.
 var (
+	settleWindow  = 45 * time.Second
+	settlePoll    = 2 * time.Second
 	confirmWindow = 45 * time.Second
 	confirmPoll   = time.Second
 	maxResubmits  = 3

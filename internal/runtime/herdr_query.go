@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -38,6 +39,23 @@ type herdrRefusal struct {
 }
 
 func (e *herdrRefusal) Error() string { return "Herdr refused input: " + e.Data.Kind }
+
+// HerdrRefusal builds the error a herdr-core refusal of this kind decodes to.
+func HerdrRefusal(kind string) error {
+	refusal := &herdrRefusal{}
+	refusal.Data.Kind = kind
+	return refusal
+}
+
+// HerdrRefusalKind returns the kind of a herdr-core refusal ("unavailable",
+// "blocked", ...), or "" when err is not one. A refusal means nothing was typed.
+func HerdrRefusalKind(err error) string {
+	var refusal *herdrRefusal
+	if errors.As(err, &refusal) {
+		return refusal.Data.Kind
+	}
+	return ""
+}
 
 func decodeHerdrReply(raw []byte) (json.RawMessage, error) {
 	var reply struct {

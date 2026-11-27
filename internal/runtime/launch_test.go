@@ -90,7 +90,7 @@ func TestLaunchArgumentsRemainStructured(t *testing.T) {
 	if json.Unmarshal(data, &payload) != nil {
 		t.Fatal("invalid payload")
 	}
-	want := append([]string{"codex", "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`, "--no-alt-screen", "-c", "check_for_update_on_startup=false"}, args...)
+	want := append([]string{"codex", "--no-daemon", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`, "--no-alt-screen", "-c", "tui.animations=false", "-c", "check_for_update_on_startup=false"}, args...)
 	if !reflect.DeepEqual(payload.Command, want) {
 		t.Fatalf("%q", payload.Command)
 	}

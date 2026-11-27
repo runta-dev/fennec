@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fennec/internal/board"
+	r "fennec/internal/runtime"
 )
 
 // fakeAgent models a herdr-core terminal whose agent swallows the first
@@ -19,11 +20,20 @@ type fakeAgent struct {
 	drops         int
 	pending, sent bool
 	presses, gets int
+	starting      int    // terminal.send calls refused while the TUI settles
+	refuse        string // refuse every send with this kind
 }
 
 func (a *fakeAgent) query(_ context.Context, method string, params any) (json.RawMessage, error) {
 	switch method {
 	case "terminal.send":
+		if a.refuse != "" {
+			return nil, r.HerdrRefusal(a.refuse)
+		}
+		if a.starting > 0 {
+			a.starting--
+			return nil, r.HerdrRefusal("unavailable")
+		}
 		a.pending = true
 		turn := a.turn
 		if a.drops == 0 {
@@ -68,9 +78,10 @@ func (a *fakeAgent) submit() {
 }
 
 func fastConfirm(t *testing.T) {
-	window, poll := confirmWindow, confirmPoll
+	window, poll, settle, settlePolls := confirmWindow, confirmPoll, settleWindow, settlePoll
 	confirmWindow, confirmPoll = 300*time.Millisecond, time.Millisecond
-	t.Cleanup(func() { confirmWindow, confirmPoll = window, poll })
+	settleWindow, settlePoll = 300*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { confirmWindow, confirmPoll, settleWindow, settlePoll = window, poll, settle, settlePolls })
 }
 
 func textRequest(session string) board.Request {
@@ -136,5 +147,35 @@ func TestAgentWithoutStatusKeepsPreviousBehaviour(t *testing.T) {
 	}
 	if agent.presses != 0 {
 		t.Fatal("pressed Enter without knowing the agent's state")
+	}
+}
+
+// FEN-153: Codex animates its input box right after launch, and herdr-core
+// refuses input ("unavailable", nothing typed) until the output settles.
+func TestSendWaitsForAStartingAgentToSettle(t *testing.T) {
+	fastConfirm(t)
+	store := board.Store{Home: t.TempDir()}
+	agent := &fakeAgent{status: "idle", starting: 5}
+	if err := SendRequest(context.Background(), store, agent.query, "t1", textRequest("66666666666666666666666666666666"), "prompt"); err != nil {
+		t.Fatal("startup refusal ended the delivery:", err)
+	}
+	if !agent.sent {
+		t.Fatal("prompt was never typed")
+	}
+}
+
+// A refusal types nothing, so it must not leave the delivery marked pending:
+// that would block every later retry of the same session.
+func TestRefusedSendCanBeRetried(t *testing.T) {
+	fastConfirm(t)
+	store := board.Store{Home: t.TempDir()}
+	request := textRequest("77777777777777777777777777777777")
+	agent := &fakeAgent{status: "idle", refuse: "unavailable"}
+	if err := SendRequest(context.Background(), store, agent.query, "t1", request, "prompt"); !errors.Is(err, ErrInputUnconfirmed) {
+		t.Fatal("refusal reported as delivered:", err)
+	}
+	agent.refuse = ""
+	if err := SendRequest(context.Background(), store, agent.query, "t1", request, "prompt"); err != nil || !agent.sent {
+		t.Fatalf("retry after a refusal did not send: err=%v sent=%v", err, agent.sent)
 	}
 }

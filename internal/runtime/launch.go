@@ -233,8 +233,19 @@ const claudeNativeCursor = "CLAUDE_CODE_NATIVE_CURSOR=1"
 // no inline switch for its main TUI (only the separate "mini" interface).
 func inlineArguments(agent string, arguments []string) []string {
 	switch agent {
-	case "codex", "grok":
-		// Both reject the flag when it is given twice.
+	case "codex":
+		// Codex 0.172 animates sparkles around its empty input box for ~15s
+		// after every launch. herdr-core refuses input until a starting screen
+		// is still, so a queue request sent at launch was refused (FEN-153).
+		// -c may repeat; the last value wins.
+		quiet := []string{"-c", "tui.animations=false"}
+		// It rejects --no-alt-screen when it is given twice.
+		if !slices.Contains(arguments, "--no-alt-screen") {
+			return append([]string{"--no-alt-screen"}, quiet...)
+		}
+		return quiet
+	case "grok":
+		// It rejects the flag when it is given twice.
 		if !slices.Contains(arguments, "--no-alt-screen") {
 			return []string{"--no-alt-screen"}
 		}

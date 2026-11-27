@@ -410,8 +410,9 @@ func TestCloudAgentsLaunchInline(t *testing.T) {
 		arguments []string
 		want      []string
 	}{
-		{"codex", nil, []string{"--no-alt-screen"}},
+		{"codex", nil, []string{"--no-alt-screen", "-c", "tui.animations=false"}},
 		{"codex", []string{"--no-alt-screen"}, []string{"--no-alt-screen"}},
+		{"codex", []string{"--no-alt-screen"}, []string{"tui.animations=false"}},
 		{"grok", nil, []string{"--no-alt-screen"}},
 		{"grok", []string{"--no-alt-screen"}, []string{"--no-alt-screen"}},
 		{"pi", nil, []string{"--tui-mode", "regular"}},
