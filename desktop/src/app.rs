@@ -2906,7 +2906,7 @@ impl FennecWindow {
                 let bar = permission
                     .as_ref()
                     .map(|q| self.permission_bar(r, q, cx).into_any_element());
-                self.thread_peek_card(s, &r.status, bar, cx)
+                self.thread_peek_card(s, &r.title, &r.status, bar, cx)
             })
             .or_else(|| self.thread_wait_card(p, r));
         let can_resolve = resolved || matches!(r.status.as_str(), "you" | "review" | "failed" | "unknown");
