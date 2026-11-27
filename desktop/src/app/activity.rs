@@ -197,18 +197,7 @@ impl FennecWindow {
     fn activity_mark_for(&self, address: &str, role: &str) -> AnyElement {
         let word = self.activity[address][role].as_str().unwrap_or_default();
         if word == "working" {
-            return svg()
-                .path("programs/activity-spinner.svg")
-                .size(px(12.0))
-                .text_color(c("working"))
-                .with_animation(
-                    ElementId::Name(format!("working-{address}").into()),
-                    Animation::new(Duration::from_millis(900)).repeat(),
-                    // One shared phase: every running spinner turns in step,
-                    // however late its row appeared (THI-111).
-                    |icon, _| icon.with_transformation(Transformation::rotate(percentage(spinner_phase()))),
-                )
-                .into_any_element();
+            return ui::activity_spinner(12.0, c("working")).into_any_element();
         }
         div()
             .size(px(6.0))
@@ -303,11 +292,4 @@ pub(super) fn state(word: &str) -> State {
         "idle" => State::Idle,
         _ => State::Unknown,
     }
-}
-
-/// Where every activity spinner is in its 900 ms turn, from one shared clock.
-fn spinner_phase() -> f32 {
-    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    let elapsed = START.get_or_init(std::time::Instant::now).elapsed().as_millis();
-    (elapsed % 900) as f32 / 900.0
 }
