@@ -1003,6 +1003,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             // Keep the specific reason the UI can act on (out of credits: add
             // credits); anything else is the generic preparation failure.
             if preparationState["status"] != "billing_restricted" { preparationState["status"] = "runtime_preparation_failed" }
+            // The daemon retries this failure on its own (FEN-97): show it
+            // reconnecting, like an unreachable computer, not a Retry prompt.
+            if runtime["retrying"] as? Bool == true {
+                preparationState["stage"] = "unreachable"
+                preparationState["status"] = selfHosted ? "server_unreachable" : "cloud_unreachable"
+            }
         }
         if runtime["stage"] as? String == "offline" || runtime["offline"] as? Bool == true || (!online && authorized && runtime["stage"] as? String != "disabled") {
             preparationState["stage"] = "offline"

@@ -5,31 +5,34 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/account"
+	"fennec/internal/byoc"
 	"fennec/internal/cloudstate"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/runta"
 	"fmt"
-	"io"
 	"log"
-	"net"
+	"net/http"
 	"sync"
-	"syscall"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 type RuntimeState struct {
-	Epoch      uint64                       `json:"epoch"`
-	Generation uint64                       `json:"generation"`
-	Pending    bool                         `json:"pending"`
-	Running    bool                         `json:"running"`
-	Offline    bool                         `json:"offline,omitempty"`
-	Stage      string                       `json:"stage"`
-	RuntimeID  string                       `json:"runtime_id,omitempty"`
-	Error      string                       `json:"error,omitempty"`
-	Events     map[string]map[string]string `json:"events,omitempty"`
+	Epoch      uint64 `json:"epoch"`
+	Generation uint64 `json:"generation"`
+	Pending    bool   `json:"pending"`
+	Running    bool   `json:"running"`
+	Offline    bool   `json:"offline,omitempty"`
+	Stage      string `json:"stage"`
+	RuntimeID  string `json:"runtime_id,omitempty"`
+	Error      string `json:"error,omitempty"`
+	// Retrying marks a failed preparation that the daemon retries on its own,
+	// so the UI can say "reconnecting" instead of asking for a Retry click.
+	Retrying bool                         `json:"retrying,omitempty"`
+	Events   map[string]map[string]string `json:"events,omitempty"`
 }
 
 func (c *Controller) wakeChannelLocked() chan struct{} {
@@ -64,6 +67,7 @@ func (c *Controller) runtimeSnapshot() RuntimeState {
 	}
 	result := c.runtime
 	result.Pending = c.runtimeAgain
+	result.Retrying = result.Stage == "failed" && c.runtimeRetry
 	result.Events = make(map[string]map[string]string, len(c.runtime.Events))
 	for kind, event := range c.runtime.Events {
 		copy := make(map[string]string, len(event))
@@ -316,6 +320,7 @@ func (c *Controller) Start(ctx context.Context) {
 		var lastEpoch uint64
 		wasOnline := false
 		retryDelay := 2 * time.Second
+		failureDelay := 2 * time.Second
 		for ctx.Err() == nil {
 			changed := c.Account.Changes()
 			var netChanged <-chan struct{}
@@ -331,6 +336,7 @@ func (c *Controller) Start(ctx context.Context) {
 				lastEpoch = account.Epoch
 				wasOnline = online
 				retryDelay = 2 * time.Second
+				failureDelay = 2 * time.Second
 			} else if c.Prepare != nil {
 				epochChanged := account.Epoch != lastEpoch
 				lastEpoch = account.Epoch
@@ -344,6 +350,7 @@ func (c *Controller) Start(ctx context.Context) {
 					wasOnline = true
 					if reconnected || epochChanged {
 						retryDelay = 2 * time.Second
+						failureDelay = 2 * time.Second
 					}
 					c.mu.Lock()
 					needsReconcile := c.runtime.Epoch == account.Epoch && c.runtimeAgain && !c.runtime.Running
@@ -358,13 +365,21 @@ func (c *Controller) Start(ctx context.Context) {
 						_, _ = c.ensureRuntime(ctx, nil)
 						state = c.runtimeSnapshot()
 					}
-					if (state.Stage == "offline" || state.Stage == "failed" && retryFailure) && !state.Running {
+					if state.Stage == "offline" && !state.Running {
 						timer := time.NewTimer(retryDelay)
 						retryTimer = timer.C
 						stopTimer = timer.Stop
 						retryDelay = min(retryDelay*2, 5*time.Second)
+					} else if state.Stage == "failed" && retryFailure && !state.Running {
+						// Failures back off further than offline polling: each
+						// attempt may call the Runta API, which can be what is down.
+						timer := time.NewTimer(failureDelay)
+						retryTimer = timer.C
+						stopTimer = timer.Stop
+						failureDelay = min(failureDelay*2, maxFailureRetryDelay)
 					} else if state.Stage == "ready" {
 						retryDelay = 2 * time.Second
+						failureDelay = 2 * time.Second
 					}
 				}
 			}
@@ -391,18 +406,44 @@ func (c *Controller) Start(ctx context.Context) {
 	}()
 }
 
-// A route can remain available while its SSH connection is replaced. Retry
-// finite, idempotent preparation after transport loss without requiring another
-// network event or a manual click. Authentication and validation failures remain
-// failures, and session launches are never replayed by this loop.
+// maxFailureRetryDelay caps the backoff between automatic retries of a
+// failed preparation.
+const maxFailureRetryDelay = time.Minute
+
+// A failed preparation is retried automatically unless only the user can fix
+// it (FEN-97). Preparation is finite and idempotent, and a manual Retry runs
+// exactly the same steps, so whatever a Retry click would cure (a dropped SSH
+// or terminal channel, a Runta 5xx, a timeout, an upload cut short) is retried
+// without the click. What stays failed: out of credits (top up first),
+// rejected credentials or permissions, requests Runta refuses as invalid, and
+// a host key that no longer matches. Session launches are never replayed by
+// this loop.
 func transientPreparationFailure(err error) bool {
-	for _, target := range []error{io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe, net.ErrClosed, context.DeadlineExceeded, syscall.ECONNRESET, syscall.EPIPE, syscall.ETIMEDOUT} {
-		if errors.Is(err, target) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, cloudstate.ErrDisabled) {
+		return false
+	}
+	if runta.BillingRestricted(err) {
+		return false
+	}
+	var api *runta.APIError
+	if errors.As(err, &api) && api.Status >= 400 && api.Status < 500 {
+		switch api.Status {
+		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests:
 			return true
 		}
+		return false
 	}
-	var missing *ssh.ExitMissingError
-	return errors.As(err, &missing)
+	var keyMismatch *knownhosts.KeyError
+	var revoked *knownhosts.RevokedError
+	if errors.As(err, &keyMismatch) || errors.As(err, &revoked) {
+		return false
+	}
+	for _, permanent := range []error{account.ErrRuntaAccountRequired, account.ErrSelfHostedPaired, byoc.ErrIdentityMismatch, byoc.ErrNotPaired} {
+		if errors.Is(err, permanent) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Controller) cancelInFlightOffline(epoch uint64) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/byoc"
 	"fennec/internal/cloudstate"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
@@ -15,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 func TestPreparationRetriesConnectionLossWhileRoutingStaysOnline(t *testing.T) {
@@ -45,10 +48,68 @@ func TestPreparationRetriesConnectionLossWhileRoutingStaysOnline(t *testing.T) {
 	if calls.Load() != 2 {
 		t.Fatalf("unexpected preparation attempts: %d", calls.Load())
 	}
-	for _, err := range []error{fmt.Errorf("host key mismatch"), &runta.APIError{Status: 401}, context.Canceled, nil} {
+	for _, err := range []error{
+		&knownhosts.KeyError{Want: []knownhosts.KnownKey{{}}}, &runta.APIError{Status: 401}, &runta.APIError{Status: 403},
+		&runta.APIError{Status: 400, Code: "invalid_argument"}, &runta.APIError{Status: 402},
+		&runta.APIError{Status: 409, Code: "balance_exhausted"}, fmt.Errorf("prepare: %w", account.ErrRuntaAccountRequired),
+		fmt.Errorf("prepare: %w", byoc.ErrIdentityMismatch), cloudstate.ErrDisabled, context.Canceled, nil,
+	} {
 		if transientPreparationFailure(err) {
-			t.Fatalf("retrying a non-transport failure: %v", err)
+			t.Fatalf("automatically retrying a failure only the user can fix: %v", err)
 		}
+	}
+	// FEN-97: failures a manual Retry cured, seen in the field.
+	for _, err := range []error{
+		&runta.APIError{Status: 520}, &runta.APIError{Status: 503}, &runta.APIError{Status: 429},
+		fmt.Errorf("terminal service upload verification failed: %w", io.EOF),
+		fmt.Errorf("remote terminal channel disconnected"), context.DeadlineExceeded,
+	} {
+		if !transientPreparationFailure(err) {
+			t.Fatalf("a failure Retry cures waits for a click: %v", err)
+		}
+	}
+}
+
+func TestFailedPreparationReconnectsWithoutRetryClick(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	manager := account.New(ctx, &testCredentials{token: "fixture"}, "")
+	if err := manager.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	release := make(chan struct{})
+	controller := &Controller{
+		Account: manager, Connectivity: connectivity.NewMonitor(func() bool { return true }, time.Hour),
+		Prepare: func(context.Context, account.Principal, io.Writer) error {
+			if calls.Add(1) == 1 {
+				return &runta.APIError{Status: 520}
+			}
+			<-release
+			return nil
+		},
+	}
+	controller.Start(ctx)
+	for state := controller.runtimeSnapshot(); !(state.Stage == "failed" && state.Retrying); state = controller.runtimeSnapshot() {
+		if calls.Load() > 1 {
+			t.Fatal("retried before reporting the scheduled retry")
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("failed preparation not marked as retrying")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	close(release)
+	for controller.runtimeSnapshot().Stage != "ready" {
+		select {
+		case <-ctx.Done():
+			t.Fatal("Runta 5xx left the cloud computer failed until a Retry click")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("unexpected preparation attempts: %d", calls.Load())
 	}
 }
 
