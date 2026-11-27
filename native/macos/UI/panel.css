@@ -134,13 +134,16 @@ html,body,body *{cursor:default!important;-webkit-user-select:none;user-select:n
 input,textarea,[data-copyable],[data-copyable] *,#session-output,#session-output *{-webkit-user-select:text;user-select:text}
 img,svg{-webkit-user-drag:none}
 #refresh{display:none!important}
-#settings{width:28px;height:28px;border-radius:6px;transition:background-color .12s ease,color .12s ease}
-#settings:hover,.header-login.account-link:hover{background:var(--line);color:var(--text);filter:none}
+#settings,#bell{width:28px;height:28px;border-radius:6px;transition:background-color .12s ease,color .12s ease}
+#bell{position:relative}
+#bell .notification-dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 1.5px var(--bg)}
+#bell .notification-dot[hidden]{display:none}
+#settings:hover,#bell:hover,.header-login.account-link:hover{background:var(--line);color:var(--text);filter:none}
 nav{position:relative;isolation:isolate}
 nav button{position:relative;z-index:1;transition:color .18s cubic-bezier(.2,.8,.2,1)}
 nav button.selected,nav button:hover{background:transparent;border-color:transparent;box-shadow:none;filter:none}
 nav .tab-indicator{position:absolute;left:0;top:0;z-index:0;border:1px solid var(--line);border-radius:7px;background:var(--card);box-shadow:0 1px 3px #00000012;pointer-events:none;transition:transform .24s cubic-bezier(.23,1,.32,1),width .24s cubic-bezier(.23,1,.32,1),height .24s cubic-bezier(.23,1,.32,1);will-change:transform}
-@media(prefers-reduced-motion:reduce){nav .tab-indicator,nav button,#settings{transition:none}}
+@media(prefers-reduced-motion:reduce){nav .tab-indicator,nav button,#settings,#bell{transition:none}}
 .agent-head:hover,.agent:has(.detail:not([hidden])) .agent-head{background:transparent;filter:none}
 #preferences{display:flex;flex-direction:column;min-height:100%}
 #preferences > *{flex-shrink:0}
@@ -527,12 +530,8 @@ body.is-onboarding>header,body.is-onboarding>nav,body.is-onboarding>#approvals,b
 
 /* Local macOS Seatbelt sandbox controls and 7-day rolling security audit view. */
 nav button{padding:3px 7px}
-#governance .preference-icon{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
-#governance .permission-settings{margin-top:0}
-#governance .preference-row{min-height:40px;padding-top:6px;padding-bottom:6px}
-#governance .permission-card{padding:10px 13px;margin-bottom:9px}
-#governance .permission-row{padding:0;min-height:28px}
-#governance #sandbox-mode-label{font-size:12px}
+#preferences #sandbox-mode-label{white-space:nowrap}
+#preferences #permission-trigger{flex:0 1 176px;min-width:0}
 .audit-card{padding:11px 13px 0;overflow:hidden}
 .audit-card #audit-head{padding:0}
 .audit-card .audit-list{border-top:1px solid var(--line)}
@@ -714,3 +713,10 @@ nav button{padding:3px 7px}
 .onboarding-byos{margin-top:34px;padding:4px 8px;border:0;background:transparent;color:var(--muted);font-size:12px;text-decoration:underline;text-underline-offset:3px}.onboarding-byos:hover{color:var(--text);filter:none}
 .byoc-dialog{width:min(380px,calc(100vw - 28px))}.byoc-dialog:focus{outline:none}.byoc-intro{margin:-4px 0 10px;font-size:11.5px;line-height:1.45;color:var(--muted)}.byoc-form{display:flex;flex-direction:column;gap:9px;margin-top:10px}.byoc-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;font-size:11px;color:var(--muted)}.byoc-field input{height:28px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text}.byoc-field input:focus{outline:2px solid var(--orange);outline-offset:-1px}.byoc-field input:disabled{opacity:.6}.byoc-row{display:flex;gap:8px}.byoc-port{flex:0 0 72px}.byoc-note,.byoc-switch-note{margin:0;font-size:11px;line-height:1.45;color:var(--muted)}.byoc-switch-note{margin-top:9px;color:var(--text)}.byoc-key{display:flex;gap:6px;align-items:center;padding:5px 6px 5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--expanded)}.byoc-key code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font:11px ui-monospace,SFMono-Regular,Menlo,monospace;user-select:text}.byoc-key button{flex:none;height:22px;padding:0 8px;border-radius:6px;font-size:11px}.byoc-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.byoc-status{flex:1;min-width:0;min-height:30px;margin:0;display:flex;align-items:center;font-size:11px;line-height:1.35;color:var(--muted)}.byoc-status.is-error{color:#c74949}.byoc-status.is-busy::before{content:"";flex:none;width:11px;height:11px;margin-right:7px;border-radius:50%;border:1.5px solid var(--line);border-top-color:var(--orange);animation:preparation-spin .9s linear infinite}.byoc-submit{flex:none}.byoc-submit:disabled{opacity:.55}
 .byoc-modes{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* Computers › This Mac (FEN-103) */
+.host-metrics-grid{grid-template-columns:1fr 1fr}
+.host-os-icon svg.os-logo{fill:currentColor;stroke:none}
+#host-metrics-card .runtime-metrics-title-wrap{min-width:0;flex:1}
+#host-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#host-spec{flex:none;white-space:nowrap}

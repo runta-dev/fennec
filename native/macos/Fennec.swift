@@ -102,6 +102,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var loadingBilling = false
     private var loadingMetrics = false
     private var lastMetricsPoll = Date.distantPast
+    private let hostMetrics = HostMetrics()
+    private var lastHostPoll = Date.distantPast
     private var discoveringAgents = false
     private var visibleRefreshTab = "agents"
     private var activeAuditFilter = "all"
@@ -902,9 +904,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private func pollState() {
         guard controlReady,!stateLoading else { return }
         if popup.isVisible, authorized, (visibleRefreshTab == "sessions" || lastSessionsData == nil), Date().timeIntervalSince(lastSessionsPoll) >= 2.0 { loadRuntimes() }
-        if popup.isVisible, authorized, isOnline, visibleRefreshTab == "account", Date().timeIntervalSince(lastMetricsPoll) >= 1.0 {
+        if popup.isVisible, authorized, isOnline, visibleRefreshTab == "computers", Date().timeIntervalSince(lastMetricsPoll) >= 1.0 {
             loadMetrics()
         }
+        if popup.isVisible, visibleRefreshTab == "computers", Date().timeIntervalSince(lastHostPoll) >= 1.0 { loadHostMetrics() }
         stateLoading = true
 	    let revision = viewRevision
         control.call("state.get") { [weak self] result in
@@ -944,7 +947,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        if lastDesktopSettings.map({NSDictionary(dictionary:$0) != NSDictionary(dictionary:shared)}) ?? true {lastDesktopSettings=shared;desktop.update(["settings":shared])}
 	        if let language=preferences["language"] as? String, language != nativeLanguage {nativeLanguage=language;shownApprovalID=nil;desktop.update(["language":language])}
 	    }
-        if visibleRefreshTab == "governance" {
+        if visibleRefreshTab == "notifications" {
             loadAuditLog()
         }
         let account = state["account"] as? [String:Any] ?? [:]
@@ -1040,7 +1043,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	    sessionServiceReady=ready
         if sessionServiceBecameReady, authorized { loadRuntimes() }
         if reconnected, authorized, ready { loadRuntimes() }
-        if reconnected, authorized, visibleRefreshTab == "account" { loadBilling(); loadMetrics() }
+        if reconnected, authorized, visibleRefreshTab == "account" { loadBilling() }
+        if reconnected, authorized, visibleRefreshTab == "computers" { loadMetrics() }
         render("renderTakeover", [["agents":Array(takeoverAgents).sorted(),"activeAgents":ready ? services["active"] as? [String] ?? [] : [],"changing":false,"selectionKnown":services["selection_known"] as? Bool ?? false]])
         for (agent,coverage) in services["coverage"] as? [String:String] ?? [:] { render("renderEntryCoverage", [["agent":agent,"coverage":coverage]]) }
         if let upd = state["update"] as? [String:Any] {
@@ -1138,6 +1142,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             guard self.accountEpoch == epoch, case .success(let value) = result else { return }
             self.render("renderRuntimeMetrics", [value])
         }
+    }
+    private func loadHostMetrics() {
+        lastHostPoll = Date()
+        render("renderHostMetrics", [hostMetrics.sample()])
     }
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
         let epoch=accountEpoch
@@ -1269,8 +1277,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
-        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "governance" { loadAuditLog() }; if visibleRefreshTab == "sessions" { loadRuntimes() }; renderRefreshActivity(); return }
-        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling(); loadMetrics() } else if visibleRefreshTab == "governance" { loadAuditLog() } else { refreshAgents() }; return }
+        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "notifications" { loadAuditLog() }; if visibleRefreshTab == "sessions" { loadRuntimes() }; if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics() }; renderRefreshActivity(); return }
+        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics() } else if visibleRefreshTab == "notifications" { loadAuditLog() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
         for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
@@ -1405,7 +1413,7 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
                 mutate("account.logout")
             }
         case "load-billing": loadBilling(); loadMetrics()
-        case "load-metrics": loadMetrics()
+        case "load-metrics": loadMetrics(); loadHostMetrics()
         case "export-logs": exportLogs()
         case "open-magpie-panel":
             control.call("magpie.panel") { [weak self] result in

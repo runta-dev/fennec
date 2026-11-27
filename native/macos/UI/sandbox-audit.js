@@ -106,6 +106,24 @@
     return t('[[i18n:ui.sandbox_mode_auto]]');
   }
 
+  // The header bell shows a dot when activity is newer than what the user last saw
+  // in the notification center. A first launch counts everything as seen.
+  const SEEN_KEY = 'activity_seen_ms';
+  const bellDot = document.querySelector('#notification-dot');
+  const notificationsOpen = () => !document.querySelector('section#notifications')?.hidden;
+  function readSeen() {
+    try { const raw = localStorage.getItem(SEEN_KEY); return raw === null ? null : Number(raw) || 0; } catch (_) { return 0; }
+  }
+  function writeSeen(ms) {
+    try { localStorage.setItem(SEEN_KEY, String(ms)); } catch (_) {}
+  }
+  function drawNotificationDot() {
+    const latest = Number(sandboxState.summary?.latest_ms || 0);
+    let seen = readSeen();
+    if (seen === null || notificationsOpen()) { writeSeen(latest); seen = latest; }
+    if (bellDot) bellDot.hidden = !(latest > seen);
+  }
+
   function drawSandboxSettings() {
     const mode = sandboxState.mode;
     if (modeSelect) modeSelect.value = mode;
@@ -307,6 +325,7 @@
       summary: prefs.audit_summary && typeof prefs.audit_summary === 'object' ? prefs.audit_summary : sandboxState.summary
     };
     drawSandboxSettings();
+    drawNotificationDot();
   };
 
   window.renderAuditLog = payload => {
@@ -314,17 +333,20 @@
     if (payload.summary && typeof payload.summary === 'object') {
       sandboxState = { ...sandboxState, summary: payload.summary };
       drawSummaryBadge();
+      drawNotificationDot();
     }
     auditEntries = Array.isArray(payload.entries) ? payload.entries : [];
     drawAuditView();
   };
 
-  window.onGovernanceTabShown = () => {
+  window.onNotificationsShown = () => {
+    writeSeen(Number(sandboxState.summary?.latest_ms || 0));
+    drawNotificationDot();
     requestAuditLog();
   };
 
   window.openSecurityAuditView = () => {
-    if (typeof tab === 'function') tab('governance');
+    if (typeof tab === 'function') tab('notifications');
     else requestAuditLog();
   };
 

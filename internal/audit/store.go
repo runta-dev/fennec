@@ -110,6 +110,9 @@ type Summary struct {
 	TodayCount    int `json:"today_count"`
 	Blocked7d     int `json:"blocked_7d"`
 	RetentionDays int `json:"retention_days"`
+	// LatestMS is the newest entry's time, so the notification bell can tell
+	// whether anything happened since the user last looked.
+	LatestMS int64 `json:"latest_ms"`
 }
 
 // QueryOptions filters audited events returned to UI or CLI callers.
@@ -327,6 +330,9 @@ func (s *Store) Query(opts QueryOptions) (QueryResult, error) {
 			}
 			if e.Blocked {
 				res.Summary.Blocked7d++
+			}
+			if e.TimestampMS > res.Summary.LatestMS {
+				res.Summary.LatestMS = e.TimestampMS
 			}
 			dayEntries = append(dayEntries, e)
 		}

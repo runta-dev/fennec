@@ -3658,13 +3658,37 @@
       "zh-CN": "权限模式",
       "zh-TW": "權限模式"
     },
-    "ui.governance": {
-      "en-GB": "Governance",
-      "en-US": "Governance",
-      "ja": "セキュリティ",
-      "ko": "보안",
-      "zh-CN": "安全",
-      "zh-TW": "安全"
+    "ui.computers": {
+      "en-GB": "Computers",
+      "en-US": "Computers",
+      "ja": "コンピュータ",
+      "ko": "컴퓨터",
+      "zh-CN": "电脑",
+      "zh-TW": "電腦"
+    },
+    "ui.notifications": {
+      "en-GB": "Notifications",
+      "en-US": "Notifications",
+      "ja": "通知",
+      "ko": "알림",
+      "zh-CN": "通知",
+      "zh-TW": "通知"
+    },
+    "ui.this_mac": {
+      "en-GB": "This Mac",
+      "en-US": "This Mac",
+      "ja": "このMac",
+      "ko": "이 Mac",
+      "zh-CN": "本机",
+      "zh-TW": "本機"
+    },
+    "ui.cpu_cores": {
+      "en-GB": "cores",
+      "en-US": "cores",
+      "ja": "コア",
+      "ko": "코어",
+      "zh-CN": "核",
+      "zh-TW": "核"
     },
     "ui.about_permission_mode": {
       "en-GB": "About permission mode",

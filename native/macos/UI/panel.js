@@ -121,9 +121,12 @@ function tab(name) {
     document.querySelector('#session-output').textContent='';
   }
   if (name === "account") send("load-billing");
-  if (name === "governance") window.onGovernanceTabShown?.();
+  if (name === "computers") send("load-metrics");
+  if (name === "notifications") window.onNotificationsShown?.();
   document.querySelector('#settings').classList.toggle('active', name === 'preferences');
   document.querySelector('#settings').setAttribute('aria-pressed', String(name === 'preferences'));
+  document.querySelector('#bell').classList.toggle('active', name === 'notifications');
+  document.querySelector('#bell').setAttribute('aria-pressed', String(name === 'notifications'));
   document.querySelectorAll('main>section').forEach(section => section.hidden = section.id !== name);
   document.querySelectorAll('[data-tab]').forEach(button => {
     button.classList.toggle('selected', button.dataset.tab === name);
@@ -141,6 +144,8 @@ tabResizeObserver.observe(tabNavigation);
 document.querySelectorAll('[data-tab]').forEach(button=>tabResizeObserver.observe(button));
 document.querySelectorAll('[data-tab]').forEach(button => button.onclick = () => tab(button.dataset.tab));
 document.querySelector('#settings').onclick = () => tab('preferences');
+// The bell opens the notification center (Activity); pressing it again goes back.
+document.querySelector('#bell').onclick = () => tab(document.querySelector('#bell').classList.contains('active') ? 'agents' : 'notifications');
 window.renderRefreshing = () => {};
 document.querySelector('#refresh')?.remove();
 document.addEventListener('dragstart',event=>{
@@ -764,7 +769,7 @@ window.renderPreferences = value => {
   window.rerenderUpdater?.();
   window.rerenderDeveloper?.();
   window.rerenderSandboxAudit?.();
-   window.rerenderRuntimeMetrics?.();
+   window.rerenderRuntimeMetrics?.();window.rerenderHostMetrics?.();
   const trigger=languageSelect.nextElementSibling;
   if(trigger?.classList.contains('choice-trigger')){const label=trigger.querySelector('span');if(label)label.textContent=languageSelect.selectedOptions[0].textContent;}
  }
@@ -1060,12 +1065,12 @@ let metricsRuntimeKey = '';
 function ensureRuntimeMetricsCard() {
  let card = document.querySelector('#runtime-metrics-card');
  if (card) return card;
- const accountSection = document.querySelector('#account');
- if (!accountSection) return null;
+ const computersSection = document.querySelector('#computers');
+ if (!computersSection) return null;
  card = document.createElement('div');
  card.id = 'runtime-metrics-card';
  card.className = 'card runtime-metrics-card';
- accountSection.prepend(card);
+ computersSection.prepend(card);
  return card;
 }
 function formatTrafficBytes(bytes) {
@@ -1346,6 +1351,92 @@ window.renderRuntimeMetrics = payload => {
 };
 window.rerenderRuntimeMetrics = drawRuntimeMetrics;
 drawRuntimeMetrics();
+
+// Computers › This Mac: the Mac the panel runs on, below the cloud computer.
+// Swift sends a sample (window.renderHostMetrics) every second while the tab is open.
+let lastHostPayload = null;
+const hostCpuHistory = [];
+const hostMemHistory = [];
+const hostCpuScale = { lo: null, hi: null };
+const hostMemScale = { lo: null, hi: null };
+const appleLogoSVG = '<svg viewBox="0 0 20 20" class="os-logo"><path d="M13.6 10.7c0-1.9 1.6-2.8 1.6-2.9-.9-1.3-2.2-1.5-2.7-1.5-1.2-.1-2.2.7-2.8.7-.6 0-1.5-.7-2.4-.6-1.3 0-2.4.7-3.1 1.9-1.3 2.3-.3 5.6.9 7.5.6.9 1.3 1.9 2.3 1.8.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6c1 0 1.6-.9 2.2-1.8.7-1 1-2 1-2.1 0 0-1.8-.7-1.8-3ZM11.8 5c.5-.6.8-1.4.7-2.3-.7 0-1.6.5-2.1 1.1-.5.5-.9 1.4-.8 2.2.8.1 1.6-.4 2.2-1Z"/></svg>';
+function formatBytesGiB(bytes) {
+ return formatMemoryMiB((Number(bytes) || 0) / 1048576);
+}
+function drawHostMetrics() {
+ const card = document.querySelector('#host-metrics-card');
+ if (!card) return;
+ const t = token => (typeof translate === 'function' ? translate(token) : token);
+ const payload = lastHostPayload;
+ const cpuIcon = '<svg viewBox="0 0 20 20"><rect x="5" y="5" width="10" height="10" rx="2"/><rect x="8" y="8" width="4" height="4" rx=".5"/><path d="M7 2v3m6-3v3M7 15v3m6-3v3M2 7h3m-3 6h3m10-6h3m-3 6h3"/></svg>';
+ const memIcon = '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5.5 8v4m3-4v4m3-4v4m3-4v4M6 15v2m4-2v2m4-2v2"/></svg>';
+ const diskIcon = '<svg viewBox="0 0 20 20"><path d="m4 4-2 8v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4l-2-8Z"/><path d="M2 12h16m-4 3h.01m-3 0h.01"/></svg>';
+ const sparkCell = (id, label, icon) =>
+  '<div class="runtime-metric-cell">' +
+  '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + icon + '</span><span>' + label + '</span></span><strong class="runtime-metric-value" id="host-' + id + '-val"></strong></div>' +
+  '<svg class="metric-sparkline" viewBox="0 0 112 24" preserveAspectRatio="none" aria-hidden="true"><path class="metric-spark-area" id="host-' + id + '-area" fill="url(#spark-host-grad)"/><path class="metric-spark-line" id="host-' + id + '-line"/></svg>' +
+  '</div>';
+ if (card.dataset.mode !== 'live') {
+  card.dataset.mode = 'live';
+  card.innerHTML =
+   '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="spark-host-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f38d25" stop-opacity="0.28"/><stop offset="100%" stop-color="#f38d25" stop-opacity="0.0"/></linearGradient></defs></svg>' +
+   '<div class="runtime-metrics-head">' +
+   '<span class="runtime-metrics-title-wrap"><span class="billing-field-icon host-os-icon" aria-hidden="true">' + appleLogoSVG + '</span><span class="runtime-metrics-title" id="host-title"></span></span>' +
+   '<span class="runtime-metrics-spec" id="host-spec"></span>' +
+   '</div>' +
+   '<div class="runtime-metrics-grid host-metrics-grid">' + sparkCell('cpu', 'CPU', cpuIcon) + sparkCell('mem', '<span id="host-mem-lbl"></span>', memIcon) + '</div>' +
+   '<div class="runtime-disk-row">' +
+   '<div class="runtime-metric-top"><span class="runtime-metric-label"><span class="metric-mini-icon" aria-hidden="true">' + diskIcon + '</span><span id="host-disk-lbl"></span></span><span class="runtime-metric-value" id="host-disk-val"></span></div>' +
+   '<div class="runtime-disk-track" id="host-disk-meter" role="meter" aria-labelledby="host-disk-lbl" aria-valuemin="0" aria-valuemax="100"><div id="host-disk-fill"></div></div>' +
+   '</div>';
+ }
+ const p = payload || {};
+ const title = card.querySelector('#host-title');
+ title.textContent = p.name || t('[[i18n:ui.this_mac]]');
+ const os = [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ');
+ const cores = Number(p.cpu_count) > 0 ? p.cpu_count + ' ' + t('[[i18n:ui.cpu_cores]]') : '';
+ const ram = Number(p.memory_total_bytes) > 0 ? formatBytesGiB(p.memory_total_bytes) : '';
+ // The badge stays as short as the cloud computer's; the chip and cores are in the tooltip.
+ const spec = card.querySelector('#host-spec');
+ spec.textContent = [os, ram].filter(Boolean).join(' · ');
+ spec.title = title.title = [title.textContent, os, p.chip, cores, ram].filter(Boolean).join(' · ');
+ card.querySelector('#host-mem-lbl').textContent = t('[[i18n:ui.memory]]');
+ card.querySelector('#host-disk-lbl').textContent = t('[[i18n:ui.disk]]');
+ const has = payload !== null;
+ const cpu = Number(p.cpu_percent);
+ card.querySelector('#host-cpu-val').textContent = has && Number.isFinite(cpu) ? cpu.toFixed(1) + '%' : '—';
+ const memUsed = Number(p.memory_used_bytes) || 0;
+ const memTotal = Number(p.memory_total_bytes) || 0;
+ card.querySelector('#host-mem-val').textContent = has && memUsed > 0 ? formatBytesGiB(memUsed) : '—';
+ const cpuPaths = sparklinePaths(hostCpuHistory, { fullMax: 100, minSpan: 0.25, scaleState: hostCpuScale });
+ card.querySelector('#host-cpu-area').setAttribute('d', cpuPaths.area);
+ card.querySelector('#host-cpu-line').setAttribute('d', cpuPaths.line);
+ const memPaths = sparklinePaths(hostMemHistory, { fullMax: Math.max(1, memTotal / 1048576), minSpan: 0.05, scaleState: hostMemScale });
+ card.querySelector('#host-mem-area').setAttribute('d', memPaths.area);
+ card.querySelector('#host-mem-line').setAttribute('d', memPaths.line);
+ const disk = diskUsage(p);
+ card.querySelector('#host-disk-val').textContent = disk ? disk.text : '—';
+ const meter = card.querySelector('#host-disk-meter');
+ meter.style.visibility = disk ? 'visible' : 'hidden';
+ if (disk) { meter.setAttribute('aria-valuenow', disk.percent.toFixed(1)); meter.setAttribute('aria-valuetext', disk.text); }
+ else { meter.removeAttribute('aria-valuenow'); meter.removeAttribute('aria-valuetext'); }
+ card.querySelector('#host-disk-fill').style.width = (disk ? disk.percent : 0) + '%';
+}
+window.renderHostMetrics = payload => {
+ if (!payload || typeof payload !== 'object') return;
+ lastHostPayload = payload;
+ if (typeof payload.cpu_percent === 'number') {
+  hostCpuHistory.push(payload.cpu_percent);
+  if (hostCpuHistory.length > METRIC_HISTORY_LEN) hostCpuHistory.shift();
+ }
+ if (Number(payload.memory_used_bytes) > 0) {
+  hostMemHistory.push(payload.memory_used_bytes / 1048576);
+  if (hostMemHistory.length > METRIC_HISTORY_LEN) hostMemHistory.shift();
+ }
+ drawHostMetrics();
+};
+window.rerenderHostMetrics = drawHostMetrics;
+drawHostMetrics();
 
 window.renderRouteResults = results => {
   const previous=routeResults;

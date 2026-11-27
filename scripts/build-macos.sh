@@ -73,7 +73,7 @@ mkdir -p "$app/Contents/Resources/UI"
 cp -R native/macos/UI/. "$app/Contents/Resources/UI/"
 english_source="$(dirname "$app")/FennecEnglish.swift"
 go run ./cmd/build-locales native/macos/UI/translations.json "$app/Contents/Resources/UI/locale-data.js" "$english_source"
-swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/DesktopWindow.swift native/macos/PopupPlacement.swift native/macos/Localization.swift native/macos/LicenseWindow.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security
+swiftc -target "$swift_target" native/macos/Fennec.swift native/macos/ControlClient.swift native/macos/PlatformAdapter.swift native/macos/TerminalPTY.swift native/macos/DesktopWindow.swift native/macos/PopupPlacement.swift native/macos/Localization.swift native/macos/LicenseWindow.swift native/macos/HostMetrics.swift "$english_source" -o "$app/Contents/MacOS/Fennec" -framework AppKit -framework WebKit -framework Security -framework SystemConfiguration
 cp native/macos/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

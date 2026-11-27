@@ -121,6 +121,9 @@ func TestQueryGroupsRepeatedActivity(t *testing.T) {
 	if result.Summary.Total7d != 6 {
 		t.Fatalf("summary counts every entry, got %d", result.Summary.Total7d)
 	}
+	if result.Summary.LatestMS != base.Add(30*time.Minute).UnixMilli() {
+		t.Fatalf("summary latest_ms %d, want the newest entry", result.Summary.LatestMS)
+	}
 	page, _ := store.Query(QueryOptions{Limit: 2})
 	if len(page.Entries) != 2 {
 		t.Fatalf("limit applies to rows, got %d", len(page.Entries))
