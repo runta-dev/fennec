@@ -73,7 +73,6 @@ struct AccountView: View {
     @AppStorage("notifyApproval") private var notifyApproval = true
     @AppStorage("notifyQuestion") private var notifyQuestion = true
     @AppStorage("notifyFinished") private var notifyFinished = false
-    @AppStorage(QueueSettings.enabledKey) private var queuesEnabled = false
     @AppStorage(QueueSettings.notifyKey) private var notifyRequest = true
 
     var body: some View {
@@ -105,22 +104,9 @@ struct AccountView: View {
                 ListCard {
                     toggleRow(L10n.text("ios.notify_approval"), $notifyApproval)
                     toggleRow(L10n.text("ios.notify_question"), $notifyQuestion)
-                    toggleRow(L10n.text("ios.notify_finished"), $notifyFinished, last: !queuesEnabled)
-                    if queuesEnabled { toggleRow(L10n.text("ios.notify_request"), $notifyRequest, last: true) }
+                    toggleRow(L10n.text("ios.notify_finished"), $notifyFinished)
+                    toggleRow(L10n.text("ios.notify_request"), $notifyRequest, last: true)
                 }
-                GroupHeader(title: L10n.text("ios.queues")).padding(.horizontal, -18)
-                ListCard {
-                    VStack(spacing: 0) {
-                        Toggle(isOn: $queuesEnabled) {
-                            Label { Text(L10n.text("ios.show_queues")) } icon: { Image(systemName: "square.stack").regularIconWeight() }
-                        }
-                        .tint(Theme.accent)
-                        .font(.system(size: 15.5))
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .accessibilityIdentifier("show-queues")
-                    }
-                }
-                Text(L10n.text("ios.show_queues_hint")).font(.system(size: 12.5)).foregroundStyle(Theme.fg3).padding(.horizontal, 4)
                 ListCard {
                     Link(destination: PrivacyPolicy.url) {
                         ListRow(icon: "hand.raised", title: L10n.text("ios.privacy_policy"), showDivider: false) {

@@ -360,8 +360,6 @@
     },
     "desktop.written_by": {"en-US": "Written by", "zh-CN": "作者"},
     "ios.queues": {"en-US": "Queues", "zh-CN": "队列"},
-    "ios.show_queues": {"en-US": "Show Queues", "zh-CN": "显示队列"},
-    "ios.show_queues_hint": {"en-US": "Adds a tab bar to home, Sessions and Queues, with your requests, their threads and replies. Off by default.", "zh-CN": "在首页加上底部标签栏（会话和队列），可以查看你的请求、讨论和回复。默认关闭。"},
     "ios.notify_request": {"en-US": "A request needs you", "zh-CN": "有请求需要你处理"},
     "ios.queue_demo_only": {"en-US": "Not available in the demo", "zh-CN": "演示模式下不可用"},
     "ios.tag": {"en-US": "Tag", "zh-CN": "标签"},
@@ -551,14 +549,6 @@
       "en-US": "Messages",
       "zh-CN": "消息"
     },
-    "ios.new_session": {
-      "en-US": "New session",
-      "zh-CN": "新建会话"
-    },
-    "ios.no_sessions": {
-      "en-US": "No sessions yet",
-      "zh-CN": "暂无会话"
-    },
     "ios.session_menu": {
       "en-US": "Session menu",
       "zh-CN": "会话菜单"
@@ -570,14 +560,6 @@
     "ios.unpin": {
       "en-US": "Unpin",
       "zh-CN": "取消置顶"
-    },
-    "ios.mac_offline": {
-      "en-US": "MacBook Pro is offline",
-      "zh-CN": "MacBook Pro 已离线"
-    },
-    "ios.loading_sessions": {
-      "en-US": "Loading sessions",
-      "zh-CN": "正在加载会话"
     },
     "ios.me": {
       "en-US": "Me",
@@ -734,14 +716,6 @@
     "ios.no_qr": {
       "en-US": "No QR code in that image.",
       "zh-CN": "这张图片中没有二维码。"
-    },
-    "ios.no_cloud_agents": {
-      "en-US": "No agents on your cloud computer yet. Move one there in Fennec on your Mac.",
-      "zh-CN": "云电脑上还没有可用的 agent。请先在 Mac 上的 Fennec 中把 agent 迁移到云电脑。"
-    },
-    "ios.create_failed": {
-      "en-US": "Couldn't start the session. Please try again.",
-      "zh-CN": "无法创建会话，请重试。"
     },
     "ui.ok": {
       "en-US": "OK",

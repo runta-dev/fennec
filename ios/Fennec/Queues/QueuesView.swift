@@ -13,7 +13,7 @@ enum QueueRoute: Hashable {
     case agents
 }
 
-/// Destinations shared by the Queues tab and the search tab.
+/// Destinations of the home screen's navigation stack.
 struct QueueDestinations: ViewModifier {
     @Binding var path: [QueueRoute]
     func body(content: Content) -> some View {
@@ -34,12 +34,15 @@ struct QueueDestinations: ViewModifier {
     }
 }
 
-/// 18 Queues tab: the open queue's requests grouped like the desktop board.
+/// 18 Home: the open queue's requests grouped like the desktop board. The
+/// app's only list: sessions are opened from a thread (FEN-108).
 struct QueuesView: View {
     @Environment(QueueStore.self) private var queues
+    @Environment(SessionStore.self) private var store
     @Environment(RuntaAuth.self) private var auth
     @State private var path: [QueueRoute] = []
     @State private var composing = false
+    @State private var searching = false
     @State private var reordering = false
     @State private var creatingQueue = false
     @State private var linking: BoardRequest?
@@ -49,7 +52,7 @@ struct QueuesView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if !queues.loaded { SessionListSkeleton() }
+                if !queues.loaded { ListSkeleton() }
                 else if queues.projects.isEmpty { empty }
                 else if let project = queues.selected { list(project) }
             }
@@ -66,6 +69,9 @@ struct QueuesView: View {
                 queues.startWatching()
                 while !Task.isCancelled {
                     if !queues.live || path.isEmpty { await queues.refresh() }
+                    // The board can't be read: ask the cloud client why
+                    // (signed out, computer stopped, no network), for the banner.
+                    if queues.unavailable { await store.refresh(transcripts: false) }
                     try? await Task.sleep(for: .seconds(queues.live ? 30 : path.isEmpty ? 2 : 5))
                     queues.startWatching() // reopens a stream that went quiet
                 }
@@ -77,6 +83,7 @@ struct QueuesView: View {
             .onChange(of: path.isEmpty) { _, onList in if onList { refreshTick += 1 } }
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) { banners }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !queues.projects.isEmpty { searchBar } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.account) } label: {
@@ -110,6 +117,12 @@ struct QueuesView: View {
                 if let project = queues.selected { ReorderView(project: project) }
             }
             .sheet(isPresented: $creatingQueue) { NewQueueSheet() }
+            .sheet(isPresented: $searching) {
+                RequestSearchSheet { route in
+                    searching = false
+                    path.append(route)
+                }
+            }
             .sheet(item: $linking) { request in
                 if let project = queues.selected { LinkSheet(project: project, request: request) }
             }
@@ -262,11 +275,34 @@ struct QueuesView: View {
 
     @ViewBuilder
     private var banners: some View {
-        if queues.unavailable {
+        if queues.unavailable, let issue = store.issue {
+            ConnectionIssueBanner(issue: issue, onSignIn: { auth.signOut() })
+                .padding(.horizontal, 16).padding(.bottom, 4)
+        } else if queues.unavailable {
             QueueBanner(icon: queues.lastSync == nil ? "icloud.slash" : "arrow.triangle.2.circlepath",
                         text: queues.lastSync.map { L10n.text("ios.queue_stale", values: ["age": age($0)]) }
                             ?? L10n.text("desktop.board_unavailable"))
         }
+    }
+
+    private var searchBar: some View {
+        Button { searching = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").regularIconWeight()
+                Text(L10n.text("ios.search_requests"))
+                Spacer()
+            }
+            .font(.system(size: 17))
+            .foregroundStyle(Theme.fg2)
+            .padding(.horizontal, 18)
+            .frame(height: 50)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .accessibilityIdentifier("search-requests")
     }
 
     private func age(_ date: Date) -> String {
@@ -588,6 +624,31 @@ struct DoneView: View {
 }
 
 // MARK: Search (24)
+
+/// Requests and thread messages in every queue, from home's search bar.
+struct RequestSearchSheet: View {
+    var open: (QueueRoute) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    RequestSearchResults(query: query, open: open)
+                }
+            }
+            .background(Theme.bg)
+            .navigationTitle(L10n.text("ios.search"))
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: L10n.text("ios.search_requests"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L10n.text("desktop.cancel")) { dismiss() } }
+            }
+        }
+    }
+}
 
 struct RequestSearchResults: View {
     @Environment(QueueStore.self) private var queues

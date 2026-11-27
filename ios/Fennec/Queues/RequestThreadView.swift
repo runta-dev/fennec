@@ -85,6 +85,9 @@ struct RequestThreadView: View {
                 if !queues.pushes(thread: number, in: projectID) || queues.thread(projectID, number) == nil { await queues.loadThread(projectID, number) }
                 if let r = queues.thread(projectID, number), r.status_.running {
                     await sessions.refresh(transcripts: false)
+                    // The live card's preview comes from the log, which no
+                    // session list reads any more (FEN-108).
+                    if let live = liveSession(r) { await sessions.loadTranscript(live.id) }
                 }
                 try? await Task.sleep(for: .seconds(3))
             }

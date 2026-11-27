@@ -1,15 +1,14 @@
 import XCTest
 
-/// Queues (THI-124) in the demo: off by default, turned on in Account, then
-/// the Queues tab, a queued thread's waiting card and a reviewed request.
+/// Queues (THI-124) in the demo: home is the queue (FEN-108), with a queued
+/// thread's waiting card and a reviewed request.
 /// Screenshots go to /tmp/fennec-queues for review.
 final class QueuesUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    private func launch(queues: Bool) -> XCUIApplication {
+    private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US",
-                               "-queuesEnabled", queues ? "YES" : "NO"]
+        app.launchArguments = ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US"]
         app.launch()
         return app
     }
@@ -25,28 +24,30 @@ final class QueuesUITests: XCTestCase {
         try? screenshot.pngRepresentation.write(to: directory.appendingPathComponent("\(name).png"))
     }
 
-    func testQueuesAreOffUntilTurnedOnInAccount() {
-        let app = launch(queues: false)
-        XCTAssertTrue(app.buttons["Account"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.tabBars.firstMatch.exists, "a tab bar shows while Queues are off")
-        app.buttons["Account"].tap()
-        let toggle = app.switches["show-queues"]
-        for _ in 0..<4 { if toggle.exists && toggle.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        XCTAssertEqual(toggle.value as? String, "0")
-        shot(app, "17-account-queues-off")
+    /// FEN-108: home is the queue, with no tab bar, no session list and no
+    /// new-session menu; search finds requests.
+    func testHomeIsTheQueue() {
+        let app = launch()
+        XCTAssertTrue(app.descendants(matching: .any)["request-117"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.tabBars.firstMatch.exists, "home shows a tab bar")
+        XCTAssertFalse(app.buttons["new-session-menu"].exists, "home offers a new session")
+        XCTAssertFalse(app.switches["show-queues"].exists)
+        shot(app, "18-home")
+        app.buttons["search-requests"].tap()
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("117")
+        let hit = app.descendants(matching: .any)["request-117"].firstMatch
+        XCTAssertTrue(hit.waitForExistence(timeout: 5))
+        shot(app, "24-search")
+        hit.tap()
+        XCTAssertTrue(app.buttons["request-menu"].waitForExistence(timeout: 5))
     }
 
     func testQueuedThreadShowsItsPlaceInLine() {
-        let app = launch(queues: true)
-        let queuesTab = app.tabBars.buttons["Queues"]
-        XCTAssertTrue(queuesTab.waitForExistence(timeout: 10))
-        shot(app, "18b-sessions-tab")
-        queuesTab.tap()
-        sleep(2)
-        shot(app, "18-queues-tab-first")
+        let app = launch()
         let queued = app.descendants(matching: .any)["request-124"].firstMatch
-        XCTAssertTrue(queued.waitForExistence(timeout: 5))
+        XCTAssertTrue(queued.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Next up · 3/3 agents busy"].exists)
         shot(app, "18-queues-tab")
 
@@ -64,7 +65,6 @@ final class QueuesUITests: XCTestCase {
         XCTAssertTrue(wait.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Waiting for an agent"].exists)
         XCTAssertTrue(app.staticTexts["Next up · 3/3 agents busy"].exists)
-        XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar stays over a thread")
         shot(app, "25-thread-queued")
         app.buttons["request-menu"].tap()
         XCTAssertTrue(app.buttons["Run next"].waitForExistence(timeout: 3))
@@ -73,8 +73,7 @@ final class QueuesUITests: XCTestCase {
     }
 
     func testReviewedRequestOffersMarkDone() {
-        let app = launch(queues: true)
-        app.tabBars.buttons["Queues"].tap()
+        let app = launch()
         let reviewed = app.descendants(matching: .any)["request-117"].firstMatch
         XCTAssertTrue(reviewed.waitForExistence(timeout: 10))
         reviewed.tap()

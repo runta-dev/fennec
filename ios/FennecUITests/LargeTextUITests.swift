@@ -9,15 +9,10 @@ final class LargeTextUITests: XCTestCase {
     func testThreadIconsAtLargestTextSize() {
         let app = XCUIApplication()
         app.launchArguments = ["-PreviewSignedIn", "YES", "-RuntaEnvironment", "production", "-appLanguage", "en-US",
-                               "-queuesEnabled", "YES",
                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
-        let queuesTab = app.tabBars.buttons["Queues"]
-        XCTAssertTrue(queuesTab.waitForExistence(timeout: 10))
-        shot(app, "sessions")
-        queuesTab.tap()
         let reviewed = app.descendants(matching: .any)["request-117"].firstMatch
-        XCTAssertTrue(reviewed.waitForExistence(timeout: 5))
+        XCTAssertTrue(reviewed.waitForExistence(timeout: 10))
         shot(app, "queues")
         reviewed.tap()
         let menu = app.buttons["request-menu"]
