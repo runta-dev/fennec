@@ -1407,7 +1407,7 @@ function drawHostMetrics() {
  const spec = card.querySelector('#host-spec');
  spec.textContent = [os, ram].filter(Boolean).join(' · ');
  spec.title = title.title = [title.textContent, os, p.chip, cores, ram].filter(Boolean).join(' · ');
- // This Mac is the first worker machine in the Worker machines card (FEN-104).
+ // This Mac is the first worker computer in the Worker computers card (FEN-104).
  card.querySelector('#host-local-tag').textContent = t('[[i18n:ui.this_mac]]');
  card.querySelector('#host-mem-lbl').textContent = t('[[i18n:ui.memory]]');
  card.querySelector('#host-disk-lbl').textContent = t('[[i18n:ui.disk]]');

@@ -62,7 +62,7 @@
   preferences?.before(page);
 
   // Computers: the tailnet's devices below This Mac.
-  // One card for every worker machine: this Mac first (its live metrics,
+  // One card for every worker computer: this Mac first (its live metrics,
   // drawn by drawHostMetrics in panel.js), then the tailnet's computers.
   const card = el('div', 'card runtime-metrics-card tailnet-devices-card');
   card.id = 'tailnet-card';
@@ -318,7 +318,7 @@
       head.append(add);
     }
     cardHead.append(head);
-    // Say what worker machines are for until the tailnet is set up.
+    // Say what worker computers are for until the tailnet is set up.
     if (!running) cardHead.append(el('p', 'tailnet-card-intro' + (s?.error ? ' is-error' : ''), t(s?.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_card_intro]]')));
     const self = running ? (s.devices || []).find(d => d.id === s.this_device) : null;
     if (self?.computer?.error) {
@@ -336,7 +336,7 @@
     }
     if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
     if (!running) { window.updateComputerCount?.(); return; }
-    // This Mac is the first worker machine above; the card lists the other
+    // This Mac is the first worker computer above; the card lists the other
     // workers, and the header's Add unfolds the rest of the tailnet here.
     const devices = (Array.isArray(s.devices) ? s.devices : []).filter(d => d.id !== s.this_device);
     const workers = devices.filter(d => d.computer && !d.computer.error && d.computer.alias);
