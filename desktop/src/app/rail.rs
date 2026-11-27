@@ -23,6 +23,8 @@ const RAIL_ITEM: f32 = 44.0;
 const RAIL_ICON: f32 = 36.0;
 /// How much a hovered button grows (FEN-125).
 const GROW: f32 = 0.1;
+/// The opacity of a queue that isn't shown and isn't hovered (FEN-125).
+const DIMMED: f32 = 0.45;
 const GROW_IN: Duration = Duration::from_millis(140);
 const GROW_OUT: Duration = Duration::from_millis(180);
 
@@ -407,6 +409,7 @@ impl FennecWindow {
                 .justify_center()
                 .when(selected, |d| d.bg(c("f_field")))
                 .when(!selected && (hovered || filled), |d| d.bg(c("f_line")))
+                .when(filled && !hovered, |d| d.opacity(DIMMED))
                 .child(icon(
                     18.0 * scale,
                     if selected || hovered { c("f_text") } else { c("f_muted") },
@@ -425,55 +428,51 @@ impl FennecWindow {
                 let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
                 let id = p.id.clone();
                 let needs_you = p.needs_you;
-                let icon = move |scale: f32, _hovered: bool| {
+                let icon = move |scale: f32, hovered: bool| {
                     let size = RAIL_ICON * scale;
+                    let radius = px(if size >= 40.0 { 10.0 } else { 8.0 });
                     div()
                         .relative()
                         .size(px(RAIL_ITEM))
                         .flex()
                         .items_center()
                         .justify_center()
-                        // Slack's selected workspace: a ring with a gap.
-                        .when(selected, |d| {
-                            d.child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .rounded(px(12.0))
-                                    .border_2()
-                                    .border_color(c("f_text")),
-                            )
-                        })
                         .child(
+                            div().relative().size(px(size)).child(
                             div()
                                 .relative()
-                                .size(px(size))
+                                .size_full()
+                                .rounded(radius)
+                                // FEN-125: the other queues are dimmed, the
+                                // shown one stays in full color, lifted by a
+                                // soft shadow and a faint edge. No ring.
+                                .when(!selected && !hovered, |d| d.opacity(DIMMED))
+                                .when(selected, |d| d.shadow_md())
                                 .child(ui::project_icon(p, size))
-                                .when(needs_you > 0, |d| {
-                                    // FEN-139: gpui sizes border-box, so one
-                                    // digit gets an exact 18px circle; only
-                                    // longer counts grow into a pill.
-                                    let count = needs_you.to_string();
-                                    let wide = count.len() > 1;
+                                .when(selected, |d| {
                                     d.child(
                                         div()
                                             .absolute()
-                                            .right(px(-6.0))
-                                            .bottom(px(-6.0))
-                                            .h(px(18.0))
-                                            .when(wide, |d| d.min_w(px(18.0)).px(px(4.0)))
-                                            .when(!wide, |d| d.w(px(18.0)))
+                                            .inset_0()
+                                            .rounded(radius)
+                                            .border_1()
+                                            .border_color(c("f_field")),
+                                    )
+                                }),
+                            )
+                            // Needs you: a dot at the top right, as in Slack,
+                            // outside the dimmed icon so it stays bright.
+                            .when(needs_you > 0, |d| {
+                                    d.child(
+                                        div()
+                                            .absolute()
+                                            .top(px(-4.0))
+                                            .right(px(-4.0))
+                                            .size(px(12.0))
                                             .rounded_full()
                                             .bg(c("orange"))
                                             .border_2()
-                                            .border_color(c("f_bg"))
-                                            .text_color(white())
-                                            .text_size(px(10.5))
-                                            .font_weight(FontWeight::BOLD)
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(count),
+                                            .border_color(c("f_bg")),
                                     )
                                 }),
                         )
