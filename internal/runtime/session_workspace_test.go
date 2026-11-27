@@ -99,7 +99,7 @@ func TestPromptPrimaryWorkerSection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## Primary worker computer", `chose "jarvis" as the primary`, "end to end while This Mac is asleep or offline", "explicitly agrees", "Primary worker computer for builds"} {
+	for _, want := range []string{"## Primary worker computer", `chose "jarvis" as the primary`, "end to end while This Mac is asleep or offline", "explicitly agrees", "Primary worker computer for builds", "The project's rules still come first", "take precedence over this file"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("missing %q", want)
 		}

@@ -13,7 +13,7 @@ Files are not automatically synced or mounted. Initial relative paths refer to t
 
 ## Workspace
 
-Choose the smallest working directory needed for the task and follow its AGENTS.md. The starting directory is context, not permission to sync everything beneath it. For new work, choose a dedicated cloud directory.
+Choose the smallest working directory needed for the task and follow its AGENTS.md. The project's own rules (its AGENTS.md or CLAUDE.md, its queue knowledge, and the user's standing instructions) take precedence over this file when they differ. The starting directory is context, not permission to sync everything beneath it. For new work, choose a dedicated cloud directory.
 
 For existing projects, create or reuse a cloud checkout under ~/repos/<owner>/<project>, shared by all cloud agents. When the task depends on local project state, sync the relevant state before relying on it, including uncommitted changes and untracked files. Preserve branch and commit context, and coordinate overlapping work.
 

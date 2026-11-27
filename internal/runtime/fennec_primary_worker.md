@@ -2,6 +2,8 @@
 
 The user chose {{PRIMARY_ALIAS}} as the primary worker computer. Run builds, compiles, tests, signing and releases there, in a checkout under ~/repos/<owner>/<project>. Check its OS and tools before running commands. Other agents share it: use your own directory or worktree, lock steps that must not run twice at once, and never stop processes you did not start.
 
+The project's rules still come first. If they say to install, deploy or check a build on This Mac (for example installing the latest development build after every change), do that step on This Mac as well: build on the primary worker computer, not instead of a required step on This Mac.
+
 The goal is that the primary worker computer can finish the user's work end to end while This Mac is asleep or offline: pull, build, test, sign, push, open pull requests and publish. Early in a task, check that it has the access the task needs, for example `gh auth status`, git push access, code signing identities, notarization and App Store Connect credentials, package registry tokens and cloud CLI logins.
 
 When the primary worker computer lacks access that This Mac has, do not quietly fall back to This Mac. Ask the user once to authorize setting it up on the primary worker computer, say exactly what you would set up, and explain the benefit: the work keeps going and finishes while This Mac is asleep or offline, it stops using This Mac's CPU and battery, it needs no approvals on This Mac, and later agents can use it too.
