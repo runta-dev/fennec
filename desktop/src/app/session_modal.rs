@@ -88,15 +88,6 @@ impl FennecWindow {
         cx.notify();
     }
 
-    /// The full session page, for when the modal is not enough.
-    fn expand_session_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(modal) = self.session_modal.take() else {
-            return;
-        };
-        // The terminal stays attached: the session page shows the same view.
-        self.go(Route::Session(modal.address), window, cx);
-    }
-
     pub(super) fn session_modal_view(
         &mut self,
         window: &mut Window,
@@ -191,11 +182,6 @@ impl FennecWindow {
                     } else {
                         activity
                     }),
-            )
-            .child(
-                secondary_button("session-modal-expand", t("open_in_tab"), false).on_click(
-                    cx.listener(|this, _, window, cx| this.expand_session_modal(window, cx)),
-                ),
             )
             .child(
                 ui::icon_button("session-modal-close", "close").on_click(
