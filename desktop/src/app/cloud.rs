@@ -425,40 +425,14 @@ impl FennecWindow {
                         });
                     }
                     this.set_cloud_listing(listing, window, cx);
+                    // FEN-106: back to the queue, not into another terminal.
                     if this.route.is_none() {
-                        if let Some(local) = this
-                            .sessions
-                            .iter()
-                            .find(|s| !s.address.starts_with("cloud:"))
-                        {
-                            this.go(Route::Session(local.address.clone()), window, cx);
-                        }
+                        this.go_home(window, cx);
                     }
                 }
                 Err(error) => this.say(format!("{error:#}"), cx),
             });
         }));
-    }
-
-    /// Cloud sessions a local terminal already shows: one where a shim took
-    /// over `claude` (or `fen attach` ran) labels itself `fennec.attached` with
-    /// the session it streams. The label counts only while that terminal still
-    /// runs an agent, so one left behind by a crash never hides a session.
-    pub(super) fn shown_locally(&self) -> std::collections::HashSet<String> {
-        self.events
-            .as_ref()
-            .and_then(|events| events.live()["terminals"].as_array().cloned())
-            .into_iter()
-            .flatten()
-            .filter(|t| t["state"] == "live")
-            .filter(|t| {
-                t["address"]
-                    .as_str()
-                    .is_some_and(|a| self.activity[a]["program"]["agent"] == true)
-            })
-            .filter_map(|t| t["labels"]["fennec.attached"].as_str().map(str::to_owned))
-            .filter(|name| !name.is_empty())
-            .collect()
     }
 
     pub(super) fn terminal_records(&self) -> Vec<Value> {

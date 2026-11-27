@@ -39,7 +39,7 @@ fn supported(action: &str) -> bool {
                 | "space.prev"
                 | "agent.next"
                 | "agent.prev"
-                | "layout.toggle:sidebar"
+                | "request.new"
                 | "mod.open:picker"
                 | "mod.open:tui-prefix"
                 | "mod.open:tui-close-others"
@@ -55,7 +55,7 @@ fn supported(action: &str) -> bool {
 }
 pub const DEFAULTS: &str = r#"{
     "global": {
-        "cmd-,": "app.settings", "cmd-t": "tab.new", "cmd-w": "tab.close",
+        "cmd-,": "app.settings", "cmd-n": "request.new", "cmd-t": "tab.new", "cmd-w": "tab.close",
         "ctrl-tab": "tab.next", "ctrl-shift-tab": "tab.prev",
         "cmd-shift-]": "tab.next", "cmd-shift-[": "tab.prev", "cmd-p": "mod.open:picker"
     },

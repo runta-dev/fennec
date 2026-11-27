@@ -1,7 +1,7 @@
 //! Window screenshots for development and checks, as herdr-app's `shot`:
 //! with FENNEC_DESKTOP_SHOT=<file.png>, writing `<file.png>.request` makes the
 //! window show what it names (`project:<id>`, `request:<n>`,
-//! `settings:<id>:<general|knowledge|queue|agents>`, `session:<address>`, `sidebar:<shown|hidden>`,
+//! `settings:<id>:<general|knowledge|queue|agents>`, `session:<address>`,
 //! or nothing) and save its next frame to the PNG, then delete the request.
 
 use std::io::Write as _;

@@ -1,4 +1,4 @@
-//! THI-153: the queue's request list resizes like the sidebar and keeps its width.
+//! THI-153: the queue's request list resizes against the thread beside it and keeps its width.
 
 use super::{FennecWindow, Route};
 use crate::board::{Project, Request};
@@ -55,24 +55,23 @@ fn resize_queue(cx: &mut VisualTestContext, delta: f32) {
 #[gpui::test]
 fn queue_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
     let (app, cx) = window(cx);
-    // Automatic: 42% of the 948 px beside the 252 px sidebar.
-    assert!((width(cx) - 948.0 * 0.42).abs() < 0.5, "auto width {}", width(cx));
+    // Automatic: 42% of the 1200 px window, at most 460 (no sidebar since FEN-106).
+    assert_eq!(width(cx), 460.0);
     resize_queue(cx, 100.0);
-    assert_eq!(width(cx), 498.0);
+    assert_eq!(width(cx), 560.0);
     app.read_with(cx, |app, _| {
-        assert_eq!(app.app_preferences.value.queue_width, 498);
-        assert_eq!(app.queue_resize.pending, Some(498));
-        assert_eq!(app.sidebar_resize.pending, None);
+        assert_eq!(app.app_preferences.value.queue_width, 560);
+        assert_eq!(app.queue_resize.pending, Some(560));
     });
     resize_queue(cx, -1000.0);
     assert_eq!(width(cx), 240.0);
-    // The thread keeps 360 px.
+    // At most 720 px, and the thread keeps 360 px.
     resize_queue(cx, 2000.0);
-    assert_eq!(width(cx), 588.0);
+    assert_eq!(width(cx), 720.0);
     // A narrower window shrinks a saved width without forgetting it.
     cx.simulate_resize(gpui::size(px(900.0), px(800.0)));
-    assert_eq!(width(cx), 288.0);
-    app.read_with(cx, |app, _| assert_eq!(app.app_preferences.value.queue_width, 588));
+    assert_eq!(width(cx), 540.0);
+    app.read_with(cx, |app, _| assert_eq!(app.app_preferences.value.queue_width, 720));
 }
 
 #[gpui::test]

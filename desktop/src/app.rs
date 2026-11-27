@@ -15,7 +15,6 @@ mod row_motion;
 mod segment_slide;
 mod session_modal;
 mod request_attachments;
-mod sidebar_resize;
 mod tab_close;
 mod tabs;
 mod thread_enter;
@@ -24,16 +23,18 @@ mod thread_question;
 mod thread_links;
 mod thread_tags;
 mod thread_wait;
+mod titlebar;
+mod queue_resize;
 #[cfg(test)]
 mod reply_tests;
-#[cfg(test)]
-mod queue_resize_tests;
-#[cfg(test)]
-mod sidebar_row_tests;
 #[cfg(test)]
 mod copy_tests;
 #[cfg(test)]
 mod board_scope_tests;
+#[cfg(test)]
+mod column_layout_tests;
+#[cfg(test)]
+mod queue_resize_tests;
 
 use crate::board::{self, Project, Request};
 use crate::hc::{Core, EventLines, Stream};
@@ -59,21 +60,10 @@ pub(crate) enum Route {
     Settings(String, crate::project_settings::Tab),
 }
 
-/// One sidebar row: a session, or one of the agents a session runs.
-struct SidebarRow<'a> {
-    session: &'a Session,
-    /// The tab key of this row's agent when the session is split into its agents.
-    tab: Option<String>,
-    state: State,
-    since_ms: u64,
-    /// An agent's row (or any cloud session's) is grouped by its state; a plain
-    /// local shell or ssh session stays at the top under its directory.
-    agent: bool,
-}
-
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
-    NewSession,
+    /// FEN-106: the queue switcher under the title bar's queue name.
+    Queues,
     RequestTag,
     /// THI-133: check and uncheck the open thread's tags.
     ThreadTags,
@@ -200,20 +190,16 @@ pub struct FennecWindow {
     restored_queue: Option<String>,
     opening_thread_session: bool,
     notice: Option<String>,
-    pub(crate) sidebar: bool,
-    /// How far the sidebar is shown (0 hidden, 1 shown) in this frame.
-    sidebar_shown: f32,
     /// Whether the window is in native full screen in this frame. macOS hides
     /// the traffic lights there, so title rows don't leave room for them (FEN-101).
     full_screen: bool,
-    /// The running sidebar animation: the target, the starting amount, and when it started.
-    sidebar_motion: Option<(bool, f32, std::time::Instant)>,
     /// Queue cards easing to a new place after their status moved them.
     queue_glide: glide::Shared,
     /// The Active / Done highlight sliding between the tabs.
     status_slide: segment_slide::Slide,
-    pub(crate) sidebar_resize: sidebar_resize::State,
-    pub(crate) queue_resize: sidebar_resize::State,
+    /// The queue's request list, scrolled back to its top by ⌘N (FEN-106).
+    queue_scroll: ScrollHandle,
+    pub(crate) queue_resize: queue_resize::State,
     queue_resize_from_auto: bool,
     focus: FocusHandle,
     pending_focus: Option<String>,
@@ -405,13 +391,10 @@ impl FennecWindow {
             restored_queue: None,
 		    opening_thread_session: false,
             notice: None,
-            sidebar: true,
-            sidebar_shown: 1.0,
             full_screen: false,
-            sidebar_motion: None,
             queue_glide: Default::default(),
             status_slide: Default::default(),
-            sidebar_resize: Default::default(),
+            queue_scroll: ScrollHandle::new(),
             queue_resize: Default::default(),
             queue_resize_from_auto: false,
             focus: cx.focus_handle(),
@@ -463,29 +446,10 @@ impl FennecWindow {
                         if !crate::core_bin::cloud() {
                             this.local = Some(core);
                         }
+                        // FEN-106: no terminal opens by itself; the window
+                        // shows the queue, and terminals open from threads.
                         this.follow_core(window, cx);
                         this.has_connected = true;
-                        if !crate::core_bin::cloud() {
-                            if let Some(session) = this
-                                .sessions
-                                .iter()
-                                .find(|s| !s.address.starts_with("cloud:"))
-                            {
-                                if matches!(this.route, Some(Route::AppSettings | Route::Project(_))) {
-                                    cx.notify();
-                                    return;
-                                }
-                                this.pending_focus = Some(session.address.clone());
-                                this.route = Some(Route::Session(session.address.clone()));
-                            } else {
-                                this.start_session_selection(
-                                    String::new(),
-                                    !matches!(this.route, Some(Route::AppSettings | Route::Project(_))),
-                                    window,
-                                    cx,
-                                );
-                            }
-                        }
                         cx.notify();
                     }
                     Err(e) => {
@@ -546,17 +510,16 @@ impl FennecWindow {
         let mut parts = what.splitn(3, ':');
         match (parts.next(), parts.next(), parts.next()) {
             (Some("app-settings"), _, _) => self.open_app_settings(window, cx),
-            (Some("sidebar"), Some(state), _) => self.sidebar = state != "hidden",
             (Some("menu"), Some(kind), _) if crate::preview::active() => {
                 self.menu = Some(if kind == "tags" {
                     Menu::RequestTag
                 } else {
-                    Menu::NewSession
+                    Menu::Queues
                 });
                 self.menu_anchor = if kind == "tags" {
                     point(px(498.0), px(158.0))
                 } else {
-                    point(px(120.0), px(230.0))
+                    self.queue_menu_anchor(window)
                 };
             }
             (Some("project"), Some(id), _) => self.go(Route::Project(id.into()), window, cx),
@@ -683,7 +646,7 @@ impl FennecWindow {
             && !a.starts_with("local:")
             && !self.sessions.iter().any(|s| &s.address == a)
         {
-            self.route = None;
+            self.route = self.home_route();
         }
         if self
             .confirmed_session
@@ -699,9 +662,6 @@ impl FennecWindow {
             self.starting = None;
             self.pending_focus = Some(s.address.clone());
             self.route = Some(Route::Session(s.address.clone()));
-        }
-        if self.has_connected {
-            self.ensure_local_terminal(window, cx);
         }
         cx.notify();
     }
@@ -1124,7 +1084,13 @@ impl FennecWindow {
                                 this.thread_cache
                                     .insert((submitted_project.clone(), r.number), r.clone());
                             }
-                            this.open_request(r.number, window, cx);
+                            // FEN-106: the new request shows as a card right under
+                            // the composer, which keeps focus for the next one.
+                            let list = this.requests.entry(submitted_project.clone()).or_default();
+                            if !list.iter().any(|old| old.number == r.number) {
+                                list.insert(0, r.clone());
+                            }
+                            this.refresh_now(window, cx);
                         }
                     }
                     Err(e) => this.say(format!("{e:#}"), cx),
@@ -1751,34 +1717,6 @@ impl FennecWindow {
         }
         cx.notify();
     }
-    fn ensure_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if crate::core_bin::cloud()
-            || crate::preview::active()
-            || self
-                .sessions
-                .iter()
-                .any(|s| !s.address.starts_with("cloud:"))
-            || self.creating_local
-        {
-            return;
-        }
-        let select = self.route.is_none()
-            || matches!(&self.route, Some(Route::Session(id)) if !id.starts_with("cloud:"));
-        let remaining = self
-            .shells
-            .iter()
-            .filter(|(group, _)| !group.starts_with("cloud:"))
-            .find_map(|(group, tabs)| tabs.first().map(|address| (group.clone(), address.clone())));
-        if let (Some((group, address)), Some(core)) = (remaining, self.local.clone()) {
-            self.creating_local = true;
-            self._tasks.push(cx.spawn_in(window,async move|this,cx|{
-                let result=cx.background_spawn(async move{core.call("terminal.label",serde_json::json!({"terminal":address,"labels":{"fennec.session":group,"fennec.agent":"shell","fennec.shell-of":""}}))}).await;
-                let _=this.update(cx,|this,cx|{this.creating_local=false;match result{Ok(record)=>this.adopt_local_terminal(record,select&&matches!(this.route,None|Some(Route::Session(_))),cx),Err(e)=>this.say(format!("{e:#}"),cx)}});
-            }));
-        } else {
-            self.start_session_selection(String::new(), select, window, cx);
-        }
-    }
     fn close_tab_key(&mut self, key: String, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(&self.route,Some(Route::Session(root)) if self.shown_tab(root)==key) {
             self.focus.focus(window, cx);
@@ -1823,7 +1761,7 @@ impl FennecWindow {
                     let select=this.route==Some(Route::Session(key.clone()))||this.route.is_none();
                     this.tab_closed(&key,window,cx);
                     if let Some(record)=promoted{this.adopt_local_terminal(record,select,cx);}
-                    this.ensure_local_terminal(window,cx);cx.notify();
+                    cx.notify();
                 },Err(e)=>this.say(format!("{e:#}"),cx)
             });
         }));
@@ -1881,15 +1819,12 @@ impl FennecWindow {
                 self.step_session(-1, window, cx);
                 return;
             }
-            "layout.toggle:sidebar" => {
-                self.sidebar = !self.sidebar;
-                cx.notify();
+            "request.new" => {
+                self.focus_new_request(window, cx);
                 return;
             }
             "mod.open:picker" => {
-                self.sidebar = true;
-                self.search.read(cx).focus_handle(cx).focus(window, cx);
-                cx.notify();
+                self.focus_search(window, cx);
                 return;
             }
             "mod.open:tui-prefix" => {
@@ -1948,123 +1883,26 @@ impl FennecWindow {
         }
     }
 
-    fn session_directory(&self, session: &Session) -> String {
-        let tab = self.shown_tab(&session.address);
-        let key = tab.strip_prefix("local:").unwrap_or(&tab);
-        self.directories
-            .get(key)
-            .filter(|p| !p.is_empty())
-            .cloned()
-            .unwrap_or_else(|| session.directory.clone())
-    }
-
     fn query(&self, cx: &App) -> String {
         self.search.read(cx).value().trim().to_lowercase()
     }
 
     // ---------- organization, new project, new session ----------
 
-    /// Advances the sidebar's slide toward `self.sidebar`, wherever that was
-    /// changed, and keeps frames coming until it settles.
-    fn step_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let target = if self.sidebar { 1.0 } else { 0.0 };
-        if self
-            .sidebar_motion
-            .is_none_or(|(to, _, _)| to != self.sidebar)
-            && self.sidebar_shown != target
-        {
-            self.sidebar_motion =
-                Some((self.sidebar, self.sidebar_shown, std::time::Instant::now()));
-            // Animation frames can pause (a hidden window); one late redraw still lands the slide.
-            cx.spawn(async move |this, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_secs_f32(SIDEBAR_SLIDE_SECONDS + 0.05))
-                    .await;
-                let _ = this.update(cx, |_, cx| cx.notify());
-            })
-            .detach();
-        }
-        let Some((_, from, start)) = self.sidebar_motion else {
-            return;
-        };
-        let t = (start.elapsed().as_secs_f32() / SIDEBAR_SLIDE_SECONDS).min(1.0);
-        // Ease out (cubic): quick to respond, gentle to land.
-        let eased = 1.0 - (1.0 - t).powi(3);
-        self.sidebar_shown = from + (target - from) * eased;
-        if t < 1.0 {
-            window.request_animation_frame();
-        } else {
-            self.sidebar_shown = target;
-            self.sidebar_motion = None;
-        }
-    }
-
-    /// The sidebar's session rows in order: plain shells first, then agents,
-    /// local or cloud, grouped by state.
-    fn session_list<'a>(&'a self, q: &str) -> Vec<SidebarRow<'a>> {
-        // A cloud session a local terminal already shows is listed once, as that terminal.
-        let shown_locally = self.shown_locally();
-        let mut list: Vec<SidebarRow> = self
-            .sessions
-            .iter()
-            .filter(|s| self.layout_group(&s.address).is_some_and(|g|g.custom) || !(s.address.starts_with("cloud:") && shown_locally.contains(&s.name)))
-            .flat_map(|s| self.sidebar_rows(s))
-            .filter(|r| {
-                let s = r.session;
-                let tab = r.tab.clone().unwrap_or_else(|| self.shown_tab(&s.address));
-                q.is_empty()
-                    || self.terminal_title(&tab, &s.title).to_lowercase().contains(q)
-                    || s.name.contains(q)
-                    || self.session_directory(s).to_lowercase().contains(q)
-            })
-            .collect();
-        // Activity timestamps and snapshot order change independently of the
-        // visible group. Keep peers stable rather than shuffling every poll:
-        // newest-created first, so a new session opens at the top of its group.
-        list.sort_by(|a, b| {
-            (a.agent, if a.agent { a.state } else { State::Unknown })
-                .cmp(&(b.agent, if b.agent { b.state } else { State::Unknown }))
-                .then_with(|| b.session.created_ms.cmp(&a.session.created_ms))
-                .then_with(|| a.session.address.cmp(&b.session.address))
-                .then_with(|| a.tab.cmp(&b.tab))
-        });
-        list
-    }
-
-    /// The left inset of a title row whose own inset is `base`: while the
-    /// sidebar is hidden it clears the traffic lights and the toggle, and it
-    /// moves with the sidebar's slide.
-    pub(crate) fn title_inset(&self, base: f32, gap: f32) -> Pixels {
-        let collapsed = self.sidebar_toggle_left() + SIDEBAR_TOGGLE_SIZE + gap;
-        px(base + (collapsed - base) * (1.0 - self.sidebar_shown))
-    }
-
-    /// The sidebar toggle's left edge: beside the traffic lights, or at the
-    /// window's edge in full screen, where macOS hides them (FEN-101).
-    fn sidebar_toggle_left(&self) -> f32 {
+    /// Where a title row's content starts: just right of the traffic lights,
+    /// or near the window's edge in full screen, where macOS hides them (FEN-101).
+    fn traffic_lights_inset(&self) -> f32 {
         if self.full_screen {
-            SIDEBAR_TOGGLE_LEFT_FULL_SCREEN
+            TRAFFIC_LIGHTS_INSET_FULL_SCREEN
         } else {
-            SIDEBAR_TOGGLE_LEFT
+            TRAFFIC_LIGHTS_INSET
         }
     }
 
-    /// The sidebar toggle sits beside the traffic lights at the same place
-    /// whether the sidebar is shown or hidden; title rows leave room for it.
-    fn sidebar_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .absolute()
-            .left(px(self.sidebar_toggle_left()))
-            .top(px(10.0))
-            .child(
-                ui::icon_button("sidebar-toggle", "sidebar")
-                    .size(px(SIDEBAR_TOGGLE_SIZE))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.sidebar = !this.sidebar;
-                        cx.notify();
-                    })),
-            )
-            .into_any_element()
+    /// The left inset of a title row whose own inset is `base`: it clears the
+    /// traffic lights.
+    pub(crate) fn title_inset(&self, base: f32) -> Pixels {
+        px(base.max(self.traffic_lights_inset()))
     }
 
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -2120,61 +1958,98 @@ impl FennecWindow {
             );
         }
 
+        // FEN-106: the queue switcher's menu, opened from the queue name in the
+        // title bar. It replaces the sidebar's queue list, New queue and Settings.
         let item = |id: SharedString| {
             h_flex()
                 .id(id)
-                .h(px(34.0))
+                .h(px(32.0))
+                .flex_none()
                 .px(px(9.0))
-                .gap(px(8.0))
-                .rounded(px(5.0))
-                .text_size(px(12.5))
+                .gap(px(9.0))
+                .rounded(px(6.0))
+                .text_size(px(13.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(c("f_text"))
                 .hover(|s| s.bg(c("f_expanded")))
         };
-        let mut items =
-            vec![
-                item("new-terminal".into())
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.start_session(String::new(), window, cx)
-                    }))
-                    .child(ui::icon("term", 15.0, c("f_text")))
-                    .child(div().flex_1().child(t("terminal")))
-                    .child(div().text_color(c("f_muted")).child("⌘T"))
-                    .into_any_element(),
-                div()
-                    .px(px(9.0))
-                    .pt(px(10.0))
-                    .pb(px(5.0))
-                    .text_size(px(11.0))
-                    .text_color(c("f_muted"))
-                    .child(t("start_agent"))
-                    .into_any_element(),
-            ];
-        for (i, agent) in [
-            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi", "agy",
-        ]
-        .iter()
-        .enumerate()
-        {
-            let a = agent.to_string();
-            items.push(
-                item(SharedString::from(format!("agent-{agent}")))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.start_session(a.clone(), window, cx)
-                    }))
-                    .child(ui::agent_icon(agent, 15.0))
-                    .child(div().flex_1().child(sessions::agent_name(agent).to_owned()))
-                    .child(div().text_color(c("f_muted")).child((i + 1).to_string()))
-                    .into_any_element(),
-            );
+        let current = self.project_id();
+        let mut items: Vec<AnyElement> = self
+            .visible_projects()
+            .into_iter()
+            .map(|p| {
+                let id = p.id.clone();
+                self.context_row(
+                    item(SharedString::from(format!("queue-option-{}", p.id)))
+                        .debug_selector(|| format!("queue-option-{}", p.id)),
+                    context_menu::Target::Project(p.id.clone()),
+                    cx,
+                )
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if !event.is_right_click() && !event.modifiers().control {
+                        this.menu = None;
+                        this.go(Route::Project(id.clone()), window, cx);
+                    }
+                }))
+                .child(ui::project_icon(p, 18.0))
+                .child(div().flex_1().min_w_0().truncate().child(p.display_name()))
+                .when(p.needs_you > 0, |d| {
+                    d.child(
+                        div()
+                            .min_w(px(18.0))
+                            .h(px(17.0))
+                            .px(px(5.0))
+                            .rounded(px(9.0))
+                            .bg(c("tint"))
+                            .border_1()
+                            .border_color(c("orange").opacity(0.3))
+                            .text_color(c("accent_text"))
+                            .text_size(px(10.5))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(p.needs_you.to_string()),
+                    )
+                })
+                .when(current.as_deref() == Some(p.id.as_str()), |d| {
+                    d.child(ui::icon("check", 13.0, c("orange")))
+                })
+                .into_any_element()
+            })
+            .collect();
+        if !items.is_empty() {
+            items.push(div().h(px(1.0)).mx(px(4.0)).my(px(4.0)).bg(c("f_line")).into_any_element());
         }
+        items.push(
+            item("queue-menu-new".into())
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.menu = None;
+                    this.open_new_project(window, cx)
+                }))
+                .child(div().size(px(18.0)).flex().items_center().justify_center().child(ui::icon("plus", 14.0, c("f_muted"))))
+                .child(t("new_project"))
+                .into_any_element(),
+        );
+        items.push(
+            item("queue-menu-settings".into())
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.menu = None;
+                    this.open_app_settings(window, cx)
+                }))
+                .child(div().size(px(18.0)).flex().items_center().justify_center().child(ui::icon("gear", 14.0, c("f_muted"))))
+                .child(div().flex_1().child(t("settings")))
+                .child(div().text_size(px(11.5)).text_color(c("f_muted")).child("⌘,"))
+                .into_any_element(),
+        );
         Some(
-            div()
+            v_flex()
+                .id("queue-menu")
                 .absolute()
                 .top(self.menu_anchor.y)
                 .left(self.menu_anchor.x)
-                .w(px(230.0))
+                .w(px(260.0))
+                .max_h(px(420.0))
+                .overflow_y_scroll()
                 .p(px(5.0))
                 .rounded(px(9.0))
                 .bg(c("f_card"))
@@ -2417,395 +2292,6 @@ impl FennecWindow {
                 )
                 .into_any_element(),
         )
-    }
-
-    // ---------- sidebar ----------
-
-    /// A session's sidebar rows: one for the session, or, when it runs several
-    /// agents (its own terminal and agent tabs), one per agent with that agent's state.
-    fn sidebar_rows<'a>(&self, s: &'a Session) -> Vec<SidebarRow<'a>> {
-        let keys = self.group_tabs(&s.address).into_iter();
-        if let Some(group) = self.layout_group(&s.address).filter(|g| g.custom) {
-            return group.tabs.iter().map(|key| {
-                let address = key.strip_prefix("local:").unwrap_or(key);
-                let member = self.layout.members.get(key).unwrap_or(s);
-                let observed = &self.activity[address];
-                SidebarRow {
-                    session: s,
-                    tab: Some(key.clone()),
-                    state: observed["state"].as_str().map(activity::state).unwrap_or(member.state),
-                    since_ms: self.events.as_ref().and_then(|e| e.status_ms(address)).unwrap_or(member.since_ms),
-                    agent: key.starts_with("cloud:") || observed["program"]["agent"] == true || observed["state"].as_str().is_some_and(|w| !w.is_empty()),
-                }
-            }).collect();
-        }
-        let agents: Vec<String> = keys
-            .filter(|key| {
-                let p = &self.activity[key.strip_prefix("local:").unwrap_or(key)];
-                p["program"]["agent"] == true || p["state"].as_str().is_some_and(|w| !w.is_empty())
-            })
-            .collect();
-        if agents.len() < 2 {
-            return vec![SidebarRow {
-                session: s,
-                tab: None,
-                state: s.state,
-                since_ms: s.since_ms,
-                agent: s.address.starts_with("cloud:") || !agents.is_empty(),
-            }];
-        }
-        agents
-            .into_iter()
-            .map(|key| {
-                let address = key.strip_prefix("local:").unwrap_or(&key);
-                let since_ms = if key == s.address {
-                    s.since_ms
-                } else {
-                    self.events
-                        .as_ref()
-                        .and_then(|e| e.status_ms(address))
-                        .unwrap_or(s.since_ms)
-                };
-                SidebarRow {
-                    session: s,
-                    state: activity::state(
-                        self.activity[address]["state"].as_str().unwrap_or_default(),
-                    ),
-                    since_ms,
-                    tab: Some(key),
-                    agent: true,
-                }
-            })
-            .collect()
-    }
-
-    fn sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let q = self.query(cx);
-        let route = self.route.clone();
-        let header = |label: String, plus: Stateful<Div>| {
-            h_flex()
-                .h(px(41.0))
-                .pt(px(14.0))
-                .pb(px(5.0))
-                .px(px(8.0))
-                .justify_between()
-                .text_size(px(11.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(c("f_muted"))
-                .child(label)
-                .child(plus)
-        };
-        let plus = |id: &'static str, open: bool| {
-            ui::compact_icon_button(id, "plus")
-                .mr(px(-6.0))
-                .my(px(-3.0))
-                .when(open, |d| d.bg(c("f_line")))
-        };
-        let row = |id: SharedString, selected: bool| {
-            // flex_none: the scroll column is a flex column, and without it
-            // queue rows shrink to their text height once sessions overflow it (THI-195).
-            h_flex()
-                .id(id)
-                .h(px(ROW_HEIGHT))
-                .flex_none()
-                .mb(px(ROW_GAP))
-                .px(px(8.0))
-                .gap(px(9.0))
-                .rounded(px(7.0))
-                .text_size(px(13.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(c("f_text"))
-                .when(selected, |d| {
-                    d.bg(c("f_card")).shadow(ui::selection_shadow())
-                })
-                .when(!selected, |d| d.hover(|s| s.bg(c("f_line").opacity(0.5))))
-        };
-        let projects = self.visible_projects().into_iter().filter(|p| q.is_empty() || p.display_name().to_lowercase().contains(&q)).map(|p| {
-            let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
-            let id = p.id.clone();
-            self.context_row(row(SharedString::from(format!("p-{}", p.id)), selected).debug_selector(|| format!("project-row-{}", p.id)), context_menu::Target::Project(p.id.clone()), cx)
-                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| { if !event.is_right_click() && !event.modifiers().control { this.go(Route::Project(id.clone()), window, cx); } }))
-                // Same 16 px as session icons so queue and session names start at one x.
-                .child(ui::project_icon(p, 16.0))
-                .child(div().flex_1().min_w_0().truncate().child(p.display_name()))
-                .when(p.needs_you > 0, |d| {
-                    d.child(div().min_w(px(18.0)).h(px(17.0)).px(px(5.0)).rounded(px(9.0)).bg(c("tint")).border_1().border_color(c("orange").opacity(0.3)).text_color(c("accent_text")).text_size(px(10.5)).font_weight(FontWeight::MEDIUM).flex().items_center().justify_center().child(p.needs_you.to_string()))
-                })
-        })
-            .collect::<Vec<_>>();
-        let now = sessions::now_ms();
-        let mut groups = Vec::new();
-        let list = self.session_list(&q);
-        // Measure in the font the rows draw with (the root's UI font), or the
-        // column is narrower than "now" and the age slides under the spinner (THI-111).
-        let mut age_font = window.text_style().font();
-        age_font.family = crate::settings::get().ui_font_family.clone().into();
-        age_font.weight = FontWeight::MEDIUM;
-        let age_width = list.iter().map(|row| {
-            let age = sessions::age(row.since_ms, now);
-            let run = TextRun {len:age.len(),font:age_font.clone(),..Default::default()};
-            window.text_system().shape_line(age.into(),px(11.0),&[run],None).width()
-        }).fold(px(0.0), |width,next|width.max(next));
-        let mut section = None;
-        for (i, r) in list.iter().enumerate() {
-            let s = r.session;
-            let grouped = r.agent;
-            if grouped && section != Some(r.state) {
-                section = Some(r.state);
-                let (label, color) = state_label(r.state);
-                let count = list[i..]
-                    .iter()
-                    .take_while(|o| o.agent && o.state == r.state)
-                    .count();
-                groups.push(
-                    h_flex()
-                        .h(px(GROUP_HEADER_HEIGHT))
-                        .flex_none()
-                        .line_height(px(18.0))
-                        .px(px(8.0))
-                        .pt(px(10.0))
-                        .pb(px(4.0))
-                        .gap(px(6.0))
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(div().text_color(c(color)).child(t(label)))
-                        .child(div().text_color(c("f_muted")).child(count.to_string()))
-                        .into_any_element(),
-                );
-            }
-            // A row for one of several agents opens that agent's tab and shows its own state.
-            let split = r.tab.is_some();
-            let tab = r.tab.clone().unwrap_or_else(|| self.shown_tab(&s.address));
-            let activity = tab.strip_prefix("local:").unwrap_or(&tab).to_owned();
-            let selected = route == Some(Route::Session(s.address.clone()))
-                && (!split || self.shown_tab(&s.address) == tab);
-            let address = s.address.clone();
-            let open = r.tab.clone();
-            let drop_group = self.layout_group(&s.address).map(|g| g.id.clone()).unwrap_or_default();
-            let custom = self.layout_group(&s.address).is_some_and(|g| g.custom);
-            let hover_root = s.address.clone();
-            let mark = |this: &Self| {
-                if split {
-                    this.activity_mark(&activity)
-                } else {
-                    this.group_activity_mark(&s.address)
-                }
-            };
-            let id = row_key(r);
-            groups.push(
-                self.context_row(
-                    row(SharedString::from(id), selected).debug_selector(||format!("session-row-{}",tab)),
-                    context_menu::Target::Terminal {
-                        session: s.address.clone(),
-                        tab: tab.clone(),
-                    },
-                    cx,
-                )
-                .on_drag(self.drag_tab(&tab), |drag,_,_,cx|cx.new(|_|drag.clone()))
-                .drag_over::<tabs::TabDrag>(|s,_,_,_|s.bg(c("f_line")))
-                .on_drag_move::<tabs::TabDrag>(cx.listener(move |this,event:&DragMoveEvent<tabs::TabDrag>,_,cx| {
-                    if event.bounds.contains(&event.event.position) {
-                        if this.layout.hover_group.as_ref().is_none_or(|(root,_)|root!=&hover_root) {
-                            this.layout.hover_group=Some((hover_root.clone(),std::time::Instant::now()));cx.notify();
-                        }
-                    } else if this.layout.hover_group.as_ref().is_some_and(|(root,_)|root==&hover_root) {
-                        this.layout.hover_group=None;
-                    }
-                }))
-                .on_drop(cx.listener(move |this,drag:&tabs::TabDrag,_,cx| {
-                    cx.stop_propagation();
-                    this.move_tab(drag,drop_group.clone(),String::new(),cx);
-                }))
-                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                    if !event.is_right_click() && !event.modifiers().control {
-                        if let Some(tab) = &open {
-                            this.set_shown_tab(address.clone(), tab.clone(), cx);
-                        }
-                        this.go(Route::Session(address.clone()), window, cx);
-                    }
-                }))
-                .child(
-                    div()
-                        .relative()
-                        .size(px(16.0))
-                        .flex_none()
-                        .child(self.program_icon(
-                            if split || custom { &activity } else { &s.address },
-                            &s.agent,
-                            16.0,
-                        ))
-                        .child(
-                            div()
-                                .absolute()
-                                .right(px(-1.0))
-                                .bottom(px(-1.0))
-                                .when(!grouped, |d| d.child(mark(self))),
-                        ),
-                )
-                .child(div().flex_1().min_w_0().truncate().child({
-                    let key = tab.strip_prefix("local:").unwrap_or(&tab);
-                    let path = self
-                        .directories
-                        .get(key)
-                        .map(String::as_str)
-                        .filter(|p| !p.is_empty())
-                        .unwrap_or(&s.directory);
-                    if custom || (grouped && (split || !tab.starts_with("local:"))) || path.is_empty() {
-                        self.terminal_title(&tab, &s.title)
-                    } else {
-                        sessions::directory_label(path)
-                    }
-                }))
-                .child(
-                    h_flex()
-                        .flex_none()
-                        .gap(px(6.0))
-                        .when(grouped, |d| d.child(h_flex()
-                            .debug_selector(|| format!("session-spinner-{}", row_key(r)))
-                            .w(px(12.0)).flex_none().justify_center().child(mark(self))))
-                        .text_size(px(11.0))
-                        .text_color(c("f_muted"))
-                        .child(h_flex().w(age_width).flex_none().justify_end()
-                            .child(div()
-                                .debug_selector(|| format!("session-age-{}", row_key(r)))
-                                .child(sessions::age(r.since_ms, now)))),
-                )
-                .into_any_element(),
-            );
-        }
-        v_flex()
-            .w(px(self.sidebar_width(window)))
-            .h_full()
-            .flex_none()
-            .bg(c("f_bg"))
-            .border_r_1()
-            .border_color(c("f_line"))
-            .child(
-                // Title row: the traffic lights sit here; the row drags the window.
-                h_flex()
-                    .id("titlebar")
-                    .h(px(46.0))
-                    .flex_none()
-                    .pl(px(84.0))
-                    .pr(px(10.0))
-                    .gap(px(7.0))
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
-            )
-            .child(
-                div().px(px(10.0)).pt(px(2.0)).pb(px(6.0)).child(
-                    h_flex()
-                        .h(px(30.0))
-                        .px(px(8.0))
-                        .gap(px(7.0))
-                        .rounded(px(7.0))
-                        .bg(c("f_line"))
-                        .child(ui::icon("search", 14.0, c("f_muted")))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_size(px(13.0))
-                                .child(Input::new(&self.search)),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(c("f_muted"))
-                                .child("⌘K"),
-                        ),
-                ),
-            )
-            .child(
-                v_flex()
-                    .id("side-scroll")
-                    .py(px(4.0))
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .px(px(8.0))
-                    .child(header(
-                        t("projects"),
-                        plus("new-project", self.new_project.is_some()).on_click(
-                            cx.listener(|this, _, window, cx| this.open_new_project(window, cx)),
-                        ),
-                    ))
-                    .children(projects)
-                    .child(header(
-                        t("sessions"),
-                        plus("new-session", self.menu == Some(Menu::NewSession)).on_click(
-                            cx.listener(|this, event: &ClickEvent, _, cx| {
-                                this.menu_anchor = point(px(120.0), event.position().y + px(14.0));
-                                this.menu = if this.menu == Some(Menu::NewSession) {
-                                    None
-                                } else {
-                                    Some(Menu::NewSession)
-                                };
-                                cx.notify();
-                            }),
-                        ),
-                    ))
-                    .when_some(self.starting.as_ref(), |d, _| {
-                        d.child(
-                            h_flex()
-                                .h(px(30.0))
-                                .px(px(8.0))
-                                .gap(px(9.0))
-                                .text_size(px(13.0))
-                                .text_color(c("f_muted"))
-                                .child(t("starting")),
-                        )
-                    })
-                    .when(self.core.is_none() && self.core_error.is_none(), |d| {
-                        d.child(
-                            div()
-                                .px(px(8.0))
-                                .py(px(6.0))
-                                .text_size(px(12.0))
-                                .text_color(c("f_muted"))
-                                .child(t(if crate::core_bin::cloud() {
-                                    "connecting"
-                                } else {
-                                    "loading"
-                                })),
-                        )
-                    })
-                    .children(groups)
-                    .child(div().id("detach-tab-area").debug_selector(||"detach-tab-area".into()).min_h(px(56.0)).w_full().flex_1().rounded(px(7.0))
-                        .drag_over::<tabs::TabDrag>(|s,_,_,_|s.bg(c("f_line")))
-                        .on_drop(cx.listener(|this,drag:&tabs::TabDrag,_,cx| {
-                            cx.stop_propagation();this.move_tab(drag,String::new(),String::new(),cx);
-                        }))
-                        .when(cx.has_active_drag(), |d| d.child(div().p(px(10.0)).text_size(px(11.0)).text_color(c("f_muted")).child(t("tabs_drop_split")))))
-                    .when_some(self.layout.error.as_ref(), |d,error| d.child(div().p(px(8.0)).text_size(px(11.0)).text_color(c("f_muted")).child(error.clone()))),
-            )
-            .child(div().h(px(1.0)).bg(c("f_line")))
-            .child(
-                div().px(px(8.0)).pt(px(6.0)).pb(px(10.0)).child(
-                    h_flex()
-                        .id("app-settings")
-                        .h(px(30.0))
-                        .w_full()
-                        .px(px(8.0))
-                        .gap(px(9.0))
-                        .rounded(px(7.0))
-                        .text_size(px(13.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(c("f_muted"))
-                        .when(route == Some(Route::AppSettings), |d| {
-                            d.bg(c("f_card"))
-                                .shadow(ui::selection_shadow())
-                                .text_color(c("f_text"))
-                        })
-                        .when(route != Some(Route::AppSettings), |d| {
-                            d.hover(|s| s.bg(c("f_line").opacity(0.5)))
-                        })
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_app_settings(window, cx)),
-                        )
-                        .child(ui::icon("gear", 15.0, c("f_muted")))
-                        .child(t("settings")),
-                ),
-            )
     }
 
     // ---------- project ----------
@@ -3090,73 +2576,12 @@ impl FennecWindow {
             .border_r_1()
             .border_color(c("f_line"))
             .child(
-                h_flex()
-                    .id("project-head")
-                    .h(px(58.0))
-                    .flex_none()
-                    .px(px(18.0))
-                    .gap(px(11.0))
-                    .border_b_1()
-                    .border_color(c("f_line"))
-                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .pl(self.title_inset(18.0, 11.0))
-                    .child(ui::project_icon(p, 30.0))
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(2.0))
-                            .child(
-                                div()
-                                    .text_size(px(13.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(c("f_text"))
-                                    .truncate()
-                                    .child(p.display_name()),
-                            )
-                            .when(!p.description.is_empty(), |d| {
-                                d.child(
-                                    div()
-                                        .text_size(px(11.5))
-                                        .text_color(c("f_muted"))
-                                        .truncate()
-                                        .child(p.display_description()),
-                                )
-                            }),
-                    )
-                    .when(p.sync_status == "offline", |d| {
-                        d.child(offline_badge(&p.synced_at, now))
-                    })
-                    .child({
-                        let id = p.id.clone();
-                        div()
-                            .id("project-settings")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .size(px(28.0))
-                            .rounded(px(6.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .hover(|s| s.bg(c("f_line")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.go(
-                                    Route::Settings(
-                                        id.clone(),
-                                        crate::project_settings::Tab::General,
-                                    ),
-                                    window,
-                                    cx,
-                                )
-                            }))
-                            .child(ui::icon("gear", 15.0, c("f_muted")))
-                    }),
-            )
-            .child(
                 v_flex()
                     .id("requests")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.queue_scroll)
                     .p(px(14.0))
                     .child(
                         // New Request: one plain box; the first line is the title.
@@ -3164,6 +2589,7 @@ impl FennecWindow {
                             .flex_none()
                             .w_full()
                             .relative()
+                            .debug_selector(|| "new-request".into())
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|this, _, window, cx| {
@@ -3292,7 +2718,7 @@ impl FennecWindow {
                     .child(glide::origin(&self.queue_glide, glide_scope))
                     .children(cards),
             )
-            .child(self.column_resize_handle(sidebar_resize::Pane::Queue, cx))
+            .child(self.queue_resize_handle(cx))
     }
 
     fn thread(&self, p: &Project, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3817,16 +3243,23 @@ impl FennecWindow {
             .child(
                 h_flex()
                     .id("tabs")
-                    // Taller while the sidebar is hidden, to hold the traffic lights.
-                    .h(px(40.0 + 6.0 * (1.0 - self.sidebar_shown)))
+                    // Tall enough to hold the traffic lights.
+                    .h(px(TITLEBAR_HEIGHT))
                     .flex_none()
                     .px(px(10.0))
-                    .pl(self.title_inset(10.0, 8.0))
+                    .pl(self.title_inset(10.0))
                     .gap(px(8.0))
                     .bg(c("f_bg"))
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    // FEN-106: a terminal is reached from a thread (or the hidden
+                    // ⌘T); this goes back to the queue.
+                    .child(
+                        ui::icon_button("session-back", "back").on_click(cx.listener(
+                            |this, _, window, cx| this.go_home(window, cx),
+                        )),
+                    )
                     .child(self.tab_strip(address, cx))
                     .child(div().flex_1())
                     .when_some(request_status, |d, status| {
@@ -3947,8 +3380,6 @@ impl Render for FennecWindow {
         window.set_rem_size(px(crate::settings::ui_font_size()));
         self.full_screen = window.is_fullscreen();
         self.sync_input_styles(cx);
-        self.step_sidebar(window, cx);
-        let sidebar_width=self.sidebar_width(window);
         self.step_tabs(window, cx);
         let route = self.route.clone();
         if !matches!(route, Some(Route::Project(_))) {
@@ -3957,15 +3388,25 @@ impl Render for FennecWindow {
         }
         let main = match &route {
             Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
+            // FEN-106: the title bar (queue switcher, search) over the queue
+            // column and the thread beside it.
             Some(Route::Project(id)) => match self.projects.iter().find(|p| &p.id == id).cloned() {
-                Some(p) => h_flex()
+                Some(p) => v_flex()
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .child(self.project(&p, window, cx))
-                    .child(self.thread(&p, window, cx))
+                    .bg(c("background"))
+                    .child(self.titlebar(Some(&p), window, cx))
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .child(self.project(&p, window, cx))
+                            .child(self.thread(&p, window, cx)),
+                    )
                     .into_any_element(),
-                None => empty(),
+                None => self.no_queue(window, cx),
             },
             Some(Route::Session(a)) => {
                 let a = a.clone();
@@ -3979,7 +3420,7 @@ impl Render for FennecWindow {
                     None => empty(),
                 }
             }
-            None => empty(),
+            None => self.no_queue(window, cx),
         };
         let menu = self.menu(cx);
         let context_menu = self.context_menu_view(window, cx);
@@ -4014,12 +3455,12 @@ impl Render for FennecWindow {
             .capture_action(cx.listener(|this,action:&ShellAction,window,cx|{
                 if matches!(action.id(),"terminal.paste"|"terminal.paste_image")&&this.paste_request_image(window,cx){cx.stop_propagation();}
             }))
-            .on_drag_move::<sidebar_resize::SidebarDrag>(cx.listener(Self::drag_sidebar))
-            .on_drop(cx.listener(|this,_:&sidebar_resize::SidebarDrag,window,cx|this.finish_sidebar_resize(window,cx)))
+            .on_drag_move::<queue_resize::QueueDrag>(cx.listener(Self::drag_queue))
+            .on_drop(cx.listener(|this,_:&queue_resize::QueueDrag,window,cx|this.finish_queue_resize(window,cx)))
             .capture_any_mouse_up(cx.listener(|this,event:&MouseUpEvent,window,cx| {
-                if event.button==MouseButton::Left {this.finish_sidebar_resize(window,cx);}
+                if event.button==MouseButton::Left {this.finish_queue_resize(window,cx);}
             }))
-            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,window,cx|this.finish_sidebar_resize(window,cx)))
+            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,window,cx|this.finish_queue_resize(window,cx)))
             // ⌘K (Ctrl-K elsewhere) goes to search; Esc there clears it.
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, window, cx| {
                 if this.image_viewer_key(&e.keystroke.key, cx) {
@@ -4030,7 +3471,7 @@ impl Render for FennecWindow {
                 }
                 let k = &e.keystroke;
                 if k.key == "escape" && cx.has_active_drag() {
-                    this.cancel_column_resize(window,cx);
+                    this.cancel_queue_resize(window,cx);
                     cx.stop_active_drag(window);
                     this.layout.hover = None;
                     cx.stop_propagation();
@@ -4041,14 +3482,10 @@ impl Render for FennecWindow {
                     this.prefix = false;
                     match k.key.as_str() {
                         "s" => {
-                            this.sidebar = true;
-                            this.search.read(cx).focus_handle(cx).focus(window, cx);
+                            this.focus_search(window, cx);
                         }
                         "." => {
                             this.open_app_settings(window, cx);
-                        }
-                        "b" => {
-                            this.sidebar = !this.sidebar;
                         }
                         _ => {}
                     }
@@ -4066,55 +3503,14 @@ impl Render for FennecWindow {
                     cx.notify();
                     return;
                 }
-                if this.menu == Some(Menu::NewSession) {
-                    if k.key == "escape" {
-                        this.menu = None;
-                        cx.notify();
-                        return;
-                    }
-                    if let Ok(n) = k.key.parse::<usize>() {
-                        if let Some(agent) = [
-                            "claude", "codex", "pi", "opencode", "cursor", "grok", "kimi", "agy",
-                        ]
-                        .get(n.wrapping_sub(1))
-                        {
-                            this.start_session((*agent).into(), window, cx);
-                            cx.stop_propagation();
-                            return;
-                        }
-                    }
-                }
                 if k.key == "k"
                     && (k.modifiers.platform
                         || (cfg!(not(target_os = "macos")) && k.modifiers.control))
                 {
-                    this.sidebar = true;
-                    this.search.read(cx).focus_handle(cx).focus(window, cx);
+                    this.focus_search(window, cx);
                     cx.stop_propagation();
                 }
             }))
-            // The sidebar slides in from the left edge: its column widens while
-            // the sidebar itself, still full width, moves into view.
-            .when(self.sidebar_shown > 0.0, |d| {
-                let shown = self.sidebar_shown;
-                d.child(
-                    div()
-                        .relative()
-                        .debug_selector(||"sidebar-column".into())
-                        .w(px(sidebar_width * shown))
-                        .h_full()
-                        .flex_none()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .h_full()
-                                .ml(px(-sidebar_width * (1.0 - shown)))
-                                .child(self.sidebar(window, cx)),
-                        )
-                        .when(shown >= 1.0,|d|d.child(self.sidebar_resize_handle(cx))
-                        ),
-                )
-            })
             .child(
                 div()
                     .relative()
@@ -4123,20 +3519,6 @@ impl Render for FennecWindow {
                     .h_full()
                     .flex()
                     .flex_col()
-                    .when(self.sidebar_shown < 1.0 && route.is_none(), |d| {
-                        d.child(
-                            h_flex()
-                                .id("collapsed-titlebar")
-                                .h(px(46.0 * (1.0 - self.sidebar_shown)))
-                                .overflow_hidden()
-                                .flex_none()
-                                .pr(px(10.0))
-                                .bg(c("f_bg"))
-                                .border_b_1()
-                                .border_color(c("f_line"))
-                                .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
-                        )
-                    })
                     .child(div().flex_1().min_h_0().flex().child(main))
                     .when_some(self.notice.clone(), |d, text| {
                         d.child(
@@ -4150,7 +3532,6 @@ impl Render for FennecWindow {
                         )
                     }),
             )
-            .child(self.sidebar_toggle(cx))
             .child(self.notification_stack(cx))
             .when_some(menu, |d, m| d.child(m))
             .when_some(context_menu, |d, m| d.child(m))
@@ -4176,35 +3557,12 @@ impl Render for FennecWindow {
     }
 }
 
-/// Where the sidebar toggle starts: just right of the traffic lights.
-const SIDEBAR_TOGGLE_LEFT: f32 = 84.0;
-/// In full screen there are no traffic lights: line up with the search field.
-const SIDEBAR_TOGGLE_LEFT_FULL_SCREEN: f32 = 10.0;
-const SIDEBAR_TOGGLE_SIZE: f32 = 26.0;
-const SIDEBAR_SLIDE_SECONDS: f32 = 0.22;
-/// A sidebar row's height and the gap below it.
-const ROW_HEIGHT: f32 = 30.0;
-const ROW_GAP: f32 = 1.0;
-/// A state header (Working 2, Idle 1, ...) above its session rows.
-const GROUP_HEADER_HEIGHT: f32 = 32.0;
-
-/// A session row's key: its element id, and its identity while it moves.
-fn row_key(r: &SidebarRow) -> String {
-    match &r.tab {
-        Some(tab) => format!("s-{}-{tab}", r.session.address),
-        None => format!("s-{}", r.session.address),
-    }
-}
-
-/// A state header's message ID and color.
-fn state_label(state: State) -> (&'static str, &'static str) {
-    match state {
-        State::NeedsYou => ("needs_you", "blocked"),
-        State::Working => ("working", "working"),
-        State::Done => ("done", "done"),
-        _ => ("idle", "f_muted"),
-    }
-}
+/// Title rows start just right of the traffic lights.
+const TRAFFIC_LIGHTS_INSET: f32 = 84.0;
+/// In full screen macOS hides the traffic lights, so title rows start near the edge (FEN-101).
+const TRAFFIC_LIGHTS_INSET_FULL_SCREEN: f32 = 14.0;
+/// The title bar above the column: queue switcher and search.
+const TITLEBAR_HEIGHT: f32 = 46.0;
 
 fn empty() -> AnyElement {
     div()

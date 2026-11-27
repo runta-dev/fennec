@@ -133,7 +133,6 @@ impl FennecWindow {
                 match result {
                     Ok(mut value) => {
                         if this.column_resize_busy() {
-                            value.sidebar_width = this.app_preferences.value.sidebar_width;
                             value.queue_width = this.app_preferences.value.queue_width;
                         }
                         this.app_preferences.value = value;
@@ -304,7 +303,7 @@ impl FennecWindow {
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    .pl(self.title_inset(18.0, 11.0))
+                    .pl(self.title_inset(18.0))
                     .child(
                         ui::icon_button("settings-home", "back").on_click(cx.listener(
                             |this, _, window, cx| {

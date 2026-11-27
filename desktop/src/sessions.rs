@@ -29,8 +29,6 @@ pub struct Session {
     pub activity: String,
     /// When the status last changed, in ms since the epoch.
     pub since_ms: u64,
-    /// When the terminal was created, in ms since the epoch (0 if unknown).
-    pub created_ms: u64,
 }
 
 impl Session {
@@ -119,7 +117,6 @@ pub fn from_terminals(terminals: &[Value]) -> Vec<Session> {
                     .as_u64()
                     .or_else(|| t["created_ms"].as_u64())
                     .unwrap_or(0),
-                created_ms: t["created_ms"].as_u64().unwrap_or(0),
             })
         })
         .collect();
@@ -245,18 +242,6 @@ pub fn terminal_directory(terminal: &Value) -> String {
         .unwrap_or_default()
         .to_owned()
 }
-pub fn directory_label(path: &str) -> String {
-    if std::env::var("HOME").ok().as_deref() == Some(path) {
-        return "~".into();
-    }
-    std::path::Path::new(path)
-        .file_name()
-        .and_then(|p| p.to_str())
-        .filter(|p| !p.is_empty())
-        .unwrap_or(path)
-        .to_owned()
-}
-
 /// Child tabs have their own OSC title even though they share a sidebar group.
 pub fn agent_terminal_title(terminal: &Value) -> Option<String> {
     agent_icon(terminal["status"]["app"].as_str()?)?;

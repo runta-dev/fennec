@@ -52,7 +52,7 @@ For isolated rendering, set `FENNEC_DESKTOP_PREVIEW` to the absolute path of
 reads fixture responses and never connects to the daemon or creates terminals.
 Set `FENNEC_PREVIEW_THEME=light|dark` and `FENNEC_LANGUAGE=en-US|zh-CN` as needed.
 Write `project:fennec`, `request:42`, `settings:fennec:general` (or `knowledge`,
-`queue`, `agents`), or `menu:tags|session` to `<output.png>.request` to capture
+`queue`, `agents`), or `menu:tags|queues` to `<output.png>.request` to capture
 that view. Fixtures prove visual layout only, not live runtime behavior.
 
 ## Keyboard preferences
@@ -61,9 +61,10 @@ that view. Fixtures prove visual layout only, not live runtime behavior.
 key-to-action maps. The map is read when the native window starts; it does not
 change Herdr's configuration. Supported actions include new/close/previous/next
 and numbered tabs, previous/next and numbered session groups (`space.*`),
-clipboard/search and `send:` editing keys, sidebar visibility, the session
-search picker, and terminal zoom. Ctrl-B's prefix supports `s` for search, `.` for Fennec settings and
-`b` for the sidebar; Escape cancels. Settings and Command-comma open the native app's own settings page. Its theme,
+clipboard/search and `send:` editing keys, `request.new` (Command-N, focuses
+the New request box from anywhere), search (`mod.open:picker`, also Command-K),
+and terminal zoom. Ctrl-B's prefix supports `s` for search and `.` for Fennec
+settings; Escape cancels. Settings and Command-comma open the native app's own settings page. Its theme,
 language, terminal font size and padding are persisted independently in
 `~/.config/fennec/desktop-settings.json` via `desktop.settings.get/set`; changing
 them does not modify menu bar preferences. Close-others asks for confirmation and
@@ -77,12 +78,22 @@ shortcuts continue to follow the operating system.
 
 A confirmed new tab selects its parent session, records its active tab and
 transfers keyboard focus exactly once. Background board/session refreshes do
-not reclaim focus. Collapsed sidebars put the restore button and window controls into the existing
-header; terminal tabs stay in that same row. Double-clicking non-control
+not reclaim focus. Terminal tabs share their header row with the window
+controls and a back button to the queue. Double-clicking non-control
 titlebar space zooms/restores the window. Re-activating a terminal window
 restores focus to its active terminal, without stealing focus from project editors.
 
-The local desktop keeps one usable terminal. Closing the final root terminal
-creates a fresh shell; if that group has surviving shell tabs, an existing tab
-is promoted without restarting its process. Replacement launches are coalesced
-and do not steal focus from a project editor or the app settings page.
+## Layout (FEN-106)
+
+There is no sidebar: the queue thread is the one thing the window shows. The
+title bar holds the queue switcher (click the queue name for the other queues,
+New queue and Settings), search (Command-K) and the queue's settings. Below it
+are the queue column (New request box and request list, resizable) and the
+thread beside it. A posted request shows as a card under the box, which keeps
+focus.
+
+A terminal opens only from a thread (its agent's peek card or View session);
+no shell opens by itself. Command-T still opens a local shell for debugging,
+without any button for it. Closing the last terminal returns to the queue;
+if its group has surviving shell tabs, an existing tab is promoted without
+restarting its process.

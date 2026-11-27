@@ -194,9 +194,6 @@ impl FennecWindow {
     pub(super) fn activity_mark(&self, address: &str) -> AnyElement {
         self.activity_mark_for(address, "state")
     }
-    pub(super) fn group_activity_mark(&self, address: &str) -> AnyElement {
-        self.activity_mark_for(address, "group_state")
-    }
     fn activity_mark_for(&self, address: &str, role: &str) -> AnyElement {
         let word = self.activity[address][role].as_str().unwrap_or_default();
         if word == "working" {

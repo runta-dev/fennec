@@ -285,10 +285,8 @@ impl FennecWindow {
         self.sessions = sessions;
         if let Some(Route::Session(root)) = &self.route {
             if !self.sessions.iter().any(|s| &s.address == root) {
-                self.route = self
-                    .sessions
-                    .first()
-                    .map(|s| Route::Session(s.address.clone()));
+                // FEN-106: back to the queue, not into another terminal.
+                self.route = self.home_route();
             }
         }
         if let Some(Route::Session(root)) = &self.route {
@@ -727,40 +725,6 @@ mod tests {
         cx.run_until_parked();
     }
     #[gpui::test]
-    fn sidebar_drag_into_tab_strip_submits_a_move(cx: &mut TestAppContext) {
-        let (app, cx) = window(cx);
-        drag(cx, "session-row-c", "tab-append");
-        app.read_with(cx, |app, _| {
-            let request = app
-                .layout
-                .pending
-                .as_ref()
-                .expect("drop must submit a move");
-            assert_eq!(request["operation"], "move");
-            assert_eq!(request["tab"], "c");
-            assert_eq!(request["target"], "one");
-            assert_eq!(
-                app.layout.groups[1].tabs,
-                vec!["c"],
-                "wait for the daemon's confirmation"
-            );
-        });
-    }
-    #[gpui::test]
-    fn tab_drag_to_sidebar_submits_detach(cx: &mut TestAppContext) {
-        let (app, cx) = window(cx);
-        drag(cx, "tab-local:b", "detach-tab-area");
-        app.read_with(cx, |app, _| {
-            let request = app
-                .layout
-                .pending
-                .as_ref()
-                .expect("drop must submit detach");
-            assert_eq!(request["operation"], "detach");
-            assert_eq!(request["tab"], "local:b");
-        });
-    }
-    #[gpui::test]
     fn tab_drag_reorders_at_the_target_slot(cx: &mut TestAppContext) {
         let (app, cx) = window(cx);
         drag(cx, "tab-local:b", "tab-a");
@@ -810,34 +774,6 @@ mod tests {
         cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
         app.read_with(cx, |app, _| assert!(app.layout.pending.is_none()));
     }
-    #[gpui::test]
-    fn grouped_tabs_remain_individual_sidebar_sessions(cx: &mut TestAppContext) {
-        let (app, cx) = window(cx);
-        app.update(cx, |app, _| {
-            app.layout.groups = vec![Group {
-                id: "merged".into(),
-                tabs: vec!["a".into(), "local:b".into(), "c".into()],
-                active: "a".into(),
-                custom: true,
-            }];
-            app.apply_layout();
-        });
-        app.read_with(cx, |app, _| {
-            let rows = app.session_list("");
-            assert_eq!(rows.len(), 3, "grouping must not hide sessions");
-            let working = rows.iter().find(|r| r.tab.as_deref() == Some("c")).unwrap();
-            assert!(working.state == sessions::State::Working);
-            let idle = rows
-                .iter()
-                .find(|r| r.tab.as_deref() == Some("local:b"))
-                .unwrap();
-            assert!(idle.state == sessions::State::Idle);
-            let filtered = app.session_list("second agent");
-            assert_eq!(filtered.len(), 1);
-            assert_eq!(filtered[0].tab.as_deref(), Some("local:b"));
-        });
-    }
-
     #[gpui::test]
     fn plus_follows_tabs_and_tabs_shrink_before_scrolling(cx: &mut TestAppContext) {
         let (app, cx) = window(cx);
@@ -1066,61 +1002,6 @@ mod tests {
     }
 
     #[gpui::test]
-    fn session_age_text_boxes_share_the_same_right_edge(cx: &mut TestAppContext) {
-        let (app,cx)=window(cx);
-        cx.update(|window,cx|app.update(cx,|app,cx| {
-            let mut snapshot=app.events.as_ref().unwrap().live();
-            let now=sessions::now_ms();
-            for (record,minutes) in snapshot["terminals"].as_array_mut().unwrap().iter_mut().zip([3,16,120]) {
-                record["status_ms"]=json!(now-minutes*60_000);
-            }
-            app.events=Some(EventLines::new(&snapshot));
-            app.terminals_changed(window,cx);
-        }));
-        cx.run_until_parked();
-        let short=cx.debug_bounds("session-age-s-a-a").unwrap();
-        let long=cx.debug_bounds("session-age-s-a-local:b").unwrap();
-        let hours=cx.debug_bounds("session-age-s-c").unwrap();
-        assert_eq!(short.right(),long.right(),"3m and 16m must align geometrically");
-        assert_eq!(short.right(),hours.right(),"minute and hour rows must align");
-        let reference=cx.debug_bounds("session-spinner-s-a-a").unwrap();
-        let mut closest=px(100.0);
-        for (id,age) in [("session-spinner-s-a-a",short),("session-spinner-s-a-local:b",long),("session-spinner-s-c",hours)] {
-            let spinner=cx.debug_bounds(id).unwrap();
-            assert_eq!(spinner.right(),reference.right(),"activity indicators must share a column");
-            let gap=age.left()-spinner.right();
-            assert!(gap>=px(5.5),"time must not overlap the activity indicator");
-            closest=closest.min(gap);
-        }
-        assert!(closest<=px(6.5),"the widest age must leave only the intended six-pixel gap");
-    }
-
-    #[gpui::test]
-    fn sidebar_rows_never_overlap_during_repeated_state_changes(cx: &mut TestAppContext) {
-        let (app, cx) = window(cx);
-        for state in ["done", "working", "idle", "working", "done", "working"] {
-            cx.update(|_, cx| app.update(cx, |app, cx| {
-                app.activity["a"]["state"] = json!(state);
-                app.activity["a"]["group_state"] = json!(state);
-                app.sessions.reverse();
-                app.apply_activity();
-                cx.notify();
-            }));
-            cx.run_until_parked();
-            let mut bounds = ["session-row-a", "session-row-local:b", "session-row-c"]
-                .map(|id| cx.debug_bounds(id).expect("visible session row"));
-            bounds.sort_by(|a, b| a.top().partial_cmp(&b.top()).unwrap());
-            for pair in bounds.windows(2) {
-                assert!(pair[0].bottom() <= pair[1].top(), "rows overlap after {state}");
-            }
-            let before = app.read_with(cx, |app, _| app.session_list("").iter().map(super::super::row_key).collect::<Vec<_>>());
-            cx.update(|_, cx| app.update(cx, |app, _| app.sessions.reverse()));
-            let after = app.read_with(cx, |app, _| app.session_list("").iter().map(super::super::row_key).collect::<Vec<_>>());
-            assert_eq!(before, after, "snapshot order must not reshuffle peers");
-        }
-    }
-
-    #[gpui::test]
     fn core_events_keep_rows_in_their_attention_group(cx: &mut TestAppContext) {
         // The raw label says "working"; the attention policy already reports
         // "done". An unrelated core event must not drop the row back into
@@ -1145,61 +1026,5 @@ mod tests {
             assert_eq!(app.terminal_title("local:b", "fallback"), "Second agent");
             assert_eq!(app.terminal_title("cloud:c", "fallback"), "fallback");
         });
-    }
-
-    fn resize_sidebar(cx: &mut VisualTestContext, delta: f32) {
-        cx.run_until_parked();
-        let bounds=cx.debug_bounds("sidebar-column").unwrap();
-        let start=point(bounds.right()-px(2.0),bounds.top()+px(160.0));
-        let end=start+point(px(delta),px(0.0));
-        cx.simulate_mouse_down(start,MouseButton::Left,Modifiers::default());
-        cx.simulate_mouse_move(start+point(px(if delta>0.0 {10.0}else{-10.0}),px(0.0)),Some(MouseButton::Left),Modifiers::default());
-        cx.simulate_mouse_move(end,Some(MouseButton::Left),Modifiers::default());
-        cx.simulate_mouse_up(end,MouseButton::Left,Modifiers::default());
-        cx.run_until_parked();
-    }
-    #[gpui::test]
-    fn sidebar_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
-        let (app,cx)=window(cx);
-        cx.simulate_resize(gpui::size(px(1200.0),px(800.0)));
-        resize_sidebar(cx,80.0);
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(332.0));
-        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,Some(332)));
-        resize_sidebar(cx,-400.0);
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(180.0));
-        resize_sidebar(cx,800.0);
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(480.0));
-        cx.simulate_resize(gpui::size(px(650.0),px(600.0)));
-        cx.run_until_parked();
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(250.0));
-    }
-    #[gpui::test]
-    fn sidebar_resize_escape_restores_width_without_saving(cx: &mut TestAppContext) {
-        let (app,cx)=window(cx);cx.run_until_parked();
-        cx.update(|window,cx|{let focus=app.read(cx).focus.clone();focus.focus(window,cx)});
-        let start=point(px(250.0),px(160.0));
-        cx.simulate_mouse_down(start,MouseButton::Left,Modifiers::default());
-        cx.simulate_mouse_move(point(px(340.0),px(160.0)),Some(MouseButton::Left),Modifiers::default());
-        cx.simulate_mouse_move(point(px(360.0),px(160.0)),Some(MouseButton::Left),Modifiers::default());
-        cx.simulate_keystrokes("escape");
-        cx.simulate_mouse_up(point(px(360.0),px(160.0)),MouseButton::Left,Modifiers::default());
-        cx.run_until_parked();
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(252.0));
-        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,None));
-    }
-    #[gpui::test]
-    fn sidebar_resize_double_click_resets_width_and_restores_terminal_focus(cx: &mut TestAppContext) {
-        let (app,cx)=window(cx);focus_fixture(&app,cx,"a");
-        resize_sidebar(cx,80.0);
-        assert_terminal_focus(&app,cx,"a");
-        cx.simulate_event(gpui::MouseDownEvent {
-            position:point(px(330.0),px(160.0)),button:MouseButton::Left,
-            modifiers:Modifiers::default(),click_count:2,first_mouse:false,
-        });
-        cx.simulate_mouse_up(point(px(330.0),px(160.0)),MouseButton::Left,Modifiers::default());
-        cx.run_until_parked();
-        assert_eq!(cx.debug_bounds("sidebar-column").unwrap().size.width,px(252.0));
-        app.read_with(cx,|app,_|assert_eq!(app.sidebar_resize.pending,Some(252)));
-        assert_terminal_focus(&app,cx,"a");
     }
 }
