@@ -4414,7 +4414,6 @@
     "ui.tailnet_primary_hint": {"en-US": "Agents build, compile and test on the primary worker computer", "en-GB": "Agents build, compile and test on the primary worker computer", "zh-CN": "agent 在主工作机上构建、编译和测试"},
     "ui.tailnet_set_primary": {"en-US": "Set primary", "en-GB": "Set primary", "zh-CN": "设为主工作机"},
     "ui.tailnet_primary": {"en-US": "Primary", "en-GB": "Primary", "zh-CN": "主工作机"},
-    "ui.tailnet_added": {"en-US": "Added", "en-GB": "Added", "zh-CN": "已添加"},
     "ui.tailnet_add_title": {"en-US": "Add a worker computer", "en-GB": "Add a worker computer", "zh-CN": "添加工作机"},
     "ui.tailnet_add_user": {"en-US": "User name", "en-GB": "User name", "zh-CN": "用户名"},
     "ui.tailnet_add_user_needed": {"en-US": "Enter the user name on that computer", "en-GB": "Enter the user name on that computer", "zh-CN": "请填写那台电脑上的用户名"},

@@ -106,15 +106,14 @@
     const id = 'this-mac';
     const primary = (status?.primary || id) === id;
     const tags = [t('[[i18n:ui.this_mac]]')];
-    // "Primary" only means something once there is another worker computer.
-    if (primary && hasWorkers()) tags.push({ primary: true });
     const row = computerRow({
       icon: osIcons.macOS,
       name: p.name || t('[[i18n:ui.this_mac]]'),
       title: [p.name, p.chip].filter(Boolean).join(' · '),
       tags: p.name ? tags : tags.slice(1),
       sub: hostSample ? [os, ram].filter(Boolean).join(' · ') : '',
-      action: !primary ? setPrimaryButton(id) : null,
+      // "Primary" only means something once there is another worker computer.
+      action: !primary ? setPrimaryButton(id) : hasWorkers() ? primaryBadge() : null,
       meters: hostSample ? { cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes } : null,
     });
     row.classList.add('tailnet-local');
@@ -282,7 +281,7 @@
   }
 
   // Every row has the same shape (FEN-147): an OS tile; the name with muted
-  // tags ("This Mac", "Added", "Primary") on one line and the state under it;
+  // tag ("This Mac") on one line and the state under it;
   // at most one button on the right, so the buttons line up; Remove shows
   // only while the row is hovered; meters below.
   function computerRow({ icon, name, title, tags = [], sub, online, action, remove, meters: sample, problem, offline }) {
@@ -296,9 +295,7 @@
     label.title = title || name;
     line.append(label);
     for (const tag of tags) {
-      const span = tag.primary ? el('span', 'tailnet-tag is-primary', t('[[i18n:ui.tailnet_primary]]')) : el('span', 'tailnet-tag', tag.text || tag);
-      if (tag.primary) span.title = t('[[i18n:ui.tailnet_primary_hint]]');
-      if (tag.title) span.title = tag.title;
+      const span = el('span', 'tailnet-tag', tag);
       line.append(span);
     }
     text.append(line);
@@ -329,7 +326,7 @@
   // One worker computer is primary: agents build, compile and test there.
   // It is this Mac until the user picks another (FEN-147).
   function setPrimaryButton(id) {
-    const set = button('[[i18n:ui.tailnet_set_primary]]', 'tailnet-add', () => {
+    const set = button('[[i18n:ui.tailnet_set_primary]]', 'tailnet-ghost', () => {
       status = { ...status, primary: id === 'this-mac' ? '' : id };
       drawCard();
       drawHostRow();
@@ -337,6 +334,11 @@
     });
     set.title = t('[[i18n:ui.tailnet_primary_hint]]');
     return set;
+  }
+  function primaryBadge() {
+    const badge = el('span', 'tailnet-primary-badge', t('[[i18n:ui.tailnet_primary]]'));
+    badge.title = t('[[i18n:ui.tailnet_primary_hint]]');
+    return badge;
   }
   const hasWorkers = () => status?.state === 'running' && (status.devices || []).some(d => d.id !== status.this_device && d.computer && !d.computer.error && d.computer.alias);
 
@@ -347,10 +349,11 @@
     const ip = (device.ips || []).find(value => value.includes('.')) || '';
     const os = metrics?.os_name ? [metrics.os_name, metrics.os_version].filter(Boolean).join(' ') : osNames[device.os] || device.os || '';
     const primary = connected && (status?.primary || '') === device.id;
-    const tags = connected ? [{ text: t('[[i18n:ui.tailnet_added]]'), title: 'ssh ' + computer.alias }] : [];
-    if (primary) tags.push({ primary: true });
+    // An added computer shows only its primary state on the right: a bordered
+    // "Primary", or a borderless "Set primary" (FEN-147).
+    const tags = [];
     let action = null;
-    if (connected && !primary) action = setPrimaryButton(device.id);
+    if (connected) action = primary ? primaryBadge() : setPrimaryButton(device.id);
     else if (!connected && sshCapable(device.os)) {
       action = button('[[i18n:ui.tailnet_add]]', 'tailnet-add', () => openAdd(device), !device.online);
       if (!device.online) action.title = t('[[i18n:ui.tailnet_offline]]');
