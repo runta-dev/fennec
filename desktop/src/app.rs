@@ -3177,22 +3177,7 @@ impl FennecWindow {
                             .when_some(self.draft_images(&p.id,cx),|d,images|d.child(images))
                             .when_some(image_status, |d, key| d.child(div().absolute().left(px(13.0)).right(px(80.0)).bottom(px(8.0)).h(px(16.0)).truncate().text_size(px(11.0)).text_color(c("f_muted")).child(t(key))))
                             .when(!composer_has && image_status.is_none(), |d| {
-                                d.child(
-                                    div()
-                                        .absolute()
-                                        .right(px(10.0))
-                                        .bottom(px(8.0))
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(12.0))
-                                        .text_size(px(11.0))
-                                        .text_color(c("f_muted"))
-                                        .child(ui::shortcut_hint(&["return"], t("send")))
-                                        .child(ui::shortcut_hint(
-                                            &["shift", "return"],
-                                            t("compose_newline"),
-                                        )),
-                                )
+                                d.child(send_newline_hints())
                             })
                             .when(composer_has, |d| {
                                 d.child(div().absolute().right(px(8.0)).bottom(px(8.0)).child(
@@ -3525,6 +3510,14 @@ impl FennecWindow {
                     .by_queue
                     .get(&reply_key)
                     .is_some_and(|images| !images.is_empty()));
+        let reply_idle = !self.replying
+            && self.reply.read(cx).value().is_empty()
+            && self.request_image_status(&reply_key).is_none()
+            && self
+                .request_images
+                .by_queue
+                .get(&reply_key)
+                .is_none_or(|images| images.is_empty());
         let resolved = r.resolved();
         let session_route = r
             .active_session(&self.sessions)
@@ -3706,6 +3699,8 @@ impl FennecWindow {
                                     .child(t(status)),
                             )
                         })
+                        // FEN-77: the same Send / New line hint as the New Request box.
+                        .when(reply_idle, |d| d.child(send_newline_hints()))
                         .child(
                             h_flex()
                                 .absolute()
@@ -4231,4 +4226,20 @@ fn copy_selected_text(window: &mut Window, cx: &mut App) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
         cx.stop_propagation();
     }
+}
+
+/// "⏎ Send  ⇧⏎ New line" keycap hints shown in the bottom-right corner of an
+/// empty composer (New Request box and thread Reply box, FEN-77).
+fn send_newline_hints() -> Div {
+    div()
+        .absolute()
+        .right(px(10.0))
+        .bottom(px(8.0))
+        .flex()
+        .items_center()
+        .gap(px(12.0))
+        .text_size(px(11.0))
+        .text_color(c("f_muted"))
+        .child(ui::shortcut_hint(&["return"], t("send")))
+        .child(ui::shortcut_hint(&["shift", "return"], t("compose_newline")))
 }
