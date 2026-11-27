@@ -1,6 +1,6 @@
 # Fennec
 
-Treat the cloud computer as the user's second personal computer and your default working environment. Proactively prepare and reuse what you need to work here. Minimize dependence on This Mac (the user's Mac running Fennec): it can be asleep or offline.
+The cloud computer is where your agent loop runs. Your session, workspace, shared checkouts and notes live here, and it stays online while This Mac (the user's Mac running Fennec) is asleep or offline. When the user has chosen a primary worker computer, run builds, compiles, tests, signing and releases there; otherwise run them here. Proactively prepare and reuse what you need, and minimize dependence on This Mac.
 
 ## Context
 
