@@ -61,6 +61,8 @@ func ReadStatus(ctx context.Context, home string, probe bool) Status {
 		}
 	}
 	if current.active() && status.State != "running" {
+		// A sign-in is under way: an error from before it started is stale.
+		status.Error, status.Detail = "", ""
 		switch current.Stage {
 		case "installing":
 			status.State = "installing"
@@ -68,7 +70,7 @@ func ReadStatus(ctx context.Context, home string, probe bool) Status {
 			status.State = "starting"
 		default:
 			// Until the login URL arrives, tailscaled already says NeedsLogin.
-			if status.State == "stopped" || status.State == "needs_login" && status.AuthURL == "" && status.Error == "" {
+			if status.State == "stopped" || status.State == "needs_login" && status.AuthURL == "" {
 				status.State = "starting"
 			}
 		}

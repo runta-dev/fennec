@@ -243,20 +243,71 @@ func RunUp(ctx context.Context, home string) error {
 	}
 	current.Stage = "starting"
 	writeJob(p, current)
+	// A fresh tailscaled: the last attempt's login error stays in its health
+	// report otherwise, and a retry would look like it failed at once.
+	stopDaemon(ctx, p)
 	if err := ensureDaemon(ctx, p); err != nil {
 		return fail(ErrStartFailed, err)
 	}
 	current.Stage = "login"
 	writeJob(p, current)
-	if _, err := cli(ctx, p, "up", "--reset", "--hostname="+Hostname, "--accept-dns=false", "--accept-routes=false", "--timeout=15m"); err != nil {
-		return fail(ErrLoginFailed, err)
+	upCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := cli(upCtx, p, "up", "--reset", "--hostname="+Hostname, "--accept-dns=false", "--accept-routes=false", "--timeout=15m")
+		done <- err
+	}()
+	// `tailscale up` keeps retrying a registration the network rejects;
+	// stop as soon as tailscaled reports why, so the panel can say so.
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				return fail(ErrLoginFailed, err)
+			}
+			current.Stage = "done"
+			return writeJob(p, current)
+		case <-ticker.C:
+			readCtx, stop := context.WithTimeout(ctx, 3*time.Second)
+			raw, err := cli(readCtx, p, "status", "--json")
+			stop()
+			var b backend
+			if err != nil || json.Unmarshal(raw, &b) != nil || b.BackendState == "Running" || b.AuthURL != "" {
+				continue
+			}
+			for _, message := range b.Health {
+				if code := classifyLoginError(message); code != "" {
+					cancel()
+					<-done
+					return fail(code, fmt.Errorf("%s", message))
+				}
+			}
+		}
 	}
-	current.Stage = "done"
-	return writeJob(p, current)
 }
 
-// Logout signs the cloud computer out of the tailnet and stops a pending
-// sign-in. tailscaled keeps running, signed out.
+// stopDaemon stops Fennec's tailscaled, if it runs.
+func stopDaemon(ctx context.Context, p paths) {
+	if systemd() {
+		if systemctl(ctx, "is-active", "--quiet", serviceName) == nil {
+			systemctl(ctx, "stop", serviceName)
+		}
+	} else if data, err := os.ReadFile(p.pidFile()); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 1 && alive(pid) {
+			syscall.Kill(pid, syscall.SIGTERM)
+		}
+	}
+	for deadline := time.Now().Add(10 * time.Second); responding(ctx, p) && time.Now().Before(deadline); {
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// Logout signs the cloud computer out of the tailnet, stops a pending
+// sign-in, and stops tailscaled, so the panel shows Tailscale as off with no
+// leftover error.
 func Logout(ctx context.Context, home string) (Status, error) {
 	p := paths{home}
 	if current := readJob(p); current.active() && current.PID > 1 && current.PID != os.Getpid() {
@@ -268,9 +319,9 @@ func Logout(ctx context.Context, home string) (Status, error) {
 	if p.installed() && responding(ctx, p) {
 		logoutCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		if _, err := cli(logoutCtx, p, "logout"); err != nil {
-			return Status{}, err
-		}
+		cli(logoutCtx, p, "logout") // best effort: a signed-out node has nothing to log out
 	}
+	stopDaemon(ctx, p)
+	os.Remove(p.job())
 	return ReadStatus(ctx, home, false), nil
 }

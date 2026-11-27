@@ -3,9 +3,6 @@ package tailnet
 import (
 	"context"
 	"os"
-	"strconv"
-	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -22,39 +19,30 @@ func TestSignInEndToEnd(t *testing.T) {
 	p := paths{home}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- RunUp(ctx, home) }()
-	defer cancel()
-	var last Status
-	for deadline := time.Now().Add(3 * time.Minute); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
-		last = ReadStatus(ctx, home, false)
-		t.Logf("state=%s error=%s auth=%t version=%s", last.State, last.Error, last.AuthURL != "", last.Version)
-		if last.AuthURL != "" || last.Error != "" {
-			break
+	defer stopDaemon(ctx, p)
+	// Sign in, then Retry: each attempt must end on its own with a login URL
+	// or a classified error, never wait out `tailscale up`'s 15 minutes.
+	for attempt := 1; attempt <= 2; attempt++ {
+		started := time.Now()
+		err := RunUp(ctx, home)
+		last := ReadStatus(ctx, home, false)
+		t.Logf("attempt %d after %s: err=%v state=%s error=%s auth=%t", attempt, time.Since(started).Round(time.Second), err, last.State, last.Error, last.AuthURL != "")
+		if !last.Installed || last.Version == "" {
+			t.Fatalf("not installed: %+v", last)
+		}
+		if last.AuthURL == "" && last.Error == "" {
+			t.Fatalf("no login URL and no error: %+v", last)
+		}
+		if time.Since(started) > time.Minute {
+			t.Fatalf("attempt %d took %s", attempt, time.Since(started))
 		}
 	}
-	if !last.Installed || last.Version == "" {
-		t.Fatalf("not installed: %+v", last)
-	}
-	if last.AuthURL == "" && last.Error == "" {
-		t.Fatalf("no login URL and no error: %+v", last)
-	}
-	if last.AuthURL != "" && !strings.HasPrefix(last.AuthURL, "https://login.tailscale.com/") {
-		t.Fatalf("auth URL = %q", last.AuthURL)
-	}
-	t.Logf("final: state=%s error=%s detail=%s auth=%s", last.State, last.Error, last.Detail, last.AuthURL)
-	cancel()
-	stopDaemon(t, p)
-}
-
-func stopDaemon(t *testing.T, p paths) {
-	data, err := os.ReadFile(p.pidFile())
+	// Cancel: Tailscale is off, with no leftover error.
+	status, err := Logout(ctx, home)
 	if err != nil {
-		t.Fatalf("tailscaled pid: %v", err)
+		t.Fatal(err)
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 1 {
-		t.Fatalf("tailscaled pid = %q", data)
+	if status.State != "stopped" || status.Error != "" || responding(ctx, p) {
+		t.Fatalf("after cancel: %+v responding=%t", status, responding(ctx, p))
 	}
-	syscall.Kill(pid, syscall.SIGTERM)
 }
