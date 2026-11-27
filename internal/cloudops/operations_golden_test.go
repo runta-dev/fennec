@@ -7,6 +7,7 @@ import (
 	"fennec/internal/localssh"
 	"fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/tailnet"
 	"flag"
 	"os"
 	"path/filepath"
@@ -56,6 +57,10 @@ func TestOperationsGolden(t *testing.T) {
 		{name: "preparation_health without check", op: Operation{Kind: "preparation_health"}},
 		{name: "preparation_health invalid check", op: Operation{Kind: "preparation_health", Preparation: &setup.PreparationHealth{}}},
 		{name: "system_metrics", op: Operation{Kind: "system_metrics"}},
+		{name: "tailnet_add without device", op: Operation{Kind: "tailnet_add"}},
+		{name: "tailnet_add without user", op: Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: "nKx7"}}},
+		{name: "tailnet_add option as user", op: Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: "nKx7", User: "-oProxyCommand=x"}}},
+		{name: "tailnet_remove invalid device", op: Operation{Kind: "tailnet_remove", Tailnet: &tailnet.Request{ID: "../x"}}},
 		{name: "cloud_agents", op: Operation{Kind: "cloud_agents"}},
 		{name: "reconfigure_runtime without configuration", op: Operation{Kind: "reconfigure_runtime"}},
 		{name: "native_account codex", op: Operation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "codex"}}},

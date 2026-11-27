@@ -25,6 +25,7 @@ import (
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/stackdump"
+	"fennec/internal/tailnet"
 	"fennec/internal/terminalstream"
 	"fennec/internal/trafficbroker"
 	"fmt"
@@ -177,6 +178,21 @@ func run() (int, error) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "queue" {
 		return 0, board.AgentCommand(home, os.Args[2:], os.Stdin, os.Stdout)
+	}
+	// Tailscale on the cloud computer (FEN-104): "up" is the detached sign-in
+	// worker tailnet.StartLogin starts; "status" prints the tailnet for agents.
+	if len(os.Args) == 3 && os.Args[1] == "tailnet" && (os.Args[2] == "up" || os.Args[2] == "status") {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		if os.Args[2] == "up" {
+			if err := tailnet.RunUp(ctx, home); err != nil {
+				return 1, err
+			}
+			return 0, nil
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		return 0, encoder.Encode(tailnet.ReadStatus(ctx, home, true))
 	}
 	if len(os.Args) == 3 && os.Args[1] == "queue-service" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

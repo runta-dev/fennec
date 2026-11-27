@@ -8,6 +8,7 @@ import (
 	"fennec/internal/localssh"
 	"fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/tailnet"
 	"fmt"
 	"regexp"
 	"strings"
@@ -35,6 +36,9 @@ type Operation struct {
 	Text              string                       `json:"text,omitempty"`
 	Project           string                       `json:"project,omitempty"`
 	RequestNumber     int                          `json:"request_number,omitempty"`
+	// Tailnet carries tailnet_* operations (FEN-104); last so older fields
+	// keep their order on the wire.
+	Tailnet *tailnet.Request `json:"tailnet,omitempty"`
 }
 
 var (
@@ -114,6 +118,15 @@ func (o Operation) Validate() error {
 			return fmt.Errorf("credential watch required")
 		}
 		return o.CredentialWatch.Validate()
+	}
+	if o.Kind == "tailnet_status" || o.Kind == "tailnet_login" || o.Kind == "tailnet_logout" {
+		return nil
+	}
+	if o.Kind == "tailnet_add" || o.Kind == "tailnet_remove" {
+		if o.Tailnet == nil {
+			return fmt.Errorf("device required")
+		}
+		return o.Tailnet.Validate(o.Kind == "tailnet_add")
 	}
 	if o.Kind == "system_metrics" || o.Kind == "cloud_agents" {
 		return nil

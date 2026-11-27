@@ -106,6 +106,26 @@
     "calls": null
   },
   {
+    "name": "tailnet_add without device",
+    "error": "device required",
+    "calls": null
+  },
+  {
+    "name": "tailnet_add without user",
+    "error": "invalid user name",
+    "calls": null
+  },
+  {
+    "name": "tailnet_add option as user",
+    "error": "invalid user name",
+    "calls": null
+  },
+  {
+    "name": "tailnet_remove invalid device",
+    "error": "invalid device",
+    "calls": null
+  },
+  {
     "name": "cloud_agents",
     "result": {
       "agy": {

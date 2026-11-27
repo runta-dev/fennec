@@ -769,7 +769,7 @@ window.renderPreferences = value => {
   window.rerenderUpdater?.();
   window.rerenderDeveloper?.();
   window.rerenderSandboxAudit?.();
-   window.rerenderRuntimeMetrics?.();window.rerenderHostMetrics?.();
+   window.rerenderRuntimeMetrics?.();window.rerenderHostMetrics?.();window.rerenderTailnet?.();
   const trigger=languageSelect.nextElementSibling;
   if(trigger?.classList.contains('choice-trigger')){const label=trigger.querySelector('span');if(label)label.textContent=languageSelect.selectedOptions[0].textContent;}
  }
@@ -1348,9 +1348,13 @@ window.renderRuntimeMetrics = payload => {
   memScaleState.hi = null;
  }
  drawRuntimeMetrics();
- // Computers tab count: this Mac, plus the cloud computer while it is connected.
+ window.updateComputerCount();
+};
+// Computers tab count: this Mac, the cloud computer while it is connected, and
+// computers added over Tailscale (tailnet.js sets tailnetComputerCount).
+window.updateComputerCount = () => {
  const computerCount = document.querySelector('#computer-count');
- if (computerCount) computerCount.textContent = String(1 + (lastMetricsPayload.ready === true ? 1 : 0));
+ if (computerCount) computerCount.textContent = String(1 + (lastMetricsPayload?.ready === true ? 1 : 0) + (window.tailnetComputerCount || 0));
 };
 window.rerenderRuntimeMetrics = drawRuntimeMetrics;
 drawRuntimeMetrics();

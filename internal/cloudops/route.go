@@ -9,6 +9,7 @@ import (
 	"fennec/internal/queuescheduler"
 	"fennec/internal/runtime"
 	"fennec/internal/setup"
+	"fennec/internal/tailnet"
 	"fmt"
 	"path/filepath"
 )
@@ -40,6 +41,16 @@ func Operate(ctx context.Context, r *runtime.LocalRuntime, o Operation) (json.Ra
 		return json.RawMessage(`{"healthy":true}`), nil
 	case "system_metrics":
 		return json.Marshal(runtime.CollectSystemMetrics())
+	case "tailnet_status":
+		return json.Marshal(tailnet.ReadStatus(ctx, r.Home, o.Tailnet != nil && o.Tailnet.Probe))
+	case "tailnet_login":
+		return marshal(tailnet.StartLogin(ctx, r.Home))
+	case "tailnet_logout":
+		return marshal(tailnet.Logout(ctx, r.Home))
+	case "tailnet_add":
+		return marshal(tailnet.Add(ctx, r.Home, *o.Tailnet))
+	case "tailnet_remove":
+		return marshal(tailnet.Remove(ctx, r.Home, *o.Tailnet))
 	case "cloud_agents":
 		return json.Marshal(setup.CloudAgents(r.Home))
 	case "reconfigure_runtime":

@@ -32,6 +32,7 @@ check-ui:
 	node --check native/macos/UI/sandbox-audit.js
 	node --check native/macos/UI/onboarding.js
 	node --check native/macos/UI/byoc.js
+	node --check native/macos/UI/tailnet.js
 	node --check native/macos/UI/locale.js
 	node --check native/macos/UI/menus.js
 	node --check native/macos/UI/terminal.js

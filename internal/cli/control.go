@@ -190,6 +190,9 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	}
 	controller := &controlplane.Controller{Account: manager, Connectivity: network, Prepare: services.prepare, Session: services.session, Services: services.snapshot, CloudUnreachable: services.cloudUnreachable}
 	controller.Additional = services.handlers(controller)
+	for method, handler := range services.tailnetHandlers() {
+		controller.Additional[method] = handler
+	}
 	// runRuntimePresence calls this when the cloud computer was deleted outside
 	// Fennec, to tear down services bound to it and prepare a replacement.
 	services.onRuntimeDeleted = func(ctx context.Context, epoch uint64, owner, runtimeID string) error {

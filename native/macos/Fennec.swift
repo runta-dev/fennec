@@ -104,6 +104,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
     private var lastMetricsPoll = Date.distantPast
     private let hostMetrics = HostMetrics()
     private var lastHostPoll = Date.distantPast
+    // Tailscale on the cloud computer (FEN-104).
+    private var tailnetLoading = false
+    private var lastTailnetPoll = Date.distantPast
+    private var tailnetLoginUntil: Date?
+    private var tailnetAuthURL: URL?
+    private var openedTailnetURL = ""
     private var discoveringAgents = false
     private var visibleRefreshTab = "agents"
     private var activeAuditFilter = "all"
@@ -908,6 +914,11 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             loadMetrics()
         }
         if popup.isVisible, visibleRefreshTab == "computers", Date().timeIntervalSince(lastHostPoll) >= 1.0 { loadHostMetrics() }
+        let tailnetSigningIn = tailnetLoginUntil.map { Date() < $0 } ?? false
+        let tailnetShown = popup.isVisible && (visibleRefreshTab == "computers" || visibleRefreshTab == "tailscale")
+        if authorized, isOnline, tailnetShown || tailnetSigningIn, Date().timeIntervalSince(lastTailnetPoll) >= (tailnetSigningIn ? 2.0 : 5.0) {
+            loadTailnet(probe: popup.isVisible && visibleRefreshTab == "computers")
+        }
         stateLoading = true
 	    let revision = viewRevision
         control.call("state.get") { [weak self] result in
@@ -1147,6 +1158,66 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         lastHostPoll = Date()
         render("renderHostMetrics", [hostMetrics.sample()])
     }
+    // Settings › Tailscale and the Computers tailnet card read this; with
+    // probe, the cloud computer also refreshes added computers' metrics.
+    private func loadTailnet(probe: Bool = false) {
+        guard authorized, isOnline, !tailnetLoading else { return }
+        tailnetLoading = true
+        lastTailnetPoll = Date()
+        let epoch = accountEpoch
+        control.call("tailnet.status", ["probe": probe]) { [weak self] result in
+            guard let self else { return }
+            self.tailnetLoading = false
+            guard self.accountEpoch == epoch else { return }
+            switch result {
+            case .success(let value): self.applyTailnet(value)
+            case .failure(let error): self.render("renderTailnet", [["error": self.tailnetErrorCode(error)]])
+            }
+        }
+    }
+    private func tailnetErrorCode(_ error: Error) -> String {
+        let code = (error as NSError).userInfo["FennecCode"] as? String ?? ""
+        return code.isEmpty ? "not_ready" : code
+    }
+    // Opens the Tailscale login page once per URL while a sign-in started
+    // from the panel is pending, and stops polling when it ends.
+    private func applyTailnet(_ value: Any) {
+        guard let status = value as? [String:Any] else { return }
+        let state = status["state"] as? String ?? ""
+        let error = status["error"] as? String ?? ""
+        if let link = status["auth_url"] as? String, let url = URL(string: link), url.scheme == "https", url.user == nil, url.password == nil, let host = url.host, host == "login.tailscale.com" || host.hasSuffix(".tailscale.com") {
+            tailnetAuthURL = url
+            if let until = tailnetLoginUntil, Date() < until, link != openedTailnetURL { openedTailnetURL = link; NSWorkspace.shared.open(url) }
+        }
+        if state == "running" || state == "failed" || error == "network_blocked" || (tailnetLoginUntil.map { Date() >= $0 } ?? false) { tailnetLoginUntil = nil }
+        render("renderTailnet", [status])
+    }
+    private func startTailnetLogin() {
+        let epoch = accountEpoch
+        tailnetLoginUntil = Date().addingTimeInterval(600)
+        openedTailnetURL = ""
+        control.call("tailnet.login") { [weak self] result in
+            guard let self, self.accountEpoch == epoch else { return }
+            switch result {
+            case .success(let value): self.applyTailnet(value)
+            case .failure(let error):
+                self.tailnetLoginUntil = nil
+                self.render("renderTailnet", [["error": self.tailnetErrorCode(error)]])
+            }
+        }
+    }
+    private func tailnetCall(_ method: String, _ params: [String:Any] = [:], render function: String? = nil) {
+        let epoch = accountEpoch
+        control.call(method, params) { [weak self] result in
+            guard let self, self.accountEpoch == epoch else { return }
+            switch result {
+            case .success(let value):
+                if let function { self.render(function, [value]) } else { self.applyTailnet(value) }
+            case .failure(let error):
+                self.render(function ?? "renderTailnet", [["error": self.tailnetErrorCode(error)]])
+            }
+        }
+    }
     private func openBrowserSession(_ params: [String:Any], done: ((Bool) -> Void)? = nil) {
         let epoch=accountEpoch
         control.call("sessions.browser",params) { [weak self] result in
@@ -1190,6 +1261,14 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         if action.hasPrefix("open-license:") { licenseViewer.open(String(action.dropFirst(13)), language: nativeLanguage); return }
         if action.hasPrefix("language:") { let language = String(action.dropFirst(9)); if ["zh-CN","zh-TW","en-US","en-GB","ja","ko"].contains(language) { nativeLanguage = language; shownApprovalID = nil; renderApprovals();mutate("settings.set",["language":language]) }; return }
 	    if action.hasPrefix("settings:"),let data=String(action.dropFirst(9)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {mutate("settings.set",params);return}
+        if action.hasPrefix("tailnet-add:"), let data = String(action.dropFirst(12)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
+            tailnetCall("tailnet.add", params, render: "renderTailnetAdded")
+            return
+        }
+        if action.hasPrefix("tailnet-remove:"), let data = String(action.dropFirst(15)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
+            tailnetCall("tailnet.remove", params)
+            return
+        }
         if action.hasPrefix("audit-list:"),let data=String(action.dropFirst(11)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] {
             if let filter = params["filter"] as? String, !filter.isEmpty { activeAuditFilter = filter }
             control.call("audit.list",params) { [weak self] result in
@@ -1277,8 +1356,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             return
         }
         if action.hasPrefix("update-open-url:"),let data=String(action.dropFirst(16)).data(using:.utf8),let params=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],let text=params["url"] as? String,let url=URL(string:text),url.scheme=="https",(url.host=="github.com" || url.host=="runta.com" || url.host?.hasSuffix(".runta.com")==true || url.host=="runta.xyz" || url.host?.hasSuffix(".runta.xyz")==true) {NSWorkspace.shared.open(url);return}
-        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "notifications" { loadAuditLog() }; if visibleRefreshTab == "sessions" { loadRuntimes() }; if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics() }; renderRefreshActivity(); return }
-        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics() } else if visibleRefreshTab == "notifications" { loadAuditLog() } else { refreshAgents() }; return }
+        if action.hasPrefix("visible-tab:") { visibleRefreshTab = String(action.dropFirst(12)); if visibleRefreshTab == "notifications" { loadAuditLog() }; if visibleRefreshTab == "sessions" { loadRuntimes() }; if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics(); loadTailnet(probe: true) }; renderRefreshActivity(); return }
+        if action.hasPrefix("refresh:") { visibleRefreshTab = String(action.dropFirst(8)); if visibleRefreshTab == "sessions" { loadRuntimes() } else if visibleRefreshTab == "account" { loadBilling() } else if visibleRefreshTab == "computers" { loadMetrics(); loadHostMetrics(); loadTailnet(probe: true) } else if visibleRefreshTab == "notifications" { loadAuditLog() } else { refreshAgents() }; return }
         if action.hasPrefix("toggle-takeover:") { let agent = String(action.dropFirst(16)); mutate("takeover.set",["agent":agent,"enabled":!takeoverAgents.contains(agent)]); return }
         if action.hasPrefix("approve:") || action.hasPrefix("deny:") { let id = String(action.split(separator:":",maxSplits:1).last ?? ""); mutate("approvals.decide",["id":id,"allow":action.hasPrefix("approve:")]); return }
         for prefix in ["send-session:","read-session:","stop-session:","copy-attach:","browser-attach:","launch-agent:","select-model:","get-model:","get-agent-account:","get-local-model:","start-agent-login:","finish-agent-login:","cancel-agent-login:"] where action.hasPrefix(prefix) {
@@ -1414,6 +1493,11 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             }
         case "load-billing": loadBilling(); loadMetrics()
         case "load-metrics": loadMetrics(); loadHostMetrics()
+        case "tailnet-status": loadTailnet(probe: visibleRefreshTab == "computers")
+        case "tailnet-login": startTailnetLogin()
+        case "tailnet-logout": tailnetLoginUntil = nil; tailnetCall("tailnet.logout")
+        case "tailnet-open-login": if let url = tailnetAuthURL { NSWorkspace.shared.open(url) }
+        case "open-remote-login": if let url = URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension") { NSWorkspace.shared.open(url) }
         case "export-logs": exportLogs()
         case "open-magpie-panel":
             control.call("magpie.panel") { [weak self] result in
