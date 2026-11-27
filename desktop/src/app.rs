@@ -10,6 +10,7 @@ mod context_menu;
 mod glide;
 mod knowledge_links;
 mod local_state;
+mod modal_enter;
 mod pending_reply;
 mod pending_request;
 mod ref_complete;
@@ -70,11 +71,13 @@ enum Menu {
 }
 
 /// The New project dialog's fields.
+/// FEN-195: a new queue needs only its name. Description and repository are
+/// set in the queue's settings, and the agent is picked per request.
 struct NewProject {
     name: Entity<InputState>,
-    description: Entity<InputState>,
-    repository: Entity<InputState>,
-    agent: String,
+    /// Keys this opening's animation.
+    opened: u64,
+    _enter: Subscription,
 }
 
 #[derive(Clone)]
@@ -2084,15 +2087,17 @@ impl FennecWindow {
     }
 
     fn open_new_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t("name")));
-        let description = cx.new(|cx| InputState::new(window, cx).placeholder(t("description")));
-        let repository = cx.new(|cx| InputState::new(window, cx).placeholder("owner/repo"));
+        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t("name_queue")));
         name.read(cx).focus_handle(cx).focus(window, cx);
+        let enter = cx.subscribe_in(&name, window, |this, _, ev: &InputEvent, window, cx| {
+            if let InputEvent::PressEnter { .. } = ev {
+                this.create_project(window, cx);
+            }
+        });
         self.new_project = Some(NewProject {
             name,
-            description,
-            repository,
-            agent: "claude".into(),
+            opened: modal_enter::next_key(),
+            _enter: enter,
         });
         self.menu = None;
         cx.notify();
@@ -2102,23 +2107,17 @@ impl FennecWindow {
         let Some(np) = self.new_project.as_ref() else {
             return;
         };
-        let (name, description, repository) = (
-            np.name.read(cx).value().trim().to_owned(),
-            np.description.read(cx).value().trim().to_owned(),
-            np.repository.read(cx).value().trim().to_owned(),
-        );
+        let name = np.name.read(cx).value().trim().to_owned();
         if name.is_empty() {
             return;
         }
-        let org = String::new();
-        let agent = np.agent.clone();
         let color = board::COLORS[self.projects.len() % board::COLORS.len()];
         let Some(scope) = self.board_scope.clone() else { return; };
         let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let created = cx
                 .background_spawn(async move { worker_scope.run(|| {
-                    board::create_project(&name, &org, &description, &repository, color, &agent)
+                    board::create_project(&name, "", "", "", color, "claude")
                 }) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; } match created {
@@ -2127,118 +2126,80 @@ impl FennecWindow {
                     this.projects.push(p.clone());
                     this.go(Route::Project(p.id), window, cx);
                 }
-                Err(_) => this.say(t("check_repository"), cx),
+                Err(_) => this.say(t("create_queue_failed"), cx),
             } });
         }));
     }
 
     fn new_project_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        const WIDTH: f32 = 380.0;
         let np = self.new_project.as_ref()?;
-        let field = |label: String, input: &Entity<InputState>| {
-            v_flex()
-                .gap(px(5.0))
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(c("f_muted"))
-                        .child(label),
-                )
-                .child(
-                    div()
-                        .h(px(32.0))
-                        .px(px(9.0))
-                        .rounded(px(8.0))
-                        .border_1()
-                        .border_color(c("f_field"))
-                        .bg(c("f_card"))
-                        .flex()
-                        .items_center()
-                        .text_size(px(13.0))
-                        .child(Input::new(input)),
-                )
-        };
-        Some(
-            div()
-                .id("scrim")
-                .absolute()
-                .inset_0()
-                .bg(hsla(0.0, 0.0, 0.0, 0.35))
-                .flex()
-                .items_center()
-                .justify_center()
-                .occlude()
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.new_project = None;
-                    cx.notify();
-                }))
-                .child(
-                    v_flex()
-                        .id("new-project")
-                        .w(px(400.0))
-                        .p(px(16.0))
-                        .gap(px(12.0))
-                        .rounded(px(12.0))
-                        .bg(c("f_card"))
-                        .shadow_lg()
-                        .on_click(|_, _, cx| cx.stop_propagation())
-                        .child(
-                            div()
-                                .text_size(px(14.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(t("new_project")),
-                        )
-                        .child(field(t("name"), &np.name))
-                        .child(field(t("description"), &np.description))
-                        .child(field(t("repository_optional"), &np.repository))
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(c("f_muted"))
-                                .child(t("default_agent")),
-                        )
-                        .child(h_flex().gap(px(4.0)).flex_wrap().children(
-                            board::AGENTS.iter().map(|agent| {
-                                let agent = agent.to_string();
-                                secondary_button(
-                                    SharedString::from(format!("new-worker-{agent}")),
-                                    sessions::agent_name(&agent).to_owned(),
-                                    np.agent == agent,
-                                )
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        if let Some(np) = &mut this.new_project {
-                                            np.agent = agent.clone();
-                                        }
-                                        cx.notify();
-                                    },
-                                ))
-                            }),
-                        ))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(c("f_muted"))
-                                .child(t("run_location_hint")),
-                        )
-                        .child(
-                            h_flex()
-                                .justify_end()
-                                .gap(px(8.0))
-                                .child(secondary_button("np-cancel", t("cancel"), false).on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.new_project = None;
-                                        cx.notify();
-                                    }),
-                                ))
-                                .child(primary_button("np-create", t("create")).on_click(
-                                    cx.listener(|this, _, window, cx| {
-                                        this.create_project(window, cx)
-                                    }),
-                                )),
-                        ),
-                )
-                .into_any_element(),
-        )
+        let empty = np.name.read(cx).value().trim().is_empty();
+        let card = v_flex()
+            .id("new-project")
+            .w(px(WIDTH))
+            .pt(px(18.0))
+            .px(px(18.0))
+            .pb(px(16.0))
+            .gap(px(14.0))
+            .rounded(px(14.0))
+            .border_1()
+            .border_color(c("f_field"))
+            .bg(c("f_card"))
+            .shadow_lg()
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(
+                div()
+                    .text_size(px(15.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(t("new_project")),
+            )
+            .child(
+                div()
+                    .h(px(38.0))
+                    .px(px(11.0))
+                    .rounded(px(9.0))
+                    .border_1()
+                    .border_color(c("f_field"))
+                    .bg(c("f_card"))
+                    .flex()
+                    .items_center()
+                    .text_size(px(14.0))
+                    .child(Input::new(&np.name)),
+            )
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap(px(8.0))
+                    .child(secondary_button("np-cancel", t("cancel"), false).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.new_project = None;
+                            cx.notify();
+                        }),
+                    ))
+                    .child(
+                        primary_button("np-create", t("create"))
+                            .when(empty, |b| b.opacity(0.4))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.create_project(window, cx)
+                            })),
+                    ),
+            );
+        let scrim = div()
+            .id("scrim")
+            .absolute()
+            .inset_0()
+            .bg(hsla(0.0, 0.0, 0.0, 0.35))
+            .flex()
+            .items_center()
+            .justify_center()
+            .occlude()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.new_project = None;
+                cx.notify();
+            }))
+            .child(modal_enter::card(np.opened, WIDTH, card));
+        Some(modal_enter::scrim(np.opened, scrim))
     }
 
     // ---------- project ----------
@@ -3336,9 +3297,7 @@ impl FennecWindow {
             .update(cx, |s, _| s.set_editor_style(style.clone()));
         self.settings.sync_input_styles(&style, cx);
         if let Some(project) = &self.new_project {
-            for input in [&project.name, &project.description, &project.repository] {
-                input.update(cx, |s, _| s.set_editor_style(style.clone()));
-            }
+            project.name.update(cx, |s, _| s.set_editor_style(style.clone()));
         }
     }
 }
@@ -3457,6 +3416,11 @@ impl Render for FennecWindow {
                         }
                     }
                     cx.stop_propagation();
+                    cx.notify();
+                    return;
+                }
+                if this.new_project.is_some() && k.key == "escape" {
+                    this.new_project = None;
                     cx.notify();
                     return;
                 }

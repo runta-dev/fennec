@@ -81,11 +81,6 @@
       "en-US": "Active",
       "zh-CN": "待处理"
     },
-    "desktop.run_location_hint": {
-      "en-GB": "Uses the agent's Run location",
-      "en-US": "Uses the agent's Run location",
-      "zh-CN": "沿用 Agent 的运行位置"
-    },
     "desktop.view_session": {
       "en-GB": "Open session",
       "en-US": "Open session",
@@ -250,6 +245,8 @@
     "desktop.minutes": {"en-US": "{n}m", "zh-CN": "{n} 分钟"},
     "desktop.more": {"en-US": "More", "zh-CN": "增加"},
     "desktop.name": {"en-US": "Name", "zh-CN": "名称"},
+    "desktop.name_queue": {"en-GB": "Name your queue", "en-US": "Name your queue", "zh-CN": "给队列起个名字"},
+    "desktop.create_queue_failed": {"en-GB": "Could not create this queue. Please try again.", "en-US": "Could not create this queue. Please try again.", "zh-CN": "未能创建队列，请重试。"},
     "desktop.needs_you": {"en-US": "Needs you", "zh-CN": "需要你"},
     "desktop.new_organization": {"en-US": "New organization…", "zh-CN": "新建组织…"},
     "desktop.new_project": {
