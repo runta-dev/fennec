@@ -33,6 +33,14 @@ The installation and restart procedures below apply to development builds when
 local development testing is authorized. Release completion requires publication
 and update-feed verification, not installation on the user's Mac.
 
+To build and install a development build, use `scripts/dev-install-mac.sh <commit>`
+(run it detached; see the comment at its top). It builds in one fixed worktree
+(`~/repos/runta-dev/fennec-build`) so Cargo rebuilds only what changed, holds a
+lock so only one build runs at a time, and does the signature check, backup,
+install, restart and daemon verification below. Don't build in a fresh worktree
+or with a separate `CARGO_TARGET_DIR`: the vendored path dependencies under
+`desktop/vendor/` are fingerprinted by absolute path and rebuild from scratch.
+
 ## Reuse the local signing identity
 
 Development builds must use the existing `Fennec Local Development` certificate in the user's login Keychain. Never switch back to ad-hoc signing or generate a new certificate for each build: changing the signing identity can make macOS request Keychain authorization again.
