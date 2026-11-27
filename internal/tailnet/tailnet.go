@@ -48,7 +48,9 @@ type Status struct {
 	Tailnet   string   `json:"tailnet,omitempty"`
 	Self      *Device  `json:"self,omitempty"`
 	Devices   []Device `json:"devices"`
-	PublicKey string   `json:"public_key,omitempty"`
+	// Primary is the ID of the primary worker computer, or "" for this Mac.
+	Primary   string `json:"primary,omitempty"`
+	PublicKey string `json:"public_key,omitempty"`
 	// Commands authorize PublicKey on a new computer: "posix" (macOS, Linux)
 	// and "windows" (PowerShell).
 	Commands map[string]string `json:"commands,omitempty"`
@@ -82,6 +84,9 @@ type Computer struct {
 	AddedAt  int64  `json:"added_at"`
 	Checked  int64  `json:"checked_at,omitempty"`
 	Error    string `json:"error,omitempty"`
+	// Primary marks the worker computer agents build, compile and test on.
+	// With none marked, that is the Mac running Fennec.
+	Primary bool `json:"primary,omitempty"`
 	// Detail says in words what failed while adding; it is never saved.
 	Detail  string   `json:"detail,omitempty"`
 	Metrics *Metrics `json:"metrics,omitempty"`

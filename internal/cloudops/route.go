@@ -51,6 +51,8 @@ func Operate(ctx context.Context, r *runtime.LocalRuntime, o Operation) (json.Ra
 		return marshal(tailnet.Add(ctx, r.Home, *o.Tailnet))
 	case "tailnet_remove":
 		return marshal(tailnet.Remove(ctx, r.Home, *o.Tailnet))
+	case "tailnet_primary":
+		return marshal(tailnet.SetPrimary(ctx, r.Home, *o.Tailnet))
 	case "cloud_agents":
 		return json.Marshal(setup.CloudAgents(r.Home))
 	case "reconfigure_runtime":

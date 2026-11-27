@@ -122,7 +122,7 @@ func (o Operation) Validate() error {
 	if o.Kind == "tailnet_status" || o.Kind == "tailnet_login" || o.Kind == "tailnet_logout" {
 		return nil
 	}
-	if o.Kind == "tailnet_add" || o.Kind == "tailnet_remove" {
+	if o.Kind == "tailnet_add" || o.Kind == "tailnet_remove" || o.Kind == "tailnet_primary" {
 		if o.Tailnet == nil {
 			return fmt.Errorf("device required")
 		}

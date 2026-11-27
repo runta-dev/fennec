@@ -114,7 +114,18 @@
     main.append(icon, text);
     const os = [p.os_name || 'macOS', p.os_version].filter(Boolean).join(' ');
     const ram = Number(p.memory_total_bytes) > 0 ? Math.round(p.memory_total_bytes / 1073741824) + ' GB' : '';
-    if (hostSample) main.append(el('span', 'runtime-metrics-spec tailnet-local-spec', [os, ram].filter(Boolean).join(' · ')));
+    const spec = [os, ram].filter(Boolean).join(' · ');
+    if (hostSample && hasWorkers()) {
+      // With other worker computers, the right side picks the primary one,
+      // so the OS and memory move under the name like the other rows.
+      text.classList.add('has-sub');
+      const line = el('div', 'tailnet-local-line');
+      line.append(...text.childNodes);
+      text.append(line, el('span', 'tailnet-device-sub', spec));
+      const side = el('div', 'tailnet-device-side');
+      side.append(primaryControl('this-mac'));
+      main.append(side);
+    } else if (hostSample) main.append(el('span', 'runtime-metrics-spec tailnet-local-spec', spec));
     hostRow.append(main);
     if (hostSample) hostRow.append(meters({ cpu_percent: p.cpu_percent, memory_used_bytes: p.memory_used_bytes, memory_total_bytes: p.memory_total_bytes, disk_used_bytes: p.disk_used_bytes, disk_total_bytes: p.disk_total_bytes }));
   };
@@ -274,6 +285,26 @@
     return grid;
   }
 
+  // One worker computer is primary: agents build, compile and test there.
+  // It is this Mac until the user picks another (FEN-147).
+  function primaryControl(id) {
+    const current = (status?.primary || 'this-mac') === id;
+    if (current) {
+      const tag = el('span', 'tailnet-state tailnet-primary', t('[[i18n:ui.tailnet_primary]]'));
+      tag.title = t('[[i18n:ui.tailnet_primary_hint]]');
+      return tag;
+    }
+    const set = button('[[i18n:ui.tailnet_set_primary]]', 'tailnet-add', () => {
+      status = { ...status, primary: id === 'this-mac' ? '' : id };
+      drawCard();
+      drawHostRow();
+      send('tailnet-primary:' + JSON.stringify({ id }));
+    });
+    set.title = t('[[i18n:ui.tailnet_primary_hint]]');
+    return set;
+  }
+  const hasWorkers = () => status?.state === 'running' && (status.devices || []).some(d => d.id !== status.this_device && d.computer && !d.computer.error && d.computer.alias);
+
   function deviceRow(device) {
     const item = el('div', 'tailnet-device' + (device.online ? '' : ' is-offline'));
     const main = el('div', 'tailnet-device-main');
@@ -294,9 +325,12 @@
     const computer = device.computer;
     const connected = computer && !computer.error && computer.alias;
     if (connected) {
-      const tag = el('span', 'runtime-metrics-spec tailnet-connected', t('[[i18n:ui.tailnet_worker]]'));
-      tag.title = 'ssh ' + computer.alias;
-      side.append(tag);
+      if ((status?.primary || '') !== device.id) {
+        const tag = el('span', 'tailnet-state', t('[[i18n:ui.tailnet_added]]'));
+        tag.title = 'ssh ' + computer.alias;
+        side.append(tag);
+      }
+      side.append(primaryControl(device.id));
       const remove = el('button', 'tailnet-remove');
       remove.type = 'button';
       remove.innerHTML = svg('<path d="m6 6 8 8M14 6l-8 8"/>');
@@ -517,6 +551,7 @@
     }
     drawPage();
     drawCard();
+    drawHostRow();
   };
   window.renderTailnetBusy = value => { busy = value || ''; drawPage(); };
   window.rerenderTailnet = () => { drawPage(); drawCard(); drawHostRow(); };

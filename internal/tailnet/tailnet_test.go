@@ -1,6 +1,7 @@
 package tailnet
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -174,5 +175,34 @@ func TestEnsureKey(t *testing.T) {
 	info, _ := os.Stat(p.key())
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("private key mode = %v", info.Mode())
+	}
+}
+
+func TestSetPrimary(t *testing.T) {
+	home := t.TempDir()
+	p := paths{home}
+	if err := saveComputers(p, []Computer{{ID: "a", Alias: "alpha", Host: "100.64.0.1", User: "me"}, {ID: "b", Alias: "beta", Host: "100.64.0.2", User: "me"}}); err != nil {
+		t.Fatal(err)
+	}
+	if PrimaryAlias(home) != "" {
+		t.Fatal("primary before any was set")
+	}
+	if _, err := SetPrimary(context.Background(), home, Request{ID: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := PrimaryAlias(home); got != "beta" {
+		t.Fatalf("primary = %q", got)
+	}
+	if _, err := SetPrimary(context.Background(), home, Request{ID: "nope"}); err == nil {
+		t.Fatal("a computer that isn't added became primary")
+	}
+	if got := PrimaryAlias(home); got != "beta" {
+		t.Fatalf("a refused change moved the primary to %q", got)
+	}
+	if _, err := SetPrimary(context.Background(), home, Request{ID: ThisMac}); err != nil {
+		t.Fatal(err)
+	}
+	if got := PrimaryAlias(home); got != "" {
+		t.Fatalf("this Mac didn't become primary again: %q", got)
 	}
 }

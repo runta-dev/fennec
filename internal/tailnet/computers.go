@@ -374,7 +374,7 @@ func Add(ctx context.Context, home string, r Request) (Device, error) {
 	kept := list[:0]
 	for _, c := range list {
 		if c.ID == r.ID {
-			entry.AddedAt = c.AddedAt
+			entry.AddedAt, entry.Primary = c.AddedAt, c.Primary
 			continue
 		}
 		kept = append(kept, c)
@@ -411,6 +411,48 @@ func Remove(ctx context.Context, home string, r Request) (Status, error) {
 	}
 	forgetProbe(r.ID)
 	return ReadStatus(ctx, home, false), nil
+}
+
+// ThisMac is the Request ID that makes the Mac running Fennec the primary
+// worker computer again.
+const ThisMac = "this-mac"
+
+// SetPrimary makes one added computer the primary worker computer, the one
+// agents build, compile and test on; ThisMac clears it (FEN-147).
+func SetPrimary(ctx context.Context, home string, r Request) (Status, error) {
+	if err := r.Validate(false); err != nil {
+		return Status{}, err
+	}
+	p := paths{home}
+	computersMu.Lock()
+	list := loadComputers(p)
+	found := r.ID == ThisMac
+	for i := range list {
+		list[i].Primary = list[i].ID == r.ID
+		found = found || list[i].Primary
+	}
+	var err error
+	if !found {
+		err = fmt.Errorf("that computer isn't added")
+	} else {
+		err = saveComputers(p, list)
+	}
+	computersMu.Unlock()
+	if err != nil {
+		return Status{}, err
+	}
+	return ReadStatus(ctx, home, false), nil
+}
+
+// PrimaryAlias is the SSH alias of the primary worker computer, or "" when
+// it is the Mac running Fennec.
+func PrimaryAlias(home string) string {
+	for _, c := range loadComputers(paths{home}) {
+		if c.Primary && c.Alias != "" {
+			return c.Alias
+		}
+	}
+	return ""
 }
 
 type probeResult struct {
@@ -450,6 +492,9 @@ func attachComputers(ctx context.Context, p paths, status *Status, refresh, wait
 	byID := map[string]Computer{}
 	for _, c := range list {
 		byID[c.ID] = c
+		if c.Primary {
+			status.Primary = c.ID
+		}
 	}
 	var done sync.WaitGroup
 	for i := range status.Devices {

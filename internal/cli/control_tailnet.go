@@ -43,12 +43,28 @@ func (s *daemonServices) tailnetHandlers() map[string]control.Handler {
 			add := tailnet.Request{ID: request.ID, User: request.User, Port: request.Port, Password: request.Password, PrivateKey: request.PrivateKey, Passphrase: request.Passphrase}
 			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_add", Tailnet: &add}, 55*time.Second)
 		},
+		// The primary worker computer is where agents build, compile and
+		// test; tailnet.ThisMac makes it this Mac again (FEN-147).
+		"tailnet.primary": func(ctx context.Context, raw json.RawMessage) (any, error) {
+			var request tailnet.Request
+			if json.Unmarshal(raw, &request) != nil || request.Validate(false) != nil {
+				return nil, &control.Fault{Code: "invalid_params", Message: "Choose a computer"}
+			}
+			if _, err := s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_primary", Tailnet: &tailnet.Request{ID: request.ID}}, 15*time.Second); err != nil {
+				return nil, err
+			}
+			return s.tailnetStatus(ctx, false)
+		},
 		"tailnet.remove": func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var request tailnet.Request
 			if json.Unmarshal(raw, &request) != nil || request.Validate(false) != nil {
 				return nil, &control.Fault{Code: "invalid_params", Message: "Choose a computer"}
 			}
-			return s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_remove", Tailnet: &tailnet.Request{ID: request.ID}}, 15*time.Second)
+			// The full status, so this Mac's own device stays out of the list.
+			if _, err := s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_remove", Tailnet: &tailnet.Request{ID: request.ID}}, 15*time.Second); err != nil {
+				return nil, err
+			}
+			return s.tailnetStatus(ctx, false)
 		},
 	}
 }

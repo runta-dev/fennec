@@ -4411,6 +4411,10 @@
     "ui.tailnet_connected": {"en-US": "Connected", "en-GB": "Connected", "zh-CN": "已连接"},
     "ui.tailnet_add": {"en-US": "Add", "en-GB": "Add", "zh-CN": "添加"},
     "ui.tailnet_remove": {"en-US": "Remove", "en-GB": "Remove", "zh-CN": "移除"},
+    "ui.tailnet_primary_hint": {"en-US": "Agents build, compile and test on the primary worker computer", "en-GB": "Agents build, compile and test on the primary worker computer", "zh-CN": "agent 在主工作机上构建、编译和测试"},
+    "ui.tailnet_set_primary": {"en-US": "Set primary", "en-GB": "Set primary", "zh-CN": "设为主工作机"},
+    "ui.tailnet_primary": {"en-US": "Primary", "en-GB": "Primary", "zh-CN": "主工作机"},
+    "ui.tailnet_added": {"en-US": "Added", "en-GB": "Added", "zh-CN": "已添加"},
     "ui.tailnet_add_title": {"en-US": "Add a worker computer", "en-GB": "Add a worker computer", "zh-CN": "添加工作机"},
     "ui.tailnet_add_user": {"en-US": "User name", "en-GB": "User name", "zh-CN": "用户名"},
     "ui.tailnet_add_user_needed": {"en-US": "Enter the user name on that computer", "en-GB": "Enter the user name on that computer", "zh-CN": "请填写那台电脑上的用户名"},
@@ -4444,7 +4448,6 @@
     "ui.tailnet_ssh_host_key_changed": {"en-US": "Its SSH host key changed since it was added", "en-GB": "Its SSH host key changed since it was added", "zh-CN": "它的 SSH 主机密钥和添加时不一样了"},
     "ui.tailnet_ssh_failed": {"en-US": "Couldn’t sign in over SSH", "en-GB": "Couldn’t sign in over SSH", "zh-CN": "无法通过 SSH 登录"},
     "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your own computers", "en-GB": "Let agents build and test on your own computers", "zh-CN": "让 agent 用你自己的电脑构建、测试"},
-    "ui.tailnet_worker": {"en-US": "Worker", "en-GB": "Worker", "zh-CN": "工作机"},
     "ui.tailnet_add_worker": {"en-US": "Add", "en-GB": "Add", "zh-CN": "添加"},
     "ui.tailnet_available": {"en-US": "{n} available", "en-GB": "{n} available", "zh-CN": "{n} 台可添加"}
   },

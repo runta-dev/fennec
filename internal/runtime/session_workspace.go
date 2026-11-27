@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fennec/internal/localssh"
 	"fennec/internal/setup"
+	"fennec/internal/tailnet"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,13 @@ func FennecPrompt(home string, request LocalLaunch) (string, error) {
 		return "", err
 	}
 	quote := func(value string) string { raw, _ := json.Marshal(value); return string(raw) }
-	return strings.NewReplacer("{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
+	// The user can pick one worker computer for builds, compiles and tests
+	// (FEN-147); without one, nothing changes for the agent.
+	primary := ""
+	if alias := tailnet.PrimaryAlias(home); alias != "" {
+		primary = "- Primary worker computer for builds, compiles and tests: SSH alias " + quote(alias) + "\n"
+	}
+	return strings.NewReplacer("{{PRIMARY_WORKER}}", primary, "{{SESSION}}", quote(request.ID), "{{CLOUD_DIRECTORY}}", quote(filepath.Join(home, ".fen", request.ID)), "{{SSH_HOST}}", quote(localssh.RegisteredAlias(home, request.Device)), "{{LOCAL_DIRECTORY}}", quote(request.LocalDirectory)).Replace(fennecPromptTemplate), nil
 }
 func prepareSessionWorkspace(home string, request LocalLaunch) (string, error) {
 	prompt, err := FennecPrompt(home, request)

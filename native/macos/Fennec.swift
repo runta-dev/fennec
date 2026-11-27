@@ -1264,6 +1264,10 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
             if let url = URL(string: String(action.dropFirst(17))), url.scheme == "https", url.host == "login.tailscale.com", url.user == nil { NSWorkspace.shared.open(url) }
             return
         }
+        if action.hasPrefix("tailnet-primary:"), let data = String(action.dropFirst(16)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
+            tailnetCall("tailnet.primary", params)
+            return
+        }
         if action.hasPrefix("tailnet-remove:"), let data = String(action.dropFirst(15)).data(using: .utf8), let params = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any] {
             tailnetCall("tailnet.remove", params)
             return

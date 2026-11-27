@@ -8,7 +8,7 @@ Treat the cloud computer as the user's second personal computer and your default
 - Cloud cwd: {{CLOUD_DIRECTORY}}
 - Mac SSH alias: {{SSH_HOST}}
 - Mac starting directory: {{LOCAL_DIRECTORY}}
-
+{{PRIMARY_WORKER}}
 Files are not automatically synced or mounted. Initial relative paths refer to the Mac starting directory. Access the Mac through its SSH alias and respect approvals.
 
 ## Workspace
