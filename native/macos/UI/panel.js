@@ -1348,6 +1348,9 @@ window.renderRuntimeMetrics = payload => {
   memScaleState.hi = null;
  }
  drawRuntimeMetrics();
+ // Computers tab count: this Mac, plus the cloud computer while it is connected.
+ const computerCount = document.querySelector('#computer-count');
+ if (computerCount) computerCount.textContent = String(1 + (lastMetricsPayload.ready === true ? 1 : 0));
 };
 window.rerenderRuntimeMetrics = drawRuntimeMetrics;
 drawRuntimeMetrics();
