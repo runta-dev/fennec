@@ -192,7 +192,7 @@ func run() (int, error) {
 		}
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return 0, encoder.Encode(tailnet.ReadStatus(ctx, home, true))
+		return 0, encoder.Encode(tailnet.ReadStatusProbed(ctx, home))
 	}
 	if len(os.Args) == 3 && os.Args[1] == "queue-service" {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

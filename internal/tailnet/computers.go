@@ -403,6 +403,7 @@ type probeResult struct {
 var (
 	probesMu sync.Mutex
 	probes   = map[string]probeResult{}
+	probing  = map[string]bool{} // computers with an SSH check under way
 )
 
 func rememberProbe(id string, metrics *Metrics, code string) {
@@ -421,13 +422,16 @@ func forgetProbe(id string) {
 // the panel asks every few seconds while Computers is open.
 const probeInterval = 10 * time.Second
 
-func attachComputers(ctx context.Context, p paths, status *Status, refresh bool) {
+// attachComputers marks the tailnet's added computers. With refresh, due
+// computers are checked over SSH; unless wait, the checks run in the
+// background and a later status shows their result (FEN-147).
+func attachComputers(ctx context.Context, p paths, status *Status, refresh, wait bool) {
 	list := loadComputers(p)
 	byID := map[string]Computer{}
 	for _, c := range list {
 		byID[c.ID] = c
 	}
-	var wait sync.WaitGroup
+	var done sync.WaitGroup
 	for i := range status.Devices {
 		device := &status.Devices[i]
 		saved, ok := byID[device.ID]
@@ -440,23 +444,44 @@ func attachComputers(ctx context.Context, p paths, status *Status, refresh bool)
 		}
 		probesMu.Lock()
 		last, seen := probes[c.ID]
+		due := refresh && device.Online && !probing[c.ID] && (!seen || time.Since(last.at) >= probeInterval)
+		if due {
+			probing[c.ID] = true
+		}
 		probesMu.Unlock()
 		if seen {
 			c.Checked, c.Metrics, c.Error = last.at.Unix(), last.metrics, last.err
 		}
 		device.Computer = &c
-		if refresh && device.Online && (!seen || time.Since(last.at) >= probeInterval) {
-			wait.Add(1)
-			go func(device *Device, c Computer) {
-				defer wait.Done()
-				metrics, code := probe(ctx, p, c.Host, c.Port, c.User)
-				rememberProbe(c.ID, metrics, code)
+		if !due {
+			continue
+		}
+		run := func(device *Device, c Computer) {
+			probeCtx := context.Background()
+			if wait {
+				probeCtx = ctx
+			}
+			metrics, code := probe(probeCtx, p, c.Host, c.Port, c.User)
+			rememberProbe(c.ID, metrics, code)
+			probesMu.Lock()
+			delete(probing, c.ID)
+			probesMu.Unlock()
+			if wait {
 				c.Checked, c.Metrics, c.Error = time.Now().Unix(), metrics, code
 				device.Computer = &c
-			}(device, c)
+			}
 		}
+		if !wait {
+			go run(nil, c)
+			continue
+		}
+		done.Add(1)
+		go func(device *Device, c Computer) {
+			defer done.Done()
+			run(device, c)
+		}(device, c)
 	}
-	wait.Wait()
+	done.Wait()
 	for _, device := range status.Devices {
 		if device.Computer != nil && device.Computer.Host != byID[device.ID].Host {
 			// A peer's tailnet IP is stable, but keep the alias right if it moves.

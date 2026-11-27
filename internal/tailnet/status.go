@@ -44,8 +44,19 @@ func (n *node) device() Device {
 
 // ReadStatus reports Tailscale on the cloud computer and the tailnet's
 // devices. With probe, added computers that are online are checked over SSH
-// and their metrics refreshed.
+// in the background: the status carries their last result and never waits
+// for SSH, which takes up to 20 s for an unreachable computer (FEN-147).
 func ReadStatus(ctx context.Context, home string, probe bool) Status {
+	return readStatus(ctx, home, probe, false)
+}
+
+// ReadStatusProbed is ReadStatus with probe that waits for the SSH checks,
+// for a one-shot command whose process ends after printing.
+func ReadStatusProbed(ctx context.Context, home string) Status {
+	return readStatus(ctx, home, true, true)
+}
+
+func readStatus(ctx context.Context, home string, probe, wait bool) Status {
 	p := paths{home}
 	status := Status{State: "not_installed", Installed: p.installed(), Devices: []Device{}}
 	current := readJob(p)
@@ -88,7 +99,7 @@ func ReadStatus(ctx context.Context, home string, probe bool) Status {
 		status.PublicKey = key
 		status.Commands = AuthorizeCommands(key)
 	}
-	attachComputers(ctx, p, &status, probe)
+	attachComputers(ctx, p, &status, probe, wait)
 	return status
 }
 

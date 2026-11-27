@@ -109,16 +109,21 @@ func (s *daemonServices) tailnetCall(ctx context.Context, operation cloudops.Ope
 }
 
 // tailnetAutoAdd remembers when this Mac last tried to add itself, so a Mac
-// without Remote Login isn't retried on every poll.
+// without Remote Login isn't retried on every poll, and the last failed
+// attempt's device, which the status shows until an attempt succeeds.
 var tailnetAutoAdd struct {
 	sync.Mutex
-	tried map[string]time.Time
+	tried   map[string]time.Time
+	running map[string]bool
+	failed  map[string]json.RawMessage
 }
 
 // tailnetStatus is the cloud computer's tailnet plus what only the Mac
 // knows: which device is this Mac and the local user name. A Mac running
 // Fennec adds itself: it authorizes the cloud computer's key and asks the
-// cloud computer to sign in, so the user runs no command there.
+// cloud computer to sign in, so the user runs no command there. The sign-in
+// runs in the background: it waits for SSH, up to 20 s when this Mac isn't
+// reachable, and the panel shows "Loading…" until status answers (FEN-147).
 func (s *daemonServices) tailnetStatus(ctx context.Context, probe bool) (any, error) {
 	raw, err := s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_status", Tailnet: &tailnet.Request{Probe: probe}}, 25*time.Second)
 	if err != nil {
@@ -149,35 +154,59 @@ func (s *daemonServices) tailnetStatus(ctx context.Context, probe bool) (any, er
 	device := view.Devices[index]
 	status["this_device"] = device.ID
 	if device.Computer != nil && device.Computer.Error == "" || view.PublicKey == "" || name == "" {
+		tailnetAutoAdd.Lock()
+		delete(tailnetAutoAdd.failed, device.ID)
+		tailnetAutoAdd.Unlock()
 		return status, nil
 	}
 	tailnetAutoAdd.Lock()
 	if tailnetAutoAdd.tried == nil {
-		tailnetAutoAdd.tried = map[string]time.Time{}
+		tailnetAutoAdd.tried, tailnetAutoAdd.running, tailnetAutoAdd.failed = map[string]time.Time{}, map[string]bool{}, map[string]json.RawMessage{}
 	}
-	recent := time.Since(tailnetAutoAdd.tried[device.ID]) < time.Minute
-	if !recent {
+	due := !tailnetAutoAdd.running[device.ID] && time.Since(tailnetAutoAdd.tried[device.ID]) >= time.Minute
+	if due {
 		tailnetAutoAdd.tried[device.ID] = time.Now()
+		tailnetAutoAdd.running[device.ID] = true
 	}
+	failed := tailnetAutoAdd.failed[device.ID]
 	tailnetAutoAdd.Unlock()
-	if recent {
+	if failed != nil {
+		var replacement any
+		if devices, ok := status["devices"].([]any); ok && index < len(devices) && json.Unmarshal(failed, &replacement) == nil {
+			devices[index] = replacement
+		}
+	}
+	if !due {
 		return status, nil
 	}
 	if err = authorizeTailnetKey(s.home, view.PublicKey); err != nil {
+		tailnetAutoAdd.Lock()
+		tailnetAutoAdd.running[device.ID] = false
+		tailnetAutoAdd.Unlock()
 		status["this_device_error"] = "authorize_failed"
 		return status, nil
 	}
-	added, err := s.tailnetCall(ctx, cloudops.Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: device.ID, User: name}}, 25*time.Second)
-	var result tailnet.Device
-	if err != nil || json.Unmarshal(added, &result) != nil || result.Computer == nil {
-		return status, nil
-	}
-	if devices, ok := status["devices"].([]any); ok && index < len(devices) {
-		var replacement any
-		json.Unmarshal(added, &replacement)
-		devices[index] = replacement
-	}
+	go s.tailnetAddSelf(device.ID, name)
 	return status, nil
+}
+
+// tailnetAddSelf asks the cloud computer to sign in to this Mac and keeps a
+// failed result for later status calls. A success is saved on the cloud
+// computer, so status reports it from then on.
+func (s *daemonServices) tailnetAddSelf(id, name string) {
+	added, err := s.tailnetCall(context.Background(), cloudops.Operation{Kind: "tailnet_add", Tailnet: &tailnet.Request{ID: id, User: name}}, 25*time.Second)
+	var result tailnet.Device
+	tailnetAutoAdd.Lock()
+	defer tailnetAutoAdd.Unlock()
+	tailnetAutoAdd.running[id] = false
+	if err != nil || json.Unmarshal(added, &result) != nil || result.Computer == nil {
+		return
+	}
+	if result.Computer.Error == "" {
+		delete(tailnetAutoAdd.failed, id)
+		return
+	}
+	tailnetAutoAdd.failed[id] = added
 }
 
 func localUser() string {
