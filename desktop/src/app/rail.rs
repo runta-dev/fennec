@@ -1,0 +1,316 @@
+//! FEN-106: a narrow rail on the left edge, as in Discord, instead of the old
+//! sidebar. From the top: room for the traffic lights, the local terminal,
+//! the queues (one icon each), New queue, and Settings at the bottom. The
+//! queue column and the thread beside it fill the rest of the window.
+use super::*;
+
+/// The rail's width; the traffic lights (x 16–68) sit in its top.
+pub(crate) const RAIL_WIDTH: f32 = 72.0;
+/// A rail button's square.
+const RAIL_ITEM: f32 = 44.0;
+
+/// A rail button's name, shown beside it on hover.
+struct RailTooltip(SharedString);
+impl Render for RailTooltip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(9.0))
+            .py(px(5.0))
+            .rounded(px(7.0))
+            .bg(c("f_card"))
+            .border_1()
+            .border_color(c("f_field"))
+            .shadow_lg()
+            .text_size(px(12.5))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(c("f_text"))
+            .child(self.0.clone())
+    }
+}
+
+impl FennecWindow {
+    /// The queue to come back to from settings or a terminal: the one shown,
+    /// else the last one shown, else the first.
+    pub(super) fn home_route(&self) -> Option<Route> {
+        let id = self
+            .project_id()
+            .or_else(|| self.local_state.last_queue.clone())
+            .filter(|id| self.projects.iter().any(|p| &p.id == id))
+            .or_else(|| self.visible_projects().first().map(|p| p.id.clone()))?;
+        Some(Route::Project(id))
+    }
+
+    pub(super) fn go_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.home_route() {
+            Some(route) => self.go(route, window, cx),
+            None => {
+                self.route = None;
+                cx.notify();
+            }
+        }
+    }
+
+    /// ⌘N: the New request box, from anywhere (FEN-106). An open thread
+    /// stays open beside it.
+    pub(super) fn focus_new_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(self.route, Some(Route::Project(_))) {
+            self.go_home(window, cx);
+        }
+        self.menu = None;
+        self.queue_scroll.set_offset(point(px(0.0), px(0.0)));
+        self.composer.read(cx).focus_handle(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    /// ⌘K: search the queue's requests.
+    pub(super) fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(self.route, Some(Route::Project(_))) {
+            self.go_home(window, cx);
+        }
+        self.menu = None;
+        self.search.read(cx).focus_handle(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    /// The rail's terminal button: back to the terminal shown last, or a
+    /// new local shell. More shells open as tabs there (⌘T or +).
+    pub(super) fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let alive = |this: &Self, a: &String| {
+            this.layout.members.contains_key(a) || this.sessions.iter().any(|s| &s.address == a)
+        };
+        match self.last_terminal.clone().filter(|a| alive(self, a)) {
+            Some(address) => self.go(Route::Session(address), window, cx),
+            None => self.start_session(String::new(), window, cx),
+        }
+    }
+
+    /// The queue header's search field (⌘K).
+    pub(super) fn search_field(&self) -> Stateful<Div> {
+        h_flex()
+            .id("queue-search")
+            .w(px(180.0))
+            .flex_shrink(1.0)
+            .min_w(px(110.0))
+            .h(px(28.0))
+            .px(px(8.0))
+            .gap(px(7.0))
+            .rounded(px(7.0))
+            .bg(c("f_line"))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(ui::icon("search", 13.0, c("f_muted")))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(12.5))
+                    .child(Input::new(&self.search)),
+            )
+            .child(div().text_size(px(11.0)).text_color(c("f_muted")).child("⌘K"))
+    }
+
+    /// One rail button: a rounded square with a pill at the rail's left edge
+    /// for the shown item, and its name on hover.
+    fn rail_item(
+        &self,
+        id: SharedString,
+        name: SharedString,
+        selected: bool,
+        content: AnyElement,
+    ) -> Stateful<Div> {
+        let group = SharedString::from(format!("{id}-group"));
+        h_flex()
+            .id(id.clone())
+            .debug_selector({
+                let id = id.clone();
+                move || id.to_string()
+            })
+            .group(group.clone())
+            .relative()
+            .w_full()
+            .h(px(RAIL_ITEM))
+            .flex_none()
+            .justify_center()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .tooltip(move |_, cx| cx.new(|_| RailTooltip(name.clone())).into())
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(px(if selected { 4.0 } else { 14.0 }))
+                    .w(px(4.0))
+                    .h(px(if selected { 36.0 } else { 16.0 }))
+                    .rounded_r(px(3.0))
+                    .bg(c("f_text"))
+                    .when(!selected, |d| {
+                        d.opacity(0.0).group_hover(group.clone(), |s| s.opacity(1.0))
+                    }),
+            )
+            .child(
+                div()
+                    .size(px(RAIL_ITEM))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(content),
+            )
+    }
+
+    /// A glyph in a rounded square, for the rail's own buttons.
+    fn rail_glyph(icon: &'static str, selected: bool) -> AnyElement {
+        div()
+            .size(px(RAIL_ITEM))
+            .rounded(px(12.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(if selected { c("f_card") } else { c("f_line") })
+            .border_1()
+            .border_color(if selected { c("f_field") } else { transparent_black() })
+            .when(selected, |d| d.shadow(ui::selection_shadow()))
+            .child(ui::icon(icon, 19.0, if selected { c("f_text") } else { c("f_muted") }))
+            .into_any_element()
+    }
+
+    pub(super) fn rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let route = self.route.clone();
+        let queues: Vec<AnyElement> = self
+            .visible_projects()
+            .into_iter()
+            .map(|p| {
+                let selected = matches!(&route, Some(Route::Project(id) | Route::Settings(id, _)) if id == &p.id);
+                let id = p.id.clone();
+                let icon = div()
+                    .relative()
+                    .size(px(RAIL_ITEM))
+                    .child(ui::project_icon(p, RAIL_ITEM))
+                    .when(p.needs_you > 0, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .right(px(-4.0))
+                                .bottom(px(-4.0))
+                                .min_w(px(18.0))
+                                .h(px(18.0))
+                                .px(px(5.0))
+                                .rounded(px(9.0))
+                                .bg(c("orange"))
+                                .border_2()
+                                .border_color(c("f_bg"))
+                                .text_color(white())
+                                .text_size(px(10.5))
+                                .font_weight(FontWeight::BOLD)
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(p.needs_you.to_string()),
+                        )
+                    })
+                    .into_any_element();
+                self.context_row(
+                    self.rail_item(
+                        SharedString::from(format!("rail-queue-{}", p.id)),
+                        p.display_name().into(),
+                        selected,
+                        icon,
+                    ),
+                    context_menu::Target::Project(p.id.clone()),
+                    cx,
+                )
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if !event.is_right_click() && !event.modifiers().control {
+                        this.go(Route::Project(id.clone()), window, cx);
+                    }
+                }))
+                .into_any_element()
+            })
+            .collect();
+        let terminal_shown = matches!(route, Some(Route::Session(_)));
+        let settings_shown = route == Some(Route::AppSettings);
+        let separator = || div().w(px(32.0)).h(px(2.0)).my(px(2.0)).rounded(px(1.0)).bg(c("f_line")).flex_none();
+        v_flex()
+            .id("rail")
+            .debug_selector(|| "rail".into())
+            .w(px(RAIL_WIDTH))
+            .h_full()
+            .flex_none()
+            .items_center()
+            .bg(c("f_bg"))
+            .border_r_1()
+            .border_color(c("f_line"))
+            // The top moves the window; the traffic lights sit there.
+            .child(
+                div()
+                    .id("rail-titlebar")
+                    .w_full()
+                    .h(px(if self.full_screen { 12.0 } else { 46.0 }))
+                    .flex_none()
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar),
+            )
+            .child(
+                self.rail_item(
+                    "rail-terminal".into(),
+                    t("terminal").into(),
+                    terminal_shown,
+                    Self::rail_glyph("term", terminal_shown),
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.open_local_terminal(window, cx))),
+            )
+            .child(separator())
+            .child(
+                v_flex()
+                    .id("rail-queues")
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .items_center()
+                    .gap(px(8.0))
+                    .py(px(4.0))
+                    .children(queues)
+                    .child(
+                        self.rail_item(
+                            "rail-new-queue".into(),
+                            t("new_project").into(),
+                            false,
+                            Self::rail_glyph("plus", false),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| this.open_new_project(window, cx))),
+                    ),
+            )
+            .child(
+                div().w_full().pt(px(6.0)).pb(px(12.0)).flex_none().child(
+                    self.rail_item(
+                        "rail-settings".into(),
+                        t("settings").into(),
+                        settings_shown,
+                        Self::rail_glyph("gear", settings_shown),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| this.open_app_settings(window, cx))),
+                ),
+            )
+    }
+
+    /// No queue to show yet: a way to make the first one.
+    pub(super) fn no_queue(&self, _window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let loading = self.board_scope.is_none() || !self.projects.is_empty();
+        v_flex()
+            .id("no-queue")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .bg(c("background"))
+            .items_center()
+            .justify_center()
+            .gap(px(12.0))
+            .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+            .when(loading, |d| {
+                d.child(div().text_size(px(12.5)).text_color(c("f_muted")).child(t("loading")))
+            })
+            .when(!loading, |d| {
+                d.child(primary_button("first-queue", t("new_project")).on_click(
+                    cx.listener(|this, _, window, cx| this.open_new_project(window, cx)),
+                ))
+            })
+            .into_any_element()
+    }
+}

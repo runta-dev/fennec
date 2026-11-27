@@ -52,7 +52,7 @@ For isolated rendering, set `FENNEC_DESKTOP_PREVIEW` to the absolute path of
 reads fixture responses and never connects to the daemon or creates terminals.
 Set `FENNEC_PREVIEW_THEME=light|dark` and `FENNEC_LANGUAGE=en-US|zh-CN` as needed.
 Write `project:fennec`, `request:42`, `settings:fennec:general` (or `knowledge`,
-`queue`, `agents`), or `menu:tags|queues` to `<output.png>.request` to capture
+`queue`, `agents`), or `menu:tags` to `<output.png>.request` to capture
 that view. Fixtures prove visual layout only, not live runtime behavior.
 
 ## Keyboard preferences
@@ -85,15 +85,15 @@ restores focus to its active terminal, without stealing focus from project edito
 
 ## Layout (FEN-106)
 
-There is no sidebar: the queue thread is the one thing the window shows. The
-title bar holds the queue switcher (click the queue name for the other queues,
-New queue and Settings), search (Command-K) and the queue's settings. Below it
-are the queue column (New request box and request list, resizable) and the
-thread beside it. A posted request shows as a card under the box, which keeps
-focus.
+A narrow rail on the left edge replaces the sidebar, as in Discord. From the
+top: the traffic lights, the local terminal (back to the last terminal shown,
+or a new shell; more shells open as tabs), one icon per queue with its "needs
+you" count, New queue, and Settings at the bottom. Right-click a queue icon to
+rename or delete it. Right of the rail are the queue column (header with
+search, New request box and request list, resizable) and the thread beside it.
+A posted request shows as a card under the box, which keeps focus.
 
-A terminal opens only from a thread (its agent's peek card or View session);
-no shell opens by itself. Command-T still opens a local shell for debugging,
-without any button for it. Closing the last terminal returns to the queue;
+No shell opens by itself: a terminal opens from the rail or from a thread
+(its agent's peek card or View session), and Command-T adds a shell tab. Closing the last terminal returns to the queue;
 if its group has surviving shell tabs, an existing tab is promoted without
 restarting its process.

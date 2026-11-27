@@ -1,7 +1,7 @@
 //! Resizing the queue's request list against the thread beside it, using the
 //! same GPUI resize band as Herdr. The width persists through the daemon's
-//! `desktop.settings` as `queue_width` (THI-153). FEN-106 removed the sidebar,
-//! whose width used to be resized here too.
+//! `desktop.settings` as `queue_width` (THI-153). FEN-106 replaced the sidebar
+//! (whose width used to be resized here too) with a fixed rail.
 use super::*;
 use gpui_base::{HandleEdge, resize_handle};
 use serde_json::json;
@@ -27,13 +27,17 @@ impl Render for QueueDrag {
     }
 }
 impl FennecWindow {
-    fn queue_max(&self, window: &Window) -> f32 {
-        (f32::from(window.viewport_size().width) - THREAD_MIN).clamp(QUEUE_MIN, QUEUE_MAX)
+    /// Width left for the request list and the thread, right of the rail.
+    fn main_width(&self, window: &Window) -> f32 {
+        f32::from(window.viewport_size().width) - super::rail::RAIL_WIDTH
     }
-    /// 0 is the automatic width: 42% of the window, at most 460 px.
+    fn queue_max(&self, window: &Window) -> f32 {
+        (self.main_width(window) - THREAD_MIN).clamp(QUEUE_MIN, QUEUE_MAX)
+    }
+    /// 0 is the automatic width: 42% of the main area, at most 460 px.
     pub(super) fn queue_width(&self, window: &Window) -> f32 {
         match self.app_preferences.value.queue_width {
-            0 => (f32::from(window.viewport_size().width) * 0.42).min(460.0),
+            0 => (self.main_width(window) * 0.42).min(460.0),
             w => (w as f32).clamp(QUEUE_MIN, self.queue_max(window)),
         }
     }

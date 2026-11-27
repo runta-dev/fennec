@@ -55,7 +55,7 @@ fn resize_queue(cx: &mut VisualTestContext, delta: f32) {
 #[gpui::test]
 fn queue_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
     let (app, cx) = window(cx);
-    // Automatic: 42% of the 1200 px window, at most 460 (no sidebar since FEN-106).
+    // Automatic: 42% of the 1128 px beside the 72 px rail, at most 460.
     assert_eq!(width(cx), 460.0);
     resize_queue(cx, 100.0);
     assert_eq!(width(cx), 560.0);
@@ -70,7 +70,7 @@ fn queue_edge_drag_resizes_clamps_and_queues_one_save(cx: &mut TestAppContext) {
     assert_eq!(width(cx), 720.0);
     // A narrower window shrinks a saved width without forgetting it.
     cx.simulate_resize(gpui::size(px(900.0), px(800.0)));
-    assert_eq!(width(cx), 540.0);
+    assert_eq!(width(cx), 468.0);
     app.read_with(cx, |app, _| assert_eq!(app.app_preferences.value.queue_width, 720));
 }
 

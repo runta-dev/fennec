@@ -23,7 +23,7 @@ mod thread_question;
 mod thread_links;
 mod thread_tags;
 mod thread_wait;
-mod titlebar;
+mod rail;
 mod queue_resize;
 #[cfg(test)]
 mod reply_tests;
@@ -62,8 +62,6 @@ pub(crate) enum Route {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Menu {
-    /// FEN-106: the queue switcher under the title bar's queue name.
-    Queues,
     RequestTag,
     /// THI-133: check and uncheck the open thread's tags.
     ThreadTags,
@@ -193,6 +191,8 @@ pub struct FennecWindow {
     /// Whether the window is in native full screen in this frame. macOS hides
     /// the traffic lights there, so title rows don't leave room for them (FEN-101).
     full_screen: bool,
+    /// The terminal the rail's terminal button goes back to.
+    last_terminal: Option<String>,
     /// Queue cards easing to a new place after their status moved them.
     queue_glide: glide::Shared,
     /// The Active / Done highlight sliding between the tabs.
@@ -392,6 +392,7 @@ impl FennecWindow {
 		    opening_thread_session: false,
             notice: None,
             full_screen: false,
+            last_terminal: None,
             queue_glide: Default::default(),
             status_slide: Default::default(),
             queue_scroll: ScrollHandle::new(),
@@ -511,16 +512,10 @@ impl FennecWindow {
         match (parts.next(), parts.next(), parts.next()) {
             (Some("app-settings"), _, _) => self.open_app_settings(window, cx),
             (Some("menu"), Some(kind), _) if crate::preview::active() => {
-                self.menu = Some(if kind == "tags" {
-                    Menu::RequestTag
-                } else {
-                    Menu::Queues
-                });
-                self.menu_anchor = if kind == "tags" {
-                    point(px(498.0), px(158.0))
-                } else {
-                    self.queue_menu_anchor(window)
-                };
+                if kind == "tags" {
+                    self.menu = Some(Menu::RequestTag);
+                    self.menu_anchor = point(px(498.0), px(158.0));
+                }
             }
             (Some("project"), Some(id), _) => self.go(Route::Project(id.into()), window, cx),
             (Some("request"), Some(n), _) => {
@@ -1889,22 +1884,6 @@ impl FennecWindow {
 
     // ---------- organization, new project, new session ----------
 
-    /// Where a title row's content starts: just right of the traffic lights,
-    /// or near the window's edge in full screen, where macOS hides them (FEN-101).
-    fn traffic_lights_inset(&self) -> f32 {
-        if self.full_screen {
-            TRAFFIC_LIGHTS_INSET_FULL_SCREEN
-        } else {
-            TRAFFIC_LIGHTS_INSET
-        }
-    }
-
-    /// The left inset of a title row whose own inset is `base`: it clears the
-    /// traffic lights.
-    pub(crate) fn title_inset(&self, base: f32) -> Pixels {
-        px(base.max(self.traffic_lights_inset()))
-    }
-
     fn menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.menu?;
         if self.menu == Some(Menu::ThreadTags) {
@@ -1958,112 +1937,7 @@ impl FennecWindow {
             );
         }
 
-        // FEN-106: the queue switcher's menu, opened from the queue name in the
-        // title bar. It replaces the sidebar's queue list, New queue and Settings.
-        let item = |id: SharedString| {
-            h_flex()
-                .id(id)
-                .h(px(32.0))
-                .flex_none()
-                .px(px(9.0))
-                .gap(px(9.0))
-                .rounded(px(6.0))
-                .text_size(px(13.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(c("f_text"))
-                .hover(|s| s.bg(c("f_expanded")))
-        };
-        let current = self.project_id();
-        let mut items: Vec<AnyElement> = self
-            .visible_projects()
-            .into_iter()
-            .map(|p| {
-                let id = p.id.clone();
-                self.context_row(
-                    item(SharedString::from(format!("queue-option-{}", p.id)))
-                        .debug_selector(|| format!("queue-option-{}", p.id)),
-                    context_menu::Target::Project(p.id.clone()),
-                    cx,
-                )
-                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                    if !event.is_right_click() && !event.modifiers().control {
-                        this.menu = None;
-                        this.go(Route::Project(id.clone()), window, cx);
-                    }
-                }))
-                .child(ui::project_icon(p, 18.0))
-                .child(div().flex_1().min_w_0().truncate().child(p.display_name()))
-                .when(p.needs_you > 0, |d| {
-                    d.child(
-                        div()
-                            .min_w(px(18.0))
-                            .h(px(17.0))
-                            .px(px(5.0))
-                            .rounded(px(9.0))
-                            .bg(c("tint"))
-                            .border_1()
-                            .border_color(c("orange").opacity(0.3))
-                            .text_color(c("accent_text"))
-                            .text_size(px(10.5))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(p.needs_you.to_string()),
-                    )
-                })
-                .when(current.as_deref() == Some(p.id.as_str()), |d| {
-                    d.child(ui::icon("check", 13.0, c("orange")))
-                })
-                .into_any_element()
-            })
-            .collect();
-        if !items.is_empty() {
-            items.push(div().h(px(1.0)).mx(px(4.0)).my(px(4.0)).bg(c("f_line")).into_any_element());
-        }
-        items.push(
-            item("queue-menu-new".into())
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.menu = None;
-                    this.open_new_project(window, cx)
-                }))
-                .child(div().size(px(18.0)).flex().items_center().justify_center().child(ui::icon("plus", 14.0, c("f_muted"))))
-                .child(t("new_project"))
-                .into_any_element(),
-        );
-        items.push(
-            item("queue-menu-settings".into())
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.menu = None;
-                    this.open_app_settings(window, cx)
-                }))
-                .child(div().size(px(18.0)).flex().items_center().justify_center().child(ui::icon("gear", 14.0, c("f_muted"))))
-                .child(div().flex_1().child(t("settings")))
-                .child(div().text_size(px(11.5)).text_color(c("f_muted")).child("⌘,"))
-                .into_any_element(),
-        );
-        Some(
-            v_flex()
-                .id("queue-menu")
-                .absolute()
-                .top(self.menu_anchor.y)
-                .left(self.menu_anchor.x)
-                .w(px(260.0))
-                .max_h(px(420.0))
-                .overflow_y_scroll()
-                .p(px(5.0))
-                .rounded(px(9.0))
-                .bg(c("f_card"))
-                .border_1()
-                .border_color(c("f_field"))
-                .shadow_lg()
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    this.menu = None;
-                    cx.notify();
-                }))
-                .occlude()
-                .children(items)
-                .into_any_element(),
-        )
+        None
     }
 
     fn start_session(&mut self, agent: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -2575,6 +2449,69 @@ impl FennecWindow {
             .bg(c("background"))
             .border_r_1()
             .border_color(c("f_line"))
+            .child(
+                h_flex()
+                    .id("project-head")
+                    .h(px(58.0))
+                    .flex_none()
+                    .px(px(18.0))
+                    .gap(px(11.0))
+                    .border_b_1()
+                    .border_color(c("f_line"))
+                    .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
+                    .child(ui::project_icon(p, 30.0))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(c("f_text"))
+                                    .truncate()
+                                    .child(p.display_name()),
+                            )
+                            .when(!p.description.is_empty(), |d| {
+                                d.child(
+                                    div()
+                                        .text_size(px(11.5))
+                                        .text_color(c("f_muted"))
+                                        .truncate()
+                                        .child(p.display_description()),
+                                )
+                            }),
+                    )
+                    .when(p.sync_status == "offline", |d| {
+                        d.child(offline_badge(&p.synced_at, now))
+                    })
+                    // FEN-106: search moved here from the sidebar (⌘K).
+                    .child(self.search_field())
+                    .child({
+                        let id = p.id.clone();
+                        div()
+                            .id("project-settings")
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .size(px(28.0))
+                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .hover(|s| s.bg(c("f_line")))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.go(
+                                    Route::Settings(
+                                        id.clone(),
+                                        crate::project_settings::Tab::General,
+                                    ),
+                                    window,
+                                    cx,
+                                )
+                            }))
+                            .child(ui::icon("gear", 15.0, c("f_muted")))
+                    }),
+            )
             .child(
                 v_flex()
                     .id("requests")
@@ -3243,23 +3180,14 @@ impl FennecWindow {
             .child(
                 h_flex()
                     .id("tabs")
-                    // Tall enough to hold the traffic lights.
-                    .h(px(TITLEBAR_HEIGHT))
+                    .h(px(TAB_ROW_HEIGHT))
                     .flex_none()
                     .px(px(10.0))
-                    .pl(self.title_inset(10.0))
                     .gap(px(8.0))
                     .bg(c("f_bg"))
                     .border_b_1()
                     .border_color(c("f_line"))
                     .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-                    // FEN-106: a terminal is reached from a thread (or the hidden
-                    // ⌘T); this goes back to the queue.
-                    .child(
-                        ui::icon_button("session-back", "back").on_click(cx.listener(
-                            |this, _, window, cx| this.go_home(window, cx),
-                        )),
-                    )
                     .child(self.tab_strip(address, cx))
                     .child(div().flex_1())
                     .when_some(request_status, |d, status| {
@@ -3382,29 +3310,23 @@ impl Render for FennecWindow {
         self.sync_input_styles(cx);
         self.step_tabs(window, cx);
         let route = self.route.clone();
+        if let Some(Route::Session(address)) = &route {
+            self.last_terminal = Some(address.clone());
+        }
         if !matches!(route, Some(Route::Project(_))) {
             // Hidden meanwhile: the queue's cards are placed at once when it shows again.
             self.queue_glide.borrow_mut().reset();
         }
         let main = match &route {
             Some(Route::AppSettings) => self.desktop_preferences_view(cx).into_any_element(),
-            // FEN-106: the title bar (queue switcher, search) over the queue
-            // column and the thread beside it.
+            // The queue column and the thread beside it, right of the rail.
             Some(Route::Project(id)) => match self.projects.iter().find(|p| &p.id == id).cloned() {
-                Some(p) => v_flex()
+                Some(p) => h_flex()
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .bg(c("background"))
-                    .child(self.titlebar(Some(&p), window, cx))
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_h_0()
-                            .w_full()
-                            .child(self.project(&p, window, cx))
-                            .child(self.thread(&p, window, cx)),
-                    )
+                    .child(self.project(&p, window, cx))
+                    .child(self.thread(&p, window, cx))
                     .into_any_element(),
                 None => self.no_queue(window, cx),
             },
@@ -3511,6 +3433,7 @@ impl Render for FennecWindow {
                     cx.stop_propagation();
                 }
             }))
+            .child(self.rail(cx))
             .child(
                 div()
                     .relative()
@@ -3557,12 +3480,8 @@ impl Render for FennecWindow {
     }
 }
 
-/// Title rows start just right of the traffic lights.
-const TRAFFIC_LIGHTS_INSET: f32 = 84.0;
-/// In full screen macOS hides the traffic lights, so title rows start near the edge (FEN-101).
-const TRAFFIC_LIGHTS_INSET_FULL_SCREEN: f32 = 14.0;
-/// The title bar above the column: queue switcher and search.
-const TITLEBAR_HEIGHT: f32 = 46.0;
+/// The terminal view's tab row.
+const TAB_ROW_HEIGHT: f32 = 46.0;
 
 fn empty() -> AnyElement {
     div()
