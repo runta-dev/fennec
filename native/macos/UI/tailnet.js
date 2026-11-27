@@ -33,6 +33,7 @@
     auth_failed: '[[i18n:ui.tailnet_ssh_auth_failed]]',
     refused: '[[i18n:ui.tailnet_ssh_refused]]',
     unreachable: '[[i18n:ui.tailnet_ssh_unreachable]]',
+    shields_up: '[[i18n:ui.tailnet_ssh_shields_up]]',
     host_key_changed: '[[i18n:ui.tailnet_ssh_host_key_changed]]',
     ssh_failed: '[[i18n:ui.tailnet_ssh_failed]]',
   };

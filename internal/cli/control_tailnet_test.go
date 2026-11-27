@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAuthorizeTailnetKey(t *testing.T) {
@@ -25,5 +27,35 @@ func TestAuthorizeTailnetKey(t *testing.T) {
 	}
 	if authorizeTailnetKey(home, "not a key") == nil || authorizeTailnetKey(home, `command="x" AAAA`) == nil {
 		t.Fatal("invalid key accepted")
+	}
+}
+
+func TestLocalShieldsUpMarksThisDevice(t *testing.T) {
+	saved := tailscalePrefs
+	t.Cleanup(func() { tailscalePrefs = saved; shieldsCache.at = time.Time{} })
+	for _, tc := range []struct {
+		prefs string
+		err   error
+		want  bool
+	}{
+		{`{"ShieldsUp": true, "RunSSH": false}`, nil, true},
+		{`{"ShieldsUp": false}`, nil, false},
+		{``, os.ErrNotExist, false},
+	} {
+		shieldsCache.at = time.Time{}
+		tailscalePrefs = func(context.Context) ([]byte, error) { return []byte(tc.prefs), tc.err }
+		if got := localShieldsUp(); got != tc.want {
+			t.Fatalf("prefs %q: shields up = %v", tc.prefs, got)
+		}
+	}
+	status := map[string]any{"devices": []any{map[string]any{"id": "a"}, map[string]any{"id": "b", "computer": map[string]any{"error": "unreachable", "user": "me"}}}}
+	markThisDevice(status, 1, "shields_up")
+	computer := status["devices"].([]any)[1].(map[string]any)["computer"].(map[string]any)
+	if computer["error"] != "shields_up" || computer["user"] != "me" {
+		t.Fatalf("computer = %v", computer)
+	}
+	markThisDevice(status, 0, "shields_up")
+	if status["devices"].([]any)[0].(map[string]any)["computer"].(map[string]any)["error"] != "shields_up" {
+		t.Fatal("device without a computer not marked")
 	}
 }

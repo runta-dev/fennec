@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -159,6 +160,12 @@ func (s *daemonServices) tailnetStatus(ctx context.Context, probe bool) (any, er
 		tailnetAutoAdd.Unlock()
 		return status, nil
 	}
+	// With "Allow incoming connections" off, Tailscale on this Mac drops the
+	// cloud computer's SSH: say so instead of a timeout, and don't retry.
+	if localShieldsUp() {
+		markThisDevice(status, index, tailnet.ErrShieldsUp)
+		return status, nil
+	}
 	tailnetAutoAdd.Lock()
 	if tailnetAutoAdd.tried == nil {
 		tailnetAutoAdd.tried, tailnetAutoAdd.running, tailnetAutoAdd.failed = map[string]time.Time{}, map[string]bool{}, map[string]json.RawMessage{}
@@ -207,6 +214,59 @@ func (s *daemonServices) tailnetAddSelf(id, name string) {
 		return
 	}
 	tailnetAutoAdd.failed[id] = added
+}
+
+// markThisDevice sets this Mac's computer error in a status payload.
+func markThisDevice(status map[string]any, index int, code string) {
+	devices, ok := status["devices"].([]any)
+	if !ok || index >= len(devices) {
+		return
+	}
+	device, ok := devices[index].(map[string]any)
+	if !ok {
+		return
+	}
+	computer, _ := device["computer"].(map[string]any)
+	if computer == nil {
+		computer = map[string]any{}
+	}
+	computer["error"] = code
+	device["computer"] = computer
+}
+
+// tailscalePrefs reads this Mac's Tailscale preferences as JSON. The app's
+// bundled CLI works for both the App Store and the standalone app.
+var tailscalePrefs = func(ctx context.Context) ([]byte, error) {
+	for _, path := range []string{"/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"} {
+		if _, err := os.Stat(path); err == nil {
+			return exec.CommandContext(ctx, path, "debug", "prefs").Output()
+		}
+	}
+	return nil, os.ErrNotExist
+}
+
+var shieldsCache struct {
+	sync.Mutex
+	at time.Time
+	up bool
+}
+
+// localShieldsUp reports whether Tailscale on this Mac blocks incoming
+// connections (ShieldsUp). Unknown counts as no. The answer is kept 10 s,
+// because the panel polls status every few seconds.
+func localShieldsUp() bool {
+	shieldsCache.Lock()
+	defer shieldsCache.Unlock()
+	if time.Since(shieldsCache.at) < 10*time.Second {
+		return shieldsCache.up
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var prefs struct{ ShieldsUp bool }
+	raw, err := tailscalePrefs(ctx)
+	shieldsCache.up = err == nil && json.Unmarshal(raw, &prefs) == nil && prefs.ShieldsUp
+	shieldsCache.at = time.Now()
+	return shieldsCache.up
 }
 
 func localUser() string {
