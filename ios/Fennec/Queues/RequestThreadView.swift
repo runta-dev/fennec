@@ -38,8 +38,12 @@ struct RequestThreadView: View {
                                 ThreadMessage(message: message, project: project, openRequest: { n in path.append(.thread(projectID, n)) })
                             }
                             if request.status_ == .failed { FailureCard(request: request) }
-                            statusCard(request, project).id("status")
+                            statusCard(request, project)
                             actions(request)
+                            // Scroll target under everything (FEN-114). It was the
+                            // status card, so opening a thread stopped above Mark
+                            // done, and in review (no card) it had nothing to hit.
+                            Color.clear.frame(height: 1).id("bottom")
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
@@ -50,8 +54,15 @@ struct RequestThreadView: View {
                     .onChange(of: request.messages?.count) { old, _ in
                         // The first full load jumps without animation; only new
                         // messages in an open thread slide in.
-                        if old == nil { proxy.scrollTo("status", anchor: .bottom) }
-                        else { withAnimation { proxy.scrollTo("status", anchor: .bottom) } }
+                        if old == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                        else { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    }
+                    .task(id: number) {
+                        // Markdown, images and the composer inset settle after the
+                        // first layout; land on the real bottom once they have,
+                        // like ChatView does.
+                        try? await Task.sleep(for: .milliseconds(250))
+                        proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottom(request, project) }
