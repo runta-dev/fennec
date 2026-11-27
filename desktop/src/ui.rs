@@ -238,29 +238,32 @@ pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
         .text_color(color)
 }
 
-/// A shortcut whose keys are glyphs or letters (⌘, N), drawn as the same
-/// outlined keycaps as `shortcut_hint`, followed by its label.
-pub fn text_shortcut_hint(keys: &[&str], label: String) -> Div {
+/// A shortcut such as "⌘⇧N" drawn as outlined keycaps, one per modifier glyph
+/// and one for the key itself (FEN-189's empty thread pane).
+pub fn keycaps(shortcut: &str) -> Div {
     let muted = c("f_muted");
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .child(div().flex().items_center().gap(px(3.0)).children(keys.iter().map(|k| {
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .min_w(px(20.0))
-                .h(px(20.0))
-                .px(px(4.0))
-                .rounded(px(5.0))
-                .border_1()
-                .border_color(muted.opacity(0.35))
-                .text_size(px(11.0))
-                .child(k.to_string())
-        })))
-        .child(label)
+    let key_start = shortcut
+        .char_indices()
+        .find(|(_, ch)| !matches!(ch, '⌘' | '⌃' | '⌥' | '⇧'))
+        .map_or(shortcut.len(), |(i, _)| i);
+    let caps = shortcut[..key_start]
+        .chars()
+        .map(String::from)
+        .chain((key_start < shortcut.len()).then(|| shortcut[key_start..].to_owned()));
+    div().flex().items_center().gap(px(3.0)).children(caps.map(|k| {
+        div()
+            .flex()
+            .items_center()
+            .justify_center()
+            .min_w(px(20.0))
+            .h(px(20.0))
+            .px(px(5.0))
+            .rounded(px(5.0))
+            .border_1()
+            .border_color(muted.opacity(0.35))
+            .text_size(px(11.0))
+            .child(k)
+    }))
 }
 
 /// A keyboard shortcut drawn as small keycaps followed by its label,

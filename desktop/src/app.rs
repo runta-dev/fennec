@@ -2689,7 +2689,7 @@ impl FennecWindow {
                 .bg(c("background"))
                 .items_center()
                 .justify_center()
-                .child(empty_thread(self.requests.get(&p.id).is_some_and(|l| !l.is_empty())))
+                .child(empty_thread())
                 .child(
                     div()
                         .id("thread-head-empty")
@@ -3537,52 +3537,32 @@ fn empty() -> AnyElement {
         .into_any_element()
 }
 
-/// The thread pane with no request open (FEN-189): a quiet, centered card that
-/// says what goes here and how to get started, instead of a lone faint icon.
-fn empty_thread(has_requests: bool) -> impl IntoElement {
-    let muted = c("f_muted");
-    v_flex()
-        .items_center()
-        .max_w(px(360.0))
-        .px(px(24.0))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(52.0))
-                .rounded(px(14.0))
-                .bg(c("f_card"))
-                .border_1()
-                .border_color(c("f_line"))
-                .child(ui::icon("chat", 24.0, muted)),
-        )
-        .child(
-            div()
-                .mt(px(18.0))
-                .text_size(px(15.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(c("f_text"))
-                .child(if has_requests { t("empty_thread_title") } else { t("empty_queue_title") }),
-        )
-        .child(
-            div()
-                .mt(px(6.0))
-                .text_size(px(12.5))
-                .line_height(px(19.0))
-                .text_center()
-                .text_color(muted)
-                .child(if has_requests { t("empty_thread_body") } else { t("empty_queue_body") }),
-        )
-        .child(
-            h_flex()
-                .mt(px(22.0))
-                .gap(px(18.0))
-                .text_size(px(12.0))
-                .text_color(muted)
-                .child(ui::text_shortcut_hint(&["⌘", "N"], t("new_request")))
-                .when(has_requests, |d| d.child(ui::text_shortcut_hint(&["⌘", "K"], t("search")))),
-        )
+/// The thread pane with no request open (FEN-189): only a quiet, aligned table
+/// of the window's shortcuts, labels on the left and keycaps on the right, the
+/// way Zed and VS Code fill an empty editor. Keys come from the active keymap,
+/// so a rebinding in desktop-keys.json shows here; an unbound action is left out.
+fn empty_thread() -> impl IntoElement {
+    let search = if cfg!(target_os = "macos") { "⌘K" } else { "⌃K" };
+    let rows: Vec<(String, String)> = [
+        (t("new_request"), crate::keys::shortcut("request.new")),
+        (t("search"), search.to_owned()),
+        (t("empty_new_tab"), crate::keys::shortcut("tab.new")),
+        (t("settings"), crate::keys::shortcut("app.settings")),
+    ]
+    .into_iter()
+    .filter_map(|(label, keys)| {
+        // Several bindings for one action read "⌘N / ⌃N"; show the first.
+        let first = keys.split(" / ").next().unwrap_or_default().to_owned();
+        (!first.is_empty()).then_some((label, first))
+    })
+    .collect();
+    let row = || h_flex().h(px(30.0)).items_center();
+    h_flex()
+        .gap(px(14.0))
+        .text_size(px(12.5))
+        .text_color(c("f_muted"))
+        .child(v_flex().items_end().children(rows.iter().map(|(label, _)| row().child(label.clone()))))
+        .child(v_flex().children(rows.iter().map(|(_, keys)| row().child(ui::keycaps(keys)))))
 }
 
 /// The Mac shows its replica of the board. While the cloud is unreachable that
