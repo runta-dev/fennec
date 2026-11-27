@@ -9,23 +9,83 @@ pub(crate) const RAIL_WIDTH: f32 = 72.0;
 /// A rail button's square.
 const RAIL_ITEM: f32 = 44.0;
 
-/// A rail button's name, shown beside it on hover.
-struct RailTooltip(SharedString);
-impl Render for RailTooltip {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px(px(9.0))
-            .py(px(5.0))
-            .rounded(px(7.0))
-            .bg(c("f_card"))
-            .border_1()
-            .border_color(c("f_field"))
-            .shadow_lg()
-            .text_size(px(12.5))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(c("f_text"))
-            .child(self.0.clone())
-    }
+/// The arrow's length; it points at the rail button from the tooltip's left.
+const TOOLTIP_ARROW: f32 = 6.0;
+
+/// FEN-119: a rail button's name, as in Discord: a dark bubble to the right
+/// of the button, centred on it, with an arrow pointing back at it. Shown at
+/// once while the button is hovered (`group`), not after gpui's tooltip delay
+/// at the mouse.
+fn rail_tooltip(name: SharedString, group: SharedString) -> impl IntoElement {
+    let dark = crate::settings::get().dark;
+    let bg = if dark { rgb(0x111214).into() } else { c("f_card") };
+    let border = c("f_field");
+    let arrow = canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let o = bounds.origin;
+            let (w, h) = (bounds.size.width, bounds.size.height);
+            let tip = point(o.x, o.y + h / 2.0);
+            let top = point(o.x + w, o.y);
+            let bottom = point(o.x + w, o.y + h);
+            let mut body = PathBuilder::fill();
+            body.move_to(tip);
+            body.line_to(top);
+            body.line_to(bottom);
+            body.close();
+            if let Ok(path) = body.build() {
+                window.paint_path(path, bg);
+            }
+            let mut edge = PathBuilder::stroke(px(1.0));
+            edge.move_to(top);
+            edge.line_to(tip);
+            edge.line_to(bottom);
+            if let Ok(path) = edge.build() {
+                window.paint_path(path, border);
+            }
+        },
+    )
+    // One pixel more than the arrow, to cover the bubble's border under it.
+    .w(px(TOOLTIP_ARROW + 1.0))
+    .h(px(TOOLTIP_ARROW * 2.0));
+    deferred(
+        h_flex()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            // The button's right edge, plus a gap, plus the arrow.
+            .left(px((RAIL_WIDTH + RAIL_ITEM) / 2.0 + 6.0 + TOOLTIP_ARROW))
+            .items_center()
+            .invisible()
+            .group_hover(group, |s| s.visible())
+            .child(
+                div()
+                    .relative()
+                    .flex_none()
+                    .px(px(12.0))
+                    .py(px(7.0))
+                    .rounded(px(8.0))
+                    .bg(bg)
+                    .border_1()
+                    .border_color(border)
+                    .shadow_lg()
+                    .whitespace_nowrap()
+                    .text_size(px(14.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(c("f_text"))
+                    .child(name)
+                    .child(
+                        h_flex()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .left(px(-TOOLTIP_ARROW))
+                            .items_center()
+                            .child(arrow),
+                    ),
+            ),
+    )
+    .with_priority(2)
 }
 
 impl FennecWindow {
@@ -131,7 +191,6 @@ impl FennecWindow {
             .flex_none()
             .justify_center()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .tooltip(move |_, cx| cx.new(|_| RailTooltip(name.clone())).into())
             .child(
                 div()
                     .absolute()
@@ -153,6 +212,7 @@ impl FennecWindow {
                     .justify_center()
                     .child(content),
             )
+            .child(rail_tooltip(name, group))
     }
 
     /// A glyph in a rounded square, for the rail's own buttons.
