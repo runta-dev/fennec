@@ -404,6 +404,16 @@
     const icon = el('span', 'billing-field-icon tailnet-icon');
     icon.innerHTML = markSVG;
     title.append(icon, el('span', 'runtime-metrics-title', t('[[i18n:ui.tailnet_title]]')));
+    // What worker computers are for lives in an info tooltip, like other
+    // settings' explanations, instead of a line in the card (FEN-147).
+    const info = el('span', 'setting-info tailnet-info');
+    info.innerHTML = '<button type="button" class="setting-info-button" aria-describedby="tailnet-info-tip"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 9v5"/><circle cx="10" cy="6" r=".8" fill="currentColor" stroke="none"/></svg></button>';
+    info.firstChild.ariaLabel = t('[[i18n:ui.tailnet_title]]');
+    const tip = el('span', 'setting-tooltip', t('[[i18n:ui.tailnet_card_intro]]'));
+    tip.id = 'tailnet-info-tip';
+    tip.setAttribute('role', 'tooltip');
+    info.append(tip);
+    title.append(info);
     head.append(title);
     // Before Tailscale is signed in, Add opens Settings › Tailscale. After,
     // the card lists every tailnet device with its own "Add", so
@@ -425,8 +435,8 @@
       head.append(link);
     }
     cardHead.append(head);
-    // Say what worker computers are for until the tailnet is set up.
-    if (!running) cardHead.append(el('p', 'tailnet-card-intro' + (s?.error ? ' is-error' : ''), t(s?.error ? '[[i18n:ui.tailnet_problem_open]]' : '[[i18n:ui.tailnet_card_intro]]')));
+    // A Tailscale problem is said under the title; what the card is for is in the info tooltip.
+    if (!running && s?.error) cardHead.append(el('p', 'tailnet-card-intro is-error', t('[[i18n:ui.tailnet_problem_open]]')));
     if (!s || requestError === 'login_required') { window.updateComputerCount?.(); return; }
     if (!running) { window.updateComputerCount?.(); return; }
     // This Mac is the first worker computer above, through the Fennec relay;
