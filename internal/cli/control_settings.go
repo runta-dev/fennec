@@ -47,9 +47,6 @@ type desktopPreferences struct {
 	// The Agents view's Get started card: hidden by the user, or finished.
 	GetStartedHidden bool `json:"get_started_hidden,omitempty"`
 	GetStartedDone   bool `json:"get_started_done,omitempty"`
-	// FennecTerminal opens the Fennec Terminal window (Contents/MacOS/fennec-desktop)
-	// when the bundle carries it. Off unless the user turns it on.
-	FennecTerminal bool `json:"fennec_terminal,omitempty"`
 }
 
 // magpieFor reports whether Magpie serves agent: on in Settings, not turned off
@@ -235,7 +232,6 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 			PredictiveEcho   *string         `json:"predictive_echo"`
 			GetStartedHidden *bool           `json:"get_started_hidden"`
 			GetStartedDone   *bool           `json:"get_started_done"`
-			FennecTerminal   *bool           `json:"fennec_terminal"`
 		}
 		if json.Unmarshal(raw, &request) != nil {
 			return nil, &control.Fault{Code: "invalid_params", Message: "Invalid settings"}
@@ -292,9 +288,6 @@ func (s *desktopSettings) set(importing bool) control.Handler {
 		}
 		if request.GetStartedHidden != nil && !importing {
 			next.GetStartedHidden = *request.GetStartedHidden
-		}
-		if request.FennecTerminal != nil && !importing {
-			next.FennecTerminal = *request.FennecTerminal
 		}
 		if request.GetStartedDone != nil && !importing {
 			// Completion records a successful first use, not current cloud readiness.

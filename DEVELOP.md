@@ -23,12 +23,11 @@ open build/Fennec.app
 The Fennec Terminal window (`desktop/`, Rust with GPUI) is built only with
 `FENNEC_BUILD_DESKTOP=1`, which needs Rust, Zig 0.16 and the `desktop/vendor`
 submodules (see `desktop/README.md`). Without it the bundle has no
-`fennec-desktop`, `hc` or `fennec-hc*`, and Settings hides the **Fennec
-Terminal** switch; with it, the switch (off by default, also
-`fen settings fennec-terminal on|off`) opens the window at launch and from
-the menu.
-Release builds always include it (see "Signed macOS releases"), so the switch
-is there for every user and stays off until they turn it on.
+`fennec-desktop`, `hc` or `fennec-hc*`, and Fennec stays menu-bar only; with
+it, the window is always on: it opens at launch and from the menu. There is no
+setting for it (FEN-171 removed the Settings switch).
+Release builds always include it (see "Signed macOS releases"), so every user
+gets the window.
 
 Local builds are versioned `0.3.<MMDDHHMM>-dev` (Singapore time), shown in the menu
 and Settings, and never install a release over themselves. Release packaging sets

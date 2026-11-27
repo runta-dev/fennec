@@ -755,7 +755,6 @@ window.renderMagpieAgents = agents => {
 window.renderPreferences = value => {
 
  window.renderMagpiePreference(value.magpie === true);
- window.renderFennecTerminalPreference?.(value.fennec_terminal === true);
  window.renderMagpieAgents(value.magpie_off_agents);
  window.renderUpdatePreferences?.(value);
  window.renderDeveloperPreferences?.(value);
@@ -782,22 +781,6 @@ let magpieOffAgents = new Set();
 const magpieSwitch = document.querySelector('#magpie-integration');
 if(magpieSwitch) magpieSwitch.onclick=()=>toggleMagpie();
 const loginItemApproval = document.querySelector('#login-item-approval');
-// Fennec Terminal (the desktop window) is shown only when this build carries it.
-// The switch reflects the saved setting; a change waits for its confirmation.
-const fennecTerminalSwitch = document.querySelector('#fennec-terminal');
-window.renderFennecTerminalAvailable = available => {
-  const row = document.querySelector('#fennec-terminal-row');
-  if (row) row.hidden = available !== true;
-};
-window.renderFennecTerminalPreference = enabled => {
-  if (!fennecTerminalSwitch) return;
-  fennecTerminalSwitch.setAttribute('aria-checked', String(enabled));
-  fennecTerminalSwitch.disabled = false;
-};
-if (fennecTerminalSwitch) fennecTerminalSwitch.onclick = () => {
-  fennecTerminalSwitch.disabled = true;
-  send('settings:' + JSON.stringify({fennec_terminal: fennecTerminalSwitch.getAttribute('aria-checked') !== 'true'}));
-};
 window.renderLoginItem = value => {
   if (!loginItemSwitch || !loginItemApproval) return;
   loginItemSwitch.disabled = !value.supported;

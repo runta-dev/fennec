@@ -2851,13 +2851,6 @@
     "ui.byoc_error_already_paired": {"en-US": "Another server is paired, unpair it first", "ja": "別のサーバーがペアリング済みです、先に解除してください", "ko": "다른 서버가 페어링되어 있습니다, 먼저 해제하세요", "zh-CN": "已配对另一台服务器，请先取消配对", "zh-TW": "已配對另一台伺服器，請先取消配對"},
     "ui.byoc_error_busy": {"en-US": "A deployment is already running", "ja": "すでにデプロイが進行中です", "ko": "이미 배포가 진행 중입니다", "zh-CN": "已有部署正在进行", "zh-TW": "已有部署正在進行"},
     "ui.byoc_error_pairing": {"en-US": "Couldn't pair with the server", "ja": "サーバーとペアリングできませんでした", "ko": "서버와 페어링할 수 없습니다", "zh-CN": "无法与服务器配对", "zh-TW": "無法與伺服器配對"},
-    "ui.fennec_terminal": {
-      "en-US": "Fennec Terminal",
-      "ja": "Fennec ターミナル",
-      "ko": "Fennec 터미널",
-      "zh-CN": "Fennec 终端",
-      "zh-TW": "Fennec 終端機"
-    },
     "ui.cant_reach_cloud_computer": {
       "en-US": "Can't reach your cloud computer",
       "ja": "クラウドコンピューターに接続できません",

@@ -73,14 +73,12 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
         window.refreshSessions = { [weak self] in self?.loadRuntimes() }
         return window
     }()
-    // Fennec Terminal (the desktop window) opens only when the bundle carries it
-    // (FENNEC_BUILD_DESKTOP=1) and the user turned it on; it is off by default.
-    private var fennecTerminalEnabled = false
+    // Fennec Terminal (the desktop window) is always on when the bundle carries
+    // it (FENNEC_BUILD_DESKTOP=1, every release); there is no setting (FEN-171).
     private var fennecTerminalLaunchPending = true
-    private var fennecTerminalAvailable: Bool {
+    private var fennecTerminalOn: Bool {
         FileManager.default.isExecutableFile(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/fennec-desktop").path)
     }
-    private var fennecTerminalOn: Bool { fennecTerminalAvailable && fennecTerminalEnabled }
     private var desktopAccountName = ""
     private var lastDesktopSettings: [String:Any]?
     private var authorized = false
@@ -150,8 +148,8 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        self.installationPending=false
 	        self.connectControl()
 	        self.stateTimer = Timer.scheduledTimer(withTimeInterval:0.5,repeats:true){[weak self] _ in guard let self else{return};if self.controlReady{self.pollState()}else{self.connectControl()}}
-	        // With Fennec Terminal on, Fennec opens to its window once the saved
-	        // setting is read (see the preferences in pollState).
+	        // With Fennec Terminal in the bundle, Fennec opens to its window once
+	        // the saved settings are read (see the preferences in pollState).
 	    }
 	}
 
@@ -943,12 +941,6 @@ final class Companion: NSObject, NSApplicationDelegate, WKScriptMessageHandler, 
 	        }
 	    }
 	    if let preferences=state["settings"] as? [String:Any],preferences["initialized"] as? Bool == true {
-	        let terminalWanted = preferences["fennec_terminal"] as? Bool == true
-	        if terminalWanted != fennecTerminalEnabled {
-	            fennecTerminalEnabled = terminalWanted
-	            if !fennecTerminalOn { desktop.close() } else if !fennecTerminalLaunchPending { openDesktop() }
-	        }
-	        render("renderFennecTerminalAvailable", [fennecTerminalAvailable])
 	        if fennecTerminalLaunchPending {
 	            fennecTerminalLaunchPending = false
 	            if fennecTerminalOn { openDesktop() }
