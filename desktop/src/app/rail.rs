@@ -500,7 +500,10 @@ impl FennecWindow {
             .collect();
         let terminal_shown = matches!(route, Some(Route::Session(_)));
         let settings_shown = route == Some(Route::AppSettings);
-        let separator = || div().w(px(32.0)).h(px(2.0)).my(px(2.0)).rounded(px(1.0)).bg(c("f_line")).flex_none();
+        // FEN-159: a hairline, one device pixel tall (0.5 pt on Retina). The
+        // margin grows by what the line lost, so the rail keeps its spacing.
+        let hairline = px(1.0 / window.scale_factor());
+        let separator = move || div().w(px(32.0)).h(hairline).my((px(6.0) - hairline) / 2.0).bg(c("f_line")).flex_none();
         v_flex()
             .id("rail")
             .debug_selector(|| "rail".into())
