@@ -3,10 +3,9 @@ package fennecmobile
 import (
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	"regexp"
 	"strings"
-
-	cloudruntime "fennec/internal/runtime"
 )
 
 // AgentPrompt is a question an agent is waiting on, read from its screen:
@@ -161,7 +160,7 @@ func (s *Sessions) Prompt(address, sessionID string) (out0 string, err error) {
 	if !addressPattern.MatchString(address) || !sessionPattern.MatchString(sessionID) {
 		return "", errors.New("invalid terminal")
 	}
-	raw, _, err := s.runRead(func(string) (string, error) { return cloudruntime.ReadScript(address, sessionID) })
+	raw, _, err := s.runRead(func(string) (string, error) { return cloudops.ReadScript(address, sessionID) })
 	if err != nil {
 		return "", err
 	}

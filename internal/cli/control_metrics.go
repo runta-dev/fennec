@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/runta"
@@ -89,7 +90,7 @@ func (s *daemonServices) runMetricsCollector(ctx context.Context, epoch uint64) 
 }
 
 func (s *daemonServices) fetchMetricsFromTransport(opCtx context.Context, transport *terminalstream.Transport, principal account.Principal, runtimeID string) (map[string]any, bool) {
-	raw, err := transport.Operate(opCtx, r.LocalOperation{Kind: "system_metrics"})
+	raw, err := transport.Operate(opCtx, cloudops.Operation{Kind: "system_metrics"})
 	if err != nil {
 		return nil, false
 	}

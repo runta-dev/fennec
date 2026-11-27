@@ -1,13 +1,13 @@
 package fennecmobile
 
 import (
+	"fennec/internal/cloudops"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
 
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 )
 
@@ -42,7 +42,7 @@ func TestCloudAgentsScriptRuns(t *testing.T) {
 			fake = "#!/bin/sh\ncase \"$(echo \"$2\" | base64 -d)\" in *cloud_agents*) printf '{\"claude\":\\n{\"account\":\"signed_in\",\"ready\":true}}\\n';; *) exit 1;; esac\n"
 		}
 		os.WriteFile(filepath.Join(bin, "fennec-terminal"), []byte(fake), 0o755)
-		cmd := exec.Command("sh", "-c", cloudruntime.CloudAgentsScript())
+		cmd := exec.Command("sh", "-c", cloudops.CloudAgentsScript())
 		cmd.Env = append(os.Environ(), "HOME="+home)
 		out, err := cmd.Output()
 		if err != nil {

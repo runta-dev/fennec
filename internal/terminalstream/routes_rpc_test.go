@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"os"
@@ -32,7 +33,7 @@ func TestRouteRPCServiceChild(t *testing.T) {
 			}
 		}
 	}
-	if err := ServeWithOperations(context.Background(), os.Stdin, os.Stdout, nil, nil, nil, runtime.Operation); err != nil {
+	if err := ServeWithOperations(context.Background(), os.Stdin, os.Stdout, nil, nil, nil, cloudops.Operator(runtime)); err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -68,12 +69,12 @@ func TestRoutesReuseResidentProtocol(t *testing.T) {
 	if !transport.Supports("model_accounts") {
 		t.Fatal("account capability missing")
 	}
-	_, err = transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "model_accounts", Accounts: &setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"unapproved.json": base64.StdEncoding.EncodeToString([]byte(`{"secret":"fixture-private-value"}`))}}})
+	_, err = transport.Operate(ctx, cloudops.Operation{Kind: "model_accounts", Accounts: &setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"unapproved.json": base64.StdEncoding.EncodeToString([]byte(`{"secret":"fixture-private-value"}`))}}})
 	if err == nil {
 		t.Fatal("invalid credential store accepted")
 	}
 	for _, agent := range []string{"codex", "pi"} {
-		raw, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "reconcile_routes", Routes: []setup.AgentRoute{{Agent: agent, Problem: "model_selection_required"}}})
+		raw, err := transport.Operate(ctx, cloudops.Operation{Kind: "reconcile_routes", Routes: []setup.AgentRoute{{Agent: agent, Problem: "model_selection_required"}}})
 		var results []setup.RouteResult
 		if err != nil || json.Unmarshal(raw, &results) != nil || len(results) != 1 || results[0].Agent != agent || results[0].Status != "model_selection_required" {
 			t.Fatalf("resident route reply: %s %v", raw, err)
@@ -105,7 +106,7 @@ func TestNativeCredentialsReuseResidentChannelWithoutGateway(t *testing.T) {
 	}
 	request := setup.ModelAccountsRequest{Version: 1, Native: true, Agents: []string{"codex"}, Files: map[string]string{"codex/auth.json": base64.StdEncoding.EncodeToString([]byte(`{"tokens":{"access_token":"fixture-secret"}}`)), "env.json": base64.StdEncoding.EncodeToString([]byte(`{}`))}}
 	for i := 0; i < 2; i++ {
-		raw, e := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "model_accounts", Accounts: &request})
+		raw, e := transport.Operate(ctx, cloudops.Operation{Kind: "model_accounts", Accounts: &request})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -149,7 +150,7 @@ func TestReconfigurationUsesExistingResidentProtocol(t *testing.T) {
 	pid := command.Process.Pid
 	request := setup.RuntimeConfiguration{Accounts: setup.ModelAccountsRequest{Version: 1, Native: true, Agents: []string{"codex"}, Files: map[string]string{"env.json": base64.StdEncoding.EncodeToString([]byte(`{}`)), "codex/auth.json": base64.StdEncoding.EncodeToString([]byte(`{"tokens":{"access_token":"fixture-only"}}`))}}}
 	for i := 0; i < 2; i++ {
-		raw, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+		raw, err := transport.Operate(ctx, cloudops.Operation{Kind: "reconfigure_runtime", Configuration: &request})
 		if err != nil {
 			t.Fatal(err)
 		}

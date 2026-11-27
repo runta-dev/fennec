@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	"fennec/internal/launchprofile"
-	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -402,7 +402,7 @@ type transportCredentialLink struct{ transport *terminalstream.Transport }
 func (l transportCredentialLink) Push(ctx context.Context, push setup.NativeCredentialPush) (setup.NativeCredentialPushResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	raw, err := l.transport.Operate(ctx, r.LocalOperation{Kind: "native_credential_set", Credential: &push})
+	raw, err := l.transport.Operate(ctx, cloudops.Operation{Kind: "native_credential_set", Credential: &push})
 	if err != nil {
 		return setup.NativeCredentialPushResult{}, err
 	}
@@ -414,7 +414,7 @@ func (l transportCredentialLink) Push(ctx context.Context, push setup.NativeCred
 }
 
 func (l transportCredentialLink) Watch(ctx context.Context, watch setup.NativeCredentialWatch) (setup.NativeCredentialChanges, error) {
-	raw, err := l.transport.Operate(ctx, r.LocalOperation{Kind: "native_credential_watch", CredentialWatch: &watch})
+	raw, err := l.transport.Operate(ctx, cloudops.Operation{Kind: "native_credential_watch", CredentialWatch: &watch})
 	if err != nil {
 		return setup.NativeCredentialChanges{}, err
 	}

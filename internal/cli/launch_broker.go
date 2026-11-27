@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/cloudops"
 	"fennec/internal/connectivity"
 	"fennec/internal/launchprofile"
 	"fennec/internal/project"
@@ -216,7 +217,7 @@ func serveLaunchBroker(ctx context.Context, home string, configuration func() br
 				if err != nil {
 					return launcher.LaunchReceipt{}, err
 				}
-				raw, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "launch", Launch: &cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks, ClaudeSettings: intent.ClaudeSettings}})
+				raw, err := transport.Operate(operation, cloudops.Operation{Kind: "launch", Launch: &cloudruntime.LocalLaunch{ID: intent.RequestID, Agent: intent.Agent, LocalDirectory: request.Directory, Device: config.Device, Arguments: intent.Arguments, Hooks: intent.Hooks, ClaudeSettings: intent.ClaudeSettings}})
 				if err != nil {
 					return launcher.LaunchReceipt{}, err
 				}

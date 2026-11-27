@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	"fmt"
 	"io"
 	"net/http"
@@ -691,14 +692,14 @@ func (s *Sessions) List() (out0 string, err error) {
 // Read returns {"terminal":{...},"screen":{...}} for one session.
 func (s *Sessions) Read(address, sessionID string) (out0 string, err error) {
 	defer func() { err = classify(err) }()
-	raw, _, err := s.runRead(func(string) (string, error) { return cloudruntime.ReadScript(address, sessionID) })
+	raw, _, err := s.runRead(func(string) (string, error) { return cloudops.ReadScript(address, sessionID) })
 	return string(raw), err
 }
 
 // Send types text into the session and presses Return.
 func (s *Sessions) Send(address, sessionID, text string) (out0 string, err error) {
 	defer func() { err = classify(err) }()
-	raw, _, err := s.run(func(string) (string, error) { return cloudruntime.SendScript(address, sessionID, text) })
+	raw, _, err := s.run(func(string) (string, error) { return cloudops.SendScript(address, sessionID, text) })
 	return string(raw), err
 }
 

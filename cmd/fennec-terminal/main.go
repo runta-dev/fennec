@@ -12,6 +12,7 @@ import (
 	"fennec/internal/chatlog"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/cloudarchive"
+	"fennec/internal/cloudops"
 	"fennec/internal/commandstream"
 	"fennec/internal/cpusched"
 	"fennec/internal/gateway"
@@ -366,7 +367,7 @@ func run() (int, error) {
 		return 0, json.NewEncoder(os.Stdout).Encode(report)
 	}
 	if len(os.Args) == 2 && os.Args[1] == "list" {
-		result, err := runtime.List(ctx)
+		result, err := cloudops.List(ctx, runtime)
 		if err != nil {
 			return 1, err
 		}
@@ -377,11 +378,11 @@ func run() (int, error) {
 		if err != nil || len(data) > 65536 {
 			return 1, fmt.Errorf("invalid operation")
 		}
-		var request cloudruntime.LocalOperation
+		var request cloudops.Operation
 		if json.Unmarshal(data, &request) != nil {
 			return 1, fmt.Errorf("invalid operation")
 		}
-		result, err := runtime.Operation(ctx, request)
+		result, err := cloudops.Operate(ctx, runtime, request)
 		if err != nil {
 			return 1, err
 		}
@@ -476,7 +477,7 @@ func run() (int, error) {
 			return terminal, cmd, nil
 		}, func(ctx context.Context, reference cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error) {
 			return runtime.Stop(ctx, reference.Address, reference.ID)
-		}, runtime.Operation, func(ctx context.Context, target string) (net.Conn, error) {
+		}, cloudops.Operator(runtime), func(ctx context.Context, target string) (net.Conn, error) {
 			if target == terminalstream.SocketPreview {
 				return (preview.Store{Home: home}).Dial(ctx)
 			}

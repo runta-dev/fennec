@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"io"
 	"net"
@@ -28,7 +29,7 @@ func TestSessionImportUsesResidentCreditedStream(t *testing.T) {
 	serverOutput, clientOutput := io.Pipe()
 	defer clientInput.Close()
 	defer serverOutput.Close()
-	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) {
+	go ServeWithSockets(ctx, serverInput, clientOutput, nil, nil, nil, func(context.Context, cloudops.Operation) (json.RawMessage, error) {
 		return json.RawMessage(`{"ok":true}`), nil
 	}, func(ctx context.Context, target string) (net.Conn, error) {
 		if target != SocketSessionImport {
@@ -52,7 +53,7 @@ func TestSessionImportUsesResidentCreditedStream(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- ImportSession(ctx, transport, bundle) }()
-	peer, err := transport.Launch(Frame{Type: "operation", ID: strings.Repeat("a", 32), Operation: &cloudruntime.LocalOperation{Kind: "list"}})
+	peer, err := transport.Launch(Frame{Type: "operation", ID: strings.Repeat("a", 32), Operation: &cloudops.Operation{Kind: "list"}})
 	if err != nil {
 		t.Fatal(err)
 	}

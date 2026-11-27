@@ -18,11 +18,11 @@ type onlineDelivery struct {
 	Targets    map[string]string `json:"targets"`
 }
 
-// The outbox survives resident replacement. Persist an attempt before touching
+// NotifyMacOnline tells waiting agents the Mac is back. The outbox survives resident replacement. Persist an attempt before touching
 // input: an uncertain receipt must never become an automatic duplicate prompt.
 // Each call sends at most one message; blocked terminals remain pending and a
 // newer recovery replaces obsolete queued messages.
-func (r *LocalRuntime) notifyMacOnline(ctx context.Context, h localssh.LinkHealth) (json.RawMessage, error) {
+func (r *LocalRuntime) NotifyMacOnline(ctx context.Context, h localssh.LinkHealth) (json.RawMessage, error) {
 	return r.deliverMacOnline(ctx, h, func() error { return localssh.ProbeMac(ctx, r.Home, localssh.LinkHealth{Device: h.Device}) })
 }
 

@@ -2,9 +2,9 @@ package fennecmobile
 
 import (
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"strings"
 
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 )
 
@@ -24,7 +24,7 @@ type CloudAgentsState struct {
 // CloudAgents returns CloudAgentsState as JSON.
 func (s *Sessions) CloudAgents() (out0 string, err error) {
 	defer func() { err = classify(err) }()
-	raw, err := s.read(cloudruntime.CloudAgentsScript())
+	raw, err := s.read(cloudops.CloudAgentsScript())
 	if err != nil {
 		return "", err
 	}

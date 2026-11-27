@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fennec/internal/audit"
 	"fennec/internal/clipboardbridge"
+	"fennec/internal/cloudops"
 	"fennec/internal/hookbridge"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
@@ -29,7 +30,7 @@ import (
 type Starter func(context.Context, cloudruntime.LocalLaunch) (cloudruntime.LocalTerminal, *exec.Cmd, error)
 type Attacher func(context.Context, cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, *exec.Cmd, error)
 type Stopper func(context.Context, cloudruntime.LocalTerminal) (cloudruntime.LocalTerminal, error)
-type Operator func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error)
+type Operator func(context.Context, cloudops.Operation) (json.RawMessage, error)
 
 // SocketDialer opens the named remote socket for a "socket" stream. Only
 // targets accepted by Frame.validateOpen reach it.

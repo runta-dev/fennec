@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 
 	"fennec/internal/agent"
 	"fennec/internal/control"
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 )
 
@@ -82,7 +82,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	operation, err := json.Marshal(cloudruntime.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+	operation, err := json.Marshal(cloudops.Operation{Kind: "reconfigure_runtime", Configuration: &request})
 	if err != nil {
 		return err
 	}

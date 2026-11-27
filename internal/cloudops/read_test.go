@@ -1,21 +1,22 @@
-package runtime
+package cloudops
 
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/runtime"
 	"strings"
 	"testing"
 )
 
 func TestReadPreservesHerdrCompleteness(t *testing.T) {
 	id := strings.Repeat("a", 32)
-	runtime := &LocalRuntime{Run: func(_ context.Context, args ...string) ([]byte, error) {
+	runtime := &runtime.LocalRuntime{Run: func(_ context.Context, args ...string) ([]byte, error) {
 		if args[0] == "get" {
 			return []byte(`{"labels":{"fennec.session":"` + id + `"},"state":"live"}`), nil
 		}
 		return []byte(`{"text":"hello","complete":false,"why":"working"}`), nil
 	}}
-	data, err := runtime.Operation(context.Background(), LocalOperation{Kind: "read", Address: "t1", SessionID: id})
+	data, err := Operate(context.Background(), runtime, Operation{Kind: "read", Address: "t1", SessionID: id})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"fennec/internal/setup"
 	"strings"
 	"testing"
@@ -12,7 +12,7 @@ import (
 
 func TestAccountSyncDoesNotReplayUncertainResidentMutation(t *testing.T) {
 	lost := errors.New("response lost")
-	_, err := syncPreparedAccounts(context.Background(), setup.ModelAccountsRequest{Version: 1}, true, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) { return nil, lost }, func(context.Context, setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {
+	_, err := syncPreparedAccounts(context.Background(), setup.ModelAccountsRequest{Version: 1}, true, func(context.Context, cloudops.Operation) (json.RawMessage, error) { return nil, lost }, func(context.Context, setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {
 		t.Fatal("mutation replayed on another path")
 		return setup.ModelAccountsResult{}, nil
 	})
@@ -24,7 +24,7 @@ func TestAccountSyncDoesNotReplayUncertainResidentMutation(t *testing.T) {
 func TestLargeAccountStoreSelectsStdinBeforeSendingAnyFrame(t *testing.T) {
 	request := setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"providers.json": strings.Repeat("x", 210<<10)}}
 	called := false
-	_, err := syncPreparedAccounts(context.Background(), request, true, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) {
+	_, err := syncPreparedAccounts(context.Background(), request, true, func(context.Context, cloudops.Operation) (json.RawMessage, error) {
 		t.Fatal("oversized credential frame sent")
 		return nil, nil
 	}, func(_ context.Context, got setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {

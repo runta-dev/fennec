@@ -8,9 +8,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/commandstream"
 	"fennec/internal/runta"
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"fennec/internal/trafficbroker"
 	"flag"
@@ -164,7 +164,7 @@ func run() error {
 			input = &traceInput{in: os.Stdin, trace: trace}
 			output = traceOutput{packetWriter: output.(packetWriter), trace: trace}
 		}
-		return terminalstream.ServeWithSockets(ctx, input, output, nil, nil, nil, func(_ context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
+		return terminalstream.ServeWithSockets(ctx, input, output, nil, nil, nil, func(_ context.Context, op cloudops.Operation) (json.RawMessage, error) {
 			if op.Kind != "list" {
 				return nil, fmt.Errorf("unsupported probe operation")
 			}
@@ -412,7 +412,7 @@ func measure(ctx context.Context, result *report) error {
 		}
 		want := sha256.Sum256(payload())
 		for !stopLoad.Load() {
-			data, e := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"})
+			data, e := transport.Operate(ctx, cloudops.Operation{Kind: "list"})
 			if e != nil {
 				loadDone <- e
 				return

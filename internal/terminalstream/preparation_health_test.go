@@ -3,6 +3,7 @@ package terminalstream
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"net"
@@ -39,7 +40,7 @@ func TestPreparationHealthReusesResidentProtocolAndReportsLiveFailure(t *testing
 	runtime := cloudruntime.NewLocalRuntime(home)
 	go func() {
 		defer server.Close()
-		done <- ServeWithOperations(ctx, server, server, nil, nil, nil, runtime.Operation)
+		done <- ServeWithOperations(ctx, server, server, nil, nil, nil, cloudops.Operator(runtime))
 	}()
 	transport := StartPipes(client, client)
 	defer func() { transport.Close(); <-done }()
@@ -49,7 +50,7 @@ func TestPreparationHealthReusesResidentProtocolAndReportsLiveFailure(t *testing
 	if !transport.Supports("preparation_health") {
 		t.Fatal("missing capability")
 	}
-	op := cloudruntime.LocalOperation{Kind: "preparation_health", Preparation: health}
+	op := cloudops.Operation{Kind: "preparation_health", Preparation: health}
 	raw, err := transport.Operate(ctx, op)
 	var result struct {
 		Healthy bool `json:"healthy"`

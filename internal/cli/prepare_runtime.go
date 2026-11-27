@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/cloudops"
 	"fennec/internal/launchprofile"
 	"fennec/internal/runta"
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
 	"fmt"
@@ -413,7 +413,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 		if resident == nil || !resident.Supports("reconcile_routes") {
 			return setup.ReconcileRoutes(ctx, connection, []setup.AgentRoute{route})
 		}
-		raw, err := resident.Operate(ctx, cloudruntime.LocalOperation{Kind: "reconcile_routes", Routes: []setup.AgentRoute{route}})
+		raw, err := resident.Operate(ctx, cloudops.Operation{Kind: "reconcile_routes", Routes: []setup.AgentRoute{route}})
 		if err != nil {
 			return nil, err
 		} // Never replay an uncertain mutation on another channel.
@@ -436,7 +436,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 		request.DeferCatalog = resident != nil && resident.Supports("deferred_catalog") && resident.Supports("model_catalog")
 		// Keep credentials within the existing bounded frame size. Large stores
 		// select authenticated stdin before any mutation; never retry on error.
-		return syncPreparedAccounts(ctx, request, resident != nil && resident.Supports("model_accounts") && resident.Supports("native_accounts"), func(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
+		return syncPreparedAccounts(ctx, request, resident != nil && resident.Supports("model_accounts") && resident.Supports("native_accounts"), func(ctx context.Context, operation cloudops.Operation) (json.RawMessage, error) {
 			return resident.Operate(ctx, operation)
 		}, func(ctx context.Context, request setup.ModelAccountsRequest) (setup.ModelAccountsResult, error) {
 			request.DeferCatalog = false
@@ -585,7 +585,7 @@ func prepareRuntime(ctx context.Context, computer cloudComputer, output io.Write
 	// not precede verified route readiness or delay the first usable terminal.
 	if accounts.CatalogDeferred && resident != nil && resident.Supports("model_catalog") {
 		catalogCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		raw, err := resident.Operate(catalogCtx, cloudruntime.LocalOperation{Kind: "model_catalog"})
+		raw, err := resident.Operate(catalogCtx, cloudops.Operation{Kind: "model_catalog"})
 		cancel()
 		var models []string
 		if err == nil && json.Unmarshal(raw, &models) == nil {

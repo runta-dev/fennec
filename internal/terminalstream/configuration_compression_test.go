@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,8 +19,8 @@ import (
 	"fennec/internal/setup"
 )
 
-func configurationFixture() cloudruntime.LocalOperation {
-	return cloudruntime.LocalOperation{Kind: "reconfigure_runtime", Configuration: &setup.RuntimeConfiguration{Accounts: setup.ModelAccountsRequest{Version: 1, Native: true, Agents: []string{"pi"}, Files: map[string]string{"pi/models.json": strings.Repeat("synthetic", 8000)}}}}
+func configurationFixture() cloudops.Operation {
+	return cloudops.Operation{Kind: "reconfigure_runtime", Configuration: &setup.RuntimeConfiguration{Accounts: setup.ModelAccountsRequest{Version: 1, Native: true, Agents: []string{"pi"}, Files: map[string]string{"pi/models.json": strings.Repeat("synthetic", 8000)}}}}
 }
 func TestConfigurationCompressionRequiresCapabilityAndPreservesPayload(t *testing.T) {
 	for _, supported := range []bool{false, true} {
@@ -49,7 +50,7 @@ func TestConfigurationCompressionRequiresCapabilityAndPreservesPayload(t *testin
 }
 
 func TestAccountSyncCompressionNegotiatesSeparatelyAndPreservesPayload(t *testing.T) {
-	op := cloudruntime.LocalOperation{Kind: "model_accounts", Accounts: &setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"plugin-providers.json": strings.Repeat("synthetic provider catalog", 4000)}}}
+	op := cloudops.Operation{Kind: "model_accounts", Accounts: &setup.ModelAccountsRequest{Version: 1, Files: map[string]string{"plugin-providers.json": strings.Repeat("synthetic provider catalog", 4000)}}}
 	for _, supported := range []bool{false, true} {
 		var wire Frame
 		var bytesSent int
@@ -115,7 +116,7 @@ func TestCompressedConfigurationReusesResidentProtocol(t *testing.T) {
 	var calls atomic.Int32
 	op := configurationFixture()
 	go func() {
-		done <- ServeWithOperations(ctx, server, server, nil, nil, nil, func(_ context.Context, received cloudruntime.LocalOperation) (json.RawMessage, error) {
+		done <- ServeWithOperations(ctx, server, server, nil, nil, nil, func(_ context.Context, received cloudops.Operation) (json.RawMessage, error) {
 			calls.Add(1)
 			if received.Configuration.Accounts.Files["pi/models.json"] != op.Configuration.Accounts.Files["pi/models.json"] {
 				t.Error("payload not preserved")
@@ -144,7 +145,7 @@ func TestCompressedConfigurationReusesResidentProtocol(t *testing.T) {
 func TestCredentialCompressionRequiresMatchingCapability(t *testing.T) {
 	for _, kind := range []string{"magpie_credentials_sync"} {
 		for _, supported := range []bool{false, true} {
-			op := cloudruntime.LocalOperation{Kind: kind, MagpieCredentials: map[string]string{"providers.json": strings.Repeat("synthetic", 2000)}}
+			op := cloudops.Operation{Kind: kind, MagpieCredentials: map[string]string{"providers.json": strings.Repeat("synthetic", 2000)}}
 			var wire Frame
 			capabilities := map[string]bool{"configuration_gzip": true}
 			if supported {
@@ -180,7 +181,7 @@ func TestMagpieCredentialsSyncAppliesThroughResidentProtocol(t *testing.T) {
 	client, server := net.Pipe()
 	done := make(chan error, 1)
 	runtime := &cloudruntime.LocalRuntime{Home: t.TempDir()}
-	go func() { done <- ServeWithOperations(ctx, server, server, nil, nil, nil, runtime.Operation) }()
+	go func() { done <- ServeWithOperations(ctx, server, server, nil, nil, nil, cloudops.Operator(runtime)) }()
 	transport := startTransport(client, client, func() error { return <-done }, client.Close, nil)
 	defer transport.Close()
 	if err := transport.Ready(ctx); err != nil {
@@ -191,7 +192,7 @@ func TestMagpieCredentialsSyncAppliesThroughResidentProtocol(t *testing.T) {
 	}
 	raw := `{"fixture":"` + strings.Repeat("synthetic", 1000) + `"}`
 	files := map[string]string{"providers.json": base64.StdEncoding.EncodeToString([]byte(raw))}
-	reply, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "magpie_credentials_sync", MagpieCredentials: files})
+	reply, err := transport.Operate(ctx, cloudops.Operation{Kind: "magpie_credentials_sync", MagpieCredentials: files})
 	if err != nil {
 		t.Fatal(err)
 	}

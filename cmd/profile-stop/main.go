@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	r "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"flag"
@@ -107,7 +108,7 @@ func run() error {
 			}
 			if mode == "attach" {
 				marker := "ATTACH_READY_" + id[:8]
-				if _, err := transport.Operate(ctx, r.LocalOperation{Kind: "send", Address: terminal.Address, SessionID: id, Text: marker}); err != nil {
+				if _, err := transport.Operate(ctx, cloudops.Operation{Kind: "send", Address: terminal.Address, SessionID: id, Text: marker}); err != nil {
 					return err
 				}
 				started := time.Now()

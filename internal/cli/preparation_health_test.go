@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"fennec/internal/setup"
 	"strings"
 	"testing"
@@ -20,7 +20,7 @@ type healthTransportStub struct {
 func (s *healthTransportStub) Supports(capability string) bool {
 	return s.supported && capability == "preparation_health"
 }
-func (s *healthTransportStub) Operate(ctx context.Context, op cloudruntime.LocalOperation) (json.RawMessage, error) {
+func (s *healthTransportStub) Operate(ctx context.Context, op cloudops.Operation) (json.RawMessage, error) {
 	s.calls++
 	if op.Kind != "preparation_health" || op.Preparation == nil || op.Validate() != nil {
 		return nil, errors.New("invalid operation")

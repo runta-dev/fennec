@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	"fmt"
 	"io"
 	"net"
@@ -315,7 +316,7 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 		if err != nil {
 			return nil, err
 		}
-		op := r.LocalOperation{Kind: "thread_session", Project: params.Project, RequestNumber: params.Number}
+		op := cloudops.Operation{Kind: "thread_session", Project: params.Project, RequestNumber: params.Number}
 		if err := op.Validate(); err != nil {
 			return nil, err
 		}
@@ -460,7 +461,7 @@ func (q *boardQueue) launch(ctx context.Context, id, agent string, arguments []s
 	if err != nil {
 		return err
 	}
-	raw, err := transport.Operate(ctx, r.LocalOperation{Kind: "launch", Launch: &r.LocalLaunch{ID: id, Agent: agent, LocalDirectory: "/", Device: config.Device, Arguments: arguments}})
+	raw, err := transport.Operate(ctx, cloudops.Operation{Kind: "launch", Launch: &r.LocalLaunch{ID: id, Agent: agent, LocalDirectory: "/", Device: config.Device, Arguments: arguments}})
 	if err != nil {
 		return err
 	}

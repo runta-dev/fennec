@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"fmt"
 	"io"
 	"strings"
@@ -129,7 +129,7 @@ func TestResidentNegotiatesPacketsAndAnswersFreshPingDuringLargeOperation(t *tes
 	result := json.RawMessage(`{"screen":"` + strings.Repeat("x", 96<<10) + `"}`)
 	server := make(chan error, 1)
 	go func() {
-		server <- ServeWithOperations(ctx, input, observed, nil, nil, nil, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) { return result, nil })
+		server <- ServeWithOperations(ctx, input, observed, nil, nil, nil, func(context.Context, cloudops.Operation) (json.RawMessage, error) { return result, nil })
 	}()
 	transport := StartPipes(send, receive)
 	defer transport.Close()
@@ -141,7 +141,7 @@ func TestResidentNegotiatesPacketsAndAnswersFreshPingDuringLargeOperation(t *tes
 	}
 	operation := make(chan error, 1)
 	go func() {
-		got, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"})
+		got, err := transport.Operate(ctx, cloudops.Operation{Kind: "list"})
 		if err == nil && !bytes.Equal(got, result) {
 			err = fmt.Errorf("operation result changed")
 		}

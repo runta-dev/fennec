@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
-	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"time"
 )
@@ -84,7 +84,7 @@ func (s *daemonServices) nativeAccount(ctx context.Context, raw json.RawMessage)
 	if !transport.Supports("native_account") {
 		return nil, &control.Fault{Code: "not_ready", Message: "Cloud computer is updating", Retryable: true}
 	}
-	data, err := transport.Operate(ctx, r.LocalOperation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: request.Agent}})
+	data, err := transport.Operate(ctx, cloudops.Operation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: request.Agent}})
 	if err != nil {
 		return nil, err
 	}

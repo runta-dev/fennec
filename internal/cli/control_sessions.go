@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/account"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
-	r "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"log"
 	"path/filepath"
@@ -99,7 +99,7 @@ func (s *daemonServices) session(ctx context.Context, _ account.Principal, runti
 	if err != nil {
 		return nil, err
 	}
-	result, err := measuredSessionOperation(ctx, transport, r.LocalOperation{Kind: operation, Address: address, SessionID: params.SessionID, Text: params.Text})
+	result, err := measuredSessionOperation(ctx, transport, cloudops.Operation{Kind: operation, Address: address, SessionID: params.SessionID, Text: params.Text})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (s *daemonServices) session(ctx context.Context, _ account.Principal, runti
 
 // Keep nested timing boundaries in internal diagnostics, never input contents.
 // This distinguishes a slow remote operation from write contention and WAN RTT.
-func measuredSessionOperation(ctx context.Context, transport *terminalstream.Transport, operation r.LocalOperation) (json.RawMessage, error) {
+func measuredSessionOperation(ctx context.Context, transport *terminalstream.Transport, operation cloudops.Operation) (json.RawMessage, error) {
 	raw, timings, err := transport.OperateMeasured(ctx, operation)
 	if err != nil {
 		return nil, err

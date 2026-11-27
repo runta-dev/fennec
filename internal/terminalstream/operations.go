@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	"fennec/internal/launchprofile"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
@@ -42,18 +43,18 @@ func (t *Transport) Stop(ctx context.Context, reference cloudruntime.LocalTermin
 	return *frame.Terminal, nil
 }
 
-func (t *Transport) Operate(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, error) {
+func (t *Transport) Operate(ctx context.Context, operation cloudops.Operation) (json.RawMessage, error) {
 	return t.operate(ctx, operation, nil)
 }
 
 // OperateMeasured reports local write/wait boundaries without changing the
 // protocol or opening another SSH channel. These are nested, not additive to RTT.
-func (t *Transport) OperateMeasured(ctx context.Context, operation cloudruntime.LocalOperation) (json.RawMessage, map[string]float64, error) {
+func (t *Transport) OperateMeasured(ctx context.Context, operation cloudops.Operation) (json.RawMessage, map[string]float64, error) {
 	metrics := map[string]float64{}
 	data, err := t.operate(ctx, operation, metrics)
 	return data, metrics, err
 }
-func (t *Transport) operate(ctx context.Context, operation cloudruntime.LocalOperation, metrics map[string]float64) (json.RawMessage, error) {
+func (t *Transport) operate(ctx context.Context, operation cloudops.Operation, metrics map[string]float64) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

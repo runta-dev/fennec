@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"fennec/internal/setup"
 	"fmt"
 	"time"
@@ -11,7 +11,7 @@ import (
 
 type preparationHealthTransport interface {
 	Supports(string) bool
-	Operate(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error)
+	Operate(context.Context, cloudops.Operation) (json.RawMessage, error)
 }
 
 func reusableEarlyResident(home, fingerprint string, err error) bool {
@@ -48,7 +48,7 @@ func checkPreparedRuntime(ctx context.Context, resident preparationHealthTranspo
 	if resident == nil || !resident.Supports("preparation_health") {
 		return legacy(ctx, health.Script())
 	}
-	raw, err := resident.Operate(ctx, cloudruntime.LocalOperation{Kind: "preparation_health", Preparation: &health})
+	raw, err := resident.Operate(ctx, cloudops.Operation{Kind: "preparation_health", Preparation: &health})
 	if err != nil {
 		return err
 	}

@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/launchprofile"
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fmt"
 	"path/filepath"
@@ -94,7 +94,7 @@ func (s *daemonServices) startMagpieCredentialSync(ctx context.Context, epoch ui
 		step, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		started := time.Now()
-		data, err := transport.Operate(step, cloudruntime.LocalOperation{Kind: "magpie_credentials_sync", MagpieCredentials: files})
+		data, err := transport.Operate(step, cloudops.Operation{Kind: "magpie_credentials_sync", MagpieCredentials: files})
 		if err != nil {
 			return err
 		}

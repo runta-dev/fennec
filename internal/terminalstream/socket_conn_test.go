@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"io"
 	"net"
 	"testing"
@@ -18,7 +18,7 @@ func socketTransport(t *testing.T, dial SocketDialer) *Transport {
 	receive, output := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		done <- ServeWithSockets(ctx, input, output, nil, nil, nil, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) {
+		done <- ServeWithSockets(ctx, input, output, nil, nil, nil, func(context.Context, cloudops.Operation) (json.RawMessage, error) {
 			return json.RawMessage(`{}`), nil
 		}, dial)
 	}()
@@ -158,7 +158,7 @@ func TestManyOpenStreamsLeaveRoomForMoreAndForControl(t *testing.T) {
 		}
 		conns = append(conns, conn)
 	}
-	if _, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"}); err != nil {
+	if _, err := transport.Operate(ctx, cloudops.Operation{Kind: "list"}); err != nil {
 		t.Fatal("open streams exhausted control capacity", err)
 	}
 }
@@ -193,7 +193,7 @@ func TestDeviceRelayCapacityLeavesNormalStreamsAvailable(t *testing.T) {
 		t.Fatal("reverse connections exhausted normal streams", err)
 	}
 	defer normal.Close()
-	if _, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"}); err != nil {
+	if _, err := transport.Operate(ctx, cloudops.Operation{Kind: "list"}); err != nil {
 		t.Fatal("reverse connections exhausted control capacity", err)
 	}
 }

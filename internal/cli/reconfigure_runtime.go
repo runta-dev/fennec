@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fennec/internal/agent"
+	"fennec/internal/cloudops"
 	"fennec/internal/cloudstate"
-	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"io"
 	"path/filepath"
@@ -120,7 +120,7 @@ func (s *daemonServices) reconfigureExisting(ctx context.Context, epoch uint64, 
 	} else {
 		request.Accounts = native
 	}
-	data, wireTimings, err := transport.OperateMeasured(ctx, r.LocalOperation{Kind: "reconfigure_runtime", Configuration: &request})
+	data, wireTimings, err := transport.OperateMeasured(ctx, cloudops.Operation{Kind: "reconfigure_runtime", Configuration: &request})
 	mark("remote_round_trip")
 	for name, value := range wireTimings {
 		timings["transport_"+name] = value

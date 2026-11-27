@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
 	"fennec/internal/launcher"
@@ -61,7 +62,7 @@ func (s *daemonServices) nativeLogin(ctx context.Context, raw json.RawMessage, o
 	}
 	receipts := filepath.Join(s.home, ".config/fennec/launches")
 	if operation == "start" {
-		raw, err := transport.Operate(ctx, r.LocalOperation{Kind: "launch", Launch: &r.LocalLaunch{ID: plan.ID, Agent: plan.Agent, NativeLogin: true, LocalDirectory: "/", Device: config.Device}})
+		raw, err := transport.Operate(ctx, cloudops.Operation{Kind: "launch", Launch: &r.LocalLaunch{ID: plan.ID, Agent: plan.Agent, NativeLogin: true, LocalDirectory: "/", Device: config.Device}})
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +87,7 @@ func (s *daemonServices) nativeLogin(ctx context.Context, raw json.RawMessage, o
 	if operation == "cancel" {
 		kind = "native_login_cancel"
 	}
-	result, err := transport.Operate(ctx, r.LocalOperation{Kind: kind, Login: &plan, Address: receipt.Address})
+	result, err := transport.Operate(ctx, cloudops.Operation{Kind: kind, Login: &plan, Address: receipt.Address})
 	if err != nil {
 		return nil, err
 	}

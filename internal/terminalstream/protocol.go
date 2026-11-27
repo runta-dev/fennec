@@ -2,40 +2,41 @@ package terminalstream
 
 import (
 	"encoding/json"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"fmt"
 	"regexp"
 )
 
 type Frame struct {
-	interactive       bool                         // Local scheduling hint; never accepted from a remote JSON frame.
-	bulk              bool                         // Opaque stream payload, including client-to-cloud socket input.
-	HookBridge        bool                         `json:"hook_bridge,omitempty"`
-	HookID            string                       `json:"hook_id,omitempty"`
-	HookRef           string                       `json:"hook_ref,omitempty"`
-	Capabilities      []string                     `json:"capabilities,omitempty"`
-	Focused           bool                         `json:"focused,omitempty"`
-	Timings           map[string]float64           `json:"timings_ms,omitempty"`
-	Display           *DisplayFacts                `json:"display,omitempty"`
-	Operation         *cloudruntime.LocalOperation `json:"operation,omitempty"`
-	ConfigurationGZIP []byte                       `json:"configuration_gzip,omitempty"`
-	Result            json.RawMessage              `json:"result,omitempty"`
-	Version           int                          `json:"version,omitempty"`
-	Type              string                       `json:"type"`
-	Term              string                       `json:"term,omitempty"`
-	ID                string                       `json:"id,omitempty"`
-	Launch            *cloudruntime.LocalLaunch    `json:"launch,omitempty"`
-	Terminal          *cloudruntime.LocalTerminal  `json:"terminal,omitempty"`
-	Data              []byte                       `json:"data,omitempty"`
-	DataGZIP          []byte                       `json:"data_gzip,omitempty"`
-	OutputCompression string                       `json:"output_compression,omitempty"`
-	Rows              int                          `json:"rows,omitempty"`
-	Columns           int                          `json:"columns,omitempty"`
-	Bytes             int                          `json:"bytes,omitempty"`
-	Code              int                          `json:"code,omitempty"`
-	Message           string                       `json:"message,omitempty"`
-	ErrorCode         string                       `json:"error_code,omitempty"`
-	Target            string                       `json:"target,omitempty"`
+	interactive       bool                        // Local scheduling hint; never accepted from a remote JSON frame.
+	bulk              bool                        // Opaque stream payload, including client-to-cloud socket input.
+	HookBridge        bool                        `json:"hook_bridge,omitempty"`
+	HookID            string                      `json:"hook_id,omitempty"`
+	HookRef           string                      `json:"hook_ref,omitempty"`
+	Capabilities      []string                    `json:"capabilities,omitempty"`
+	Focused           bool                        `json:"focused,omitempty"`
+	Timings           map[string]float64          `json:"timings_ms,omitempty"`
+	Display           *DisplayFacts               `json:"display,omitempty"`
+	Operation         *cloudops.Operation         `json:"operation,omitempty"`
+	ConfigurationGZIP []byte                      `json:"configuration_gzip,omitempty"`
+	Result            json.RawMessage             `json:"result,omitempty"`
+	Version           int                         `json:"version,omitempty"`
+	Type              string                      `json:"type"`
+	Term              string                      `json:"term,omitempty"`
+	ID                string                      `json:"id,omitempty"`
+	Launch            *cloudruntime.LocalLaunch   `json:"launch,omitempty"`
+	Terminal          *cloudruntime.LocalTerminal `json:"terminal,omitempty"`
+	Data              []byte                      `json:"data,omitempty"`
+	DataGZIP          []byte                      `json:"data_gzip,omitempty"`
+	OutputCompression string                      `json:"output_compression,omitempty"`
+	Rows              int                         `json:"rows,omitempty"`
+	Columns           int                         `json:"columns,omitempty"`
+	Bytes             int                         `json:"bytes,omitempty"`
+	Code              int                         `json:"code,omitempty"`
+	Message           string                      `json:"message,omitempty"`
+	ErrorCode         string                      `json:"error_code,omitempty"`
+	Target            string                      `json:"target,omitempty"`
 	// Seq is the client's input sequence number at the end of an input or
 	// image frame; echo_ack frames return the highest processed Seq.
 	Seq uint64 `json:"seq,omitempty"`

@@ -3,9 +3,9 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
 	"fennec/internal/controlplane"
-	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"os"
 	"path/filepath"
@@ -44,7 +44,7 @@ func (s *daemonServices) setCloudMagpieModel(ctx context.Context, controller *co
 		if transport != nil && transport.Supports("reconcile_routes") {
 			rttStart := time.Now()
 			desired := []setup.AgentRoute{{Agent: agent, Model: model}}
-			raw, opErr := transport.Operate(opCtx, r.LocalOperation{Kind: "reconcile_routes", Routes: desired})
+			raw, opErr := transport.Operate(opCtx, cloudops.Operation{Kind: "reconcile_routes", Routes: desired})
 			rttMS := float64(time.Since(rttStart).Microseconds()) / 1000
 			stop()
 			cancel()

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	cloudruntime "fennec/internal/runtime"
+	"fennec/internal/cloudops"
 	"fennec/internal/traffic"
 	"fennec/internal/trafficbroker"
 	"io"
@@ -53,7 +53,7 @@ func TestResidentSharedBrokerPreemptsLargeReply(t *testing.T) {
 	result := json.RawMessage(`{"screen":"` + strings.Repeat("x", 96<<10) + `"}`)
 	server := make(chan error, 1)
 	go func() {
-		server <- ServeWithOperations(ctx, input, broker, nil, nil, nil, func(context.Context, cloudruntime.LocalOperation) (json.RawMessage, error) {
+		server <- ServeWithOperations(ctx, input, broker, nil, nil, nil, func(context.Context, cloudops.Operation) (json.RawMessage, error) {
 			close(started)
 			return result, nil
 		})
@@ -65,7 +65,7 @@ func TestResidentSharedBrokerPreemptsLargeReply(t *testing.T) {
 	}
 	operation := make(chan error, 1)
 	go func() {
-		got, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"})
+		got, err := transport.Operate(ctx, cloudops.Operation{Kind: "list"})
 		if err == nil && !bytes.Equal(got, result) {
 			err = io.ErrUnexpectedEOF
 		}

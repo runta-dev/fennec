@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/setup"
 	"fennec/internal/terminalstream"
@@ -474,7 +475,7 @@ func TestCredentialSyncEndToEndPropagation(t *testing.T) {
 			served := make(chan struct{})
 			go func() {
 				defer close(served)
-				terminalstream.ServeWithOperations(ctx, toCloud, fromCloud, nil, nil, nil, runtime.Operation)
+				terminalstream.ServeWithOperations(ctx, toCloud, fromCloud, nil, nil, nil, cloudops.Operator(runtime))
 			}()
 			transport := terminalstream.StartPipes(fromMac, toMac)
 			defer func() { cancel(); transport.Close(); <-served }()

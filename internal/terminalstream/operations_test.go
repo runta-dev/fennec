@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/cloudops"
 	cloudruntime "fennec/internal/runtime"
 	"io"
 	"testing"
@@ -47,7 +48,7 @@ func TestOperationCompletionDoesNotSendClose(t *testing.T) {
 			if kind == "stop" {
 				_, err = transport.Stop(ctx, cloudruntime.LocalTerminal{ID: "quiet-river", Address: "t1"})
 			} else {
-				_, err = transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "read", SessionID: "quiet-river", Address: "t1"})
+				_, err = transport.Operate(ctx, cloudops.Operation{Kind: "read", SessionID: "quiet-river", Address: "t1"})
 			}
 			if (err != nil) != (kind == "error" || kind == "timeout") {
 				t.Fatalf("unexpected result: %v", err)
@@ -70,7 +71,7 @@ func TestCancelledOperationNeverSendsMutation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	transport := &Transport{input: operationSink{write: func([]byte) (int, error) { t.Fatal("cancelled operation wrote to transport"); return 0, nil }}}
-	if _, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "list"}); !errors.Is(err, context.Canceled) {
+	if _, err := transport.Operate(ctx, cloudops.Operation{Kind: "list"}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if _, err := transport.Stop(ctx, cloudruntime.LocalTerminal{ID: "quiet-river", Address: "t1"}); !errors.Is(err, context.Canceled) {

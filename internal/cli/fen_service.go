@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/connectivity"
 	"fennec/internal/control"
 	"fennec/internal/launcher"
@@ -275,7 +276,7 @@ func startFenSessionService(ctx context.Context, home, runtimeID string, shared 
 			if err != nil {
 				return nil, err
 			}
-			data, err := transport.Operate(operation, cloudruntime.LocalOperation{Kind: "list"})
+			data, err := transport.Operate(operation, cloudops.Operation{Kind: "list"})
 			channels[0].mu.Lock()
 			observe := channels[0].onListing
 			channels[0].mu.Unlock()

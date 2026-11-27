@@ -1,7 +1,8 @@
-package runtime
+package cloudops
 
 import (
 	"context"
+	"fennec/internal/runtime"
 	"reflect"
 	"strings"
 	"testing"
@@ -10,7 +11,7 @@ import (
 func TestSendPreservesLiteralInput(t *testing.T) {
 	id := strings.Repeat("a", 32)
 	text := "--force $(touch should-not-exist)\n'quoted'"
-	runtime := &LocalRuntime{Run: func(_ context.Context, args ...string) ([]byte, error) {
+	runtime := &runtime.LocalRuntime{Run: func(_ context.Context, args ...string) ([]byte, error) {
 		if args[0] == "get" {
 			return []byte(`{"state":"live","labels":{"fennec.session":"` + id + `"}}`), nil
 		}
@@ -19,7 +20,7 @@ func TestSendPreservesLiteralInput(t *testing.T) {
 		}
 		return []byte(`{"started":true,"status":"working"}`), nil
 	}}
-	if _, err := runtime.Operation(context.Background(), LocalOperation{Kind: "send", Address: "t1", SessionID: id, Text: text}); err != nil {
+	if _, err := Operate(context.Background(), runtime, Operation{Kind: "send", Address: "t1", SessionID: id, Text: text}); err != nil {
 		t.Fatal(err)
 	}
 }

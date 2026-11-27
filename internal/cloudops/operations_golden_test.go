@@ -1,12 +1,13 @@
-package runtime
+package cloudops
 
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fennec/internal/board"
 	"fennec/internal/localssh"
+	"fennec/internal/runtime"
 	"fennec/internal/setup"
+	"flag"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,8 +18,8 @@ import (
 var updateOperationsGolden = flag.Bool("update-operations-golden", false, "rewrite testdata/operations.golden.json")
 
 // operateForGolden is the one line that changes when the dispatcher moves.
-func operateForGolden(rt *LocalRuntime, o LocalOperation) (json.RawMessage, error) {
-	return rt.Operation(context.Background(), o)
+func operateForGolden(rt *runtime.LocalRuntime, o Operation) (json.RawMessage, error) {
+	return Operate(context.Background(), rt, o)
 }
 
 // TestOperationsGolden pins every operation kind's validation, result and the
@@ -39,56 +40,56 @@ func TestOperationsGolden(t *testing.T) {
 	var got []outcome
 	cases := []struct {
 		name string
-		op   LocalOperation
+		op   Operation
 		// noObserve drops Observe, as on a cloud binary without paint support.
 		noObserve bool
 	}{
-		{name: "unknown kind", op: LocalOperation{Kind: "format_disk"}},
-		{name: "empty kind", op: LocalOperation{}},
-		{name: "thread_session invalid project", op: LocalOperation{Kind: "thread_session", Project: "Bad Project", RequestNumber: 1}},
-		{name: "thread_session invalid number", op: LocalOperation{Kind: "thread_session", Project: "thread", RequestNumber: 0}},
-		{name: "thread_session live", op: LocalOperation{Kind: "thread_session", Project: "PROJECT", RequestNumber: -1}},
-		{name: "thread_session missing request", op: LocalOperation{Kind: "thread_session", Project: "PROJECT", RequestNumber: 99}},
-		{name: "connector_health without health", op: LocalOperation{Kind: "connector_health"}},
-		{name: "connector_health invalid health", op: LocalOperation{Kind: "connector_health", Health: &localssh.LinkHealth{}}},
-		{name: "mac_online without generation", op: LocalOperation{Kind: "mac_online", Health: &localssh.LinkHealth{Device: "1234abcd"}}},
-		{name: "preparation_health without check", op: LocalOperation{Kind: "preparation_health"}},
-		{name: "preparation_health invalid check", op: LocalOperation{Kind: "preparation_health", Preparation: &setup.PreparationHealth{}}},
-		{name: "system_metrics", op: LocalOperation{Kind: "system_metrics"}},
-		{name: "cloud_agents", op: LocalOperation{Kind: "cloud_agents"}},
-		{name: "reconfigure_runtime without configuration", op: LocalOperation{Kind: "reconfigure_runtime"}},
-		{name: "native_account codex", op: LocalOperation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "codex"}}},
-		{name: "native_account agy", op: LocalOperation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "agy"}}},
-		{name: "native_account unsupported", op: LocalOperation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "opencode"}}},
-		{name: "native_models agy unsupported", op: LocalOperation{Kind: "native_models", NativeModel: &setup.NativeModelSelection{Agent: "agy"}}},
-		{name: "native_models codex", op: LocalOperation{Kind: "native_models", NativeModel: &setup.NativeModelSelection{Agent: "codex"}}},
-		{name: "native_model_set foreign model", op: LocalOperation{Kind: "native_model_set", NativeModel: &setup.NativeModelSelection{Agent: "codex", Model: "kimi-code/k3"}}},
-		{name: "native_model_set codex", op: LocalOperation{Kind: "native_model_set", NativeModel: &setup.NativeModelSelection{Agent: "codex", Model: "gpt-test"}}},
-		{name: "native_login_status invalid address", op: LocalOperation{Kind: "native_login_status", Address: "x1", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
-		{name: "native_login_status without login", op: LocalOperation{Kind: "native_login_status", Address: "t1"}},
-		{name: "native_login_status", op: LocalOperation{Kind: "native_login_status", Address: "t3", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
-		{name: "native_login_cancel", op: LocalOperation{Kind: "native_login_cancel", Address: "t3", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
-		{name: "native_credential_set without credential", op: LocalOperation{Kind: "native_credential_set"}},
-		{name: "native_credential_watch without watch", op: LocalOperation{Kind: "native_credential_watch"}},
-		{name: "model_accounts without accounts", op: LocalOperation{Kind: "model_accounts"}},
-		{name: "magpie_credentials_sync empty", op: LocalOperation{Kind: "magpie_credentials_sync"}},
-		{name: "connector_prepare without connector", op: LocalOperation{Kind: "connector_prepare"}},
-		{name: "connector_prepare invalid connector", op: LocalOperation{Kind: "connector_prepare", Connector: &localssh.LinkBootstrap{}}},
-		{name: "reconcile_routes empty", op: LocalOperation{Kind: "reconcile_routes"}},
-		{name: "list", op: LocalOperation{Kind: "list"}},
-		{name: "launch without request", op: LocalOperation{Kind: "launch"}},
-		{name: "launch invalid request", op: LocalOperation{Kind: "launch", Launch: &LocalLaunch{ID: "x"}}},
-		{name: "stop live", op: LocalOperation{Kind: "stop", Address: "t1", SessionID: id}},
-		{name: "stop finished", op: LocalOperation{Kind: "stop", Address: "t2", SessionID: id}},
-		{name: "stop invalid identity", op: LocalOperation{Kind: "stop", Address: "t1", SessionID: "short"}},
-		{name: "read", op: LocalOperation{Kind: "read", Address: "t1", SessionID: id}},
-		{name: "read wrong session", op: LocalOperation{Kind: "read", Address: "t1", SessionID: strings.Repeat("b", 32)}},
-		{name: "peek painted", op: LocalOperation{Kind: "peek", Address: "t1", SessionID: id}},
-		{name: "peek without painter", op: LocalOperation{Kind: "peek", Address: "t1", SessionID: id}, noObserve: true},
-		{name: "peek finished", op: LocalOperation{Kind: "peek", Address: "t2", SessionID: id}},
-		{name: "send", op: LocalOperation{Kind: "send", Address: "t1", SessionID: id, Text: "hello"}},
-		{name: "send blank", op: LocalOperation{Kind: "send", Address: "t1", SessionID: id, Text: "  "}},
-		{name: "send to finished", op: LocalOperation{Kind: "send", Address: "t2", SessionID: id, Text: "hello"}},
+		{name: "unknown kind", op: Operation{Kind: "format_disk"}},
+		{name: "empty kind", op: Operation{}},
+		{name: "thread_session invalid project", op: Operation{Kind: "thread_session", Project: "Bad Project", RequestNumber: 1}},
+		{name: "thread_session invalid number", op: Operation{Kind: "thread_session", Project: "thread", RequestNumber: 0}},
+		{name: "thread_session live", op: Operation{Kind: "thread_session", Project: "PROJECT", RequestNumber: -1}},
+		{name: "thread_session missing request", op: Operation{Kind: "thread_session", Project: "PROJECT", RequestNumber: 99}},
+		{name: "connector_health without health", op: Operation{Kind: "connector_health"}},
+		{name: "connector_health invalid health", op: Operation{Kind: "connector_health", Health: &localssh.LinkHealth{}}},
+		{name: "mac_online without generation", op: Operation{Kind: "mac_online", Health: &localssh.LinkHealth{Device: "1234abcd"}}},
+		{name: "preparation_health without check", op: Operation{Kind: "preparation_health"}},
+		{name: "preparation_health invalid check", op: Operation{Kind: "preparation_health", Preparation: &setup.PreparationHealth{}}},
+		{name: "system_metrics", op: Operation{Kind: "system_metrics"}},
+		{name: "cloud_agents", op: Operation{Kind: "cloud_agents"}},
+		{name: "reconfigure_runtime without configuration", op: Operation{Kind: "reconfigure_runtime"}},
+		{name: "native_account codex", op: Operation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "codex"}}},
+		{name: "native_account agy", op: Operation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "agy"}}},
+		{name: "native_account unsupported", op: Operation{Kind: "native_account", NativeModel: &setup.NativeModelSelection{Agent: "opencode"}}},
+		{name: "native_models agy unsupported", op: Operation{Kind: "native_models", NativeModel: &setup.NativeModelSelection{Agent: "agy"}}},
+		{name: "native_models codex", op: Operation{Kind: "native_models", NativeModel: &setup.NativeModelSelection{Agent: "codex"}}},
+		{name: "native_model_set foreign model", op: Operation{Kind: "native_model_set", NativeModel: &setup.NativeModelSelection{Agent: "codex", Model: "kimi-code/k3"}}},
+		{name: "native_model_set codex", op: Operation{Kind: "native_model_set", NativeModel: &setup.NativeModelSelection{Agent: "codex", Model: "gpt-test"}}},
+		{name: "native_login_status invalid address", op: Operation{Kind: "native_login_status", Address: "x1", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
+		{name: "native_login_status without login", op: Operation{Kind: "native_login_status", Address: "t1"}},
+		{name: "native_login_status", op: Operation{Kind: "native_login_status", Address: "t3", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
+		{name: "native_login_cancel", op: Operation{Kind: "native_login_cancel", Address: "t3", Login: &setup.NativeLogin{ID: "login-fixture", Agent: "codex"}}},
+		{name: "native_credential_set without credential", op: Operation{Kind: "native_credential_set"}},
+		{name: "native_credential_watch without watch", op: Operation{Kind: "native_credential_watch"}},
+		{name: "model_accounts without accounts", op: Operation{Kind: "model_accounts"}},
+		{name: "magpie_credentials_sync empty", op: Operation{Kind: "magpie_credentials_sync"}},
+		{name: "connector_prepare without connector", op: Operation{Kind: "connector_prepare"}},
+		{name: "connector_prepare invalid connector", op: Operation{Kind: "connector_prepare", Connector: &localssh.LinkBootstrap{}}},
+		{name: "reconcile_routes empty", op: Operation{Kind: "reconcile_routes"}},
+		{name: "list", op: Operation{Kind: "list"}},
+		{name: "launch without request", op: Operation{Kind: "launch"}},
+		{name: "launch invalid request", op: Operation{Kind: "launch", Launch: &runtime.LocalLaunch{ID: "x"}}},
+		{name: "stop live", op: Operation{Kind: "stop", Address: "t1", SessionID: id}},
+		{name: "stop finished", op: Operation{Kind: "stop", Address: "t2", SessionID: id}},
+		{name: "stop invalid identity", op: Operation{Kind: "stop", Address: "t1", SessionID: "short"}},
+		{name: "read", op: Operation{Kind: "read", Address: "t1", SessionID: id}},
+		{name: "read wrong session", op: Operation{Kind: "read", Address: "t1", SessionID: strings.Repeat("b", 32)}},
+		{name: "peek painted", op: Operation{Kind: "peek", Address: "t1", SessionID: id}},
+		{name: "peek without painter", op: Operation{Kind: "peek", Address: "t1", SessionID: id}, noObserve: true},
+		{name: "peek finished", op: Operation{Kind: "peek", Address: "t2", SessionID: id}},
+		{name: "send", op: Operation{Kind: "send", Address: "t1", SessionID: id, Text: "hello"}},
+		{name: "send blank", op: Operation{Kind: "send", Address: "t1", SessionID: id, Text: "  "}},
+		{name: "send to finished", op: Operation{Kind: "send", Address: "t2", SessionID: id, Text: "hello"}},
 	}
 	for _, c := range cases {
 		home := t.TempDir()
@@ -121,7 +122,7 @@ func TestOperationsGolden(t *testing.T) {
 			}
 			return "live"
 		}
-		rt := &LocalRuntime{Home: home,
+		rt := &runtime.LocalRuntime{Home: home,
 			Lookup: func(name string) (string, error) { return "/fixture/" + name, nil },
 			Run: func(_ context.Context, args ...string) ([]byte, error) {
 				calls = append(calls, call{Via: "run", Args: args})
@@ -244,10 +245,10 @@ func stripTimings(raw json.RawMessage) json.RawMessage {
 // TestOperationWireFormat pins the operation's JSON: the Mac and the cloud
 // computer run different builds, so field names and order must not move.
 func TestOperationWireFormat(t *testing.T) {
-	o := LocalOperation{Health: &localssh.LinkHealth{}, MagpieCredentials: map[string]string{"a": "b"}, Connector: &localssh.LinkBootstrap{},
+	o := Operation{Health: &localssh.LinkHealth{}, MagpieCredentials: map[string]string{"a": "b"}, Connector: &localssh.LinkBootstrap{},
 		Preparation: &setup.PreparationHealth{}, Configuration: &setup.RuntimeConfiguration{}, Login: &setup.NativeLogin{},
 		NativeModel: &setup.NativeModelSelection{}, Accounts: &setup.ModelAccountsRequest{}, Credential: &setup.NativeCredentialPush{},
-		CredentialWatch: &setup.NativeCredentialWatch{}, Routes: []setup.AgentRoute{{}}, Launch: &LocalLaunch{},
+		CredentialWatch: &setup.NativeCredentialWatch{}, Routes: []setup.AgentRoute{{}}, Launch: &runtime.LocalLaunch{},
 		Kind: "k", Address: "t1", SessionID: "s", Text: "x", Project: "p", RequestNumber: 2}
 	raw, err := json.Marshal(o)
 	if err != nil {
@@ -267,7 +268,7 @@ func TestOperationWireFormat(t *testing.T) {
 	if string(want) != string(raw)+"\n" {
 		t.Fatalf("wire format changed:\n%s\nwant:\n%s", raw, want)
 	}
-	var back LocalOperation
+	var back Operation
 	if err := json.Unmarshal(want, &back); err != nil || back.Kind != "k" || back.RequestNumber != 2 || back.Launch == nil {
 		t.Fatalf("golden no longer decodes: %v %+v", err, back)
 	}

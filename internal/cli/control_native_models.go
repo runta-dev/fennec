@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/control"
-	r "fennec/internal/runtime"
 	"fennec/internal/setup"
 )
 
@@ -19,7 +19,7 @@ func (s *daemonServices) nativeModelOperation(ctx context.Context, raw json.RawM
 	if json.Unmarshal(raw, &choice) != nil {
 		return nil, &control.Fault{Code: "invalid_params", Message: "Choose an agent"}
 	}
-	operation := r.LocalOperation{Kind: kind, NativeModel: &choice}
+	operation := cloudops.Operation{Kind: kind, NativeModel: &choice}
 	if err := operation.Validate(); err != nil {
 		return nil, &control.Fault{Code: "invalid_params", Message: err.Error()}
 	}

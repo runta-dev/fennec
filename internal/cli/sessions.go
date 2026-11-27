@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/launcher"
 	"fennec/internal/launchprofile"
 	"fennec/internal/localssh"
@@ -62,13 +63,13 @@ func sessionOperationContext(parent context.Context, input io.Reader, output io.
 		}
 	}
 	if operation == "read" {
-		script, err = runtime.ReadScript(request.Address, request.SessionID)
+		script, err = cloudops.ReadScript(request.Address, request.SessionID)
 		if err != nil {
 			return err
 		}
 	}
 	if operation == "send" {
-		script, err = runtime.SendScript(request.Address, request.SessionID, request.Text)
+		script, err = cloudops.SendScript(request.Address, request.SessionID, request.Text)
 		if err != nil {
 			return err
 		}

@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fennec/internal/localssh"
-	cloudruntime "fennec/internal/runtime"
 	"fennec/internal/terminalstream"
 	"fmt"
 	"net"
@@ -91,7 +91,7 @@ func (s *daemonServices) bootstrapLink(ctx context.Context, epoch uint64, runtim
 			if !transport.Supports("connector_prepare") {
 				return localssh.LinkBootstrapResult{NeedsSetup: true}, nil
 			}
-			data, err := transport.Operate(ctx, cloudruntime.LocalOperation{Kind: "connector_prepare", Connector: &request})
+			data, err := transport.Operate(ctx, cloudops.Operation{Kind: "connector_prepare", Connector: &request})
 			if err != nil {
 				return localssh.LinkBootstrapResult{}, err
 			}
@@ -194,5 +194,5 @@ func (s *daemonServices) connectorHealthOperation(ctx context.Context, epoch uin
 	if !valid || ctx.Err() != nil {
 		return nil, fmt.Errorf("connector owner changed")
 	}
-	return transport.Operate(ctx, cloudruntime.LocalOperation{Kind: kind, Health: &health})
+	return transport.Operate(ctx, cloudops.Operation{Kind: kind, Health: &health})
 }

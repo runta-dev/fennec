@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fennec/internal/cloudops"
 	"fmt"
 	"io"
-
-	cloudruntime "fennec/internal/runtime"
 )
 
 // Match the existing inbound frame budget; compression must not create an
@@ -76,7 +75,7 @@ func expandConfiguration(frame *Frame) error {
 	if err != nil || len(raw) > configurationLimit {
 		return fmt.Errorf("invalid compressed configuration size or checksum")
 	}
-	var operation cloudruntime.LocalOperation
+	var operation cloudops.Operation
 	if json.Unmarshal(raw, &operation) != nil || configurationCapability(operation.Kind) == "" {
 		return fmt.Errorf("invalid compressed operation")
 	}
