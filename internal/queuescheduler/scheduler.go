@@ -389,9 +389,10 @@ func (s Scheduler) Step(ctx context.Context) error {
 			}
 			// A request posted for an agent that isn't one of the queue's
 			// turned-on workers (FEN-110: the iPhone's + menu picks any agent
-			// ready on the cloud computer) still goes to that agent. Only
-			// before its first run: a request that ran keeps the queue's workers.
-			if !chosen && request.Agent != "" && len(request.Runs) == 0 && board.Agents[request.Agent] {
+			// ready on the cloud computer; FEN-145: so does the desktop
+			// composer) still goes to that agent, follow-ups included, since
+			// queues no longer have an Agents setting to pick workers with.
+			if !chosen && request.Agent != "" && board.Agents[request.Agent] {
 				worker = board.Worker{Agent: request.Agent, On: true}
 			}
 			target := routing.Locations[worker.Agent]

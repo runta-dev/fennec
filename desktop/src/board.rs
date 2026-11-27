@@ -553,15 +553,59 @@ pub fn post(
     text: &str,
     author: &str,
     attachments: &[Attachment],
+    choice: &Choice,
 ) -> Result<Request> {
     let text = text.trim();
     let title = title_for(text);
-    let body = json!({"title": title, "body": text, "author": author, "attachments":attachments});
+    let mut body = json!({"title": title, "body": text, "author": author, "attachments":attachments});
+    // FEN-145: the agent, model and effort picked in the composer. Empty
+    // fields are left out, so an older board still takes the request.
+    for (key, value) in [("agent", &choice.agent), ("model", &choice.model), ("effort", &choice.effort)] {
+        if !value.is_empty() {
+            body[key] = json!(value);
+        }
+    }
     Ok(serde_json::from_value(call(
         "POST",
         &format!("/v1/projects/{project}/requests"),
         Some(body),
     )?)?)
+}
+
+/// What a new request asks for (FEN-145): an agent, and optionally a model
+/// and reasoning effort; empty strings mean the agent's defaults.
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct Choice {
+    pub agent: String,
+    pub model: String,
+    pub effort: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ModelOption {
+    pub id: String,
+    pub name: String,
+    pub efforts: Vec<String>,
+}
+
+/// An agent the composer offers, as the cloud computer configured it.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AgentOption {
+    pub agent: String,
+    pub models: Vec<ModelOption>,
+}
+
+/// The agents ready on the cloud computer with their models and efforts.
+pub fn agents() -> Result<Vec<AgentOption>> {
+    #[derive(Deserialize)]
+    struct List {
+        agents: Vec<AgentOption>,
+    }
+    let list: List = serde_json::from_value(call("GET", "/v1/agents", None)?)?;
+    Ok(list.agents)
 }
 
 pub fn continue_request(

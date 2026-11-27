@@ -26,7 +26,7 @@ open http://127.0.0.1:5188). Screens and routes in the mockup:
 | `#` | Project: request list beside the open request's thread |
 | `#agent-<id>` | Session: the agent's terminal, plus local shell tabs |
 | `#new-session` | New session dialog |
-| `#settings-<project>-<tab>` | Project settings: General, Knowledge, Queue, Agents |
+| `#settings-<project>-<tab>` | Project settings: General, Knowledge, Queue |
 
 ## Layout
 
@@ -95,9 +95,13 @@ session came from a request, a button on the right opens that request.
 - **Execution**: *Requests worked on at once* (1–10, default 3), and *Now*: the
   requests holding a slot (with their agent) then the waiting ones in order,
   "*n* of *limit* in progress · *m* waiting". Rows open the request.
-- **Agents**: workers allowed to take this project's requests, each an agent,
-  a model and an on/off switch. A new request goes to the first enabled worker.
-  At least one stays enabled.
+- There is no Agents tab (FEN-145). The New Request box picks the agent,
+  model and reasoning effort: a pill in its bottom-left corner opens a popover
+  with the agents ready on the cloud computer (`GET /v1/agents`), the agent's
+  models and the model's efforts. The request carries them (`agent`, `model`,
+  `effort`); Claude Code gets `--model`/`--effort`, Codex `--model` and
+  `-c model_reasoning_effort=…`. A project's stored `workers` remain as the
+  fallback for requests posted without an agent.
 
 Controls are drawn by the page (dropdowns, switches, steppers) and match the
 panel: 28 px icon buttons with radius 6, `--line` hover fill, `.choice-menu`
@@ -150,6 +154,7 @@ The Mac daemon exposes it to the app as the control method `board.call`
 | `PATCH /v1/projects/{id}/requests/{n}` | Tag, resolve, reopen |
 | `GET /v1/projects/{id}/knowledge` | Knowledge concepts |
 | `GET /v1/queue` | Requests ready to start, with each project's limit and workers |
+| `GET /v1/agents` | Agents ready on this computer, with their models and reasoning efforts (FEN-145) |
 | `POST /v1/projects/{id}/requests/{n}/claim` | Assign a queued request to a session (fails if already taken) |
 | `POST /v1/projects/{id}/requests/{n}/release` | Return a claimed request to the queue when its session did not start |
 | `POST /v1/projects/{id}/requests/{n}/retry` | Explicitly retry an unknown, failed or needs-you request in a new session |

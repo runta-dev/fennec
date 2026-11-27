@@ -3,6 +3,7 @@
 //! on the right.
 
 mod activity;
+mod agent_pick;
 mod card_preview;
 mod cloud;
 mod context_menu;
@@ -179,6 +180,10 @@ pub struct FennecWindow {
     pending_requests: Vec<pending_request::PendingRequest>,
     /// Numbers the next pending request.
     request_token: u64,
+    /// FEN-145: the agent, model and effort the next request asks for, and
+    /// the composer popover that picks them.
+    agent_choice: board::Choice,
+    agent_pick: agent_pick::AgentPick,
     replying: bool,
     /// THI-176: options picked on an asking thread's question card, by
     /// "project:number:question id", and whether an answer is on its way.
@@ -372,6 +377,8 @@ impl FennecWindow {
             session_modal: None,
             pending_requests: Vec::new(),
             request_token: 0,
+            agent_choice: Default::default(),
+            agent_pick: Default::default(),
             replying: false,
             question_picks: HashMap::new(),
             answering: false,
@@ -535,7 +542,6 @@ impl FennecWindow {
                 let tab = match tab.unwrap_or_default() {
                     "knowledge" => Tab::Knowledge,
                     "queue" => Tab::Queue,
-                    "agents" => Tab::Agents,
                     _ => Tab::General,
                 };
                 self.go(Route::Settings(id.into(), tab), window, cx);
@@ -1078,10 +1084,12 @@ impl FennecWindow {
         self.set_resolved(false);
         cx.notify();
         let me = self.me.clone();
+        let choice = self.agent_choice();
+        self.agent_pick.open = false;
         let worker_scope = scope.clone();
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let posted = cx
-                .background_spawn(async move { worker_scope.run(|| { board::post(&project, &text, &me, &images) }) })
+                .background_spawn(async move { worker_scope.run(|| { board::post(&project, &text, &me, &images, &choice) }) })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
                 let Some(i) = this.pending_requests.iter().position(|p| p.token == token) else { return; };
@@ -2236,6 +2244,8 @@ impl FennecWindow {
         let image_status = self.request_image_status(&p.id);
         let composer_box = self.composer_box(cx);
         let ref_list = self.ref_list(window, cx);
+        let agent_pill = self.agent_pill(cx);
+        let agent_popover = self.agent_popover(cx);
         let composer_has = !self.composer.read(cx).value().trim().is_empty()
             || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
         // The chosen tab's background is the sliding highlight once the tabs
@@ -2593,7 +2603,9 @@ impl FennecWindow {
                             .line_height(relative(1.6))
                             .child(composer_box)
                             .children(ref_list)
+                            .children(agent_popover)
                             .when_some(self.draft_images(&p.id,cx),|d,images|d.child(images))
+                            .when(image_status.is_none(), |d| d.child(agent_pill))
                             .when_some(image_status, |d, key| d.child(div().absolute().left(px(13.0)).right(px(80.0)).bottom(px(8.0)).h(px(16.0)).truncate().text_size(px(11.0)).text_color(c("f_muted")).child(t(key))))
                             .when(!composer_has && image_status.is_none(), |d| {
                                 d.child(send_newline_hints())

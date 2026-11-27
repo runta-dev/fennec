@@ -18,6 +18,8 @@ pub(crate) struct Saved {
     /// Reply drafts by `reply:<queue>:<number>`, empty ones left out.
     pub replies: BTreeMap<String, String>,
     pub images: BTreeMap<String, Vec<crate::board::Attachment>>,
+    /// FEN-145: the agent, model and effort picked in the composer.
+    pub choice: crate::board::Choice,
 }
 
 fn path() -> Option<std::path::PathBuf> {
@@ -73,6 +75,7 @@ impl FennecWindow {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
+            choice: self.agent_choice.clone(),
         }
     }
 
@@ -128,6 +131,8 @@ impl FennecWindow {
         self.context_menu = None;
         self.menu = None;
         self.pending_requests.clear();
+        self.agent_choice = saved.choice.clone();
+        self.agent_pick = Default::default();
         self.replying = false;
         self.answering = false;
         self.opening_thread_session = false;

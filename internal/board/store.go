@@ -120,7 +120,11 @@ type Request struct {
 	QueuedAt time.Time `json:"queued_at,omitempty"`
 	Failure  string    `json:"failure,omitempty"`
 	// The agent and session working on it, once a worker has taken it.
-	Agent       string `json:"agent,omitempty"`
+	Agent string `json:"agent,omitempty"`
+	// Model and Effort are what the person picked in the composer with the
+	// agent (FEN-145); empty means the agent's own default.
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
 	Session     string `json:"session,omitempty"`
 	RunLocation string `json:"run_location,omitempty"`
 	Runs        []Run  `json:"runs,omitempty"`
@@ -591,7 +595,35 @@ func (s Store) CreateRequestWithAttachments(project, author, title string, tags 
 // (FEN-110: the iPhone picks the agent before writing the request). An empty
 // agent leaves the choice to the queue's workers.
 func (s Store) CreateRequestForAgent(project, author, title string, tags []string, body string, images []Attachment, agent string) (Request, error) {
-	if agent != "" && !Agents[agent] {
+	return s.CreateRequestWith(project, author, title, tags, body, images, Choice{Agent: agent})
+}
+
+// Choice is the agent, model and reasoning effort a request asks for
+// (FEN-145: picked in the composer instead of the queue's Agents settings).
+type Choice struct {
+	Agent  string `json:"agent"`
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
+var (
+	modelPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@/\[\]-]{0,119}$`)
+	effortPattern = regexp.MustCompile(`^[a-z]{1,16}$`)
+)
+
+// Valid reports whether the choice names a known agent (or none) and a
+// model and effort that are safe to pass on an agent's command line.
+func (c Choice) Valid() bool {
+	if c.Agent == "" {
+		return c.Model == "" && c.Effort == ""
+	}
+	return Agents[c.Agent] && (c.Model == "" || modelPattern.MatchString(c.Model)) && (c.Effort == "" || effortPattern.MatchString(c.Effort))
+}
+
+// CreateRequestWith posts a request for the chosen agent, model and effort.
+func (s Store) CreateRequestWith(project, author, title string, tags []string, body string, images []Attachment, choice Choice) (Request, error) {
+	agent := choice.Agent
+	if !choice.Valid() {
 		return Request{}, ErrInvalid
 	}
 	unlock, err := s.lock()
@@ -639,7 +671,7 @@ func (s Store) CreateRequestForAgent(project, author, title string, tags []strin
 			p.Next++
 		}
 	}
-	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Agent: agent, Created: now, Updated: now, QueuedAt: now,
+	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Agent: agent, Model: choice.Model, Effort: choice.Effort, Created: now, Updated: now, QueuedAt: now,
 		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
 	r.setTags(tags)
 	p.Next++

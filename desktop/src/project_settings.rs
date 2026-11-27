@@ -1,7 +1,8 @@
-//! Project settings (docs/desktop-app.md): General, Knowledge, Queue, Agents.
+//! Project settings (docs/desktop-app.md): General, Knowledge, Queue. The
+//! Agents tab is gone (FEN-145): the composer picks agent, model and effort.
 
 use crate::app::{FennecWindow, Route, secondary_button};
-use crate::board::{self, Concept, Project, QueueProject, Tag, Worker};
+use crate::board::{self, Concept, Project, QueueProject, Tag};
 use crate::i18n::{t, tf};
 use crate::ui::{self, c};
 use gpui::prelude::FluentBuilder as _;
@@ -15,7 +16,6 @@ pub enum Tab {
     General,
     Knowledge,
     Queue,
-    Agents,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -37,9 +37,6 @@ pub struct State {
     knowledge: Vec<Concept>,
     filter: KnowledgeFilter,
     concept: String,
-    add_worker_open: bool,
-    model_menu: Option<usize>,
-    model_input: Option<Entity<InputState>>,
     queue: Option<QueueProject>,
 }
 
@@ -57,7 +54,6 @@ impl State {
             &self.description,
             &self.repository,
             &self.new_tag,
-            &self.model_input,
         ]
         .into_iter()
         .flatten()
@@ -241,7 +237,6 @@ impl FennecWindow {
             (Tab::General, "general", "sliders"),
             (Tab::Knowledge, "knowledge", "book"),
             (Tab::Queue, "queue", "layers"),
-            (Tab::Agents, "agents", "bot"),
         ]
         .map(|(which, label, icon)| {
             let id = p.id.clone();
@@ -272,13 +267,11 @@ impl FennecWindow {
             Tab::General => self.general(p, cx).into_any_element(),
             Tab::Knowledge => self.knowledge(p, cx).into_any_element(),
             Tab::Queue => self.queue_tab(p, cx).into_any_element(),
-            Tab::Agents => self.agents(p, cx).into_any_element(),
         };
         let heading = match tab {
             Tab::General => "general",
             Tab::Knowledge => "knowledge",
             Tab::Queue => "queue",
-            Tab::Agents => "agents",
         };
         let back = p.id.clone();
         v_flex()
@@ -1124,317 +1117,6 @@ impl FennecWindow {
                     ),
             )
     }
-
-    fn choose_worker_model(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(project) = self.projects.iter().find(|p| p.id == self.settings.project) else {
-            return;
-        };
-        let Some(worker) = project.workers.get(index) else {
-            return;
-        };
-        let value = worker.model.clone();
-        let input = cx.new(|cx| {
-            let mut s = InputState::new(window, cx).placeholder(t("default_model"));
-            s.set_value(value, window, cx);
-            s
-        });
-        self._subs.push(cx.subscribe_in(
-            &input,
-            window,
-            |this, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
-                    this.save_worker_model(false, window, cx);
-                }
-            },
-        ));
-        self.settings.model_input = Some(input.clone());
-        self.settings.model_menu = Some(index);
-        input.read(cx).focus_handle(cx).focus(window, cx);
-        cx.notify();
-    }
-    fn save_worker_model(&mut self, default: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.settings.model_menu.take() else {
-            return;
-        };
-        let Some(project) = self.projects.iter().find(|p| p.id == self.settings.project) else {
-            return;
-        };
-        let mut workers = project.workers.clone();
-        let Some(worker) = workers.get_mut(index) else {
-            return;
-        };
-        worker.model = if default {
-            String::new()
-        } else {
-            self.settings
-                .model_input
-                .as_ref()
-                .map(|i| i.read(cx).value().trim().to_owned())
-                .unwrap_or_default()
-        };
-        self.patch_project(json!({"workers":workers}), window, cx);
-    }
-    fn worker_model_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let index = self.settings.model_menu?;
-        let input = self.settings.model_input.as_ref()?;
-        Some(
-            v_flex()
-                .absolute()
-                .left(px(142.0))
-                .top(px(48.0 * (index + 1) as f32 + 4.0))
-                .w(px(280.0))
-                .p(px(10.0))
-                .gap(px(8.0))
-                .bg(c("f_card"))
-                .rounded(px(9.0))
-                .border_1()
-                .border_color(c("f_field"))
-                .shadow_lg()
-                .occlude()
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    this.settings.model_menu = None;
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .h(px(30.0))
-                        .px(px(9.0))
-                        .rounded(px(7.0))
-                        .border_1()
-                        .border_color(c("f_field"))
-                        .flex()
-                        .items_center()
-                        .text_size(px(13.0))
-                        .child(Input::new(input)),
-                )
-                .child(
-                    h_flex()
-                        .gap(px(8.0))
-                        .justify_end()
-                        .child(
-                            secondary_button("default-worker-model", t("default_model"), false)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.save_worker_model(true, window, cx)
-                                })),
-                        )
-                        .child(
-                            secondary_button("save-worker-model", t("save_changes"), false)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.save_worker_model(false, window, cx)
-                                })),
-                        ),
-                )
-                .into_any_element(),
-        )
-    }
-
-    fn agents(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
-        let model_menu = self.worker_model_menu(cx);
-        let workers = p.workers.clone();
-        let enabled = workers.iter().filter(|w| w.on).count();
-        let rows =
-            workers.iter().enumerate().map(|(i, w)| {
-                let mut next = workers.clone();
-                next[i].on = !w.on;
-                let locked = w.on && enabled <= 1;
-                let mut removed = workers.clone();
-                removed.remove(i);
-                h_flex()
-                    .h(px(48.0))
-                    .gap(px(10.0))
-                    .border_b_1()
-                    .border_color(c("f_line"))
-                    .child(
-                        div()
-                            .opacity(if w.on { 1.0 } else { 0.45 })
-                            .child(ui::agent_icon(&w.agent, 18.0)),
-                    )
-                    .child(
-                        div()
-                            .w(px(92.0))
-                            .flex_none()
-                            .opacity(if w.on { 1.0 } else { 0.45 })
-                            .text_size(px(13.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(crate::sessions::agent_name(&w.agent).to_owned()),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("worker-model-{i}")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.choose_worker_model(i, window, cx)
-                            }))
-                            .w(px(150.0))
-                            .h(px(28.0))
-                            .px(px(9.0))
-                            .rounded(px(7.0))
-                            .border_1()
-                            .border_color(c("f_field"))
-                            .flex()
-                            .items_center()
-                            .opacity(if w.on { 1.0 } else { 0.45 })
-                            .text_size(px(12.5))
-                            .justify_between()
-                            .text_color(c("f_text"))
-                            .child(div().flex_1().min_w_0().truncate().child(
-                                if w.model.is_empty() {
-                                    t("default_model")
-                                } else {
-                                    w.model.clone()
-                                },
-                            ))
-                            .child(ui::icon("chevron", 13.0, c("f_muted"))),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        switch(SharedString::from(format!("w-{i}")), w.on, !locked).when(
-                            !locked,
-                            |d| {
-                                d.on_click(cx.listener(move |this, _, window, cx| {
-                                    this.patch_project(json!({"workers": next}), window, cx)
-                                }))
-                            },
-                        ),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("worker-remove-{i}")))
-                            .size(px(28.0))
-                            .rounded(px(6.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .opacity(if locked { 0.35 } else { 1.0 })
-                            .when(!locked, |d| {
-                                d.on_click(cx.listener(move |this, _, window, cx| {
-                                    this.patch_project(json!({"workers":removed}), window, cx)
-                                }))
-                            })
-                            .child(ui::icon("trash", 17.0, c("f_muted"))),
-                    )
-            });
-        let add = board::AGENTS
-            .iter()
-            .filter(|a| !workers.iter().any(|w| &w.agent == *a))
-            .map(|agent| {
-                let mut next = workers.clone();
-                next.push(Worker {
-                    agent: agent.to_string(),
-                    model: String::new(),
-                    on: true,
-                });
-                h_flex()
-                    .id(SharedString::from(format!("add-{agent}")))
-                    .h(px(29.0))
-                    .px(px(9.0))
-                    .gap(px(8.0))
-                    .rounded(px(5.0))
-                    .text_size(px(12.5))
-                    .hover(|s| s.bg(c("f_expanded")))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.settings.add_worker_open = false;
-                        this.patch_project(json!({"workers": next}), window, cx)
-                    }))
-                    .child(ui::agent_icon(agent, 14.0))
-                    .child(crate::sessions::agent_name(agent).to_owned())
-            });
-        v_flex()
-            .gap(px(10.0))
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(c("f_muted"))
-                    .child(t("agents_hint")),
-            )
-            .child(
-                v_flex()
-                    .relative()
-                    .bg(c("f_card"))
-                    .border_1()
-                    .border_color(c("f_line"))
-                    .rounded(px(11.0))
-                    .px(px(14.0))
-                    .py(px(4.0))
-                    .children(rows)
-                    .when_some(model_menu, |d, menu| d.child(menu))
-                    .child(
-                        div()
-                            .relative()
-                            .py(px(10.0))
-                            .child(
-                                h_flex()
-                                    .id("add-worker-menu")
-                                    .h(px(28.0))
-                                    .px(px(9.0))
-                                    .gap(px(7.0))
-                                    .rounded(px(7.0))
-                                    .border_1()
-                                    .border_color(c("f_field"))
-                                    .bg(c("f_card"))
-                                    .text_size(px(12.5))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.settings.add_worker_open =
-                                            !this.settings.add_worker_open;
-                                        cx.notify();
-                                    }))
-                                    .child(t("add_worker"))
-                                    .child(ui::icon("chevron", 13.0, c("f_muted"))),
-                            )
-                            .when(self.settings.add_worker_open, |d| {
-                                d.child(
-                                    v_flex()
-                                        .absolute()
-                                        .top(px(42.0))
-                                        .left(px(0.0))
-                                        .min_w(px(180.0))
-                                        .p(px(5.0))
-                                        .gap(px(2.0))
-                                        .rounded(px(9.0))
-                                        .border_1()
-                                        .border_color(c("f_field"))
-                                        .bg(c("f_card"))
-                                        .shadow_lg()
-                                        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                                            this.settings.add_worker_open = false;
-                                            cx.notify();
-                                        }))
-                                        .children(add),
-                                )
-                            }),
-                    ),
-            )
-    }
-}
-
-/// The panel's 32×19 switch.
-fn switch(id: SharedString, on: bool, enabled: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .w(px(32.0))
-        .h(px(19.0))
-        .flex_none()
-        .rounded(px(10.0))
-        .bg(if on {
-            c("orange")
-        } else {
-            if crate::settings::get().dark {
-                rgba(0x4a4a52ff).into()
-            } else {
-                rgba(0xd1d1d8ff).into()
-            }
-        })
-        .opacity(if enabled { 1.0 } else { 0.55 })
-        .child(
-            div()
-                .absolute()
-                .top(px(2.0))
-                .left(px(if on { 15.0 } else { 2.0 }))
-                .size(px(15.0))
-                .rounded_full()
-                .bg(white())
-                .shadow_sm(),
-        )
-        .relative()
 }
 
 fn sessions_actor(value: &str) -> String {

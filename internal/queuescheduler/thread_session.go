@@ -112,13 +112,7 @@ func ContinueThread(ctx context.Context, runtime *r.LocalRuntime, store board.St
 		if err != nil {
 			return r.LocalTerminal{}, false, err
 		}
-		args := []string{}
-		for _, worker := range p.Workers {
-			if worker.Agent == agent && worker.Model != "" && (agent == "claude" || agent == "codex") {
-				args = append(args, "--model", worker.Model)
-				break
-			}
-		}
+		args := LaunchArguments(p, request, agent)
 		id := request.Session
 		if latest.State != "starting" || id == "" || latest.Session != latest.ID {
 			id = fmt.Sprintf("%x", sha256.Sum256([]byte(previous+"/resume")))[:32]
@@ -155,4 +149,37 @@ func ContinueThread(ctx context.Context, runtime *r.LocalRuntime, store board.St
 	terminal.Labels["fennec.queue"] = project
 	terminal.Labels["fennec.request"] = fmt.Sprint(number)
 	return terminal, continued, nil
+}
+
+// LaunchArguments are the model and reasoning-effort flags for the agent of a
+// thread: what the person picked in the composer (FEN-145), else the model of
+// the queue's worker entry. Only Claude Code and Codex take them.
+func LaunchArguments(p board.Project, request board.Request, agent string) []string {
+	if agent != "claude" && agent != "codex" {
+		return nil
+	}
+	model, effort := "", ""
+	if request.Agent == agent && (board.Choice{Agent: agent, Model: request.Model, Effort: request.Effort}).Valid() {
+		model, effort = request.Model, request.Effort
+	}
+	if model == "" {
+		for _, worker := range p.Workers {
+			if worker.Agent == agent && worker.Model != "" {
+				model = worker.Model
+				break
+			}
+		}
+	}
+	args := []string{}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if effort != "" {
+		if agent == "claude" {
+			args = append(args, "--effort", effort)
+		} else {
+			args = append(args, "-c", "model_reasoning_effort="+effort)
+		}
+	}
+	return args
 }

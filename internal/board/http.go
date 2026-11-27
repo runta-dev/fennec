@@ -107,6 +107,15 @@ func (s Store) Handler() http.Handler {
 			reply(w, p, err)
 		}
 	})
+	// FEN-145: the agents the composer offers, with their models and
+	// reasoning efforts, as this computer's agent configuration lists them.
+	mux.HandleFunc("GET /v1/agents", func(w http.ResponseWriter, r *http.Request) {
+		if AgentModels == nil {
+			writeError(w, ErrNotFound)
+			return
+		}
+		reply(w, map[string]any{"agents": AgentModels(r.Context(), s.Home)}, nil)
+	})
 	mux.HandleFunc("GET /v1/projects/{id}/requests", func(w http.ResponseWriter, r *http.Request) {
 		list, err := s.Requests(r.PathValue("id"))
 		reply(w, list, err)
@@ -116,14 +125,17 @@ func (s Store) Handler() http.Handler {
 			Author, Title, Tag, Body string
 			Tags                     []string     `json:"tags"`
 			Attachments              []Attachment `json:"attachments"`
-			// Agent is the agent that should take the request (FEN-110).
-			Agent string `json:"agent"`
+			// Agent is the agent that should take the request (FEN-110),
+			// with the model and effort picked in the composer (FEN-145).
+			Agent  string `json:"agent"`
+			Model  string `json:"model"`
+			Effort string `json:"effort"`
 		}
 		if decode(w, r, &body) {
 			if len(body.Tags) == 0 && body.Tag != "" {
 				body.Tags = []string{body.Tag}
 			}
-			req, err := s.CreateRequestForAgent(r.PathValue("id"), body.Author, body.Title, body.Tags, body.Body, body.Attachments, body.Agent)
+			req, err := s.CreateRequestWith(r.PathValue("id"), body.Author, body.Title, body.Tags, body.Body, body.Attachments, Choice{Agent: body.Agent, Model: body.Model, Effort: body.Effort})
 			reply(w, req, err)
 		}
 	})
@@ -371,3 +383,8 @@ type pipeAddr struct{}
 
 func (pipeAddr) Network() string { return "pipe" }
 func (pipeAddr) String() string  { return "board" }
+
+// AgentModels lists the agents requests can ask for on this computer, with
+// their models and efforts (FEN-145). The program sets it; the board has no
+// access to agent configuration of its own.
+var AgentModels func(ctx context.Context, home string) any
