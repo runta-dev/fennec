@@ -36,6 +36,11 @@ type Exchange struct {
 	Seen    map[string]uint64   `json:"seen"`
 	Events  []Mutation          `json:"events"`
 	More    bool                `json:"more,omitempty"`
+	// Wait (ms, at most MaxSyncWait) asks the answering side to hold an
+	// exchange that has nothing to send until its board changes, so a peer
+	// hears of a change at once instead of on its next poll (FEN-193). Only
+	// sent to peers that advertise CapabilityBoardWait; older ones ignore it.
+	Wait int `json:"wait,omitempty"`
 }
 
 func randomID() string {

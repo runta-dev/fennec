@@ -515,6 +515,25 @@ pub fn call(method: &str, path: &str, body: Option<Value>) -> Result<Value> {
     Ok(serde_json::from_slice(&out.stdout)?)
 }
 
+/// The local board's change stamp as soon as it differs from `since`, or
+/// after `wait` with it unchanged (`board.wait`, FEN-193). `since` "" returns
+/// the current stamp at once. None when the daemon can't wait (preview, an
+/// older daemon, no board yet): the caller polls instead. Blocking.
+pub fn wait_change(since: &str, wait: std::time::Duration) -> Option<String> {
+    if crate::preview::active() || !crate::control::available() {
+        return None;
+    }
+    let reply = control_call(
+        "board.wait",
+        json!({"since": since, "wait_ms": wait.as_millis() as u64}),
+    )
+    .ok()?;
+    reply["stamp"]
+        .as_str()
+        .filter(|stamp| !stamp.is_empty())
+        .map(str::to_owned)
+}
+
 pub fn projects() -> Result<Vec<Project>> {
     Ok(serde_json::from_value(call("GET", "/v1/projects", None)?)?)
 }

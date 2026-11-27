@@ -24,10 +24,22 @@ func (s Store) Handler() http.Handler {
 			writeError(w, ErrInvalid)
 			return
 		}
+		// The stamp is taken before Sync so a change landing in between
+		// still wakes the wait below.
+		stamp := s.ChangeStamp()
 		out, err := s.Sync(in)
 		if err != nil {
 			writeError(w, err)
 			return
+		}
+		if in.Wait > 0 && len(in.Events) == 0 && len(out.Events) == 0 && !out.More {
+			wait := min(time.Duration(in.Wait)*time.Millisecond, MaxSyncWait)
+			if s.WaitChange(r.Context(), stamp, wait) != stamp {
+				if out, err = s.Sync(Exchange{Seen: in.Seen}); err != nil {
+					writeError(w, err)
+					return
+				}
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)

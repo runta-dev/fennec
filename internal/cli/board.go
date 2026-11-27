@@ -176,6 +176,29 @@ func installBoard(ctx context.Context, s *daemonServices, c *controlplane.Contro
 	c.Additional["board.context"] = func(_ context.Context, _ json.RawMessage) (any, error) {
 		return map[string]string{"scope": s.localBoard().Namespace}, nil
 	}
+	// board.wait holds the desktop window's board refresh until the local
+	// board changes (a sync from the cloud or a write here), at most wait_ms,
+	// so a reply shows the moment it reaches this Mac (FEN-193). Pass the
+	// stamp it last returned; "" returns the current stamp at once.
+	c.Additional["board.wait"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var params struct {
+			Scope  string `json:"scope"`
+			Since  string `json:"since"`
+			WaitMS int    `json:"wait_ms"`
+		}
+		if json.Unmarshal(raw, &params) != nil || params.WaitMS < 0 {
+			return nil, board.ErrInvalid
+		}
+		store, err := s.scopedBoard(params.Scope)
+		if err != nil {
+			return nil, err
+		}
+		wait := min(time.Duration(params.WaitMS)*time.Millisecond, board.MaxSyncWait)
+		if params.Since == "" {
+			wait = 0
+		}
+		return map[string]string{"stamp": store.WaitChange(ctx, params.Since, wait)}, nil
+	}
 	c.Additional["board.threads"] = func(_ context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
 			Project string `json:"project"`

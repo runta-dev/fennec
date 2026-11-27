@@ -680,8 +680,10 @@ impl FennecWindow {
         cx.notify();
     }
 
-    /// Projects and the open project's requests, refreshed every few seconds:
-    /// agents answer on the cloud computer.
+    /// Projects and the open project's requests, fetched again the moment the
+    /// board on this Mac changes (`board::wait_change`), and every 2 s anyway
+    /// for state that lives outside it. Agents answer on the cloud computer;
+    /// the daemon's sync brings their writes here as they happen (FEN-193).
     fn follow_board(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let mut quick_refetches = 2;
@@ -694,19 +696,24 @@ impl FennecWindow {
 						let scope = board::Scope::current()?;
 						let project = project.filter(|_| selected_scope.as_ref() == Some(&scope));
 						let fetched = scope.run(|| {
+                        // Taken before the reads: a change landing during them
+                        // makes the wait below return at once.
+                        let stamp = board::wait_change("", Duration::ZERO);
                         let projects = board::projects();
                         let requests = project.as_ref().map(|p| (p.clone(), board::requests(p)));
                         let thread = project
                             .as_ref()
                             .zip(open)
                             .map(|(p, n)| board::request(p, n));
-                        (projects, requests, thread)
+                        (stamp, (projects, requests, thread))
 						});
 						Ok::<_,anyhow::Error>((scope, fetched))
                     })
                     .await;
+                let mut wait_from = None;
                 let Ok(ready) = this.update_in(cx, |this, window, cx| {
-                    if let Ok((scope, fetched)) = fetched {
+                    if let Ok((scope, (stamp, fetched))) = fetched {
+                        wait_from = stamp.map(|stamp| (scope.clone(), stamp));
                         this.switch_board_scope(scope, window, cx);
                         this.board_loaded(fetched, cx);
                     }
@@ -722,7 +729,18 @@ impl FennecWindow {
                     quick_refetches -= 1;
                     continue;
                 }
-                cx.background_executor().timer(Duration::from_secs(2)).await;
+                let waited = match wait_from {
+                    Some((scope, stamp)) => cx
+                        .background_spawn(async move {
+                            scope.run(|| board::wait_change(&stamp, Duration::from_secs(2)))
+                        })
+                        .await
+                        .is_some(),
+                    None => false,
+                };
+                if !waited {
+                    cx.background_executor().timer(Duration::from_secs(2)).await;
+                }
             }
         }));
     }

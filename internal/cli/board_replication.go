@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -49,11 +50,23 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 		// Log only transitions: a silent 3.5-hour outage (THI-55) left the
 		// Mac showing a frozen board with nothing in daemon.log to explain it.
 		health := syncHealth{}
+		// After a good exchange with a cloud that holds idle exchanges open
+		// (CapabilityBoardWait), the next one starts at once: the Mac is
+		// always waiting on the cloud, which answers the moment its board
+		// changes. Everything else still paces itself on the ticker (FEN-193).
+		again := false
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
+			if again {
+				again = false
+				if ctx.Err() != nil {
+					return
+				}
+			} else {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
 			}
 			lifecycle, _, current, authorized := s.account.Session()
 			next := s.localBoard()
@@ -100,6 +113,8 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				continue
 			}
 			remote := boardClient{s: s, scope: store.Namespace, channel: channel}
+			canWait := transport.Supports(terminalstream.CapabilityBoardWait)
+			localStamp := store.ChangeStamp()
 			outbound, err := store.Sync(board.Exchange{Seen: peerSeen})
 			caughtUp := !outbound.More
 			if peerSeen == nil {
@@ -127,8 +142,29 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 					}
 				}
 			}
+			// Nothing to send and nothing pending: let the cloud hold the
+			// exchange until its board changes. A write on this Mac meanwhile
+			// (a reply, a new request) cancels the wait so it goes out now.
+			call, interrupted := step, atomic.Bool{}
+			stopWatch := func() {}
+			if err == nil && canWait && peerSeen != nil && caughtUp && len(outbound.Events) == 0 {
+				outbound.Wait = int(syncWait / time.Millisecond)
+				call, stopWatch = context.WithCancel(step)
+				go func() {
+					if store.WaitChange(call, localStamp, syncWait+time.Second) != localStamp {
+						interrupted.Store(true)
+						stopWatch()
+					}
+				}()
+			}
 			if err == nil {
-				raw, e := remote.call(step, "POST", "/v1/sync", outbound)
+				raw, e := remote.call(call, "POST", "/v1/sync", outbound)
+				stopWatch()
+				if e != nil && interrupted.Load() {
+					cancel()
+					again = true
+					continue
+				}
 				err = e
 				if err == nil {
 					var incoming board.Exchange
@@ -159,6 +195,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 			}
 			if err == nil {
 				health.ok()
+				again = canWait
 				_ = store.SetSyncBlocked("")
 				last = time.Now()
 				if caughtUp {
@@ -189,6 +226,10 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 		}
 	}()
 }
+
+// syncWait is how long an idle exchange waits on the cloud for a change. It
+// stays well inside the 8 s step so a slow link still gets its answer.
+const syncWait = 4 * time.Second
 
 // syncHealth logs queue sync failures and recovery once per change.
 type syncHealth struct {

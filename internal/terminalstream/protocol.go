@@ -84,7 +84,10 @@ const (
 	CapabilityBoard          = "board_http_v1"
 	CapabilityBoardImages    = "board_images_v1"
 	CapabilityBoardWebP      = "board_webp_v1"
-	CapabilityThreadSession  = "thread_session_v1"
+	// CapabilityBoardWait: POST /v1/sync honours Exchange.Wait, holding an
+	// exchange with nothing to send until the board changes (FEN-193).
+	CapabilityBoardWait     = "board_wait_v1"
+	CapabilityThreadSession = "thread_session_v1"
 	// CapabilityCloudArchive: `fennec-terminal archive` exports and imports
 	// queues and sessions over the command stream (THI-165).
 	CapabilityCloudArchive = "cloud_archive_v1"
