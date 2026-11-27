@@ -1081,7 +1081,10 @@ impl FennecWindow {
                             if !list.iter().any(|old| old.number == r.number) {
                                 list.insert(0, r.clone());
                             }
-                            this.refresh_now(window, cx);
+                            // FEN-131: and it becomes the selected thread, shown
+                            // beside the list, instead of the one open before.
+                            // `open_request` leaves the composer focused.
+                            this.open_request(r.number, window, cx);
                         }
                     }
                     Err(e) => this.say(format!("{e:#}"), cx),
