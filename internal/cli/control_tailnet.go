@@ -235,11 +235,15 @@ func markThisDevice(status map[string]any, index int, code string) {
 }
 
 // tailscalePrefs reads this Mac's Tailscale preferences as JSON. The app's
-// bundled CLI works for both the App Store and the standalone app.
+// bundled CLI works for both the App Store and the standalone app. Started
+// by the daemon, without a shell's environment, that binary tries to open
+// the GUI ("CLIError error 3") unless TAILSCALE_BE_CLI is set.
 var tailscalePrefs = func(ctx context.Context) ([]byte, error) {
 	for _, path := range []string{"/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"} {
 		if _, err := os.Stat(path); err == nil {
-			return exec.CommandContext(ctx, path, "debug", "prefs").Output()
+			command := exec.CommandContext(ctx, path, "debug", "prefs")
+			command.Env = append(os.Environ(), "TAILSCALE_BE_CLI=1")
+			return command.Output()
 		}
 	}
 	return nil, os.ErrNotExist
