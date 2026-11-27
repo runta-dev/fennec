@@ -766,7 +766,7 @@ extension QueueStore {
         store.requests["fennec"] = [
             request(117, "Recognize linked requests", "review", "bug", agent: "claude", minutes: 12, latest: "References now show by title."),
             { () -> BoardRequest in
-              var r = request(121, "Reopen the last queue and keep drafts", "working", "feature", agent: "claude", minutes: 16, latest: "Reopening the last queue on launch…")
+              var r = request(121, "Reopen the last project and keep drafts", "working", "feature", agent: "claude", minutes: 16, latest: "Reopening the last project on launch…")
               r.session = "s3"  // the sample session that is working: its live card
               return r }(),
             request(119, "Show times in the local time zone", "working", "bug", agent: "claude", minutes: 18, latest: "Running go test ./internal/board…"),
@@ -779,7 +779,7 @@ extension QueueStore {
         store.knowledge["fennec"] = [
             KnowledgeConcept(id: "decisions/ios-tabs-at-bottom", type: "decision", title: "iPhone tabs go in a bottom tab bar",
                              description: "Top-level sections use the iOS bottom tab bar.", status: "draft", generated_by: "claude",
-                             body: "Top-level sections (Sessions, Queues) live in a bottom tab bar."),
+                             body: "Top-level sections (Sessions, Projects) live in a bottom tab bar."),
         ]
         store.me = "you"
         store.loaded = true

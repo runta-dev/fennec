@@ -120,7 +120,7 @@ final class ReviewDemoUITests: XCTestCase {
         app.launchArguments.removeAll { $0 == "-queuesEnabled" || $0 == "NO" }
         app.launch()
         setShowQueues(app, on: true)
-        let queuesTab = app.tabBars.buttons["Queues"]
+        let queuesTab = app.tabBars.buttons["Projects"]
         if !queuesTab.isHittable { app.navigationBars.buttons.element(boundBy: 0).tap() }
         XCTAssertTrue(queuesTab.waitForExistence(timeout: 5))
         queuesTab.tap()
