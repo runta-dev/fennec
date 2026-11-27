@@ -749,3 +749,10 @@ nav button{padding:3px 7px}
 .tailnet-local-text{flex-direction:row;align-items:baseline;gap:7px}.tailnet-local-text .tailnet-device-name{min-width:0}.tailnet-local-spec{flex:none;margin-left:auto}.tailnet-host .tailnet-local .tailnet-meters{margin-top:6px}
 .tailnet-add-form{margin-top:0}.tailnet-add-form textarea{min-height:72px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);font:10.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;user-select:text}.tailnet-add-form textarea:focus{outline:2px solid var(--orange);outline-offset:-1px}.tailnet-advanced summary{display:flex;align-items:center;gap:5px;list-style:none;cursor:pointer;font-size:11px;color:var(--muted)}.tailnet-advanced summary::-webkit-details-marker{display:none}.tailnet-advanced[open] .disclosure-arrow{transform:rotate(90deg)}.tailnet-advanced .byoc-row{margin-top:7px}
 .tailnet-ssh-hint,.tailnet-check{display:flex;flex-direction:column;gap:6px}.tailnet-check .tailnet-command code{white-space:pre;max-height:none}.tailnet-check-actions{display:flex;align-items:center;gap:12px}.tailnet-check-actions button:first-child{height:26px;padding:0 10px;border-radius:6px;font-size:11.5px}
+/* Add a worker computer (FEN-147): the computer first, then only the fields the first sign-in needs. */
+.tailnet-add-device{display:flex;align-items:center;gap:10px;margin:2px 0 12px;padding:9px 11px;border-radius:9px;background:var(--expanded)}.tailnet-add-device .tailnet-os{background:var(--bg)}
+.tailnet-add-form{gap:11px}.tailnet-add-form input{font-family:inherit;font-size:12px}
+.tailnet-field-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.tailnet-field-head .gs-link{font-size:11px}
+.tailnet-once{margin:1px 0 0;font-size:10.5px;color:var(--muted)}
+.tailnet-dialog input::-webkit-caps-lock-indicator,.tailnet-dialog input::-webkit-credentials-auto-fill-button,.tailnet-dialog input::-webkit-strong-password-auto-fill-button{display:none!important;visibility:hidden;pointer-events:none}
+.tailnet-add-device .tailnet-device-name{color:var(--text)}

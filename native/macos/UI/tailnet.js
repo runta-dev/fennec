@@ -130,25 +130,24 @@
   dialog.id = 'tailnet-add-dialog';
   dialog.tabIndex = -1;
   dialog.setAttribute('aria-labelledby', 'tailnet-add-title');
-  // The user's password or private key signs in once; the cloud computer
-  // then authorizes its own key there. Port and key passphrase are advanced.
+  // The dialog shows which computer it adds, then asks only for what the
+  // first sign-in needs: a user name and a password (or a private key).
+  // What the computer must have (Remote Login, an SSH server) is said only
+  // when signing in fails, in the status line (FEN-147).
   dialog.innerHTML =
-    '<div class="developer-dialog-head"><strong id="tailnet-add-title"></strong><button type="button" class="developer-close" id="tailnet-add-close" aria-label="[[i18n:ui.close]]">×</button></div>' +
-    '<p class="byoc-note tailnet-add-intro">[[i18n:ui.tailnet_add_intro]]</p>' +
+    '<div class="developer-dialog-head"><strong id="tailnet-add-title">[[i18n:ui.tailnet_add_title]]</strong><button type="button" class="developer-close" id="tailnet-add-close" aria-label="[[i18n:ui.close]]">×</button></div>' +
+    '<div class="tailnet-add-device"><span class="tailnet-os" id="tailnet-add-os"></span><div class="tailnet-device-text"><span class="tailnet-device-name" id="tailnet-add-name"></span><span class="tailnet-device-sub" id="tailnet-add-sub"></span></div></div>' +
     '<form class="byoc-form tailnet-add-form" id="tailnet-add-form" autocomplete="off">' +
     '<label class="byoc-field"><span>[[i18n:ui.tailnet_add_user]]</span><input id="tailnet-add-user" spellcheck="false" autocomplete="off"></label>' +
-    '<div class="developer-segments byoc-modes" role="radiogroup" aria-label="[[i18n:ui.tailnet_add_sign_in]]">' +
-    '<button type="button" role="radio" data-auth="password" aria-checked="true">[[i18n:ui.tailnet_add_password]]</button>' +
-    '<button type="button" role="radio" data-auth="key" aria-checked="false">[[i18n:ui.tailnet_add_private_key]]</button>' +
-    '</div>' +
-    // The segment above names the field, so the fields carry no label.
-    '<div class="byoc-field" id="tailnet-add-password-field"><input id="tailnet-add-password" type="password" autocomplete="off" aria-label="[[i18n:ui.tailnet_add_password]]"></div>' +
-    '<div class="byoc-field" id="tailnet-add-key-field" hidden><textarea id="tailnet-add-key" spellcheck="false" rows="4" aria-label="[[i18n:ui.tailnet_add_private_key]]" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>' +
+    '<div class="byoc-field tailnet-secret" id="tailnet-add-secret"><div class="tailnet-field-head"><label id="tailnet-add-secret-label" for="tailnet-add-password">[[i18n:ui.tailnet_add_password]]</label><button type="button" class="gs-link" id="tailnet-add-auth-switch"></button></div>' +
+    '<input id="tailnet-add-password" type="password" autocomplete="off">' +
+    '<textarea id="tailnet-add-key" spellcheck="false" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" hidden></textarea>' +
+    '<p class="tailnet-once">[[i18n:ui.tailnet_add_once]]</p></div>' +
+    '<p class="byoc-note" id="tailnet-add-note" hidden>[[i18n:ui.tailnet_add_tailscale_ssh_note]]</p>' +
     '<details class="tailnet-advanced"><summary><svg class="disclosure-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>[[i18n:ui.tailnet_add_advanced]]</span></summary>' +
     '<div class="byoc-row"><label class="byoc-field byoc-port"><span>[[i18n:ui.byoc_port]]</span><input id="tailnet-add-port" inputmode="numeric" value="22"></label>' +
     '<label class="byoc-field" id="tailnet-add-passphrase-field"><span>[[i18n:ui.tailnet_add_passphrase]]</span><input id="tailnet-add-passphrase" type="password" autocomplete="off" placeholder="[[i18n:ui.byoc_optional]]"></label></div>' +
     '</details>' +
-    '<p class="byoc-note" id="tailnet-add-note"></p>' +
     // Linux without Tailscale SSH: turning it on there skips the password.
     '<div class="tailnet-ssh-hint" id="tailnet-add-ssh-hint" hidden><p class="byoc-note">[[i18n:ui.tailnet_add_or_tailscale_ssh]]</p>' +
     '<div class="byoc-key"><code>sudo tailscale set --ssh</code><button type="button" data-copy="sudo tailscale set --ssh">[[i18n:ui.gs_copy]]</button></div></div>' +
@@ -369,15 +368,18 @@
 
   function setAuth(value) {
     auth = value;
-    for (const b of dialog.querySelectorAll('[data-auth]')) b.setAttribute('aria-checked', String(b.dataset.auth === value));
-    $('#tailnet-add-password-field').hidden = value !== 'password';
-    $('#tailnet-add-key-field').hidden = value !== 'key';
-    $('#tailnet-add-passphrase-field').hidden = value !== 'key';
+    const key = value === 'key';
+    $('#tailnet-add-password').hidden = key;
+    $('#tailnet-add-key').hidden = !key;
+    $('#tailnet-add-passphrase-field').hidden = !key;
+    $('#tailnet-add-secret-label').textContent = t(key ? '[[i18n:ui.tailnet_add_private_key]]' : '[[i18n:ui.tailnet_add_password]]');
+    $('#tailnet-add-secret-label').htmlFor = key ? 'tailnet-add-key' : 'tailnet-add-password';
+    $('#tailnet-add-auth-switch').textContent = t(key ? '[[i18n:ui.tailnet_add_use_password]]' : '[[i18n:ui.tailnet_add_use_key]]');
     $('#tailnet-add-status').textContent = '';
     $('#tailnet-add-status').classList.remove('is-error');
-    (value === 'key' ? $('#tailnet-add-key') : $('#tailnet-add-password')).focus();
+    (key ? $('#tailnet-add-key') : $('#tailnet-add-password')).focus();
   }
-  for (const b of dialog.querySelectorAll('[data-auth]')) b.onclick = () => setAuth(b.dataset.auth);
+  $('#tailnet-add-auth-switch').onclick = () => setAuth(auth === 'key' ? 'password' : 'key');
 
   // Secrets never stay in the page longer than the dialog is open.
   function clearSecrets() {
@@ -388,8 +390,9 @@
   // Tailscale SSH devices need only a user name; the rest of the form hides.
   function setTailscaleSSH(on) {
     dialog.classList.toggle('is-tailscale-ssh', on);
-    $('.tailnet-add-intro').hidden = on;
-    for (const id of ['.byoc-modes', '#tailnet-add-password-field', '#tailnet-add-key-field', '.tailnet-advanced']) dialog.querySelector(id).hidden = on || (id === '#tailnet-add-password-field' && auth !== 'password') || (id === '#tailnet-add-key-field' && auth !== 'key');
+    $('#tailnet-add-secret').hidden = on;
+    $('.tailnet-advanced').hidden = on;
+    $('#tailnet-add-note').hidden = !on;
   }
   function showCheck(link) {
     checkLink = link || '';
@@ -407,8 +410,9 @@
     adding = device;
     const windows = device.os === 'windows';
     const tailscaleSSH = !!device.tailscale_ssh;
-    $('#tailnet-add-title').textContent = t('[[i18n:ui.tailnet_add_title]]').replace('{name}', device.name);
-    $('#tailnet-add-note').textContent = t(windows ? '[[i18n:ui.tailnet_add_need_windows]]' : device.os === 'macOS' ? '[[i18n:ui.tailnet_add_need_mac]]' : '[[i18n:ui.tailnet_add_need_linux]]');
+    $('#tailnet-add-os').innerHTML = osIcon(device.os);
+    $('#tailnet-add-name').textContent = device.name;
+    $('#tailnet-add-sub').textContent = [osNames[device.os] || device.os, (device.ips || []).find(ip => ip.includes('.'))].filter(Boolean).join(' · ');
     const user = $('#tailnet-add-user');
     // The same user name as on this Mac, until the user types another.
     if (!user.value || user.dataset.auto === 'true') { user.value = windows ? '' : (status?.local_user || ''); user.dataset.auto = 'true'; }
@@ -420,7 +424,6 @@
     $('#tailnet-add-connect').disabled = false;
     $('#tailnet-add-check').hidden = true;
     $('#tailnet-add-ssh-hint').hidden = tailscaleSSH || device.os !== 'linux';
-    if (tailscaleSSH) $('#tailnet-add-note').textContent = t('[[i18n:ui.tailnet_add_tailscale_ssh_note]]');
     if (!dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
     setAuth(auth);
     setTailscaleSSH(tailscaleSSH);
@@ -475,7 +478,9 @@
     }
     if (code) {
       state.classList.add('is-error');
-      state.textContent = t(addErrors[code] || loginErrors[code] || sshErrors.ssh_failed);
+      // No SSH server there: say what to turn on for that kind of computer.
+      const refused = { macOS: '[[i18n:ui.tailnet_add_need_mac]]', windows: '[[i18n:ui.tailnet_add_need_windows]]' }[adding?.os] || '[[i18n:ui.tailnet_add_need_linux]]';
+      state.textContent = t(code === 'refused' ? refused : addErrors[code] || loginErrors[code] || sshErrors.ssh_failed);
       if (code === 'key_passphrase') $('#tailnet-add-form .tailnet-advanced').open = true;
       return;
     }
