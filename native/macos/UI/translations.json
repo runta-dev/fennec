@@ -4422,6 +4422,7 @@
     "ui.tailnet_add_or_tailscale_ssh": {"en-US": "Or turn on Tailscale SSH there, and no password is needed", "en-GB": "Or turn on Tailscale SSH there, and no password is needed", "zh-CN": "或者在那台电脑上开启 Tailscale SSH，就不用填密码"},
     "ui.tailnet_add_check": {"en-US": "Your tailnet policy asks for a browser check on Tailscale SSH every 12 hours, so agents can’t sign in on their own. In the policy file, set the SSH rule’s action to accept, then set up again", "en-GB": "Your tailnet policy asks for a browser check on Tailscale SSH every 12 hours, so agents can’t sign in on their own. In the policy file, set the SSH rule’s action to accept, then set up again", "zh-CN": "你的 tailnet policy 要求 Tailscale SSH 每 12 小时在浏览器里确认一次，agent 没法自己登录。请在 policy 文件里把 SSH 规则的 action 改成 accept，再点开始设置"},
     "ui.tailnet_ssh_check": {"en-US": "Tailscale SSH asks for a browser check every 12 hours; set its policy rule to accept", "en-GB": "Tailscale SSH asks for a browser check every 12 hours; set its policy rule to accept", "zh-CN": "Tailscale SSH 每 12 小时要在浏览器里确认一次，请把 policy 规则改成 accept"},
+    "ui.tailnet_admin_devices": {"en-US": "Tailscale devices", "en-GB": "Tailscale devices", "zh-CN": "Tailscale 设备"},
     "ui.tailnet_open_policy": {"en-US": "Open policy file", "en-GB": "Open policy file", "zh-CN": "打开 policy 文件"},
     "ui.tailnet_approve_once": {"en-US": "Approve for 12 hours", "en-GB": "Approve for 12 hours", "zh-CN": "先批准 12 小时"},
     "ui.tailnet_add_password": {"en-US": "Password", "en-GB": "Password", "zh-CN": "密码"},

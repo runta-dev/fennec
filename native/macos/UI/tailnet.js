@@ -41,6 +41,7 @@
   // computer through without a browser check every 12 hours (FEN-123).
   const acceptRule = '{\n  "action": "accept",\n  "src": ["autogroup:member"],\n  "dst": ["autogroup:self"],\n  "users": ["autogroup:nonroot", "root"]\n}';
   const policyURL = 'https://login.tailscale.com/admin/acls/file';
+  const devicesURL = 'https://login.tailscale.com/admin/machines';
   // The add dialog's own wording for a failed first sign-in.
   const addErrors = {
     ...sshErrors,
@@ -220,6 +221,11 @@
       body.append(row('[[i18n:ui.tailnet_cloud_name]]', s.self?.dns_name || s.self?.name, true));
       const ipv4 = (s.self?.ips || []).find(ip => ip.includes('.'));
       body.append(row('[[i18n:ui.tailnet_ip]]', ipv4, true));
+      // Tailscale's own device list, for removing or renaming devices (FEN-177).
+      const devicesLink = el('button', 'gs-link tailnet-devices-link', t('[[i18n:ui.tailnet_admin_devices]]'));
+      devicesLink.type = 'button';
+      devicesLink.onclick = () => send('tailnet-open-url:' + devicesURL);
+      actions.append(devicesLink);
       actions.append(button('[[i18n:ui.tailnet_sign_out]]', 'tailnet-secondary', () => { busy = 'logout'; drawPage(); send('tailnet-logout'); }, busy === 'logout'));
       body.append(actions);
       return;
@@ -397,6 +403,14 @@
       add.append(el('span', '', t('[[i18n:ui.tailnet_add_worker]]')));
       add.onclick = open;
       head.append(add);
+    } else if (running) {
+      // Once signed in, the header keeps a way back to Settings › Tailscale (FEN-177).
+      const link = el('button', 'tailnet-head-add tailnet-head-link');
+      link.type = 'button';
+      link.append(el('span', '', 'Tailscale'));
+      link.insertAdjacentHTML('beforeend', chevron);
+      link.onclick = open;
+      head.append(link);
     }
     cardHead.append(head);
     // Say what worker computers are for until the tailnet is set up.
