@@ -97,7 +97,9 @@ pub struct FennecWindow {
     activity_send: Option<async_channel::Sender<(serde_json::Value, Option<Arc<Core>>)>>,
     activity_input: serde_json::Value,
     activity: serde_json::Value,
-    agent_notices: Vec<serde_json::Value>,
+    thread_notices: Vec<activity::ThreadNotice>,
+    /// Whether the window was active at the last activity tick (every 200 ms).
+    window_active: bool,
     cloud_listing: serde_json::Value,
     cloud_generation: u64,
     cloud_views: HashMap<String, String>,
@@ -335,7 +337,8 @@ impl FennecWindow {
             activity_send: None,
             activity_input: serde_json::Value::Null,
             activity: serde_json::Value::Null,
-            agent_notices: Vec::new(),
+            thread_notices: Vec::new(),
+            window_active: false,
             cloud_listing: serde_json::Value::Null,
             cloud_generation: 0,
             cloud_views: HashMap::new(),
@@ -735,6 +738,8 @@ impl FennecWindow {
             for r in &mut list {
                 self.apply_status_override(&id, r);
             }
+            let before = self.requests.remove(&id);
+            self.notice_thread_changes(&id, before.as_deref(), &list, self.window_active);
             self.requests.insert(id, list);
             self.prefetch_peeks(cx);
         }

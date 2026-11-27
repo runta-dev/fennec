@@ -39,17 +39,6 @@ impl FennecWindow {
                     if result["retry"] == true { this.activity_input = Value::Null; }
                     this.activity = result["terminals"].clone();
                     this.apply_activity();
-                    let now = sessions::now_ms();
-                    this.agent_notices.retain(|a| now.saturating_sub(a["created_ms"].as_u64().unwrap_or(0)) < if a["kind"] == "blocked" { 8000 } else { 5000 });
-                    for alert in result["alerts"].as_array().into_iter().flatten() {
-                        if alert["visual"].as_bool() == Some(true) {
-                            this.agent_notices.retain(|a| a["address"] != alert["address"]);
-                            let mut alert = alert.clone();
-                            alert["created_ms"] = json!(now);
-                            this.agent_notices.push(alert);
-                            if this.agent_notices.len() > 4 { this.agent_notices.remove(0); }
-                        }
-                    }
                     cx.notify();
                 }).is_err() { break; }
             }
@@ -63,12 +52,7 @@ impl FennecWindow {
                 if this
                     .update_in(cx, |this, window, cx| {
                         this.queue_activity(window);
-                        let count = this.agent_notices.len();
-                        this.agent_notices.retain(|a| {
-                            sessions::now_ms().saturating_sub(a["created_ms"].as_u64().unwrap_or(0))
-                                < if a["kind"] == "blocked" { 8000 } else { 5000 }
-                        });
-                        if count != this.agent_notices.len() {
+                        if this.expire_thread_notices() {
                             cx.notify();
                         }
                     })
@@ -81,6 +65,7 @@ impl FennecWindow {
     }
 
     pub(super) fn queue_activity(&mut self, window: &Window) {
+        self.window_active = window.is_window_active();
         let looking = if window.is_window_active() {
             match &self.route {
                 Some(Route::Session(a)) => {
@@ -217,16 +202,60 @@ impl FennecWindow {
             .into_any_element()
     }
 
-    /// The queue request behind a notice's session (its group), if any.
-    fn notice_request(&self, group: &str, address: &str) -> Option<(String, u64, String)> {
-        let bare = |a: &str| a.strip_prefix("local:").unwrap_or(a).to_owned();
-        [group, address].iter().find_map(|key| {
-            let key = bare(key);
-            self.sessions
-                .iter()
-                .find(|s| bare(&s.address) == key)
-                .and_then(|s| self.session_request(s))
-        })
+    /// Queues a notice for each request of `project` whose status just
+    /// became Needs you, In review or Failed (FEN-137). These replace the
+    /// per-agent "Done" / "Needs you" toasts: the thread is what the person
+    /// acts on. `before` is the list as last fetched; nothing is said about
+    /// the first fetch, nor about the thread the person is looking at.
+    pub(super) fn notice_thread_changes(
+        &mut self,
+        project: &str,
+        before: Option<&[Request]>,
+        after: &[Request],
+        active: bool,
+    ) {
+        let Some(before) = before else { return };
+        let key = self
+            .projects
+            .iter()
+            .find(|p| p.id == project)
+            .map(|p| p.key.clone())
+            .unwrap_or_default();
+        let now = sessions::now_ms();
+        for r in thread_status_changes(before, after) {
+            let looking = active
+                && self.open == Some(r.number)
+                && self.project_id().as_deref() == Some(project);
+            if looking {
+                continue;
+            }
+            self.thread_notices
+                .retain(|n| !(n.project == project && n.number == r.number));
+            self.thread_notices.push(ThreadNotice {
+                project: project.to_owned(),
+                number: r.number,
+                reference: if key.is_empty() { format!("#{}", r.number) } else { format!("{key}-{}", r.number) },
+                title: r.title.clone(),
+                status: r.status.clone(),
+                created_ms: now,
+            });
+            if self.thread_notices.len() > 4 {
+                self.thread_notices.remove(0);
+            }
+            let status = r.status.clone();
+            std::thread::spawn(move || {
+                let _ = crate::control::call("desktop.notice.sound", json!({ "status": status }));
+            });
+        }
+    }
+
+    /// Drops notices shown long enough; true when one went.
+    pub(super) fn expire_thread_notices(&mut self) -> bool {
+        let now = sessions::now_ms();
+        let count = self.thread_notices.len();
+        self.thread_notices
+            .retain(|n| now.saturating_sub(n.created_ms) < n.lifetime_ms());
+        count != self.thread_notices.len()
     }
 
     pub(super) fn notification_stack(&self, cx: &Context<Self>) -> AnyElement {
@@ -235,14 +264,14 @@ impl FennecWindow {
             .right(px(16.0))
             .bottom(px(16.0))
             .gap(px(6.0))
-            .children(self.agent_notices.iter().map(|alert| {
-                let address = alert["address"].as_str().unwrap_or_default().to_owned();
-                let group = alert["group"].as_str().unwrap_or_default().to_owned();
-                let dismiss = address.clone();
-                let kind = alert["kind"].as_str().unwrap_or("done");
+            .children(self.thread_notices.iter().map(|notice| {
+                let project = notice.project.clone();
+                let number = notice.number;
+                let dismiss = (project.clone(), number);
                 h_flex()
-                    .id(SharedString::from(format!("agent-notice-{address}")))
+                    .id(SharedString::from(format!("thread-notice-{project}-{number}")))
                     .occlude()
+                    .max_w(px(380.0))
                     .px(px(12.0))
                     .py(px(9.0))
                     .gap(px(8.0))
@@ -252,42 +281,42 @@ impl FennecWindow {
                     .border_color(c("border"))
                     .text_size(px(12.0))
                     .text_color(c("foreground"))
+                    .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
-                            this.agent_notices.retain(|a| a["address"] != address);
-                            // A queue request's agent, done or waiting on the user,
-                            // opens the request's thread: the result is reviewed
-                            // and replies are sent there.
-                            if let Some((project, n, _)) = this.notice_request(&group, &address) {
-                                this.go_request(project, n, window, cx);
-                                return;
-                            }
-                            if address != group {
-                                this.tab.insert(group.clone(), format!("local:{address}"));
-                            }
-                            this.go(Route::Session(group.clone()), window, cx);
+                            this.thread_notices
+                                .retain(|n| !(n.project == project && n.number == number));
+                            this.go_request(project.clone(), number, window, cx);
                         }),
                     )
-                    .child(self.program_icon(&dismiss, "", 14.0))
-                    .child(format!(
-                        "{} · {}",
-                        alert["name"].as_str().unwrap_or_default(),
-                        t(if kind == "blocked" {
-                            "needs_you"
-                        } else {
-                            "done"
-                        })
-                    ))
+                    .child(ui::status_pill(&notice.status).flex_none())
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_color(c("f_muted"))
+                            .child(notice.reference.clone()),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .child(notice.title.clone()),
+                    )
                     .child(
                         ui::compact_icon_button(
-                            SharedString::from(format!("dismiss-{dismiss}")),
+                            SharedString::from(format!("dismiss-{}-{}", dismiss.0, dismiss.1)),
                             "close",
                         )
+                        .flex_none()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
-                            this.agent_notices.retain(|a| a["address"] != dismiss);
+                            this.thread_notices
+                                .retain(|n| !(n.project == dismiss.0 && n.number == dismiss.1));
                             cx.notify();
                         })),
                     )
@@ -295,6 +324,46 @@ impl FennecWindow {
             .into_any_element()
     }
 }
+
+/// A queue thread that now needs the person, is in review, or failed (FEN-137).
+pub(super) struct ThreadNotice {
+    project: String,
+    number: u64,
+    /// "FEN-137".
+    reference: String,
+    title: String,
+    /// The request status: "you", "review" or "failed".
+    status: String,
+    created_ms: u64,
+}
+
+impl ThreadNotice {
+    fn lifetime_ms(&self) -> u64 {
+        if self.status == "review" { 6000 } else { 10000 }
+    }
+}
+
+/// The request statuses worth telling the person about.
+fn noticed(status: &str) -> bool {
+    matches!(status, "you" | "review" | "failed")
+}
+
+/// Requests of `after` that moved into a noticed status since `before`.
+/// A request new to the list counts only when it is not already there
+/// (it was just filed, or the list was cut short before).
+pub(super) fn thread_status_changes<'a>(before: &[Request], after: &'a [Request]) -> Vec<&'a Request> {
+    after
+        .iter()
+        .filter(|r| noticed(&r.status))
+        .filter(|r| {
+            before
+                .iter()
+                .find(|b| b.number == r.number)
+                .is_some_and(|b| b.status != r.status)
+        })
+        .collect()
+}
+
 pub(super) fn state(word: &str) -> State {
     match word {
         "blocked" => State::NeedsYou,
@@ -310,4 +379,28 @@ fn spinner_phase() -> f32 {
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     let elapsed = START.get_or_init(std::time::Instant::now).elapsed().as_millis();
     (elapsed % 900) as f32 / 900.0
+}
+
+#[cfg(test)]
+mod notice_tests {
+    use super::thread_status_changes;
+    use crate::board::Request;
+
+    fn req(n: u64, status: &str) -> Request {
+        Request { number: n, status: status.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn only_moves_into_you_review_failed_are_noticed() {
+        let before = [req(1, "working"), req(2, "working"), req(3, "you"), req(4, "queued"), req(5, "working")];
+        let after = [req(1, "you"), req(2, "review"), req(3, "you"), req(4, "failed"), req(5, "resolved"), req(6, "you")];
+        let got: Vec<u64> = thread_status_changes(&before, &after).iter().map(|r| r.number).collect();
+        assert_eq!(got, vec![1, 2, 4]);
+    }
+
+    #[test]
+    fn review_to_needs_you_is_noticed_again() {
+        let after = [req(1, "you")];
+        assert_eq!(thread_status_changes(&[req(1, "review")], &after).len(), 1);
+    }
 }
