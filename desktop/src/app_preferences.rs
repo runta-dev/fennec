@@ -27,7 +27,7 @@ impl Default for Preferences {
         Self {
             notification_sounds: true,
             revision: 0,
-            theme: "system".into(),
+            theme: "dark".into(),
             language: "system".into(),
             font_size: 14,
             padding_x: 0,

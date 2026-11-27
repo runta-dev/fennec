@@ -3,8 +3,8 @@
 //! The palettes, the derived chrome colors and the font handling are
 //! herdr-app's (src/settings.rs, Apache-2.0), kept as they are so terminals
 //! draw exactly as in Herdr. Fennec has no settings.json or layouts: the
-//! theme follows the system appearance (Herdr's Ink Dark / Paper) with
-//! Runta orange as the accent.
+//! theme is Herdr's Ink Dark or Paper (app preferences: dark by default, or
+//! light, or following the system), with Runta orange as the accent.
 
 use crate::vt::Rgb;
 use gpui::{Hsla, Rgba};

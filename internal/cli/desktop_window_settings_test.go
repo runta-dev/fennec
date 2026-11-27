@@ -97,3 +97,20 @@ func TestQueueWidthPersistsAndZeroMeansAutomatic(t *testing.T) {
 		t.Fatal(loaded)
 	}
 }
+
+// FEN-89: Fennec Terminal starts dark; the menu bar keeps following the system.
+func TestDesktopWindowDefaultsToDarkWhileMenuBarFollowsSystem(t *testing.T) {
+	home := t.TempDir()
+	if got := newDesktopWindowSettings(home).get().Theme; got != "dark" {
+		t.Fatal("desktop default theme", got)
+	}
+	if got := newDesktopSettings(home).value.Theme; got != "system" {
+		t.Fatal("menu bar default theme", got)
+	}
+	if err := os.WriteFile(newDesktopWindowSettings(home).path, []byte(`{"theme":"system"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := newDesktopWindowSettings(home).get().Theme; got != "system" {
+		t.Fatal("saved choice was overridden", got)
+	}
+}

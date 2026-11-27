@@ -31,7 +31,7 @@ type desktopWindowSettings struct {
 }
 
 func newDesktopWindowSettings(home string) *desktopWindowSettings {
-	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{NotificationSounds: true, Theme: "system", Language: "system", FontSize: 14, PaddingX: 0, PaddingY: 0, SidebarWidth: 252}}
+	s := &desktopWindowSettings{path: filepath.Join(home, ".config/fennec/desktop-settings.json"), value: desktopWindowPreferences{NotificationSounds: true, Theme: "dark", Language: "system", FontSize: 14, PaddingX: 0, PaddingY: 0, SidebarWidth: 252}}
 	saved := s.value
 	if data, err := os.ReadFile(s.path); err == nil && json.Unmarshal(data, &saved) == nil && validDesktopWindowPreferences(saved) {
 		s.value = saved
