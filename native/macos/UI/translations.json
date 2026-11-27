@@ -239,8 +239,6 @@
     "desktop.key": {"en-US": "Key", "zh-CN": "编号前缀"},
     "desktop.key_hint": {"en-US": "Requests are numbered {key}-1, {key}-2, …", "zh-CN": "请求编号为 {key}-1、{key}-2…"},
     "desktop.knowledge": {"en-US": "Knowledge", "zh-CN": "知识库"},
-    "desktop.knowledge_empty": {"en-US": "Nothing yet, agents add what they learn while working on requests", "zh-CN": "暂无内容，agent 处理请求时会记下学到的东西"},
-    "desktop.knowledge_hint": {"en-US": "What agents learned working on {name}, kept on your cloud computer as an OKF bundle", "zh-CN": "agent 在 {name} 中学到的知识，以 OKF 格式保存在你的云电脑上"},
     "desktop.loading": {"en-US": "Loading…", "zh-CN": "加载中…"},
     "desktop.minutes": {"en-US": "{n}m", "zh-CN": "{n} 分钟"},
     "desktop.more": {"en-US": "More", "zh-CN": "增加"},

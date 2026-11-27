@@ -353,10 +353,10 @@ struct KnowledgeView: View {
         let groups = Dictionary(grouping: concepts) { $0.type ?? "" }
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.text("desktop.knowledge_hint", values: ["name": queues.project(projectID)?.name ?? ""]))
-                    .font(.system(size: 13)).foregroundStyle(Theme.fg3)
-                if queues.knowledge[projectID]?.isEmpty == true {
-                    Text(L10n.text("desktop.knowledge_empty")).font(.rowBody).foregroundStyle(Theme.fg2).padding(.top, 30)
+                if queues.knowledge[projectID] == nil {
+                    ListSkeleton().padding(.horizontal, -16)
+                } else if concepts.isEmpty {
+                    Text(L10n.text("desktop.nothing_here")).font(.rowBody).foregroundStyle(Theme.fg2).padding(.top, 30)
                 }
                 ForEach(groups.keys.sorted { (Self.order.firstIndex(of: $0) ?? 9, $0) < (Self.order.firstIndex(of: $1) ?? 9, $1) }, id: \.self) { type in
                     let items = (groups[type] ?? []).sorted { ($0.status == "deprecated" ? 1 : 0, $0.title) < ($1.status == "deprecated" ? 1 : 0, $1.title) }

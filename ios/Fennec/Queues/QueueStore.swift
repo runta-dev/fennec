@@ -349,6 +349,8 @@ final class QueueStore {
         guard core != nil else { return }
         if let concepts = try? await get("/v1/projects/\(project)/knowledge", as: [KnowledgeConcept].self) {
             knowledge[project] = concepts
+        } else if knowledge[project] == nil {
+            knowledge[project] = []  // end the loading skeleton
         }
     }
 

@@ -36,6 +36,8 @@ pub struct State {
     new_tag: Option<Entity<InputState>>,
     tags: Vec<Tag>,
     knowledge: Vec<Concept>,
+    /// The first load finished; until then the page shows a skeleton.
+    knowledge_loaded: bool,
     filter: KnowledgeFilter,
     concept: String,
     queue: Option<QueueProject>,
@@ -161,6 +163,7 @@ impl FennecWindow {
                 if let Ok(k) = knowledge {
                     this.settings.knowledge = k;
                 }
+                this.settings.knowledge_loaded = true;
                 if let Ok(q) = queue {
                     this.settings.queue =
                         q.into_iter().find(|q| q.project == this.settings.project);
@@ -336,7 +339,7 @@ impl FennecWindow {
                     .min_h_0()
                     .px(px(28.0))
                     .pt(px(16.0))
-                    .child(self.knowledge(p, cx)),
+                    .child(self.knowledge(cx)),
             )
     }
 
@@ -653,8 +656,11 @@ impl FennecWindow {
             )
     }
 
-    fn knowledge(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
+    fn knowledge(&self, cx: &mut Context<Self>) -> AnyElement {
         let s = &self.settings;
+        if !s.knowledge_loaded {
+            return knowledge_skeleton().into_any_element();
+        }
         let show = |k: &Concept| match s.filter {
             KnowledgeFilter::All => true,
             KnowledgeFilter::Deprecated => k.status == "deprecated",
@@ -863,16 +869,7 @@ impl FennecWindow {
             .gap(px(12.0))
             .child(
                 h_flex()
-                    .gap(px(16.0))
-                    .items_center()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .text_size(px(12.5))
-                            .text_color(c("f_muted"))
-                            .child(tf("knowledge_hint", &[("name", &p.display_name())])),
-                    )
+                    .justify_end()
                     .child(h_flex().flex_none().gap(px(4.0)).children(filters)),
             )
             .when(sections.is_empty(), |d| {
@@ -881,11 +878,7 @@ impl FennecWindow {
                         .py(px(30.0))
                         .text_size(px(12.5))
                         .text_color(c("f_muted"))
-                        .child(if s.knowledge.is_empty() {
-                            t("knowledge_empty")
-                        } else {
-                            t("nothing_here")
-                        }),
+                        .child(t("nothing_here")),
                 )
             })
             .when(!sections.is_empty(), |d| {
@@ -939,6 +932,7 @@ impl FennecWindow {
                         }),
                 )
             })
+            .into_any_element()
     }
 
     fn queue_tab(&self, p: &Project, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1146,3 +1140,67 @@ fn sessions_actor(value: &str) -> String {
     crate::sessions::agent_name(value.split('/').next().unwrap_or(value)).to_owned()
 }
 
+
+/// What the Knowledge page shows until its first load finishes: the filters,
+/// the list and the reader in the same places as the real page, breathing.
+fn knowledge_skeleton() -> impl IntoElement {
+    let bar = |w: DefiniteLength, h: f32| div().w(w).h(px(h)).flex_none().rounded(px(h / 2.0)).bg(c("f_line"));
+    const TITLES: [f32; 6] = [0.78, 0.62, 0.86, 0.54, 0.7, 0.6];
+    v_flex()
+        .flex_1()
+        .min_h_0()
+        .gap(px(12.0))
+        .child(
+            h_flex()
+                .justify_end()
+                .gap(px(8.0))
+                .child(bar(px(48.0).into(), 24.0))
+                .child(bar(px(96.0).into(), 24.0)),
+        )
+        .child(
+            h_flex()
+                .flex_1()
+                .min_h_0()
+                .items_stretch()
+                .border_t_1()
+                .border_color(c("f_line"))
+                .child(
+                    v_flex()
+                        .w(px(300.0))
+                        .flex_none()
+                        .pr(px(10.0))
+                        .border_r_1()
+                        .border_color(c("f_line"))
+                        .child(div().px(px(10.0)).pt(px(18.0)).pb(px(8.0)).child(bar(px(72.0).into(), 9.0)))
+                        .children(TITLES.iter().map(|w| {
+                            v_flex()
+                                .px(px(10.0))
+                                .py(px(9.0))
+                                .gap(px(7.0))
+                                .child(bar(relative(*w), 11.0))
+                                .child(bar(relative(0.42), 8.0))
+                        })),
+                )
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .pl(px(28.0))
+                        .pt(px(22.0))
+                        .gap(px(12.0))
+                        .child(bar(px(320.0).into(), 16.0))
+                        .child(bar(px(460.0).into(), 10.0))
+                        .child(div().h(px(10.0)))
+                        .children([0.92, 0.86, 0.95, 0.7, 0.88, 0.5].map(|w| {
+                            div().w_full().max_w(px(760.0)).child(bar(relative(w), 10.0))
+                        })),
+                ),
+        )
+        .with_animation(
+            "knowledge-skeleton",
+            Animation::new(std::time::Duration::from_millis(1600))
+                .repeat()
+                .with_easing(pulsating_between(0.45, 1.0)),
+            |el, delta| el.opacity(delta),
+        )
+}
