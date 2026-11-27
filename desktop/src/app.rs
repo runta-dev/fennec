@@ -3110,6 +3110,9 @@ impl FennecWindow {
                                 )
                             }),
                     )
+                    .when(p.sync_status == "offline", |d| {
+                        d.child(offline_badge(&p.synced_at, now))
+                    })
                     .child({
                         let id = p.id.clone();
                         div()
@@ -3141,9 +3144,6 @@ impl FennecWindow {
                     .min_h_0()
                     .overflow_y_scroll()
                     .p(px(14.0))
-                    .when(p.sync_status == "offline", |d| {
-                        d.child(stale_board_banner(&p.synced_at, now))
-                    })
                     .child(
                         // New Request: one plain box; the first line is the title.
                         v_flex()
@@ -4203,32 +4203,24 @@ fn empty() -> AnyElement {
 }
 
 /// The Mac shows its replica of the board. While the cloud is unreachable that
-/// replica is frozen, so "Running" may be hours out of date (THI-55): say so.
-fn stale_board_banner(synced_at: &str, now: u64) -> impl IntoElement {
+/// replica is frozen, so "Running" may be hours out of date (THI-55). A quiet
+/// "Offline · 13m ago" in the header says so; FEN-75 replaced a full-width
+/// explanatory banner that read as noise.
+fn offline_badge(synced_at: &str, now: u64) -> impl IntoElement {
     let since = sessions::rfc3339_ms(synced_at);
     let text = if since == 0 || now.saturating_sub(since) < 60_000 {
-        t("board_stale")
+        t("offline")
     } else {
-        tf(
-            "board_stale_since",
-            &[("age", &sessions::age(since, now))],
-        )
+        tf("offline_since", &[("age", &sessions::age(since, now))])
     };
     h_flex()
-        .w_full()
-        .mb(px(10.0))
-        .px(px(12.0))
-        .py(px(8.0))
-        .gap(px(8.0))
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(c("f_field"))
-        .text_size(px(12.0))
+        .flex_none()
+        .gap(px(6.0))
+        .text_size(px(11.5))
         .text_color(c("f_muted"))
-        .child(div().flex_1().min_w_0().child(text))
+        .child(div().size(px(6.0)).rounded_full().bg(c("blocked")))
+        .child(text)
 }
-
-
 
 /// ⌘C copies the text selected in the window's text views (thread messages, knowledge);
 /// with nothing selected there, the focused input handles it as before.
