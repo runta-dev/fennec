@@ -240,6 +240,28 @@ impl FennecWindow {
 
     /// A glyph in a rounded square, for the rail's own buttons.
     fn rail_glyph(icon: &'static str, selected: bool) -> AnyElement {
+        let color = if selected { c("f_text") } else { c("f_muted") };
+        Self::rail_tile(ui::icon(icon, 19.0, color).into_any_element(), selected)
+    }
+
+    /// The terminal button wears the icon of the tab its terminal shows
+    /// (Node, Claude, a shell…), so it matches the tab strip (FEN-127).
+    /// Before any terminal opened it is the plain terminal glyph.
+    fn rail_terminal_icon(&self, selected: bool) -> AnyElement {
+        let alive = |a: &String| {
+            self.layout.members.contains_key(a) || self.sessions.iter().any(|s| &s.address == a)
+        };
+        match self.last_terminal.as_ref().filter(|a| alive(a)) {
+            Some(root) => {
+                let tab = self.shown_tab(root);
+                let icon = self.program_icon(tab.strip_prefix("local:").unwrap_or(&tab), "shell", 19.0);
+                Self::rail_tile(icon, selected)
+            }
+            None => Self::rail_glyph("term", selected),
+        }
+    }
+
+    fn rail_tile(icon: AnyElement, selected: bool) -> AnyElement {
         div()
             .size(px(RAIL_ITEM))
             .rounded(px(12.0))
@@ -250,7 +272,7 @@ impl FennecWindow {
             .border_1()
             .border_color(if selected { c("f_field") } else { transparent_black() })
             .when(selected, |d| d.shadow(ui::selection_shadow()))
-            .child(ui::icon(icon, 19.0, if selected { c("f_text") } else { c("f_muted") }))
+            .child(icon)
             .into_any_element()
     }
 
@@ -326,7 +348,7 @@ impl FennecWindow {
                     "rail-terminal".into(),
                     t("terminal").into(),
                     terminal_shown,
-                    Self::rail_glyph("term", terminal_shown),
+                    self.rail_terminal_icon(terminal_shown),
                 )
                 .on_click(cx.listener(|this, _, window, cx| this.open_local_terminal(window, cx))),
             )
