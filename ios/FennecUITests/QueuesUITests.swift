@@ -36,6 +36,7 @@ final class QueuesUITests: XCTestCase {
         app.buttons["search-requests"].tap()
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
         field.typeText("117")
         let hit = app.descendants(matching: .any)["request-117"].firstMatch
         XCTAssertTrue(hit.waitForExistence(timeout: 5))
@@ -80,12 +81,14 @@ final class QueuesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Mark done"].waitForExistence(timeout: 5))
         shot(app, "28-thread-review")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        // + picks the agent, then opens the request's blank page (FEN-110).
-        app.buttons["new-request"].tap()
+        // The bottom-left picker chooses the agent; + opens its blank page
+        // in one tap (FEN-184, was a + menu at the top right in FEN-110).
+        app.buttons["agent-picker"].tap()
         let codex = app.buttons["new-request-agent-codex"]
         XCTAssertTrue(codex.waitForExistence(timeout: 5))
         shot(app, "32-new-request-agents")
         codex.tap()
+        app.buttons["new-request"].tap()
         XCTAssertTrue(app.buttons["send-request"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["empty-conversation"].exists)
         // The page can attach images (FEN-64).

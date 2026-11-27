@@ -45,6 +45,8 @@ struct QueuesView: View {
     @Environment(RuntaAuth.self) private var auth
     @State private var path: [QueueRoute] = []
     @State private var searching = false
+    /// The agent home's + starts a request with (FEN-184).
+    @AppStorage("newRequestAgent") private var newRequestAgent = ""
     @State private var reordering = false
     @State private var creatingQueue = false
     @State private var linking: BoardRequest?
@@ -88,7 +90,7 @@ struct QueuesView: View {
             .onChange(of: path.isEmpty) { _, onList in if onList { refreshTick += 1 } }
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) { banners }
-            .safeAreaInset(edge: .bottom, spacing: 0) { if !queues.projects.isEmpty { searchBar } }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !queues.projects.isEmpty { bottomBar } }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { path.append(.account) } label: {
@@ -98,7 +100,12 @@ struct QueuesView: View {
                     .accessibilityLabel(L10n.text("ui.account"))
                 }
                 ToolbarItem(placement: .principal) { queueMenu }
-                ToolbarItem(placement: .topBarTrailing) { newRequestMenu }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { searching = true } label: { Image(systemName: "magnifyingglass").regularIconWeight() }
+                        .disabled(queues.projects.isEmpty)
+                        .accessibilityLabel(L10n.text("ios.search_requests"))
+                        .accessibilityIdentifier("search-requests")
+                }
             }
             .modifier(QueueDestinations(path: $path))
             .onChange(of: queues.unsent) { _, unsent in
@@ -129,16 +136,47 @@ struct QueuesView: View {
 
     // MARK: New request (33)
 
-    /// + picks the agent first, then opens the request's blank page, as a
-    /// new chat used to start (FEN-110). The request goes to the open queue.
-    private var newRequestMenu: some View {
+    /// The agent a new request runs with: the one last picked at the bottom
+    /// left, while it's still offered, else the first offered (FEN-184).
+    private var currentAgent: AgentKind? {
+        let agents = store.newSessionAgents
+        return agents.first { $0.rawValue == newRequestAgent } ?? agents.first
+    }
+
+    /// Bottom bar within thumb reach (FEN-184): the agent picker on the left
+    /// (switching agents is rare), + on the right opens the picked agent's
+    /// blank page in one tap. Search moved to the top right.
+    private var bottomBar: some View {
+        HStack(spacing: 12) {
+            agentPicker
+            Spacer(minLength: 0)
+            Button {
+                if let project = queues.selected, let agent = currentAgent { path.append(.newRequest(project.id, agent)) }
+            } label: {
+                Image(systemName: "plus").font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Theme.fg)
+                    .frame(width: 50, height: 50)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: Circle())
+            .disabled(queues.selected == nil || currentAgent == nil)
+            .accessibilityLabel(L10n.text("desktop.new_request"))
+            .accessibilityIdentifier("new-request")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+    }
+
+    /// Tapping it pops up the agents ready on the cloud computer (FEN-110,
+    /// FEN-73); the pick is remembered for the next +.
+    private var agentPicker: some View {
         Menu {
             let agents = store.newSessionAgents
             ForEach(agents) { agent in
-                Button {
-                    if let project = queues.selected { path.append(.newRequest(project.id, agent)) }
-                } label: {
-                    Label { Text(agent.displayName) } icon: { AgentIcon(agent: agent, size: 20) }
+                Button { newRequestAgent = agent.rawValue } label: {
+                    if agent == currentAgent { Label(agent.displayName, systemImage: "checkmark") }
+                    else { Label { Text(agent.displayName) } icon: { AgentIcon(agent: agent, size: 20) } }
                 }
                 .accessibilityIdentifier("new-request-agent-\(agent.rawValue)")
             }
@@ -146,11 +184,25 @@ struct QueuesView: View {
                 Text(L10n.text("ios.no_cloud_agents"))
             }
         } label: {
-            Image(systemName: "plus").regularIconWeight()
+            HStack(spacing: 8) {
+                if let agent = currentAgent {
+                    AgentIcon(agent: agent, size: 22)
+                    Text(agent.displayName).lineLimit(1)
+                } else {
+                    Text(L10n.text("ios.no_cloud_agents")).lineLimit(1)
+                }
+                Image(systemName: "chevron.up.chevron.down").regularIconWeight().font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.fg3)
+            }
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(Theme.fg)
+            .padding(.horizontal, 16)
+            .frame(height: 50)
+            .contentShape(Capsule())
         }
-        .disabled(queues.selected == nil)
-        .accessibilityLabel(L10n.text("desktop.new_request"))
-        .accessibilityIdentifier("new-request")
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .accessibilityIdentifier("agent-picker")
     }
 
     // MARK: Queue menu (19)
@@ -305,26 +357,6 @@ struct QueuesView: View {
                         text: queues.lastSync.map { L10n.text("ios.queue_stale", values: ["age": age($0)]) }
                             ?? L10n.text("desktop.board_unavailable"))
         }
-    }
-
-    private var searchBar: some View {
-        Button { searching = true } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").regularIconWeight()
-                Text(L10n.text("ios.search_requests"))
-                Spacer()
-            }
-            .font(.system(size: 17))
-            .foregroundStyle(Theme.fg2)
-            .padding(.horizontal, 18)
-            .frame(height: 50)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
-        .accessibilityIdentifier("search-requests")
     }
 
     private func age(_ date: Date) -> String {
