@@ -1069,7 +1069,13 @@ impl FennecWindow {
             return;
         };
         let images=self.request_images.by_queue.get(&project).cloned().unwrap_or_default();
-        if self.request_images.busy.contains(&project)||(text.trim().is_empty()&&images.is_empty()) {
+        // FEN-191: images still importing; post as soon as they're in.
+        if self.request_images.is_pending(&project) {
+            self.request_images.send_when_ready.insert(project);
+            cx.notify();
+            return;
+        }
+        if text.trim().is_empty()&&images.is_empty() {
             return;
         }
         let Some(scope) = self.board_scope.clone() else { return; };
@@ -1207,8 +1213,13 @@ impl FennecWindow {
             .get(&key)
             .cloned()
             .unwrap_or_default();
-        if self.request_images.busy.contains(&key) || (text.trim().is_empty() && images.is_empty())
-        {
+        // FEN-191: images still importing; send as soon as they're in.
+        if self.request_images.is_pending(&key) {
+            self.request_images.send_when_ready.insert(key);
+            cx.notify();
+            return;
+        }
+        if text.trim().is_empty() && images.is_empty() {
             return;
         }
         // An agent waiting on a question gets the reply as its answer, in
@@ -2253,7 +2264,7 @@ impl FennecWindow {
         let agent_pill = self.agent_pill(cx);
         let agent_popover = self.agent_popover(cx);
         let composer_has = !self.composer.read(cx).value().trim().is_empty()
-            || self.request_images.by_queue.get(&p.id).is_some_and(|images|!images.is_empty());
+            || self.request_images.has_images(&p.id);
         // The chosen tab's background is the sliding highlight once the tabs
         // were laid out; before that the tab draws it itself.
         let slide_ready = self.status_slide.ready();
@@ -2900,21 +2911,13 @@ impl FennecWindow {
         }
         let reply_key = format!("reply:{}:{}", p.id, r.number);
         let reply_has = !self.replying
-            && !self.request_images.busy.contains(&reply_key)
+            && !self.request_images.send_when_ready.contains(&reply_key)
             && (!self.reply.read(cx).value().trim().is_empty()
-                || self
-                    .request_images
-                    .by_queue
-                    .get(&reply_key)
-                    .is_some_and(|images| !images.is_empty()));
+                || self.request_images.has_images(&reply_key));
         let reply_idle = !self.replying
             && self.reply.read(cx).value().is_empty()
             && self.request_image_status(&reply_key).is_none()
-            && self
-                .request_images
-                .by_queue
-                .get(&reply_key)
-                .is_none_or(|images| images.is_empty());
+            && !self.request_images.has_images(&reply_key);
         let resolved = r.resolved();
         let session_route = r
             .active_session(&self.sessions)

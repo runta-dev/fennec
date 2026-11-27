@@ -124,3 +124,8 @@ Google's libwebp (BSD), with optional shared-library loading through
 `github.com/ebitengine/purego` v0.10.1 (Apache-2.0).
 License texts: `docs/licenses/webp-MIT.txt`, `docs/licenses/libwebp-BSD.txt`,
 and `docs/licenses/purego-Apache-2.0.txt`.
+
+On macOS the daemon encodes with `github.com/chai2010/webp` v1.4.0
+(BSD-3-Clause), which compiles libwebp 1.4.0 (BSD) into the binary.
+License texts: `docs/licenses/chai2010-webp-BSD.txt` and
+`docs/licenses/libwebp-BSD.txt`.

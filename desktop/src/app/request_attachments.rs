@@ -9,8 +9,49 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(super) struct Drafts {
     pub by_queue: HashMap<String, Vec<board::Attachment>>,
-    pub busy: HashSet<String>,
+    /// Pasted images the daemon is still importing. They show as tiles at
+    /// once, with a local preview, instead of a wait on "Adding image…"
+    /// (FEN-191).
+    pub pending: HashMap<String, Vec<PendingImage>>,
+    /// Drafts whose Post/Send was pressed while images were still pending:
+    /// they go out as soon as the last one is imported.
+    pub send_when_ready: HashSet<String>,
     pub errors: HashMap<String, &'static str>,
+    next_token: u64,
+}
+
+pub(super) struct PendingImage {
+    token: u64,
+    /// A small square preview made here from the clipboard bytes, when the
+    /// image crate can read them (PNG, TIFF, BMP).
+    preview: Option<Arc<Image>>,
+}
+
+impl Drafts {
+    pub(super) fn is_pending(&self, key: &str) -> bool {
+        self.pending.get(key).is_some_and(|p| !p.is_empty())
+    }
+
+    /// Whether the draft under `key` has any image, imported or not.
+    pub(super) fn has_images(&self, key: &str) -> bool {
+        self.is_pending(key) || self.by_queue.get(key).is_some_and(|i| !i.is_empty())
+    }
+
+    /// Removes the pending image `token`; false when it was already gone
+    /// (removed by hand, or the board scope changed).
+    fn take_pending(&mut self, key: &str, token: u64) -> bool {
+        let Some(list) = self.pending.get_mut(key) else {
+            return false;
+        };
+        let Some(i) = list.iter().position(|p| p.token == token) else {
+            return false;
+        };
+        list.remove(i);
+        if list.is_empty() {
+            self.pending.remove(key);
+        }
+        true
+    }
 }
 
 /// The window's own full-size view of a request's images.
@@ -47,7 +88,50 @@ fn hits_image(stage: Bounds<Pixels>, size: (u32, u32), click: Point<Pixels>) -> 
 
 enum PasteSource {
     Image(Vec<u8>),
-    Files(Vec<PathBuf>),
+    File(PathBuf),
+}
+
+impl PasteSource {
+    fn bytes(self) -> anyhow::Result<Vec<u8>> {
+        match self {
+            PasteSource::Image(bytes) => Ok(bytes),
+            PasteSource::File(path) => {
+                use std::io::Read as _;
+                let mut bytes = Vec::new();
+                std::fs::File::open(path)?
+                    .take((64 << 20) + 1)
+                    .read_to_end(&mut bytes)?;
+                Ok(bytes)
+            }
+        }
+    }
+}
+
+/// The side of the local preview: draft tiles are 80 pt squares on 2x displays.
+const PREVIEW_SIDE: u32 = 160;
+
+/// A center-cropped square PNG of `bytes`, for the draft tile while the
+/// daemon imports the image. None when the image crate can't read it; the
+/// tile then stays blank until the import brings the board's thumbnail.
+fn preview(bytes: &[u8]) -> Option<Arc<Image>> {
+    let format = image::guess_format(bytes).ok()?;
+    let (w, h) = image::ImageReader::with_format(Cursor::new(bytes), format)
+        .into_dimensions()
+        .ok()?;
+    if w == 0 || h == 0 || u64::from(w) * u64::from(h) > 32_000_000 {
+        return None;
+    }
+    let decoded = image::load_from_memory_with_format(bytes, format).ok()?;
+    let side = w.min(h);
+    let square = decoded
+        .crop_imm((w - side) / 2, (h - side) / 2, side, side)
+        .thumbnail(PREVIEW_SIDE, PREVIEW_SIDE);
+    let mut png = Cursor::new(Vec::new());
+    square.write_to(&mut png, image::ImageFormat::Png).ok()?;
+    Some(Arc::new(Image::from_bytes(
+        ImageFormat::Png,
+        png.into_inner(),
+    )))
 }
 
 fn import_image(mut bytes: Vec<u8>) -> anyhow::Result<board::Attachment> {
@@ -117,7 +201,8 @@ fn thumbnail(image: &board::Attachment, width: f32, height: f32) -> AnyElement {
 
 impl FennecWindow {
     pub(super) fn request_image_status(&self, project: &str) -> Option<&'static str> {
-        if self.request_images.busy.contains(project) {
+        // Only a draft waiting to be sent says so; tiles show the rest.
+        if self.request_images.send_when_ready.contains(project) {
             Some("request_image_adding")
         } else {
             self.request_images.errors.get(project).copied()
@@ -148,11 +233,11 @@ impl FennecWindow {
         let Some(clipboard) = cx.read_from_clipboard() else {
             return false;
         };
-        let mut source = None;
+        let mut sources = Vec::new();
         for entry in clipboard.into_entries() {
             match entry {
                 ClipboardEntry::Image(image) => {
-                    source = Some(PasteSource::Image(image.bytes));
+                    sources = vec![PasteSource::Image(image.bytes)];
                     break;
                 }
                 ClipboardEntry::ExternalPaths(files)
@@ -166,77 +251,129 @@ impl FennecWindow {
                             })
                         }) =>
                 {
-                    source = Some(PasteSource::Files(files.paths().to_vec()))
+                    sources = files
+                        .paths()
+                        .iter()
+                        .cloned()
+                        .map(PasteSource::File)
+                        .collect();
                 }
                 _ => {}
             }
         }
-        let Some(source) = source else { return false };
-        if self.request_images.busy.contains(&project) {
-            return true;
+        if sources.is_empty() {
+            return false;
         }
-        let count = match &source {
-            PasteSource::Image(_) => 1,
-            PasteSource::Files(paths) => paths.len(),
-        };
-        if self
-            .request_images
-            .by_queue
-            .get(&project)
-            .map_or(0, Vec::len)
-            + count
-            > 8
-        {
-            self.request_images
-                .errors
-                .insert(project, "request_image_limit");
+        let drafts = &mut self.request_images;
+        let held = drafts.by_queue.get(&project).map_or(0, Vec::len)
+            + drafts.pending.get(&project).map_or(0, Vec::len);
+        if held + sources.len() > 8 {
+            drafts.errors.insert(project, "request_image_limit");
             cx.notify();
             return true;
         }
-        self.request_images.errors.remove(&project);
-        self.request_images.busy.insert(project.clone());
-        cx.notify();
-        let Some(scope) = self.board_scope.clone() else { return true; };
-        let worker_scope = scope.clone();
-        self._tasks.push(cx.spawn(async move |this, cx| {
-            let result: anyhow::Result<Vec<board::Attachment>> = cx
-                .background_spawn(async move { worker_scope.run(|| {
-                    match source {
-                        PasteSource::Image(bytes) => Ok(vec![import_image(bytes)?]),
-                        PasteSource::Files(paths) => paths
-                            .into_iter()
-                            .map(|p| {
-                                let file = std::fs::File::open(p)?;
-                                let mut bytes = Vec::new();
-                                use std::io::Read as _;
-                                file.take((64 << 20) + 1).read_to_end(&mut bytes)?;
-                                import_image(bytes)
-                            })
-                            .collect(),
-                    }
-                }) })
-                .await;
-            let _ = this.update(cx, |this, cx| { if this.board_scope.as_ref() != Some(&scope) { return; }
-                this.request_images.busy.remove(&project);
-                match result {
-                    Ok(images) => {
-                        let draft = this.request_images.by_queue.entry(project).or_default();
-                        for image in images {
-                            if !draft.iter().any(|a| a.id == image.id) {
-                                draft.push(image);
+        drafts.errors.remove(&project);
+        let Some(scope) = self.board_scope.clone() else {
+            return true;
+        };
+        // FEN-191: every image shows as a tile now; reading, previewing and
+        // the daemon's import (WebP encode, thumbnail) run in the background.
+        for source in sources {
+            let drafts = &mut self.request_images;
+            drafts.next_token += 1;
+            let token = drafts.next_token;
+            drafts
+                .pending
+                .entry(project.clone())
+                .or_default()
+                .push(PendingImage {
+                    token,
+                    preview: None,
+                });
+            let key = project.clone();
+            let scope = scope.clone();
+            self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+                let result = match cx.background_spawn(async move { source.bytes() }).await {
+                    Ok(bytes) => {
+                        let shown = bytes.clone();
+                        let preview = cx.background_spawn(async move { preview(&shown) });
+                        let worker_scope = scope.clone();
+                        let import =
+                            cx.background_spawn(
+                                async move { worker_scope.run(|| import_image(bytes)) },
+                            );
+                        let preview = preview.await;
+                        let preview_key = key.clone();
+                        let _ = this.update(cx, |this, cx| {
+                            if let Some(p) = this
+                                .request_images
+                                .pending
+                                .get_mut(&preview_key)
+                                .and_then(|list| list.iter_mut().find(|p| p.token == token))
+                            {
+                                p.preview = preview;
+                                cx.notify();
                             }
-                        }
+                        });
+                        import.await
                     }
-                    Err(_) => {
-                        this.request_images
-                            .errors
-                            .insert(project, "request_image_error");
+                    Err(e) => Err(e),
+                };
+                let _ = this.update_in(cx, |this, window, cx| {
+                    if this.board_scope.as_ref() != Some(&scope) {
+                        return;
                     }
-                }
-                cx.notify();
-            });
-        }));
+                    this.finish_pending_image(key, token, result, window, cx);
+                });
+            }));
+        }
+        cx.notify();
         true
+    }
+
+    /// Moves an imported image from pending into the draft, and sends the
+    /// draft if Post/Send was pressed while it was pending.
+    fn finish_pending_image(
+        &mut self,
+        key: String,
+        token: u64,
+        result: anyhow::Result<board::Attachment>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let drafts = &mut self.request_images;
+        if !drafts.take_pending(&key, token) {
+            return;
+        }
+        match result {
+            Ok(image) => {
+                let draft = drafts.by_queue.entry(key.clone()).or_default();
+                if !draft.iter().any(|a| a.id == image.id) {
+                    draft.push(image);
+                }
+            }
+            Err(_) => {
+                drafts.errors.insert(key.clone(), "request_image_error");
+                // Don't send a draft that just lost an image; the error shows.
+                drafts.send_when_ready.remove(&key);
+            }
+        }
+        cx.notify();
+        if drafts.is_pending(&key) || !drafts.send_when_ready.remove(&key) {
+            return;
+        }
+        let here = self.project_id();
+        if key.starts_with("reply:") {
+            let open = match (here, self.open) {
+                (Some(project), Some(n)) => format!("reply:{project}:{n}"),
+                _ => return,
+            };
+            if open == key {
+                self.submit_reply(window, cx);
+            }
+        } else if here.as_deref() == Some(key.as_str()) {
+            self.post(window, cx);
+        }
     }
 
     pub(super) fn draft_images(&self, project: &str, cx: &Context<Self>) -> Option<AnyElement> {
@@ -246,7 +383,13 @@ impl FennecWindow {
             .get(project)
             .cloned()
             .unwrap_or_default();
-        if images.is_empty() {
+        let pending: Vec<(u64, Option<Arc<Image>>)> = self
+            .request_images
+            .pending
+            .get(project)
+            .map(|list| list.iter().map(|p| (p.token, p.preview.clone())).collect())
+            .unwrap_or_default();
+        if images.is_empty() && pending.is_empty() {
             return None;
         }
         Some(
@@ -317,7 +460,69 @@ impl FennecWindow {
                                 ),
                             )
                     }),
-                ))
+                ).children(pending.into_iter().map(|(token, preview)| {
+                    let project = project.to_owned();
+                    let side = 80.0;
+                    let body = match preview {
+                        Some(preview) => img(preview)
+                            .w(px(side))
+                            .h(px(side))
+                            .object_fit(ObjectFit::Cover)
+                            .rounded(px(10.0))
+                            .into_any_element(),
+                        None => div().size(px(side)).bg(c("f_line")).into_any_element(),
+                    };
+                    div()
+                        .id(SharedString::from(format!("pending-image-{token}")))
+                        .group("request-attachment")
+                        .relative()
+                        .w(px(side))
+                        .h(px(side))
+                        .flex_none()
+                        .rounded(px(10.0))
+                        .border_1()
+                        .border_color(c("f_line"))
+                        // Faded until the daemon has imported it.
+                        .child(
+                            div()
+                                .size(px(side))
+                                .rounded(px(10.0))
+                                .overflow_hidden()
+                                .opacity(0.55)
+                                .child(body),
+                        )
+                        .child(
+                            div().absolute().top(px(-5.0)).right(px(-5.0)).child(
+                                div()
+                                    .id(SharedString::from(format!("remove-pending-{token}")))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .size(px(20.0))
+                                    .invisible()
+                                    .group_hover("request-attachment", |s| s.visible())
+                                    .rounded_full()
+                                    .bg(c("f_text"))
+                                    .hover(|s| s.bg(c("f_muted")))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation()
+                                    })
+                                    .child(ui::icon("close", 10.0, c("f_card")))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        // The import finishes in the background
+                                        // and is then dropped.
+                                        let drafts = &mut this.request_images;
+                                        drafts.take_pending(&project, token);
+                                        if !drafts.is_pending(&project) {
+                                            drafts.send_when_ready.remove(&project);
+                                        }
+                                        drafts.errors.remove(&project);
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                })))
                 .into_any_element(),
         )
     }
@@ -610,7 +815,7 @@ fn file_url_path(url: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_url_path, hits_image};
+    use super::{file_url_path, hits_image, preview};
     use gpui::{bounds, point, px, size};
     use std::path::PathBuf;
 
@@ -633,6 +838,16 @@ mod tests {
         assert!(!hits_image(stage, (500, 1000), point(px(100.0), px(500.0))));
         // No recorded size: the whole stage counts as the image.
         assert!(hits_image(stage, (0, 0), point(px(500.0), px(100.0))));
+    }
+
+    #[test]
+    fn previews_are_made_for_screenshots_only() {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(300, 200, image::Rgba([10, 20, 30, 255]))
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        assert!(preview(png.get_ref()).is_some());
+        assert!(preview(b"not an image").is_none());
     }
 
     #[test]

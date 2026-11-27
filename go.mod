@@ -3,6 +3,7 @@ module fennec
 go 1.26.0
 
 require (
+	github.com/chai2010/webp v1.4.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/creack/pty v1.1.24
 	github.com/gliderlabs/ssh v0.3.8

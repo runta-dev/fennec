@@ -84,17 +84,25 @@ func (s Store) ImportAttachment(path string) (Attachment, error) {
 	if err != nil {
 		return Attachment{}, err
 	}
-	data, err = pasteimage.Compress(data)
+	data, decoded, err := pasteimage.CompressImage(data)
 	if err != nil {
 		return Attachment{}, err
 	}
-	return s.SaveAttachment(data)
+	return s.saveAttachment(data, decoded)
 }
 
 // NewAttachment describes an image for the board without storing it: its
 // content ID, size, dimensions and thumbnail. Clients that upload in chunks
 // (the iPhone app) send this with every chunk.
 func NewAttachment(data []byte) (Attachment, error) {
+	return newAttachment(data, nil)
+}
+
+// newAttachment is NewAttachment for data whose pixels the caller already
+// has (decoded, or nil to decode data): an import that just encoded the WebP
+// makes the thumbnail from the pixels it encoded, instead of decoding the
+// WebP again (FEN-191: 0.1-0.3 s for a screenshot).
+func newAttachment(data []byte, decoded image.Image) (Attachment, error) {
 	if len(data) == 0 || len(data) > MaxImageBytes {
 		return Attachment{}, ErrInvalid
 	}
@@ -107,8 +115,11 @@ func NewAttachment(data []byte) (Attachment, error) {
 	if format == "jpeg" {
 		a.Name = "image.jpg"
 	}
-	decoded, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
+	if decoded == nil {
+		if decoded, _, err = image.Decode(bytes.NewReader(data)); err != nil {
+			return Attachment{}, ErrInvalid
+		}
+	} else if decoded.Bounds().Dx() != cfg.Width || decoded.Bounds().Dy() != cfg.Height {
 		return Attachment{}, ErrInvalid
 	}
 	if a.Thumbnail, err = thumbnail(decoded); err != nil {
@@ -121,7 +132,11 @@ func NewAttachment(data []byte) (Attachment, error) {
 }
 
 func (s Store) SaveAttachment(data []byte) (Attachment, error) {
-	a, err := NewAttachment(data)
+	return s.saveAttachment(data, nil)
+}
+
+func (s Store) saveAttachment(data []byte, decoded image.Image) (Attachment, error) {
+	a, err := newAttachment(data, decoded)
 	if err != nil {
 		return Attachment{}, err
 	}
@@ -172,10 +187,29 @@ func thumbnail(src image.Image) (string, error) {
 	weights := areaWeights(crop, side)
 	line := make([]float64, crop*3)
 	rows := make([]float64, side*crop*3)
+	// Reading NRGBA and RGBA pixels straight from Pix skips an interface
+	// call and a conversion per pixel; the values are the same.
+	at := func(x, y int) pixelcolor.NRGBA {
+		return pixelcolor.NRGBAModel.Convert(src.At(x, y)).(pixelcolor.NRGBA)
+	}
+	switch img := src.(type) {
+	case *image.NRGBA:
+		at = func(x, y int) pixelcolor.NRGBA {
+			p := img.Pix[img.PixOffset(x, y):]
+			return pixelcolor.NRGBA{p[0], p[1], p[2], p[3]}
+		}
+	case *image.RGBA:
+		if img.Opaque() {
+			at = func(x, y int) pixelcolor.NRGBA {
+				p := img.Pix[img.PixOffset(x, y):]
+				return pixelcolor.NRGBA{p[0], p[1], p[2], 255}
+			}
+		}
+	}
 	for y := 0; y < crop; y++ {
 		for x := 0; x < crop; x++ {
 			// Composite on white, as before: JPEG has no alpha.
-			v := pixelcolor.NRGBAModel.Convert(src.At(x0+x, y0+y)).(pixelcolor.NRGBA)
+			v := at(x0+x, y0+y)
 			a := float64(v.A) / 255
 			line[x*3] = float64(v.R)*a + 255*(1-a)
 			line[x*3+1] = float64(v.G)*a + 255*(1-a)

@@ -60,3 +60,42 @@ func TestCompressionKeepsDimensionsAlphaAndDoesNotReencode(t *testing.T) {
 		t.Fatal("image is not private", err)
 	}
 }
+
+// A premultiplied, translucent RGBA image must come out with the same
+// straight colors, not darkened by its alpha (the native encoder wants NRGBA).
+func TestCompressionUnpremultipliesRGBA(t *testing.T) {
+	im := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 64; x++ {
+			im.Set(x, y, color.NRGBA{200, 100, 50, 128})
+		}
+	}
+	compressed, decoded, err := CompressImage(mustPNG(t, im))
+	if err != nil || decoded == nil {
+		t.Fatal(err)
+	}
+	out, _, err := image.Decode(bytes.NewReader(compressed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := color.NRGBAModel.Convert(out.At(32, 32)).(color.NRGBA)
+	if c.A != 128 || absDiff(c.R, 200) > 20 || absDiff(c.G, 100) > 20 || absDiff(c.B, 50) > 20 {
+		t.Fatalf("color changed: %+v (native %v)", c, Native())
+	}
+}
+
+func mustPNG(t *testing.T, im image.Image) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, im); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+func absDiff(a, b uint8) uint8 {
+	if a > b {
+		return a - b
+	}
+	return b - a
+}
