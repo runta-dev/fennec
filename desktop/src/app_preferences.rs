@@ -460,6 +460,7 @@ impl FennecWindow {
                                         ("tab.prev", "app_prev_tab"),
                                         ("tab.next", "app_next_tab"),
                                         ("mod.open:picker", "search"),
+                                        ("app.knowledge", "knowledge"),
                                         ("app.settings", "settings"),
                                     ]
                                     .into_iter()

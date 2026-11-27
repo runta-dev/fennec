@@ -301,23 +301,34 @@ impl FennecWindow {
             )
     }
 
+    /// The project whose knowledge the book (and ⌘⇧K) opens: the current
+    /// one, else the last queue shown.
+    fn knowledge_project(&self) -> Option<String> {
+        self.project_id()
+            .or_else(|| self.local_state.last_queue.clone())
+            .filter(|id| self.projects.iter().any(|p| &p.id == id))
+    }
+
+    /// Opens that project's knowledge, or goes back to the project when it's
+    /// already showing (the book button and ⌘⇧K, FEN-213).
+    pub(super) fn toggle_knowledge(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.knowledge_project() else { return };
+        let route = match self.route {
+            Some(Route::Knowledge(_)) => Route::Project(id),
+            _ => Route::Knowledge(id),
+        };
+        self.go(route, window, cx);
+    }
+
     /// The book right of search: opens the current project's knowledge, or
     /// goes back to the project when it's already showing.
     fn knowledge_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let showing = matches!(self.route, Some(Route::Knowledge(_)));
-        let project = self
-            .project_id()
-            .or_else(|| self.local_state.last_queue.clone())
-            .filter(|id| self.projects.iter().any(|p| &p.id == id));
         ui::icon_button("titlebar-knowledge", "book")
             .debug_selector(|| "titlebar-knowledge".into())
             .when(showing, |d| d.bg(c("f_line")))
-            .when(project.is_none(), |d| d.opacity(0.45))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                let Some(id) = project.clone() else { return };
-                let route = if showing { Route::Project(id) } else { Route::Knowledge(id) };
-                this.go(route, window, cx);
-            }))
+            .when(self.knowledge_project().is_none(), |d| d.opacity(0.45))
+            .on_click(cx.listener(|this, _, window, cx| this.toggle_knowledge(window, cx)))
     }
 
     /// The title bar's search field (⌘K).

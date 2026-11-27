@@ -31,6 +31,7 @@ fn supported(action: &str) -> bool {
         || matches!(
             action,
             "app.settings"
+                | "app.knowledge"
                 | "tab.new"
                 | "tab.close"
                 | "tab.next"
@@ -60,7 +61,8 @@ pub const DEFAULTS: &str = r#"{
         "cmd-,": "app.settings", "cmd-n": "request.new", "cmd-t": "tab.new", "cmd-w": "tab.close",
         "ctrl-tab": "tab.next", "ctrl-shift-tab": "tab.prev",
         "cmd-shift-]": "tab.next", "cmd-shift-[": "tab.prev", "cmd-p": "mod.open:picker",
-        "cmd-[": "history.back", "cmd-]": "history.forward"
+        "cmd-[": "history.back", "cmd-]": "history.forward",
+        "cmd-shift-k": "app.knowledge"
     },
     "terminal": {
         "cmd-c": "terminal.copy", "cmd-v": "terminal.paste",

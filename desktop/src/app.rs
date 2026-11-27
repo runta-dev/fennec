@@ -1872,6 +1872,10 @@ impl FennecWindow {
                 self.open_app_settings(window, cx);
                 return;
             }
+            "app.knowledge" => {
+                self.toggle_knowledge(window, cx);
+                return;
+            }
             "tab.new" => {
                 self.new_tab(window, cx);
                 return;
@@ -3559,6 +3563,7 @@ fn empty_thread() -> impl IntoElement {
     let rows: Vec<(String, String)> = [
         (t("new_request"), crate::keys::shortcut("request.new")),
         (t("search"), search.to_owned()),
+        (t("knowledge"), crate::keys::shortcut("app.knowledge")),
         (t("empty_new_tab"), crate::keys::shortcut("tab.new")),
         (t("settings"), crate::keys::shortcut("app.settings")),
     ]
