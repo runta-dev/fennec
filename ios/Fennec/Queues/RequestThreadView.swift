@@ -90,7 +90,7 @@ struct RequestThreadView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .queueActionAlert()
@@ -678,7 +678,7 @@ struct RequestMenuSheet: View {
             }
             .padding(16)
         }
-        .background(Theme.bg)
+        .pageBackground()
     }
 
     private func row(_ icon: String, _ title: String, last: Bool = false, action: @escaping () -> Void) -> some View {
@@ -733,7 +733,7 @@ struct LinkSheet: View {
                 }
             }
             .padding(16)
-            .background(Theme.bg)
+            .pageBackground()
             .navigationTitle(L10n.text("ios.link_title", values: ["ref": request.reference(project.key)]))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("desktop.cancel")) { dismiss() } } }

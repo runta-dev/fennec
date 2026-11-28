@@ -62,7 +62,7 @@ struct QueuesView: View {
                 else if queues.projects.isEmpty { ListSkeleton() }
                 else if let project = queues.selected { list(project) }
             }
-            .background(Theme.bg)
+            .pageBackground()
             .refreshable { await queues.refresh() }
             .task(id: refreshTick) {
                 // FEN-60: the board pushes changes over one stream while the
@@ -573,7 +573,7 @@ struct ReorderView: View {
             .listStyle(.plain)
             .environment(\.editMode, .constant(.active))
             .scrollContentBackground(.hidden)
-            .background(Theme.bg)
+            .pageBackground()
             .navigationTitle(L10n.text("ios.reorder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -648,7 +648,7 @@ struct DoneView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Theme.bg)
+        .pageBackground()
         .navigationTitle(L10n.text("desktop.done"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $linking) { r in if let project { LinkSheet(project: project, request: r) } }
@@ -684,7 +684,7 @@ struct RequestSearchSheet: View {
                     RequestSearchResults(query: query, open: open)
                 }
             }
-            .background(Theme.bg)
+            .pageBackground()
             .navigationTitle(L10n.text("ios.search"))
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),

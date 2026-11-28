@@ -36,7 +36,7 @@ struct ConnectingView: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
-        .background(Theme.bg)
+        .pageBackground()
         .task {
             await auth.loadProfile()
             try? await Task.sleep(for: .milliseconds(700))

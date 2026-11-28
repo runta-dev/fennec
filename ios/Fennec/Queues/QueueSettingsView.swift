@@ -61,7 +61,7 @@ struct QueueSettingsView: View {
                 }
                 .padding(16)
             }
-            .background(Theme.bg)
+            .pageBackground()
             .navigationTitle(L10n.text("desktop.project_settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
@@ -159,7 +159,7 @@ struct QueueWorkersView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg)
+            .pageBackground()
             .environment(\.editMode, .constant(.active))
             .navigationTitle(L10n.text("desktop.agents"))
             .navigationBarTitleDisplayMode(.inline)
@@ -214,7 +214,7 @@ struct QueueTagsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg)
+            .pageBackground()
             .environment(\.editMode, .constant(.active))
             .navigationTitle(L10n.text("desktop.tags"))
             .navigationBarTitleDisplayMode(.inline)
@@ -305,7 +305,7 @@ struct NewQueueSheet: View {
                 }
                 .padding(16)
             }
-            .background(Theme.bg)
+            .pageBackground()
             .navigationTitle(L10n.text("desktop.new_project"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -375,7 +375,7 @@ struct KnowledgeView: View {
             }
             .padding(16)
         }
-        .background(Theme.bg)
+        .pageBackground()
         .searchable(text: $query)
         .navigationTitle(L10n.text("desktop.knowledge"))
         .navigationBarTitleDisplayMode(.inline)
@@ -429,7 +429,7 @@ struct ConceptView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {

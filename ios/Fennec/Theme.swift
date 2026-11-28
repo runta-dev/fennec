@@ -100,3 +100,10 @@ struct GlassCapsuleButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
+
+extension View {
+    /// The page's Theme.bg, drawn under the keyboard too (FEN-236).
+    /// `.background(Theme.bg)` stops at the keyboard's safe area, so the
+    /// keyboard's rounded top corners showed the system black around them.
+    func pageBackground() -> some View { background { Theme.bg.ignoresSafeArea() } }
+}

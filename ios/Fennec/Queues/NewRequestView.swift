@@ -30,7 +30,7 @@ struct NewRequestView: View {
             .padding(.horizontal, 16)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Theme.bg)
+        .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { title } }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }

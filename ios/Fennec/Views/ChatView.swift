@@ -81,7 +81,7 @@ struct ChatView: View {
                 }
         } else {
             Text(L10n.text("ios.session_ended")).foregroundStyle(Theme.fg2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.bg)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).pageBackground()
         }
     }
 
@@ -216,7 +216,7 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }
@@ -329,7 +329,7 @@ struct ChatView: View {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) { TitlePill(session: session) }

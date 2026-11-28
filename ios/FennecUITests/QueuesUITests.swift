@@ -73,6 +73,29 @@ final class QueuesUITests: XCTestCase {
         shot(app, "30-thread-menu")
     }
 
+    /// FEN-236: with the keyboard up, its rounded top corners show Fennec's
+    /// background, not the system black. The whole screen is captured, since
+    /// the keyboard is not part of the app's own screenshot.
+    func testKeyboardCornersShowFennecBackground() {
+        let app = launch()
+        let reviewed = app.descendants(matching: .any)["request-117"].firstMatch
+        XCTAssertTrue(reviewed.waitForExistence(timeout: 10))
+        reviewed.tap()
+        let composer = app.textFields["thread-composer"].exists ? app.textFields["thread-composer"] : app.textViews["thread-composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        sleep(1) // the keyboard finishes sliding in
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "36-thread-keyboard"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let directory = URL(fileURLWithPath: "/tmp/fennec-queues")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? screenshot.pngRepresentation.write(to: directory.appendingPathComponent("36-thread-keyboard.png"))
+    }
+
     func testReviewedRequestOffersMarkDone() {
         let app = launch()
         let reviewed = app.descendants(matching: .any)["request-117"].firstMatch

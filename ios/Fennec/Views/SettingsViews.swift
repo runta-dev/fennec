@@ -20,7 +20,7 @@ struct AgentsView: View {
             }
             .padding(16)
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationTitle(L10n.text("ui.agents"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -141,7 +141,7 @@ struct AccountView: View {
             }
             .padding(16)
         }
-        .background(Theme.bg)
+        .pageBackground()
         .navigationTitle(L10n.text("ui.account"))
         .navigationBarTitleDisplayMode(.inline)
         .task { if app.preview { usage.showDemo() } else { await usage.loadBilling(auth.core) } }
