@@ -3696,37 +3696,46 @@ fn thread_closure(closure: &board::Closure) -> Div {
         .border_color(c("f_line"))
         .gap(px(8.0))
         .child(
+            // FEN-245: same 32 px tile and 12 px gap as the message avatars above,
+            // so the check sits in the avatar column and the text in the text column.
             h_flex()
-                .gap(px(8.0))
+                .gap(px(12.0))
                 .text_size(px(13.0))
                 .text_color(c("f_muted"))
                 .child(
                     div()
-                        .size(px(18.0))
-                        .rounded_full()
-                        .bg(c("ok").opacity(0.15))
+                        .size(px(32.0))
+                        .flex_none()
+                        .rounded(px(9.0))
+                        .bg(c("f_expanded"))
+                        .border_1()
+                        .border_color(c("f_line"))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(ui::icon("check", 12.0, c("ok"))),
+                        .child(ui::icon("check", 16.0, c("ok"))),
                 )
                 .child(
-                    div()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(c("f_text"))
-                        .child(sessions::agent_name(&closure.by).to_owned()),
-                )
-                .child(t("closed_this_request"))
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(c("f_muted"))
-                        .child(crate::local_time::month_day_clock(&closure.at)),
+                    h_flex()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(c("f_text"))
+                                .child(sessions::agent_name(&closure.by).to_owned()),
+                        )
+                        .child(t("closed_this_request"))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(c("f_muted"))
+                                .child(crate::local_time::month_day_clock(&closure.at)),
+                        ),
                 ),
         )
         .child(
             div()
-                .ml(px(26.0))
+                .ml(px(44.0))
                 .px(px(12.0))
                 .py(px(10.0))
                 .rounded(px(8.0))
