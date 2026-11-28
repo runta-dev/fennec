@@ -107,8 +107,15 @@ impl Project {
         self.display_copy("starter_queue_description", &self.description, crate::i18n::language())
     }
 
+    /// The project every board starts with, or the one put back after the
+    /// last was deleted (`starter-2`, …; FEN-231). It wears Fennec's icon.
+    pub fn is_starter(&self) -> bool {
+        self.id == "starter"
+            || self.id.strip_prefix("starter-").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    }
+
     fn display_copy(&self, key: &str, stored: &str, language: &str) -> String {
-        if self.id == "starter" {
+        if self.is_starter() {
             crate::i18n::default_copy(key, stored, language)
         } else {
             stored.to_owned()
@@ -116,7 +123,7 @@ impl Project {
     }
 
     pub fn default_icon(&self, dark: bool) -> Option<&'static str> {
-        (self.id == "starter" && self.icon.is_empty()).then_some(if dark {
+        (self.is_starter() && self.icon.is_empty()).then_some(if dark {
             "fennec-ios-dark.png"
         } else {
             "fennec-ios-light.png"
@@ -464,6 +471,15 @@ mod thread_tests {
             project.display_copy("starter_queue_description", before_fen207, "zh-CN"),
             crate::i18n::text_in("starter_queue_description", "zh-CN")
         );
+        for before_fen231 in [
+            "Send what you need here. Agents take it in turn and reply to you. Delete this project if you don't need it.",
+            "\u{628a}\u{8981}\u{505a}\u{7684}\u{4e8b}\u{53d1}\u{5230}\u{8fd9}\u{91cc}\u{ff0c}Agent \u{4f1a}\u{4f9d}\u{6b21}\u{63a5}\u{624b}\u{5e76}\u{56de}\u{590d}\u{4f60}\u{3002}\u{4e0d}\u{9700}\u{8981}\u{53ef}\u{4ee5}\u{5220}\u{9664}\u{3002}",
+        ] {
+            assert_eq!(
+                project.display_copy("starter_queue_description", before_fen231, "en-US"),
+                crate::i18n::text_in("starter_queue_description", "en-US")
+            );
+        }
         project.name = crate::i18n::text_in("starter_queue_name", "zh-CN");
         assert_eq!(project.display_copy("starter_queue_name", &project.name, "en-US"), "My tasks");
         project.name = "Personal work".into();
@@ -481,6 +497,10 @@ mod thread_tests {
         project.icon = "data:image/png;base64,custom".into();
         assert!(project.default_icon(false).is_none());
         project.icon.clear();
+        project.id = "starter-2".into();
+        assert_eq!(project.default_icon(false), Some("fennec-ios-light.png"));
+        project.id = "starter-abc123".into();
+        assert!(project.default_icon(false).is_none());
         project.id = "custom-queue".into();
         assert!(project.default_icon(false).is_none());
     }

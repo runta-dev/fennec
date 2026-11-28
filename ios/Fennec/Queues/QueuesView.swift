@@ -57,7 +57,9 @@ struct QueuesView: View {
         NavigationStack(path: $path) {
             Group {
                 if !queues.loaded { ListSkeleton() }
-                else if queues.projects.isEmpty { empty }
+                // FEN-231: the board always keeps a project (the starter, with
+                // Fennec's icon), so none yet means it hasn't arrived.
+                else if queues.projects.isEmpty { ListSkeleton() }
                 else if let project = queues.selected { list(project) }
             }
             .background(Theme.bg)
@@ -345,7 +347,7 @@ struct QueuesView: View {
         .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Theme.bg)
     }
 
-    // MARK: Banners and empty (38, 38b)
+    // MARK: Banners (38)
 
     @ViewBuilder
     private var banners: some View {
@@ -363,21 +365,6 @@ struct QueuesView: View {
         let minutes = Int(Date.now.timeIntervalSince(date) / 60)
         if minutes < 60 { return L10n.text("desktop.minutes", values: ["n": String(max(minutes, 1))]) }
         return L10n.text("desktop.hours", values: ["n": String(minutes / 60)])
-    }
-
-    private var empty: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            FoxMark(size: 56)
-            Text(L10n.text("desktop.no_projects")).font(.system(size: 18, weight: .medium)).padding(.top, 6)
-            Text(L10n.text("ios.no_queues_hint")).font(.rowBody).foregroundStyle(Theme.fg2).multilineTextAlignment(.center)
-            Button(L10n.text("desktop.new_project")) { creatingQueue = true }
-                .buttonStyle(PrimaryButtonStyle()).frame(width: 180).padding(.top, 8)
-                .disabled(queues.unavailable)
-            Spacer()
-        }
-        .padding(.horizontal, 34)
-        .frame(maxWidth: .infinity)
     }
 }
 

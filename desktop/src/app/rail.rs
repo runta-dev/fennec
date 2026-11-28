@@ -615,9 +615,11 @@ impl FennecWindow {
             )
     }
 
-    /// No queue to show yet: a way to make the first one.
-    pub(super) fn no_queue(&self, _window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let loading = self.board_scope.is_none() || !self.projects.is_empty();
+    /// No project to show yet. The board always has one (FEN-231: the
+    /// starter, with Fennec's icon, and the last project can't be deleted),
+    /// so this only shows while the board loads; there is no "create your
+    /// first project" page.
+    pub(super) fn no_queue(&self, _window: &Window, _cx: &mut Context<Self>) -> AnyElement {
         v_flex()
             .id("no-queue")
             .flex_1()
@@ -628,14 +630,7 @@ impl FennecWindow {
             .justify_center()
             .gap(px(12.0))
             .on_mouse_down(MouseButton::Left, ui::drag_titlebar)
-            .when(loading, |d| {
-                d.child(div().text_size(px(12.5)).text_color(c("f_muted")).child(t("loading")))
-            })
-            .when(!loading, |d| {
-                d.child(primary_button("first-queue", t("new_project")).on_click(
-                    cx.listener(|this, _, window, cx| this.open_new_project(window, cx)),
-                ))
-            })
+            .child(div().text_size(px(12.5)).text_color(c("f_muted")).child(t("loading")))
             .into_any_element()
     }
 }

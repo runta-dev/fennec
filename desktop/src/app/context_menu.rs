@@ -114,12 +114,16 @@ impl FennecWindow {
                     icon: "gear",
                     action: Action::ProjectSettings(id.clone()),
                 },
-                Item {
-                    label: "delete_queue",
-                    icon: "trash",
-                    action: Action::DeleteProject(id),
-                },
-            ],
+            ]
+            .into_iter()
+            // FEN-231: Fennec always keeps one project; the board refuses
+            // deleting the last one.
+            .chain((self.projects.len() > 1).then_some(Item {
+                label: "delete_queue",
+                icon: "trash",
+                action: Action::DeleteProject(id),
+            }))
+            .collect(),
             Target::Terminal { session, tab } => {
                 let mut items = vec![Item {
                     label: "context_open_terminal",
@@ -262,7 +266,7 @@ impl FennecWindow {
                     this.projects.retain(|p| p.id != id);
                     this.requests.remove(&id);
                     if matches!(&this.route, Some(Route::Project(p) | Route::Settings(p, _) | Route::Knowledge(p)) if p == &id) {
-                        this.route = None;
+                        this.route = this.home_route();
                         this.open = None;
                         this.opening = None;
                         this.thread = None;

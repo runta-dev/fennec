@@ -15,7 +15,7 @@ import (
 func starterQueueCopy(home string) (name, description string) {
 	catalog, err := localization.Decode(uiassets.Translations)
 	if err != nil {
-		return "My tasks", "Send what you need here. Agents take it in turn and reply to you. Delete this queue if you don't need it."
+		return "My tasks", "Send what you need here. Agents take it in turn and reply to you."
 	}
 	language := starterQueueLanguage(home)
 	return catalog.Text("desktop.starter_queue_name", language), catalog.Text("desktop.starter_queue_description", language)

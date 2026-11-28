@@ -11,6 +11,10 @@ import (
 
 func TestDeleteQueueReplicatesAndSurvivesOfflineEdits(t *testing.T) {
 	a, b := testStore(t), testStore(t)
+	// The board keeps its last project (FEN-231), so it needs a second one.
+	if _, err := a.CreateProject(Project{Name: "Keep"}); err != nil {
+		t.Fatal(err)
+	}
 	p, err := a.CreateProject(Project{Name: "Delete me"})
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +37,7 @@ func TestDeleteQueueReplicatesAndSurvivesOfflineEdits(t *testing.T) {
 		if _, err := s.Project(p.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatal("deleted queue returned", err)
 		}
-		if projects, err := s.Projects(); err != nil || len(projects) != 0 {
+		if projects, err := s.Projects(); err != nil || len(projects) != 1 || projects[0].Name != "Keep" {
 			t.Fatal(projects, err)
 		}
 		if _, err := s.Requests(p.ID); !errors.Is(err, ErrNotFound) {

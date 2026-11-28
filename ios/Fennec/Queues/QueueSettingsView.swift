@@ -51,12 +51,13 @@ struct QueueSettingsView: View {
                             ListRow(icon: "book", title: L10n.text("desktop.knowledge"), showDivider: false) { trailing("") }
                         }.buttonStyle(.plain)
                     }
-                    ListCard {
+                    // FEN-231: the last project can't be deleted.
+                    if queues.projects.count > 1 { ListCard {
                         Button { confirmDelete = true } label: {
                             ListRow(icon: "trash", iconColor: Theme.danger, title: L10n.text("desktop.delete_queue"), titleColor: Theme.danger, showDivider: false)
                         }.buttonStyle(.plain)
                         .accessibilityIdentifier("delete-queue")
-                    }
+                    } }
                 }
                 .padding(16)
             }

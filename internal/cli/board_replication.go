@@ -45,7 +45,6 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 		defer ticker.Stop()
 		var peerSeen map[string]uint64
 		var epoch uint64
-		starterChecked := false
 		last := time.Time{}
 		// Log only transitions: a silent 3.5-hour outage (THI-55) left the
 		// Mac showing a frozen board with nothing in daemon.log to explain it.
@@ -75,7 +74,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				_ = store.SetPrimary(false)
 				store = next
 				_ = store.SetPrimary(false)
-				peerSeen, starterChecked, last = nil, false, time.Time{}
+				peerSeen, last = nil, time.Time{}
 				epoch = current
 				stopScheduler = startScheduler(store)
 			}
@@ -201,15 +200,17 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				if caughtUp {
 					err = store.SetPrimary(true)
 				}
-				// Only once the Mac holds the whole board can it tell a new
-				// board from one that has not arrived yet.
-				if caughtUp && !starterChecked {
-					starterChecked = true
+				// Only once the Mac holds the whole board can it tell a board
+				// without projects from one that has not arrived yet. Checked
+				// on every caught-up exchange: the board always keeps one
+				// project (FEN-231), even after two replicas each deleted one
+				// of the last two.
+				if caughtUp && !store.HasProjects() {
 					name, description := starterQueueCopy(s.home)
 					if added, e := store.AddStarterProject(name, description); e != nil {
 						log.Printf("starter queue: %v", e)
 					} else if added {
-						log.Printf("starter queue added to a new board")
+						log.Printf("starter queue added to a board without projects")
 					}
 				}
 			} else {

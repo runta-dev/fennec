@@ -331,8 +331,13 @@ func (s Store) Project(id string) (Project, error) {
 	return p, err
 }
 
+// ErrLastProject refuses to delete the board's only project (FEN-231): Fennec
+// always keeps at least one, so there is no "create your first project" page.
+var ErrLastProject = fmt.Errorf("%w: the last project can't be deleted", ErrConflict)
+
 // DeleteProject persists a replicated tombstone. Existing sessions and files
 // remain intact, while the queue and its requests are no longer accessible.
+// The last project stays (ErrLastProject).
 func (s Store) DeleteProject(id string) error {
 	unlock, err := s.lock()
 	if err != nil {
@@ -342,6 +347,11 @@ func (s Store) DeleteProject(id string) error {
 	p, err := s.Project(id)
 	if err != nil {
 		return err
+	}
+	if live, err := s.liveProjectIDs(); err != nil {
+		return err
+	} else if len(live) <= 1 {
+		return ErrLastProject
 	}
 	p.Deleted = true
 	return s.commit(filepath.Join(s.projectDir(id), "project.json"), p)
@@ -460,30 +470,60 @@ func (s Store) CreateProject(p Project) (Project, error) {
 }
 
 // StarterProjectID is the queue a new board starts with (THI-177), so a new
-// user sees where requests go before creating a queue of their own. The id is
-// fixed: two devices that both add it end up with one queue, and once it is
-// deleted its tombstone keeps it deleted everywhere.
+// user sees where requests go before creating a queue of their own. Its icon
+// is Fennec's. The id is fixed: two devices that both add it end up with one
+// queue.
 const StarterProjectID = "starter"
 
-// AddStarterProject adds the starter queue when the board has never had a
-// queue, deleted ones included, and reports whether it did.
+// AddStarterProject adds the starter queue when the board has no live queue
+// and reports whether it did. Fennec always keeps at least one (FEN-231):
+// DeleteProject refuses the last one, and this puts one back if replicas
+// deleted the last two at once. A deleted starter's tombstone stays; the
+// replacement takes the first free id of starter, starter-2, …, which replicas
+// holding the same board agree on.
 func (s Store) AddStarterProject(name, description string) (bool, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return false, err
 	}
 	defer unlock()
-	entries, err := os.ReadDir(filepath.Join(s.root(), "projects"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if live, err := s.liveProjectIDs(); err != nil || len(live) > 0 {
 		return false, err
 	}
+	id := StarterProjectID
+	for i := 2; ; i++ {
+		if _, err := os.Stat(s.projectDir(id)); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		id = fmt.Sprintf("%s-%d", StarterProjectID, i)
+	}
+	_, err = s.addProject(Project{ID: id, Key: "TASK", Name: name, Description: description})
+	return err == nil, err
+}
+
+// HasProjects reports whether the board has a live project. A read error
+// counts as having one, so callers skip work they'd retry later anyway.
+func (s Store) HasProjects() bool {
+	live, err := s.liveProjectIDs()
+	return err != nil || len(live) > 0
+}
+
+// liveProjectIDs lists the projects that aren't deleted.
+func (s Store) liveProjectIDs() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(s.root(), "projects"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	var live []string
 	for _, entry := range entries {
-		if entry.IsDir() && projectID.MatchString(entry.Name()) {
-			return false, nil
+		if !entry.IsDir() || !projectID.MatchString(entry.Name()) {
+			continue
+		}
+		if _, err := s.Project(entry.Name()); err == nil {
+			live = append(live, entry.Name())
 		}
 	}
-	_, err = s.addProject(Project{ID: StarterProjectID, Key: "TASK", Name: name, Description: description})
-	return err == nil, err
+	return live, nil
 }
 
 // addProject fills a new project's defaults and saves it. It runs under the
