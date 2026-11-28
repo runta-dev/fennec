@@ -127,11 +127,7 @@ func threadMarkdown(p Project, r Request, related []Related) string {
 		}
 	}
 	for _, m := range r.Messages {
-		who := m.Author
-		if m.Agent != "" {
-			who = m.Agent + " (agent)"
-		}
-		fmt.Fprintf(&b, "\n## %s, %s\n\n%s\n", who, m.At.UTC().Format("2006-01-02 15:04 UTC"), strings.TrimRight(m.Body, "\n"))
+		fmt.Fprintf(&b, "\n## %s, %s\n\n%s\n", m.Who(), m.At.UTC().Format("2006-01-02 15:04 UTC"), strings.TrimRight(m.Body, "\n"))
 		for _, a := range m.Attachments {
 			fmt.Fprintf(&b, "\n[image: %s]\n", a.Name)
 		}

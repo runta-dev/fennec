@@ -97,9 +97,37 @@ struct BoardMessage: Codable, Hashable, Identifiable {
     var at: String?
     var attachments: [BoardAttachment]?
     var follow_up: Bool?
+    /// Set on Feedback (FEN-222): someone outside the project wrote it.
+    var external: BoardExternal?
 
     var date: Date? { at.flatMap(boardDate) }
     var fromAgent: Bool { !(agent ?? "").isEmpty }
+    /// Feedback from outside the project, not one of its people or agents.
+    var fromOutside: Bool { !fromAgent && external != nil }
+}
+
+/// The author of Feedback. The board's `reply_ref` is for channel adapters,
+/// so the app doesn't decode it.
+struct BoardExternal: Codable, Hashable {
+    var name: String
+    /// discord, widget, slack or x.
+    var channel: String
+    var context: Context?
+
+    struct Context: Codable, Hashable {
+        var version: String?
+        var device: String?
+        var os: String?
+    }
+
+    var channelLabel: String {
+        ["discord": "Discord", "widget": "Widget", "slack": "Slack", "x": "X"][channel] ?? channel
+    }
+
+    /// "iPhone 11 · iOS 18.2 · 1.4.1", or empty.
+    var details: String {
+        [context?.device, context?.os, context?.version].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
 }
 
 struct BoardRun: Codable, Hashable {

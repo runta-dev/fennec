@@ -2742,6 +2742,9 @@ impl FennecWindow {
         let all: Vec<&board::Message> = r.messages.iter().chain(pending).collect();
         // THI-205: allowed permission prompts in a row show as one line.
         let allowed = |m: &board::Message| m.permission.as_ref().is_some_and(|p| p.allow);
+        // FEN-222: in a thread with Feedback, the project's own people carry an
+        // Owner badge so they stand apart from the external authors.
+        let has_feedback = r.messages.iter().any(|m| m.external.is_some());
         let mut skip = 0;
         for (i, m) in all.iter().copied().enumerate() {
             if skip > 0 {
@@ -2768,8 +2771,12 @@ impl FennecWindow {
                 continue;
             }
             let agent = !m.agent.is_empty();
+            let external = m.external.as_ref().filter(|_| !agent);
+            let owner = has_feedback && !agent && external.is_none();
             let name = if agent {
                 sessions::agent_name(&m.agent).to_owned()
+            } else if let Some(e) = external {
+                e.name.clone()
             } else {
                 m.author.clone()
             };
@@ -2818,8 +2825,15 @@ impl FennecWindow {
                             .size(px(32.0))
                             .flex_none()
                             .rounded(px(9.0))
-                            .bg(c("orange"))
-                            .text_color(white())
+                            .map(|d| match external {
+                                // Outsiders get a neutral avatar; orange is the project's own.
+                                Some(_) => d
+                                    .bg(c("f_expanded"))
+                                    .border_1()
+                                    .border_color(c("f_line"))
+                                    .text_color(c("f_text")),
+                                None => d.bg(c("orange")).text_color(white()),
+                            })
                             .text_size(px(14.0))
                             .font_weight(FontWeight::MEDIUM)
                             .flex()
@@ -2848,6 +2862,10 @@ impl FennecWindow {
                                             .text_color(c("f_text"))
                                             .child(name),
                                     )
+                                    .when_some(external, |d, e| {
+                                        d.child(ui::tag_chip(&e.channel, &e.channel_label()))
+                                    })
+                                    .when(owner, |d| d.child(owner_badge()))
                                     .child(
                                         div()
                                             .text_size(px(11.0))
@@ -2890,7 +2908,19 @@ impl FennecWindow {
                             ))
                             .when(!m.attachments.is_empty(), |d| {
                                 d.child(self.stored_images(&m.attachments, m.id, cx))
-                            }),
+                            })
+                            // The setup the Feedback came from: "iPhone 11 · iOS 18.2 · 1.4.1".
+                            .when_some(
+                                external.map(|e| e.details()).filter(|d| !d.is_empty()),
+                                |d, details| {
+                                    d.child(
+                                        div()
+                                            .text_size(px(11.5))
+                                            .text_color(c("f_muted"))
+                                            .child(details),
+                                    )
+                                },
+                            ),
                     )
             };
             items.push(if fresh {
@@ -3582,6 +3612,24 @@ fn empty_thread() -> impl IntoElement {
         .text_color(c("f_muted"))
         .child(v_flex().items_end().children(rows.iter().map(|(label, _)| row().child(label.clone()))))
         .child(v_flex().children(rows.iter().map(|(_, keys)| row().child(ui::keycaps(keys)))))
+}
+
+/// Marks the project's own people next to Feedback authors (FEN-222): the
+/// tag chip's shape, in the orange of their avatar.
+fn owner_badge() -> Div {
+    let color = c("orange");
+    div()
+        .flex_none()
+        .h(px(19.0))
+        .px(px(7.0))
+        .rounded(px(5.0))
+        .text_size(px(11.0))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(color)
+        .bg(color.opacity(0.12))
+        .flex()
+        .items_center()
+        .child(t("desktop.owner_badge"))
 }
 
 /// The Mac shows its replica of the board. While the cloud is unreachable that

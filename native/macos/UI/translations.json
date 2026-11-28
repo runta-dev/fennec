@@ -35,6 +35,7 @@
     "desktop.offline": {"en-GB":"Offline","en-US":"Offline","zh-CN":"离线"},
     "desktop.offline_since": {"en-GB":"Offline · {age} ago","en-US":"Offline · {age} ago","zh-CN":"离线 · {age}前"},
     "desktop.stalled": {"en-GB":"The agent stopped before finishing · reply to continue","en-US":"The agent stopped before finishing · reply to continue","zh-CN":"Agent 中途停下，没有汇报结果 · 回复即可继续"},
+    "desktop.owner_badge": {"en-GB":"Owner","en-US":"Owner","zh-CN":"Owner"},
     "desktop.asking": {"en-GB":"The agent is asking you a question · answer it in its session","en-US":"The agent is asking you a question · answer it in its session","zh-CN":"Agent 在会话里向你提问 · 去会话里回答"},
     "desktop.asking_question_preview": {"en-GB":"The agent asks: {question}","en-US":"The agent asks: {question}","zh-CN":"Agent 问你：{question}"},
     "desktop.asking_question_options_preview": {"en-GB":"The agent asks: {question} ({options})","en-US":"The agent asks: {question} ({options})","zh-CN":"Agent 问你：{question}（{options}）"},

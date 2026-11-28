@@ -83,8 +83,11 @@ type Message struct {
 	ID          int          `json:"id"`
 	Author      string       `json:"author"`
 	Agent       string       `json:"agent,omitempty"`
-	Body        string       `json:"body"`
-	At          time.Time    `json:"at"`
+	// External is set on Feedback: a message from someone outside the
+	// project (FEN-222, see feedback.go). Author then holds their name.
+	External *External `json:"external,omitempty"`
+	Body     string    `json:"body"`
+	At       time.Time `json:"at"`
 	// Permission marks a person's answer to an agent's permission prompt
 	// (THI-197). Clients that know it draw a status line from it; Body keeps
 	// a plain-text version for the rest.
@@ -631,6 +634,12 @@ func (c Choice) Valid() bool {
 
 // CreateRequestWith posts a request for the chosen agent, model and effort.
 func (s Store) CreateRequestWith(project, author, title string, tags []string, body string, images []Attachment, choice Choice) (Request, error) {
+	return s.createRequest(project, author, title, tags, body, images, choice, nil)
+}
+
+// createRequest posts a request; from, when set, is the external author of
+// Feedback (FEN-222), and the request is tagged Feedback plus its channel.
+func (s Store) createRequest(project, author, title string, tags []string, body string, images []Attachment, choice Choice, from *External) (Request, error) {
 	agent := choice.Agent
 	if !choice.Valid() {
 		return Request{}, ErrInvalid
@@ -649,6 +658,9 @@ func (s Store) CreateRequestWith(project, author, title string, tags []string, b
 		return Request{}, err
 	}
 	title = strings.TrimSpace(title)
+	if from != nil {
+		tags = ensureFeedbackTags(&p, from.Channel)
+	}
 	auto := len(tags) == 0
 	if auto {
 		tags = []string{p.Tags[0].ID}
@@ -681,7 +693,7 @@ func (s Store) CreateRequestWith(project, author, title string, tags []string, b
 		}
 	}
 	r := Request{Number: p.Next, Title: title, TagAuto: auto, Status: Queued, Author: author, Agent: agent, Model: choice.Model, Effort: choice.Effort, Created: now, Updated: now, QueuedAt: now,
-		Messages: []Message{{UID: randomID(), ID: 1, Author: author, Body: body, At: now, Attachments: attachments}}}
+		Messages: []Message{{UID: randomID(), ID: 1, Author: author, External: from, Body: body, At: now, Attachments: attachments}}}
 	r.setTags(tags)
 	p.Next++
 	if err = s.commit(s.requestPath(project, r.Number), r); err != nil {

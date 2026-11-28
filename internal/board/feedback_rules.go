@@ -15,7 +15,7 @@ import (
 // closed with a reason instead (FEN-220).
 
 // feedbackTagID is the id of the tag every Feedback request carries.
-const feedbackTagID = "feedback"
+var feedbackTagID = FeedbackTag.ID
 
 // FeedbackReply marks the message in which the agent's reply went back to the
 // request's feedback authors through their channels; Body holds the text.

@@ -167,6 +167,53 @@ pub struct Message {
     /// Set on a person's answer to a permission prompt (THI-197): the thread
     /// draws it as a status line instead of the body.
     pub permission: Option<PermissionAnswer>,
+    /// Set on Feedback (FEN-222): the author is someone outside the project,
+    /// e.g. a player on Discord. Messages with neither this nor `agent` are
+    /// the project's own people, shown with an Owner badge.
+    pub external: Option<External>,
+}
+
+/// The author of Feedback: their name on a channel, and the setup they sent
+/// it from. The board's `reply_ref` is for channel adapters, not clients.
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
+#[serde(default)]
+pub struct External {
+    pub name: String,
+    /// discord, widget, slack or x; also the id of its tag.
+    pub channel: String,
+    pub context: Option<FeedbackContext>,
+}
+
+impl External {
+    /// The channel as its tag reads: Discord, Widget, Slack, X.
+    pub fn channel_label(&self) -> String {
+        match self.channel.as_str() {
+            "discord" => "Discord".into(),
+            "widget" => "Widget".into(),
+            "slack" => "Slack".into(),
+            "x" => "X".into(),
+            other => other.to_owned(),
+        }
+    }
+
+    /// "iPhone 11 · iOS 18.2 · 1.4.1", or empty.
+    pub fn details(&self) -> String {
+        let Some(c) = &self.context else { return String::new() };
+        [&c.device, &c.os, &c.version]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
+#[serde(default)]
+pub struct FeedbackContext {
+    pub version: String,
+    pub device: String,
+    pub os: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]

@@ -34,8 +34,11 @@ struct RequestThreadView: View {
                             if let related = request.related, !related.isEmpty {
                                 LinkedRequestsCard(related: related, project: project) { n in path.append(.thread(projectID, n)) }
                             }
-                            ForEach(request.messages ?? [request.latest].compactMap { $0 }) { message in
-                                ThreadMessage(message: message, project: project, openRequest: { n in path.append(.thread(projectID, n)) })
+                            let messages = request.messages ?? [request.latest].compactMap { $0 }
+                            let hasFeedback = messages.contains { $0.fromOutside }
+                            ForEach(messages) { message in
+                                ThreadMessage(message: message, project: project, showOwner: hasFeedback,
+                                              openRequest: { n in path.append(.thread(projectID, n)) })
                             }
                             if request.status_ == .failed { FailureCard(request: request) }
                             statusCard(request, project)
@@ -373,10 +376,29 @@ struct FailureCard: View {
 struct ThreadMessage: View {
     var message: BoardMessage
     var project: BoardProject
+    /// The thread has Feedback (FEN-222): the project's people get an Owner badge.
+    var showOwner = false
     var openRequest: (Int) -> Void
 
     var body: some View {
-        if message.fromAgent {
+        if let external = message.external, !message.fromAgent {
+            // Feedback from outside the project: name, channel, then the setup it came from.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Text(external.name).foregroundStyle(Theme.fg)
+                    MessageChip(text: external.channelLabel, color: Theme.fg2)
+                    if let date = message.date { Text(shortTime(date)) }
+                }
+                .font(.system(size: 12.5)).foregroundStyle(Theme.fg2)
+                MarkdownText(text: message.body)
+                    .font(.system(size: 15.5)).textSelection(.enabled)
+                AttachmentThumbnails(attachments: message.attachments ?? [], trailing: false)
+                if !external.details.isEmpty {
+                    Text(external.details).font(.system(size: 12.5)).foregroundStyle(Theme.fg3)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if message.fromAgent {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 7) {
                     if let agent = message.agent.flatMap(AgentKind.init(launcherID:)) {
@@ -396,6 +418,7 @@ struct ThreadMessage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             VStack(alignment: .trailing, spacing: 6) {
+                if showOwner { MessageChip(text: L10n.text("desktop.owner_badge"), color: Theme.accent) }
                 AttachmentThumbnails(attachments: message.attachments ?? [], trailing: true)
                 if !message.body.isEmpty {
                     Text(message.body)
@@ -421,6 +444,20 @@ struct ThreadMessage: View {
             return .handled
         }
         return .systemAction
+    }
+}
+
+/// A small label next to a message author: the Feedback channel, or Owner.
+struct MessageChip: View {
+    var text: String
+    var color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
 

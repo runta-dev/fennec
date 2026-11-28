@@ -89,11 +89,7 @@ func Thread(p Project, r Request) string {
 	}
 	fmt.Fprintf(&b, "\n%s: %s\nStatus: %s\n", label, TagLabels(p, r), r.Status)
 	for _, m := range r.Messages {
-		who := m.Author
-		if m.Agent != "" {
-			who += " (agent)"
-		}
-		fmt.Fprintf(&b, "\n--- %s, %s\n%s\n", who, m.At.Format("2006-01-02 15:04 UTC"), m.Body)
+		fmt.Fprintf(&b, "\n--- %s, %s\n%s\n", m.Who(), m.At.Format("2006-01-02 15:04 UTC"), m.Body)
 	}
 	return b.String()
 }
