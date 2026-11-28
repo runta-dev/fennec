@@ -556,6 +556,14 @@ impl FennecWindow {
             (Some("knowledge"), Some(id), _) | (Some("settings"), Some(id), Some("knowledge")) => {
                 self.go(Route::Knowledge(id.into()), window, cx)
             }
+            // FEN-228: the channel connect form, for screenshots.
+            (Some("channel-form"), Some(id), kind @ (Some("discord") | Some("widget"))) => {
+                self.go(Route::Settings(id.into(), Tab::Channels), window, cx);
+                if let Some(p) = self.projects.iter().find(|p| p.id == id).cloned() {
+                    let kind = if kind == Some("discord") { "discord" } else { "widget" };
+                    self.open_channel_form(&p, kind, None, window, cx);
+                }
+            }
             (Some("settings"), Some(id), tab) => {
                 let tab = match tab.unwrap_or_default() {
                     "queue" => Tab::Queue,

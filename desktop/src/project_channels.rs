@@ -220,7 +220,7 @@ impl FennecWindow {
     }
 
     /// Opens the form for a new channel of `kind`, or for channel `id`.
-    fn open_channel_form(&mut self, p: &Project, kind: &'static str, id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_channel_form(&mut self, p: &Project, kind: &'static str, id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         let new = id.is_none();
         let id = id.unwrap_or_else(|| new_id(kind, &p.channels));
         let inputs = fields(kind)
