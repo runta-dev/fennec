@@ -39,6 +39,7 @@ struct RequestThreadView: View {
                             ForEach(messages) { message in
                                 ThreadMessage(message: message, project: project, showOwner: hasFeedback,
                                               openRequest: { n in path.append(.thread(projectID, n)) })
+                                    .id(message.id)
                             }
                             if request.status_ == .resolved, let closed = request.closed { ClosureCard(closure: closed) }
                             if request.status_ == .failed { FailureCard(request: request) }
@@ -58,15 +59,15 @@ struct RequestThreadView: View {
                     .onChange(of: request.messages?.count) { old, _ in
                         // The first full load jumps without animation; only new
                         // messages in an open thread slide in.
-                        if old == nil { proxy.scrollTo("bottom", anchor: .bottom) }
-                        else { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                        if old == nil { scrollToLatest(proxy) }
+                        else { withAnimation { scrollToLatest(proxy) } }
                     }
                     .task(id: number) {
                         // Markdown, images and the composer inset settle after the
-                        // first layout; land on the real bottom once they have,
+                        // first layout; land on the latest message once they have,
                         // like ChatView does.
                         try? await Task.sleep(for: .milliseconds(250))
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        scrollToLatest(proxy)
                     }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottom(request, project) }
@@ -204,6 +205,20 @@ struct RequestThreadView: View {
         .padding(.horizontal, 16)
         .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
         .accessibilityElement(children: .contain)
+    }
+
+    /// Opens on the start of the latest message, not the end of it (FEN-232):
+    /// a long reply used to open scrolled to its last line, so you scrolled up
+    /// every time to read it. The scroll view clamps, so when the rest of the
+    /// thread fits on screen this still shows the bottom with Mark done
+    /// (FEN-114). Without messages it falls back to the bottom sentinel.
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        let request = queues.thread(projectID, number)
+        if let request, let last = (request.messages ?? [request.latest].compactMap { $0 }).last {
+            proxy.scrollTo(last.id, anchor: .top)
+        } else {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
     }
 
     private func bottom(_ request: BoardRequest, _ project: BoardProject) -> some View {
