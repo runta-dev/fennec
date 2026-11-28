@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const usage = "usage: channel serve [listen address] | channel reply <queue> <number> <agent> <run> (text on stdin) | channel snippet <channel id>"
+const usage = "usage: channel serve [listen address] | channel reply <queue> <number> <agent> <run> (text on stdin) | channel snippet <channel id> | channel setup (request on stdin) | channel info <channel id> | channel remove <channel id>"
 
 // Command runs `fennec-terminal channel ...` on the cloud computer.
 func Command(home string, args []string, in io.Reader, out io.Writer) error {
@@ -52,6 +52,32 @@ func Command(home string, args []string, in io.Reader, out io.Writer) error {
 			enc.Encode(results)
 		}
 		return err
+	case len(args) == 1 && args[0] == "setup":
+		// Settings › Channels (FEN-228), over SSH from the Mac.
+		var req SetupRequest
+		dec := json.NewDecoder(io.LimitReader(in, 64<<10))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			return errors.New("invalid setup request")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		result, err := Setup(ctx, home, req)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(result)
+	case len(args) == 2 && args[0] == "info":
+		info, err := Info(home, args[1])
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(info)
+	case len(args) == 2 && args[0] == "remove":
+		if err := Remove(home, args[1]); err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]bool{"ok": true})
 	case len(args) == 2 && args[0] == "snippet":
 		cfg, err := LoadConfig(home)
 		if err != nil {

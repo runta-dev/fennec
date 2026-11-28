@@ -223,6 +223,7 @@ func newControlApplication(ctx context.Context, home, executable string) (*accou
 	installMagpiePanel(ctx, services, controller, settings)
 	installPreviewServer(ctx, services)
 	installBoard(ctx, services, controller)
+	installChannels(services, controller)
 	installDesktopWindowSettings(home, controller)
 	installLogExport(home, executable, controller)
 	controller.Settings = func() any {

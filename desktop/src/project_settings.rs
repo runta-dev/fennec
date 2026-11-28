@@ -45,6 +45,8 @@ pub struct State {
     queue: Option<QueueProject>,
     /// Settings › Channels: the kind picker under "Add channel" is open.
     pub(crate) adding_channel: bool,
+    /// Settings › Channels: the connect / edit form that is open.
+    pub(crate) channel_form: Option<crate::project_channels::ChannelForm>,
 }
 
 const DEFAULT_TAGS: &[(&str, &str)] = &[
@@ -65,6 +67,9 @@ impl State {
         .into_iter()
         .flatten()
         {
+            input.update(cx, |s, _| s.set_editor_style(style.clone()));
+        }
+        for input in self.channel_form.iter().flat_map(|f| f.inputs()) {
             input.update(cx, |s, _| s.set_editor_style(style.clone()));
         }
     }
