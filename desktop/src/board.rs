@@ -53,6 +53,20 @@ pub struct Tag {
     pub label: String,
 }
 
+/// Where outside messages become the project's requests (FEN-228): a
+/// Discord channel, the web widget, a Slack channel or X mentions. Each
+/// message is a new request with `tags`; `on` pauses the channel.
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
+#[serde(default)]
+pub struct Channel {
+    pub id: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub source: String,
+    pub tags: Vec<String>,
+    pub on: bool,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq)]
 #[serde(default)]
 pub struct Worker {
@@ -79,6 +93,7 @@ pub struct Project {
     /// When this Mac's board replica last synced with the cloud (RFC 3339).
     pub synced_at: String,
     pub workers: Vec<Worker>,
+    pub channels: Vec<Channel>,
     pub open: usize,
     pub needs_you: usize,
 }

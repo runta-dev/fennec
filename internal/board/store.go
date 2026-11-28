@@ -53,23 +53,26 @@ type Worker struct {
 }
 
 type Project struct {
-	Deleted     bool      `json:"deleted,omitempty"`
-	ID          string    `json:"id"`
-	Org         string    `json:"org,omitempty"`
-	Key         string    `json:"key"`
-	Next        int       `json:"next"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Repository  string    `json:"repository,omitempty"`
-	Color       string    `json:"color"`
-	Icon        string    `json:"icon,omitempty"`
-	Tags        []Tag     `json:"tags"`
-	Queue       int       `json:"queue"`
-	Paused      bool      `json:"paused"`
-	Order       []int     `json:"order,omitempty"`
-	Slots       []Slot    `json:"slots,omitempty"`
-	Workers     []Worker  `json:"workers"`
-	Created     time.Time `json:"created"`
+	Deleted     bool     `json:"deleted,omitempty"`
+	ID          string   `json:"id"`
+	Org         string   `json:"org,omitempty"`
+	Key         string   `json:"key"`
+	Next        int      `json:"next"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Repository  string   `json:"repository,omitempty"`
+	Color       string   `json:"color"`
+	Icon        string   `json:"icon,omitempty"`
+	Tags        []Tag    `json:"tags"`
+	Queue       int      `json:"queue"`
+	Paused      bool     `json:"paused"`
+	Order       []int    `json:"order,omitempty"`
+	Slots       []Slot   `json:"slots,omitempty"`
+	Workers     []Worker `json:"workers"`
+	// Channels are where outside messages become this project's requests
+	// (FEN-228, Settings › Channels).
+	Channels []Channel `json:"channels,omitempty"`
+	Created  time.Time `json:"created"`
 }
 
 type Message struct {
@@ -407,7 +410,7 @@ func validProject(p Project) error {
 	if on == 0 {
 		return ErrInvalid
 	}
-	return nil
+	return validChannels(p.Channels, seen)
 }
 
 // CreateProject adds a project with default tags, a queue of 3 and the given
@@ -511,6 +514,7 @@ func (s Store) UpdateProject(id string, change json.RawMessage) (Project, error)
 	next.ID, next.Next, next.Created, next.Order = p.ID, p.Next, p.Created, p.Order
 	next.Slots = p.Slots
 	next.Deleted = p.Deleted
+	next.Channels = pruneChannelTags(next.Channels, next.Tags)
 	if s.Role != "" {
 		for i := len(next.Slots); i < next.Queue; i++ {
 			next.Slots = append(next.Slots, Slot{ID: fmt.Sprintf("slot-%d", i), Index: i, Owner: s.Role})

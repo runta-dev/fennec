@@ -1,4 +1,5 @@
-//! Project settings (docs/desktop-app.md): General and Queue. The Agents tab
+//! Project settings (docs/desktop-app.md): General, Queue and Channels
+//! (FEN-228, `project_channels.rs`). The Agents tab
 //! is gone (FEN-145): the composer picks agent, model and effort. Knowledge
 //! has its own page (FEN-211), opened from the book right of the title bar's
 //! search; its state still lives here.
@@ -17,6 +18,7 @@ use serde_json::json;
 pub enum Tab {
     General,
     Queue,
+    Channels,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -28,19 +30,21 @@ pub enum KnowledgeFilter {
 
 #[derive(Default)]
 pub struct State {
-    project: String,
+    pub(crate) project: String,
     name: Option<Entity<InputState>>,
     key: Option<Entity<InputState>>,
     description: Option<Entity<InputState>>,
     repository: Option<Entity<InputState>>,
     new_tag: Option<Entity<InputState>>,
-    tags: Vec<Tag>,
+    pub(crate) tags: Vec<Tag>,
     knowledge: Vec<Concept>,
     /// The first load finished; until then the page shows a skeleton.
     knowledge_loaded: bool,
     filter: KnowledgeFilter,
     concept: String,
     queue: Option<QueueProject>,
+    /// Settings › Channels: the kind picker under "Add channel" is open.
+    pub(crate) adding_channel: bool,
 }
 
 const DEFAULT_TAGS: &[(&str, &str)] = &[
@@ -173,7 +177,7 @@ impl FennecWindow {
         }));
     }
 
-    fn patch_project(
+    pub(crate) fn patch_project(
         &mut self,
         change: serde_json::Value,
         window: &mut Window,
@@ -240,6 +244,7 @@ impl FennecWindow {
         let tabs = [
             (Tab::General, "general", "sliders"),
             (Tab::Queue, "queue", "layers"),
+            (Tab::Channels, "channels", "plug"),
         ]
         .map(|(which, label, icon)| {
             let id = p.id.clone();
@@ -269,10 +274,12 @@ impl FennecWindow {
         let body = match tab {
             Tab::General => self.general(p, cx).into_any_element(),
             Tab::Queue => self.queue_tab(p, cx).into_any_element(),
+            Tab::Channels => self.channels_tab(p, cx).into_any_element(),
         };
         let heading = match tab {
             Tab::General => "general",
             Tab::Queue => "queue",
+            Tab::Channels => "channels",
         };
         v_flex()
             .flex_1()

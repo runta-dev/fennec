@@ -559,6 +559,7 @@ impl FennecWindow {
             (Some("settings"), Some(id), tab) => {
                 let tab = match tab.unwrap_or_default() {
                     "queue" => Tab::Queue,
+                    "channels" => Tab::Channels,
                     _ => Tab::General,
                 };
                 self.go(Route::Settings(id.into(), tab), window, cx);

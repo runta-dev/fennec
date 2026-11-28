@@ -52,6 +52,7 @@ mod fullscreen_log;
 mod i18n;
 mod inertia;
 mod local_time;
+mod project_channels;
 mod project_settings;
 mod shot;
 mod sessions;

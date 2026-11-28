@@ -23,6 +23,22 @@
           {
             "id": "discussion",
             "label": "Discussion"
+          },
+          {
+            "id": "feedback",
+            "label": "Feedback"
+          },
+          {
+            "id": "discord",
+            "label": "Discord"
+          },
+          {
+            "id": "widget",
+            "label": "Widget"
+          },
+          {
+            "id": "slack",
+            "label": "Slack"
           }
         ],
         "workers": [
@@ -39,6 +55,37 @@
           {
             "agent": "kimi",
             "model": "K2",
+            "on": false
+          }
+        ],
+        "channels": [
+          {
+            "id": "discord",
+            "kind": "discord",
+            "source": "Fennec Community · #bug-report, /feedback",
+            "tags": [
+              "feedback",
+              "discord"
+            ],
+            "on": true
+          },
+          {
+            "id": "widget",
+            "kind": "widget",
+            "source": "fennec.app · help.fennec.app",
+            "tags": [
+              "feedback",
+              "widget"
+            ],
+            "on": true
+          },
+          {
+            "id": "slack",
+            "kind": "slack",
+            "source": "Runta · #eng-requests",
+            "tags": [
+              "slack"
+            ],
             "on": false
           }
         ]
@@ -88,6 +135,22 @@
         {
           "id": "discussion",
           "label": "Discussion"
+        },
+        {
+          "id": "feedback",
+          "label": "Feedback"
+        },
+        {
+          "id": "discord",
+          "label": "Discord"
+        },
+        {
+          "id": "widget",
+          "label": "Widget"
+        },
+        {
+          "id": "slack",
+          "label": "Slack"
         }
       ],
       "workers": [
@@ -104,6 +167,37 @@
         {
           "agent": "kimi",
           "model": "K2",
+          "on": false
+        }
+      ],
+      "channels": [
+        {
+          "id": "discord",
+          "kind": "discord",
+          "source": "Fennec Community · #bug-report, /feedback",
+          "tags": [
+            "feedback",
+            "discord"
+          ],
+          "on": true
+        },
+        {
+          "id": "widget",
+          "kind": "widget",
+          "source": "fennec.app · help.fennec.app",
+          "tags": [
+            "feedback",
+            "widget"
+          ],
+          "on": true
+        },
+        {
+          "id": "slack",
+          "kind": "slack",
+          "source": "Runta · #eng-requests",
+          "tags": [
+            "slack"
+          ],
           "on": false
         }
       ]
