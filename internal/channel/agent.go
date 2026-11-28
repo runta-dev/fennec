@@ -115,11 +115,21 @@ func discordCommand(ctx context.Context, home string, args []string, out io.Writ
 
 const serviceName = "fennec-channels.service"
 
-func systemctl(ctx context.Context, args ...string) *exec.Cmd {
+// systemctl runs systemctl for the current user (system units as root).
+// Tests replace it (main_test.go) so they never touch the live unit.
+var systemctl = func(ctx context.Context, args ...string) *exec.Cmd {
 	if os.Geteuid() != 0 {
 		args = append([]string{"--user"}, args...)
 	}
 	return exec.CommandContext(ctx, "systemctl", args...)
+}
+
+// unitDir is where Service writes the unit; tests point it at a temp dir.
+var unitDir = func(home string) string {
+	if os.Geteuid() != 0 {
+		return filepath.Join(home, ".config/systemd/user")
+	}
+	return "/etc/systemd/system"
 }
 
 func running(ctx context.Context) bool {
@@ -134,10 +144,7 @@ func Service(ctx context.Context, home, verb string, out io.Writer) error {
 		if _, err := LoadConfig(home); err != nil {
 			return fmt.Errorf("config: %w", err)
 		}
-		dir := "/etc/systemd/system"
-		if os.Geteuid() != 0 {
-			dir = filepath.Join(home, ".config/systemd/user")
-		}
+		dir := unitDir(home)
 		bin := filepath.Join(home, ".local/fennec/bin/fennec-terminal")
 		unit := fmt.Sprintf("[Unit]\nDescription=Fennec channel intake (Discord, web widget)\nAfter=network-online.target\n[Service]\nType=simple\nEnvironment=HOME=%s\nExecStart=%s channel serve\nRestart=always\nRestartSec=5\n[Install]\nWantedBy=default.target\n", strconv.Quote(home), strconv.Quote(bin))
 		if err := os.MkdirAll(dir, 0o700); err != nil {
