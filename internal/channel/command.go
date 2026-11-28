@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const usage = "usage: channel serve [listen address] | channel reply <queue> <number> <agent> <run> (text on stdin) | channel snippet <channel id> | channel setup (request on stdin) | channel info <channel id> | channel remove <channel id>"
+const usage = "usage: channel serve [listen address] | channel reply <queue> <number> <agent> <run> (text on stdin) | channel snippet <channel id> | channel setup (request on stdin) | channel info <channel id> | channel remove <channel id> | channel discord status|places|enable-intent|set <id> ... | channel service status|restart"
 
 // Command runs `fennec-terminal channel ...` on the cloud computer.
 func Command(home string, args []string, in io.Reader, out io.Writer) error {
@@ -67,6 +67,14 @@ func Command(home string, args []string, in io.Reader, out io.Writer) error {
 			return err
 		}
 		return json.NewEncoder(out).Encode(result)
+	case len(args) >= 1 && args[0] == "discord":
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		return discordCommand(ctx, home, args[1:], out)
+	case len(args) == 2 && args[0] == "service":
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		return Service(ctx, home, args[1], out)
 	case len(args) == 2 && args[0] == "info":
 		info, err := Info(home, args[1])
 		if err != nil {

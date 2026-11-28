@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"fennec/internal/board"
 	"fennec/internal/channel/discord"
 )
 
@@ -29,12 +30,15 @@ type SetupRequest struct {
 	Widget  *WidgetSetup  `json:"widget,omitempty"`
 }
 
+// DiscordSetup is the bot token, which is all a person has to give: the
+// application, servers and channels are read from Discord with it. Forums,
+// Channels and Guilds narrow where the bot listens; the agent fills them in
+// after asking (see `channel discord ...`).
 type DiscordSetup struct {
-	ApplicationID string   `json:"application_id"`
-	PublicKey     string   `json:"public_key"`
-	BotToken      string   `json:"bot_token,omitempty"`
-	Channels      []string `json:"channels,omitempty"`
-	Guilds        []string `json:"guilds,omitempty"`
+	BotToken string   `json:"bot_token,omitempty"`
+	Forums   []string `json:"forums,omitempty"`
+	Channels []string `json:"channels,omitempty"`
+	Guilds   []string `json:"guilds,omitempty"`
 }
 
 type WidgetSetup struct {
@@ -51,10 +55,10 @@ type SetupResult struct {
 	Source string `json:"source,omitempty"`
 	Code   string `json:"code,omitempty"`
 	Detail string `json:"detail,omitempty"`
-	// Where to point the service: Discord's Interactions Endpoint URL, or
-	// the widget's embed tag. Empty while the config has no public_url.
-	InteractionsURL string `json:"interactions_url,omitempty"`
-	Snippet         string `json:"snippet,omitempty"`
+	// The widget's embed tag. Empty while the config has no public_url.
+	Snippet string `json:"snippet,omitempty"`
+	// Discord: what the bot can see now, and its invite link.
+	Discord *discord.Status `json:"discord,omitempty"`
 }
 
 // ChannelInfo is the saved, non-secret part of a channel, for the form.
@@ -111,31 +115,29 @@ func Setup(ctx context.Context, home string, req SetupRequest) (SetupResult, err
 		if token == "" && old.Discord != nil {
 			token = old.Discord.BotToken
 		}
+		// A list left out (nil) keeps what is saved: replacing the token
+		// in Settings must not forget the forum the agent set up.
+		keep := func(list []string, saved func(*DiscordSpec) []string) []string {
+			if list == nil && old.Discord != nil {
+				return saved(old.Discord)
+			}
+			return trimAll(list)
+		}
 		spec.Discord = &DiscordSpec{
-			ApplicationID: strings.TrimSpace(d.ApplicationID),
-			PublicKey:     strings.ToLower(strings.TrimSpace(d.PublicKey)),
-			BotToken:      token,
-			Channels:      trimAll(d.Channels),
-			Guilds:        trimAll(d.Guilds),
+			BotToken: token,
+			Forums:   keep(d.Forums, func(o *DiscordSpec) []string { return o.Forums }),
+			Channels: keep(d.Channels, func(o *DiscordSpec) []string { return o.Channels }),
+			Guilds:   keep(d.Guilds, func(o *DiscordSpec) []string { return o.Guilds }),
 		}
-		c := spec.Discord.config()
-		c.APIBase = DiscordAPIBase
-		adapter, err := discord.New(c)
-		if err != nil {
-			return failed("discord_format", err.Error()), nil
-		}
-		info, err := adapter.Check(ctx)
+		st, err := checkDiscord(ctx, spec.Discord)
 		var bad *discord.CheckError
 		if errors.As(err, &bad) {
-			return failed("discord_"+bad.Code, bad.Detail), nil
+			return SetupResult{Code: "discord_" + bad.Code, Detail: bad.Detail, Discord: st}, nil
 		}
 		if err != nil {
 			return SetupResult{}, err
 		}
-		result.Source = info.Source()
-		if base := strings.TrimRight(cfg.PublicURL, "/"); base != "" {
-			result.InteractionsURL = base + "/v1/discord/" + spec.ID + "/interactions"
-		}
+		result.Source, result.Discord = st.Source(), st
 	case KindWidget:
 		w := req.Widget
 		if w == nil {
@@ -187,8 +189,70 @@ func Setup(ctx context.Context, home string, req SetupRequest) (SetupResult, err
 	if err := WriteConfig(home, cfg); err != nil {
 		return SetupResult{}, err
 	}
+	if err := upsertProjectChannel(home, spec, result.Source); err != nil {
+		return SetupResult{}, err
+	}
 	result.OK = true
 	return result, nil
+}
+
+// checkDiscord reads the bot's state and, when Message Content is off,
+// switches it on through the API and looks again.
+func checkDiscord(ctx context.Context, spec *DiscordSpec) (*discord.Status, error) {
+	c := spec.config()
+	c.APIBase = DiscordAPIBase
+	adapter, err := discord.New(c)
+	if err != nil {
+		return nil, &discord.CheckError{Code: "format", Detail: err.Error()}
+	}
+	st, err := adapter.Check(ctx)
+	var bad *discord.CheckError
+	if errors.As(err, &bad) && bad.Code == "message_content" {
+		if err = adapter.EnableMessageContent(ctx); err == nil {
+			st, err = adapter.Check(ctx)
+		}
+	}
+	return &st, err
+}
+
+// upsertProjectChannel keeps the project's row in Settings › Channels in
+// step with the config: a new channel gets the default tags and is on; an
+// existing one gets the new source. The board replicates this to the Macs;
+// it holds no secret.
+func upsertProjectChannel(home string, spec ChannelSpec, source string) error {
+	s := board.Store{Home: home, Role: "cloud"}
+	p, err := s.Project(spec.Project)
+	if err != nil {
+		return err
+	}
+	channels := append([]board.Channel(nil), p.Channels...)
+	tags := append([]board.Tag(nil), p.Tags...)
+	found := false
+	for i := range channels {
+		if channels[i].ID == spec.ID {
+			channels[i].Source, found = source, true
+		}
+	}
+	if !found {
+		ch := board.Channel{ID: spec.ID, Kind: spec.Kind, Source: source, On: true}
+		own := map[string]string{"discord": "Discord", "widget": "Widget"}[spec.Kind]
+		for _, want := range []board.Tag{{ID: "feedback", Label: "Feedback"}, {ID: spec.Kind, Label: own}} {
+			id := want.ID
+			if i := slices.IndexFunc(tags, func(t board.Tag) bool { return t.ID == want.ID || strings.EqualFold(t.Label, want.Label) }); i >= 0 {
+				id = tags[i].ID
+			} else {
+				tags = append(tags, want)
+			}
+			ch.Tags = append(ch.Tags, id)
+		}
+		channels = append(channels, ch)
+	}
+	change, err := json.Marshal(map[string]any{"channels": channels, "tags": tags})
+	if err != nil {
+		return err
+	}
+	_, err = s.UpdateProject(spec.Project, change)
+	return err
 }
 
 // checkTurnstileSecret asks Cloudflare about a dummy token: a wrong secret
@@ -235,7 +299,7 @@ func Info(home, id string) (ChannelInfo, error) {
 	}
 	info := ChannelInfo{Kind: spec.Kind}
 	if d := spec.Discord; d != nil {
-		info.Discord = &DiscordSetup{ApplicationID: d.ApplicationID, PublicKey: d.PublicKey, Channels: d.Channels, Guilds: d.Guilds}
+		info.Discord = &DiscordSetup{Forums: d.Forums, Channels: d.Channels, Guilds: d.Guilds}
 		info.HasSecret = d.BotToken != ""
 	}
 	if spec.Turnstile != nil {

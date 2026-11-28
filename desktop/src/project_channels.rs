@@ -3,12 +3,14 @@
 //! gives them and a switch, then the kinds still to connect. There is no
 //! triage agent and no rate limit: each message is a new request.
 //!
-//! Connecting is real: the form takes the user's own bot / site keys, the
-//! daemon pipes them over SSH to `fennec-terminal channel setup` on the cloud
-//! computer (`internal/channel/setup.go`), which checks them with Discord or
-//! Cloudflare and keeps them in its 0600 config. Only the non-secret row
-//! (kind, source, tags, on) is saved to the project. A channel appears under
-//! Connected only after that check passed.
+//! Connecting is real: the form takes the user's own bot token / site keys,
+//! the daemon pipes them over SSH to `fennec-terminal channel setup` on the
+//! cloud computer (`internal/channel/setup.go`), which checks them with
+//! Discord or Cloudflare, keeps them in its 0600 config and adds the
+//! project's non-secret row (kind, source, tags, on). For Discord the token is
+//! all a person gives: saving files a request, and the project's agent
+//! finishes the setup with `fennec-terminal channel discord ...` (invite,
+//! forum, intake service) and checks a message really arrives.
 
 use crate::app::{FennecWindow, primary_button, secondary_button};
 use crate::board::{Channel, Project, Tag};
@@ -30,13 +32,7 @@ const READY: [&str; 2] = ["discord", "widget"];
 /// The form's fields per kind: key, and whether it is a secret.
 fn fields(kind: &str) -> &'static [(&'static str, bool)] {
     match kind {
-        "discord" => &[
-            ("application_id", false),
-            ("public_key", false),
-            ("bot_token", true),
-            ("channels", false),
-            ("guilds", false),
-        ],
+        "discord" => &[("bot_token", true)],
         _ => &[("origins", false), ("site_key", false), ("secret", true)],
     }
 }
@@ -166,13 +162,8 @@ fn setup_request(project: &str, id: &str, kind: &str, values: &[(&str, String)])
     let get = |k: &str| values.iter().find(|(key, _)| *key == k).map(|(_, v)| v.trim().to_owned()).unwrap_or_default();
     let mut req = json!({"project": project, "id": id, "kind": kind});
     if kind == "discord" {
-        req["discord"] = json!({
-            "application_id": get("application_id"),
-            "public_key": get("public_key"),
-            "bot_token": get("bot_token"),
-            "channels": list(&get("channels")),
-            "guilds": list(&get("guilds")),
-        });
+        // Only the token: forums and channels the agent saved stay.
+        req["discord"] = json!({"bot_token": get("bot_token")});
     } else {
         req["widget"] = json!({
             "origins": list(&get("origins")),
@@ -320,23 +311,61 @@ impl FennecWindow {
                 }
                 form.new = false;
                 let source = result["source"].as_str().unwrap_or_default().to_owned();
-                form.note = Some(match (result["interactions_url"].as_str(), result["snippet"].as_str()) {
-                    (Some(url), _) if !url.is_empty() => (t("channel_saved_discord_url"), Some(url.to_owned())),
-                    (_, Some(tag)) if !tag.is_empty() => (t("channel_saved_widget_snippet"), Some(tag.to_owned())),
-                    _ => (t("channel_saved_not_live"), None),
+                form.note = Some(match result["snippet"].as_str() {
+                    Some(tag) if !tag.is_empty() => (t("channel_saved_widget_snippet"), Some(tag.to_owned())),
+                    _ => (t(if kind == "discord" { "channel_saved_discord" } else { "channel_saved_not_live" }), None),
                 });
-                let Some(p) = this.projects.iter().find(|p| p.id == project).cloned() else { return };
-                let mut channels = p.channels.clone();
-                let mut tags = None;
-                if let Some(ch) = channels.iter_mut().find(|ch| ch.id == id) {
-                    ch.source = source;
-                } else if new {
-                    let (mut ch, all) = connect(kind, id.clone(), &p.channels, &p.tags);
-                    ch.source = source;
-                    channels.push(ch);
-                    tags = (all != p.tags).then_some(all);
+                // The cloud added or updated the project's row; show it now,
+                // the board's copy follows with the next refresh.
+                if let Some(p) = this.projects.iter_mut().find(|p| p.id == project) {
+                    if let Some(ch) = p.channels.iter_mut().find(|ch| ch.id == id) {
+                        ch.source = source;
+                    } else if new {
+                        let (mut ch, tags) = connect(kind, id.clone(), &p.channels, &p.tags);
+                        ch.source = source;
+                        p.channels.push(ch);
+                        p.tags = tags;
+                    }
                 }
-                this.save_channels(channels, tags, window, cx);
+                this.refresh_now(window, cx);
+                if new && kind == "discord" {
+                    this.settings.channel_form = None;
+                    this.hand_channel_to_agent(project, id, window, cx);
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    /// Files the request in which the project's agent finishes connecting a
+    /// Discord bot (invite, forum, intake service) and opens it (FEN-228).
+    fn hand_channel_to_agent(&mut self, project: String, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(scope) = self.board_scope.clone() else { return };
+        let text = tf("channel_agent_request", &[("id", &id)]);
+        let me = self.me.clone();
+        let worker = scope.clone();
+        self._tasks.push(cx.spawn_in(window, async move |this, cx| {
+            let target = project.clone();
+            let posted = cx
+                .background_spawn(async move {
+                    worker.run(|| crate::board::post(&target, &text, &me, &[], &crate::board::Choice::default()))
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.board_scope.as_ref() != Some(&scope) {
+                    return;
+                }
+                match posted {
+                    Ok(r) => {
+                        let list = this.requests.entry(project.clone()).or_default();
+                        if !list.iter().any(|old| old.number == r.number) {
+                            list.insert(0, r.clone());
+                        }
+                        this.go(crate::app::Route::Project(project.clone()), window, cx);
+                        this.open_request(r.number, window, cx);
+                    }
+                    Err(e) => this.say(format!("{e:#}"), cx),
+                }
             });
         }));
     }
@@ -754,8 +783,9 @@ mod channel_tests {
     #[test]
     fn form_values_become_a_setup_request() {
         assert_eq!(list("123, 456\n789，10"), ["123", "456", "789", "10"]);
-        let req = setup_request("p", "discord-1", "discord", &[("bot_token", " t ".into()), ("channels", "1 2".into())]);
-        assert_eq!(req["discord"]["bot_token"], "t");
-        assert_eq!(req["discord"]["channels"], serde_json::json!(["1", "2"]));
+        let req = setup_request("p", "discord-1", "discord", &[("bot_token", " t ".into())]);
+        assert_eq!(req["discord"], serde_json::json!({"bot_token": "t"}));
+        let req = setup_request("p", "widget-1", "widget", &[("origins", "https://a.com, https://b.com".into())]);
+        assert_eq!(req["widget"]["origins"], serde_json::json!(["https://a.com", "https://b.com"]));
     }
 }
