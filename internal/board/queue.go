@@ -3,6 +3,7 @@ package board
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -196,6 +197,7 @@ func (s Store) Retry(project string, n int) (Request, error) {
 	now := s.now()
 	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
 	r.Reclaim = false
+	r.Closed = nil
 	clearQuestion(&r)
 	r.Session, r.RunLocation, r.Offer = "", "", nil
 	return r, s.commit(s.requestPath(project, n), r)
@@ -234,6 +236,7 @@ func (s Store) FollowUp(project string, n int, author, body string, attachments 
 	}
 	r.Status, r.Failure, r.Updated, r.QueuedAt = Queued, "", now, now
 	r.Reclaim = false
+	r.Closed = nil
 	clearQuestion(&r)
 	r.Session, r.RunLocation, r.Offer = "", "", nil
 	return r, s.commit(s.requestPath(project, n), r)
@@ -241,6 +244,28 @@ func (s Store) FollowUp(project string, n int, author, body string, attachments 
 
 // Complete fences late replies against the currently assigned session.
 func (s Store) Complete(project string, n int, session, agent, body, outcome string) (Request, error) {
+	if outcome == Done {
+		// Closing needs a reason; that goes through Close.
+		return Request{}, ErrInvalid
+	}
+	return s.complete(project, n, session, agent, body, outcome, "")
+}
+
+// Close is an agent marking its request done itself, which it may do only
+// when the request needed no code change: already fixed, a duplicate, spam,
+// not a bug (FEN-220). Work that changed code goes to Review through
+// Complete, for the owner to check. The reason is required; the thread ends
+// with who closed the request, when and why. Body, if any, is the agent's
+// last message before that.
+func (s Store) Close(project string, n int, session, agent, body, reason string) (Request, error) {
+	reason = strings.TrimSpace(reason)
+	if !validText(reason, maxReason) {
+		return Request{}, ErrInvalid
+	}
+	return s.complete(project, n, session, agent, strings.TrimSpace(body), Done, reason)
+}
+
+func (s Store) complete(project string, n int, session, agent, body, outcome, reason string) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -255,10 +280,17 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	}
 	// An agent cannot mark a request done; its finished work awaits review.
 	status := outcome
-	if outcome == Resolved {
+	switch outcome {
+	case Resolved:
 		status = Review
+	case Done:
+		status = Resolved
+		// A repeated close (a retried command) changes nothing.
+		if c := r.Closed; r.Status == Resolved && c != nil && c.By == agent && c.Run == session && c.Reason == reason {
+			return r, nil
+		}
 	}
-	if r.Status == status {
+	if r.Status == status && outcome != Done {
 		for _, m := range r.Messages {
 			if m.RunID == session && m.Agent == agent && m.Body == body {
 				return r, nil
@@ -270,28 +302,48 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	if r.Status != Working && r.Status != Unknown && !r.Stalled() {
 		return r, ErrConflict
 	}
-	if outcome != NeedsYou && outcome != Resolved && outcome != Failed {
+	if outcome != NeedsYou && outcome != Resolved && outcome != Failed && outcome != Done {
 		return r, ErrInvalid
 	}
+	// Only handing over for review waits on the release and replies; a
+	// close with a reason (Done) does not (FEN-230).
 	if outcome == Resolved && FeedbackMissing(r) != "" {
 		return r, ErrFeedbackPending
 	}
-	if !validText(body, maxBody) || len(r.Messages) >= 2000 {
+	if (outcome != Done || body != "") && !validText(body, maxBody) || len(r.Messages) >= 2000 {
 		return r, ErrInvalid
 	}
 	now := s.now()
 	pending := r.HasPendingFollowUp()
-	id := len(r.Messages) + 1
-	r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
+	if outcome == Done && pending {
+		// The person wrote while the agent was closing: the request goes
+		// back to the agent instead, so the reason stays in the thread as
+		// part of its message.
+		body = strings.TrimSpace(body + "\n\n" + reason)
+	}
+	id := r.Delivered
+	if body != "" {
+		id = len(r.Messages) + 1
+		r.Messages = append(r.Messages, Message{UID: randomID(), RunID: session, ID: id, Author: agent, Agent: agent, Body: body, At: now})
+	}
 	// The agent's reply proves the run started; an unconfirmed-input note is stale.
 	r.Status, r.Updated, r.Failure = status, now, ""
 	clearQuestion(&r)
 	if !pending {
 		r.Delivered = id
 	}
-	recordRun(&r, outcome, now)
-	if pending {
+	if outcome == Done {
+		recordRun(&r, Resolved, now)
+	} else {
+		recordRun(&r, outcome, now)
+	}
+	switch {
+	case pending:
 		r.Status, r.QueuedAt, r.Offer = Queued, now, nil
+	case outcome == Done:
+		// Like a person's Mark done: the run's session ends once its agent stops.
+		r.Closed = &Closure{By: agent, Run: session, Reason: reason, At: now}
+		r.Reclaim = true
 	}
 	return r, s.commit(s.requestPath(project, n), r)
 }

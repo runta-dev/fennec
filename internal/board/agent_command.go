@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag>[,<tag>...] | queue new <queue> <number> <agent> <run> <tag>[,<tag>...]|auto (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue released <queue> <number> <agent> <run> <version> | queue threads <queue> | queue list <queue> | queue retry <queue> <number>"
+// closeUsage explains `queue reply … done`, which needs a reason (FEN-220).
+const closeUsage = `usage: queue reply <queue> <number> <agent> <run> done "<reason>" (an optional last message on stdin); the reason must not be empty. Close only requests that needed no code change; work that changed code is reported with resolved`
+
+const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue reply <queue> <number> <agent> <run> done <reason> (optional message on stdin) | queue tag <queue> <number> <agent> <run> <tag>[,<tag>...] | queue new <queue> <number> <agent> <run> <tag>[,<tag>...]|auto (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue released <queue> <number> <agent> <run> <version> | queue threads <queue> | queue list <queue> | queue retry <queue> <number>"
 
 // QueueItem is one request in `queue list`: enough to see what is
 // waiting, running or stuck, without its thread (read that with queue read).
@@ -94,16 +97,28 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 		}
 		return json.NewEncoder(out).Encode(RequestForAgent(r))
 	}
-	if args[0] != "reply" || len(args) != 6 {
+	// `reply` takes an outcome; only done also takes a reason (FEN-220).
+	if args[0] != "reply" || len(args) < 6 || (len(args) == 7) != (args[5] == Done) {
+		if args[0] == "reply" && len(args) >= 6 && args[5] == Done {
+			return errors.New(closeUsage)
+		}
 		return errors.New(agentUsage)
 	}
 	b, err := io.ReadAll(io.LimitReader(in, maxBody+1))
 	if err != nil {
 		return err
 	}
-	r, err := s.Complete(args[1], n, args[4], args[3], string(b), args[5])
+	var r Request
+	if args[5] == Done {
+		r, err = s.Close(args[1], n, args[4], args[3], string(b), args[6])
+		if errors.Is(err, ErrInvalid) {
+			return errors.New(closeUsage)
+		}
+	} else {
+		r, err = s.Complete(args[1], n, args[4], args[3], string(b), args[5])
+	}
 	if errors.Is(err, ErrFeedbackPending) {
-		return fmt.Errorf("%s %d is a Feedback request and still needs %s before it can go to review: publish the fix, run `queue released`, then reply to the feedback authors through their channel. If it needs no code change, close it with a reason instead", args[1], n, FeedbackMissing(r))
+		return fmt.Errorf("%s %d is a Feedback request and still needs %s before it can go to review: publish the fix, run `queue released`, then reply to the feedback authors through their channel. If it needs no code change, close it with a reason instead: queue reply %s %d %s %s done \"<reason>\"", args[1], n, FeedbackMissing(r), args[1], n, args[3], args[4])
 	}
 	if err != nil {
 		return err

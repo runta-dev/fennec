@@ -124,6 +124,6 @@ func feedbackNote(p Project, r Request, command string) string {
 		"If it repeats an earlier request, merge it into that one with the merge command above instead of working on it twice.",
 		"If it needs a code change: fix it, publish a release that contains the fix by the project's release process (see the queue knowledge), and record the version with:\n" + fmt.Sprintf("%s released %s <version>", command, run),
 		"Then reply to every feedback author of this request through their channel, in their language: what was fixed and which version has it. Only then report resolved; the owner checks the release and your reply in the thread and marks it done. resolved is refused until both are recorded.",
-		"If it needs no code change (already fixed, a duplicate, not a bug, spam): reply to the feedback authors through their channel first, then close the request with a short reason instead of reporting resolved.",
+		"If it needs no code change (already fixed, a duplicate, not a bug, spam): reply to the feedback authors through their channel first, then close the request with a short reason instead of reporting resolved (the reason is shown at the end of the thread; your last message, if any, goes on stdin):\n" + fmt.Sprintf("%s reply %s done \"<reason>\"", command, run),
 	}, "\n") + "\n\n"
 }

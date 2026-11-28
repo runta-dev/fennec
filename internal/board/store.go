@@ -30,7 +30,21 @@ const (
 	Resolved = "resolved"
 	Failed   = "failed"
 	Unknown  = "unknown"
+	// Done is an agent's outcome, not a status: it closes the request
+	// (Resolved) with a reason, for requests that needed no code change
+	// (Store.Close, FEN-220).
+	Done = "done"
 )
+
+// Closure records an agent closing a request itself (Store.Close): which
+// agent and run, why and when. Clients show it at the end of the thread while
+// the request is Resolved; reopening or a new message clears it.
+type Closure struct {
+	By     string    `json:"by"`
+	Run    string    `json:"run,omitempty"`
+	Reason string    `json:"reason"`
+	At     time.Time `json:"at"`
+}
 
 var (
 	ErrNotFound = errors.New("not found")
@@ -147,6 +161,9 @@ type Request struct {
 	// Reclaim is set when a person marks the request done: its agent sessions
 	// are ended once their agents stop. Requests resolved earlier keep theirs.
 	Reclaim bool `json:"reclaim,omitempty"`
+	// Closed is set when the agent closed the request with a reason
+	// instead of handing it over for review (FEN-220).
+	Closed *Closure `json:"closed,omitempty"`
 	// Question is what the agent of an asking run is asking in its session,
 	// and Answer a person's answer to it on its way there (THI-176).
 	Question *Question `json:"question,omitempty"`
@@ -183,9 +200,10 @@ var (
 )
 
 const (
-	maxIcon  = 256 << 10
-	maxBody  = 64 << 10
-	maxTitle = 200
+	maxIcon   = 256 << 10
+	maxBody   = 64 << 10
+	maxTitle  = 200
+	maxReason = 2000
 )
 
 // DefaultTags are a new project's tags.
@@ -734,6 +752,7 @@ func (s Store) Reply(project string, n int, author, agent, body string) (Request
 	if agent != "" {
 		r.Status = NeedsYou
 		r.Reclaim = false
+		r.Closed = nil
 		r.Agent = agent
 		r.Delivered = id
 		recordRun(&r, NeedsYou, now)
@@ -781,7 +800,7 @@ func (s Store) Change(project string, n int, tags []string, status string) (Requ
 		if r.Status != Resolved {
 			return r, ErrConflict
 		}
-		r.Status, r.Reclaim = NeedsYou, false
+		r.Status, r.Reclaim, r.Closed = NeedsYou, false, nil
 	default:
 		return r, ErrInvalid
 	}

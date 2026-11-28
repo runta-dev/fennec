@@ -50,7 +50,7 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		return fenQueueList(method, scope, args[1], output)
 	}
 	if len(args) != 3 && len(args) != 6 && len(args) != 7 {
-		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | new <queue> <number> <agent> <session> <tag>[,<tag>...]|auto (title line, then body, on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | released <queue> <number> <agent> <session> <version> | threads <queue> | list <queue> | retry <queue> <number>")
+		return fmt.Errorf("usage: fen queue [--cloud] read <queue> <number> | reply <queue> <number> <agent> <session> <you|resolved|failed> (text on stdin) | reply <queue> <number> <agent> <session> done <reason> (optional message on stdin) | new <queue> <number> <agent> <session> <tag>[,<tag>...]|auto (title line, then body, on stdin) | link <queue> <number> <agent> <session> <KEY-n> [related|duplicate|none] | merge <queue> <number> <agent> <session> <KEY-n> | released <queue> <number> <agent> <session> <version> | threads <queue> | list <queue> | retry <queue> <number>")
 	}
 	n, err := strconv.Atoi(args[2])
 	if err != nil || n < 1 {
@@ -59,7 +59,7 @@ func fenQueueCommand(args []string, output io.Writer) error {
 	path := fmt.Sprintf("/v1/projects/%s/requests/%d", args[1], n)
 	verb := "GET"
 	var body any
-	if args[0] == "reply" && len(args) == 6 {
+	if args[0] == "reply" && (len(args) == 6 && args[5] != board.Done || len(args) == 7 && args[5] == board.Done) {
 		if !board.Agents[args[3]] {
 			return fmt.Errorf("invalid agent")
 		}
@@ -67,7 +67,15 @@ func fenQueueCommand(args []string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		body = map[string]string{"agent": args[3], "author": args[3], "session": args[4], "outcome": args[5], "body": string(text)}
+		reply := map[string]string{"agent": args[3], "author": args[3], "session": args[4], "outcome": args[5], "body": string(text)}
+		if args[5] == board.Done {
+			// Closing needs a reason (FEN-220).
+			if strings.TrimSpace(args[6]) == "" {
+				return fmt.Errorf("queue reply ... done needs a reason")
+			}
+			reply["reason"] = args[6]
+		}
+		body = reply
 		verb = "POST"
 		path += "/complete"
 	} else if args[0] == "new" && len(args) == 6 {

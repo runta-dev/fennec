@@ -237,7 +237,7 @@ func (s Store) validateDispatch(p Project, list []Summary, n int, agent, locatio
 // names only the root of the queue's OKF knowledge bundle; the agent decides
 // what goes in it and how it is arranged.
 func RunPrompt(p Project, r Request, command string) string {
-	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\n%s\n\n%s%sReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. These commands release the execution slot; do not use them for progress updates. End every turn with this command unless a background command or monitor you actually started will wake you; saying you will continue later keeps nothing running, and the request soon shows as stopped without reporting back.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), threadsNote(p, r, command), tagPrompt(p, r, command), feedbackNote(p, r, command), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
+	return fmt.Sprintf("Handle request %s-%d in queue %s.\nQueue instructions: %s\nRepository (optional): %s\n\n%s\n\n%s\n\n%s\n\n%s%sReport your final result on stdin using:\n%s reply %s %d %s %s resolved\nOutcome resolved hands finished work to the user to review and mark done; use you for a question, or failed for a failure. When the request needed no code change (already fixed, a duplicate, spam, not a bug), close it yourself instead, with the reason as an argument and an optional last message on stdin:\n%s reply %s %d %s %s done \"<reason>\"\nThe person sees who closed it and why at the end of the thread. If you changed code, never close it: report resolved so the owner can review it. These commands release the execution slot; do not use them for progress updates. End every turn with this command unless a background command or monitor you actually started will wake you; saying you will continue later keeps nothing running, and the request soon shows as stopped without reporting back.\nRead this request with: %s read %s %d\n", p.Key, r.Number, p.Name, p.Description, p.Repository, Thread(p, r), knowledgeNote(p), threadsNote(p, r, command), tagPrompt(p, r, command), feedbackNote(p, r, command), command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number, r.Agent, r.Session, command, p.ID, r.Number)
 }
 
 func knowledgeNote(p Project) string {
@@ -347,7 +347,7 @@ func FollowUpPrompt(p Project, r Request, command string) string {
 	if len(bodies) == 0 && !images {
 		return ""
 	}
-	return fmt.Sprintf("%s\n\n[%s-%d · report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
+	return fmt.Sprintf("%s\n\n[%s-%d · report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin; or close a request that needed no code change with: done \"<reason>\"]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
 }
 
 // SteerPrompt is what the person wrote while the agent was still working on
@@ -360,5 +360,5 @@ func SteerPrompt(p Project, r Request, messages []Message, command string) strin
 			bodies = append(bodies, body)
 		}
 	}
-	return fmt.Sprintf("%s\n\n[%s-%d · new message in this thread while you work; report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
+	return fmt.Sprintf("%s\n\n[%s-%d · new message in this thread while you work; report back with: %s reply %s %d %s %s resolved|you|failed, message on stdin; or close a request that needed no code change with: done \"<reason>\"]\n", strings.Join(bodies, "\n\n"), p.Key, r.Number, command, p.ID, r.Number, r.Agent, r.Session)
 }

@@ -272,9 +272,15 @@ func (s Store) Handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/complete", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Session, Agent, Body, Outcome string }
+		var body struct{ Session, Agent, Body, Outcome, Reason string }
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
-			value, err := s.Complete(r.PathValue("id"), n, body.Session, body.Agent, body.Body, body.Outcome)
+			var value Request
+			var err error
+			if body.Outcome == Done {
+				value, err = s.Close(r.PathValue("id"), n, body.Session, body.Agent, body.Body, body.Reason)
+			} else {
+				value, err = s.Complete(r.PathValue("id"), n, body.Session, body.Agent, body.Body, body.Outcome)
+			}
 			reply(w, value, err)
 		}
 	})
