@@ -106,6 +106,15 @@ struct BoardMessage: Codable, Hashable, Identifiable {
     var fromOutside: Bool { !fromAgent && external != nil }
 }
 
+/// An agent closing its request with a reason (board.Closure, FEN-220).
+struct BoardClosure: Codable, Hashable {
+    var by: String
+    var reason: String
+    var at: String?
+
+    var date: Date? { at.flatMap(boardDate) }
+}
+
 /// The author of Feedback. The board's `reply_ref` is for channel adapters,
 /// so the app doesn't decode it.
 struct BoardExternal: Codable, Hashable {
@@ -181,6 +190,8 @@ struct BoardRequest: Codable, Hashable, Identifiable {
     var messages: [BoardMessage]?
     var runs: [BoardRun]?
     var related: [BoardRelated]?
+    /// Set when the agent closed the request itself with a reason (FEN-220).
+    var closed: BoardClosure?
 
     var id: Int { number }
     var status_: RequestStatus { RequestStatus(rawValue: status) ?? .unknown }

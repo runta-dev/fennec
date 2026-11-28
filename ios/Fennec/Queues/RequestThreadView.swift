@@ -40,6 +40,7 @@ struct RequestThreadView: View {
                                 ThreadMessage(message: message, project: project, showOwner: hasFeedback,
                                               openRequest: { n in path.append(.thread(projectID, n)) })
                             }
+                            if request.status_ == .resolved, let closed = request.closed { ClosureCard(closure: closed) }
                             if request.status_ == .failed { FailureCard(request: request) }
                             statusCard(request, project)
                             actions(request)
@@ -159,8 +160,9 @@ struct RequestThreadView: View {
 
     /// Retry and Mark done sit at the end of the thread, under what the
     /// agent said, not right above the composer where they were easy to hit
-    /// by mistake (FEN-22). A done request has no Reopen button: sending a
-    /// message reopens it (FEN-118).
+    /// by mistake (FEN-22). A done request's Reopen is in the composer, where
+    /// Send goes while it is empty (FEN-220); sending a message reopens it
+    /// too (FEN-118).
     @ViewBuilder
     private func actions(_ request: BoardRequest) -> some View {
         if request.status_.canMarkDone {
@@ -221,6 +223,18 @@ struct RequestThreadView: View {
                                      onSend: { send(request) }, resetRevision: composerResetRevision,
                                      sendsOnReturn: false, identifier: "thread-composer")
                 }
+                if request.status_ == .resolved && !canSend && !images.uploading {
+                    // FEN-220: a done request offers Reopen where Send goes;
+                    // typing brings Send back (a message reopens it too).
+                    Button(L10n.text("desktop.reopen")) {
+                        Task { await queues.reopen(projectID, number) }
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.fg)
+                    .padding(.horizontal, 14).frame(height: 36)
+                    .background(Theme.fg.opacity(0.08), in: Capsule())
+                    .accessibilityIdentifier("thread-reopen")
+                } else {
                 Button { send(request) } label: {
                     Group {
                         Image(systemName: "arrow.up").regularIconWeight().font(.system(size: 15, weight: .semibold))
@@ -232,6 +246,7 @@ struct RequestThreadView: View {
                 .disabled(!canSend)
                 .accessibilityLabel(L10n.text("ui.send"))
                 .accessibilityIdentifier("thread-send")
+                }
             }
             .padding(.leading, 8).padding(.trailing, 6).padding(.vertical, 6)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -369,6 +384,32 @@ struct FailureCard: View {
         }
         .padding(12)
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.danger))
+    }
+}
+
+/// FEN-220: the agent closed the request itself. "✓ claude closed this
+/// request · 10:42" over its reason, as the thread's last word.
+struct ClosureCard: View {
+    var closure: BoardClosure
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark.circle.fill").regularIconWeight().foregroundStyle(Theme.working)
+                Text(AgentKind(launcherID: closure.by)?.displayName ?? closure.by)
+                    .fontWeight(.semibold).foregroundStyle(Theme.fg)
+                Text(L10n.text("desktop.closed_this_request"))
+                if let date = closure.date { Text("· \(shortTime(date))").foregroundStyle(Theme.fg3) }
+            }
+            .font(.system(size: 13)).foregroundStyle(Theme.fg2)
+            (Text(L10n.text("desktop.close_reason")).foregroundStyle(Theme.fg2) + Text(closure.reason).foregroundStyle(Theme.fg))
+                .font(.system(size: 14.5)).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Theme.fg.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("thread-closure")
     }
 }
 

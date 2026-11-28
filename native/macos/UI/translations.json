@@ -317,6 +317,8 @@
     "desktop.queued_starting": {"en-US": "Starting…", "zh-CN": "正在启动…"},
     "desktop.remove": {"en-US": "Remove", "zh-CN": "移除"},
     "desktop.reopen": {"en-US": "Reopen", "zh-CN": "重新打开"},
+    "desktop.closed_this_request": {"en-US": "closed this request", "zh-CN": "关闭了这个请求"},
+    "desktop.close_reason": {"en-US": "Reason: ", "zh-CN": "理由："},
     "desktop.reply": {
       "en-GB": "Message the agent",
       "en-US": "Message the agent",

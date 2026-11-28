@@ -282,6 +282,18 @@ pub struct Request {
     /// answer given to it from the thread (board.Question/Answer, THI-176).
     pub question: Option<Question>,
     pub answer: Option<Answer>,
+    /// Set when the agent closed the request itself with a reason
+    /// (board.Closure, FEN-220); the thread ends with it while resolved.
+    pub closed: Option<Closure>,
+}
+
+/// An agent closing its request with a reason (board.Closure).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Closure {
+    pub by: String,
+    pub reason: String,
+    pub at: String,
 }
 
 /// An agent's question in its session (board.Question): AskUserQuestion's

@@ -2933,6 +2933,10 @@ impl FennecWindow {
                 items.extend(self.thread_links(p, r, cx));
             }
         }
+        // FEN-220: an agent that closed the request says so, and why, last.
+        if let Some(closure) = r.closed.as_ref().filter(|_| r.resolved()) {
+            items.push(thread_closure(closure).into_any_element());
+        }
         // Keep scrolling to a jumped-to message for a few frames: the open
         // scrolls to the bottom first, and item bounds come from the last layout.
         if let Some(ix) = jump_item
@@ -3045,21 +3049,11 @@ impl FennecWindow {
                             ),
                         )
                     })
-                    .when(can_resolve, |d| {
+                    // FEN-220: a done request's Reopen sits in the reply box.
+                    .when(can_resolve && !resolved, |d| {
                         d.child(
-                            secondary_button(
-                                "resolve",
-                                if resolved { t("reopen") } else { t("resolve") },
-                                !resolved,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.set_status(
-                                        if resolved { "you" } else { "resolved" },
-                                        window,
-                                        cx,
-                                    )
-                                },
+                            secondary_button("resolve", t("resolve"), true).on_click(cx.listener(
+                                |this, _, window, cx| this.set_status("resolved", window, cx),
                             )),
                         )
                     }),
@@ -3133,13 +3127,20 @@ impl FennecWindow {
                             )
                         })
                         // FEN-77: the same Send / New line hint as the New Request box.
-                        .when(reply_idle, |d| d.child(send_newline_hints()))
+                        .when(reply_idle && !resolved, |d| d.child(send_newline_hints()))
                         .child(
                             h_flex()
                                 .absolute()
                                 .right(px(8.0))
                                 .bottom(px(8.0))
                                 .gap(px(8.0))
+                                .when(resolved && !reply_has, |d| {
+                                    d.child(secondary_button("reopen", t("reopen"), false).on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.set_status("you", window, cx)
+                                        }),
+                                    ))
+                                })
                                 .when(reply_has, |d| {
                                     let label = if answers { t("answer_question") } else { t("send") };
                                     d.child(primary_button("send", label).on_click(
@@ -3665,6 +3666,65 @@ fn copy_selected_text(window: &mut Window, cx: &mut App) {
 
 /// "⏎ Send  ⇧⏎ New line" keycap hints shown in the bottom-right corner of an
 /// empty composer (New Request box and thread Reply box, FEN-77).
+/// FEN-220: "✓ claude closed this request · 10:42" over the agent's reason,
+/// at the end of a thread the agent closed itself.
+fn thread_closure(closure: &board::Closure) -> Div {
+    v_flex()
+        .mt(px(2.0))
+        .pt(px(14.0))
+        .border_t_1()
+        .border_color(c("f_line"))
+        .gap(px(8.0))
+        .child(
+            h_flex()
+                .gap(px(8.0))
+                .text_size(px(13.0))
+                .text_color(c("f_muted"))
+                .child(
+                    div()
+                        .size(px(18.0))
+                        .rounded_full()
+                        .bg(c("ok").opacity(0.15))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(ui::icon("check", 12.0, c("ok"))),
+                )
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(c("f_text"))
+                        .child(sessions::agent_name(&closure.by).to_owned()),
+                )
+                .child(t("closed_this_request"))
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(c("f_muted"))
+                        .child(crate::local_time::month_day_clock(&closure.at)),
+                ),
+        )
+        .child(
+            div()
+                .ml(px(26.0))
+                .px(px(12.0))
+                .py(px(10.0))
+                .rounded(px(8.0))
+                .bg(c("f_card"))
+                .border_1()
+                .border_color(c("f_line"))
+                .text_size(px(13.0))
+                .line_height(relative(1.6))
+                .text_color(c("f_text"))
+                .child(
+                    h_flex()
+                        .items_start()
+                        .child(div().flex_none().text_color(c("f_muted")).child(t("close_reason")))
+                        .child(div().flex_1().min_w_0().child(closure.reason.clone())),
+                ),
+        )
+}
+
 fn send_newline_hints() -> Div {
     div()
         .absolute()
