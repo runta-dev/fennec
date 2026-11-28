@@ -2,7 +2,6 @@ package discord
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -24,7 +23,6 @@ const (
 	maxThreadName   = 80
 	maxKnownChannel = 20000
 
-	ackFiled  = "Thanks! We're tracking this as #%d. Keep talking in this thread: everything here reaches the team, and we'll answer here."
 	ackFailed = "Sorry, we couldn't record that just now. Please try again in a few minutes."
 	ackEmpty  = "Hi! Mention me together with what's going on, and I'll start a thread for it."
 )
@@ -87,6 +85,11 @@ func (a *Adapter) handle(ctx context.Context, sink Sink, m gatewayMessage) {
 	a.mu.Lock()
 	botID := a.botID
 	a.mu.Unlock()
+	if botID != "" && m.Author.ID == botID {
+		// Our own post (usually the answer): stop "typing" there.
+		a.stopTyping(m.ChannelID)
+		return
+	}
 	if m.GuildID == "" || (len(a.guilds) > 0 && !a.guilds[m.GuildID]) ||
 		m.Author.Bot || m.WebhookID != "" || m.Author.ID == botID ||
 		(m.Type != messageTypeDefault && m.Type != messageTypeReply) ||
@@ -101,10 +104,11 @@ func (a *Adapter) handle(ctx context.Context, sink Sink, m gatewayMessage) {
 
 	// 1. Follow-up in one of our threads.
 	f.Conversation = m.ChannelID
-	if _, ok, err := sink.FollowUp(ctx, f); err != nil {
+	if n, ok, err := sink.FollowUp(ctx, f); err != nil {
 		log.Printf("discord: follow-up %s in %s: %v", m.ID, m.ChannelID, err)
 		return
 	} else if ok {
+		a.startTyping(ctx, sink, m.ChannelID, n)
 		return
 	}
 	if !mentioned && len(a.forums) == 0 {
@@ -159,7 +163,11 @@ func (a *Adapter) file(ctx context.Context, sink Sink, f Feedback, thread, user 
 	a.submit(ctx, sink, f, thread, user, "")
 }
 
+// submit files f. Instead of a placeholder message, the bot shows that it is
+// typing in where until the request is answered (FEN-242); only a failure is
+// said in words.
 func (a *Adapter) submit(ctx context.Context, sink Sink, f Feedback, where, user, replyTo string) {
+	a.typeOnce(ctx, where)
 	sctx, cancel := context.WithTimeout(ctx, submitTimeout)
 	defer cancel()
 	n, err := sink.Submit(sctx, f)
@@ -168,7 +176,7 @@ func (a *Adapter) submit(ctx context.Context, sink Sink, f Feedback, where, user
 		a.post(ctx, where, user, replyTo, ackFailed)
 		return
 	}
-	a.post(ctx, where, user, replyTo, fmt.Sprintf(ackFiled, n))
+	a.startTyping(ctx, sink, where, n)
 }
 
 // feedback normalizes m; the bot's own mention is dropped from the text.

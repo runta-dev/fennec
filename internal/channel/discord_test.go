@@ -146,6 +146,39 @@ func TestDiscordForumPostTitleAndMergedFollowUp(t *testing.T) {
 	if err != nil || !ok || got != main {
 		t.Errorf("FollowUp after merge = %d, %v, %v; want request %d", got, ok, err, main)
 	}
+
+	// The bot keeps typing while the open request is Queued or Working
+	// (FEN-242), following the merge.
+	if !sink.Active(ctx, main) || !sink.Active(ctx, post) || sink.Active(ctx, 999) {
+		t.Errorf("Active = %v %v %v, want true true false", sink.Active(ctx, main), sink.Active(ctx, post), sink.Active(ctx, 999))
+	}
+}
+
+func TestDiscordActiveWhileQueuedOrWorking(t *testing.T) {
+	f := newFixture(t)
+	sink, _ := f.addDiscord(t)
+	ctx := context.Background()
+	s := board.Store{Home: f.home, Role: "cloud"}
+	n, err := sink.Submit(ctx, discord.Feedback{Author: discord.Author{ID: "42", Name: "Edward"}, Text: "crash", Conversation: "1001", ReplyRef: "v1:1001:42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const run = "0123456789abcdef0123456789abcdef"
+	if !sink.Active(ctx, n) {
+		t.Error("not Active while Queued")
+	}
+	if _, err := s.Claim(f.project.ID, n, run, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if !sink.Active(ctx, n) {
+		t.Error("not Active while Working")
+	}
+	if _, err := s.Close(f.project.ID, n, run, "claude", "", "duplicate"); err != nil {
+		t.Fatal(err)
+	}
+	if sink.Active(ctx, n) {
+		t.Error("Active after the request was closed")
+	}
 }
 
 func TestValidateDiscord(t *testing.T) {

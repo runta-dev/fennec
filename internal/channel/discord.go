@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"fennec/internal/board"
 	"fennec/internal/channel/discord"
 )
 
@@ -93,6 +94,24 @@ func (d discordSink) FollowUp(_ context.Context, f discord.Feedback) (int, bool,
 		d.logf("channel %s: follow-up on request %d in %s", d.spec.ID, req.Number, d.spec.Project)
 	}
 	return req.Number, ok, err
+}
+
+// Active: the request (or the open one it was merged into) is Queued or
+// Working, so the bot keeps showing that it is typing (FEN-242).
+func (d discordSink) Active(_ context.Context, n int) bool {
+	s := board.Store{Home: d.home, Role: "cloud"}
+	for range 20 {
+		r, err := s.Request(d.spec.Project, n)
+		if err != nil {
+			return false
+		}
+		if dup := r.DuplicateOf(); dup != 0 {
+			n = dup
+			continue
+		}
+		return r.Status == board.Queued || r.Status == board.Working
+	}
+	return false
 }
 
 func fromDiscord(spec ChannelSpec, f discord.Feedback) Feedback {

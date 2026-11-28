@@ -35,4 +35,7 @@ type Sink interface {
 	// FollowUp adds f to the request f.Conversation belongs to. ok is
 	// false when the conversation isn't one of ours.
 	FollowUp(ctx context.Context, f Feedback) (request int, ok bool, err error)
+	// Active reports whether request (or the open request it was merged
+	// into) is still Queued or Working, so the bot keeps "typing".
+	Active(ctx context.Context, request int) bool
 }

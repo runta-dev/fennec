@@ -61,6 +61,7 @@ type threadSink struct {
 	submits   []Feedback
 	followUps []Feedback
 	fail      bool
+	closed    map[int]bool // requests no longer Queued or Working
 }
 
 func (s *threadSink) Submit(_ context.Context, f Feedback) (int, error) {
@@ -87,6 +88,21 @@ func (s *threadSink) FollowUp(_ context.Context, f Feedback) (int, bool, error) 
 	return n, ok, nil
 }
 
+func (s *threadSink) Active(_ context.Context, n int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.closed[n]
+}
+
+func (s *threadSink) close(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed == nil {
+		s.closed = map[int]bool{}
+	}
+	s.closed[n] = true
+}
+
 func (s *threadSink) counts() (int, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,6 +126,16 @@ func discordAPI(t *testing.T, threadStatus int) (*httptest.Server, func() []apiC
 		}
 		return 200, "{}"
 	})
+}
+
+func typings(calls []apiCall, channel string) int {
+	n := 0
+	for _, c := range calls {
+		if c.Method == "POST" && c.Path == "/channels/"+channel+"/typing" {
+			n++
+		}
+	}
+	return n
 }
 
 func posts(calls []apiCall, channel string) []apiCall {
@@ -160,7 +186,7 @@ func TestGatewayMentionsForumPostsAndFollowUps(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		s, u := sink.counts()
-		if s == 2 && u == 2 && len(posts(calls(), "555")) == 1 {
+		if s == 2 && u == 2 && len(posts(calls(), "555")) == 1 && typings(calls(), "2001") >= 2 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -206,11 +232,15 @@ func TestGatewayMentionsForumPostsAndFollowUps(t *testing.T) {
 	if thread == nil || thread.Body["name"] != "App crashes on launch" {
 		t.Errorf("thread start = %+v", thread)
 	}
-	if acks := posts(all, "1001"); len(acks) != 1 || !strings.Contains(acks[0].Body["content"].(string), "<@42> Thanks! We're tracking this as #1.") {
-		t.Errorf("thread ack = %+v", acks)
+	// No placeholder message: the bot shows that it is typing (FEN-242).
+	if acks := posts(all, "1001"); len(acks) != 0 {
+		t.Errorf("thread placeholder = %+v", acks)
 	}
-	if acks := posts(all, "2001"); len(acks) != 1 || !strings.Contains(acks[0].Body["content"].(string), "#2") {
-		t.Errorf("forum ack = %+v", acks)
+	if acks := posts(all, "2001"); len(acks) != 0 {
+		t.Errorf("forum placeholder = %+v", acks)
+	}
+	if typings(all, "1001") == 0 || typings(all, "2001") == 0 {
+		t.Errorf("no typing indicator: %+v", all)
 	}
 	bare := posts(all, "555")
 	if len(bare) != 1 || bare[0].Body["content"] != "<@46> "+ackEmpty || bare[0].Body["message_reference"].(map[string]any)["message_id"] != "3001" {
@@ -231,9 +261,8 @@ func TestMentionWithoutThreadPermissionAnswersUnderTheMessage(t *testing.T) {
 	if len(sink.submits) != 1 || sink.submits[0].Conversation != "" || sink.submits[0].ReplyRef != "v1:555:42:1001" {
 		t.Fatalf("submits = %+v", sink.submits)
 	}
-	ack := posts(calls(), "555")
-	if len(ack) != 1 || ack[0].Body["message_reference"].(map[string]any)["message_id"] != "1001" {
-		t.Errorf("ack = %+v", ack)
+	if ack := posts(calls(), "555"); len(ack) != 0 || typings(calls(), "555") == 0 {
+		t.Errorf("ack = %+v, typing %d", ack, typings(calls(), "555"))
 	}
 }
 
@@ -271,5 +300,64 @@ func TestGatewayStopsOnDisallowedIntents(t *testing.T) {
 	err := f.a.Run(ctx, &threadSink{tracked: map[string]int{}})
 	if !errors.Is(err, ErrFatalGateway) || !strings.Contains(err.Error(), "Message Content") {
 		t.Errorf("Run = %v, want a fatal intents error", err)
+	}
+}
+
+func TestTypingUntilTheBotAnswersOrTheRequestCloses(t *testing.T) {
+	every := typingEvery
+	typingEvery = 5 * time.Millisecond
+	t.Cleanup(func() { typingEvery = every })
+	api, calls := discordAPI(t, 200)
+	f := newFixture(t, func(c *Config) { c.APIBase = api.URL })
+	f.a.botID = "900"
+	sink := &threadSink{tracked: map[string]int{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	waitTypings := func(channel string, n int) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+			if typings(calls(), channel) >= n {
+				return
+			}
+		}
+		t.Fatalf("%s: typing %d times, want %d", channel, typings(calls(), channel), n)
+	}
+	settled := func(channel string) int {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+			before := typings(calls(), channel)
+			time.Sleep(50 * time.Millisecond)
+			if typings(calls(), channel) == before {
+				return before
+			}
+		}
+		t.Fatalf("%s: still typing", channel)
+		return 0
+	}
+
+	// The bot answers in the thread: typing stops.
+	f.a.handle(ctx, sink, gatewayMessage{ID: "1001", ChannelID: "555", GuildID: "77", Content: "<@900> crash", Author: discordUser{ID: "42"}})
+	waitTypings("1001", 3)
+	f.a.handle(ctx, sink, gatewayMessage{ID: "1002", ChannelID: "1001", GuildID: "77", Content: "<@42> Fixed in 1.2", Author: discordUser{ID: "900", Bot: true}})
+	n := settled("1001")
+	time.Sleep(30 * time.Millisecond)
+	if typings(calls(), "1001") != n {
+		t.Error("still typing after the bot answered")
+	}
+
+	// A follow-up in the thread: typing again, until the request closes.
+	f.a.handle(ctx, sink, gatewayMessage{ID: "1003", ChannelID: "1001", GuildID: "77", Content: "still broken", Author: discordUser{ID: "42"}})
+	waitTypings("1001", n+3)
+	sink.close(1)
+	n = settled("1001")
+	time.Sleep(30 * time.Millisecond)
+	if typings(calls(), "1001") != n {
+		t.Error("still typing after the request closed")
+	}
+	f.a.mu.Lock()
+	left := len(f.a.typing)
+	f.a.mu.Unlock()
+	if left != 0 {
+		t.Errorf("%d typing loops left", left)
 	}
 }

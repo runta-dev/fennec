@@ -49,6 +49,8 @@ type Adapter struct {
 	mu    sync.Mutex
 	botID string                 // from READY
 	known map[string]channelInfo // channel and thread lookups
+	// typing is the typing-indicator loop running in each thread (FEN-242).
+	typing map[string]*typingLoop
 }
 
 // New validates cfg and returns an Adapter.
@@ -77,6 +79,7 @@ func New(cfg Config) (*Adapter, error) {
 		channels: set(cfg.Channels),
 		http:     cfg.HTTPClient,
 		known:    map[string]channelInfo{},
+		typing:   map[string]*typingLoop{},
 	}
 	if a.http == nil {
 		a.http = &http.Client{Timeout: 15 * time.Second}
