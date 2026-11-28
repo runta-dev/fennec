@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fennec/internal/agylog"
 	"fennec/internal/board"
+	"fennec/internal/channel"
 	"fennec/internal/chatlog"
 	"fennec/internal/clipboardbridge"
 	"fennec/internal/cloudarchive"
@@ -178,6 +179,10 @@ func run() (int, error) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "queue" {
 		return 0, board.AgentCommand(home, os.Args[2:], os.Stdin, os.Stdout)
+	}
+	// External feedback intake (FEN-224): the public server and reply().
+	if len(os.Args) >= 2 && os.Args[1] == "channel" {
+		return 0, channel.Command(home, os.Args[2:], os.Stdin, os.Stdout)
 	}
 	// Tailscale on the cloud computer (FEN-104): "up" is the detached sign-in
 	// worker tailnet.StartLogin starts; "status" prints the tailnet for agents.

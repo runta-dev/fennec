@@ -677,7 +677,7 @@ func (s Store) createRequest(project, author, title string, tags []string, body 
 	}
 	title = strings.TrimSpace(title)
 	if from != nil {
-		tags = ensureFeedbackTags(&p, from.Channel)
+		tags = append(ensureFeedbackTags(&p, from.Channel), tags...)
 	}
 	auto := len(tags) == 0
 	if auto {

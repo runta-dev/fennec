@@ -1,0 +1,109 @@
+package channel
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
+
+const usage = "usage: channel serve [listen address] | channel reply <queue> <number> <agent> <run> (text on stdin) | channel snippet <channel id>"
+
+// Command runs `fennec-terminal channel ...` on the cloud computer.
+func Command(home string, args []string, in io.Reader, out io.Writer) error {
+	switch {
+	case len(args) >= 1 && len(args) <= 2 && args[0] == "serve":
+		cfg, err := LoadConfig(home)
+		if err != nil {
+			return err
+		}
+		addr := cfg.Listen
+		if len(args) == 2 {
+			addr = args[1]
+		}
+		if addr == "" {
+			addr = "127.0.0.1:8787"
+		}
+		return serve(home, addr, out)
+	case len(args) == 5 && args[0] == "reply":
+		n, err := strconv.Atoi(args[2])
+		if err != nil || n <= 0 {
+			return errors.New(usage)
+		}
+		text, err := io.ReadAll(io.LimitReader(in, 64<<10))
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		results, err := ReplyForRun(ctx, home, args[1], n, args[3], args[4], string(text))
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if results != nil {
+			enc.Encode(results)
+		}
+		return err
+	case len(args) == 2 && args[0] == "snippet":
+		cfg, err := LoadConfig(home)
+		if err != nil {
+			return err
+		}
+		spec, ok := cfg.Spec(args[1])
+		if !ok || spec.Kind != KindWidget {
+			return fmt.Errorf("no widget channel %q", args[1])
+		}
+		base := strings.TrimRight(cfg.PublicURL, "/")
+		if base == "" {
+			return errors.New("set public_url in " + ConfigPath(home))
+		}
+		_, err = fmt.Fprintf(out, "<script src=%q data-channel=%q async></script>\n", base+"/widget.js", spec.ID)
+		return err
+	}
+	return errors.New(usage)
+}
+
+func serve(home, addr string, out io.Writer) error {
+	logger := log.New(out, "channel ", log.LstdFlags|log.LUTC)
+	srv := Server{Home: home, Log: logger}.HTTPServer(addr)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdown)
+	}()
+	logger.Printf("intake listening on %s", addr)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// WriteConfig saves the config with mode 0600 (it holds secrets).
+func WriteConfig(home string, c Config) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(Dir(home), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := ConfigPath(home) + ".tmp"
+	if err = os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, ConfigPath(home))
+}

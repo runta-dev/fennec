@@ -4462,7 +4462,19 @@
     "ui.tailnet_ssh_failed": {"en-US": "Couldn’t sign in over SSH", "en-GB": "Couldn’t sign in over SSH", "zh-CN": "无法通过 SSH 登录"},
     "ui.tailnet_card_intro": {"en-US": "Let agents build and test on your own computers", "en-GB": "Let agents build and test on your own computers", "zh-CN": "让 agent 用你自己的电脑构建、测试"},
     "ui.tailnet_add_worker": {"en-US": "Add", "en-GB": "Add", "zh-CN": "添加"},
-    "ui.tailnet_available": {"en-US": "{n} available", "en-GB": "{n} available", "zh-CN": "{n} 台可添加"}
+    "ui.tailnet_available": {"en-US": "{n} available", "en-GB": "{n} available", "zh-CN": "{n} 台可添加"},
+    "widget.open": {"en-US": "Feedback", "en-GB": "Feedback", "zh-CN": "反馈"},
+    "widget.title": {"en-US": "Send feedback", "en-GB": "Send feedback", "zh-CN": "发送反馈"},
+    "widget.text": {"en-US": "What went wrong, or what would you like?", "en-GB": "What went wrong, or what would you like?", "zh-CN": "遇到了什么问题，或者有什么建议？"},
+    "widget.name": {"en-US": "Name (optional)", "en-GB": "Name (optional)", "zh-CN": "名字（可选）"},
+    "widget.email": {"en-US": "Email (optional, to hear back)", "en-GB": "Email (optional, to hear back)", "zh-CN": "邮箱（可选，用于回复你）"},
+    "widget.send": {"en-US": "Send", "en-GB": "Send", "zh-CN": "发送"},
+    "widget.sending": {"en-US": "Sending…", "en-GB": "Sending…", "zh-CN": "发送中…"},
+    "widget.done": {"en-US": "Got it, thank you!", "en-GB": "Got it, thank you!", "zh-CN": "已收到，谢谢！"},
+    "widget.done_reply": {"en-US": "Got it, thank you! We'll answer by email.", "en-GB": "Got it, thank you! We'll answer by email.", "zh-CN": "已收到，谢谢！我们会通过邮件回复你。"},
+    "widget.fail": {"en-US": "Couldn't send. Please try again later.", "en-GB": "Couldn't send. Please try again later.", "zh-CN": "发送失败，请稍后再试。"},
+    "widget.close": {"en-US": "Close", "en-GB": "Close", "zh-CN": "关闭"},
+    "widget.check": {"en-US": "Please complete the check first.", "en-GB": "Please complete the check first.", "zh-CN": "请先完成人机验证。"}
   },
   "version": 1
 }

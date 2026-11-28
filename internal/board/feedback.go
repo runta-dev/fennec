@@ -115,6 +115,16 @@ func (s Store) PostFeedback(project string, from External, title, body string) (
 	return s.createRequest(project, from.Name, title, nil, body, nil, Choice{}, &from)
 }
 
+// PostFeedbackTagged is PostFeedback with more tags (project tag ids or
+// labels) on top of Feedback and the channel: the ones its Settings ›
+// Channels entry gives (FEN-224).
+func (s Store) PostFeedbackTagged(project string, from External, title, body string, tags []string) (Request, error) {
+	if !from.Valid() {
+		return Request{}, ErrInvalid
+	}
+	return s.createRequest(project, from.Name, title, tags, body, nil, Choice{}, &from)
+}
+
 // AddFeedback adds Feedback to an existing request's thread, e.g. a second
 // player hitting the same crash. Like a person's reply it does not schedule
 // work; the request also gets the channel's tag.
