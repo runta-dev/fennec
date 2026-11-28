@@ -273,6 +273,9 @@ func (s Store) Complete(project string, n int, session, agent, body, outcome str
 	if outcome != NeedsYou && outcome != Resolved && outcome != Failed {
 		return r, ErrInvalid
 	}
+	if outcome == Resolved && FeedbackMissing(r) != "" {
+		return r, ErrFeedbackPending
+	}
 	if !validText(body, maxBody) || len(r.Messages) >= 2000 {
 		return r, ErrInvalid
 	}

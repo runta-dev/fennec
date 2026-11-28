@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag>[,<tag>...] | queue new <queue> <number> <agent> <run> <tag>[,<tag>...]|auto (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue threads <queue> | queue list <queue> | queue retry <queue> <number>"
+const agentUsage = "usage: queue read <queue> <number> | queue reply <queue> <number> <agent> <run> <you|resolved|failed> (text on stdin) | queue tag <queue> <number> <agent> <run> <tag>[,<tag>...] | queue new <queue> <number> <agent> <run> <tag>[,<tag>...]|auto (title line, then body, on stdin) | queue link <queue> <number> <agent> <run> <KEY-n> [related|duplicate|none] | queue merge <queue> <number> <agent> <run> <KEY-n> | queue released <queue> <number> <agent> <run> <version> | queue threads <queue> | queue list <queue> | queue retry <queue> <number>"
 
 // QueueItem is one request in `queue list`: enough to see what is
 // waiting, running or stuck, without its thread (read that with queue read).
@@ -83,6 +83,17 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 	if (args[0] == "link" && (len(args) == 6 || len(args) == 7)) || (args[0] == "merge" && len(args) == 6) {
 		return agentLink(s, args, n, out)
 	}
+	if args[0] == "released" && len(args) == 6 {
+		r, err := s.RecordRelease(args[1], n, args[4], args[3], args[5])
+		if errors.Is(err, ErrInvalid) {
+			return fmt.Errorf("%q is not a version (e.g. 1.4.2)", args[5])
+		} else if errors.Is(err, ErrConflict) {
+			return fmt.Errorf("this run no longer owns %s %d", args[1], n)
+		} else if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(RequestForAgent(r))
+	}
 	if args[0] != "reply" || len(args) != 6 {
 		return errors.New(agentUsage)
 	}
@@ -91,6 +102,9 @@ func AgentCommand(home string, args []string, in io.Reader, out io.Writer) error
 		return err
 	}
 	r, err := s.Complete(args[1], n, args[4], args[3], string(b), args[5])
+	if errors.Is(err, ErrFeedbackPending) {
+		return fmt.Errorf("%s %d is a Feedback request and still needs %s before it can go to review: publish the fix, run `queue released`, then reply to the feedback authors through their channel. If it needs no code change, close it with a reason instead", args[1], n, FeedbackMissing(r))
+	}
 	if err != nil {
 		return err
 	}

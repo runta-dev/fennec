@@ -86,6 +86,11 @@ type Message struct {
 	// (THI-197). Clients that know it draw a status line from it; Body keeps
 	// a plain-text version for the rest.
 	Permission *PermissionAnswer `json:"permission,omitempty"`
+	// Release and FeedbackReply are the agent's proof lines on a Feedback
+	// request (FEN-230): the version it published with the fix, and its reply
+	// to the request's feedback authors. See feedback_rules.go.
+	Release       string         `json:"release,omitempty"`
+	FeedbackReply *FeedbackReply `json:"feedback_reply,omitempty"`
 }
 
 // PermissionAnswer is what a person decided about a permission prompt.

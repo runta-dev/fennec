@@ -278,6 +278,14 @@ func (s Store) Handler() http.Handler {
 			reply(w, value, err)
 		}
 	})
+	// An agent records the version it published for a Feedback request (FEN-230).
+	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/released", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Session, Agent, Version string }
+		if n, ok := number(w, r); ok && decode(w, r, &body) {
+			value, err := s.RecordRelease(r.PathValue("id"), n, body.Session, body.Agent, body.Version)
+			reply(w, value, err)
+		}
+	})
 	mux.HandleFunc("POST /v1/projects/{id}/requests/{n}/fail", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Session string }
 		if n, ok := number(w, r); ok && decode(w, r, &body) {
@@ -340,6 +348,8 @@ func writeError(w http.ResponseWriter, err error) {
 		code, message = http.StatusBadRequest, "invalid"
 	case errors.Is(err, ErrConflict):
 		code, message = http.StatusConflict, "conflict"
+	case errors.Is(err, ErrFeedbackPending):
+		code, message = http.StatusConflict, "a Feedback request needs a release (queue released) and a reply to its feedback authors before resolved"
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
