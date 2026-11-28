@@ -42,6 +42,12 @@ type Feedback struct {
 	// answered. It stays in the channel store and never reaches the board.
 	ReplyRef string    `json:"reply_ref,omitempty"`
 	Received time.Time `json:"received"`
+	// Title, if set, is the request title the author gave (a forum post's).
+	Title string `json:"title,omitempty"`
+	// Conversation is the channel's id for the exchange the feedback opened,
+	// such as a Discord thread. Later messages in it are follow-ups of the
+	// same request (see FollowUp).
+	Conversation string `json:"conversation,omitempty"`
 }
 
 // Channel is one inbound source.

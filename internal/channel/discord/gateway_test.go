@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 
 // fakeGateway runs one scripted Discord Gateway per connection. script gets
 // the connection index and the client's identify/resume payload.
-func fakeGateway(t *testing.T, script func(i int, hello gatewayPayload, conn *websocket.Conn)) string {
+func fakeGateway(t *testing.T, script func(i int, first gatewayPayload, conn *websocket.Conn)) string {
 	t.Helper()
 	up := websocket.Upgrader{}
 	conns := 0
@@ -48,48 +49,120 @@ func dispatch(conn *websocket.Conn, seq int, t string, d any) {
 func message(id, channel, author string, bot bool, content string) map[string]any {
 	return map[string]any{
 		"id": id, "channel_id": channel, "guild_id": "77", "type": 0, "content": content,
-		"author": map[string]any{"id": author, "username": "edward", "global_name": "Edward", "bot": bot},
-		"member": map[string]any{"nick": "Eddie"},
+		"author": map[string]any{"id": author, "username": "user" + author, "global_name": "User " + author, "bot": bot},
+		"member": map[string]any{"nick": ""},
 	}
 }
 
-func TestGatewayFilesWatchedMessagesAndResumes(t *testing.T) {
-	type start struct {
-		op int
-		d  map[string]any
+// threadSink is a board that remembers which conversation is which request.
+type threadSink struct {
+	mu        sync.Mutex
+	tracked   map[string]int
+	submits   []Feedback
+	followUps []Feedback
+	fail      bool
+}
+
+func (s *threadSink) Submit(_ context.Context, f Feedback) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail {
+		return 0, errors.New("board down")
 	}
-	starts := make(chan start, 4)
-	var wsURL string
-	wsURL = fakeGateway(t, func(i int, first gatewayPayload, conn *websocket.Conn) {
-		var d map[string]any
-		_ = json.Unmarshal(first.D, &d)
-		starts <- start{first.Op, d}
-		switch i {
-		case 0:
-			dispatch(conn, 1, "READY", map[string]any{"session_id": "sess-1", "resume_gateway_url": wsURL})
-			dispatch(conn, 2, "MESSAGE_CREATE", message("1001", "555", "42", false, "  Sync is stuck  "))
-			dispatch(conn, 3, "MESSAGE_CREATE", message("1002", "555", "50", true, "bot noise"))
-			dispatch(conn, 4, "MESSAGE_CREATE", message("1003", "999", "42", false, "unwatched channel"))
-			dispatch(conn, 5, "MESSAGE_CREATE", message("1004", "555", "42", false, "   "))
-			conn.WriteJSON(map[string]any{"op": opReconnect})
-			time.Sleep(200 * time.Millisecond)
-		case 1:
-			dispatch(conn, 6, "RESUMED", nil)
-			dispatch(conn, 7, "MESSAGE_CREATE", message("1005", "555", "43", false, "second one"))
-			var p gatewayPayload
-			conn.ReadJSON(&p) // hold until the client goes away
+	s.submits = append(s.submits, f)
+	n := len(s.submits)
+	if f.Conversation != "" {
+		s.tracked[f.Conversation] = n
+	}
+	return n, nil
+}
+
+func (s *threadSink) FollowUp(_ context.Context, f Feedback) (int, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, ok := s.tracked[f.Conversation]
+	if ok {
+		s.followUps = append(s.followUps, f)
+	}
+	return n, ok, nil
+}
+
+func (s *threadSink) counts() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.submits), len(s.followUps)
+}
+
+// discordAPI answers channel lookups and thread starts like Discord.
+func discordAPI(t *testing.T, threadStatus int) (*httptest.Server, func() []apiCall) {
+	return fakeAPI(t, func(_ int, c apiCall) (int, string) {
+		switch {
+		case c.Method == "GET" && c.Path == "/channels/555":
+			return 200, `{"id":"555","type":0,"name":"general"}`
+		case c.Method == "GET" && c.Path == "/channels/2002":
+			return 200, `{"id":"2002","type":11,"parent_id":"777","name":"Old post"}`
+		case c.Method == "POST" && strings.HasSuffix(c.Path, "/threads"):
+			if threadStatus != 200 {
+				return threadStatus, `{"message":"Missing Permissions","code":50013}`
+			}
+			id := strings.Split(c.Path, "/")[4]
+			return 200, `{"id":"` + id + `","type":11}`
 		}
+		return 200, "{}"
+	})
+}
+
+func posts(calls []apiCall, channel string) []apiCall {
+	var out []apiCall
+	for _, c := range calls {
+		if c.Method == "POST" && c.Path == "/channels/"+channel+"/messages" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestGatewayMentionsForumPostsAndFollowUps(t *testing.T) {
+	identify := make(chan gatewayPayload, 1)
+	wsURL := fakeGateway(t, func(i int, first gatewayPayload, conn *websocket.Conn) {
+		identify <- first
+		dispatch(conn, 1, "READY", map[string]any{"session_id": "s1", "user": map[string]any{"id": "900", "username": "fennec", "bot": true}})
+		// An @mention in a channel: new thread on that message.
+		m := message("1001", "555", "42", false, "<@900> App crashes on launch\nsince 1.4.2")
+		m["member"] = map[string]any{"nick": "Eddie"}
+		dispatch(conn, 2, "MESSAGE_CREATE", m)
+		// Chatter without a mention: ignored.
+		dispatch(conn, 3, "MESSAGE_CREATE", message("1002", "555", "43", false, "just chatting"))
+		// Someone else in the new thread: follow-up, no mention needed.
+		dispatch(conn, 4, "MESSAGE_CREATE", message("1003", "1001", "43", false, "same here on Android"))
+		// The bot's own messages: ignored.
+		dispatch(conn, 5, "MESSAGE_CREATE", message("1004", "1001", "900", true, "<@42> Thanks!"))
+		// A new forum post.
+		dispatch(conn, 6, "THREAD_CREATE", map[string]any{"id": "2001", "type": 11, "parent_id": "777", "name": "Login broken"})
+		dispatch(conn, 7, "MESSAGE_CREATE", message("2001", "2001", "44", false, "can't log in with Google"))
+		// A reply in a post from before the bot watched: ignored.
+		dispatch(conn, 8, "MESSAGE_CREATE", message("3000", "2002", "45", false, "bump"))
+		// A bare mention: asked to say what's going on, nothing filed.
+		dispatch(conn, 9, "MESSAGE_CREATE", message("3001", "555", "46", false, "<@900>"))
+		// A mention inside a tracked post: a follow-up, not a new request.
+		dispatch(conn, 10, "MESSAGE_CREATE", message("3002", "2001", "44", false, "<@!900> any update?"))
+		var p gatewayPayload
+		conn.ReadJSON(&p) // hold until the client goes away
 	})
 
-	api, calls := fakeAPI(t, nil)
+	api, calls := discordAPI(t, 200)
 	f := newFixture(t, func(c *Config) { c.APIBase = api.URL; c.GatewayURL = wsURL })
-	sink := &recordingSink{n: 1}
+	sink := &threadSink{tracked: map[string]int{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- f.a.Run(ctx, sink) }()
 
 	deadline := time.Now().Add(10 * time.Second)
-	for len(sink.all()) < 2 && time.Now().Before(deadline) {
+	for time.Now().Before(deadline) {
+		s, u := sink.counts()
+		if s == 2 && u == 2 && len(posts(calls(), "555")) == 1 {
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	cancel()
@@ -97,38 +170,93 @@ func TestGatewayFilesWatchedMessagesAndResumes(t *testing.T) {
 		t.Errorf("Run returned %v", err)
 	}
 
-	id := <-starts
-	if id.op != opIdentify || id.d["token"] != "tok" || int(id.d["intents"].(float64)) != intentGuildMessages|intentMessageContent {
-		t.Errorf("identify = %+v", id)
-	}
-	res := <-starts
-	if res.op != opResume || res.d["session_id"] != "sess-1" || res.d["seq"].(float64) != 5 {
-		t.Errorf("resume = %+v", res)
+	id := <-identify
+	var d map[string]any
+	json.Unmarshal(id.D, &d)
+	if id.Op != opIdentify || int(d["intents"].(float64)) != intentGuilds|intentGuildMessages|intentMessageContent {
+		t.Errorf("identify = %+v", d)
 	}
 
-	got := sink.all()
-	if len(got) != 2 {
-		t.Fatalf("filed %d messages, want 2: %+v", len(got), got)
+	if len(sink.submits) != 2 || len(sink.followUps) != 2 {
+		t.Fatalf("submits %+v\nfollow-ups %+v", sink.submits, sink.followUps)
 	}
-	fb := got[0]
-	if fb.Text != "Sync is stuck" || fb.Author != (Author{ID: "42", Name: "Eddie", Handle: "edward"}) ||
-		fb.ReplyRef != "v1:555:42:1001" || fb.Context["source"] != "message" ||
-		fb.Context["link"] != "https://discord.com/channels/77/555/1001" {
-		t.Errorf("feedback = %+v", fb)
+	m := sink.submits[0]
+	if m.Text != "App crashes on launch\nsince 1.4.2" || m.Conversation != "1001" || m.ReplyRef != "v1:1001:42" ||
+		m.Author != (Author{ID: "42", Name: "Eddie", Handle: "user42"}) || m.Title != "" {
+		t.Errorf("mention = %+v", m)
 	}
-	if got[1].ReplyRef != "v1:555:43:1005" {
-		t.Errorf("second = %+v", got[1])
+	p := sink.submits[1]
+	if p.Text != "can't log in with Google" || p.Title != "Login broken" || p.Conversation != "2001" || p.ReplyRef != "v1:2001:44" {
+		t.Errorf("forum post = %+v", p)
+	}
+	if u := sink.followUps[0]; u.Conversation != "1001" || u.Text != "same here on Android" || u.Author.ID != "43" {
+		t.Errorf("thread follow-up = %+v", u)
+	}
+	if u := sink.followUps[1]; u.Conversation != "2001" || u.Text != "any update?" {
+		t.Errorf("post follow-up = %+v", u)
 	}
 
-	time.Sleep(100 * time.Millisecond) // receipt reactions run after Submit
-	var reactions int
-	for _, c := range calls() {
-		if c.Method == "PUT" && strings.HasPrefix(c.Path, "/channels/555/messages/100") && strings.HasSuffix(c.Path, "/@me") {
-			reactions++
+	all := calls()
+	var thread *apiCall
+	for i, c := range all {
+		if c.Path == "/channels/555/messages/1001/threads" {
+			thread = &all[i]
 		}
 	}
-	if reactions != 2 {
-		t.Errorf("receipt reactions = %d, want 2 (%+v)", reactions, calls())
+	if thread == nil || thread.Body["name"] != "App crashes on launch" {
+		t.Errorf("thread start = %+v", thread)
+	}
+	if acks := posts(all, "1001"); len(acks) != 1 || !strings.Contains(acks[0].Body["content"].(string), "<@42> Thanks! We're tracking this as #1.") {
+		t.Errorf("thread ack = %+v", acks)
+	}
+	if acks := posts(all, "2001"); len(acks) != 1 || !strings.Contains(acks[0].Body["content"].(string), "#2") {
+		t.Errorf("forum ack = %+v", acks)
+	}
+	bare := posts(all, "555")
+	if len(bare) != 1 || bare[0].Body["content"] != "<@46> "+ackEmpty || bare[0].Body["message_reference"].(map[string]any)["message_id"] != "3001" {
+		t.Errorf("bare mention answer = %+v", bare)
+	}
+	if len(posts(all, "2002")) != 0 {
+		t.Error("an old forum post was answered")
+	}
+}
+
+func TestMentionWithoutThreadPermissionAnswersUnderTheMessage(t *testing.T) {
+	api, calls := discordAPI(t, 403)
+	f := newFixture(t, func(c *Config) { c.APIBase = api.URL })
+	f.a.botID = "900"
+	sink := &threadSink{tracked: map[string]int{}}
+	f.a.handle(context.Background(), sink, gatewayMessage{ID: "1001", ChannelID: "555", GuildID: "77", Content: "<@900> crash",
+		Author: discordUser{ID: "42", Username: "ed"}})
+	if len(sink.submits) != 1 || sink.submits[0].Conversation != "" || sink.submits[0].ReplyRef != "v1:555:42:1001" {
+		t.Fatalf("submits = %+v", sink.submits)
+	}
+	ack := posts(calls(), "555")
+	if len(ack) != 1 || ack[0].Body["message_reference"].(map[string]any)["message_id"] != "1001" {
+		t.Errorf("ack = %+v", ack)
+	}
+}
+
+func TestMentionsOnlyInConfiguredChannelsAndServers(t *testing.T) {
+	api, _ := discordAPI(t, 200)
+	f := newFixture(t, func(c *Config) { c.APIBase = api.URL; c.Channels = []string{"999"}; c.Guilds = []string{"77"} })
+	f.a.botID = "900"
+	sink := &threadSink{tracked: map[string]int{}}
+	f.a.handle(context.Background(), sink, gatewayMessage{ID: "1001", ChannelID: "555", GuildID: "77", Content: "<@900> crash", Author: discordUser{ID: "42"}})
+	f.a.handle(context.Background(), sink, gatewayMessage{ID: "1002", ChannelID: "999", GuildID: "78", Content: "<@900> crash", Author: discordUser{ID: "42"}})
+	if len(sink.submits) != 0 {
+		t.Errorf("filed %+v", sink.submits)
+	}
+}
+
+func TestBoardFailureIsToldInTheThread(t *testing.T) {
+	api, calls := discordAPI(t, 200)
+	f := newFixture(t, func(c *Config) { c.APIBase = api.URL })
+	f.a.botID = "900"
+	f.a.handle(context.Background(), &threadSink{tracked: map[string]int{}, fail: true},
+		gatewayMessage{ID: "1001", ChannelID: "555", GuildID: "77", Content: "<@900> crash", Author: discordUser{ID: "42"}})
+	if ack := posts(calls(), "1001"); len(ack) != 1 || ack[0].Body["content"] != "<@42> "+ackFailed {
+		t.Errorf("ack = %+v", ack)
 	}
 }
 
@@ -140,7 +268,7 @@ func TestGatewayStopsOnDisallowedIntents(t *testing.T) {
 	f := newFixture(t, func(c *Config) { c.GatewayURL = wsURL })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := f.a.Run(ctx, &recordingSink{})
+	err := f.a.Run(ctx, &threadSink{tracked: map[string]int{}})
 	if !errors.Is(err, ErrFatalGateway) || !strings.Contains(err.Error(), "Message Content") {
 		t.Errorf("Run = %v, want a fatal intents error", err)
 	}

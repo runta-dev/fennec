@@ -2,40 +2,22 @@ package discord
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 	"unicode/utf8"
 )
 
-type fixture struct {
-	a    *Adapter
-	priv ed25519.PrivateKey
-	now  time.Time
-}
+type fixture struct{ a *Adapter }
 
 func newFixture(t *testing.T, mutate func(*Config)) *fixture {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := Config{
-		ApplicationID: "1000",
-		PublicKey:     hex.EncodeToString(pub),
-		BotToken:      "tok",
-		Channels:      []string{"555"},
-	}
+	cfg := Config{BotToken: "tok", Forums: []string{"777"}}
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -43,205 +25,24 @@ func newFixture(t *testing.T, mutate func(*Config)) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Unix(1_800_000_000, 0)
-	a.now = func() time.Time { return now }
-	return &fixture{a: a, priv: priv, now: now}
-}
-
-// post sends body to the interactions handler, signed at ts.
-func (f *fixture) post(t *testing.T, sink Sink, body string, ts time.Time, tamper bool) *httptest.ResponseRecorder {
-	t.Helper()
-	stamp := strconv.FormatInt(ts.Unix(), 10)
-	sig := ed25519.Sign(f.priv, []byte(stamp+body))
-	if tamper {
-		body += " "
-	}
-	req := httptest.NewRequest(http.MethodPost, "/discord/interactions", strings.NewReader(body))
-	req.Header.Set("X-Signature-Ed25519", hex.EncodeToString(sig))
-	req.Header.Set("X-Signature-Timestamp", stamp)
-	rec := httptest.NewRecorder()
-	f.a.InteractionsHandler(sink).ServeHTTP(rec, req)
-	return rec
-}
-
-type recordingSink struct {
-	mu   sync.Mutex
-	got  []Feedback
-	n    int
-	err  error
-	wait time.Duration
-}
-
-func (s *recordingSink) Submit(ctx context.Context, f Feedback) (int, error) {
-	if s.wait > 0 {
-		time.Sleep(s.wait)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.got = append(s.got, f)
-	return s.n, s.err
-}
-
-func (s *recordingSink) all() []Feedback {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]Feedback(nil), s.got...)
+	return &fixture{a: a}
 }
 
 func TestNewRejectsBadConfig(t *testing.T) {
-	ok := Config{ApplicationID: "1", PublicKey: strings.Repeat("ab", 32), BotToken: "t"}
-	for name, mut := range map[string]func(*Config){
-		"short key":   func(c *Config) { c.PublicKey = "abcd" },
-		"no token":    func(c *Config) { c.BotToken = " " },
-		"no app":      func(c *Config) { c.ApplicationID = "" },
-		"bad channel": func(c *Config) { c.Channels = []string{"#general"} },
+	for name, c := range map[string]Config{
+		"no token":    {BotToken: " "},
+		"bad forum":   {BotToken: "t", Forums: []string{"#bugs"}},
+		"bad channel": {BotToken: "t", Channels: []string{"general"}},
+		"bad guild":   {BotToken: "t", Guilds: []string{"x"}},
 	} {
-		c := ok
-		mut(&c)
 		if _, err := New(c); err == nil {
 			t.Errorf("%s: New accepted %+v", name, c)
 		}
 	}
-	if _, err := New(ok); err != nil {
-		t.Fatal(err)
+	a, err := New(Config{BotToken: "t", Forums: []string{"777"}})
+	if err != nil || a.cfg.BotToken != "Bot t" {
+		t.Fatalf("New = %+v, %v", a, err)
 	}
-}
-
-func TestPingNeedsValidSignature(t *testing.T) {
-	f := newFixture(t, nil)
-	sink := &recordingSink{}
-	ping := `{"type":1}`
-
-	if rec := f.post(t, sink, ping, f.now, false); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"type":1}` {
-		t.Fatalf("valid ping: %d %s", rec.Code, rec.Body)
-	}
-	if rec := f.post(t, sink, ping, f.now, true); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("tampered body: got %d, want 401", rec.Code)
-	}
-	if rec := f.post(t, sink, ping, f.now.Add(-10*time.Minute), false); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("stale timestamp: got %d, want 401", rec.Code)
-	}
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(ping))
-	rec := httptest.NewRecorder()
-	f.a.InteractionsHandler(sink).ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("unsigned: got %d, want 401", rec.Code)
-	}
-	if len(sink.all()) != 0 {
-		t.Fatal("ping must not file anything")
-	}
-}
-
-const feedbackCommand = `{"type":2,"guild_id":"77","channel_id":"888",
- "member":{"nick":"Eddie","user":{"id":"42","username":"edward","global_name":"Edward"}},
- "data":{"name":"feedback","options":[{"name":"text","type":3,"value":"  App crashes on launch  "}]}}`
-
-type response struct {
-	Type int `json:"type"`
-	Data struct {
-		Content string `json:"content"`
-		Flags   int    `json:"flags"`
-	} `json:"data"`
-}
-
-func decode(t *testing.T, rec *httptest.ResponseRecorder) response {
-	t.Helper()
-	if rec.Code != 200 {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
-	}
-	var r response
-	if err := json.Unmarshal(rec.Body.Bytes(), &r); err != nil {
-		t.Fatal(err)
-	}
-	if r.Type != responseMessage || r.Data.Flags != messageFlagEphemeral {
-		t.Fatalf("want an ephemeral message, got %+v", r)
-	}
-	return r
-}
-
-func TestFeedbackCommandFilesRequest(t *testing.T) {
-	f := newFixture(t, nil)
-	sink := &recordingSink{n: 226}
-	r := decode(t, f.post(t, sink, feedbackCommand, f.now, false))
-	if !strings.Contains(r.Data.Content, "#226") {
-		t.Errorf("ack %q should name the request", r.Data.Content)
-	}
-	got := sink.all()
-	if len(got) != 1 {
-		t.Fatalf("filed %d, want 1", len(got))
-	}
-	fb := got[0]
-	want := Author{ID: "42", Name: "Eddie", Handle: "edward"}
-	if fb.Channel != "discord" || fb.Author != want || fb.Text != "App crashes on launch" {
-		t.Errorf("feedback = %+v", fb)
-	}
-	if fb.Context["source"] != "command" || fb.Context["channel_id"] != "888" || fb.Context["guild_id"] != "77" {
-		t.Errorf("context = %v", fb.Context)
-	}
-	if fb.ReplyRef != "v1:888:42" {
-		t.Errorf("reply ref = %q", fb.ReplyRef)
-	}
-}
-
-func TestFeedbackCommandEdgeCases(t *testing.T) {
-	t.Run("empty text", func(t *testing.T) {
-		f := newFixture(t, nil)
-		sink := &recordingSink{}
-		body := strings.Replace(feedbackCommand, "  App crashes on launch  ", "   ", 1)
-		if r := decode(t, f.post(t, sink, body, f.now, false)); r.Data.Content != ackEmpty {
-			t.Errorf("ack = %q", r.Data.Content)
-		}
-		if len(sink.all()) != 0 {
-			t.Error("empty feedback was filed")
-		}
-	})
-	t.Run("other server", func(t *testing.T) {
-		f := newFixture(t, func(c *Config) { c.Guilds = []string{"99"} })
-		sink := &recordingSink{}
-		if r := decode(t, f.post(t, sink, feedbackCommand, f.now, false)); r.Data.Content != ackWrongServer {
-			t.Errorf("ack = %q", r.Data.Content)
-		}
-		if len(sink.all()) != 0 {
-			t.Error("feedback from an unlisted server was filed")
-		}
-	})
-	t.Run("dm uses user", func(t *testing.T) {
-		f := newFixture(t, nil)
-		sink := &recordingSink{n: 3}
-		body := `{"type":2,"channel_id":"900","user":{"id":"43","username":"amy"},
-		 "data":{"name":"feedback","options":[{"name":"text","type":3,"value":"hi"}]}}`
-		decode(t, f.post(t, sink, body, f.now, false))
-		got := sink.all()
-		if len(got) != 1 || got[0].Author != (Author{ID: "43", Name: "amy", Handle: "amy"}) || got[0].ReplyRef != "v1:900:43" {
-			t.Errorf("got %+v", got)
-		}
-	})
-	t.Run("sink fails", func(t *testing.T) {
-		f := newFixture(t, nil)
-		sink := &recordingSink{err: errors.New("board down")}
-		if r := decode(t, f.post(t, sink, feedbackCommand, f.now, false)); r.Data.Content != ackFailed {
-			t.Errorf("ack = %q", r.Data.Content)
-		}
-	})
-	t.Run("slow sink still answers in time", func(t *testing.T) {
-		old := submitBudget
-		submitBudget = 50 * time.Millisecond
-		defer func() { submitBudget = old }()
-		f := newFixture(t, nil)
-		sink := &recordingSink{n: 9, wait: 300 * time.Millisecond}
-		start := time.Now()
-		r := decode(t, f.post(t, sink, feedbackCommand, f.now, false))
-		if time.Since(start) > 250*time.Millisecond || r.Data.Content != ackQueued {
-			t.Errorf("ack %q after %s", r.Data.Content, time.Since(start))
-		}
-		deadline := time.Now().Add(2 * time.Second)
-		for len(sink.all()) == 0 && time.Now().Before(deadline) {
-			time.Sleep(10 * time.Millisecond)
-		}
-		if len(sink.all()) != 1 {
-			t.Error("the slow submit should still finish")
-		}
-	})
 }
 
 type apiCall struct {
@@ -377,18 +178,6 @@ func TestReplyRetriesAndGivesUp(t *testing.T) {
 			}
 		}
 	})
-}
-
-func TestRegisterCommands(t *testing.T) {
-	srv, calls := fakeAPI(t, nil)
-	f := newFixture(t, func(c *Config) { c.APIBase = srv.URL; c.Guilds = []string{"77"} })
-	if err := f.a.RegisterCommands(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	c := calls()[0]
-	if c.Method != "PUT" || c.Path != "/applications/1000/guilds/77/commands" {
-		t.Errorf("call = %s %s", c.Method, c.Path)
-	}
 }
 
 func TestSplitMessage(t *testing.T) {

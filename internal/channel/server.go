@@ -75,7 +75,6 @@ func (s Server) Handler() http.Handler {
 		s.logf("channel %s: filed request %d in %s", spec.ID, req.Number, spec.Project)
 		writeJSON(w, http.StatusCreated, map[string]bool{"ok": true, "can_reply": fb.ReplyRef != ""})
 	})
-	mux.HandleFunc("POST /v1/discord/{id}/interactions", s.discordInteractions)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	})

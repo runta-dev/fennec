@@ -206,6 +206,21 @@ func (s Store) Retry(project string, n int) (Request, error) {
 // FollowUp persists input before scheduling it. Input arriving during a turn
 // stays pending until that turn releases its slot.
 func (s Store) FollowUp(project string, n int, author, body string, attachments []Attachment) (Request, error) {
+	return s.followUp(project, n, author, body, attachments, nil)
+}
+
+// FeedbackFollowUp is a follow-up from an external user, such as a message
+// in the Discord thread a Feedback request came from (FEN-226). Like a
+// person's reply, it is typed into the running agent's session or queues the
+// request again.
+func (s Store) FeedbackFollowUp(project string, n int, from External, body string) (Request, error) {
+	if !from.Valid() || body == "" {
+		return Request{}, ErrInvalid
+	}
+	return s.followUp(project, n, from.Name, body, nil, &from)
+}
+
+func (s Store) followUp(project string, n int, author, body string, attachments []Attachment, from *External) (Request, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Request{}, err
@@ -228,7 +243,7 @@ func (s Store) FollowUp(project string, n int, author, body string, attachments 
 	now := s.now()
 	if body != "" || len(images) > 0 {
 		id := len(r.Messages) + 1
-		r.Messages = append(r.Messages, Message{UID: randomID(), FollowUp: true, ID: id, Author: author, Body: body, Attachments: images, At: now})
+		r.Messages = append(r.Messages, Message{UID: randomID(), FollowUp: true, ID: id, Author: author, External: from, Body: body, Attachments: images, At: now})
 	}
 	if r.Status == Working || r.Status == Unknown {
 		r.Updated = now

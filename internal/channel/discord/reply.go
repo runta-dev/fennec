@@ -105,33 +105,6 @@ func (a *Adapter) Reply(ctx context.Context, ref, text string) error {
 	return nil
 }
 
-// RegisterCommands creates or updates the /feedback slash command, in each
-// configured guild (instant) or globally when no guild is configured.
-func (a *Adapter) RegisterCommands(ctx context.Context) error {
-	cmd := []map[string]any{{
-		"name":        a.cfg.CommandName,
-		"type":        commandTypeChatInput,
-		"description": "Send feedback or report a bug to the team",
-		"options": []map[string]any{{
-			"name":        optionText,
-			"type":        optionTypeString,
-			"description": "What happened, or what you'd like",
-			"required":    true,
-			"max_length":  commandMaxTextLength,
-		}},
-	}}
-	base := "/applications/" + a.cfg.ApplicationID
-	if len(a.guilds) == 0 {
-		return a.call(ctx, http.MethodPut, base+"/commands", cmd, nil)
-	}
-	for g := range a.guilds {
-		if err := a.call(ctx, http.MethodPut, base+"/guilds/"+g+"/commands", cmd, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // call sends one REST request, honoring rate limits and retrying 5xx.
 func (a *Adapter) call(ctx context.Context, method, path string, body, out any) error {
 	var payload []byte

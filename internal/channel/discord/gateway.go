@@ -28,23 +28,19 @@ const (
 	opHello          = 10
 	opHeartbeatAck   = 11
 
+	intentGuilds         = 1 << 0 // THREAD_CREATE, so forum posts are known
 	intentGuildMessages  = 1 << 9
-	intentMessageContent = 1 << 15
-
-	messageTypeDefault = 0
-	messageTypeReply   = 19
+	intentMessageContent = 1 << 15 // privileged: enable it in the Developer Portal
 
 	maxReconnectWait = 2 * time.Minute
-	receiptEmoji     = "%E2%9C%85" // ✅, URL-escaped
+	queueSize        = 1024
 )
 
 // ErrFatalGateway is returned by Run when Discord refuses the bot for a
 // reason reconnecting won't fix (bad token, intents not enabled).
 var ErrFatalGateway = errors.New("discord: gateway refused the bot")
 
-// fatalCloseCodes end Run: 4004 authentication failed, 4010 invalid shard,
-// 4011 sharding required, 4012 invalid API version, 4013 invalid intents,
-// 4014 disallowed intents (Message Content not enabled in the portal).
+// fatalCloseCodes end Run.
 var fatalCloseCodes = map[int]string{
 	4004: "authentication failed (check the bot token)",
 	4010: "invalid shard",
@@ -54,18 +50,32 @@ var fatalCloseCodes = map[int]string{
 	4014: "disallowed intents (enable Message Content Intent in the Developer Portal)",
 }
 
-// Run reads the Discord Gateway and files every new message posted in a
-// watched channel as feedback. It reconnects (resuming when it can) until
+// Run reads the Discord Gateway and handles mentions, forum posts and
+// thread follow-ups (see handle). It reconnects, resuming when it can, until
 // ctx ends or Discord refuses the bot outright.
 func (a *Adapter) Run(ctx context.Context, sink Sink) error {
-	if len(a.channels) == 0 {
-		<-ctx.Done() // nothing to watch; /feedback still works over HTTP
-		return ctx.Err()
-	}
+	// One worker handles messages in order, so a thread's first message is
+	// filed before its follow-ups, and a slow board never stalls the socket.
+	queue := make(chan gatewayMessage, queueSize)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m := <-queue:
+				a.handle(ctx, sink, m)
+			}
+		}
+	}()
+	defer wg.Wait()
+
 	var s gatewaySession
 	failures := 0
 	for {
-		ready, err := a.runOnce(ctx, sink, &s)
+		ready, err := a.runOnce(ctx, queue, &s)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -106,7 +116,7 @@ type gatewayPayload struct {
 
 // runOnce holds one websocket connection. ready reports whether the
 // connection got as far as READY or RESUMED.
-func (a *Adapter) runOnce(ctx context.Context, sink Sink, s *gatewaySession) (ready bool, err error) {
+func (a *Adapter) runOnce(ctx context.Context, queue chan<- gatewayMessage, s *gatewaySession) (ready bool, err error) {
 	base := s.resumeURL
 	if base == "" {
 		if base, err = a.gatewayURL(ctx); err != nil {
@@ -165,7 +175,7 @@ func (a *Adapter) runOnce(ctx context.Context, sink Sink, s *gatewaySession) (re
 	} else {
 		err = send(opIdentify, map[string]any{
 			"token":   token,
-			"intents": intentGuildMessages | intentMessageContent,
+			"intents": intentGuilds | intentGuildMessages | intentMessageContent,
 			"properties": map[string]string{
 				"os": "linux", "browser": "fennec", "device": "fennec",
 			},
@@ -245,20 +255,31 @@ func (a *Adapter) runOnce(ctx context.Context, sink Sink, s *gatewaySession) (re
 			switch p.T {
 			case "READY":
 				var r struct {
-					SessionID        string `json:"session_id"`
-					ResumeGatewayURL string `json:"resume_gateway_url"`
+					SessionID        string      `json:"session_id"`
+					ResumeGatewayURL string      `json:"resume_gateway_url"`
+					User             discordUser `json:"user"`
 				}
 				_ = json.Unmarshal(p.D, &r)
 				s.id, s.resumeURL = r.SessionID, r.ResumeGatewayURL
+				a.mu.Lock()
+				a.botID = r.User.ID
+				a.mu.Unlock()
 				ready = true
-				log.Printf("discord: gateway ready, watching %d channel(s)", len(a.channels))
+				log.Printf("discord: gateway ready as %s, %d forum(s)", r.User.Username, len(a.forums))
 			case "RESUMED":
 				ready = true
+			case "THREAD_CREATE", "CHANNEL_CREATE":
+				var c channelInfo
+				if json.Unmarshal(p.D, &c) == nil && c.ID != "" {
+					a.remember(c)
+				}
 			case "MESSAGE_CREATE":
 				var m gatewayMessage
 				if json.Unmarshal(p.D, &m) == nil {
-					if f, ok := a.messageFeedback(m); ok {
-						go a.fileMessage(ctx, sink, m, f)
+					select {
+					case queue <- m:
+					default:
+						log.Printf("discord: queue full, dropped message %s", m.ID)
 					}
 				}
 			}
@@ -283,83 +304,4 @@ func (a *Adapter) gatewayURL(ctx context.Context) (string, error) {
 		return "", errors.New("discord: /gateway/bot returned no url")
 	}
 	return out.URL, nil
-}
-
-// gatewayMessage is the subset of a MESSAGE_CREATE we read.
-type gatewayMessage struct {
-	ID        string      `json:"id"`
-	ChannelID string      `json:"channel_id"`
-	GuildID   string      `json:"guild_id"`
-	Type      int         `json:"type"`
-	Content   string      `json:"content"`
-	WebhookID string      `json:"webhook_id"`
-	Author    discordUser `json:"author"`
-	Member    *struct {
-		Nick string `json:"nick"`
-	} `json:"member"`
-	Attachments []struct {
-		Filename string `json:"filename"`
-		URL      string `json:"url"`
-	} `json:"attachments"`
-}
-
-// messageFeedback decides whether a message is feedback and normalizes it.
-// Bots, webhooks, system messages and unwatched channels are skipped.
-func (a *Adapter) messageFeedback(m gatewayMessage) (Feedback, bool) {
-	if !a.channels[m.ChannelID] || m.Author.Bot || m.WebhookID != "" ||
-		(m.Type != messageTypeDefault && m.Type != messageTypeReply) ||
-		!isSnowflake(m.ID) || !isSnowflake(m.Author.ID) {
-		return Feedback{}, false
-	}
-	text := strings.TrimSpace(m.Content)
-	var files []string
-	for _, at := range m.Attachments {
-		files = append(files, at.URL)
-	}
-	if text == "" && len(files) == 0 {
-		return Feedback{}, false
-	}
-	au := m.Author.author()
-	if m.Member != nil && m.Member.Nick != "" {
-		au.Name = m.Member.Nick
-	}
-	ctx := map[string]string{
-		"source":     "message",
-		"guild_id":   m.GuildID,
-		"channel_id": m.ChannelID,
-		"message_id": m.ID,
-		"link":       "https://discord.com/channels/" + orAtMe(m.GuildID) + "/" + m.ChannelID + "/" + m.ID,
-	}
-	if len(files) > 0 {
-		ctx["attachments"] = strings.Join(files, "\n")
-	}
-	return Feedback{
-		Channel:  ChannelName,
-		Author:   au,
-		Text:     text,
-		Context:  ctx,
-		ReplyRef: replyRef{Channel: m.ChannelID, User: m.Author.ID, Message: m.ID}.String(),
-	}, true
-}
-
-// fileMessage submits one channel message and marks it ✅ once filed, so the
-// author sees it was picked up. The reaction is best effort.
-func (a *Adapter) fileMessage(ctx context.Context, sink Sink, m gatewayMessage, f Feedback) {
-	sctx, cancel := context.WithTimeout(ctx, backgroundSubmitTimeout)
-	defer cancel()
-	if _, err := sink.Submit(sctx, f); err != nil {
-		log.Printf("discord: filing message %s failed: %v", m.ID, err)
-		return
-	}
-	path := "/channels/" + m.ChannelID + "/messages/" + m.ID + "/reactions/" + receiptEmoji + "/@me"
-	if err := a.call(sctx, http.MethodPut, path, nil, nil); err != nil {
-		log.Printf("discord: receipt reaction on %s: %v", m.ID, err)
-	}
-}
-
-func orAtMe(guild string) string {
-	if guild == "" {
-		return "@me"
-	}
-	return guild
 }

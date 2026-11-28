@@ -10,34 +10,34 @@ import (
 	"fennec/internal/channel/discord"
 )
 
-// KindDiscord is a Discord application (FEN-226): its /feedback command
-// reaches POST /v1/discord/{id}/interactions, and messages in its watched
-// channels come in over the Discord Gateway, which `channel serve` holds open.
+// KindDiscord is a Discord bot (FEN-226). Like a support bot in Slack, it
+// starts a thread when someone @mentions it and files a request for every new
+// post in its forums; messages later in that thread or post are follow-ups.
+// It runs entirely over the Discord Gateway, which `channel serve` holds open,
+// so it needs no public URL.
 const KindDiscord = "discord"
 
-// DiscordSpec is a discord channel's application, from the Discord
-// Developer Portal. The bot needs the Message Content intent and, in the
-// watched channels, View Channel, Send Messages, Read Message History and
-// Add Reactions.
+// DiscordSpec is a discord channel's bot, from the Discord Developer Portal.
+// The bot needs the Message Content intent, and View Channel, Send Messages,
+// Send Messages in Threads, Create Public Threads and Read Message History.
 type DiscordSpec struct {
-	ApplicationID string `json:"application_id"`
-	PublicKey     string `json:"public_key"` // hex ed25519, checked on every interaction
-	BotToken      string `json:"bot_token"`
-	// Channels are the Discord channel IDs whose messages become feedback.
-	// Empty: only /feedback.
+	BotToken string `json:"bot_token"`
+	// Forums are forum channel IDs: every new post in one is a request.
+	Forums []string `json:"forums,omitempty"`
+	// Channels, when set, are the only channels where an @mention files a
+	// request. Empty: every channel the bot can read.
 	Channels []string `json:"channels,omitempty"`
-	// Guilds, when set, are the only servers /feedback is taken from; the
-	// command is then registered per server (instant) instead of globally.
+	// Guilds, when set, are the only servers the bot answers in.
 	Guilds []string `json:"guilds,omitempty"`
 }
 
 func (d *DiscordSpec) config() discord.Config {
-	return discord.Config{ApplicationID: d.ApplicationID, PublicKey: d.PublicKey, BotToken: d.BotToken, Channels: d.Channels, Guilds: d.Guilds}
+	return discord.Config{BotToken: d.BotToken, Forums: d.Forums, Channels: d.Channels, Guilds: d.Guilds}
 }
 
 func validateDiscord(ch ChannelSpec) error {
 	if ch.Discord == nil {
-		return fmt.Errorf("channel %s: a discord channel needs discord.application_id, public_key and bot_token", ch.ID)
+		return fmt.Errorf("channel %s: a discord channel needs discord.bot_token", ch.ID)
 	}
 	if _, err := discord.New(ch.Discord.config()); err != nil {
 		return fmt.Errorf("channel %s: %w", ch.ID, err)
@@ -49,11 +49,11 @@ func validateDiscord(ch ChannelSpec) error {
 var newDiscord = discord.New
 
 // discordChannel is a Discord adapter as a Channel. Ingest isn't used:
-// Discord traffic arrives through the interactions route and the Gateway.
+// Discord traffic arrives over the Gateway.
 type discordChannel struct{ a *discord.Adapter }
 
 func (discordChannel) Ingest(*http.Request) (Feedback, error) {
-	return Feedback{}, errors.New("discord feedback arrives through the interactions route and the gateway")
+	return Feedback{}, errors.New("discord feedback arrives over the gateway")
 }
 
 func (d discordChannel) Reply(ctx context.Context, ref, text string) error {
@@ -71,17 +71,28 @@ func openDiscord(spec ChannelSpec) (Channel, error) {
 	return discordChannel{a}, nil
 }
 
-// discordSink files what the adapter normalized, like a widget submission.
-func discordSink(home string, spec ChannelSpec, logf func(string, ...any)) discord.Sink {
-	return discord.SinkFunc(func(_ context.Context, f discord.Feedback) (int, error) {
-		fb := fromDiscord(spec, f)
-		req, err := Deliver(home, spec, fb)
-		if err != nil {
-			return 0, err
-		}
-		logf("channel %s: filed request %d in %s", spec.ID, req.Number, spec.Project)
-		return req.Number, nil
-	})
+// discordSink files what the adapter normalized.
+type discordSink struct {
+	home string
+	spec ChannelSpec
+	logf func(string, ...any)
+}
+
+func (d discordSink) Submit(_ context.Context, f discord.Feedback) (int, error) {
+	req, err := Deliver(d.home, d.spec, fromDiscord(d.spec, f))
+	if err != nil {
+		return 0, err
+	}
+	d.logf("channel %s: filed request %d in %s", d.spec.ID, req.Number, d.spec.Project)
+	return req.Number, nil
+}
+
+func (d discordSink) FollowUp(_ context.Context, f discord.Feedback) (int, bool, error) {
+	req, ok, err := FollowUp(d.home, d.spec, fromDiscord(d.spec, f))
+	if ok && err == nil {
+		d.logf("channel %s: follow-up on request %d in %s", d.spec.ID, req.Number, d.spec.Project)
+	}
+	return req.Number, ok, err
 }
 
 func fromDiscord(spec ChannelSpec, f discord.Feedback) Feedback {
@@ -99,35 +110,13 @@ func fromDiscord(spec ChannelSpec, f discord.Feedback) Feedback {
 	if name == "" {
 		name = f.Author.Handle
 	}
-	return Feedback{Channel: spec.ID, Kind: KindDiscord, Author: oneLine(name, 80), Text: f.Text, Context: ctx, ReplyRef: f.ReplyRef, Received: time.Now().UTC()}
+	return Feedback{Channel: spec.ID, Kind: KindDiscord, Author: oneLine(name, 80), Title: f.Title, Text: f.Text, Context: ctx,
+		Conversation: f.Conversation, ReplyRef: f.ReplyRef, Received: time.Now().UTC()}
 }
 
-// discordInteractions serves one discord channel's Interactions Endpoint
-// URL. The config is read per request, like the widget routes, and a channel
-// switched off answers 404 before the signature is looked at.
-func (s Server) discordInteractions(w http.ResponseWriter, r *http.Request) {
-	cfg, err := LoadConfig(s.Home)
-	if err != nil {
-		s.logf("config: %v", err)
-		http.Error(w, "unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	spec, ok := cfg.Spec(r.PathValue("id"))
-	if !ok || spec.Kind != KindDiscord || !s.on(spec) {
-		http.NotFound(w, r)
-		return
-	}
-	a, err := newDiscord(spec.Discord.config())
-	if err != nil {
-		s.logf("channel %s: %v", spec.ID, err)
-		http.Error(w, "unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	a.InteractionsHandler(discordSink(s.Home, spec, s.logf)).ServeHTTP(w, r)
-}
-
-// runDiscord registers /feedback and holds the Gateway for every enabled
-// discord channel until ctx ends. Gateway settings apply on restart.
+// runDiscord holds the Gateway for every enabled discord channel until ctx
+// ends. Discord settings apply on restart; the Settings › Channels switch is
+// checked per message.
 func (s Server) runDiscord(ctx context.Context, cfg Config) {
 	for _, spec := range cfg.Channels {
 		if spec.Kind != KindDiscord || spec.Disabled {
@@ -139,13 +128,7 @@ func (s Server) runDiscord(ctx context.Context, cfg Config) {
 			continue
 		}
 		go func() {
-			if err := a.RegisterCommands(ctx); err != nil {
-				s.logf("channel %s: registering /feedback: %v", spec.ID, err)
-			}
-		}()
-		go func() {
-			// The board's on/off switch is checked per message by Deliver.
-			sink := discordSink(s.Home, spec, s.logf)
+			sink := discordSink{home: s.Home, spec: spec, logf: s.logf}
 			if err := a.Run(ctx, sink); err != nil && !errors.Is(err, context.Canceled) {
 				s.logf("channel %s: gateway stopped: %v", spec.ID, err)
 			}

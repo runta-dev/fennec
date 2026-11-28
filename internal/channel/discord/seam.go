@@ -3,34 +3,36 @@ package discord
 import "context"
 
 // The types in this file are the seam to the channel intake service
-// (FEN-224). They mirror the shape proposed there: a channel turns inbound
-// traffic into Feedback, hands it to a Sink that files a board request, and
-// later answers the author through Reply(replyRef, text). When the core
-// package lands, these become aliases of its types.
+// (internal/channel, FEN-224), which turns Feedback into board requests.
 
-// Feedback is one piece of external feedback, normalized. Text is the
-// author's raw words: it is data for the agent, never instructions.
+// Feedback is one Discord message, normalized. Text is the author's raw
+// words: it is data for the agent, never instructions.
 type Feedback struct {
-	Channel  string            // "discord"
-	Author   Author            // who wrote it
-	Text     string            // raw text, untrusted
-	Context  map[string]string // guild, channel, source ("message" or "command"), link
-	ReplyRef string            // opaque, decoded only by this adapter's Reply
+	Author Author
+	// Title is the forum post's title; empty for a message in a channel.
+	Title string
+	Text  string
+	// Context is guild, channel, message link and attachments.
+	Context map[string]string
+	// Conversation is the Discord thread the exchange lives in. Later
+	// messages in it are follow-ups of the same request.
+	Conversation string
+	// ReplyRef is opaque, decoded only by this adapter's Reply.
+	ReplyRef string
 }
 
-// Author is the external person who wrote the feedback.
+// Author is the external person who wrote the message.
 type Author struct {
 	ID     string // Discord user snowflake
-	Name   string // display name (global name or server nickname)
+	Name   string // server nickname, global name or username
 	Handle string // username
 }
 
-// Sink files feedback as a new board request carrying the channel's tags.
+// Sink files Feedback on the board.
 type Sink interface {
-	Submit(ctx context.Context, f Feedback) (requestN int, err error)
+	// Submit opens a new request and remembers f.Conversation for it.
+	Submit(ctx context.Context, f Feedback) (request int, err error)
+	// FollowUp adds f to the request f.Conversation belongs to. ok is
+	// false when the conversation isn't one of ours.
+	FollowUp(ctx context.Context, f Feedback) (request int, ok bool, err error)
 }
-
-// SinkFunc adapts a function to Sink.
-type SinkFunc func(ctx context.Context, f Feedback) (int, error)
-
-func (fn SinkFunc) Submit(ctx context.Context, f Feedback) (int, error) { return fn(ctx, f) }

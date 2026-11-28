@@ -1,41 +1,37 @@
 // Package discord is the Discord channel of the external feedback intake
-// (FEN-226, design in FEN-217).
+// (FEN-226, design in FEN-217). It works like a support bot in Slack:
 //
-// Two inbound paths, one outbound:
+//   - Someone @mentions the bot in a server channel: the bot starts a thread
+//     on that message and files a request. Everything said later in the
+//     thread joins that request as a follow-up.
+//   - Every new post in a configured forum channel files a request; the
+//     post's replies are its follow-ups.
+//   - Reply answers in the thread and @mentions the author.
 //
-//   - /feedback slash command, delivered by Discord to the interactions
-//     endpoint (HTTP). Every request is checked against the application's
-//     ed25519 public key before anything else is read.
-//   - Ordinary messages in the watched channels, read from the Discord
-//     Gateway (websocket, GUILD_MESSAGES + MESSAGE_CONTENT intents).
-//   - Reply posts in the original channel, mentions the author and, for a
-//     channel message, replies to that message.
+// All of it comes over the Discord Gateway (an outbound websocket
+// authenticated by the bot token), so no public endpoint is needed.
 package discord
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
-
-// ChannelName is the value of Feedback.Channel for this adapter.
-const ChannelName = "discord"
 
 // DefaultAPIBase is Discord's REST API, version 10.
 const DefaultAPIBase = "https://discord.com/api/v10"
 
-// Config is one Discord application/bot connected to a project.
+// Config is one Discord bot connected to a project.
 type Config struct {
-	ApplicationID string   // application (client) ID
-	PublicKey     string   // hex ed25519 key from the Developer Portal
-	BotToken      string   // "Bot ..." prefix is added when missing
-	Channels      []string // channel IDs whose messages become feedback
-	Guilds        []string // optional: only accept /feedback from these servers
-	CommandName   string   // default "feedback"
+	BotToken string   // "Bot ..." prefix is added when missing
+	Guilds   []string // optional: only these servers
+	Forums   []string // forum channel IDs whose new posts become requests
+	// Channels, when set, are the only channels (and their threads) where
+	// an @mention files a request. Empty: any channel the bot can read.
+	Channels []string
 
 	APIBase    string       // default DefaultAPIBase; tests point it at httptest
 	GatewayURL string       // default: asked from GET /gateway/bot
@@ -44,28 +40,28 @@ type Config struct {
 
 // Adapter is the Discord channel. Create it with New.
 type Adapter struct {
-	cfg       Config
-	publicKey ed25519.PublicKey
-	channels  map[string]bool
-	guilds    map[string]bool
-	http      *http.Client
-	now       func() time.Time
+	cfg      Config
+	guilds   map[string]bool
+	forums   map[string]bool
+	channels map[string]bool
+	http     *http.Client
+
+	mu    sync.Mutex
+	botID string                 // from READY
+	known map[string]channelInfo // channel and thread lookups
 }
 
 // New validates cfg and returns an Adapter.
 func New(cfg Config) (*Adapter, error) {
-	key, err := hex.DecodeString(strings.TrimSpace(cfg.PublicKey))
-	if err != nil || len(key) != ed25519.PublicKeySize {
-		return nil, errors.New("discord: public key must be 64 hex characters")
-	}
-	if strings.TrimSpace(cfg.BotToken) == "" {
+	if strings.TrimSpace(strings.TrimPrefix(cfg.BotToken, "Bot ")) == "" {
 		return nil, errors.New("discord: bot token is required")
 	}
-	if !isSnowflake(cfg.ApplicationID) {
-		return nil, errors.New("discord: application ID is required")
-	}
-	if cfg.CommandName == "" {
-		cfg.CommandName = "feedback"
+	for _, list := range [][]string{cfg.Guilds, cfg.Forums, cfg.Channels} {
+		for _, id := range list {
+			if !isSnowflake(strings.TrimSpace(id)) {
+				return nil, fmt.Errorf("discord: %q is not a Discord ID", id)
+			}
+		}
 	}
 	if cfg.APIBase == "" {
 		cfg.APIBase = DefaultAPIBase
@@ -75,29 +71,18 @@ func New(cfg Config) (*Adapter, error) {
 		cfg.BotToken = "Bot " + strings.TrimSpace(cfg.BotToken)
 	}
 	a := &Adapter{
-		cfg:       cfg,
-		publicKey: ed25519.PublicKey(key),
-		channels:  set(cfg.Channels),
-		guilds:    set(cfg.Guilds),
-		http:      cfg.HTTPClient,
-		now:       time.Now,
+		cfg:      cfg,
+		guilds:   set(cfg.Guilds),
+		forums:   set(cfg.Forums),
+		channels: set(cfg.Channels),
+		http:     cfg.HTTPClient,
+		known:    map[string]channelInfo{},
 	}
 	if a.http == nil {
 		a.http = &http.Client{Timeout: 15 * time.Second}
 	}
-	for id := range a.channels {
-		if !isSnowflake(id) {
-			return nil, fmt.Errorf("discord: channel %q is not a Discord ID", id)
-		}
-	}
 	return a, nil
 }
-
-// Name returns the channel name used in Feedback.Channel and tags.
-func (a *Adapter) Name() string { return ChannelName }
-
-// Watches reports whether messages in channelID become feedback.
-func (a *Adapter) Watches(channelID string) bool { return a.channels[channelID] }
 
 func set(ids []string) map[string]bool {
 	m := make(map[string]bool, len(ids))
