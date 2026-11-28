@@ -409,14 +409,18 @@ struct ClosureCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
+            // FEN-245: laid out like an agent message header (16 pt icon slot,
+            // 7 pt spacing, 12.5 pt text), so the check lines up with the agent logos above.
             HStack(spacing: 7) {
-                Image(systemName: "checkmark.circle.fill").regularIconWeight().foregroundStyle(Theme.working)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.working)
+                    .frame(width: 16, height: 16)
                 Text(AgentKind(launcherID: closure.by)?.displayName ?? closure.by)
-                    .fontWeight(.semibold).foregroundStyle(Theme.fg)
                 Text(L10n.text("desktop.closed_this_request"))
-                if let date = closure.date { Text("· \(shortTime(date))").foregroundStyle(Theme.fg3) }
+                if let date = closure.date { Text("· \(shortTime(date))") }
             }
-            .font(.system(size: 13)).foregroundStyle(Theme.fg2)
+            .font(.system(size: 12.5)).foregroundStyle(Theme.fg2)
             (Text(L10n.text("desktop.close_reason")).foregroundStyle(Theme.fg2) + Text(closure.reason).foregroundStyle(Theme.fg))
                 .font(.system(size: 14.5)).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
