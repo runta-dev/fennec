@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fennec/internal/account"
 	"fennec/internal/board"
 	"fennec/internal/control"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -109,5 +111,46 @@ func TestLegacyQueueIsPreservedWithoutJoiningNewComputer(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(legacy.Root(), "paired-account")); err != nil || string(got) != "old-account" {
 		t.Fatal("legacy pairing changed")
+	}
+}
+
+// FEN-231: after a restart, before the cloud verifies the account again, the
+// window reads the board this same credential verified to last time, so it
+// opens on its projects. Replication and the scheduler wait for verification,
+// and another credential (or none) never sees the remembered board.
+func TestBoardScopeRememberedForTheSameCredential(t *testing.T) {
+	home := t.TempDir()
+	ctx := context.Background()
+	daemon := func(token string) *daemonServices {
+		manager := account.New(ctx, &tokenCredentials{token: token}, "https://runta.example")
+		_ = manager.Restore(ctx)
+		return &daemonServices{home: home, account: manager}
+	}
+	first := daemon("token-a")
+	_, _, epoch, ok := first.account.Session()
+	if !ok {
+		t.Fatal("not signed in")
+	}
+	first.epoch, first.user, first.config.RuntimeID = epoch, "owner", "machine-a"
+	verified := first.localBoard().Namespace
+	if verified == "local" || first.verifiedBoard().Namespace != verified {
+		t.Fatalf("verified scope = %q", verified)
+	}
+
+	restarted := daemon("token-a")
+	if got := restarted.localBoard().Namespace; got != verified {
+		t.Fatalf("restart before verification reads %q, want %q", got, verified)
+	}
+	if got := restarted.verifiedBoard().Namespace; got != "local" {
+		t.Fatalf("replication used the remembered scope %q", got)
+	}
+	for _, token := range []string{"token-b", ""} {
+		if got := daemon(token).localBoard().Namespace; got != "local" {
+			t.Fatalf("credential %q reads remembered scope %q", token, got)
+		}
+	}
+	data, err := os.ReadFile(boardScopePath(home))
+	if err != nil || strings.Contains(string(data), "token-a") {
+		t.Fatalf("board-scope.json = %s, %v", data, err)
 	}
 }

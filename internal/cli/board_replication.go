@@ -16,7 +16,7 @@ import (
 )
 
 func startQueueReplication(ctx context.Context, s *daemonServices) {
-	store := s.localBoard()
+	store := s.verifiedBoard()
 	if err := store.SetRouting(queueRouting(s, store)); err != nil {
 		log.Printf("queue routing unavailable: %v", err)
 		return
@@ -68,7 +68,7 @@ func startQueueReplication(ctx context.Context, s *daemonServices) {
 				}
 			}
 			lifecycle, _, current, authorized := s.account.Session()
-			next := s.localBoard()
+			next := s.verifiedBoard()
 			if next.Namespace != store.Namespace || current != epoch {
 				stopScheduler()
 				_ = store.SetPrimary(false)
