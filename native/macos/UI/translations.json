@@ -234,7 +234,7 @@
     "desktop.channels_none": {"en-GB": "No channels connected yet", "en-US": "No channels connected yet", "zh-CN": "还没有连接渠道"},
     "desktop.channel_add": {"en-GB": "Add channel", "en-US": "Add channel", "zh-CN": "添加渠道"},
     "desktop.channel_connect": {"en-GB": "Connect", "en-US": "Connect", "zh-CN": "连接"},
-    "desktop.channel_not_set_up": {"en-GB": "Waiting for setup", "en-US": "Waiting for setup", "zh-CN": "等待接入"},
+    "desktop.channel_not_set_up": {"en-GB": "Not connected: bot credentials not set up yet", "en-US": "Not connected: bot credentials not set up yet", "zh-CN": "未接入：还没填写 bot 授权信息"},
     "desktop.channel_discord": {"en-GB": "Discord", "en-US": "Discord", "zh-CN": "Discord"},
     "desktop.channel_widget": {"en-GB": "Web widget", "en-US": "Web widget", "zh-CN": "网页 Widget"},
     "desktop.channel_slack": {"en-GB": "Slack", "en-US": "Slack", "zh-CN": "Slack"},

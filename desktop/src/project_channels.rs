@@ -18,9 +18,10 @@ const KINDS: [&str; 4] = ["discord", "widget", "slack", "x"];
 /// The logo tile's glyph and color for a kind.
 fn logo(kind: &str) -> (&'static str, Hsla) {
     match kind {
-        "discord" => ("gamepad", rgb(0x5865f2).into()),
+        "discord" => ("discord", rgb(0x5865f2).into()),
         "widget" => ("globe", c("orange")),
-        "slack" => ("hash", rgb(0x4a154b).into()),
+        // Slack's mark keeps its four colors, on white like its app icon.
+        "slack" => ("", rgb(0xffffff).into()),
         _ => ("x-logo", rgb(0x000000).into()),
     }
 }
@@ -77,7 +78,9 @@ pub(crate) fn connect(kind: &str, channels: &[Channel], tags: &[Tag]) -> (Channe
         kind: kind.to_owned(),
         source: String::new(),
         tags: ids,
-        on: true,
+        // Off until the channel's credentials are set up and it has a
+        // source: a row alone takes nothing in.
+        on: false,
     };
     (channel, tags)
 }
@@ -142,7 +145,10 @@ impl FennecWindow {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(ui::icon(glyph, if kind == "x" { 13.0 } else { 16.0 }, rgb(0xffffff).into()))
+                .when(kind == "slack", |d| d.child(img("brands/slack.svg").size(px(17.0)).flex_none()))
+                .when(kind != "slack", |d| {
+                    d.child(ui::icon(glyph, if kind == "x" { 13.0 } else { 17.0 }, rgb(0xffffff).into()))
+                })
         };
         let text = |name: String, detail: String, muted: bool| {
             v_flex()
@@ -196,14 +202,16 @@ impl FennecWindow {
                 .flex()
                 .when(on, |d| d.justify_end())
                 .child(div().size(px(15.0)).rounded_full().bg(rgb(0xffffff)))
-                .on_click(cx.listener(move |this, _, window, cx| {
+                // Without credentials there is nothing to switch on.
+                .when(waiting, |d| d.opacity(0.4))
+                .when(!waiting, |d| d.on_click(cx.listener(move |this, _, window, cx| {
                     let Some(p) = this.projects.iter().find(|p| p.id == pid) else { return };
                     let mut channels = p.channels.clone();
                     if let Some(ch) = channels.get_mut(i) {
                         ch.on = !ch.on;
                     }
                     this.save_channels(channels, None, window, cx);
-                }));
+                })));
             let pid = p.id.clone();
             let remove = div()
                 .id(SharedString::from(format!("channel-remove-{}", ch.id)))
@@ -340,7 +348,7 @@ mod channel_tests {
         let (ch, tags) = connect("discord", &[], &[tag("bug", "Bug")]);
         assert_eq!(ch.id, "discord");
         assert_eq!(ch.tags, ["feedback", "discord"]);
-        assert!(ch.on);
+        assert!(!ch.on);
         assert_eq!(tags.len(), 3);
     }
 
