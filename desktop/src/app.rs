@@ -707,6 +707,9 @@ impl FennecWindow {
     fn follow_board(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self._tasks.push(cx.spawn_in(window, async move |this, cx| {
             let mut quick_refetches = 2;
+            // 100 ms looks while the board has no projects yet, for 5 s at most
+            // (signed out, the board stays empty).
+            let mut empty_looks = 50;
             loop {
                 let project = this.update(cx, |this, _| this.project_id()).ok().flatten();
                 let open = this.update(cx, |this, _| this.open).ok().flatten();
@@ -747,6 +750,15 @@ impl FennecWindow {
                 // them (`board_ready`). Twice at most, so failures do not spin.
                 if !ready && quick_refetches > 0 {
                     quick_refetches -= 1;
+                    continue;
+                }
+                // FEN-231: no projects yet means the daemon is still starting
+                // (the board always has one). Its board changes scope without
+                // a change stamp, so `wait_change` would sit out its 2 s while
+                // the window shows "Loading…"; look again shortly instead.
+                if empty_looks > 0 && this.update(cx, |this, _| this.projects.is_empty()).unwrap_or(false) {
+                    empty_looks -= 1;
+                    cx.background_executor().timer(Duration::from_millis(100)).await;
                     continue;
                 }
                 let waited = match wait_from {
