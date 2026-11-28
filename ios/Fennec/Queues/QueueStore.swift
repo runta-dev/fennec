@@ -170,7 +170,9 @@ final class QueueStore {
 
     /// Opens the stream if it isn't open. Safe to call often.
     func startWatching() {
-        guard let core else { return }
+        // Not from the background (a refresh iOS woke the app for, the
+        // home list's loop finishing a sleep): the stream is for the screen.
+        guard let core, UIApplication.shared.applicationState != .background else { return }
         watchWanted = true
         if let watch, Date.now.timeIntervalSince(lastPush ?? watchOpened) > 45 {
             // Nothing, not even a ping: the link died under it (sleep, network change).

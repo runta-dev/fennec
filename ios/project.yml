@@ -29,6 +29,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.runta.fennec.pair
             CFBundleURLSchemes: [fennec]
+        # FEN-234: Background App Refresh keeps the home list's cache current.
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.runta.fennec.ios.refresh]
     dependencies:
       - framework: Frameworks/FennecCore.xcframework
         embed: false

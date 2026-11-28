@@ -86,8 +86,9 @@ struct QueuesView: View {
                 }
             }
             .onChange(of: scenePhase) { _, phase in
+                // The stream closes a little after the app leaves the screen
+                // (BackgroundGrace in FennecApp, FEN-234), not here.
                 if phase == .active { refreshTick += 1 }
-                if phase == .background { queues.stopWatching() }
             }
             .onChange(of: path.isEmpty) { _, onList in if onList { refreshTick += 1 } }
             .navigationBarTitleDisplayMode(.inline)
