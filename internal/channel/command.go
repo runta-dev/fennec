@@ -73,9 +73,13 @@ func Command(home string, args []string, in io.Reader, out io.Writer) error {
 
 func serve(home, addr string, out io.Writer) error {
 	logger := log.New(out, "channel ", log.LstdFlags|log.LUTC)
-	srv := Server{Home: home, Log: logger}.HTTPServer(addr)
+	server := Server{Home: home, Log: logger}
+	srv := server.HTTPServer(addr)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+	if cfg, err := LoadConfig(home); err == nil {
+		server.runDiscord(ctx, cfg)
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)

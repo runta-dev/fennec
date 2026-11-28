@@ -144,8 +144,11 @@ func Body(spec ChannelSpec, fb Feedback) string {
 }
 
 func kindLabel(kind string) string {
-	if kind == KindWidget {
+	switch kind {
+	case KindWidget:
 		return "web widget"
+	case KindDiscord:
+		return "Discord"
 	}
 	return kind
 }

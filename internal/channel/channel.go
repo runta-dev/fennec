@@ -89,6 +89,8 @@ type ChannelSpec struct {
 	// "https://*.example.com"), and its Turnstile keys.
 	Origins   []string   `json:"origins,omitempty"`
 	Turnstile *Turnstile `json:"turnstile,omitempty"`
+	// Discord: the application and bot (FEN-226).
+	Discord *DiscordSpec `json:"discord,omitempty"`
 }
 
 // Turnstile holds a Cloudflare Turnstile widget's keys.
@@ -152,6 +154,10 @@ func (c Config) Validate() error {
 			if ch.Turnstile == nil || ch.Turnstile.SiteKey == "" || ch.Turnstile.Secret == "" {
 				return fmt.Errorf("channel %s: a widget needs turnstile.site_key and turnstile.secret", ch.ID)
 			}
+		case KindDiscord:
+			if err := validateDiscord(ch); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("channel %s: unknown kind %q", ch.ID, ch.Kind)
 		}
@@ -174,6 +180,8 @@ func (c Config) Open(spec ChannelSpec) (Channel, error) {
 	switch spec.Kind {
 	case KindWidget:
 		return &Widget{Spec: spec, SMTP: c.SMTP}, nil
+	case KindDiscord:
+		return openDiscord(spec)
 	}
 	return nil, fmt.Errorf("unknown channel kind %q", spec.Kind)
 }
